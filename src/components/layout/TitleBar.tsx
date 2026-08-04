@@ -12,6 +12,8 @@ export interface TitleBarProps {
   showBack?: boolean;
   onBack?: () => void;
   right?: ReactNode;
+  /** Prototype uses 12 on most pages and 14 on Availability. */
+  paddingBottom?: number;
 }
 
 /**
@@ -23,7 +25,13 @@ export interface TitleBarProps {
  * open the onboarding screens, because these pages are utilities rather than
  * introductions.
  */
-export function TitleBar({ title, showBack = true, onBack, right }: TitleBarProps) {
+export function TitleBar({
+  title,
+  showBack = true,
+  onBack,
+  right,
+  paddingBottom = 12,
+}: TitleBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -41,7 +49,7 @@ export function TitleBar({ title, showBack = true, onBack, right }: TitleBarProp
         backgroundColor: color.surfaceRaised,
         paddingTop: insets.top + 6,
         paddingHorizontal: 12,
-        paddingBottom: 14,
+        paddingBottom,
         borderBottomWidth: 1,
         borderBottomColor: palette.neutral[200],
       }}

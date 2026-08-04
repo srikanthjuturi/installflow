@@ -85,6 +85,13 @@ export const color = {
   debit: palette.danger[500],
   bonus: palette.secondary[600],
 
+  // ── penalty panel ───────────────────────────────────────────────────────
+  /** Tinted ground for the cancellation cost. Softer than the danger ramp. */
+  dangerSurface: '#fdecec',
+  dangerSurfaceBorder: '#f3c9c9',
+  dangerTextStrong: '#aa3333',
+  dangerTextMuted: '#cc9988',
+
   // ── committed slot — the app's signature emphasis ────────────────────────
   slotFg: palette.secondary[800],
   slotBg: palette.secondary[100],

@@ -51,7 +51,8 @@ export type IconName =
   | 'calendar'
   | 'phone'
   | 'navigation'
-  | 'play';
+  | 'play'
+  | 'info';
 
 export interface IconProps {
   name: IconName;
@@ -81,6 +82,7 @@ const STROKE_OVERRIDE: Partial<Record<IconName, number>> = {
   phone: 1.7,
   navigation: 1.7,
   play: 2,
+  info: 1.7,
 };
 
 export function Icon({
@@ -330,6 +332,14 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
 
     case 'play':
       return <Path d="M8 5v14l11-7L8 5z" {...p} />;
+
+    case 'info':
+      return (
+        <>
+          <Circle cx={12} cy={12} r={9} {...p} />
+          <Path d="M12 8v4M12 15v.5" {...p} />
+        </>
+      );
   }
 }
 

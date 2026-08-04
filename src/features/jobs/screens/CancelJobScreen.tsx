@@ -1,14 +1,16 @@
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
-import { Header, Screen } from '@/components/layout';
-import { Button, Card } from '@/components/ui';
+import { TitleBar } from '@/components/layout';
+import { Button } from '@/components/ui';
 import { useCancelJob, useCancellationPreview } from '@/features/jobs/hooks/useCancelJob';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 import { CANCELLATION_REASONS, type CancellationReason } from '@/types/domain';
 import { formatPaise } from '@/utils/money';
 
@@ -20,12 +22,13 @@ export interface CancelJobScreenProps {
  * Screen 8 — Cancel with penalty.
  *
  * The customer was promised this slot before any technician saw the job, so
- * backing out breaks a promise someone else made on the technician's behalf.
- * The penalty is shown at full size, before the reason is even picked, because
- * the cost should be the first thing read — not a surprise after confirming.
+ * backing out breaks a commitment made on the technician's behalf. The cost
+ * leads the screen, and the confirm button repeats the figure so it can never
+ * be tapped without having been read.
  */
 export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [reason, setReason] = useState<CancellationReason>();
 
   const { data: band, isPending, isError, refetch } = useCancellationPreview(jobId);
@@ -34,177 +37,203 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
   const amount = band ? formatPaise(band.amountPaise) : '—';
 
   return (
-    <>
-      <Header title="Cancel job" />
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="dark" />
+      <TitleBar title="Cancel job" />
 
-      <Screen
-        footer={
-          <Button
-            label={`Cancel & accept −${amount} penalty`}
-            variant="destructive"
-            disabled={!reason || !band}
-            disabledHint="Select a reason"
-            loading={cancel.isPending}
-            onPress={() => {
-              if (!reason) return;
-              cancel.mutate(reason, {
-                onSuccess: () => router.replace('/(app)/(tabs)/jobs'),
-              });
-            }}
-          />
-        }
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
       >
         {isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : (
           <>
-            <Card style={{ marginTop: 16, alignItems: 'center', paddingVertical: 24 }}>
-              {isPending ? (
-                <View style={{ alignItems: 'center', gap: 10 }}>
-                  <Skeleton width={180} height={13} />
-                  <Skeleton width={120} height={38} />
-                </View>
-              ) : (
-                <>
-                  <Text
-                    style={{
-                      fontFamily: 'Roboto_500Medium',
-                      fontSize: 12.5,
-                      color: color.textSecondary,
-                    }}
-                  >
-                    {band.label}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Roboto_900Black',
-                      fontSize: 40,
-                      color: color.debit,
-                      marginTop: 8,
-                      letterSpacing: -1,
-                    }}
-                  >
-                    −{amount}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Roboto_400Regular',
-                      fontSize: 12.5,
-                      color: color.textMuted,
-                      marginTop: 4,
-                    }}
-                  >
-                    Penalty deducted from earnings
-                  </Text>
-                </>
-              )}
-            </Card>
-
-            {band?.escalates ? (
+            <View
+              style={{
+                backgroundColor: color.dangerSurface,
+                borderWidth: 1,
+                borderColor: color.dangerSurfaceBorder,
+                borderRadius: 16,
+                paddingVertical: 15,
+                paddingHorizontal: 16,
+                marginBottom: 18,
+              }}
+            >
               <View
                 style={{
                   flexDirection: 'row',
-                  gap: 10,
-                  backgroundColor: color.slotBg,
-                  borderRadius: radius.lg,
-                  padding: 14,
-                  marginTop: 12,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
                 }}
               >
-                <Icon name="warn" size={18} color={color.slotFg} />
+                {isPending ? (
+                  <View style={{ gap: 6, flex: 1 }}>
+                    <Skeleton width={150} height={12} />
+                    <Skeleton width={180} height={12} />
+                  </View>
+                ) : (
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_700Bold',
+                        fontSize: 12,
+                        color: color.dangerTextStrong,
+                      }}
+                    >
+                      {band.label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_400Regular',
+                        fontSize: 12,
+                        color: color.dangerTextMuted,
+                        marginTop: 2,
+                      }}
+                    >
+                      Penalty deducted from earnings
+                    </Text>
+                  </View>
+                )}
+
                 <Text
-                  style={{
-                    flex: 1,
-                    fontFamily: 'Roboto_500Medium',
-                    fontSize: 12.5,
-                    lineHeight: 19,
-                    color: color.slotFg,
-                  }}
+                  style={{ fontFamily: 'Roboto_900Black', fontSize: 26, color: color.debit }}
                 >
-                  Under 4 hours to the slot — this escalates straight to the Area Service Manager
-                  for urgent reassignment.
+                  −{amount}
                 </Text>
               </View>
-            ) : null}
+
+              {band?.escalates ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    borderTopWidth: 1,
+                    borderTopColor: color.dangerSurfaceBorder,
+                    marginTop: 12,
+                    paddingTop: 12,
+                  }}
+                >
+                  <View style={{ marginTop: 1 }}>
+                    <Icon name="info" size={16} color={color.debit} />
+                  </View>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: 'Roboto_400Regular',
+                      fontSize: 12,
+                      lineHeight: 17,
+                      color: color.dangerTextStrong,
+                    }}
+                  >
+                    Under 4 hours to the slot — this escalates straight to the Area Service
+                    Manager for urgent reassignment.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
 
             <Text
               style={{
-                fontFamily: 'Roboto_900Black',
-                fontSize: 17,
-                color: color.textPrimary,
-                marginTop: 28,
-                marginBottom: 12,
+                fontFamily: 'Roboto_700Bold',
+                fontSize: 12,
+                color: color.textLabel,
+                marginHorizontal: 2,
+                marginBottom: 10,
               }}
             >
               Why are you cancelling?
             </Text>
 
-            <View style={{ gap: 10 }}>
-              {CANCELLATION_REASONS.map((option) => {
-                const selected = reason === option;
+            {CANCELLATION_REASONS.map((option) => {
+              const selected = reason === option;
 
-                return (
-                  <Pressable
-                    key={option}
-                    onPress={() => setReason(option)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => setReason(option)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      backgroundColor: color.surfaceRaised,
+                      borderWidth: 1.5,
+                      borderColor: selected ? color.borderFocus : color.border,
+                      borderRadius: 13,
+                      paddingVertical: 14,
+                      paddingHorizontal: 15,
+                      marginBottom: 10,
+                    }}
                   >
-                    {({ pressed }) => (
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: 2,
+                        borderColor: selected ? color.borderFocus : color.borderStrong,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
                       <View
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 12,
-                          borderRadius: radius.md,
-                          borderWidth: 1,
-                          borderColor: selected ? color.borderFocus : color.border,
-                          backgroundColor: color.surfaceRaised,
-                          padding: 14,
-                          opacity: pressed ? 0.75 : 1,
+                          width: 11,
+                          height: 11,
+                          borderRadius: 5.5,
+                          backgroundColor: selected ? color.actionBg : 'transparent',
                         }}
-                      >
-                        <View
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: radius.full,
-                            borderWidth: 2,
-                            borderColor: selected ? color.borderFocus : color.borderStrong,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {selected ? (
-                            <View
-                              style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: radius.full,
-                                backgroundColor: color.actionBg,
-                              }}
-                            />
-                          ) : null}
-                        </View>
+                      />
+                    </View>
 
-                        <Text
-                          style={{
-                            fontFamily: 'Roboto_500Medium',
-                            fontSize: 14,
-                            color: color.textPrimary,
-                          }}
-                        >
-                          {option}
-                        </Text>
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_500Medium',
+                        fontSize: 14.5,
+                        color: color.textPrimary,
+                      }}
+                    >
+                      {option}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
           </>
         )}
-      </Screen>
-    </>
+      </ScrollView>
+
+      <View
+        style={{
+          backgroundColor: color.surfaceRaised,
+          borderTopWidth: 1,
+          borderTopColor: palette.neutral[200],
+          paddingTop: 12,
+          paddingHorizontal: 16,
+          paddingBottom: insets.bottom + 16,
+        }}
+      >
+        {/* Blocked state carries the requirement as its label, same as the
+            coverage screen — one control, always saying what it needs. */}
+        <Button
+          label={reason ? `Cancel & accept −${amount} penalty` : 'Select a reason'}
+          variant="destructive"
+          disabled={!reason || !band}
+          loading={cancel.isPending}
+          onPress={() => {
+            if (!reason) return;
+            cancel.mutate(reason, {
+              onSuccess: () => router.replace('/(app)/(tabs)/jobs'),
+            });
+          }}
+        />
+      </View>
+    </View>
   );
 }

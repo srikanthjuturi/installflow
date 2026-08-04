@@ -37,7 +37,7 @@ export function AvailabilityScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <StatusBar style="dark" />
-      <TitleBar title="Availability & bandwidth" />
+      <TitleBar title="Availability & bandwidth" paddingBottom={14} />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
