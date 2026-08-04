@@ -31,6 +31,16 @@ export const color = {
   chrome: palette.chrome, // dark header behind status bar
   /** Raised panel sitting ON the dark chrome — the Home online toggle. */
   chromePanel: 'rgba(255,255,255,0.06)',
+  /** Tappable control on the dark chrome — the Home bell button. */
+  chromeControl: 'rgba(255,255,255,0.08)',
+  /** Secondary text on the dark chrome. Blue-tinted, not a neutral grey. */
+  textOnChrome: '#8fa0b3',
+  /** Border on the tinted "new jobs in your area" banner. */
+  bannerBorder: '#d7e6ff',
+  /** Unread indicator dot. */
+  notificationDot: palette.secondary[400],
+  /** Switch track in its off state, on the dark chrome. */
+  chromeTrackOff: 'rgba(255,255,255,0.2)',
   cameraBg: palette.neutral[950],
   overlay: 'rgba(11,15,22,0.72)',
 

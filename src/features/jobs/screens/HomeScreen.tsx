@@ -1,24 +1,25 @@
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { EmptyState, ErrorState, JobCardSkeleton } from '@/components/feedback';
+import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
-import { Screen } from '@/components/layout';
-import { Switch } from '@/components/ui';
-import { JobCard } from '@/features/jobs/components/JobCard';
+import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { technician } from '@/mocks/db';
 import { useAvailabilityStore } from '@/store/availability.store';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 
 /**
  * Screen 2 — Home.
  *
- * Two jobs to do: tell the technician whether they're receiving offers, and
- * show what they've already committed to today. The pool banner is the only
- * route into unclaimed work from here.
+ * Two questions: am I receiving offers, and what have I committed to today.
+ *
+ * Layout from the prototype: dark header with 22px bottom corners bleeding
+ * under the status bar, then a 16px content gutter (narrower than the 20-26
+ * used on the form screens, because these are cards rather than prose).
  */
 export function HomeScreen() {
   const router = useRouter();
@@ -35,153 +36,272 @@ export function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      {/* Dark chrome bleeding into the status bar, per the prototype. */}
-      <View
-        style={{
-          backgroundColor: color.chrome,
-          paddingTop: insets.top + 16,
-          paddingHorizontal: 20,
-          paddingBottom: 20,
-        }}
-      >
-        <Text style={{ fontFamily: 'Roboto_400Regular', fontSize: 13, color: color.textMuted }}>
-          Good morning
-        </Text>
-        <Text
-          style={{
-            fontFamily: 'Roboto_900Black',
-            fontSize: 22,
-            color: color.textInverse,
-            marginTop: 2,
-          }}
-        >
-          {technician.name}
-        </Text>
+      <StatusBar style="light" />
 
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor: color.chromePanel,
-            borderRadius: radius.lg,
-            padding: 14,
-            marginTop: 18,
+            backgroundColor: color.chrome,
+            paddingTop: insets.top + 14,
+            paddingHorizontal: 20,
+            paddingBottom: 22,
+            borderBottomLeftRadius: 22,
+            borderBottomRightRadius: 22,
           }}
         >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.textInverse }}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View>
+              <Text
+                style={{ fontFamily: 'Roboto_400Regular', fontSize: 13, color: color.textOnChrome }}
+              >
+                Good morning
+              </Text>
+              <Text
+                style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textInverse }}
+              >
+                {technician.name}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => router.push('/pool')}
+              accessibilityRole="button"
+              accessibilityLabel={`${poolCount} new jobs in your area`}
             >
-              {online ? "You're online" : "You're offline"}
-            </Text>
-            <Text
-              style={{
-                fontFamily: 'Roboto_400Regular',
-                fontSize: 12.5,
-                color: color.textMuted,
-                marginTop: 2,
-              }}
-            >
-              {online ? 'Receiving job offers' : 'Not receiving offers'}
-            </Text>
+              {({ pressed }) => (
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 13,
+                    backgroundColor: color.chromeControl,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: pressed ? 0.7 : 1,
+                  }}
+                >
+                  <Icon name="bell" size={22} color={color.textInverse} strokeWidth={1.7} />
+
+                  {poolCount > 0 ? (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 9,
+                        right: 10,
+                        width: 9,
+                        height: 9,
+                        borderRadius: 4.5,
+                        backgroundColor: color.notificationDot,
+                        borderWidth: 2,
+                        borderColor: color.chrome,
+                      }}
+                    />
+                  ) : null}
+                </View>
+              )}
+            </Pressable>
           </View>
 
-          <Switch
-            value={online}
-            onValueChange={setOnline}
-            activeColor={color.online}
-            accessibilityLabel="Receive job offers"
-          />
-        </View>
-      </View>
-
-      {/* chrome variant: the dark header bleeds under the status bar, so its
-          icons must be light or they vanish against #0e1622. */}
-      <Screen variant="chrome">
-        {poolCount > 0 ? (
           <Pressable
-            onPress={() => router.push('/pool')}
-            accessibilityRole="button"
-            accessibilityLabel={`${poolCount} new jobs in your area`}
+            onPress={() => setOnline(!online)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: online }}
+            accessibilityLabel="Receive job offers"
           >
-            {({ pressed }) => (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                backgroundColor: color.chromePanel,
+                borderRadius: 14,
+                paddingVertical: 12,
+                paddingHorizontal: 14,
+                marginTop: 16,
+              }}
+            >
               <View
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                  backgroundColor: color.slotBg,
-                  borderRadius: radius.lg,
-                  padding: 14,
-                  marginTop: 16,
-                  opacity: pressed ? 0.8 : 1,
+                  width: 44,
+                  height: 26,
+                  borderRadius: 999,
+                  backgroundColor: online ? color.online : color.chromeTrackOff,
+                  justifyContent: 'center',
                 }}
               >
-                <Icon name="bell" size={20} color={color.slotFg} />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{ fontFamily: 'Roboto_700Bold', fontSize: 14, color: color.slotFg }}
-                  >
-                    {poolCount} new {poolCount === 1 ? 'job' : 'jobs'} in your area
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: 'Roboto_400Regular',
-                      fontSize: 12,
-                      color: color.slotFg,
-                      marginTop: 1,
-                    }}
-                  >
-                    Confirmed slots · tap to view the pool
-                  </Text>
-                </View>
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: color.textInverse,
+                    marginLeft: online ? 21 : 3,
+                  }}
+                />
               </View>
-            )}
-          </Pressable>
-        ) : null}
 
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: 24,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{ fontFamily: 'Roboto_900Black', fontSize: 17, color: color.textPrimary }}
-          >
-            Today&apos;s jobs
-          </Text>
-          {!isPending && !isError ? (
-            <Text
-              style={{ fontFamily: 'Roboto_500Medium', fontSize: 13, color: color.textSecondary }}
-            >
-              {todayCount} {todayCount === 1 ? 'job' : 'jobs'}
-            </Text>
-          ) : null}
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ fontFamily: 'Roboto_700Bold', fontSize: 14, color: color.textInverse }}
+                >
+                  {online ? "You're online" : "You're offline"}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_400Regular',
+                    fontSize: 12,
+                    color: color.textOnChrome,
+                  }}
+                >
+                  {online ? 'Receiving job offers' : 'Not receiving offers'}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
         </View>
 
-        {isPending ? (
-          <>
-            <JobCardSkeleton />
-            <JobCardSkeleton />
-          </>
-        ) : isError ? (
-          <ErrorState onRetry={() => refetch()} />
-        ) : todayCount === 0 ? (
-          <EmptyState
-            title="Nothing scheduled today"
-            body="Accept a job from the pool to fill your day."
-          />
-        ) : (
-          today.map((job) => (
-            <JobCard key={job.id} job={job} onPress={() => router.push(`/job/${job.id}`)} />
-          ))
-        )}
-      </Screen>
+        <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+          {poolCount > 0 ? (
+            <Pressable
+              onPress={() => router.push('/pool')}
+              accessibilityRole="button"
+              accessibilityLabel={`${poolCount} new jobs in your area`}
+            >
+              {({ pressed }) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    backgroundColor: color.surfaceRaised,
+                    borderWidth: 1,
+                    borderColor: pressed ? color.actionBg : color.bannerBorder,
+                    borderRadius: 16,
+                    padding: 14,
+                    marginBottom: 16,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 12,
+                      backgroundColor: palette.primary[75],
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Icon name="geo" size={22} color={color.actionBg} strokeWidth={1.7} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_700Bold',
+                        fontSize: 14.5,
+                        color: color.textPrimary,
+                      }}
+                    >
+                      {poolCount} new {poolCount === 1 ? 'job' : 'jobs'} in your area
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_400Regular',
+                        fontSize: 12.5,
+                        color: color.textSecondary,
+                      }}
+                    >
+                      Confirmed slots · tap to view the pool
+                    </Text>
+                  </View>
+
+                  <Icon name="chevronRight" size={20} color={color.textMuted} />
+                </View>
+              )}
+            </Pressable>
+          ) : null}
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginHorizontal: 4,
+              marginTop: 4,
+              marginBottom: 12,
+            }}
+          >
+            <Text
+              style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: color.textPrimary }}
+            >
+              Today&apos;s jobs
+            </Text>
+            {!isPending && !isError ? (
+              <Text
+                style={{
+                  fontFamily: 'Roboto_700Bold',
+                  fontSize: 12,
+                  color: color.textSecondary,
+                }}
+              >
+                {todayCount} {todayCount === 1 ? 'job' : 'jobs'}
+              </Text>
+            ) : null}
+          </View>
+
+          {isPending ? (
+            <>
+              <JobCardSkeleton />
+              <JobCardSkeleton />
+            </>
+          ) : isError ? (
+            <ErrorState onRetry={() => refetch()} />
+          ) : todayCount === 0 ? (
+            <View
+              style={{
+                alignItems: 'center',
+                paddingVertical: 40,
+                paddingHorizontal: 20,
+                backgroundColor: color.surfaceRaised,
+                borderWidth: 1,
+                borderStyle: 'dashed',
+                borderColor: color.borderStrong,
+                borderRadius: 18,
+              }}
+            >
+              <Text
+                style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
+              >
+                Nothing scheduled today
+              </Text>
+              <Text
+                style={{
+                  fontFamily: 'Roboto_400Regular',
+                  fontSize: 12.5,
+                  color: color.textMuted,
+                  marginTop: 4,
+                }}
+              >
+                Accept a job from the pool to fill your day.
+              </Text>
+            </View>
+          ) : (
+            today.map((job) => (
+              <TodayJobCard
+                key={job.id}
+                job={job}
+                onPress={() => router.push(`/job/${job.id}`)}
+              />
+            ))
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
