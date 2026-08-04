@@ -1,32 +1,50 @@
 import { useRouter } from 'expo-router';
-import { Text } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { ScrollView, Text, View } from 'react-native';
 
-import { EmptyState, ErrorState, JobCardSkeleton } from '@/components/feedback';
-import { Header, Screen } from '@/components/layout';
-import { JobCard } from '@/features/jobs/components/JobCard';
+import { ErrorState, JobCardSkeleton } from '@/components/feedback';
+import { TitleBar } from '@/components/layout';
+import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
 
 /**
  * Screen 4 — Open job pool.
  *
- * Every job here already has a slot the customer confirmed, so there is
- * nothing to negotiate — the only decision is whether to commit. Assignment is
- * first-accept-wins, which is why the subtitle says so up front: a technician
- * who reads a card slowly can lose it, and that must not feel like a bug.
+ * Every job here already carries a customer-confirmed slot, so there is
+ * nothing to negotiate — the only decision is whether to commit to that time.
+ *
+ * The intro sits in the content rather than the title bar, and states
+ * first-accept-wins up front: a technician who reads a card carefully can lose
+ * it to someone faster, and that has to read as the rule rather than a fault.
  */
 export function PoolScreen() {
   const router = useRouter();
   const { data, isPending, isError, refetch } = usePool();
 
   return (
-    <>
-      <Header
-        title="Open job pool"
-        subtitle="Confirmed slots matching your category & pincodes. First to accept wins — customer details stay masked until you accept."
-      />
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="dark" />
+      <TitleBar title="Open job pool" onBack={() => router.replace('/(app)/(tabs)')} />
 
-      <Screen>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 12.5,
+            lineHeight: 19,
+            color: color.textSecondary,
+            marginHorizontal: 2,
+            marginBottom: 14,
+          }}
+        >
+          Confirmed slots matching your category &amp; pincodes. First to accept wins — customer
+          details stay masked until you accept.
+        </Text>
+
         {isPending ? (
           <>
             <JobCardSkeleton />
@@ -36,31 +54,29 @@ export function PoolScreen() {
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : data.length === 0 ? (
-          <EmptyState title="Pool is empty" body="You've taken every open job nearby." />
-        ) : (
-          <>
+          <View style={{ alignItems: 'center', paddingVertical: 50, paddingHorizontal: 20 }}>
+            <Text
+              style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
+            >
+              Pool is empty
+            </Text>
             <Text
               style={{
-                fontFamily: 'Roboto_500Medium',
-                fontSize: 12,
+                fontFamily: 'Roboto_400Regular',
+                fontSize: 12.5,
                 color: color.textMuted,
-                marginBottom: 12,
+                marginTop: 4,
               }}
             >
-              {data.length} {data.length === 1 ? 'job' : 'jobs'} available
+              You&apos;ve taken every open job nearby.
             </Text>
-
-            {data.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-                variant="pool"
-                onPress={() => router.push(`/pool/${job.id}`)}
-              />
-            ))}
-          </>
+          </View>
+        ) : (
+          data.map((job) => (
+            <PoolJobCard key={job.id} job={job} onPress={() => router.push(`/pool/${job.id}`)} />
+          ))
         )}
-      </Screen>
-    </>
+      </ScrollView>
+    </View>
   );
 }
