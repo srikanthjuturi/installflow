@@ -1,14 +1,6 @@
-import { EmptyState } from '@/components/feedback';
-import { Header, Screen } from '@/components/layout';
+import { ProfileScreen } from '@/features/profile/screens/ProfileScreen';
 
-/** Placeholder — the real Profile screen lands in its own commit. */
+/** Screen 16 — profile, coverage and settings. */
 export default function ProfileRoute() {
-  return (
-    <>
-      <Header title="Profile" showBack={false} />
-      <Screen>
-        <EmptyState title="Not built yet" body="This screen is coming in a later commit." />
-      </Screen>
-    </>
-  );
+  return <ProfileScreen />;
 }
