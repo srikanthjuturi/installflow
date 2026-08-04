@@ -1,14 +1,6 @@
-import { EmptyState } from '@/components/feedback';
-import { Header, Screen } from '@/components/layout';
+import { EarningsScreen } from '@/features/earnings/screens/EarningsScreen';
 
-/** Placeholder — the real Earnings screen lands in its own commit. */
+/** Screen 15 — net payout, credits, bonuses and penalties. */
 export default function EarningsRoute() {
-  return (
-    <>
-      <Header title="Earnings" showBack={false} />
-      <Screen>
-        <EmptyState title="Not built yet" body="This screen is coming in a later commit." />
-      </Screen>
-    </>
-  );
+  return <EarningsScreen />;
 }
