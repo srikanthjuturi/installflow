@@ -1,12 +1,15 @@
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 
-import { EmptyState, ErrorState, JobCardSkeleton } from '@/components/feedback';
-import { Header, Screen } from '@/components/layout';
+import { ErrorState, JobCardSkeleton } from '@/components/feedback';
+import { Icon } from '@/components/icons/Icon';
+import { TabHeader } from '@/components/layout';
 import { SegmentedControl } from '@/components/ui';
-import { JobCard } from '@/features/jobs/components/JobCard';
+import { MyJobCard } from '@/features/jobs/components/MyJobCard';
 import { useMyJobs } from '@/features/jobs/hooks/useJobs';
+import { color } from '@/theme/semantic';
 import type { JobStatus } from '@/types/domain';
 
 type Filter = Extract<JobStatus, 'upcoming' | 'inprogress' | 'completed'>;
@@ -26,14 +29,19 @@ export function MyJobsScreen() {
   const active = FILTERS.find((f) => f.value === filter);
 
   return (
-    <>
-      <Header title="My jobs" showBack={false} />
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="dark" />
 
-      <Screen>
-        <View style={{ marginBottom: 16 }}>
+      <TabHeader title="My jobs">
+        <View style={{ marginBottom: 12 }}>
           <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
         </View>
+      </TabHeader>
 
+      <ScrollView
+        contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
         {isPending ? (
           <>
             <JobCardSkeleton />
@@ -42,15 +50,34 @@ export function MyJobsScreen() {
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : data.length === 0 ? (
-          // Copy is per-filter: "No upcoming jobs" reads very differently from
-          // "No completed jobs yet" to someone checking their day.
-          <EmptyState title={active?.empty ?? 'Nothing here'} />
+          // One line, no body copy — the filter name already says everything
+          // there is to say about why the list is empty.
+          <View style={{ alignItems: 'center', paddingVertical: 60, paddingHorizontal: 24 }}>
+            <View
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: 18,
+                backgroundColor: color.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 14,
+              }}
+            >
+              <Icon name="jobs" size={28} color={color.textMuted} strokeWidth={1.7} />
+            </View>
+            <Text
+              style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
+            >
+              {active?.empty ?? 'Nothing here'}
+            </Text>
+          </View>
         ) : (
           data.map((job) => (
-            <JobCard key={job.id} job={job} onPress={() => router.push(`/job/${job.id}`)} />
+            <MyJobCard key={job.id} job={job} onPress={() => router.push(`/job/${job.id}`)} />
           ))
         )}
-      </Screen>
-    </>
+      </ScrollView>
+    </View>
   );
 }
