@@ -17,8 +17,10 @@
 /** Actions, links, active tab, accept. */
 const primary = {
   50: '#f5f9ff', // ◄ tint background
+  75: '#eef4ff', // ◄ chip / banner tint
   100: '#e4efff', // ◄ selected card background
-  200: '#c7dcff',
+  150: '#d6e4fb', // ◄ chip control (remove button)
+  200: '#cfe0fb', // ◄ chip border — real prototype value, was interpolated
   300: '#9cc2ff',
   400: '#4d92ff', // ◄ camera "Next"
   500: '#1f6feb', // ◄ ★ ACTION BLUE

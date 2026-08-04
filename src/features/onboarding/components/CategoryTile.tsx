@@ -1,9 +1,8 @@
 import { Pressable, Text, View } from 'react-native';
 
 import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
-import { palette } from '@/theme/tokens';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 import type { ProductCategory } from '@/types/domain';
 
 export interface CategoryTileProps {
@@ -12,6 +11,19 @@ export interface CategoryTileProps {
   onToggle: () => void;
 }
 
+/**
+ * Two-up tile.
+ *
+ * The prototype sizes these `calc(50% - 6px)` against a 12px gap. React Native
+ * has no calc and adds `gap` ON TOP of a percentage width, so `50%` + gap
+ * overflows the row and every tile wraps onto its own line. The equivalent is
+ * a half-width cell with 6px of horizontal padding, against a parent pulled
+ * out by -6 — outer edges stay flush, inner gutter lands at exactly 12.
+ *
+ * The 2px border is load-bearing: selection shows as border colour AND a check
+ * badge, because a 1px tint is easy to miss in daylight — and mis-setting this
+ * list means never being offered the right work.
+ */
 export function CategoryTile({ category, selected, onToggle }: CategoryTileProps) {
   return (
     <Pressable
@@ -19,47 +31,66 @@ export function CategoryTile({ category, selected, onToggle }: CategoryTileProps
       accessibilityRole="checkbox"
       accessibilityState={{ checked: selected }}
       accessibilityLabel={category}
-      style={{ width: '48%' }}
+      style={{ width: '50%', paddingHorizontal: 6, marginBottom: 12 }}
     >
       {({ pressed }) => (
         <View
           style={{
-            borderRadius: radius.lg,
-            borderWidth: 1,
-            borderColor: selected ? color.borderFocus : color.border,
+            borderWidth: 2,
+            borderColor: selected ? color.actionBg : color.border,
             backgroundColor: selected ? palette.primary[50] : color.surfaceRaised,
-            padding: 14,
-            opacity: pressed ? 0.8 : 1,
+            borderRadius: 16,
+            paddingVertical: 16,
+            paddingHorizontal: 14,
+            opacity: pressed ? 0.85 : 1,
           }}
         >
           <View
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: radius.md,
+              width: 42,
+              height: 42,
+              borderRadius: 12,
+              backgroundColor: selected ? palette.primary[100] : color.surfaceSunken,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: selected ? palette.primary[100] : color.surfaceSunken,
-              marginBottom: 10,
             }}
           >
             <Icon
               name={CATEGORY_ICONS[category] ?? 'tv'}
-              size={22}
+              size={24}
               color={selected ? color.actionBg : color.textSecondary}
             />
           </View>
 
           <Text
             style={{
-              fontFamily: 'Roboto_500Medium',
-              fontSize: 13,
+              fontFamily: 'Roboto_700Bold',
+              fontSize: 14,
               lineHeight: 17,
               color: color.textPrimary,
+              marginTop: 12,
             }}
           >
             {category}
           </Text>
+
+          {selected ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: color.actionBg,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon name="check" size={13} color={color.actionFg} />
+            </View>
+          ) : null}
         </View>
       )}
     </Pressable>

@@ -32,6 +32,10 @@ const config: ExpoConfig = {
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
+    // Explicit rather than relying on the default: with edge-to-edge on, the
+    // window must resize when the keyboard opens or it covers the field being
+    // typed into (pincode entry, OTP).
+    softwareKeyboardLayoutMode: 'resize',
   },
   web: {
     favicon: './assets/favicon.png',

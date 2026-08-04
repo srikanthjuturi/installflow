@@ -1,13 +1,20 @@
 import { Pressable, Text, View } from 'react-native';
 
+import { Icon } from '@/components/icons/Icon';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 
 export interface PincodeChipProps {
   code: string;
   onRemove: () => void;
 }
 
+/**
+ * The code is set in Roboto Mono, matching the prototype. Fixed-width digits
+ * make a column of pincodes scannable — a technician checking their coverage
+ * is comparing six-digit strings, and proportional digits make that harder
+ * than it needs to be.
+ */
 export function PincodeChip({ code, onRemove }: PincodeChipProps) {
   return (
     <View
@@ -15,14 +22,24 @@ export function PincodeChip({ code, onRemove }: PincodeChipProps) {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        backgroundColor: color.surfaceSunken,
-        borderRadius: radius.full,
-        paddingLeft: 14,
+        backgroundColor: palette.primary[75],
+        borderWidth: 1,
+        borderColor: palette.primary[200],
+        borderRadius: 999,
+        paddingLeft: 12,
         paddingRight: 8,
         paddingVertical: 8,
       }}
     >
-      <Text style={{ fontFamily: 'Roboto_500Medium', fontSize: 14, color: color.textPrimary }}>
+      <Icon name="geo" size={14} color={color.actionBg} strokeWidth={1.9} />
+
+      <Text
+        style={{
+          fontFamily: 'RobotoMono_700Bold',
+          fontSize: 13,
+          color: color.actionBg,
+        }}
+      >
         {code}
       </Text>
 
@@ -35,25 +52,16 @@ export function PincodeChip({ code, onRemove }: PincodeChipProps) {
         {({ pressed }) => (
           <View
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: radius.full,
-              backgroundColor: color.borderStrong,
+              width: 18,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: palette.primary[150],
               alignItems: 'center',
               justifyContent: 'center',
               opacity: pressed ? 0.6 : 1,
             }}
           >
-            <Text
-              style={{
-                fontFamily: 'Roboto_700Bold',
-                fontSize: 13,
-                lineHeight: 15,
-                color: color.surfaceRaised,
-              }}
-            >
-              ×
-            </Text>
+            <Icon name="close" size={10} color={color.actionBg} />
           </View>
         )}
       </Pressable>

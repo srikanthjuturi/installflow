@@ -43,7 +43,9 @@ export type IconName =
   | 'chevronLeft'
   | 'arrowRight'
   | 'link'
-  | 'lock';
+  | 'lock'
+  | 'check'
+  | 'close';
 
 export interface IconProps {
   name: IconName;
@@ -66,6 +68,9 @@ const STROKE_OVERRIDE: Partial<Record<IconName, number>> = {
   link: 1.7,
   lock: 1.7,
   arrowRight: 2,
+  chevronLeft: 2,
+  check: 3, // drawn small (13px) inside a badge, so it needs the weight
+  close: 2.4,
 };
 
 export function Icon({
@@ -271,6 +276,12 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
           <Path d="M8 11V8a4 4 0 018 0v3" {...p} />
         </>
       );
+
+    case 'check':
+      return <Path d="M5 12l4 4 10-10" {...p} />;
+
+    case 'close':
+      return <Path d="M6 6l12 12M18 6L6 18" {...p} />;
   }
 }
 

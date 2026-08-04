@@ -7,6 +7,7 @@ import {
   Roboto_900Black,
   useFonts,
 } from '@expo-google-fonts/roboto';
+import { RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -46,6 +47,9 @@ export default function RootLayout() {
     Roboto_500Medium,
     Roboto_700Bold,
     Roboto_900Black,
+    // Fixed-width digits for pincode chips — a column of six-digit codes is
+    // far easier to scan when the digits line up.
+    RobotoMono_700Bold,
   });
 
   useEffect(() => {
