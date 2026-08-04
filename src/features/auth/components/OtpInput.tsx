@@ -1,9 +1,8 @@
 import { useRef } from 'react';
-import { Pressable, TextInput, View, Text } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 
-import { palette } from '@/theme/tokens';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 
 export interface OtpInputProps {
   value: string;
@@ -19,6 +18,9 @@ export interface OtpInputProps {
  * per-box focus juggling fights autofill and the SMS retriever, and backspace
  * across boxes is unreliable. One field keeps OTP autofill working; the boxes
  * are presentation only.
+ *
+ * Box metrics come from the prototype: 56px tall, radius 12, 1.5px border,
+ * 9px gutter, 22px/700 digits, filled cells tinted primary-50.
  */
 export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpInputProps) {
   const inputRef = useRef<TextInput>(null);
@@ -26,7 +28,7 @@ export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpI
 
   return (
     <Pressable onPress={() => inputRef.current?.focus()} accessibilityLabel="One-time code">
-      <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ flexDirection: 'row', gap: 9 }}>
         {cells.map((digit, i) => {
           const filled = digit !== '';
           const active = i === value.length;
@@ -37,16 +39,16 @@ export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpI
               style={{
                 flex: 1,
                 height: 56,
-                borderRadius: radius.md,
-                borderWidth: filled || active ? 1.5 : 1,
-                borderColor: filled || active ? color.borderFocus : color.border,
+                borderRadius: 12,
+                borderWidth: 1.5,
+                borderColor: filled || active ? color.borderFocus : color.borderStrong,
                 backgroundColor: filled ? palette.primary[50] : color.surfaceRaised,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               <Text
-                style={{ fontFamily: 'Roboto_900Black', fontSize: 22, color: color.textPrimary }}
+                style={{ fontFamily: 'Roboto_700Bold', fontSize: 22, color: color.textPrimary }}
               >
                 {digit}
               </Text>

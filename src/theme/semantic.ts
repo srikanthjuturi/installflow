@@ -17,6 +17,8 @@ export const color = {
   textMuted: palette.neutral[400],
   /** Footnotes sitting under a card — lock notes, helper lines. */
   textFootnote: palette.neutral[450],
+  /** Field labels and instructional body copy on forms. */
+  textLabel: palette.neutral[600],
   textInverse: palette.neutral[0],
   textLink: palette.primary[500],
 

@@ -1,40 +1,38 @@
 import { Text, View } from 'react-native';
 
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
 
 export interface BrandMarkProps {
   size?: number;
-  /** `full` renders the "V · Tech" lockup used on the sign-in screen. */
-  variant?: 'mark' | 'full';
 }
 
-/** The blue "V" tile from the prototype's registration and sign-in screens. */
-export function BrandMark({ size = 56, variant = 'mark' }: BrandMarkProps) {
-  const full = variant === 'full';
-
+/**
+ * The dark "V" tile from the prototype's registration and sign-in screens.
+ *
+ * Exact values: 58×58, radius 17, #0e1622, white 22px/900 glyph. Identical on
+ * both screens, so it lives here rather than being reproduced twice.
+ */
+export function BrandMark({ size = 58 }: BrandMarkProps) {
   return (
     <View
       style={{
+        width: size,
         height: size,
-        width: full ? undefined : size,
-        paddingHorizontal: full ? 20 : 0,
-        borderRadius: radius.xl,
-        backgroundColor: color.actionBg,
+        borderRadius: 17,
+        backgroundColor: color.chrome,
         alignItems: 'center',
         justifyContent: 'center',
-        alignSelf: 'flex-start',
       }}
     >
       <Text
         style={{
           fontFamily: 'Roboto_900Black',
-          fontSize: size * 0.45,
-          color: color.actionFg,
-          letterSpacing: full ? 0.5 : 0,
+          fontSize: size * 0.379, // 22 at 58
+          letterSpacing: -0.4,
+          color: color.textInverse,
         }}
       >
-        {full ? 'V · Tech' : 'V'}
+        V
       </Text>
     </View>
   );
