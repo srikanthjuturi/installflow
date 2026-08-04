@@ -1,0 +1,30 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { acceptJob } from '@/features/jobs/api/accept';
+import { qk } from '@/lib/queryKeys';
+
+/**
+ * Deliberately NOT optimistic.
+ *
+ * Optimistic updates are the usual reflex for a tap like this, but they're
+ * wrong here: first-accept-wins means the server is the only authority on
+ * whether the job is ours. Showing it as accepted and then snatching it back
+ * is worse than a 400ms wait, especially when the technician may already be
+ * planning their route around it.
+ */
+export function useAcceptJob(jobId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => acceptJob(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.pool() });
+      queryClient.invalidateQueries({ queryKey: ['jobs', 'mine'] });
+      queryClient.invalidateQueries({ queryKey: qk.job(jobId) });
+    },
+    onError: () => {
+      // Whether it was taken or genuinely failed, the pool is now stale.
+      queryClient.invalidateQueries({ queryKey: qk.pool() });
+    },
+  });
+}

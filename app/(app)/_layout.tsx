@@ -1,9 +1,19 @@
 import { Stack } from 'expo-router';
 
 /**
- * Authenticated area. The auth guard lands here once the session store exists;
- * for now it's a plain stack so the tab shell and the job routes can nest.
+ * Authenticated area. The auth guard lands here once the session store exists.
+ *
+ * accept-slot is a transparentModal so the sheet can animate up over the offer
+ * screen with its own scrim, which a standard modal presentation can't do.
  */
 export default function AppLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen
+        name="accept-slot"
+        options={{ presentation: 'transparentModal', animation: 'fade' }}
+      />
+    </Stack>
+  );
 }
