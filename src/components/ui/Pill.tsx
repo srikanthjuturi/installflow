@@ -3,7 +3,15 @@ import { Text, View } from 'react-native';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
-export type PillTone = 'primary' | 'secondary' | 'success' | 'danger' | 'neutral';
+export type PillTone =
+  | 'primary'
+  | 'secondary'
+  | 'success'
+  | 'danger'
+  | 'neutral'
+  /** Sitting on the dark chrome — needs a lighter fill and text. */
+  | 'chromePrimary'
+  | 'chromeSecondary';
 
 export interface PillProps {
   label: string;
@@ -23,17 +31,21 @@ const TONE: Record<PillTone, { fg: string; bg: string }> = {
   success: color.statusCompleted,
   danger: color.statusCancelled,
   neutral: { fg: color.textSecondary, bg: color.surfaceSunken },
+  chromePrimary: { fg: color.pillChromeFg, bg: color.pillChromeBg },
+  chromeSecondary: { fg: color.pillChromeAmberFg, bg: color.pillChromeAmberBg },
 };
 
 export function Pill({ label, tone = 'primary' }: PillProps) {
   const { fg, bg } = TONE[tone];
+  // Chrome pills carry a touch more horizontal padding, matching the mock.
+  const onChrome = tone === 'chromePrimary' || tone === 'chromeSecondary';
 
   return (
     <View
       style={{
         backgroundColor: bg,
         borderRadius: 8,
-        paddingHorizontal: 9,
+        paddingHorizontal: onChrome ? 10 : 9,
         paddingVertical: 4,
       }}
     >

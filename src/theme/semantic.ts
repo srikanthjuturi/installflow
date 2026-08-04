@@ -35,6 +35,19 @@ export const color = {
   chromeControl: 'rgba(255,255,255,0.08)',
   /** Secondary text on the dark chrome. Blue-tinted, not a neutral grey. */
   textOnChrome: '#8fa0b3',
+  /** Tertiary text on chrome — job ids in a dark header. */
+  textOnChromeFaint: '#7d8b99',
+  /** Pills sitting on the dark chrome need their own, lighter treatment. */
+  pillChromeBg: 'rgba(255,255,255,0.1)',
+  pillChromeFg: palette.primary[200],
+  pillChromeAmberBg: 'rgba(245,180,10,0.14)',
+  pillChromeAmberFg: '#f8d78a',
+  /** Masked values — present but deliberately unreadable. */
+  textMasked: '#b0bac3',
+  /** The committed-slot block on the offer screen: warmer than slotBg. */
+  slotBlockBg: '#fff8ec',
+  slotBlockBorder: '#fbe6bf',
+  slotBlockLabel: '#b98a3a',
   /** Border on the tinted "new jobs in your area" banner. */
   bannerBorder: '#d7e6ff',
   /** Unread indicator dot. */
