@@ -1,14 +1,6 @@
-import { EmptyState } from '@/components/feedback';
-import { Header, Screen } from '@/components/layout';
+import { MyJobsScreen } from '@/features/jobs/screens/MyJobsScreen';
 
-/** Placeholder — the real Jobs screen lands in its own commit. */
+/** Screen 6 — accepted jobs by stage. */
 export default function JobsRoute() {
-  return (
-    <>
-      <Header title="Jobs" showBack={false} />
-      <Screen>
-        <EmptyState title="Not built yet" body="This screen is coming in a later commit." />
-      </Screen>
-    </>
-  );
+  return <MyJobsScreen />;
 }
