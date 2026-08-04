@@ -48,7 +48,10 @@ export type IconName =
   | 'close'
   | 'chevronRight'
   | 'clock'
-  | 'calendar';
+  | 'calendar'
+  | 'phone'
+  | 'navigation'
+  | 'play';
 
 export interface IconProps {
   name: IconName;
@@ -75,6 +78,9 @@ const STROKE_OVERRIDE: Partial<Record<IconName, number>> = {
   chevronRight: 2,
   check: 3, // drawn small (13px) inside a badge, so it needs the weight
   close: 2.4,
+  phone: 1.7,
+  navigation: 1.7,
+  play: 2,
 };
 
 export function Icon({
@@ -305,6 +311,25 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
           <Path d="M4 9h16M8 3v4M16 3v4" {...p} />
         </>
       );
+
+    case 'phone':
+      return (
+        <Path
+          d="M5 4h3l1.5 4.5-2 1.5a11 11 0 005 5l1.5-2 4.5 1.5V19a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"
+          {...p}
+        />
+      );
+
+    case 'navigation':
+      return (
+        <>
+          <Path d="M3 8l7-3 4 2 7-3v11l-7 3-4-2-7 3V8z" {...p} />
+          <Path d="M10 5v11M14 7v11" {...p} />
+        </>
+      );
+
+    case 'play':
+      return <Path d="M8 5v14l11-7L8 5z" {...p} />;
   }
 }
 

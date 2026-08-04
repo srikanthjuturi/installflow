@@ -9,8 +9,17 @@ import Animated, {
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { color } from '@/theme/semantic';
+import { palette } from '@/theme/tokens';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive';
+export type ButtonVariant =
+  | 'primary'
+  | 'secondary'
+  | 'ghost'
+  | 'destructive'
+  /** Transparent with red text — "Cancel this job". */
+  | 'dangerGhost'
+  /** White with a blue outline — the Call / Navigate pair. */
+  | 'outline';
 
 export interface ButtonProps {
   label: string;
@@ -20,6 +29,8 @@ export interface ButtonProps {
   loading?: boolean;
   /** Sits after the label, e.g. the arrow on "Confirm & continue". */
   trailingIcon?: IconName;
+  /** Sits before the label — the play glyph on "Start job", Call/Navigate. */
+  leadingIcon?: IconName;
   /**
    * Shown under a disabled button. The prototype always explains WHY an action
    * is unavailable ("Select a reason") rather than leaving a dead control.
@@ -37,6 +48,18 @@ const HEIGHT: Record<ButtonVariant, number> = {
   destructive: 54,
   secondary: 54,
   ghost: 46,
+  dangerGhost: 46,
+  outline: 46,
+};
+
+/** Full-size CTAs are r14; the smaller inline controls are r12. */
+const RADIUS: Record<ButtonVariant, number> = {
+  primary: 14,
+  destructive: 14,
+  secondary: 14,
+  ghost: 14,
+  dangerGhost: 12,
+  outline: 12,
 };
 
 const FONT_SIZE: Record<ButtonVariant, number> = {
@@ -44,6 +67,8 @@ const FONT_SIZE: Record<ButtonVariant, number> = {
   destructive: 16,
   secondary: 16,
   ghost: 14,
+  dangerGhost: 14,
+  outline: 14,
 };
 
 const VARIANT_BG: Record<ButtonVariant, string> = {
@@ -51,6 +76,8 @@ const VARIANT_BG: Record<ButtonVariant, string> = {
   secondary: color.surfaceRaised,
   ghost: 'transparent',
   destructive: color.debit,
+  dangerGhost: 'transparent',
+  outline: color.surfaceRaised,
 };
 
 const VARIANT_FG: Record<ButtonVariant, string> = {
@@ -58,6 +85,8 @@ const VARIANT_FG: Record<ButtonVariant, string> = {
   secondary: color.textPrimary,
   ghost: color.textSecondary,
   destructive: color.actionFg,
+  dangerGhost: color.debit,
+  outline: color.actionBg,
 };
 
 export function Button({
@@ -67,10 +96,11 @@ export function Button({
   disabled = false,
   loading = false,
   trailingIcon,
+  leadingIcon,
   disabledHint,
 }: ButtonProps) {
   const inert = disabled || loading;
-  const bordered = variant === 'secondary';
+  const bordered = variant === 'secondary' || variant === 'outline';
   const fg = disabled ? color.actionFgDisabled : VARIANT_FG[variant];
 
   // Spring-back press, not an opacity flash. On the low-end Androids these
@@ -121,13 +151,13 @@ export function Button({
             {
               flexDirection: 'row',
               height: HEIGHT[variant],
-              borderRadius: 14,
+              borderRadius: RADIUS[variant],
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
               backgroundColor: disabled ? color.actionBgDisabled : VARIANT_BG[variant],
-              borderWidth: bordered ? 1 : 0,
-              borderColor: color.border,
+              borderWidth: bordered ? (variant === 'outline' ? 1.5 : 1) : 0,
+              borderColor: variant === 'outline' ? palette.primary[200] : color.border,
             },
             animated,
           ]}
@@ -136,6 +166,9 @@ export function Button({
             <ActivityIndicator color={fg} />
           ) : (
             <>
+              {leadingIcon ? (
+                <Icon name={leadingIcon} size={variant === 'primary' ? 20 : 17} color={fg} />
+              ) : null}
               <Text
                 style={{
                   fontFamily: 'Roboto_700Bold',
