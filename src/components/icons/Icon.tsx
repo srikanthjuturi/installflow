@@ -47,7 +47,8 @@ export type IconName =
   | 'check'
   | 'close'
   | 'chevronRight'
-  | 'clock';
+  | 'clock'
+  | 'calendar';
 
 export interface IconProps {
   name: IconName;
@@ -294,6 +295,14 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
         <>
           <Circle cx={12} cy={12} r={9} {...p} />
           <Path d="M12 7.5V12l3 2" {...p} />
+        </>
+      );
+
+    case 'calendar':
+      return (
+        <>
+          <Rect x={4} y={5} width={16} height={15} rx={2} {...p} />
+          <Path d="M4 9h16M8 3v4M16 3v4" {...p} />
         </>
       );
   }
