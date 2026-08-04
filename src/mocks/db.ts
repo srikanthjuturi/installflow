@@ -122,6 +122,28 @@ export const jobs: Job[] = [
     phone: '+91 98191 30045',
   },
 
+  // Already accepted, slot later today. Without at least one of these, Home
+  // and the Upcoming filter would only ever render their empty states until
+  // the accept mutation exists.
+  {
+    id: 'INST-4815',
+    category: 'Television',
+    model: 'Videocon 50" 4K LED',
+    area: 'Kandivali West',
+    pincode: '400067',
+    slot: 'Today · 6:00–8:00 PM',
+    slotShort: '6–8 PM',
+    sla: '24h',
+    distanceLabel: '2.8 km',
+    payoutPaise: 44000,
+    status: 'upcoming',
+    hoursToSlot: 7,
+    maskedCustomer: 'D•••• P••••',
+    customer: 'Deepak Pawar',
+    address: 'A-903, Raheja Estate',
+    phone: '+91 98700 21188',
+  },
+
   // Breadth so filters, scrolling and category variety are all exercised.
   {
     id: 'INST-4852',

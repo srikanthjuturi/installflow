@@ -23,6 +23,8 @@ export const color = {
   surfaceRaised: palette.neutral[0], // cards
   surfaceSunken: palette.neutral[100],
   chrome: palette.chrome, // dark header behind status bar
+  /** Raised panel sitting ON the dark chrome — the Home online toggle. */
+  chromePanel: 'rgba(255,255,255,0.06)',
   cameraBg: palette.neutral[950],
   overlay: 'rgba(11,15,22,0.72)',
 
