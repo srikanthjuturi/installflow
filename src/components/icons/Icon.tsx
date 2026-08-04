@@ -40,13 +40,18 @@ export type IconName =
   | 'micro'
   | 'purifier'
   // chrome
-  | 'chevronLeft';
+  | 'chevronLeft'
+  | 'arrowRight'
+  | 'link'
+  | 'lock';
 
 export interface IconProps {
   name: IconName;
   size?: number;
   /** Any colour string — pass a semantic token, not a hex literal. */
   color?: string;
+  /** Overrides the per-icon default. */
+  strokeWidth?: number;
 }
 
 const STROKE = {
@@ -56,8 +61,24 @@ const STROKE = {
   strokeLinejoin: 'round',
 } as const;
 
-export function Icon({ name, size = 24, color: stroke = color.textPrimary }: IconProps) {
-  const p = { ...STROKE, stroke };
+/** The prototype draws a few icons at a different weight — matched exactly. */
+const STROKE_OVERRIDE: Partial<Record<IconName, number>> = {
+  link: 1.7,
+  lock: 1.7,
+  arrowRight: 2,
+};
+
+export function Icon({
+  name,
+  size = 24,
+  color: stroke = color.textPrimary,
+  strokeWidth,
+}: IconProps) {
+  const p = {
+    ...STROKE,
+    stroke,
+    strokeWidth: strokeWidth ?? STROKE_OVERRIDE[name] ?? STROKE.strokeWidth,
+  };
 
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -66,11 +87,15 @@ export function Icon({ name, size = 24, color: stroke = color.textPrimary }: Ico
   );
 }
 
-function renderPaths(
-  name: IconName,
-  stroke: string,
-  p: typeof STROKE & { stroke: string },
-) {
+type StrokeProps = {
+  fill: 'none';
+  strokeWidth: number;
+  strokeLinecap: 'round';
+  strokeLinejoin: 'round';
+  stroke: string;
+};
+
+function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
   switch (name) {
     case 'home':
       return <Path d="M4 11l8-6 8 6v8a1 1 0 01-1 1h-4v-6h-6v6H5a1 1 0 01-1-1v-8z" {...p} />;
@@ -227,6 +252,25 @@ function renderPaths(
 
     case 'chevronLeft':
       return <Path d="M15 5l-7 7 7 7" {...p} />;
+
+    case 'arrowRight':
+      return <Path d="M5 12h13M13 6l6 6-6 6" {...p} />;
+
+    case 'link':
+      return (
+        <Path
+          d="M9 15l6-6M8 9h1a4 4 0 010 8H8a4 4 0 01-4-4M16 15h-1a4 4 0 010-8h1a4 4 0 014 4"
+          {...p}
+        />
+      );
+
+    case 'lock':
+      return (
+        <>
+          <Rect x={5} y={11} width={14} height={9} rx={2} {...p} />
+          <Path d="M8 11V8a4 4 0 018 0v3" {...p} />
+        </>
+      );
   }
 }
 

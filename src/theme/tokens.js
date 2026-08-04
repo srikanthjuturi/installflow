@@ -93,6 +93,7 @@ const neutral = {
   300: '#d5dde4', // ◄
   350: '#cdd6de', // ◄ switch track (off)
   400: '#9aa6b1', // ◄ muted / inactive tab
+  450: '#8894a0', // ◄ footnote text (lock note, helper lines)
   500: '#7a8794', // ◄ secondary text
   600: '#5a6772', // ◄
   700: '#48555f', // ◄

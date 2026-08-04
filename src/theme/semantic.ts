@@ -15,6 +15,8 @@ export const color = {
   textPrimary: palette.neutral[900],
   textSecondary: palette.neutral[500],
   textMuted: palette.neutral[400],
+  /** Footnotes sitting under a card — lock notes, helper lines. */
+  textFootnote: palette.neutral[450],
   textInverse: palette.neutral[0],
   textLink: palette.primary[500],
 
@@ -22,6 +24,8 @@ export const color = {
   surface: palette.neutral[150], // app background
   surfaceRaised: palette.neutral[0], // cards
   surfaceSunken: palette.neutral[100],
+  /** Panel sitting ON a white page — grouped detail lists. */
+  surfaceSunkenAlt: palette.neutral[50],
   chrome: palette.chrome, // dark header behind status bar
   /** Raised panel sitting ON the dark chrome — the Home online toggle. */
   chromePanel: 'rgba(255,255,255,0.06)',
