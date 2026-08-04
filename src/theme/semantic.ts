@@ -55,7 +55,10 @@ export const color = {
   /** Switch track in its off state, on the dark chrome. */
   chromeTrackOff: 'rgba(255,255,255,0.2)',
   cameraBg: palette.neutral[950],
-  overlay: 'rgba(11,15,22,0.72)',
+  /** Scrim behind a bottom sheet. Tinted toward the chrome ink, not pure black. */
+  overlay: 'rgba(14,22,34,0.5)',
+  /** The drag handle on a bottom sheet. */
+  grabber: '#dfe4e9',
 
   // ── lines ───────────────────────────────────────────────────────────────
   border: palette.neutral[200],

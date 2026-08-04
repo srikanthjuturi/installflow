@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
 
 export interface SheetProps {
   children: ReactNode;
@@ -16,15 +15,16 @@ export interface SheetProps {
  *
  * Hand-rolled rather than @gorhom/bottom-sheet: this app needs one
  * non-draggable confirmation sheet, and that library is a large dependency
- * plus a native module. Tapping the scrim dismisses; the panel itself doesn't
- * swallow the gesture by accident.
+ * plus a native module that would break Expo Go.
+ *
+ * Prototype values: 26px top corners, 10/22/26 padding, a 40×5 grabber.
  */
 export function Sheet({ children, onDismiss }: SheetProps) {
   const insets = useSafeAreaInsets();
 
   return (
     <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-      <Animated.View entering={FadeIn.duration(180)} style={{ ...StyleSheetAbsoluteFill }}>
+      <Animated.View entering={FadeIn.duration(180)} style={StyleSheet.absoluteFill}>
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
@@ -34,23 +34,23 @@ export function Sheet({ children, onDismiss }: SheetProps) {
       </Animated.View>
 
       <Animated.View
-        entering={SlideInDown.duration(240)}
+        entering={SlideInDown.duration(280)}
         style={{
           backgroundColor: color.surfaceRaised,
-          borderTopLeftRadius: radius['2xl'],
-          borderTopRightRadius: radius['2xl'],
-          paddingHorizontal: 20,
+          borderTopLeftRadius: 26,
+          borderTopRightRadius: 26,
           paddingTop: 10,
-          paddingBottom: insets.bottom + 20,
+          paddingHorizontal: 22,
+          paddingBottom: insets.bottom + 26,
         }}
       >
         <View
           style={{
             alignSelf: 'center',
             width: 40,
-            height: 4,
-            borderRadius: radius.full,
-            backgroundColor: color.borderStrong,
+            height: 5,
+            borderRadius: 3,
+            backgroundColor: color.grabber,
             marginBottom: 18,
           }}
         />
@@ -59,11 +59,3 @@ export function Sheet({ children, onDismiss }: SheetProps) {
     </View>
   );
 }
-
-const StyleSheetAbsoluteFill = {
-  position: 'absolute' as const,
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-};
