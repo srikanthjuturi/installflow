@@ -1,5 +1,7 @@
+import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
@@ -51,14 +53,20 @@ export function InviteScreen({ token }: InviteScreenProps) {
       }}
       showsVerticalScrollIndicator={false}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <StatusBar style="dark" />
+
+      <Animated.View
+        entering={FadeInDown.duration(340)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+      >
         <Icon name="link" size={16} color={color.actionBg} />
         <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 12, color: color.actionBg }}>
           SECURE INVITE LINK
         </Text>
-      </View>
+      </Animated.View>
 
-      <View
+      <Animated.View
+        entering={FadeInDown.delay(60).duration(340)}
         style={{
           width: 58,
           height: 58,
@@ -72,7 +80,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
         <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 22, color: color.textInverse }}>
           V
         </Text>
-      </View>
+      </Animated.View>
 
       {isError ? (
         <ErrorState
@@ -82,7 +90,8 @@ export function InviteScreen({ token }: InviteScreenProps) {
         />
       ) : (
         <>
-          <Text
+          <Animated.Text
+            entering={FadeInDown.delay(120).duration(340)}
             style={{
               fontFamily: 'Roboto_900Black',
               fontSize: 25,
@@ -94,9 +103,10 @@ export function InviteScreen({ token }: InviteScreenProps) {
           >
             {isPending ? 'Welcome —' : `Welcome, ${firstName} —`}
             {'\n'}set up your account
-          </Text>
+          </Animated.Text>
 
-          <Text
+          <Animated.Text
+            entering={FadeInDown.delay(170).duration(340)}
             style={{
               fontFamily: 'Roboto_400Regular',
               fontSize: 13.5,
@@ -107,9 +117,10 @@ export function InviteScreen({ token }: InviteScreenProps) {
           >
             Your onboarding partner pre-filled these details in this link. Confirm they&apos;re
             correct.
-          </Text>
+          </Animated.Text>
 
-          <View
+          <Animated.View
+            entering={FadeInDown.delay(220).duration(340)}
             style={{
               marginTop: 22,
               backgroundColor: color.surfaceSunkenAlt,
@@ -172,9 +183,12 @@ export function InviteScreen({ token }: InviteScreenProps) {
                     </Text>
                   </View>
                 ))}
-          </View>
+          </Animated.View>
 
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+          <Animated.View
+            entering={FadeInDown.delay(280).duration(340)}
+            style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}
+          >
             <View style={{ paddingTop: 1 }}>
               <Icon name="lock" size={15} color={color.textMuted} />
             </View>
@@ -189,16 +203,19 @@ export function InviteScreen({ token }: InviteScreenProps) {
             >
               Details are locked. Contact your ASM to change name or phone.
             </Text>
-          </View>
+          </Animated.View>
 
-          <View style={{ marginTop: 26 }}>
+          <Animated.View
+            entering={FadeInDown.delay(330).duration(340)}
+            style={{ marginTop: 26 }}
+          >
             <Button
               label="Confirm & continue"
               trailingIcon="arrowRight"
               onPress={() => router.push('/coverage')}
               disabled={!data}
             />
-          </View>
+          </Animated.View>
         </>
       )}
     </ScrollView>

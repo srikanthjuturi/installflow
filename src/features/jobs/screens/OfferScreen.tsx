@@ -31,6 +31,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
       <Header eyebrow={job?.id ?? 'Job offer'} title="Job offer" tone="chrome" />
 
       <Screen
+        variant="chrome"
         footer={
           <View style={{ gap: 10 }}>
             <Button

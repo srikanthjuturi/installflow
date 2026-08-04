@@ -1,4 +1,11 @@
+import * as Haptics from 'expo-haptics';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { color } from '@/theme/semantic';
@@ -66,18 +73,52 @@ export function Button({
   const bordered = variant === 'secondary';
   const fg = disabled ? color.actionFgDisabled : VARIANT_FG[variant];
 
+  // Spring-back press, not an opacity flash. On the low-end Androids these
+  // technicians carry, a physical-feeling button reads as more responsive than
+  // it actually is — worth the few lines.
+  const scale = useSharedValue(1);
+  const dim = useSharedValue(0);
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: 1 - dim.value * 0.12,
+  }));
+
+  const pressIn = () => {
+    scale.value = withSpring(0.975, { damping: 18, stiffness: 320 });
+    dim.value = withTiming(1, { duration: 90 });
+  };
+
+  const pressOut = () => {
+    scale.value = withSpring(1, { damping: 14, stiffness: 260 });
+    dim.value = withTiming(0, { duration: 140 });
+  };
+
+  const handlePress = () => {
+    // Gloves and noisy sites — touch confirmation matters more here than usual.
+    Haptics.impactAsync(
+      variant === 'destructive'
+        ? Haptics.ImpactFeedbackStyle.Heavy
+        : Haptics.ImpactFeedbackStyle.Light,
+    ).catch(() => {
+      /* unsupported device — never block the tap */
+    });
+    onPress?.();
+  };
+
   return (
     <View>
       <Pressable
-        onPress={inert ? undefined : onPress}
+        onPress={inert ? undefined : handlePress}
+        onPressIn={inert ? undefined : pressIn}
+        onPressOut={inert ? undefined : pressOut}
         disabled={inert}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ disabled: inert, busy: loading }}
       >
-        {({ pressed }) => (
-          <View
-            style={{
+        <Animated.View
+          style={[
+            {
               flexDirection: 'row',
               height: HEIGHT[variant],
               borderRadius: 14,
@@ -87,27 +128,27 @@ export function Button({
               backgroundColor: disabled ? color.actionBgDisabled : VARIANT_BG[variant],
               borderWidth: bordered ? 1 : 0,
               borderColor: color.border,
-              opacity: pressed ? 0.85 : 1,
-            }}
-          >
-            {loading ? (
-              <ActivityIndicator color={fg} />
-            ) : (
-              <>
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_700Bold',
-                    fontSize: FONT_SIZE[variant],
-                    color: fg,
-                  }}
-                >
-                  {label}
-                </Text>
-                {trailingIcon ? <Icon name={trailingIcon} size={18} color={fg} /> : null}
-              </>
-            )}
-          </View>
-        )}
+            },
+            animated,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator color={fg} />
+          ) : (
+            <>
+              <Text
+                style={{
+                  fontFamily: 'Roboto_700Bold',
+                  fontSize: FONT_SIZE[variant],
+                  color: fg,
+                }}
+              >
+                {label}
+              </Text>
+              {trailingIcon ? <Icon name={trailingIcon} size={18} color={fg} /> : null}
+            </>
+          )}
+        </Animated.View>
       </Pressable>
 
       {disabled && disabledHint ? (

@@ -48,6 +48,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
       <Header eyebrow={job?.id ?? ''} title="Job details" tone="chrome" />
 
       <Screen
+        variant="chrome"
         footer={
           job && !done ? (
             <View style={{ gap: 10 }}>

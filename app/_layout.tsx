@@ -62,7 +62,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="light" />
+          {/* Default to DARK status-bar content: most screens are light pages,
+              and white-on-white hides the clock, wifi and battery entirely.
+              Dark-chrome screens override this with style="light". */}
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
               headerShown: false,

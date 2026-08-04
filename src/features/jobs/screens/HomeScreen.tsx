@@ -96,7 +96,9 @@ export function HomeScreen() {
         </View>
       </View>
 
-      <Screen>
+      {/* chrome variant: the dark header bleeds under the status bar, so its
+          icons must be light or they vanish against #0e1622. */}
+      <Screen variant="chrome">
         {poolCount > 0 ? (
           <Pressable
             onPress={() => router.push('/pool')}
