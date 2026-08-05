@@ -12,14 +12,18 @@ import {
  * The approved table treatment, in one place.
  *
  * shadcn's defaults are a general-purpose table; the prototype's is specific —
- * a tinted 10.5px uppercase header rail over hairline-separated rows. Nine
- * screens use it, so it lives here rather than being re-typed per table.
+ * a tinted 10.5px uppercase header rail over hairline-separated rows.
+ *
+ * Prefer <DataTable/> over composing these by hand: it brings search, sorting,
+ * paging and the three states with it. These stay exported for the handful of
+ * places that genuinely only need the chrome.
  */
 
 /** Header cell — tinted rail, uppercase micro-label. */
 export function Th({ className, ...props }: React.ComponentProps<typeof TableHead>) {
   return (
     <TableHead
+      scope="col"
       className={cn(
         "bg-surface-2 text-ink-3 border-line h-auto border-b px-3.5 py-2.5",
         "text-[10.5px] font-bold tracking-[0.05em] whitespace-nowrap uppercase",

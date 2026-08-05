@@ -1,143 +1,143 @@
 import { Link, useNavigate } from "react-router";
-import {
-  HeadTr,
-  Table,
-  TableBody,
-  TableHeader,
-  Td,
-  Th,
-  Tr,
-} from "@/components/shared/DataTable";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/shared/states";
-import type { Technician } from "@/types";
+import { Users } from "lucide-react";
+import { DataTable, type Column, type TypedFilterDef } from "@/components/shared/DataTable";
 import { BandwidthBar, CancelCount, TechAvatar, TechStatusPill } from "./BandwidthBar";
-
-const COLUMNS = [
-  "Technician",
-  "Categories",
-  "Pincodes",
-  "Bandwidth",
-  "Rating",
-  "Jobs",
-  "Cancels",
-  "Status",
-];
+import type { Technician } from "@/types";
 
 interface TechTableProps {
   technicians?: Technician[];
+  categories: string[];
   isLoading: boolean;
   error: unknown;
-  isFiltered: boolean;
   onRetry: () => void;
-  onClearFilters: () => void;
+  toolbarActions?: React.ReactNode;
 }
 
 export function TechTable({
   technicians,
+  categories,
   isLoading,
   error,
-  isFiltered,
   onRetry,
-  onClearFilters,
+  toolbarActions,
 }: TechTableProps) {
   const navigate = useNavigate();
 
-  if (error) {
-    return (
-      <ErrorState title="Couldn't load technicians" error={error} onRetry={onRetry} />
-    );
-  }
+  const columns: Column<Technician>[] = [
+    {
+      id: "name",
+      header: "Technician",
+      sortValue: (t) => t.name,
+      cell: (t) => (
+        <div className="flex items-center gap-2.5">
+          <TechAvatar name={t.name} />
+          <div className="min-w-0">
+            {/* A real link so the row is keyboard reachable and opens in a
+                new tab — the row click is a convenience on top. */}
+            <Link
+              to={`/technicians/${t.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="hover:text-brand-400 font-medium"
+            >
+              {t.name}
+            </Link>
+            <div className="text-ink-3 font-mono text-xs">{t.id}</div>
+          </div>
+        </div>
+      ),
+    },
+    { id: "cats", header: "Categories", cell: (t) => t.cats.join(", ") },
+    {
+      id: "pincodes",
+      header: "Pincodes",
+      cell: (t) => <span className="font-mono text-xs">{t.pincodes}</span>,
+    },
+    {
+      id: "bandwidth",
+      header: "Bandwidth",
+      // Sorts on how full they are, not the raw cap — 5/5 is busier than 2/6.
+      sortValue: (t) => (t.bwTotal === 0 ? 0 : t.bwUsed / t.bwTotal),
+      cell: (t) => <BandwidthBar used={t.bwUsed} total={t.bwTotal} />,
+    },
+    {
+      id: "rating",
+      header: "Rating",
+      align: "right",
+      sortValue: (t) => t.rating,
+      cell: (t) => (
+        <span className="tabular-nums">
+          {t.rating} <span aria-hidden>★</span>
+        </span>
+      ),
+    },
+    {
+      id: "jobs",
+      header: "Jobs",
+      align: "right",
+      sortValue: (t) => t.jobs,
+      cell: (t) => <span className="tabular-nums">{t.jobs}</span>,
+    },
+    {
+      id: "cancels",
+      header: "Cancels",
+      align: "right",
+      sortValue: (t) => t.cancels,
+      cell: (t) => <CancelCount cancels={t.cancels} />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (t) => t.status,
+      cell: (t) => <TechStatusPill status={t.status} />,
+    },
+  ];
 
-  if (!isLoading && !technicians?.length) {
-    return isFiltered ? (
-      <EmptyState
-        title="No technicians match those filters"
-        description="Try a different category, or clear the search."
-        action={
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="text-brand-400 hover:text-brand-500 text-sm font-semibold"
-          >
-            Clear filters
-          </button>
-        }
-      />
-    ) : (
-      <EmptyState
-        title="No technicians yet"
-        description="Onboarded technicians appear here with their categories, pincodes and bandwidth."
-      />
-    );
-  }
+  const filters: TypedFilterDef<Technician>[] = [
+    {
+      id: "category",
+      label: "Category",
+      variant: "select",
+      options: categories.map((c) => ({ value: c, label: c })),
+      match: (t, v) => t.cats.includes(v),
+    },
+    {
+      id: "status",
+      label: "Status",
+      variant: "select",
+      options: [
+        { value: "Active", label: "Active" },
+        { value: "Inactive", label: "Inactive" },
+      ],
+      match: (t, v) => t.status === v,
+    },
+  ];
 
   return (
-    <div className="scroll-x">
-      <Table className="min-w-240">
-        <TableHeader>
-          <HeadTr>
-            {COLUMNS.map((c) => (
-              <Th key={c} scope="col">
-                {c}
-              </Th>
-            ))}
-          </HeadTr>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableSkeleton rows={8} cols={COLUMNS.length} />
-          ) : (
-            technicians?.map((t) => (
-              <Tr
-                key={t.id}
-                onClick={() => navigate(`/technicians/${t.id}`)}
-                className="cursor-pointer"
-              >
-                <Td>
-                  <div className="flex items-center gap-2.5">
-                    <TechAvatar name={t.name} />
-                    <div>
-                      {/* The whole row is clickable, but the name stays a real
-                          link so it is reachable by keyboard and opens in a
-                          new tab. */}
-                      <Link
-                        to={`/technicians/${t.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="font-medium"
-                      >
-                        {t.name}
-                      </Link>
-                      <div className="text-ink-3 font-mono text-[11px]">{t.id}</div>
-                    </div>
-                  </div>
-                </Td>
-                <Td>
-                  <span className="text-ink-2 text-xs">{t.cats.join(", ")}</span>
-                </Td>
-                <Td>
-                  <span className="text-ink-2 font-mono text-[11px]">{t.pincodes}</span>
-                </Td>
-                <Td>
-                  <BandwidthBar used={t.bwUsed} total={t.bwTotal} />
-                </Td>
-                <Td>
-                  <span className="font-semibold tabular-nums">{t.rating}</span>{" "}
-                  <span className="text-warn" aria-hidden>
-                    ★
-                  </span>
-                </Td>
-                <Td className="tabular-nums">{t.jobs}</Td>
-                <Td>
-                  <CancelCount cancels={t.cancels} />
-                </Td>
-                <Td>
-                  <TechStatusPill status={t.status} />
-                </Td>
-              </Tr>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </div>
+    <DataTable
+      caption="Technicians, with their categories, service pincodes, bandwidth and cancellation history"
+      data={technicians}
+      columns={columns}
+      getRowId={(t) => t.id}
+      isLoading={isLoading}
+      error={error}
+      onRetry={onRetry}
+      search={{
+        placeholder: "Search by name, ID or pincode…",
+        fn: (t, q) =>
+          t.name.toLowerCase().includes(q) ||
+          t.id.toLowerCase().includes(q) ||
+          t.pincodes.includes(q),
+      }}
+      filters={filters}
+      toolbarActions={toolbarActions}
+      defaultSort={{ columnId: "name", dir: "asc" }}
+      onRowClick={(t) => navigate(`/technicians/${t.id}`)}
+      minWidth="64rem"
+      emptyIcon={Users}
+      emptyTitle="No technicians yet"
+      emptyDescription="Add a technician to start dispatching jobs in their categories and pincodes."
+      filteredEmptyTitle="No technicians match those filters"
+      filteredEmptyDescription="Try a different category or status, or clear the search."
+    />
   );
 }
