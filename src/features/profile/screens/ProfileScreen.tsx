@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Button } from '@/components/ui';
+import { Button, Switch } from '@/components/ui';
 import { qk } from '@/lib/queryKeys';
 import { delay } from '@/mocks/delay';
 import { technician } from '@/mocks/db';
@@ -20,8 +21,13 @@ async function getMe(): Promise<Technician> {
   return technician;
 }
 
+/**
+ * Push notifications is a switch rather than an "On" label: it's the one
+ * setting here a technician actually flips, and it decides whether they hear
+ * about new jobs at all. Language and payout account open their own flows, so
+ * they stay as values.
+ */
 const SETTINGS: { label: string; value: string; icon: IconName }[] = [
-  { label: 'Push notifications', value: 'On', icon: 'bell' },
   { label: 'Language', value: 'English', icon: 'globe' },
   { label: 'Payout account', value: '••4432', icon: 'wallet' },
 ];
@@ -38,6 +44,7 @@ export function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: me } = useQuery({ queryKey: qk.me(), queryFn: getMe });
+  const [pushEnabled, setPushEnabled] = useState(true);
 
   const initials = (me?.name ?? '')
     .split(' ')
@@ -189,6 +196,39 @@ export function ProfileScreen() {
                   <Icon name="chevronRight" size={19} color={color.textMuted} />
                 </View>
               )}
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPushEnabled(!pushEnabled)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: pushEnabled }}
+              accessibilityLabel="Push notifications"
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 13,
+                  paddingVertical: 15,
+                  paddingHorizontal: 16,
+                  borderTopWidth: 1,
+                  borderTopColor: palette.neutral[100],
+                }}
+              >
+                <Icon name="bell" size={21} color={color.textLabel} strokeWidth={1.7} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 14.5,
+                    color: color.textPrimary,
+                  }}
+                >
+                  Push notifications
+                </Text>
+                {/* Row is the tap target, so the switch is presentational. */}
+                <Switch value={pushEnabled} onValueChange={setPushEnabled} static />
+              </View>
             </Pressable>
 
             {SETTINGS.map((row) => (
