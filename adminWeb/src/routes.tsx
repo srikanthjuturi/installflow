@@ -19,6 +19,10 @@ const ValidationResultPage = lazy(
 );
 const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
 const ManualAssignPage = lazy(() => import("@/pages/escalations/ManualAssignPage"));
+const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
+const AiReviewDetailPage = lazy(
+  () => import("@/pages/ai-review/AiReviewDetailPage"),
+);
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -50,6 +54,8 @@ export const routes: RouteObject[] = [
           { path: "escalations", element: <EscalationQueuePage /> },
           { path: "escalations/:id/bonus", element: <BonusSetupPage /> },
           { path: "escalations/:id/assign", element: <ManualAssignPage /> },
+          { path: "ai-review", element: <AiQueuePage /> },
+          { path: "ai-review/:id", element: <AiReviewDetailPage /> },
         ],
       },
     ],
