@@ -2,7 +2,6 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { CardGridSkeleton, ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AttentionCards } from "@/components/dashboard/AttentionCards";
-import { FunnelPanel } from "@/components/dashboard/FunnelPanel";
 import { KpiRow } from "@/components/dashboard/KpiRow";
 import { RecentTickets } from "@/components/dashboard/RecentTickets";
 import { SlaPanel } from "@/components/dashboard/SlaPanel";
@@ -30,21 +29,17 @@ export default function DashboardPage() {
           <>
             <CardGridSkeleton />
             <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.6fr_1fr]">
-              <Skeleton className="h-40 rounded-lg" />
-              <Skeleton className="h-40 rounded-lg" />
+              <Skeleton className="h-64 rounded-lg" />
+              <Skeleton className="h-64 rounded-lg" />
             </div>
-            <CardGridSkeleton />
           </>
         ) : summary.data ? (
           <>
             <KpiRow kpis={summary.data.kpis} />
-
             <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.6fr_1fr]">
-              <SlaPanel sla={summary.data.sla} />
-              <FunnelPanel stages={summary.data.funnel} />
+              <SlaPanel sla={summary.data.sla} stages={summary.data.funnel} />
+              <AttentionCards items={summary.data.attention} />
             </div>
-
-            <AttentionCards items={summary.data.attention} />
           </>
         ) : null}
 

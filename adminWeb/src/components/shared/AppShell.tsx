@@ -61,7 +61,9 @@ export function AppShell() {
 
       <div className="md:ml-sidebar">
         <Topbar title={meta.title} subtitle={meta.subtitle} />
-        <main className="mx-auto max-w-content p-4 md:p-5.5">
+        {/* Fluid — the console is a work surface, so a wide monitor should
+            buy more table, not more margin. */}
+        <main className="p-4 md:p-5.5">
           <Suspense fallback={<PageSkeleton />}>
             <Outlet />
           </Suspense>
