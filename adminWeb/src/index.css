@@ -30,6 +30,20 @@
     @apply outline-ring outline-2 outline-offset-2;
   }
 
+  /* Tailwind v4's preflight sets buttons to `cursor: default`. Restore the
+     pointer so anything clickable reads as clickable. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled),
+  label[for],
+  summary {
+    @apply cursor-pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    @apply cursor-not-allowed;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
