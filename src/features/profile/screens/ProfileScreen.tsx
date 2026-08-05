@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -8,11 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Button, Switch } from '@/components/ui';
+import { Avatar, Button, Switch } from '@/components/ui';
 import { qk } from '@/lib/queryKeys';
 import { delay } from '@/mocks/delay';
 import { technician } from '@/mocks/db';
-import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { ProductCategory, Technician } from '@/types/domain';
@@ -47,14 +45,6 @@ export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { data: me } = useQuery({ queryKey: qk.me(), queryFn: getMe });
   const [pushEnabled, setPushEnabled] = useState(true);
-  const avatarUri = useProfileStore((s) => s.avatarUri);
-
-  const initials = (me?.name ?? '')
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
 
   const categories = me?.categories.map((c) => SHORT_CATEGORY[c] ?? c).join(' · ') ?? '—';
 
@@ -88,54 +78,7 @@ export function ProfileScreen() {
               >
                 {({ pressed }) => (
                   <View style={{ opacity: pressed ? 0.8 : 1 }}>
-                    {avatarUri ? (
-                      <Image
-                        source={{ uri: avatarUri }}
-                        style={{ width: 74, height: 74, borderRadius: 22 }}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          width: 74,
-                          height: 74,
-                          borderRadius: 22,
-                          backgroundColor: color.actionBg,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontFamily: 'Roboto_900Black',
-                            fontSize: 28,
-                            color: color.actionFg,
-                          }}
-                        >
-                          {initials}
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Ringed in the chrome colour so it reads as a cutout,
-                        the same treatment as Home's unread dot. */}
-                    <View
-                      style={{
-                        position: 'absolute',
-                        right: -4,
-                        bottom: -4,
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        backgroundColor: color.surfaceRaised,
-                        borderWidth: 3,
-                        borderColor: color.chrome,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon name="camera" size={14} color={color.textPrimary} strokeWidth={2} />
-                    </View>
+                    <Avatar name={me.name} size={74} radius={22} editable />
                   </View>
                 )}
               </Pressable>

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
+import { Avatar } from '@/components/ui';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { technician } from '@/mocks/db';
@@ -56,18 +57,49 @@ export function HomeScreen() {
               justifyContent: 'space-between',
             }}
           >
-            <View>
-              <Text
-                style={{ fontFamily: 'Roboto_400Regular', fontSize: 13, color: color.textOnChrome }}
-              >
-                Good morning
-              </Text>
-              <Text
-                style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textInverse }}
-              >
-                {technician.name}
-              </Text>
-            </View>
+            {/* Avatar beside the greeting — the app's identity anchor, and a
+                shortcut into Profile where it can be changed. */}
+            <Pressable
+              onPress={() => router.push('/(app)/(tabs)/profile')}
+              accessibilityRole="button"
+              accessibilityLabel="Your profile"
+              style={{ flex: 1 }}
+            >
+              {({ pressed }) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    opacity: pressed ? 0.75 : 1,
+                  }}
+                >
+                  <Avatar name={technician.name} size={44} radius={13} />
+
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_400Regular',
+                        fontSize: 13,
+                        color: color.textOnChrome,
+                      }}
+                    >
+                      Good morning
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_900Black',
+                        fontSize: 20,
+                        color: color.textInverse,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {technician.name}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </Pressable>
 
             <Pressable
               onPress={() => router.push('/pool')}

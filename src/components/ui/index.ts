@@ -1,3 +1,4 @@
+export { Avatar, type AvatarProps } from './Avatar';
 export { BrandMark, type BrandMarkProps } from './BrandMark';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Card, type CardProps } from './Card';
