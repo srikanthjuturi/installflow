@@ -94,6 +94,10 @@ export const color = {
   credit: palette.success[500],
   debit: palette.danger[500],
   bonus: palette.secondary[600],
+  /** Money figures on the dark chrome need lifted tints to stay legible. */
+  creditOnChrome: '#7ee2a8',
+  bonusOnChrome: '#f8d78a',
+  debitOnChrome: '#ff9d9d',
 
   // ── verification hero ───────────────────────────────────────────────────
   /** Full-bleed gradient headers on the three AI outcomes. */

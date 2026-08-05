@@ -1,76 +1,77 @@
 import { useQuery } from '@tanstack/react-query';
-import { Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Header, Screen } from '@/components/layout';
-import { Card } from '@/components/ui';
 import { getEarningsSummary, listTransactions } from '@/features/earnings/api/earnings';
 import { qk } from '@/lib/queryKeys';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 import type { TransactionKind } from '@/types/domain';
 import { formatPaise, formatSignedPaise } from '@/utils/money';
 
-/** Each ledger kind gets its own icon and colour — a penalty must never look like a payout. */
+/** Each ledger kind gets its own icon and tint — a penalty must never skim as a payout. */
 const KIND_STYLE: Record<TransactionKind, { icon: IconName; fg: string; bg: string }> = {
   install: { icon: 'card', fg: color.statusCompleted.fg, bg: color.statusCompleted.bg },
-  bonus: { icon: 'gift', fg: color.slotFg, bg: color.slotBg },
+  bonus: { icon: 'gift', fg: palette.secondary[600], bg: palette.secondary[100] },
   penalty: { icon: 'warn', fg: color.statusCancelled.fg, bg: color.statusCancelled.bg },
 };
 
 /**
  * Screen 15 — Earnings.
  *
- * Leads with NET, after penalties. Showing gross first would be the flattering
- * number and the wrong one: a technician needs to know what actually lands,
- * especially in a week where a late cancellation took 250 off it.
+ * The whole summary lives in the dark hero: the net figure at 38px with the
+ * three components beneath it. Leading with NET, after penalties, is the
+ * point — gross would be the flattering number and the wrong one in a week
+ * where a late cancellation took money back out.
  */
 export function EarningsScreen() {
+  const insets = useSafeAreaInsets();
   const summary = useQuery({ queryKey: qk.earningsSummary(), queryFn: getEarningsSummary });
   const ledger = useQuery({ queryKey: qk.transactions(), queryFn: listTransactions });
 
   return (
-    <>
-      <Header title="Earnings" showBack={false} />
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="light" />
 
-      <Screen>
-        <Card style={{ paddingVertical: 22, alignItems: 'center' }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <View
+          style={{
+            backgroundColor: color.chrome,
+            paddingTop: insets.top + 16,
+            paddingHorizontal: 20,
+            paddingBottom: 22,
+            borderBottomLeftRadius: 22,
+            borderBottomRightRadius: 22,
+          }}
+        >
+          <Text
+            style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textInverse }}
+          >
+            Earnings
+          </Text>
           <Text
             style={{
-              fontFamily: 'Roboto_700Bold',
-              fontSize: 11,
-              letterSpacing: 1.4,
-              color: color.textMuted,
+              fontFamily: 'Roboto_400Regular',
+              fontSize: 12.5,
+              color: color.textOnChrome,
+              marginTop: 2,
             }}
           >
-            THIS WEEK · MON–SUN
+            This week · Mon–Sun
           </Text>
 
-          {summary.isPending ? (
-            <View style={{ marginTop: 10 }}>
-              <Skeleton width={160} height={40} />
-            </View>
-          ) : summary.isError ? (
-            <Text
-              style={{
-                fontFamily: 'Roboto_500Medium',
-                fontSize: 14,
-                color: color.textMuted,
-                marginTop: 12,
-              }}
-            >
-              Couldn&apos;t load
-            </Text>
-          ) : (
+          {summary.data ? (
             <>
               <Text
                 style={{
                   fontFamily: 'Roboto_900Black',
-                  fontSize: 40,
-                  color: color.textPrimary,
-                  marginTop: 6,
-                  letterSpacing: -1,
+                  fontSize: 38,
+                  letterSpacing: -0.8,
+                  color: color.textInverse,
+                  marginTop: 16,
                 }}
               >
                 {formatPaise(summary.data.netPaise)}
@@ -79,48 +80,63 @@ export function EarningsScreen() {
                 style={{
                   fontFamily: 'Roboto_400Regular',
                   fontSize: 12.5,
-                  color: color.textSecondary,
-                  marginTop: 2,
+                  color: color.textOnChrome,
                 }}
               >
                 Net payout after penalties
               </Text>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <ChromeTile
+                  label="Earned"
+                  value={formatPaise(summary.data.earnedPaise)}
+                  tint={color.creditOnChrome}
+                />
+                <ChromeTile
+                  label="Bonuses"
+                  value={formatPaise(summary.data.bonusesPaise)}
+                  tint={color.bonusOnChrome}
+                />
+                <ChromeTile
+                  label="Penalties"
+                  value={formatPaise(summary.data.penaltiesPaise)}
+                  tint={color.debitOnChrome}
+                />
+              </View>
             </>
+          ) : (
+            <View style={{ marginTop: 16, gap: 10 }}>
+              <Skeleton width={180} height={40} />
+              <Skeleton width="100%" height={60} rounded={12} />
+            </View>
           )}
-        </Card>
+        </View>
 
-        {summary.data ? (
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-            <StatTile label="Earned" value={formatPaise(summary.data.earnedPaise)} />
-            <StatTile
-              label="Bonuses"
-              value={formatPaise(summary.data.bonusesPaise)}
-              tint={color.bonus}
-            />
-            <StatTile
-              label="Penalties"
-              value={formatPaise(summary.data.penaltiesPaise)}
-              tint={color.debit}
-            />
-          </View>
-        ) : null}
+        <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+          <Text
+            style={{
+              fontFamily: 'Roboto_700Bold',
+              fontSize: 12,
+              color: color.textLabel,
+              marginTop: 2,
+              marginHorizontal: 4,
+              marginBottom: 10,
+            }}
+          >
+            Transactions
+          </Text>
 
-        <Text
-          style={{
-            fontFamily: 'Roboto_700Bold',
-            fontSize: 11,
-            letterSpacing: 1.4,
-            color: color.textSecondary,
-            marginTop: 28,
-            marginBottom: 10,
-          }}
-        >
-          TRANSACTIONS
-        </Text>
-
-        {ledger.isPending ? (
-          <Card>
-            <View style={{ gap: 20 }}>
+          {ledger.isPending ? (
+            <View
+              style={{
+                backgroundColor: color.surfaceRaised,
+                borderWidth: 1,
+                borderColor: color.border,
+                borderRadius: 16,
+                padding: 15,
+                gap: 20,
+              }}
+            >
               {[0, 1, 2].map((i) => (
                 <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Skeleton width="55%" height={14} />
@@ -128,105 +144,109 @@ export function EarningsScreen() {
                 </View>
               ))}
             </View>
-          </Card>
-        ) : ledger.isError ? (
-          <ErrorState onRetry={() => ledger.refetch()} />
-        ) : ledger.data.length === 0 ? (
-          <EmptyState
-            icon="wallet"
-            title="No transactions yet"
-            body="Completed jobs will appear here."
-          />
-        ) : (
-          <Card padded={false} style={{ paddingHorizontal: 14 }}>
-            {ledger.data.map((txn, i) => {
-              const style = KIND_STYLE[txn.kind];
+          ) : ledger.isError ? (
+            <ErrorState onRetry={() => ledger.refetch()} />
+          ) : ledger.data.length === 0 ? (
+            <EmptyState
+              icon="wallet"
+              title="No transactions yet"
+              body="Completed jobs will appear here."
+            />
+          ) : (
+            <View
+              style={{
+                backgroundColor: color.surfaceRaised,
+                borderWidth: 1,
+                borderColor: color.border,
+                borderRadius: 16,
+                overflow: 'hidden',
+              }}
+            >
+              {ledger.data.map((txn, i) => {
+                const style = KIND_STYLE[txn.kind];
 
-              return (
-                <View
-                  key={txn.id}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
-                    paddingVertical: 13,
-                    borderTopWidth: i === 0 ? 0 : 1,
-                    borderTopColor: color.border,
-                  }}
-                >
+                return (
                   <View
+                    key={txn.id}
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: radius.full,
-                      backgroundColor: style.bg,
+                      flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: 12,
+                      paddingVertical: 14,
+                      paddingHorizontal: 15,
+                      borderTopWidth: i === 0 ? 0 : 1,
+                      borderTopColor: palette.neutral[100],
                     }}
                   >
-                    <Icon name={style.icon} size={17} color={style.fg} />
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Text
+                    <View
                       style={{
-                        fontFamily: 'Roboto_500Medium',
-                        fontSize: 13.5,
-                        color: color.textPrimary,
-                      }}
-                      numberOfLines={1}
-                    >
-                      {txn.title}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: 'Roboto_400Regular',
-                        fontSize: 11.5,
-                        color: color.textMuted,
-                        marginTop: 1,
+                        width: 38,
+                        height: 38,
+                        borderRadius: 11,
+                        backgroundColor: style.bg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                     >
-                      {txn.subtitle}
+                      <Icon name={style.icon} size={20} color={style.fg} />
+                    </View>
+
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text
+                        style={{
+                          fontFamily: 'Roboto_700Bold',
+                          fontSize: 14,
+                          color: color.textPrimary,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {txn.title}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: 'Roboto_400Regular',
+                          fontSize: 11.5,
+                          color: color.textMuted,
+                        }}
+                      >
+                        {txn.subtitle}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: style.fg }}
+                    >
+                      {formatSignedPaise(txn.amountPaise)}
                     </Text>
                   </View>
-
-                  <Text
-                    style={{ fontFamily: 'Roboto_900Black', fontSize: 14, color: style.fg }}
-                  >
-                    {formatSignedPaise(txn.amountPaise)}
-                  </Text>
-                </View>
-              );
-            })}
-          </Card>
-        )}
-      </Screen>
-    </>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-function StatTile({ label, value, tint }: { label: string; value: string; tint?: string }) {
+function ChromeTile({ label, value, tint }: { label: string; value: string; tint: string }) {
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: color.surfaceRaised,
-        borderWidth: 1,
-        borderColor: color.border,
-        borderRadius: radius.md,
-        padding: 12,
+        backgroundColor: color.chromePanel,
+        borderRadius: 12,
+        paddingVertical: 11,
+        paddingHorizontal: 13,
       }}
     >
-      <Text style={{ fontFamily: 'Roboto_400Regular', fontSize: 11.5, color: color.textMuted }}>
+      <Text
+        style={{ fontFamily: 'Roboto_400Regular', fontSize: 11, color: color.textOnChrome }}
+      >
         {label}
       </Text>
       <Text
-        style={{
-          fontFamily: 'Roboto_900Black',
-          fontSize: 16,
-          color: tint ?? color.textPrimary,
-          marginTop: 3,
-        }}
+        style={{ fontFamily: 'Roboto_900Black', fontSize: 16, color: tint, marginTop: 2 }}
       >
         {value}
       </Text>
