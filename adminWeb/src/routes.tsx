@@ -19,15 +19,16 @@ const ValidationResultPage = lazy(
 );
 const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
 const ManualAssignPage = lazy(() => import("@/pages/escalations/ManualAssignPage"));
-const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
-const AiReviewDetailPage = lazy(
-  () => import("@/pages/ai-review/AiReviewDetailPage"),
-);
+const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
 const TechnicianListPage = lazy(
   () => import("@/pages/technicians/TechnicianListPage"),
 );
 const TechnicianProfilePage = lazy(
   () => import("@/pages/technicians/TechnicianProfilePage"),
+);
+const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
+const AiReviewDetailPage = lazy(
+  () => import("@/pages/ai-review/AiReviewDetailPage"),
 );
 
 function RequireAuth() {
@@ -64,6 +65,7 @@ export const routes: RouteObject[] = [
           { path: "ai-review/:id", element: <AiReviewDetailPage /> },
           { path: "technicians", element: <TechnicianListPage /> },
           { path: "technicians/:id", element: <TechnicianProfilePage /> },
+          { path: "ledger", element: <LedgerPage /> },
         ],
       },
     ],
