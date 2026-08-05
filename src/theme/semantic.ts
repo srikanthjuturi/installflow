@@ -55,6 +55,16 @@ export const color = {
   /** Switch track in its off state, on the dark chrome. */
   chromeTrackOff: 'rgba(255,255,255,0.2)',
   cameraBg: palette.neutral[950],
+  /** Camera chrome — controls, hints and guides over the live feed. */
+  cameraTopControl: 'rgba(255,255,255,0.1)',
+  cameraBottomControl: 'rgba(255,255,255,0.08)',
+  cameraHint: '#c3cede',
+  cameraDim: '#607284',
+  cameraGuide: 'rgba(255,255,255,0.7)',
+  shutterRing: 'rgba(255,255,255,0.4)',
+  /** The geo-lock badge is GREEN — it confirms a check passed, not a warning. */
+  geoLockBg: 'rgba(22,163,74,0.9)',
+  scanLine: palette.secondary[400],
   /** Scrim behind a bottom sheet. Tinted toward the chrome ink, not pure black. */
   overlay: 'rgba(14,22,34,0.5)',
   /** The drag handle on a bottom sheet. */

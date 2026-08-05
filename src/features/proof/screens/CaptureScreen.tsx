@@ -1,18 +1,17 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
-import { CaptureOverlay } from '@/features/proof/components/CaptureOverlay';
 import { useJob } from '@/features/jobs/hooks/useJobs';
+import { CaptureOverlay } from '@/features/proof/components/CaptureOverlay';
 import { MAX_PHOTOS, MIN_PHOTOS, STEP_CONFIG, nextStep, stepLabel } from '@/features/proof/machine';
 import { useCaptureStore } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
-import { layout, radius } from '@/theme/spacing';
 
 export interface CaptureScreenProps {
   jobId: string;
@@ -67,9 +66,10 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           flex: 1,
           backgroundColor: color.cameraBg,
           justifyContent: 'center',
-          paddingHorizontal: layout.screenGutter,
+          paddingHorizontal: 24,
         }}
       >
+        <StatusBar style="light" />
         <Icon name="photos" size={40} color={color.textInverse} />
         <Text
           style={{
@@ -86,7 +86,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
             fontFamily: 'Roboto_400Regular',
             fontSize: 14,
             lineHeight: 21,
-            color: color.textMuted,
+            color: color.textOnChrome,
             marginTop: 8,
             marginBottom: 28,
           }}
@@ -106,33 +106,48 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.cameraBg }}>
+      <StatusBar style="light" />
+
       <View
         style={{
-          paddingTop: insets.top + 10,
-          paddingBottom: 12,
-          paddingHorizontal: layout.screenGutter,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 10,
+          gap: 8,
+          paddingTop: insets.top + 10,
+          paddingHorizontal: 16,
+          paddingBottom: 10,
         }}
       >
         <Pressable
           onPress={() => router.back()}
-          hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Back to job"
         >
-          <Icon name="chevronLeft" size={24} color={color.textInverse} />
+          {({ pressed }) => (
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 11,
+                backgroundColor: color.cameraTopControl,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.7 : 1,
+              }}
+            >
+              <Icon name="chevronLeft" size={22} color={color.textInverse} />
+            </View>
+          )}
         </Pressable>
 
-        <View style={{ flex: 1 }}>
+        <View>
           <Text
-            style={{ fontFamily: 'Roboto_700Bold', fontSize: 16, color: color.textInverse }}
+            style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.textInverse }}
           >
             {config.title}
           </Text>
           <Text
-            style={{ fontFamily: 'Roboto_400Regular', fontSize: 12, color: color.textMuted }}
+            style={{ fontFamily: 'Roboto_400Regular', fontSize: 11.5, color: color.textOnChrome }}
           >
             {stepLabel(step)}
           </Text>
@@ -141,105 +156,115 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 
       <View style={{ flex: 1, overflow: 'hidden' }}>
         <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
-          <CaptureOverlay step={step} pincode={job?.pincode ?? ''} />
+          <CaptureOverlay step={step} pincode={job?.pincode ?? ''} photoCount={photos.length} />
+
+          {/* Hint sits INSIDE the viewfinder, over the feed — the technician is
+              looking at the frame, not at the chrome below it. */}
+          <View
+            style={{ position: 'absolute', bottom: 16, left: '10%', right: '10%' }}
+            pointerEvents="none"
+          >
+            <Text
+              style={{
+                fontFamily: 'Roboto_400Regular',
+                fontSize: 12.5,
+                color: color.cameraHint,
+                textAlign: 'center',
+              }}
+            >
+              {config.hint}
+            </Text>
+          </View>
         </CameraView>
       </View>
 
       <View
         style={{
-          paddingTop: 14,
-          paddingBottom: insets.bottom + 16,
-          paddingHorizontal: layout.screenGutter,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: color.cameraBg,
+          paddingTop: 16,
+          paddingHorizontal: 24,
+          paddingBottom: insets.bottom + 20,
         }}
       >
-        <Text
+        <View
           style={{
-            fontFamily: 'Roboto_400Regular',
-            fontSize: 12.5,
-            color: color.textMuted,
-            textAlign: 'center',
-            marginBottom: 14,
+            width: 44,
+            height: 44,
+            borderRadius: 11,
+            backgroundColor: color.cameraBottomControl,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          {config.hint}
-        </Text>
+          <Icon name="edit" size={22} color={color.cameraDim} />
+        </View>
 
-        {step === 'photos' && photos.length > 0 ? (
-          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-            {photos.map((shot) => (
-              <Image
-                key={shot.uri}
-                source={{ uri: shot.uri }}
-                style={{ width: 44, height: 44, borderRadius: radius.sm }}
-                contentFit="cover"
-              />
-            ))}
-          </View>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            {step === 'photos' ? (
-              <Text
-                style={{ fontFamily: 'Roboto_500Medium', fontSize: 13, color: color.textMuted }}
-              >
-                {photos.length}/{MAX_PHOTOS}
-              </Text>
-            ) : null}
-          </View>
-
-          <Pressable
-            onPress={onShutter}
-            accessibilityRole="button"
-            accessibilityLabel={`Capture ${config.title}`}
-          >
-            {({ pressed }) => (
+        <Pressable
+          onPress={onShutter}
+          accessibilityRole="button"
+          accessibilityLabel={`Capture ${config.title}`}
+        >
+          {({ pressed }) => (
+            <View
+              style={{
+                width: 74,
+                height: 74,
+                borderRadius: 37,
+                borderWidth: 4,
+                borderColor: color.shutterRing,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.7 : 1,
+              }}
+            >
               <View
                 style={{
-                  width: layout.shutterSize,
-                  height: layout.shutterSize,
-                  borderRadius: radius.full,
-                  borderWidth: 4,
-                  borderColor: color.textInverse,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: pressed ? 0.7 : 1,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
+                  backgroundColor: color.textInverse,
                 }}
-              >
-                <View
-                  style={{
-                    width: layout.shutterSize - 18,
-                    height: layout.shutterSize - 18,
-                    borderRadius: radius.full,
-                    backgroundColor: color.textInverse,
-                  }}
-                />
-              </View>
-            )}
-          </Pressable>
+              />
+            </View>
+          )}
+        </Pressable>
 
-          <View style={{ flex: 1, alignItems: 'flex-end' }}>
-            {step === 'photos' ? (
-              <Pressable
-                onPress={() => canAdvancePhotos && setStep('live')}
-                disabled={!canAdvancePhotos}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !canAdvancePhotos }}
-              >
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_700Bold',
-                    fontSize: 15,
-                    color: canAdvancePhotos ? color.actionBg : color.textMuted,
-                  }}
-                >
-                  Next
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
+        {step === 'photos' ? (
+          <Pressable
+            onPress={() => canAdvancePhotos && setStep('live')}
+            disabled={!canAdvancePhotos}
+            accessibilityRole="button"
+            accessibilityLabel="Continue to live photo"
+            accessibilityState={{ disabled: !canAdvancePhotos }}
+            style={{ width: 56 }}
+          >
+            <Text
+              style={{
+                fontFamily: 'Roboto_700Bold',
+                fontSize: 13,
+                textAlign: 'center',
+                color: canAdvancePhotos ? color.pillChromeFg : color.cameraDim,
+              }}
+            >
+              Next
+            </Text>
+            <Text
+              style={{
+                fontFamily: 'Roboto_400Regular',
+                fontSize: 11,
+                textAlign: 'center',
+                color: color.cameraDim,
+              }}
+            >
+              {photos.length}/{MAX_PHOTOS}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
     </View>
   );
