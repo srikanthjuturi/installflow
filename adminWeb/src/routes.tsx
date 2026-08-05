@@ -8,6 +8,7 @@ import { useSession } from "@/store/session";
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage"));
 const TicketListPage = lazy(() => import("@/pages/tickets/TicketListPage"));
+const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <DashboardPage /> },
           { path: "tickets", element: <TicketListPage /> },
+          { path: "tickets/:id", element: <TicketDetailPage /> },
         ],
       },
     ],
