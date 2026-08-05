@@ -23,6 +23,9 @@ const ManualAssignPage = lazy(() => import("@/pages/escalations/ManualAssignPage
 const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
 const VendorsPage = lazy(() => import("@/pages/masters/VendorsPage"));
 const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
+const TerritoryPage = lazy(() => import("@/pages/masters/TerritoryPage"));
+const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
+const UsersRolesPage = lazy(() => import("@/pages/settings/UsersRolesPage"));
 const TechnicianListPage = lazy(
   () => import("@/pages/technicians/TechnicianListPage"),
 );
@@ -72,6 +75,9 @@ export const routes: RouteObject[] = [
           { path: "ledger", element: <LedgerPage /> },
           { path: "vendors", element: <VendorsPage /> },
           { path: "categories", element: <CategoriesPage /> },
+          { path: "territory", element: <TerritoryPage /> },
+          { path: "settings/rules", element: <RulesConfigPage /> },
+          { path: "settings/users", element: <UsersRolesPage /> },
         ],
       },
     ],

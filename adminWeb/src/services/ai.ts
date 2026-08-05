@@ -13,12 +13,9 @@ import type { AiFlag } from "@/types";
  * ticket a human has to rule on.
  */
 
-/**
- * The configured confidence threshold, as a percentage. Rules configuration
- * exposes it as a 50–95 slider; 70 is the approved default. Anything under it
- * is flagged rather than auto-closed.
- */
-export const AI_CONFIDENCE_THRESHOLD = 70;
+/* The threshold is shared with Rules configuration — see rulesDefaults.ts.
+   Declaring it here as well let the two screens drift. */
+export { AI_CONFIDENCE_THRESHOLD } from "./rulesDefaults";
 
 const AIQUEUE: AiFlag[] = [
   {

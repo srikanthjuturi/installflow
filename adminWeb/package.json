@@ -49,5 +49,8 @@
     "typescript": "~6",
     "typescript-eslint": "^8",
     "vite": "^8"
+  },
+  "prettier": {
+    "semi": "true"
   }
 }
