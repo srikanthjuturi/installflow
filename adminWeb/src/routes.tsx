@@ -7,6 +7,7 @@ import { useSession } from "@/store/session";
    the AppShell's Suspense boundary. */
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage"));
+const TicketListPage = lazy(() => import("@/pages/tickets/TicketListPage"));
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -28,7 +29,10 @@ export const routes: RouteObject[] = [
     children: [
       {
         element: <AppShell />,
-        children: [{ index: true, element: <DashboardPage /> }],
+        children: [
+          { index: true, element: <DashboardPage /> },
+          { path: "tickets", element: <TicketListPage /> },
+        ],
       },
     ],
   },
