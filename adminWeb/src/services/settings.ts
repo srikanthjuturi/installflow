@@ -3,6 +3,8 @@ import {
   AI_CONFIDENCE_MAX,
   AI_CONFIDENCE_MIN,
   AI_CONFIDENCE_THRESHOLD,
+  CUSTOMER_WAIT_HOURS,
+  ESCALATION_TRIGGER_HOURS,
 } from "./rulesDefaults";
 import type { Role, User } from "@/types";
 
@@ -41,13 +43,28 @@ export interface AiThresholdRule {
   max: number;
 }
 
+/**
+ * Bandwidth accounting. `count` is a plain jobs-per-day cap, which is what
+ * the Technician record and the technician app both model; `weighted` is the
+ * prototype's wording. Kept as a real choice rather than a display string so
+ * the open decision is visible and settleable on this screen.
+ */
+export type BandwidthModel = "count" | "weighted";
+
 export interface RulesConfig {
+  /** Definitional, not configurable — an SLA type IS its window. */
   sla: SlaRule[];
   penalty: PenaltyBand[];
   /** Per technician, per month. */
   penaltyCap: number;
   ai: AiThresholdRule;
-  timing: SlaRule[];
+  /** Hours of customer silence before a slot request auto-escalates. */
+  slotConfirmTimeoutHours: number;
+  /** Hours before a confirmed slot at which an unassigned ticket escalates. */
+  escalationTriggerHours: number;
+  /** Hours of customer silence before manager closure becomes available. */
+  customerWaitHours: number;
+  bandwidthModel: BandwidthModel;
 }
 
 /* ---------------------------------------------------------------- rules data */
@@ -56,8 +73,6 @@ const RULES: RulesConfig = {
   sla: [
     { label: "24h SLA window", value: "24 hours from slot confirmation" },
     { label: "48h SLA window", value: "48 hours from slot confirmation" },
-    { label: "Slot-confirm timeout", value: "6 hours, then auto-escalate" },
-    { label: "Escalation trigger", value: "Unassigned within 4h of slot" },
   ],
 
   /**
@@ -96,19 +111,20 @@ const RULES: RulesConfig = {
     max: AI_CONFIDENCE_MAX,
   },
 
-  timing: [
-    { label: "Wait period before manager closure", value: "48 hours" },
-    { label: "Slot-confirm timeout → auto-escalate", value: "6 hours" },
-    /**
-     * ⚠ OPEN DECISION — "Weighted by job type" contradicts the plain
-     * jobs-per-day cap used everywhere else: `mobileapp/AGENTS.md` calls
-     * bandwidth a simple 1–12/day count, and this very prototype's own
-     * technician records store plain counts (`bwUsed 3 / bwTotal 5`) with
-     * no weight anywhere. Rendered faithfully; not reconciled. See
-     * adminWeb/AGENTS.md, "Decisions still open" §2.
-     */
-    { label: "Bandwidth model", value: "Weighted by job type" },
-  ],
+  slotConfirmTimeoutHours: 6,
+  escalationTriggerHours: ESCALATION_TRIGGER_HOURS,
+  customerWaitHours: CUSTOMER_WAIT_HOURS,
+
+  /**
+   * ⚠ OPEN DECISION — "weighted" is the prototype's wording and contradicts
+   * the plain jobs-per-day cap used everywhere else: mobileapp/AGENTS.md
+   * calls bandwidth a simple 1–12/day count, and this prototype's own
+   * technician records store plain counts (bwUsed 3 / bwTotal 5) with no
+   * weight anywhere. Rendered faithfully as the served default; now that it
+   * is a real field, this screen is where the decision gets settled.
+   * See adminWeb/AGENTS.md, "Decisions still open" §2.
+   */
+  bandwidthModel: "weighted",
 };
 
 export function getRulesConfig(): Promise<RulesConfig> {
@@ -116,17 +132,40 @@ export function getRulesConfig(): Promise<RulesConfig> {
 }
 
 export interface RulesConfigDraft {
+  penalty: Array<{ band: string; amount: number }>;
+  penaltyCap: number;
   aiThreshold: number;
+  slotConfirmTimeoutHours: number;
+  escalationTriggerHours: number;
+  customerWaitHours: number;
+  bandwidthModel: BandwidthModel;
 }
 
 /**
- * Mock no-op. Nothing persists — there is no rules API yet, and inventing
- * local persistence would let this screen disagree with the technician app
- * about live money. It resolves so the screen can prove its saving state,
- * and deliberately returns the draft rather than mutating `RULES`.
+ * Applies the draft to the served config.
+ *
+ * This persists for the session only — there is no rules API yet. It is a
+ * genuine write rather than a no-op so the screen behaves like the real one:
+ * saving, then re-reading, returns what you saved.
+ *
+ * ⚠ Whatever is saved here does NOT reach the technician app. Until the
+ * penalty-band contradiction is settled, the two can still disagree about
+ * live money — see the note on `penalty` above.
  */
-export function saveRulesConfig(draft: RulesConfigDraft): Promise<RulesConfigDraft> {
-  return mockResponse(() => draft);
+export function saveRulesConfig(draft: RulesConfigDraft): Promise<RulesConfig> {
+  return mockResponse(() => {
+    if (draft.penalty.some((b) => b.amount < 0)) {
+      throw new ApiError("A penalty cannot be negative", 422);
+    }
+    RULES.penalty = draft.penalty.map((b) => ({ ...b, basis: "flat" as const }));
+    RULES.penaltyCap = draft.penaltyCap;
+    RULES.ai = { ...RULES.ai, threshold: draft.aiThreshold };
+    RULES.slotConfirmTimeoutHours = draft.slotConfirmTimeoutHours;
+    RULES.escalationTriggerHours = draft.escalationTriggerHours;
+    RULES.customerWaitHours = draft.customerWaitHours;
+    RULES.bandwidthModel = draft.bandwidthModel;
+    return RULES;
+  });
 }
 
 /* ---------------------------------------------------------------- users data */

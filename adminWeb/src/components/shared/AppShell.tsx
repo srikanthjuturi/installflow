@@ -1,6 +1,7 @@
 import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router";
 import { AnimatePresence, motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PageSkeleton } from "./PageSkeleton";
@@ -9,7 +10,7 @@ import { useSession } from "@/store/session";
 
 export function AppShell() {
   const { pathname } = useLocation();
-  const { sidebarOpen, setSidebarOpen } = useSession();
+  const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useSession();
   const meta = PAGE_META(pathname);
 
   // A route change must never leave the drawer open behind the new page.
@@ -27,7 +28,7 @@ export function AppShell() {
     <div className="bg-background min-h-svh">
       {/* Desktop rail */}
       <div className="fixed inset-y-0 left-0 z-50 hidden md:block">
-        <Sidebar />
+        <Sidebar collapsed={sidebarCollapsed} />
       </div>
 
       {/* Mobile drawer */}
@@ -59,7 +60,7 @@ export function AppShell() {
         )}
       </AnimatePresence>
 
-      <div className="md:ml-sidebar">
+      <div className={cn("transition-[margin] duration-200", sidebarCollapsed ? "md:ml-sidebar-collapsed" : "md:ml-sidebar")}>
         <Topbar title={meta.title} subtitle={meta.subtitle} />
         {/* Fluid — the console is a work surface, so a wide monitor should
             buy more table, not more margin. */}

@@ -114,6 +114,7 @@
   /* Layout. No content max-width on purpose — the console is fluid, so a
      wide monitor buys more table rather than more margin. */
   --spacing-sidebar: 236px;
+  --spacing-sidebar-collapsed: 64px;
   --spacing-topbar: 60px;
 
   /* Shape */

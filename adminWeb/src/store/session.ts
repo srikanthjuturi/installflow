@@ -13,11 +13,16 @@ interface SessionState {
   /** The scope being viewed. Server-side guards are the real authority;
    *  this only drives presentation. */
   role: Role;
+  /** Mobile drawer — transient, never persisted. */
   sidebarOpen: boolean;
+  /** Desktop rail collapsed to icons. Persisted: it is a workspace preference,
+   *  and having it reset on every reload would be worse than not having it. */
+  sidebarCollapsed: boolean;
   signIn: (email: string) => void;
   signOut: () => void;
   setRole: (role: Role) => void;
   setSidebarOpen: (open: boolean) => void;
+  toggleSidebarCollapsed: () => void;
 }
 
 export const useSession = create<SessionState>()(
@@ -28,10 +33,13 @@ export const useSession = create<SessionState>()(
       email: "ravi.sharma@installflow.in",
       role: "ASM",
       sidebarOpen: false,
+      sidebarCollapsed: false,
       signIn: (email) => set({ signedIn: true, email }),
       signOut: () => set({ signedIn: false }),
       setRole: (role) => set({ role }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+      toggleSidebarCollapsed: () =>
+        set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
     }),
     {
       name: "installflow.session",
@@ -40,6 +48,7 @@ export const useSession = create<SessionState>()(
         email: s.email,
         name: s.name,
         role: s.role,
+        sidebarCollapsed: s.sidebarCollapsed,
       }),
     },
   ),

@@ -11,13 +11,14 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import {
-  AI_CONFIDENCE_THRESHOLD,
+  useAiThreshold,
   useAiFlag,
   useApproveMatch,
   useRejectAndRetake,
 } from "@/hooks/useAiReview";
 
 export default function AiReviewDetailPage() {
+  const threshold = useAiThreshold();
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { data: flag, isLoading, isError, error, refetch } = useAiFlag(id);
@@ -122,7 +123,7 @@ export default function AiReviewDetailPage() {
                 <CardContent>
                   <ConfidenceMeter
                     conf={flag.conf}
-                    threshold={AI_CONFIDENCE_THRESHOLD}
+                    threshold={threshold}
                     variant="hero"
                   />
                   <div className="mt-3.5">

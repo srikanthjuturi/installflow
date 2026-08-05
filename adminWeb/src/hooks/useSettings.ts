@@ -26,13 +26,19 @@ export function useRulesConfig() {
 }
 
 /**
- * Deliberately does NOT invalidate `settingsKeys.rules()`: the service is a
- * mock no-op, so refetching would snap the form back and read as data loss.
- * When the real endpoint lands, add the invalidation here — the component
- * and the page both stay as they are.
+ * The save now writes to the served config, so it invalidates — the screen
+ * must re-read what it saved rather than trusting its own draft. Also
+ * invalidates the AI queue, which labels rows against this threshold.
  */
 export function useSaveRulesConfig() {
-  return useMutation({ mutationFn: saveRulesConfig });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: saveRulesConfig,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.rules() });
+      queryClient.invalidateQueries({ queryKey: ["ai"] });
+    },
+  });
 }
 
 /** Console users — one row per person who can sign in to the portal. */

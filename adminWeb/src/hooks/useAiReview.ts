@@ -7,10 +7,24 @@ import {
   rejectAndRetake,
 } from "@/services/ai";
 import { dashboardKeys } from "./useDashboard";
+import { useRulesConfig } from "./useSettings";
 import { ticketKeys } from "./useTickets";
 
 /** Re-exported so screens never import a service directly. */
 export { AI_CONFIDENCE_THRESHOLD };
+
+/**
+ * The threshold this queue judges against.
+ *
+ * Reads the CONFIGURED value from rules, not the compile-time default —
+ * otherwise moving the slider on /settings/rules would change that screen and
+ * leave this one still claiming 70%. The constant is only the fallback for
+ * the first render before rules resolve.
+ */
+export function useAiThreshold(): number {
+  const { data } = useRulesConfig();
+  return data?.ai.threshold ?? AI_CONFIDENCE_THRESHOLD;
+}
 
 export const aiKeys = {
   all: ["ai-review"] as const,

@@ -2,9 +2,10 @@ import { ScanLine } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { AiQueueTable } from "@/components/ai-review/AiQueueTable";
-import { AI_CONFIDENCE_THRESHOLD, useAiQueue } from "@/hooks/useAiReview";
+import { useAiQueue, useAiThreshold } from "@/hooks/useAiReview";
 
 export default function AiQueuePage() {
+  const threshold = useAiThreshold();
   const { data, isLoading, isError, error, refetch } = useAiQueue();
   const hasRows = Boolean(data?.length);
 
@@ -20,7 +21,7 @@ export default function AiQueuePage() {
           <ScanLine className="size-4.5 shrink-0" aria-hidden />
           <span>
             AI verification flagged these tickets for manual review. Below the{" "}
-            <b>{AI_CONFIDENCE_THRESHOLD}%</b> confidence threshold or with an unreadable
+            <b>{threshold}%</b> confidence threshold or with an unreadable
             image.
           </span>
         </p>
@@ -30,7 +31,7 @@ export default function AiQueuePage() {
         <CardContent className="px-0">
           <AiQueueTable
             flags={data}
-            threshold={AI_CONFIDENCE_THRESHOLD}
+            threshold={threshold}
             isLoading={isLoading}
             error={isError ? error : null}
             onRetry={() => refetch()}
