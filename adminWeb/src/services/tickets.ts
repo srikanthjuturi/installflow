@@ -1,4 +1,4 @@
-import { mockResponse, notFound } from "./client";
+import { ApiError, mockResponse, notFound } from "./client";
 import { TICKETS, timelineFor } from "./mocks/tickets";
 import type { Ticket, TicketFilters, TimelineEvent } from "@/types";
 
@@ -64,6 +64,31 @@ export function createTicket(input: CreateTicketInput): Promise<Ticket> {
       expected: input.expected,
     };
     TICKETS.unshift(ticket);
+    return ticket;
+  });
+}
+
+export interface ForceCloseInput {
+  id: string;
+  reason: string;
+  notes: string;
+  attachments: string[];
+}
+
+/**
+ * Manager closure (§10). Only available once the customer wait period has
+ * elapsed, and only WITH supporting documents — the attachment list is not
+ * optional, and who closed it, when and on what basis is recorded for audit.
+ */
+export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
+  return mockResponse(() => {
+    const ticket = TICKETS.find((t) => t.id === input.id);
+    if (!ticket) notFound("Ticket", input.id);
+    if (input.attachments.length === 0) {
+      throw new ApiError("Supporting attachments are required to force-close", 422);
+    }
+    ticket.status = "Force-Closed";
+    ticket.sla = "done";
     return ticket;
   });
 }
