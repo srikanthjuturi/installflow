@@ -10,6 +10,10 @@ const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage"));
 const TicketListPage = lazy(() => import("@/pages/tickets/TicketListPage"));
 const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
 const ManualEntryPage = lazy(() => import("@/pages/tickets/ManualEntryPage"));
+const BulkUploadPage = lazy(() => import("@/pages/tickets/BulkUploadPage"));
+const ValidationResultPage = lazy(
+  () => import("@/pages/tickets/ValidationResultPage"),
+);
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -35,6 +39,8 @@ export const routes: RouteObject[] = [
           { index: true, element: <DashboardPage /> },
           { path: "tickets", element: <TicketListPage /> },
           { path: "tickets/new", element: <ManualEntryPage /> },
+          { path: "tickets/import", element: <BulkUploadPage /> },
+          { path: "tickets/import/:batchId", element: <ValidationResultPage /> },
           { path: "tickets/:id", element: <TicketDetailPage /> },
         ],
       },

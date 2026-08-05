@@ -1,0 +1,89 @@
+import { ArrowLeft } from "lucide-react";
+import { Link, useParams } from "react-router";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageMeta } from "@/components/shared/PageMeta";
+import { ErrorState } from "@/components/shared/states";
+import { ValidationTable } from "@/components/tickets/ValidationTable";
+import { useBatch } from "@/hooks/useImports";
+import { cn } from "@/lib/utils";
+
+export default function ValidationResultPage() {
+  const { batchId = "" } = useParams();
+  const { data, isLoading, isError, error, refetch } = useBatch(batchId);
+
+  const stats = [
+    { label: "Total rows", value: data?.total, tone: "" },
+    { label: "Passed · imported", value: data?.passed, tone: "text-ok" },
+    { label: "Rejected", value: data?.rejected, tone: "text-danger" },
+  ];
+
+  return (
+    <>
+      <PageMeta title="Upload validation" description="Row-level import result." />
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        nativeButton={false}
+        render={<Link to="/tickets/import" />}
+      >
+        <ArrowLeft data-icon="inline-start" />
+        Back to upload
+      </Button>
+
+      {isError ? (
+        <ErrorState
+          title="Couldn't load this import"
+          error={error}
+          onRetry={() => refetch()}
+        />
+      ) : (
+        <>
+          <div className="mb-3.5 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+            {stats.map((s) => (
+              <Card key={s.label}>
+                <CardContent>
+                  <div className="text-ink-2 text-xs font-medium">{s.label}</div>
+                  {isLoading ? (
+                    <Skeleton className="mt-2.5 h-7 w-16" />
+                  ) : (
+                    <div
+                      className={cn(
+                        "mt-2.5 text-[28px] leading-none font-semibold tabular-nums",
+                        s.tone,
+                      )}
+                    >
+                      {s.value}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <Card>
+            <CardHeader className="border-line-2 border-b pb-4">
+              <CardTitle className="text-sm">Row-level result</CardTitle>
+              <CardAction>
+                <div className="flex flex-wrap gap-2.5">
+                  <Button variant="outline" size="sm">
+                    Download error report
+                  </Button>
+                  <Button size="sm" nativeButton={false} render={<Link to="/tickets" />}>
+                    Go to imported tickets
+                  </Button>
+                </div>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              <ValidationTable rows={data?.rows} isLoading={isLoading} />
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </>
+  );
+}
