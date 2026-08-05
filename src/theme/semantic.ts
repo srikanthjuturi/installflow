@@ -95,6 +95,14 @@ export const color = {
   debit: palette.danger[500],
   bonus: palette.secondary[600],
 
+  // ── confirmation panel ──────────────────────────────────────────────────
+  /** Tinted ground for a passed check. Softer than the success ramp. */
+  successSurface: '#eaf7ef',
+  successSurfaceBorder: '#c6e9d3',
+  /** Placeholder for a capture thumbnail before its image is available. */
+  thumbFrom: palette.neutral[800],
+  thumbTo: '#455a72',
+
   // ── penalty panel ───────────────────────────────────────────────────────
   /** Tinted ground for the cancellation cost. Softer than the danger ramp. */
   dangerSurface: '#fdecec',

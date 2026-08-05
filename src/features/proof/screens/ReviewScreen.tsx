@@ -1,15 +1,18 @@
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Header, Screen } from '@/components/layout';
-import { Button, Card } from '@/components/ui';
+import { TitleBar } from '@/components/layout';
+import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { STEP_CONFIG } from '@/features/proof/machine';
 import { useCaptureStore, type CapturedShot } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 import type { ProofKind } from '@/types/domain';
 
 export interface ReviewScreenProps {
@@ -26,12 +29,13 @@ const TILE_ICON: Record<ProofKind, IconName> = {
 /**
  * Screen 13 — Review & submit.
  *
- * The last point where a bad capture is free to fix. Once submitted, a blurry
- * serial costs an ASM review or a return trip, so every tile is tappable and
- * says so.
+ * The last point where a bad capture is free to fix. After submission a blurry
+ * serial costs an ASM review or a return trip, so the whole tile is the retake
+ * target rather than a small link at its edge.
  */
 export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { data: job } = useJob(jobId);
 
   const { barcode, serial, photos, live, setStep, clearStep } = useCaptureStore();
@@ -54,51 +58,76 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   ];
 
   return (
-    <>
-      <Header
-        title="Review & submit"
-        subtitle="Check your four captures before AI verification. Tap any to retake."
-        onBack={() => router.replace(`/job/${jobId}`)}
-      />
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="dark" />
+      <TitleBar title="Review & submit" onBack={() => router.replace(`/job/${jobId}`)} />
 
-      <Screen
-        footer={
-          <Button
-            label="Submit for AI verification"
-            onPress={() => router.replace(`/job/${jobId}/proof/verifying`)}
-          />
-        }
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={{ gap: 12, marginTop: 4 }}>
-          {tiles.map(({ step, meta, shot }) => (
-            <Card key={step} padded={false} style={{ padding: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 12.5,
+            lineHeight: 19,
+            color: color.textSecondary,
+            marginHorizontal: 2,
+            marginBottom: 14,
+          }}
+        >
+          Check your four captures before AI verification. Tap any to retake.
+        </Text>
+
+        {tiles.map(({ step, meta, shot }) => (
+          <Pressable
+            key={step}
+            onPress={() => retake(step)}
+            accessibilityRole="button"
+            accessibilityLabel={`Retake ${STEP_CONFIG[step].reviewLabel}`}
+          >
+            {({ pressed }) => (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 14,
+                  backgroundColor: color.surfaceRaised,
+                  borderWidth: 1,
+                  borderColor: pressed ? palette.neutral[300] : color.border,
+                  borderRadius: 16,
+                  padding: 12,
+                  marginBottom: 11,
+                }}
+              >
                 {shot ? (
                   <Image
                     source={{ uri: shot.uri }}
-                    style={{ width: 52, height: 52, borderRadius: radius.sm }}
+                    style={{ width: 56, height: 56, borderRadius: 12 }}
                     contentFit="cover"
                   />
                 ) : (
-                  <View
+                  <LinearGradient
+                    colors={[color.thumbFrom, color.thumbTo]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                     style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: radius.sm,
-                      backgroundColor: color.surfaceSunken,
+                      width: 56,
+                      height: 56,
+                      borderRadius: 12,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Icon name={TILE_ICON[step]} size={22} color={color.textMuted} />
-                  </View>
+                    <Icon name={TILE_ICON[step]} size={24} color={color.textInverse} />
+                  </LinearGradient>
                 )}
 
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
                       fontFamily: 'Roboto_700Bold',
-                      fontSize: 14,
+                      fontSize: 14.5,
                       color: color.textPrimary,
                     }}
                   >
@@ -107,7 +136,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                   <Text
                     style={{
                       fontFamily: 'Roboto_400Regular',
-                      fontSize: 12.5,
+                      fontSize: 12,
                       color: color.textSecondary,
                       marginTop: 2,
                     }}
@@ -116,54 +145,78 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                   </Text>
                 </View>
 
-                <Pressable
-                  onPress={() => retake(step)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Retake ${STEP_CONFIG[step].reviewLabel}`}
-                >
-                  {({ pressed }) => (
-                    <Text
-                      style={{
-                        fontFamily: 'Roboto_700Bold',
-                        fontSize: 13,
-                        color: color.actionBg,
-                        opacity: pressed ? 0.6 : 1,
-                      }}
-                    >
-                      Retake
-                    </Text>
-                  )}
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                  {/* Green tick per row: four separate things must be present,
+                      and a glance down this column is how you confirm that. */}
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: color.online,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Icon name="check" size={14} color={color.textInverse} />
+                  </View>
+
+                  <Text
+                    style={{ fontFamily: 'Roboto_700Bold', fontSize: 12, color: color.actionBg }}
+                  >
+                    Retake
+                  </Text>
+                </View>
               </View>
-            </Card>
-          ))}
-        </View>
+            )}
+          </Pressable>
+        ))}
 
         <View
           style={{
             flexDirection: 'row',
-            gap: 10,
-            backgroundColor: color.statusCompleted.bg,
-            borderRadius: radius.lg,
-            padding: 14,
-            marginTop: 16,
+            alignItems: 'center',
+            gap: 8,
+            backgroundColor: color.successSurface,
+            borderWidth: 1,
+            borderColor: color.successSurfaceBorder,
+            borderRadius: 12,
+            paddingVertical: 11,
+            paddingHorizontal: 13,
+            marginTop: 6,
           }}
         >
-          <Icon name="geo" size={17} color={color.statusCompleted.fg} />
+          <Icon name="geo" size={18} color={color.credit} strokeWidth={1.7} />
           <Text
             style={{
               flex: 1,
               fontFamily: 'Roboto_500Medium',
-              fontSize: 12.5,
-              lineHeight: 19,
-              color: color.statusCompleted.fg,
+              fontSize: 12,
+              lineHeight: 17,
+              color: color.credit,
             }}
           >
             All photos geo-tagged &amp; matched to pincode {job?.pincode ?? ''}.
           </Text>
         </View>
-      </Screen>
-    </>
+      </ScrollView>
+
+      <View
+        style={{
+          backgroundColor: color.surfaceRaised,
+          borderTopWidth: 1,
+          borderTopColor: palette.neutral[200],
+          paddingTop: 12,
+          paddingHorizontal: 16,
+          paddingBottom: insets.bottom + 16,
+        }}
+      >
+        <Button
+          label="Submit for AI verification"
+          trailingIcon="arrowRight"
+          onPress={() => router.replace(`/job/${jobId}/proof/verifying`)}
+        />
+      </View>
+    </View>
   );
 }
