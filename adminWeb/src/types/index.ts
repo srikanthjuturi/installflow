@@ -1,4 +1,5 @@
 export * from "./ticket";
+export * from "./dashboard";
 
 /** Management hierarchy. Ops Staff do intake only. */
 export type Role = "NH" | "RSH" | "ASM" | "Ops Staff";
