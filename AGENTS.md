@@ -6,11 +6,14 @@ customer-confirmed slot, travel, install, capture AI-verified photo proof, close
 > **Expo HAS CHANGED.** Read the exact versioned docs at
 > https://docs.expo.dev/versions/v54.0.0/ before writing any code.
 
-Source of truth for behaviour and design lives in [RequirementDocs/](RequirementDocs/):
+Two sources of truth:
 
-- `Installation_Requirement_Document.docx` — the business flow
-- `Technician Field App.html` — a clickable prototype with all **18 screens**. It is a design
-  artifact with no reusable code, but its copy, layout and colours are **approved** — match it.
+- [RequirementDocs/Installation_Requirement_Document.docx](RequirementDocs/Installation_Requirement_Document.docx)
+  — the business flow.
+- [mobileapp/appdesign/Technician Field App.html](mobileapp/appdesign/) — a clickable prototype
+  with all **18 screens**. It is a design artifact with no reusable code, but its copy, layout
+  and colours are **approved** — match it exactly. It sits with the app because it is the app's
+  design reference, not a requirement the backend shares.
 
 For the per-screen spec, token tables and component patterns, load the **`videocon-tech-app`**
 skill in `.claude/skills/`.

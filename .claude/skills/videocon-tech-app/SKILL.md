@@ -4,7 +4,7 @@ description: >
   Screen-by-screen spec, design tokens, component patterns and domain model for the Videocon
   Technician Field App (Expo SDK 54 + Expo Router + NativeWind). Holds the approved copy,
   layout and interaction detail for all 18 screens, extracted from the client-approved
-  prototype at RequirementDocs/Technician Field App.html, plus the penalty bands, proof-capture
+  prototype at mobileapp/appdesign/Technician Field App.html, plus the penalty bands, proof-capture
   state machine and job status rules. Load this before building or changing any screen, adding
   a component to mobileapp/src/components/ui, touching mobileapp/src/theme, or writing mock
   data — it prevents
@@ -16,8 +16,12 @@ description: >
 # Videocon Technician Field App — screen & design spec
 
 Everything here is extracted from the **client-approved prototype**,
-`RequirementDocs/Technician Field App.html`. Treat its copy and layout as fixed. The business
-rules behind it come from `RequirementDocs/Installation_Requirement_Document.docx` (v0.2).
+`mobileapp/appdesign/Technician Field App.html`. Treat its copy and layout as fixed. The
+business rules behind it come from `RequirementDocs/Installation_Requirement_Document.docx`
+(v0.2).
+
+The prototype is a bundled artifact — its markup is gzip+base64 inside the HTML, so open it in
+a browser to view, or unpack the payload to read exact CSS values.
 
 Where the two disagree, **the prototype wins** — it is the later artifact and it resolves
 several questions the document left open.

@@ -11,7 +11,8 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = [
   ...expoConfig,
   {
-    ignores: ['dist/*', '.expo/*', 'node_modules/*'],
+    // appdesign holds the approved prototype — a bundled artifact, not source.
+    ignores: ['dist/*', '.expo/*', 'node_modules/*', 'appdesign/*'],
   },
   {
     files: ['app/**/*.{ts,tsx}', 'src/**/*.{ts,tsx}'],
