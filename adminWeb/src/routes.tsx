@@ -23,6 +23,12 @@ const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
 const AiReviewDetailPage = lazy(
   () => import("@/pages/ai-review/AiReviewDetailPage"),
 );
+const TechnicianListPage = lazy(
+  () => import("@/pages/technicians/TechnicianListPage"),
+);
+const TechnicianProfilePage = lazy(
+  () => import("@/pages/technicians/TechnicianProfilePage"),
+);
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -56,6 +62,8 @@ export const routes: RouteObject[] = [
           { path: "escalations/:id/assign", element: <ManualAssignPage /> },
           { path: "ai-review", element: <AiQueuePage /> },
           { path: "ai-review/:id", element: <AiReviewDetailPage /> },
+          { path: "technicians", element: <TechnicianListPage /> },
+          { path: "technicians/:id", element: <TechnicianProfilePage /> },
         ],
       },
     ],
