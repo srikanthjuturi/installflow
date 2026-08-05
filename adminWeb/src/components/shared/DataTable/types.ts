@@ -1,3 +1,4 @@
+import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LucideIcon } from "lucide-react";
 
 /** A sortable value. `null` sorts last regardless of direction. */
@@ -102,6 +103,20 @@ export interface DataTableProps<T> {
 
   /** `false` disables paging entirely (short, fixed lists). */
   pagination?: false | { sizes?: number[]; defaultSize?: number };
+
+  /**
+   * Server-driven mode.
+   *
+   * When present the table renders exactly the rows it is given and reports
+   * intent upward instead of filtering, sorting or slicing locally — the
+   * backend paginates, so doing it again in the browser would page a page.
+   * `meta` is the envelope's `pagination` block.
+   */
+  server?: {
+    meta?: PaginationMeta;
+    params: ListParams;
+    onParams: (next: ListParams) => void;
+  };
 
   defaultSort?: SortState;
   /** Shown beside the row count, e.g. "Sorted by SLA urgency". */

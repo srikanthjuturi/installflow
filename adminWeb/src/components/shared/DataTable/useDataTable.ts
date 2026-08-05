@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import type { Column, SortState, SortValue, TypedFilterDef } from "./types";
 
-const collator = new Intl.Collator("en-IN", { numeric: true, sensitivity: "base" });
+const collator = new Intl.Collator("en-IN", {
+  numeric: true,
+  sensitivity: "base",
+});
 
 /** `null` always sorts last, in both directions — a blank is not a small value. */
 function compare(a: SortValue, b: SortValue): number {
@@ -25,6 +28,8 @@ interface Args<T> {
   defaultSort?: SortState;
   pageSizeDefault: number;
   paginated: boolean;
+  /** Server mode: the rows arrived filtered, sorted and sliced. */
+  passthrough?: boolean;
 }
 
 /**
@@ -41,6 +46,7 @@ export function useDataTable<T>({
   defaultSort,
   pageSizeDefault,
   paginated,
+  passthrough,
 }: Args<T>) {
   const [innerQuery, setInnerQuery] = useState("");
   const [innerFilters, setInnerFilters] = useState<Record<string, string>>({});
@@ -55,16 +61,22 @@ export function useDataTable<T>({
     f.value ?? innerFilters[f.id] ?? f.allValue ?? "All";
 
   const setFilterValue = (f: TypedFilterDef<T>, v: string) =>
-    f.onChange ? f.onChange(v) : setInnerFilters((prev) => ({ ...prev, [f.id]: v }));
+    f.onChange
+      ? f.onChange(v)
+      : setInnerFilters((prev) => ({ ...prev, [f.id]: v }));
 
   // Every column's sortValue, keyed for O(1) lookup during sort.
   const sortable = useMemo(
-    () => new Map(columns.filter((c) => c.sortValue).map((c) => [c.id, c.sortValue!])),
-    [columns],
+    () =>
+      new Map(
+        columns.filter((c) => c.sortValue).map((c) => [c.id, c.sortValue!])
+      ),
+    [columns]
   );
 
   const filtered = useMemo(() => {
     let rows = data ?? [];
+    if (passthrough) return rows;
 
     for (const f of filters ?? []) {
       const v = filterValue(f);
@@ -77,7 +89,11 @@ export function useDataTable<T>({
       rows = rows.filter((row) =>
         search.fn
           ? search.fn(row, q)
-          : (search.keys ?? []).some((k) => String(row[k] ?? "").toLowerCase().includes(q)),
+          : (search.keys ?? []).some((k) =>
+              String(row[k] ?? "")
+                .toLowerCase()
+                .includes(q)
+            )
       );
     }
 
@@ -93,7 +109,7 @@ export function useDataTable<T>({
 
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, filters, query, search, sort, sortable, innerFilters]);
+  }, [data, filters, query, search, sort, sortable, innerFilters, passthrough]);
 
   const total = filtered.length;
   const pageCount = paginated ? Math.max(1, Math.ceil(total / pageSize)) : 1;
@@ -118,7 +134,7 @@ export function useDataTable<T>({
         ? { columnId, dir: "asc" }
         : prev.dir === "asc"
           ? { columnId, dir: "desc" }
-          : undefined,
+          : undefined
     );
   }
 

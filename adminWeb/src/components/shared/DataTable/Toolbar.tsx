@@ -19,6 +19,8 @@ interface ToolbarProps<T> {
   onFilter: (f: TypedFilterDef<T>, v: string) => void;
   actions?: React.ReactNode;
   tableId: string;
+  /** Rows-per-page lives here, beside the other controls that narrow the view. */
+  pageSize?: { value: number; sizes: number[]; onChange: (n: number) => void };
 }
 
 /** Search, filters and page actions. Renders nothing if it would be empty. */
@@ -31,8 +33,9 @@ export function Toolbar<T>({
   onFilter,
   actions,
   tableId,
+  pageSize,
 }: ToolbarProps<T>) {
-  if (!search && filters.length === 0 && !actions) return null;
+  if (!search && filters.length === 0 && !actions && !pageSize) return null;
 
   return (
     <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
@@ -128,6 +131,37 @@ export function Toolbar<T>({
           </Select>
         );
       })}
+
+      {pageSize ? (
+        <div className="flex items-center gap-2 text-xs text-ink-2">
+          <label htmlFor={`${tableId}-size`} className="whitespace-nowrap">
+            Rows
+          </label>
+          <Select
+            value={String(pageSize.value)}
+            onValueChange={(v) =>
+              pageSize.onChange(Number(v ?? pageSize.value))
+            }
+          >
+            <SelectTrigger
+              id={`${tableId}-size`}
+              className="h-10 w-20"
+              aria-controls={tableId}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {pageSize.sizes.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
 
       {actions ? <div className="flex flex-wrap gap-2.5">{actions}</div> : null}
     </div>

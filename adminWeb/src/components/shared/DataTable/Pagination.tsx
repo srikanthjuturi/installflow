@@ -1,33 +1,28 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface PaginationProps {
   page: number;
   pageCount: number;
   pageSize: number;
-  sizes: number[];
   total: number;
   onPage: (p: number) => void;
-  onPageSize: (n: number) => void;
   tableId: string;
 }
 
+/**
+ * The footer: which slice you are looking at, and how to move.
+ *
+ * Rows-per-page deliberately lives in the toolbar with search and filters —
+ * it narrows the view like they do, so it belongs where you go to change what
+ * you see, not at the bottom after you have already scrolled past everything.
+ */
 export function Pagination({
   page,
   pageCount,
   pageSize,
-  sizes,
   total,
   onPage,
-  onPageSize,
   tableId,
 }: PaginationProps) {
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -35,29 +30,6 @@ export function Pagination({
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-2 px-4 py-3 text-xs text-ink-2">
-      <div className="flex items-center gap-2">
-        <label htmlFor={`${tableId}-size`} className="whitespace-nowrap">
-          Rows per page
-        </label>
-        <Select
-          value={String(pageSize)}
-          onValueChange={(v) => onPageSize(Number(v))}
-        >
-          <SelectTrigger id={`${tableId}-size`} size="sm" className="w-20">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {sizes.map((s) => (
-                <SelectItem key={s} value={String(s)}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Announced on change so a screen-reader user learns the result count
           without hunting for it. */}
       <span aria-live="polite">

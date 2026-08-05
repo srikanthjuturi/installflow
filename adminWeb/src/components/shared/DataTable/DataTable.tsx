@@ -46,6 +46,7 @@ export function DataTable<T>({
   defaultSort,
   summary,
   countLabel,
+  server,
   onRowClick,
   rowClassName,
   minWidth,
@@ -61,6 +62,10 @@ export function DataTable<T>({
   const sizes = (paginated && pagination.sizes) || DEFAULT_SIZES;
   const defaultSize = (paginated && pagination.defaultSize) || DEFAULT_SIZE;
 
+  // In server mode the backend has already filtered, sorted and sliced —
+  // running the client pipeline again would page an already-paged page.
+  const isServer = Boolean(server);
+
   const t = useDataTable<T>({
     data,
     columns,
@@ -68,8 +73,25 @@ export function DataTable<T>({
     search,
     defaultSort,
     pageSizeDefault: defaultSize,
-    paginated,
+    paginated: paginated && !isServer,
+    passthrough: isServer,
   });
+
+  const meta = server?.meta;
+  const page = isServer ? (meta?.page ?? 1) : t.page;
+  const pageCount = isServer ? (meta?.totalPages ?? 1) : t.pageCount;
+  const pageSize = isServer ? (meta?.limit ?? defaultSize) : t.pageSize;
+  const total = isServer ? (meta?.totalRecords ?? 0) : t.total;
+
+  const setPage = (p: number) =>
+    isServer ? server!.onParams({ ...server!.params, page: p }) : t.setPage(p);
+
+  // A larger page must start from the top: page 4 of 10-per-page does not
+  // exist once the size becomes 100.
+  const setPageSize = (n: number) =>
+    isServer
+      ? server!.onParams({ ...server!.params, limit: n, page: 1 })
+      : t.setPageSize(n);
 
   const toolbar = (
     <Toolbar
@@ -81,6 +103,11 @@ export function DataTable<T>({
       onFilter={t.setFilterValue}
       actions={toolbarActions}
       tableId={tableId}
+      pageSize={
+        paginated
+          ? { value: pageSize, sizes, onChange: setPageSize }
+          : undefined
+      }
     />
   );
 
@@ -93,7 +120,7 @@ export function DataTable<T>({
     );
   }
 
-  const showEmpty = !isLoading && t.total === 0;
+  const showEmpty = !isLoading && total === 0;
   const placeholderRows = skeletonRows ?? Math.min(defaultSize, 8);
   // `bare` drops the rail for a table already inside a Card — two nested
   // rounded surfaces read as a bug, not as depth.
@@ -112,11 +139,11 @@ export function DataTable<T>({
               {isLoading ? (
                 "Loading…"
               ) : countLabel ? (
-                countLabel(t.total)
+                countLabel(total)
               ) : (
                 <>
-                  <b className="text-ink">{t.total}</b>{" "}
-                  {t.total === 1 ? "result" : "results"}
+                  <b className="text-ink">{total}</b>{" "}
+                  {total === 1 ? "result" : "results"}
                 </>
               )}
             </span>
@@ -251,13 +278,11 @@ export function DataTable<T>({
 
         {paginated && !showEmpty ? (
           <Pagination
-            page={t.page}
-            pageCount={t.pageCount}
-            pageSize={t.pageSize}
-            sizes={sizes}
-            total={t.total}
-            onPage={t.setPage}
-            onPageSize={t.setPageSize}
+            page={page}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={total}
+            onPage={setPage}
             tableId={tableId}
           />
         ) : null}
