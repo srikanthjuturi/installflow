@@ -11,6 +11,9 @@ const TicketListPage = lazy(() => import("@/pages/tickets/TicketListPage"));
 const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
 const ManualEntryPage = lazy(() => import("@/pages/tickets/ManualEntryPage"));
 const BulkUploadPage = lazy(() => import("@/pages/tickets/BulkUploadPage"));
+const EscalationQueuePage = lazy(
+  () => import("@/pages/escalations/EscalationQueuePage"),
+);
 const ValidationResultPage = lazy(
   () => import("@/pages/tickets/ValidationResultPage"),
 );
@@ -42,6 +45,7 @@ export const routes: RouteObject[] = [
           { path: "tickets/import", element: <BulkUploadPage /> },
           { path: "tickets/import/:batchId", element: <ValidationResultPage /> },
           { path: "tickets/:id", element: <TicketDetailPage /> },
+          { path: "escalations", element: <EscalationQueuePage /> },
         ],
       },
     ],

@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -23,16 +24,10 @@ export default function ValidationResultPage() {
     <>
       <PageMeta title="Upload validation" description="Row-level import result." />
 
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mb-3.5 -ml-2"
-        nativeButton={false}
-        render={<Link to="/tickets/import" />}
-      >
+      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/tickets/import">
         <ArrowLeft data-icon="inline-start" />
         Back to upload
-      </Button>
+      </LinkButton>
 
       {isError ? (
         <ErrorState
@@ -72,9 +67,9 @@ export default function ValidationResultPage() {
                   <Button variant="outline" size="sm">
                     Download error report
                   </Button>
-                  <Button size="sm" nativeButton={false} render={<Link to="/tickets" />}>
+                  <LinkButton size="sm" to="/tickets">
                     Go to imported tickets
-                  </Button>
+                  </LinkButton>
                 </div>
               </CardAction>
             </CardHeader>

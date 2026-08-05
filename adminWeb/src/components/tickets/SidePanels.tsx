@@ -1,6 +1,5 @@
-import { Link } from "react-router";
 import { Barcode, Camera, Hash, MapPin } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TicketDetail } from "@/services/tickets";
 
@@ -72,14 +71,13 @@ export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
         ) : (
           <div className="flex flex-col items-start gap-3">
             <p className="text-ink-2 text-[13px]">No technician assigned yet</p>
-            <Button
+            <LinkButton
               variant="outline"
               size="sm"
-              nativeButton={false}
-              render={<Link to={`/escalations/${ticket.id}/assign`} />}
+              to={`/escalations/${ticket.id}/assign`}
             >
               Assign manually
-            </Button>
+            </LinkButton>
           </div>
         )}
       </CardContent>

@@ -1,7 +1,6 @@
 import { Plus, Search } from "lucide-react"
-import { Link } from "react-router"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { LinkButton } from "@/components/shared/LinkButton"
 import type { TicketStatus } from "@/types"
 
 import { STATUS_CHIPS } from "./statusChips"
@@ -56,15 +55,10 @@ export function TicketFilters({
         ))}
       </div>
 
-      {/* Base UI composes via `render`, not Radix's `asChild`. */}
-      <Button
-        className="h-10"
-        nativeButton={false}
-        render={<Link to="/tickets/new" />}
-      >
+      <LinkButton className="h-10" to="/tickets/new">
         <Plus data-icon="inline-start" />
         New ticket
-      </Button>
+      </LinkButton>
     </div>
   )
 }

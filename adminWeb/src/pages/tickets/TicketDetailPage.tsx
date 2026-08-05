@@ -1,6 +1,6 @@
 import { ArrowLeft } from "lucide-react";
-import { Link, useParams } from "react-router";
-import { Button } from "@/components/ui/button";
+import { useParams } from "react-router";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -26,16 +26,10 @@ export default function TicketDetailPage() {
     <>
       <PageMeta title={`Ticket ${id}`} description="Ticket timeline and audit trail." />
 
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mb-3.5 -ml-2"
-        nativeButton={false}
-        render={<Link to="/tickets" />}
-      >
+      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/tickets">
         <ArrowLeft data-icon="inline-start" />
         Back to tickets
-      </Button>
+      </LinkButton>
 
       {isError ? (
         <ErrorState
@@ -73,20 +67,16 @@ export default function TicketDetailPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2.5">
-                    <Button
+                    <LinkButton
                       variant="outline"
                       className="hover:border-danger hover:text-danger"
-                      nativeButton={false}
-                      render={<Link to={`/tickets/${ticket.id}/force-close`} />}
+                      to={`/tickets/${ticket.id}/force-close`}
                     >
                       Force close
-                    </Button>
-                    <Button
-                      nativeButton={false}
-                      render={<Link to={`/escalations/${ticket.id}/assign`} />}
-                    >
+                    </LinkButton>
+                    <LinkButton to={`/escalations/${ticket.id}/assign`}>
                       Re-assign
-                    </Button>
+                    </LinkButton>
                   </div>
                 </div>
 
