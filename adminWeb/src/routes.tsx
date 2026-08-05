@@ -21,6 +21,8 @@ const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
 const ManualAssignPage = lazy(() => import("@/pages/escalations/ManualAssignPage"));
 const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
+const VendorsPage = lazy(() => import("@/pages/masters/VendorsPage"));
+const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
 const TechnicianListPage = lazy(
   () => import("@/pages/technicians/TechnicianListPage"),
 );
@@ -68,6 +70,8 @@ export const routes: RouteObject[] = [
           { path: "technicians", element: <TechnicianListPage /> },
           { path: "technicians/:id", element: <TechnicianProfilePage /> },
           { path: "ledger", element: <LedgerPage /> },
+          { path: "vendors", element: <VendorsPage /> },
+          { path: "categories", element: <CategoriesPage /> },
         ],
       },
     ],
