@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -11,6 +12,7 @@ import { Button, Switch } from '@/components/ui';
 import { qk } from '@/lib/queryKeys';
 import { delay } from '@/mocks/delay';
 import { technician } from '@/mocks/db';
+import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { ProductCategory, Technician } from '@/types/domain';
@@ -45,6 +47,7 @@ export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { data: me } = useQuery({ queryKey: qk.me(), queryFn: getMe });
   const [pushEnabled, setPushEnabled] = useState(true);
+  const avatarUri = useProfileStore((s) => s.avatarUri);
 
   const initials = (me?.name ?? '')
     .split(' ')
@@ -78,26 +81,64 @@ export function ProfileScreen() {
             </View>
           ) : (
             <>
-              <View
-                style={{
-                  width: 74,
-                  height: 74,
-                  borderRadius: 22,
-                  backgroundColor: color.actionBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+              <Pressable
+                onPress={() => router.push('/avatar-options')}
+                accessibilityRole="button"
+                accessibilityLabel="Change profile picture"
               >
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_900Black',
-                    fontSize: 28,
-                    color: color.actionFg,
-                  }}
-                >
-                  {initials}
-                </Text>
-              </View>
+                {({ pressed }) => (
+                  <View style={{ opacity: pressed ? 0.8 : 1 }}>
+                    {avatarUri ? (
+                      <Image
+                        source={{ uri: avatarUri }}
+                        style={{ width: 74, height: 74, borderRadius: 22 }}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 74,
+                          height: 74,
+                          borderRadius: 22,
+                          backgroundColor: color.actionBg,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontFamily: 'Roboto_900Black',
+                            fontSize: 28,
+                            color: color.actionFg,
+                          }}
+                        >
+                          {initials}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Ringed in the chrome colour so it reads as a cutout,
+                        the same treatment as Home's unread dot. */}
+                    <View
+                      style={{
+                        position: 'absolute',
+                        right: -4,
+                        bottom: -4,
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        backgroundColor: color.surfaceRaised,
+                        borderWidth: 3,
+                        borderColor: color.chrome,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Icon name="camera" size={14} color={color.textPrimary} strokeWidth={2} />
+                    </View>
+                  </View>
+                )}
+              </Pressable>
 
               <Text
                 style={{

@@ -14,6 +14,10 @@ export default function AppLayout() {
         name="accept-slot"
         options={{ presentation: 'transparentModal', animation: 'fade' }}
       />
+      <Stack.Screen
+        name="avatar-options"
+        options={{ presentation: 'transparentModal', animation: 'fade' }}
+      />
     </Stack>
   );
 }

@@ -53,6 +53,14 @@ const config: ExpoConfig = {
       },
     ],
     [
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Videocon Technician needs your photos so you can set a profile picture.',
+        cameraPermission: 'Videocon Technician needs the camera to take your profile picture.',
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         image: './assets/splash-icon.png',
