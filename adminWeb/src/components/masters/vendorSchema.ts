@@ -7,9 +7,16 @@ import type { Vendor } from "@/types";
  * paths rather than fallbacks. `satisfies` keeps this list honest if the
  * `Vendor` union ever changes.
  */
-export const INTAKE_CHANNELS = ["API", "Excel", "Manual"] as const satisfies readonly Vendor["channel"][];
+export const INTAKE_CHANNELS = [
+  "API",
+  "Excel",
+  "Manual",
+] as const satisfies readonly Vendor["channel"][];
 
-export const VENDOR_STATUSES = ["Active", "Paused"] as const satisfies readonly Vendor["status"][];
+export const VENDOR_STATUSES = [
+  "Active",
+  "Paused",
+] as const satisfies readonly Vendor["status"][];
 
 /** One line per channel, shown under the select so the choice is not a guess. */
 export const CHANNEL_HINT: Record<Vendor["channel"], string> = {

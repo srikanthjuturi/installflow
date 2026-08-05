@@ -27,6 +27,10 @@ function initials(name: string) {
  * The last-resort fallback list. Normal allocation is first-accept-wins — a
  * row here is picked by a manager because nobody accepted in time, so the
  * technician is told rather than asked.
+ *
+ * Client-filtered and unpaginated, unlike the technician master list: this is
+ * the shortlist for one ticket, read inside a card as a decision is made. A
+ * candidate hidden on page 2 is a candidate who does not get considered.
  */
 export function EligibleTechTable({
   technicians,

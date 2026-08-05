@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { Download } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,6 +9,7 @@ import {
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
 import { money } from "@/utils/money";
+import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LedgerEntry } from "@/types";
 
 /**
@@ -49,7 +49,12 @@ function dateKey(date: string): number | null {
 const ALL = "All";
 
 interface LedgerTableProps {
+  /** One page of entries, already filtered and sorted by the server. */
   entries?: LedgerEntry[];
+  meta?: PaginationMeta;
+  params: ListParams;
+  /** Merges what it is given into the query — see `applyParams` on the page. */
+  onParams: (next: ListParams) => void;
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -57,18 +62,18 @@ interface LedgerTableProps {
 
 export function LedgerTable({
   entries,
+  meta,
+  params,
+  onParams,
   isLoading,
   error,
   onRetry,
 }: LedgerTableProps) {
-  // The type filter is controlled here so the export can send the same rows
-  // the reader is looking at, rather than the whole ledger.
-  const [type, setType] = useState(ALL);
+  const type = params.filters?.type ?? ALL;
 
-  const visible = useMemo(
-    () => (entries ?? []).filter((e) => type === ALL || e.type === type),
-    [entries, type]
-  );
+  // The rows in hand — which, now the ledger is paged server-side, is the page
+  // the reader is looking at.
+  const visible = entries ?? [];
 
   const columns: Column<LedgerEntry>[] = [
     {
@@ -133,6 +138,9 @@ export function LedgerTable({
     },
   ];
 
+  // The def keeps the label and the options; the value goes into
+  // `params.filters` and the server narrows the ledger, so `match` is never
+  // called while the table is in server mode.
   const filters: TypedFilterDef<LedgerEntry>[] = [
     {
       id: "type",
@@ -143,9 +151,10 @@ export function LedgerTable({
         { value: "Bonus", label: "Bonus" },
       ],
       value: type,
-      onChange: setType,
+      // A change, not a whole query — the page merges it in.
+      onChange: (v) => onParams({ page: 1, filters: { type: v } }),
       allValue: ALL,
-      match: (l, v) => l.type === v,
+      match: () => true,
     },
   ];
 
@@ -163,11 +172,14 @@ export function LedgerTable({
         error={error}
         onRetry={onRetry}
         filters={filters}
+        server={{ meta, params, onParams }}
         defaultSort={{ columnId: "date", dir: "desc" }}
         minWidth="51.25rem"
         toolbarActions={
           /* Exported in the browser — the rows are already here, so this
-             needs no endpoint. Amounts export as raw signed numbers, not
+             needs no endpoint. It exports the page on screen, which is what
+             the reader can see; a whole-ledger export is an endpoint, not a
+             loop over pages. Amounts export as raw signed numbers, not
              money() strings: a spreadsheet has to be able to sum them. */
           <Button
             variant="outline"

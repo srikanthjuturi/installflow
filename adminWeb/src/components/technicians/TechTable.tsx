@@ -11,10 +11,18 @@ import {
   TechAvatar,
   TechStatusPill,
 } from "./BandwidthBar";
+import type { ListParams, PaginationMeta } from "@/types/api";
 import type { Technician } from "@/types";
 
+const ALL = "All";
+
 interface TechTableProps {
+  /** One page of rows, already searched, filtered and sorted by the server. */
   technicians?: Technician[];
+  meta?: PaginationMeta;
+  params: ListParams;
+  /** Merges what it is given into the query — see `applyParams` on the page. */
+  onParams: (next: ListParams) => void;
   categories: string[];
   isLoading: boolean;
   error: unknown;
@@ -24,6 +32,9 @@ interface TechTableProps {
 
 export function TechTable({
   technicians,
+  meta,
+  params,
+  onParams,
   categories,
   isLoading,
   error,
@@ -31,6 +42,17 @@ export function TechTable({
   toolbarActions,
 }: TechTableProps) {
   const navigate = useNavigate();
+
+  // Narrowing the result set always returns to page 1 — page 4 of the old
+  // result set is rarely a page of the new one, and never the same rows.
+  //
+  // Sent as a change, not a whole query: "Clear filters" resets the search and
+  // both filters in one tick, and three full objects all built from the same
+  // render's `params` would undo each other.
+  const setSearch = (search: string) => onParams({ page: 1, search });
+
+  const setFilter = (id: string, value: string) =>
+    onParams({ page: 1, filters: { [id]: value } });
 
   const columns: Column<Technician>[] = [
     {
@@ -101,13 +123,21 @@ export function TechTable({
     },
   ];
 
+  /**
+   * The defs still own the label and the options — the toolbar renders from
+   * them. What they no longer own is the matching: the value goes into
+   * `params.filters` and the server narrows the result set, so `match` is
+   * never called in server mode.
+   */
   const filters: TypedFilterDef<Technician>[] = [
     {
       id: "category",
       label: "Category",
       variant: "select",
       options: categories.map((c) => ({ value: c, label: c })),
-      match: (t, v) => t.cats.includes(v),
+      value: params.filters?.category ?? ALL,
+      onChange: (v) => setFilter("category", v),
+      match: () => true,
     },
     {
       id: "status",
@@ -117,7 +147,9 @@ export function TechTable({
         { value: "Active", label: "Active" },
         { value: "Inactive", label: "Inactive" },
       ],
-      match: (t, v) => t.status === v,
+      value: params.filters?.status ?? ALL,
+      onChange: (v) => setFilter("status", v),
+      match: () => true,
     },
   ];
 
@@ -133,13 +165,13 @@ export function TechTable({
       onRetry={onRetry}
       search={{
         placeholder: "Search by name, ID or pincode…",
-        fn: (t, q) =>
-          t.name.toLowerCase().includes(q) ||
-          t.id.toLowerCase().includes(q) ||
-          t.pincodes.includes(q),
+        // Controlled, and matched server-side across name, id and pincodes.
+        value: params.search ?? "",
+        onChange: setSearch,
       }}
       filters={filters}
       toolbarActions={toolbarActions}
+      server={{ meta, params, onParams }}
       defaultSort={{ columnId: "name", dir: "asc" }}
       onRowClick={(t) => navigate(`/technicians/${t.id}`)}
       minWidth="64rem"

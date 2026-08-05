@@ -15,10 +15,13 @@ export function OtpStep({
   onVerify,
 }: {
   onBack: () => void;
-  onVerify: () => void;
+  /** Receives the code to verify. Rejects if the call fails. */
+  onVerify: (code: string) => Promise<void>;
 }) {
   const [code, setCode] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const [verifying, setVerifying] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -27,6 +30,21 @@ export function OtpStep({
   }, [secondsLeft]);
 
   const complete = code.length === OTP_LENGTH;
+
+  /** Awaited so the button stays disabled for the whole round trip. */
+  const submit = async () => {
+    setFailure(null);
+    setVerifying(true);
+    try {
+      await onVerify(code);
+    } catch (err) {
+      setFailure(
+        err instanceof Error ? err.message : "Something went wrong. Try again."
+      );
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   return (
     <div>
@@ -45,7 +63,7 @@ export function OtpStep({
         className="mt-6"
         onSubmit={(e) => {
           e.preventDefault();
-          if (complete) onVerify();
+          if (complete && !verifying) void submit();
         }}
       >
         <InputOTP
@@ -67,10 +85,21 @@ export function OtpStep({
           </InputOTPGroup>
         </InputOTP>
 
+        {/* Whatever the envelope reported, in the same shape every other form
+            in the console uses for a failed request. */}
+        {failure ? (
+          <p
+            role="alert"
+            className="mt-4 rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
+          >
+            {failure}
+          </p>
+        ) : null}
+
         <Button
           type="submit"
           className="mt-6 h-11.5 w-full"
-          disabled={!complete}
+          disabled={!complete || verifying}
         >
           Verify &amp; sign in
         </Button>

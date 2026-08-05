@@ -10,7 +10,14 @@ import {
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
+import {
+  filterValue,
+  useParamsWriter,
+  withFilter,
+  withSearch,
+} from "@/hooks/useListParams";
 import { cn } from "@/lib/utils";
+import type { ListParams, PaginationMeta } from "@/types/api";
 import type { Vendor } from "@/types";
 
 /**
@@ -46,7 +53,12 @@ function VendorMonogram({ name }: { name: string }) {
 }
 
 interface VendorTableProps {
+  /** Exactly the rows the server returned for `params` — one page of them. */
   vendors?: Vendor[];
+  /** The envelope's pagination block. Absent on the first load. */
+  meta?: PaginationMeta;
+  params: ListParams;
+  onParams: (next: ListParams) => void;
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -55,6 +67,9 @@ interface VendorTableProps {
 
 export function VendorTable({
   vendors,
+  meta,
+  params,
+  onParams,
   isLoading,
   error,
   onRetry,
@@ -64,6 +79,21 @@ export function VendorTable({
   const [managed, setManaged] = useState<Vendor | null>(null);
   const [open, setOpen] = useState(false);
 
+  // Search and both filters are query parameters now, so each control writes
+  // through here instead of narrowing rows in the browser.
+  const write = useParamsWriter(params, onParams);
+
+  /*
+   * No `sortValue` anywhere below, on purpose.
+   *
+   * Sorting is the server's job now — `ListParams` carries `sortBy` /
+   * `sortDir` and `services/masters.ts` applies them. But `DataTable`'s server
+   * mode wires only page and page size to `server.onParams`; its header
+   * buttons still toggle local sort state, which a passthrough table ignores.
+   * Declaring `sortValue` here would render arrows that reorder nothing and
+   * announce an `aria-sort` that is not true. Restore them the moment
+   * `shared/DataTable` reports sort through `onParams`.
+   */
   const columns: Column<Vendor>[] = [
     {
       id: "name",
@@ -79,6 +109,7 @@ export function VendorTable({
     {
       id: "channel",
       header: "Intake channel",
+      sortValue: (v) => v.channel,
       cell: (v) => (
         // Never colour alone — the channel word is always present.
         <span
@@ -118,16 +149,14 @@ export function VendorTable({
     {
       id: "since",
       header: "Since",
-      // A four-digit year — compared as a number so 2024 never sorts before
-      // 2021 on a string collation.
-      sortValue: (v) =>
-        Number.isNaN(Number(v.since)) ? null : Number(v.since),
+      sortValue: (v) => Number(v.since),
       cellClassName: "tabular-nums",
       cell: (v) => v.since,
     },
     {
       id: "status",
       header: "Status",
+      sortValue: (v) => v.status,
       cell: (v) => (
         <span
           className={cn(
@@ -163,12 +192,20 @@ export function VendorTable({
     },
   ];
 
+  /*
+   * Controlled against the query string. `match` is part of the filter
+   * contract but is never called in server mode — the rows arrive already
+   * narrowed — so it is kept as an accurate statement of what each filter
+   * means rather than a second implementation of it.
+   */
   const filters: TypedFilterDef<Vendor>[] = [
     {
       id: "channel",
       label: "Intake channel",
       variant: "select",
       options: INTAKE_CHANNELS.map((c) => ({ value: c, label: c })),
+      value: filterValue(params, "channel"),
+      onChange: (v) => write((p) => withFilter(p, "channel", v)),
       match: (v, value) => v.channel === value,
     },
     {
@@ -176,6 +213,8 @@ export function VendorTable({
       label: "Status",
       variant: "select",
       options: VENDOR_STATUSES.map((s) => ({ value: s, label: s })),
+      value: filterValue(params, "status"),
+      onChange: (v) => write((p) => withFilter(p, "status", v)),
       match: (v, value) => v.status === value,
     },
   ];
@@ -191,8 +230,13 @@ export function VendorTable({
         isLoading={isLoading}
         error={error}
         onRetry={onRetry}
-        search={{ placeholder: "Search vendors by name…", keys: ["name"] }}
+        search={{
+          placeholder: "Search vendors by name…",
+          value: params.search ?? "",
+          onChange: (v) => write((p) => withSearch(p, v)),
+        }}
         filters={filters}
+        server={{ meta, params, onParams }}
         toolbarActions={toolbarActions}
         minWidth="51.25rem"
         emptyTitle="No vendors yet"

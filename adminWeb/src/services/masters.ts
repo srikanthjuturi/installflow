@@ -1,9 +1,51 @@
-import { ApiError, mockResponse, notFound } from "./client";
+import {
+  ApiError,
+  matches,
+  mockPage,
+  mockResponse,
+  notFound,
+  sortRows,
+} from "./client";
 import { CATEGORIES, VENDORS } from "./mocks/masters";
+import type { ListParams, Page } from "@/types/api";
 import type { Category, Vendor } from "@/types";
 
-export function listVendors(): Promise<Vendor[]> {
-  return mockResponse(() => VENDORS);
+/**
+ * Sortable columns, and the value each one compares on.
+ *
+ * `since` is a four-digit year held as a string — compared as a number so
+ * 2024 never sorts before 2021 on a string collation.
+ */
+const VENDOR_SORT = {
+  name: (v: Vendor) => v.name,
+  channel: (v: Vendor) => v.channel,
+  tickets: (v: Vendor) => v.tickets,
+  since: (v: Vendor) =>
+    Number.isNaN(Number(v.since)) ? null : Number(v.since),
+  status: (v: Vendor) => v.status,
+};
+
+/**
+ * Vendors, server-paged.
+ *
+ * Search, filters, sort and the slice all happen here, standing in for the
+ * backend — which is why no component filters or slices rows itself. With no
+ * `sortBy` the seeded order is preserved, so the list opens exactly as the
+ * approved prototype shows it.
+ */
+export function listVendors(params: ListParams = {}): Promise<Page<Vendor>> {
+  return mockPage(() => {
+    const { channel, status } = params.filters ?? {};
+
+    const rows = VENDORS.filter(
+      (v) =>
+        matches(v, ["name"], params.search) &&
+        (!channel || v.channel === channel) &&
+        (!status || v.status === status)
+    );
+
+    return sortRows(rows, params.sortBy, params.sortDir, VENDOR_SORT);
+  }, params);
 }
 
 export function listCategories(): Promise<Category[]> {
@@ -21,13 +63,19 @@ const NO_KEY = "—";
  * in the forms above it — ever holds a full secret.
  */
 function issueMaskedKey(name: string): string {
-  const prefix = name.replace(/[^a-z]/gi, "").slice(0, 2).toLowerCase() || "vn";
+  const prefix =
+    name
+      .replace(/[^a-z]/gi, "")
+      .slice(0, 2)
+      .toLowerCase() || "vn";
   return `${prefix}_live_••••…•••`;
 }
 
 function nameTaken(name: string, exceptId?: string): boolean {
   const needle = name.toLowerCase();
-  return VENDORS.some((v) => v.name.toLowerCase() === needle && v.id !== exceptId);
+  return VENDORS.some(
+    (v) => v.name.toLowerCase() === needle && v.id !== exceptId
+  );
 }
 
 export interface CreateVendorInput {
@@ -81,7 +129,8 @@ export function updateVendor(input: UpdateVendorInput): Promise<Vendor> {
 
     if (vendor.channel !== input.channel) {
       vendor.channel = input.channel;
-      vendor.key = input.channel === "API" ? issueMaskedKey(vendor.name) : NO_KEY;
+      vendor.key =
+        input.channel === "API" ? issueMaskedKey(vendor.name) : NO_KEY;
     }
     vendor.status = input.status;
     return vendor;

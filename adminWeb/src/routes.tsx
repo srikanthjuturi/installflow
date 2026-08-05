@@ -12,14 +12,16 @@ const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
 const ManualEntryPage = lazy(() => import("@/pages/tickets/ManualEntryPage"));
 const BulkUploadPage = lazy(() => import("@/pages/tickets/BulkUploadPage"));
 const EscalationQueuePage = lazy(
-  () => import("@/pages/escalations/EscalationQueuePage"),
+  () => import("@/pages/escalations/EscalationQueuePage")
 );
 const ValidationResultPage = lazy(
-  () => import("@/pages/tickets/ValidationResultPage"),
+  () => import("@/pages/tickets/ValidationResultPage")
 );
 const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
-const ManualAssignPage = lazy(() => import("@/pages/escalations/ManualAssignPage"));
+const ManualAssignPage = lazy(
+  () => import("@/pages/escalations/ManualAssignPage")
+);
 const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
 const VendorsPage = lazy(() => import("@/pages/masters/VendorsPage"));
 const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
@@ -28,17 +30,17 @@ const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
 const UsersRolesPage = lazy(() => import("@/pages/settings/UsersRolesPage"));
 const AccountPage = lazy(() => import("@/pages/account/AccountPage"));
 const NotificationsPage = lazy(
-  () => import("@/pages/notifications/NotificationsPage"),
+  () => import("@/pages/notifications/NotificationsPage")
 );
 const TechnicianListPage = lazy(
-  () => import("@/pages/technicians/TechnicianListPage"),
+  () => import("@/pages/technicians/TechnicianListPage")
 );
 const TechnicianProfilePage = lazy(
-  () => import("@/pages/technicians/TechnicianProfilePage"),
+  () => import("@/pages/technicians/TechnicianProfilePage")
 );
 const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
 const AiReviewDetailPage = lazy(
-  () => import("@/pages/ai-review/AiReviewDetailPage"),
+  () => import("@/pages/ai-review/AiReviewDetailPage")
 );
 
 function RequireAuth() {
@@ -66,7 +68,10 @@ export const routes: RouteObject[] = [
           { path: "tickets", element: <TicketListPage /> },
           { path: "tickets/new", element: <ManualEntryPage /> },
           { path: "tickets/import", element: <BulkUploadPage /> },
-          { path: "tickets/import/:batchId", element: <ValidationResultPage /> },
+          {
+            path: "tickets/import/:batchId",
+            element: <ValidationResultPage />,
+          },
           { path: "tickets/:id", element: <TicketDetailPage /> },
           { path: "tickets/:id/force-close", element: <ForceClosePage /> },
           { path: "escalations", element: <EscalationQueuePage /> },

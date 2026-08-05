@@ -352,7 +352,7 @@ export function timelineFor(t: Ticket): TimelineEvent[] {
       title: "Notified eligible technicians",
       by: "System",
       note: `${t.category} · ${t.pincode}`,
-    },
+    }
   );
 
   if (t.status === "Escalated") {
@@ -401,7 +401,7 @@ export function timelineFor(t: Ticket): TimelineEvent[] {
         title: "AI flagged for review",
         by: "AI engine",
         note: "Routed to ASM · confidence below threshold",
-      },
+      }
     );
   }
 
@@ -420,7 +420,7 @@ export function timelineFor(t: Ticket): TimelineEvent[] {
         title: "Closed by customer",
         by: t.customer,
         note: "Feedback recorded · 5★",
-      },
+      }
     );
   }
 

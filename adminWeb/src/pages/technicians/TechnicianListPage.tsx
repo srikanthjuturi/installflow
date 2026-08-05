@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
@@ -6,20 +6,42 @@ import { parsePincodes } from "@/components/technicians/technicianSchema";
 import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { useCreateTechnician, useTechnicians } from "@/hooks/useTechnicians";
+import {
+  useCreateTechnician,
+  useTechnicianCategories,
+  useTechnicians,
+} from "@/hooks/useTechnicians";
+import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
 
 export default function TechnicianListPage() {
   const [isFormOpen, setFormOpen] = useState(false);
   const create = useCreateTechnician();
 
-  // One unfiltered fetch: DataTable owns search, filtering, sorting and paging
-  // from here, so the page no longer re-queries per category.
-  const { data, isLoading, isError, error, refetch } = useTechnicians();
+  // The query the server answers. Search, filters, sort and page all live in
+  // one object so the table can hand back a whole new intent in one call.
+  const [params, setParams] = useState<ListParams>({
+    page: 1,
+    limit: DEFAULT_PAGE_SIZE,
+    sortBy: "name",
+    sortDir: "asc",
+  });
 
-  const categories = useMemo(
-    () => [...new Set((data ?? []).flatMap((t) => t.cats))].sort(),
-    [data]
-  );
+  /**
+   * Merged into the current query, not swapped for it.
+   *
+   * "Clear filters" resets the search box and every filter in the same tick.
+   * A setter that replaced would let the last of those calls win and quietly
+   * put the search term back.
+   */
+  const applyParams = (next: ListParams) =>
+    setParams((prev) => ({
+      ...prev,
+      ...next,
+      filters: { ...prev.filters, ...next.filters },
+    }));
+
+  const { data, isLoading, isError, error, refetch } = useTechnicians(params);
+  const categories = useTechnicianCategories();
 
   return (
     <>
@@ -60,8 +82,11 @@ export default function TechnicianListPage() {
       />
 
       <TechTable
-        technicians={data}
-        categories={categories}
+        technicians={data?.rows}
+        meta={data?.pagination}
+        params={params}
+        onParams={applyParams}
+        categories={categories.data ?? []}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

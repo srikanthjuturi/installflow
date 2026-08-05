@@ -26,14 +26,18 @@ export const territorySchema = z
       .refine((v) => parsePincodes(v).length > 0, "Enter at least one pincode")
       .refine(
         (v) => parsePincodes(v).every((p) => /^\d{6}$/.test(p)),
-        "Every pincode must be 6 digits",
+        "Every pincode must be 6 digits"
       ),
   })
   .superRefine((values, ctx) => {
     // An existing region already has its RSH; a new one has to name both.
     if (values.region !== NEW_REGION) return;
     if (values.newRegion.length < 2) {
-      ctx.addIssue({ code: "custom", path: ["newRegion"], message: "Region name is required" });
+      ctx.addIssue({
+        code: "custom",
+        path: ["newRegion"],
+        message: "Region name is required",
+      });
     }
     if (values.rsh.length < 2) {
       ctx.addIssue({

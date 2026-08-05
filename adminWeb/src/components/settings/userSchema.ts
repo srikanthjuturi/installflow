@@ -14,7 +14,13 @@ import type { RegionTerritory, Role, User } from "@/types";
 export const NATIONAL_SCOPE = "All India";
 
 /** Declared against the shared `Role` union, never re-declaring it. */
-const ROLE_VALUES = ["NH", "RSH", "ASM", "Ops Staff"] as const satisfies readonly Role[];
+const ROLE_VALUES = [
+  "Admin",
+  "NH",
+  "RSH",
+  "ASM",
+  "Ops Staff",
+] as const satisfies readonly Role[];
 const STATUS_VALUES = [
   "Active",
   "Invited",
@@ -23,6 +29,7 @@ const STATUS_VALUES = [
 
 /** Hierarchy order, widest first. */
 export const ROLE_OPTIONS: { value: Role; label: string }[] = [
+  { value: "Admin", label: "Admin · full console access" },
   { value: "NH", label: "NH · National Head" },
   { value: "RSH", label: "RSH · Regional Service Head" },
   { value: "ASM", label: "ASM · Area Service Manager" },
@@ -38,8 +45,21 @@ export type ScopeKind = "national" | "region" | "area";
 
 export const SCOPE_META: Record<
   Role,
-  { kind: ScopeKind; label: string; placeholder: string; help: string; required: string }
+  {
+    kind: ScopeKind;
+    label: string;
+    placeholder: string;
+    help: string;
+    required: string;
+  }
 > = {
+  Admin: {
+    kind: "national",
+    label: "Scope",
+    placeholder: NATIONAL_SCOPE,
+    help: "An administrator covers every region.",
+    required: "",
+  },
   NH: {
     kind: "national",
     label: "Scope",
@@ -79,7 +99,7 @@ export const SCOPE_META: Record<
 export function scopeOptions(
   role: Role,
   territory: RegionTerritory[] | undefined,
-  current = "",
+  current = ""
 ): string[] {
   const kind = SCOPE_META[role].kind;
   const options =
@@ -89,14 +109,16 @@ export function scopeOptions(
         ? (territory?.map((t) => t.region) ?? [])
         : (territory?.flatMap((t) => t.asms.map((a) => a.area)) ?? []);
 
-  return current && !options.includes(current) ? [...options, current] : options;
+  return current && !options.includes(current)
+    ? [...options, current]
+    : options;
 }
 
 /** Changing role changes what scope means, so keep the pick only if it still fits. */
 export function reconcileScope(
   role: Role,
   scope: string,
-  territory: RegionTerritory[] | undefined,
+  territory: RegionTerritory[] | undefined
 ): string {
   if (SCOPE_META[role].kind === "national") return NATIONAL_SCOPE;
   return scopeOptions(role, territory).includes(scope) ? scope : "";
@@ -107,7 +129,9 @@ export function reconcileScope(
  * never something an admin picks. A pending invite can still be suspended.
  */
 export function statusOptions(current: User["status"]): User["status"][] {
-  return current === "Invited" ? ["Invited", "Suspended"] : ["Active", "Suspended"];
+  return current === "Invited"
+    ? ["Invited", "Suspended"]
+    : ["Active", "Suspended"];
 }
 
 /* ------------------------------------------------------------------ schemas */
@@ -139,14 +163,17 @@ const workEmail = z
   .min(1, "Work email is required")
   .pipe(z.email("Enter a valid email address"))
   .refine(
-    (value) => !PERSONAL_DOMAINS.has(value.slice(value.lastIndexOf("@") + 1).toLowerCase()),
-    "Use a work email address, not a personal one",
+    (value) =>
+      !PERSONAL_DOMAINS.has(
+        value.slice(value.lastIndexOf("@") + 1).toLowerCase()
+      ),
+    "Use a work email address, not a personal one"
   );
 
 /** Scope is optional for an NH only — every other role must own something. */
 function checkScope(
   values: { role: Role; scope: string },
-  ctx: z.RefinementCtx<{ role: Role; scope: string }>,
+  ctx: z.RefinementCtx<{ role: Role; scope: string }>
 ) {
   const meta = SCOPE_META[values.role];
   if (meta.kind === "national" || values.scope.trim()) return;

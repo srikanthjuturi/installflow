@@ -2,12 +2,15 @@ import { Plus } from "lucide-react";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { TicketTable } from "@/components/tickets/TicketTable";
+import { useTicketFilters } from "@/hooks/useTicketFilters";
 import { useTickets } from "@/hooks/useTickets";
 
 export default function TicketListPage() {
-  // One unfiltered fetch: the table owns search, status, sorting and paging
-  // from here, so typing no longer re-queries per keystroke.
-  const { data, isLoading, isError, error, refetch } = useTickets();
+  // The whole request — search, status, page, rows-per-page and sort — lives
+  // in the query string, so the exact view someone is looking at is a URL they
+  // can paste. The page owns it; the table borrows it and reports intent back.
+  const { params, setParams } = useTicketFilters();
+  const { data, isLoading, isError, error, refetch } = useTickets(params);
 
   return (
     <>
@@ -17,7 +20,10 @@ export default function TicketListPage() {
       />
 
       <TicketTable
-        tickets={data}
+        tickets={data?.rows}
+        meta={data?.pagination}
+        params={params}
+        onParams={setParams}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

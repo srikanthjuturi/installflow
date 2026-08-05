@@ -13,8 +13,14 @@ export const ticketSchema = z.object({
   mobile: z
     .string()
     .trim()
-    .regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number"),
-  pincode: z.string().trim().regex(/^\d{6}$/, "Pincode must be 6 digits"),
+    .regex(
+      /^(\+91[\s-]?)?[6-9]\d{9}$/,
+      "Enter a valid 10-digit Indian mobile number"
+    ),
+  pincode: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Pincode must be 6 digits"),
   expected: z.string().min(1, "Expected date is required"),
   slaType: z.enum(["24h", "48h"]),
 });
@@ -22,6 +28,14 @@ export const ticketSchema = z.object({
 export type TicketFormValues = z.infer<typeof ticketSchema>;
 
 export const SLA_OPTIONS = [
-  { value: "24h" as const, title: "24-hour SLA", detail: "Slot within 24h of confirmation" },
-  { value: "48h" as const, title: "48-hour SLA", detail: "Slot within 48h of confirmation" },
+  {
+    value: "24h" as const,
+    title: "24-hour SLA",
+    detail: "Slot within 24h of confirmation",
+  },
+  {
+    value: "48h" as const,
+    title: "48-hour SLA",
+    detail: "Slot within 48h of confirmation",
+  },
 ];

@@ -42,6 +42,15 @@ const ESCALATIONS: Escalation[] = [
   },
 ];
 
+/**
+ * Deliberately NOT paginated, unlike the other list endpoints.
+ *
+ * The queue renders as cards with no paging affordance, and every row is a
+ * customer promise counting down. Slicing it server-side would silently hide
+ * escalations past the first page — on the one screen where a hidden row is a
+ * missed slot. It stays a whole-queue read; if the queue ever grows past a
+ * screenful, that is a design decision about the screen, not a page parameter.
+ */
 export function listEscalations(): Promise<Escalation[]> {
   return mockResponse(() => ESCALATIONS);
 }

@@ -48,12 +48,13 @@ export interface FilterDef {
   allLabel?: string;
   /** `pills` for a small set, `select` for a long one. */
   variant?: "pills" | "select";
-  /** Matches a row against the active value. */
-  match: (row: never, value: string) => boolean;
+  /** Matches a row against the active value. Omit in server mode — the
+   *  backend filters, so a client matcher would be dead code. */
+  match?: (row: never, value: string) => boolean;
 }
 
 export interface TypedFilterDef<T> extends Omit<FilterDef, "match"> {
-  match: (row: T, value: string) => boolean;
+  match?: (row: T, value: string) => boolean;
 }
 
 export interface SortState {
@@ -71,6 +72,12 @@ export interface DataTableProps<T> {
   caption: string;
 
   isLoading?: boolean;
+  /**
+   * A refetch is in flight while previous rows are still shown. With
+   * keepPreviousData the table never blanks, so without this signal a slow
+   * page change looks like nothing happened.
+   */
+  isFetching?: boolean;
   error?: unknown;
   onRetry?: () => void;
   /** Names what failed to load. Falls back to the generic error copy. */

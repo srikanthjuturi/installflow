@@ -5,8 +5,8 @@ import {
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
-import { useTicketFilters } from "@/hooks/useTicketFilters";
-import type { SlaState, Ticket, TicketStatus } from "@/types";
+import type { ListParams, PaginationMeta } from "@/types/api";
+import type { SlaState, Ticket } from "@/types";
 
 import { STATUS_CHIPS } from "./statusChips";
 
@@ -19,7 +19,13 @@ const SLA_RANK: Record<SlaState, number> = {
 };
 
 interface TicketTableProps {
+  /** One server page. The table renders these rows and only these rows. */
   tickets?: Ticket[];
+  /** The envelope's pagination block — total, page count, where we are. */
+  meta?: PaginationMeta;
+  /** The request that produced `tickets`. Lives in the URL, owned by the page. */
+  params: ListParams;
+  onParams: (next: ListParams) => void;
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -28,20 +34,26 @@ interface TicketTableProps {
 
 export function TicketTable({
   tickets,
+  meta,
+  params,
+  onParams,
   isLoading,
   error,
   onRetry,
   toolbarActions,
 }: TicketTableProps) {
   const navigate = useNavigate();
-  // Search and status stay in the query string, so a filtered view can be
-  // pasted into a chat and survives back — the table only borrows them.
-  const { search, status, setSearch, setStatus } = useTicketFilters();
+  const status = params.filters?.status ?? "All";
+
+  // Anything that changes WHICH rows match sends the reader back to page 1 —
+  // page 4 of an unfiltered list is not page 4 of the filtered one.
+  const narrow = (next: ListParams) => onParams({ ...next, page: 1 });
 
   const columns: Column<Ticket>[] = [
     {
       id: "ticket",
       header: "Ticket",
+      sortValue: (t) => t.id,
       cell: (t) => (
         <>
           {/* The row is clickable, but the id stays a real link so it
@@ -62,6 +74,7 @@ export function TicketTable({
     {
       id: "customer",
       header: "Customer",
+      sortValue: (t) => t.customer,
       cell: (t) => (
         <>
           <div className="font-medium">{t.customer}</div>
@@ -72,6 +85,7 @@ export function TicketTable({
     {
       id: "category",
       header: "Category / Model",
+      sortValue: (t) => t.category,
       cell: (t) => (
         <>
           <div>{t.category}</div>
@@ -85,6 +99,7 @@ export function TicketTable({
     {
       id: "slot",
       header: "Slot",
+      sortValue: (t) => t.slot,
       cell: (t) => (
         <>
           <div>{t.slot}</div>
@@ -98,13 +113,15 @@ export function TicketTable({
     {
       id: "status",
       header: "Status",
+      sortValue: (t) => t.status,
       cell: (t) => <StatusBadge status={t.status} />,
     },
     {
       id: "slaState",
       header: "SLA state",
-      // The cell shows a word; the sort runs on the urgency rank behind it,
-      // so the default order is triage order rather than alphabetical.
+      // The server sorts this column on the urgency rank behind the word, so
+      // the default order is triage order rather than alphabetical. The rank
+      // stays here to mark the column sortable and to show the active arrow.
       sortValue: (t) => SLA_RANK[t.sla],
       cell: (t) => <SlaBadge state={t.sla} />,
     },
@@ -117,8 +134,12 @@ export function TicketTable({
       variant: "pills",
       options: STATUS_CHIPS.map((chip) => ({ value: chip, label: chip })),
       value: status,
-      onChange: (v) => setStatus(v as TicketStatus | "All"),
-      match: (t, v) => t.status === v,
+      onChange: (v) =>
+        narrow({ ...params, filters: { ...params.filters, status: v } }),
+      // Never called in server mode — the backend applies the status filter and
+      // the table renders what comes back. `match` is required by the type, so
+      // it stands here as the identity it effectively is.
+      match: () => true,
     },
   ];
 
@@ -132,28 +153,33 @@ export function TicketTable({
       isLoading={isLoading}
       error={error}
       onRetry={onRetry}
+      // No `fn` or `keys`: the server matches ticket ID, customer, mobile and
+      // pincode. Matching again here would search one page of an answer.
       search={{
         placeholder: "Search by ticket ID, customer, mobile, pincode…",
-        value: search,
-        onChange: setSearch,
-        fn: (t, q) =>
-          t.id.toLowerCase().includes(q) ||
-          t.customer.toLowerCase().includes(q) ||
-          t.mobile.includes(q) ||
-          t.pincode.includes(q),
+        value: params.search ?? "",
+        onChange: (v) => narrow({ ...params, search: v }),
       }}
       filters={filters}
       toolbarActions={toolbarActions}
-      defaultSort={{ columnId: "slaState", dir: "asc" }}
+      server={{ meta, params, onParams }}
+      defaultSort={{
+        columnId: params.sortBy ?? "slaState",
+        dir: params.sortDir ?? "asc",
+      }}
       countLabel={(n) => (
         <>
           Showing <b className="text-ink">{n}</b> tickets
         </>
       )}
       summary={
-        <>
-          Sorted by <b className="text-ink">SLA urgency</b>
-        </>
+        // Only true while SLA rank is the active sort — asserting it under any
+        // other order would be a lie the table itself contradicts.
+        (params.sortBy ?? "slaState") === "slaState" ? (
+          <>
+            Sorted by <b className="text-ink">SLA urgency</b>
+          </>
+        ) : null
       }
       onRowClick={(t) => navigate(`/tickets/${t.id}`)}
       minWidth="57.5rem"

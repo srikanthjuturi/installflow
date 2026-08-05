@@ -1,8 +1,11 @@
 export * from "./ticket";
 export * from "./dashboard";
 
-/** Management hierarchy. Ops Staff do intake only. */
-export type Role = "NH" | "RSH" | "ASM" | "Ops Staff";
+/**
+ * Management hierarchy, widest scope first. Ops Staff do intake only.
+ * Mirrors the backend's numeric codes 1–5 — see API_ROLE.
+ */
+export type Role = "Admin" | "NH" | "RSH" | "ASM" | "Ops Staff";
 
 export interface Technician {
   id: string;

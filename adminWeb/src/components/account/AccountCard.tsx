@@ -2,8 +2,8 @@ import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ROLE_LABEL } from "@/store/session";
-import type { Role } from "@/types";
+import { ROLE_LABEL, roleFromApi } from "@/store/session";
+import type { AuthUser } from "@/types/api";
 
 function initialsOf(name: string) {
   return name
@@ -13,10 +13,27 @@ function initialsOf(name: string) {
     .slice(0, 2);
 }
 
+/**
+ * An ISO instant as a person reads it. A malformed or missing timestamp shows
+ * the em dash the console uses everywhere for "nothing to report" rather than
+ * the browser's "Invalid Date".
+ */
+function formatInstant(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "—";
+
+  return at.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 interface AccountCardProps {
-  name: string;
-  email: string;
-  role: Role;
+  /** The account exactly as the API returned it. */
+  user: AuthUser;
   onSignOut: () => void;
 }
 
@@ -24,16 +41,19 @@ interface AccountCardProps {
  * Identity, not authorization. Role and scope are shown because they explain
  * what this console is showing you — the server decides what you may do.
  */
-export function AccountCard({
-  name,
-  email,
-  role,
-  onSignOut,
-}: AccountCardProps) {
+export function AccountCard({ user, onSignOut }: AccountCardProps) {
+  const { name, email } = user;
+  // The wire carries a number; this is the only vocabulary the screens speak.
+  const role = roleFromApi(user.role);
+
   const facts: Array<[string, string]> = [
     ["Work email", email],
     ["Role", role],
+    // ⚠ Derived from the role, not served. `AuthUser` has no region or area
+    // field, so the console cannot state the actual scope of this account.
     ["Scope", ROLE_LABEL[role]],
+    ["Last login", formatInstant(user.lastLoginAt)],
+    ["Sign-ins", String(user.loginCount)],
   ];
 
   return (

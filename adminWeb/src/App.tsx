@@ -16,7 +16,11 @@ const queryClient = new QueryClient({
       // A 404 or a 403 will not become true on the second ask — retrying
       // only delays the error state the user needs to see.
       retry: (failureCount, error) => {
-        if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        if (
+          error instanceof ApiError &&
+          error.status >= 400 &&
+          error.status < 500
+        ) {
           return false;
         }
         return failureCount < 1;

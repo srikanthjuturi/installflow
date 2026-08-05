@@ -1,4 +1,5 @@
-import { mockResponse } from "./client";
+import { mockPage, mockResponse, sortRows } from "./client";
+import type { ListParams, Page } from "@/types/api";
 import type { LedgerEntry } from "@/types";
 
 /**
@@ -92,10 +93,64 @@ const LEDGER: LedgerEntry[] = [
   },
 ];
 
+const ALL = "All";
+
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * "Aug 4" → a comparable number. Sorting the label itself would file "Aug 2"
+ * ahead of "Jul 30", because the collator only sees the letters.
+ *
+ * A real backend orders on a timestamp column and never needs this — it exists
+ * because the mock rows carry the display label the prototype shows.
+ */
+function dateKey(date: string): number | null {
+  const [month, day] = date.trim().split(/\s+/);
+  const index = MONTHS.indexOf(month ?? "");
+  return index === -1 ? null : index * 100 + Number(day ?? 0);
+}
+
+/** Sort keys, keyed by DataTable column id so `sortBy` round-trips. */
+const LEDGER_SORT: Record<string, (l: LedgerEntry) => string | number | null> =
+  {
+    date: (l) => dateKey(l.date),
+    type: (l) => l.type,
+    // The raw signed number, never the money() string — otherwise −₹800 would
+    // sort as text and land above ₹400.
+    amt: (l) => l.amt,
+  };
+
 export function getLedgerPool(): Promise<LedgerPool> {
   return mockResponse(() => POOL);
 }
 
-export function listLedgerEntries(): Promise<LedgerEntry[]> {
-  return mockResponse(() => LEDGER);
+export function listLedgerEntries(
+  params: ListParams = {}
+): Promise<Page<LedgerEntry>> {
+  return mockPage(() => {
+    const type = params.filters?.type;
+    const rows = LEDGER.filter((l) => !type || type === ALL || l.type === type);
+
+    // Entry id breaks ties, so two rows dated "Aug 4" hold their order across
+    // refetches — a ledger that reshuffles is a ledger nobody trusts.
+    return sortRows(
+      [...rows].sort((a, b) => a.id.localeCompare(b.id)),
+      params.sortBy,
+      params.sortDir,
+      LEDGER_SORT
+    );
+  }, params);
 }

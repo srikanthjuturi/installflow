@@ -12,14 +12,19 @@ export function parsePincodes(value: string): string[] {
 }
 
 /** Plain jobs-per-day cap. Not weighted by job type — that stays an open decision. */
-export const BANDWIDTH_OPTIONS = Array.from({ length: 12 }, (_, i) => String(i + 1));
+export const BANDWIDTH_OPTIONS = Array.from({ length: 12 }, (_, i) =>
+  String(i + 1)
+);
 
 export const technicianSchema = z.object({
   name: z.string().trim().min(2, "Technician name is required"),
   phone: z
     .string()
     .trim()
-    .regex(/^(\+91[\s-]?)?[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number"),
+    .regex(
+      /^(\+91[\s-]?)?[6-9]\d{9}$/,
+      "Enter a valid 10-digit Indian mobile number"
+    ),
   cats: z.array(z.string()).min(1, "Select at least one category"),
   pincodes: z
     .string()
@@ -27,7 +32,7 @@ export const technicianSchema = z.object({
     .refine((v) => parsePincodes(v).length > 0, "Enter at least one pincode")
     .refine(
       (v) => parsePincodes(v).every((p) => /^\d{6}$/.test(p)),
-      "Every pincode must be 6 digits",
+      "Every pincode must be 6 digits"
     ),
   bwTotal: z.string().min(1, "Select a daily job cap"),
 });

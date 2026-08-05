@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createCategory,
   createVendor,
@@ -6,19 +11,35 @@ import {
   listVendors,
   updateVendor,
 } from "@/services/masters";
+import type { ListParams } from "@/types/api";
 
 export const masterKeys = {
   all: ["masters"] as const,
+  /** Prefix — invalidating this catches every page and filter combination. */
   vendors: () => ["masters", "vendors"] as const,
+  vendorPage: (params: ListParams) => ["masters", "vendors", params] as const,
   categories: () => ["masters", "categories"] as const,
 };
 
-export function useVendors() {
-  return useQuery({ queryKey: masterKeys.vendors(), queryFn: listVendors });
+/**
+ * One page of vendors. The params are part of the key, so every filter and
+ * page is cached separately and going back is instant.
+ */
+export function useVendors(params: ListParams) {
+  return useQuery({
+    queryKey: masterKeys.vendorPage(params),
+    queryFn: () => listVendors(params),
+    // Paging must not blank the table: the previous page stays on screen until
+    // the next one lands, so the toolbar and row heights never jump.
+    placeholderData: keepPreviousData,
+  });
 }
 
 export function useCategories() {
-  return useQuery({ queryKey: masterKeys.categories(), queryFn: listCategories });
+  return useQuery({
+    queryKey: masterKeys.categories(),
+    queryFn: listCategories,
+  });
 }
 
 /**

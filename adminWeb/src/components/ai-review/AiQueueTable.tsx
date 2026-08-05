@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
@@ -9,10 +8,20 @@ import {
 } from "@/components/shared/DataTable";
 import { ConfidenceMeter } from "./ConfidenceMeter";
 import { DetectedSerial } from "./SerialCompare";
+import type { ListParams, PaginationMeta } from "@/types/api";
 import type { AiFlag } from "@/types";
 
+const ALL = "All";
+
 interface AiQueueTableProps {
+  /** One page of the queue, already filtered and sorted by the server. */
   flags?: AiFlag[];
+  meta?: PaginationMeta;
+  params: ListParams;
+  /** Merges what it is given into the query — see `applyParams` on the page. */
+  onParams: (next: ListParams) => void;
+  /** Faceted across the whole queue — see `useAiFlagReasons`. */
+  flagReasons: string[];
   threshold: number;
   isLoading: boolean;
   error: unknown;
@@ -21,22 +30,16 @@ interface AiQueueTableProps {
 
 export function AiQueueTable({
   flags,
+  meta,
+  params,
+  onParams,
+  flagReasons,
   threshold,
   isLoading,
   error,
   onRetry,
 }: AiQueueTableProps) {
   const navigate = useNavigate();
-
-  // Built from the queue itself: a reason the model never returns should not
-  // sit in the filter offering nothing.
-  const flagOptions = useMemo(
-    () =>
-      [...new Set((flags ?? []).map((a) => a.flag))]
-        .sort()
-        .map((flag) => ({ value: flag, label: flag })),
-    [flags]
-  );
 
   const columns: Column<AiFlag>[] = [
     {
@@ -123,13 +126,18 @@ export function AiQueueTable({
     },
   ];
 
+  // The def keeps the label and the options; the server does the matching, so
+  // `match` is never called while the table is in server mode.
   const filters: TypedFilterDef<AiFlag>[] = [
     {
       id: "flag",
       label: "Flag",
       variant: "select",
-      options: flagOptions,
-      match: (a, v) => a.flag === v,
+      options: flagReasons.map((flag) => ({ value: flag, label: flag })),
+      value: params.filters?.flag ?? ALL,
+      // A change, not a whole query — the page merges it in.
+      onChange: (v) => onParams({ page: 1, filters: { flag: v } }),
+      match: () => true,
     },
   ];
 
@@ -144,6 +152,7 @@ export function AiQueueTable({
       error={error}
       onRetry={onRetry}
       filters={filters}
+      server={{ meta, params, onParams }}
       defaultSort={{ columnId: "conf", dir: "asc" }}
       onRowClick={(a) => navigate(`/ai-review/${a.id}`)}
       minWidth="55rem"

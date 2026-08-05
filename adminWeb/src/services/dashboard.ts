@@ -1,4 +1,4 @@
-import { mockResponse } from "./client";
+import { mockPage, mockResponse } from "./client";
 import { TICKETS } from "./mocks/tickets";
 import type { DashboardSummary, Ticket } from "@/types";
 
@@ -83,7 +83,17 @@ export function getDashboard(): Promise<DashboardSummary> {
   return mockResponse(() => SUMMARY);
 }
 
-/** The six most recent tickets, newest intake first. */
+/** How many tickets the dashboard peek shows. */
+const RECENT_LIMIT = 6;
+
+/**
+ * The six most recent tickets, newest intake first.
+ *
+ * A peek, not a list: the server caps it at six and the table has no paging,
+ * so this hands back rows rather than a `Page` nobody would page through.
+ */
 export function getRecentTickets(): Promise<Ticket[]> {
-  return mockResponse(() => TICKETS.slice(0, 6));
+  return mockPage(() => TICKETS, { page: 1, limit: RECENT_LIMIT }).then(
+    (result) => result.rows
+  );
 }

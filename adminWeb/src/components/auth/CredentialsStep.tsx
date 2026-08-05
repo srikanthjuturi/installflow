@@ -24,19 +24,41 @@ export function CredentialsStep({
   onSubmit,
 }: {
   defaultEmail: string;
-  onSubmit: (values: Credentials) => void;
+  /** Rejects if the call fails; the message is shown, never the password. */
+  onSubmit: (values: Credentials) => Promise<void>;
 }) {
   const {
     register,
     handleSubmit,
+    setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<Credentials>({
     resolver: zodResolver(schema),
     defaultValues: { email: defaultEmail, password: "", trustDevice: true },
   });
 
+  /**
+   * Awaited so `isSubmitting` covers the request, not just validation. A
+   * failure is reported where the form is, rather than leaving the button
+   * enabled and the step silently unchanged.
+   */
+  const submit = async (values: Credentials) => {
+    clearErrors("root");
+    try {
+      await onSubmit(values);
+    } catch (err) {
+      setError("root", {
+        message:
+          err instanceof Error
+            ? err.message
+            : "Something went wrong. Try again.",
+      });
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleSubmit(submit)} noValidate>
       <h1 className="text-[22px] font-semibold">Sign in</h1>
       <p className="mt-1.5 text-[13px] text-ink-2">
         Use your ops credentials to continue.
@@ -92,6 +114,17 @@ export function CredentialsStep({
           Forgot password?
         </a>
       </div>
+
+      {/* Whatever the envelope reported, in the same shape every other form in
+          the console uses for a failed request. */}
+      {errors.root ? (
+        <p
+          role="alert"
+          className="mt-4 rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
+        >
+          {errors.root.message}
+        </p>
+      ) : null}
 
       <Button
         type="submit"

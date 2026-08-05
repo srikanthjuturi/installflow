@@ -4,10 +4,13 @@ import { VendorFormDialog } from "@/components/masters/VendorFormDialog";
 import { VendorTable } from "@/components/masters/VendorTable";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { Button } from "@/components/ui/button";
+import { useListParams } from "@/hooks/useListParams";
 import { useVendors } from "@/hooks/useMasters";
 
 export default function VendorsPage() {
-  const { data, isLoading, isError, error, refetch } = useVendors();
+  // The page owns the query string; the table reports intent into it.
+  const [params, setParams] = useListParams();
+  const { data, isLoading, isError, error, refetch } = useVendors(params);
   const [adding, setAdding] = useState(false);
 
   return (
@@ -16,7 +19,10 @@ export default function VendorsPage() {
 
       <h2 className="sr-only">Vendors</h2>
       <VendorTable
-        vendors={data}
+        vendors={data?.rows}
+        meta={data?.pagination}
+        params={params}
+        onParams={setParams}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

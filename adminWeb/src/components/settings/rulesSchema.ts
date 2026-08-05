@@ -20,7 +20,7 @@ export const rulesSchema = z
             .int("Use whole rupees")
             .min(0, "A penalty cannot be negative")
             .max(100000, "That is above any plausible penalty"),
-        }),
+        })
       )
       .length(4),
     penaltyCap: z
@@ -41,7 +41,8 @@ export const rulesSchema = z
         ctx.addIssue({
           code: "custom",
           path: ["penalty", i, "amount"],
-          message: "Later cancellations must cost at least as much as earlier ones",
+          message:
+            "Later cancellations must cost at least as much as earlier ones",
         });
       }
     }
@@ -71,7 +72,8 @@ export const BANDWIDTH_OPTIONS = [
   {
     value: "count" as const,
     label: "Jobs per day",
-    detail: "A plain 1–12 cap. What the technician record and the field app use.",
+    detail:
+      "A plain 1–12 cap. What the technician record and the field app use.",
   },
   {
     value: "weighted" as const,

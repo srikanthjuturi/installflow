@@ -1,4 +1,5 @@
-import { mockResponse, notFound } from "./client";
+import { mockPage, mockResponse, notFound, sortRows } from "./client";
+import type { ListParams, Page } from "@/types/api";
 import type { AiFlag } from "@/types";
 
 /**
@@ -67,8 +68,45 @@ const AIQUEUE: AiFlag[] = [
   },
 ];
 
-export function listAiFlags(): Promise<AiFlag[]> {
-  return mockResponse(() => AIQUEUE);
+const ALL = "All";
+
+/**
+ * Sort keys, keyed by DataTable column id so `sortBy` round-trips.
+ *
+ * `ticket` sorts on the id, which is what the header says. The queue has no
+ * time column, so there is nothing to sort recency on — `when` is a relative
+ * label ("12m ago"), not an ordering key.
+ */
+const AI_SORT: Record<string, (a: AiFlag) => string | number | null> = {
+  ticket: (a) => a.id,
+  conf: (a) => a.conf,
+};
+
+export function listAiFlags(params: ListParams = {}): Promise<Page<AiFlag>> {
+  return mockPage(() => {
+    const flag = params.filters?.flag;
+    const rows = AIQUEUE.filter(
+      (a) => !flag || flag === ALL || a.flag === flag
+    );
+
+    // A total order, so the 10-second refetch this queue runs on can never
+    // reshuffle equal-confidence rows under someone about to click Review.
+    return sortRows(
+      [...rows].sort((a, b) => a.id.localeCompare(b.id)),
+      params.sortBy,
+      params.sortDir,
+      AI_SORT
+    );
+  }, params);
+}
+
+/**
+ * The flag reasons actually present in the queue — the filter's options.
+ * Faceted server-side: a reason on page 2 must still be selectable from page 1,
+ * and a reason the model never returns must not sit in the list offering nothing.
+ */
+export function listAiFlagReasons(): Promise<string[]> {
+  return mockResponse(() => [...new Set(AIQUEUE.map((a) => a.flag))].sort());
 }
 
 export function getAiFlag(id: string): Promise<AiFlag> {
@@ -93,7 +131,9 @@ export function approveMatch(input: { id: string }): Promise<{ id: string }> {
  * Manager rejects the proof. The technician is sent back on site to retake it —
  * a gallery upload can never satisfy this, capture is live only.
  */
-export function rejectAndRetake(input: { id: string }): Promise<{ id: string }> {
+export function rejectAndRetake(input: {
+  id: string;
+}): Promise<{ id: string }> {
   return mockResponse(() => {
     const index = AIQUEUE.findIndex((a) => a.id === input.id);
     if (index === -1) notFound("AI review", input.id);

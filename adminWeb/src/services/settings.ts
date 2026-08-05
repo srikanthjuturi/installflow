@@ -1,4 +1,11 @@
-import { ApiError, mockResponse, notFound } from "./client";
+import {
+  ApiError,
+  matches,
+  mockPage,
+  mockResponse,
+  notFound,
+  sortRows,
+} from "./client";
 import {
   AI_CONFIDENCE_MAX,
   AI_CONFIDENCE_MIN,
@@ -6,6 +13,7 @@ import {
   CUSTOMER_WAIT_HOURS,
   ESCALATION_TRIGGER_HOURS,
 } from "./rulesDefaults";
+import type { ListParams, Page } from "@/types/api";
 import type { Role, User } from "@/types";
 
 /**
@@ -157,7 +165,10 @@ export function saveRulesConfig(draft: RulesConfigDraft): Promise<RulesConfig> {
     if (draft.penalty.some((b) => b.amount < 0)) {
       throw new ApiError("A penalty cannot be negative", 422);
     }
-    RULES.penalty = draft.penalty.map((b) => ({ ...b, basis: "flat" as const }));
+    RULES.penalty = draft.penalty.map((b) => ({
+      ...b,
+      basis: "flat" as const,
+    }));
     RULES.penaltyCap = draft.penaltyCap;
     RULES.ai = { ...RULES.ai, threshold: draft.aiThreshold };
     RULES.slotConfirmTimeoutHours = draft.slotConfirmTimeoutHours;
@@ -244,8 +255,60 @@ const USERS: User[] = [
   },
 ];
 
-export function listUsers(): Promise<User[]> {
-  return mockResponse(() => USERS);
+/** Minutes in each suffix the "last active" strings use. */
+const LAST_ACTIVE_UNIT: Record<string, number> = {
+  m: 1,
+  h: 60,
+  d: 1440,
+  w: 10080,
+};
+
+/**
+ * "Last active" is a human string — "Online", "40m ago", "6d ago", "—".
+ * Sorting it alphabetically would put "1h ago" beside "15m ago" and call it a
+ * date, so it is compared as **minutes since last seen**: ascending is most
+ * recent first, "Online" is 0, and a user who has never signed in returns
+ * `null`, which sorts last in both directions.
+ */
+function minutesSinceActive(last: string): number | null {
+  const value = last.trim();
+  if (value === "Online") return 0;
+
+  const match = /^(\d+)\s*([mhdw])\s+ago$/i.exec(value);
+  if (!match) return null;
+
+  return Number(match[1]) * LAST_ACTIVE_UNIT[match[2].toLowerCase()];
+}
+
+const USER_SORT = {
+  name: (u: User) => u.name,
+  email: (u: User) => u.email,
+  role: (u: User) => u.role,
+  region: (u: User) => u.region,
+  status: (u: User) => u.status,
+  last: (u: User) => minutesSinceActive(u.last),
+};
+
+/**
+ * Console users, server-paged.
+ *
+ * Search, filters, sort and the slice belong to the server; this stands in for
+ * it. With no `sortBy` the seeded order is preserved, which is the order the
+ * approved prototype shows.
+ */
+export function listUsers(params: ListParams = {}): Promise<Page<User>> {
+  return mockPage(() => {
+    const { role, status } = params.filters ?? {};
+
+    const rows = USERS.filter(
+      (u) =>
+        matches(u, ["name", "email"], params.search) &&
+        (!role || u.role === role) &&
+        (!status || u.status === status)
+    );
+
+    return sortRows(rows, params.sortBy, params.sortDir, USER_SORT);
+  }, params);
 }
 
 /* ----------------------------------------------------------- user mutations */

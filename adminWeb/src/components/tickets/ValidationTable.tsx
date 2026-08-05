@@ -5,6 +5,7 @@ import {
   type Column,
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
+import type { ListParams, PaginationMeta } from "@/types/api";
 import type { ImportRow } from "@/types";
 
 const columns: Column<ImportRow>[] = [
@@ -69,36 +70,65 @@ const columns: Column<ImportRow>[] = [
   },
 ];
 
-const filters: TypedFilterDef<ImportRow>[] = [
-  {
-    id: "result",
-    label: "Result",
-    variant: "pills",
-    options: [
-      { value: "All", label: "All" },
-      { value: "Passed", label: "Passed" },
-      { value: "Rejected", label: "Rejected" },
-    ],
-    match: (r, v) => r.result === v,
-  },
-];
+interface ValidationTableProps {
+  /** One server page of rows. An import can run to thousands. */
+  rows?: ImportRow[];
+  meta?: PaginationMeta;
+  params: ListParams;
+  onParams: (next: ListParams) => void;
+  isLoading: boolean;
+  error: unknown;
+  onRetry: () => void;
+}
 
 export function ValidationTable({
   rows,
+  meta,
+  params,
+  onParams,
   isLoading,
-}: {
-  rows?: ImportRow[];
-  isLoading: boolean;
-}) {
+  error,
+  onRetry,
+}: ValidationTableProps) {
+  const filters: TypedFilterDef<ImportRow>[] = [
+    {
+      id: "result",
+      label: "Result",
+      variant: "pills",
+      options: [
+        { value: "All", label: "All" },
+        { value: "Passed", label: "Passed" },
+        { value: "Rejected", label: "Rejected" },
+      ],
+      value: params.filters?.result ?? "All",
+      // Narrowing to the rejected rows starts the read again from the top.
+      onChange: (v) =>
+        onParams({
+          ...params,
+          filters: { ...params.filters, result: v },
+          page: 1,
+        }),
+      // Never called in server mode — the backend applies the filter.
+      match: () => true,
+    },
+  ];
+
   return (
     <DataTable
+      errorTitle="Couldn't load this import"
       caption="Every row of the uploaded file, with its validation result and the reason it was rejected"
       data={rows}
       columns={columns}
       getRowId={(r) => String(r.row)}
       isLoading={isLoading}
+      error={error}
+      onRetry={onRetry}
       filters={filters}
-      defaultSort={{ columnId: "row", dir: "asc" }}
+      server={{ meta, params, onParams }}
+      defaultSort={{
+        columnId: params.sortBy ?? "row",
+        dir: params.sortDir ?? "asc",
+      }}
       // Tint the failed row, but never rely on it — the icon and the word
       // "Rejected" carry the verdict on their own.
       rowClassName={(r) =>

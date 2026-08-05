@@ -17,6 +17,10 @@ export const escalationKeys = {
 /**
  * Time-sensitive: every row is counting down to a slot the customer was
  * promised, so this refetches far more eagerly than an ordinary list.
+ *
+ * No params and no `keepPreviousData`: the queue is a whole-queue read (see
+ * `listEscalations`), so there is no page change to hold rows across, and
+ * holding stale rows on a countdown screen would be the wrong trade anyway.
  */
 export function useEscalations() {
   return useQuery({
@@ -35,7 +39,9 @@ export function useEscalation(id: string) {
   });
 }
 
-function useEscalationMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
+function useEscalationMutation<TVars, TData>(
+  fn: (vars: TVars) => Promise<TData>
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: fn,
@@ -48,4 +54,5 @@ function useEscalationMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>
 }
 
 export const useAddBonus = () => useEscalationMutation(addBonusAndRenotify);
-export const useAssignTechnician = () => useEscalationMutation(assignTechnician);
+export const useAssignTechnician = () =>
+  useEscalationMutation(assignTechnician);

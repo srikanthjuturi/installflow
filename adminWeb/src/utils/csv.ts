@@ -25,11 +25,15 @@ function escapeCell(value: unknown): string {
   // guarding it would make Excel read the column as text and refuse to sum it.
   const isNumeric = raw !== "" && Number.isFinite(Number(raw));
   const guarded = !isNumeric && /^[=+\-@]/.test(raw) ? `\t${raw}` : raw;
-  return /[",\n\r]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
+  return /[",\n\r]/.test(guarded)
+    ? `"${guarded.replace(/"/g, '""')}"`
+    : guarded;
 }
 
 export function toCsv(headers: string[], rows: Array<Array<unknown>>): string {
-  return [headers, ...rows].map((r) => r.map(escapeCell).join(",")).join("\r\n");
+  return [headers, ...rows]
+    .map((r) => r.map(escapeCell).join(","))
+    .join("\r\n");
 }
 
 /** Triggers a download of `content` as `filename`. */

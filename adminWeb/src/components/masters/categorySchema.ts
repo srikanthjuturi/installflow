@@ -13,7 +13,9 @@ export const CATEGORY_STATUSES = ["Active", "Paused"] as const;
 export const categorySchema = z.object({
   name: z.string().trim().min(2, "Category name is required"),
   models: z
-    .array(z.object({ name: z.string().trim().min(1, "Model name is required") }))
+    .array(
+      z.object({ name: z.string().trim().min(1, "Model name is required") })
+    )
     .min(1, "Add at least one product model"),
   status: z.enum(CATEGORY_STATUSES),
 });

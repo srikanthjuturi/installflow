@@ -21,7 +21,15 @@ const TERRITORY: RegionTerritory[] = [
         name: "Ravi Sharma",
         area: "Pune",
         initial: "RS",
-        pincodes: ["411001", "411014", "411021", "411028", "411038", "411045", "411057"],
+        pincodes: [
+          "411001",
+          "411014",
+          "411021",
+          "411028",
+          "411038",
+          "411045",
+          "411057",
+        ],
       },
       {
         name: "Sneha Iyer",
@@ -86,17 +94,24 @@ function initialsOf(name: string): string {
  * for the same ticket and neither accountable, so an overlap is rejected
  * rather than merged.
  */
-export function createMapping(input: CreateMappingInput): Promise<RegionTerritory> {
+export function createMapping(
+  input: CreateMappingInput
+): Promise<RegionTerritory> {
   return mockResponse(() => {
     if (input.pincodes.length === 0) {
       throw new ApiError("At least one pincode is required", 422);
     }
 
     const taken = input.pincodes.filter((pincode) =>
-      TERRITORY.some((region) => region.asms.some((asm) => asm.pincodes.includes(pincode))),
+      TERRITORY.some((region) =>
+        region.asms.some((asm) => asm.pincodes.includes(pincode))
+      )
     );
     if (taken.length > 0) {
-      throw new ApiError(`Already mapped to another ASM: ${taken.join(", ")}`, 409);
+      throw new ApiError(
+        `Already mapped to another ASM: ${taken.join(", ")}`,
+        409
+      );
     }
 
     let region = TERRITORY.find((r) => r.region === input.region);
@@ -105,8 +120,15 @@ export function createMapping(input: CreateMappingInput): Promise<RegionTerritor
       TERRITORY.push(region);
     }
 
-    if (region.asms.some((asm) => asm.name.toLowerCase() === input.asm.toLowerCase())) {
-      throw new ApiError(`${input.asm} is already mapped in ${region.region}`, 409);
+    if (
+      region.asms.some(
+        (asm) => asm.name.toLowerCase() === input.asm.toLowerCase()
+      )
+    ) {
+      throw new ApiError(
+        `${input.asm} is already mapped in ${region.region}`,
+        409
+      );
     }
 
     region.asms.push({
@@ -115,7 +137,10 @@ export function createMapping(input: CreateMappingInput): Promise<RegionTerritor
       initial: initialsOf(input.asm),
       pincodes: input.pincodes,
     });
-    region.pincount = region.asms.reduce((total, asm) => total + asm.pincodes.length, 0);
+    region.pincount = region.asms.reduce(
+      (total, asm) => total + asm.pincodes.length,
+      0
+    );
     return region;
   });
 }

@@ -4,6 +4,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { InviteUserDialog } from "@/components/settings/InviteUserDialog";
 import { UserTable } from "@/components/settings/UserTable";
 import { Button } from "@/components/ui/button";
+import { useListParams } from "@/hooks/useListParams";
 import { useUsers } from "@/hooks/useSettings";
 
 /**
@@ -15,7 +16,9 @@ import { useUsers } from "@/hooks/useSettings";
  * grants or revokes anything.
  */
 export default function UsersRolesPage() {
-  const { data, isLoading, isError, error, refetch } = useUsers();
+  // The page owns the query string; the table reports intent into it.
+  const [params, setParams] = useListParams();
+  const { data, isLoading, isError, error, refetch } = useUsers(params);
   const [inviting, setInviting] = useState(false);
 
   return (
@@ -28,7 +31,10 @@ export default function UsersRolesPage() {
       <InviteUserDialog open={inviting} onOpenChange={setInviting} />
 
       <UserTable
-        users={data}
+        users={data?.rows}
+        meta={data?.pagination}
+        params={params}
+        onParams={setParams}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

@@ -81,7 +81,7 @@ export function useDataTable<T>({
     for (const f of filters ?? []) {
       const v = filterValue(f);
       const all = f.allValue ?? "All";
-      if (v && v !== all) rows = rows.filter((r) => f.match(r, v));
+      if (v && v !== all && f.match) rows = rows.filter((r) => f.match!(r, v));
     }
 
     const q = query.trim().toLowerCase();

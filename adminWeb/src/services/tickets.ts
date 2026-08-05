@@ -1,6 +1,14 @@
-import { ApiError, mockResponse, notFound } from "./client";
+import {
+  ApiError,
+  matches,
+  mockPage,
+  mockResponse,
+  notFound,
+  sortRows,
+} from "./client";
 import { TICKETS, timelineFor } from "./mocks/tickets";
-import type { Ticket, TicketFilters, TimelineEvent } from "@/types";
+import type { ListParams, Page } from "@/types/api";
+import type { Ticket, TimelineEvent } from "@/types";
 
 /** Breach first — the whole point of the list is triage. */
 const SLA_RANK = { breach: 0, warn: 1, ok: 2, done: 3 } as const;
@@ -9,22 +17,45 @@ export interface TicketDetail extends Ticket {
   timeline: TimelineEvent[];
 }
 
-export function listTickets(filters: TicketFilters = {}): Promise<Ticket[]> {
-  return mockResponse(() => {
-    const q = filters.search?.trim().toLowerCase() ?? "";
-    return TICKETS.filter((t) => {
-      if (filters.status && filters.status !== "All" && t.status !== filters.status) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        t.id.toLowerCase().includes(q) ||
-        t.customer.toLowerCase().includes(q) ||
-        t.mobile.includes(q) ||
-        t.pincode.includes(q)
-      );
-    }).sort((a, b) => SLA_RANK[a.sla] - SLA_RANK[b.sla]);
-  });
+/**
+ * The sort keys the list endpoint accepts.
+ *
+ * Keyed by the TicketTable column id, so `sortBy` round-trips: the header the
+ * user clicked is the key that goes out and comes back in the URL.
+ */
+const TICKET_SORTS: Record<string, (t: Ticket) => string | number | null> = {
+  ticket: (t) => t.id,
+  customer: (t) => t.customer,
+  category: (t) => t.category,
+  sla: (t) => t.slaType,
+  slot: (t) => t.slot,
+  tech: (t) => t.tech,
+  status: (t) => t.status,
+  // The cell shows a word; the sort runs on the urgency rank behind it.
+  slaState: (t) => SLA_RANK[t.sla],
+};
+
+/** Triage order, and what the list falls back to when nothing is asked for. */
+const DEFAULT_SORT_BY = "slaState";
+
+/**
+ * Searching, filtering, sorting and slicing all happen HERE, because they all
+ * happen on the server — the browser only ever sees one page.
+ */
+export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {
+  return mockPage(() => {
+    const status = params.filters?.status;
+    const rows = TICKETS.filter((t) => {
+      if (status && status !== "All" && t.status !== status) return false;
+      return matches(t, ["id", "customer", "mobile", "pincode"], params.search);
+    });
+    return sortRows(
+      rows,
+      params.sortBy ?? DEFAULT_SORT_BY,
+      params.sortDir ?? "asc",
+      TICKET_SORTS
+    );
+  }, params);
 }
 
 export interface CreateTicketInput {
@@ -85,7 +116,10 @@ export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
     const ticket = TICKETS.find((t) => t.id === input.id);
     if (!ticket) notFound("Ticket", input.id);
     if (input.attachments.length === 0) {
-      throw new ApiError("Supporting attachments are required to force-close", 422);
+      throw new ApiError(
+        "Supporting attachments are required to force-close",
+        422
+      );
     }
     ticket.status = "Force-Closed";
     ticket.sla = "done";

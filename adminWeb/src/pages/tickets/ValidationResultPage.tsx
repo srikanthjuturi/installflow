@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -7,15 +8,29 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { ValidationTable } from "@/components/tickets/ValidationTable";
-import { useBatch } from "@/hooks/useImports";
+import { useBatch, useBatchErrors, useBatchRows } from "@/hooks/useImports";
 import { downloadCsv, toCsv } from "@/utils/csv";
 import { cn } from "@/lib/utils";
+import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
 
 export default function ValidationResultPage() {
   const { batchId = "" } = useParams();
+  // The summary and the rows are two requests: an import can run to thousands
+  // of rows, so the three totals arrive without them.
   const { data, isLoading, isError, error, refetch } = useBatch(batchId);
 
-  const rejectedRows = data?.rows.filter((r) => r.result === "Rejected") ?? [];
+  const [params, setParams] = useState<ListParams>({
+    page: 1,
+    limit: DEFAULT_PAGE_SIZE,
+    sortBy: "row",
+    sortDir: "asc",
+  });
+  const rows = useBatchRows(batchId, params);
+
+  // The error report is every rejected row, not the page on screen — the point
+  // is to fix and re-upload all of them.
+  const errors = useBatchErrors(batchId);
+  const rejectedRows = errors.data ?? [];
 
   const stats = [
     { label: "Total rows", value: data?.total, tone: "" },
@@ -107,7 +122,15 @@ export default function ValidationResultPage() {
             </div>
           </div>
 
-          <ValidationTable rows={data?.rows} isLoading={isLoading} />
+          <ValidationTable
+            rows={rows.data?.rows}
+            meta={rows.data?.pagination}
+            params={params}
+            onParams={setParams}
+            isLoading={rows.isLoading}
+            error={rows.isError ? rows.error : null}
+            onRetry={() => rows.refetch()}
+          />
         </>
       )}
     </>

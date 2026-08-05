@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   getRulesConfig,
   inviteUser,
@@ -6,11 +11,14 @@ import {
   saveRulesConfig,
   updateUserAccess,
 } from "@/services/settings";
+import type { ListParams } from "@/types/api";
 
 export const settingsKeys = {
   all: ["settings"] as const,
   rules: () => ["settings", "rules"] as const,
+  /** Prefix — invalidating this catches every page and filter combination. */
   users: () => ["settings", "users"] as const,
+  userPage: (params: ListParams) => ["settings", "users", params] as const,
 };
 
 /**
@@ -41,12 +49,19 @@ export function useSaveRulesConfig() {
   });
 }
 
-/** Console users — one row per person who can sign in to the portal. */
-export function useUsers() {
+/**
+ * One page of console users — one row per person who can sign in to the
+ * portal. The params are part of the key, so every filter and page is cached
+ * separately and going back is instant.
+ */
+export function useUsers(params: ListParams) {
   return useQuery({
-    queryKey: settingsKeys.users(),
-    queryFn: listUsers,
+    queryKey: settingsKeys.userPage(params),
+    queryFn: () => listUsers(params),
     staleTime: 60_000,
+    // Paging must not blank the table: the previous page stays on screen until
+    // the next one lands.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -55,7 +70,8 @@ export function useInviteUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: inviteUser,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
   });
 }
 
@@ -64,6 +80,7 @@ export function useUpdateUserAccess() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateUserAccess,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
   });
 }

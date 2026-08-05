@@ -38,7 +38,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     name: "Tickets",
     items: [
-      { label: "Ticket List", to: "/tickets", icon: ListFilter, match: ["/tickets/"] },
+      {
+        label: "Ticket List",
+        to: "/tickets",
+        icon: ListFilter,
+        match: ["/tickets/"],
+      },
       { label: "Manual Entry", to: "/tickets/new", icon: FileText },
       { label: "Bulk Upload", to: "/tickets/import", icon: Upload },
     ],
@@ -65,7 +70,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     name: "Master Data",
     items: [
-      { label: "Technicians", to: "/technicians", icon: Users, match: ["/technicians/"] },
+      {
+        label: "Technicians",
+        to: "/technicians",
+        icon: Users,
+        match: ["/technicians/"],
+      },
       { label: "Penalty & Bonus", to: "/ledger", icon: Coins },
       { label: "Vendors", to: "/vendors", icon: Boxes },
       { label: "Territory", to: "/territory", icon: Map },

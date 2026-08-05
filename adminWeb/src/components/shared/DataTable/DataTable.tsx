@@ -34,6 +34,7 @@ export function DataTable<T>({
   getRowId,
   caption,
   isLoading,
+  isFetching,
   error,
   onRetry,
   errorTitle,
@@ -92,6 +93,28 @@ export function DataTable<T>({
     isServer
       ? server!.onParams({ ...server!.params, limit: n, page: 1 })
       : t.setPageSize(n);
+
+  // In server mode the sort has to travel to the query, not stay in local
+  // state — otherwise the header arrow flips and the rows never move.
+  const activeSort = isServer
+    ? server!.params.sortBy
+      ? {
+          columnId: server!.params.sortBy,
+          dir: server!.params.sortDir ?? "asc",
+        }
+      : defaultSort
+    : t.sort;
+
+  const toggleSort = (columnId: string) => {
+    if (!isServer) return t.toggleSort(columnId);
+    const same = activeSort?.columnId === columnId;
+    server!.onParams({
+      ...server!.params,
+      page: 1,
+      sortBy: columnId,
+      sortDir: same && activeSort?.dir === "asc" ? "desc" : "asc",
+    });
+  };
 
   const toolbar = (
     <Toolbar
@@ -180,16 +203,23 @@ export function DataTable<T>({
             )}
           </div>
         ) : (
-          <div className="scroll-x">
+          <div
+            className={cn(
+              "scroll-x transition-opacity",
+              // Stale rows stay readable but visibly not-current.
+              isFetching && !isLoading && "opacity-60"
+            )}
+            aria-busy={isFetching && !isLoading ? true : undefined}
+          >
             <Table id={tableId} style={minWidth ? { minWidth } : undefined}>
               <caption className="sr-only">{caption}</caption>
               <TableHeader>
                 <HeadTr>
                   {columns.map((c) => {
-                    const active = t.sort?.columnId === c.id;
+                    const active = activeSort?.columnId === c.id;
                     const SortIcon = !active
                       ? ChevronsUpDown
-                      : t.sort?.dir === "asc"
+                      : activeSort?.dir === "asc"
                         ? ArrowUp
                         : ArrowDown;
                     return (
@@ -210,7 +240,7 @@ export function DataTable<T>({
                         {c.sortValue ? (
                           <button
                             type="button"
-                            onClick={() => t.toggleSort(c.id)}
+                            onClick={() => toggleSort(c.id)}
                             aria-controls={tableId}
                             className={cn(
                               "inline-flex items-center gap-1 uppercase transition-colors hover:text-ink",
