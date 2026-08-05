@@ -1,20 +1,18 @@
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Linking } from 'react-native';
 
-import { useProfileStore } from '@/store/profile.store';
-
 /**
- * Picks a profile photo from the camera or the library, cropped square.
+ * Picks a profile photo, then hands off to OUR crop screen.
  *
- * `allowsEditing` hands off to the platform's own crop UI rather than shipping
- * a custom cropper. That keeps the app inside Expo Go, and the native croppers
- * are the ones these users already know from every other app on the phone.
- * The 1:1 aspect is forced because the avatar is a square tile — letting a
- * portrait through would just centre-crop it invisibly later.
+ * `allowsEditing` is deliberately off. The platform cropper inherits the host
+ * app's Android theme, which under Expo Go means dark icons on a dark toolbar
+ * and no visible Done action — unfixable from config. Routing to CropScreen
+ * instead gives one themed, predictable experience everywhere.
  */
 export function useAvatarPicker() {
-  const setAvatar = useProfileStore((s) => s.setAvatar);
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   const denied = (what: string) => {
@@ -30,14 +28,22 @@ export function useAvatarPicker() {
 
   const handle = (result: ImagePicker.ImagePickerResult) => {
     const asset = result.canceled ? undefined : result.assets[0];
-    if (asset) setAvatar(asset.uri);
+    if (!asset) return;
+
+    router.replace({
+      pathname: '/crop-photo',
+      params: {
+        uri: asset.uri,
+        width: String(asset.width),
+        height: String(asset.height),
+      },
+    });
   };
 
   const options: ImagePicker.ImagePickerOptions = {
     mediaTypes: ['images'],
-    allowsEditing: true,
-    aspect: [1, 1],
-    quality: 0.8,
+    allowsEditing: false,
+    quality: 1,
   };
 
   const fromCamera = async () => {

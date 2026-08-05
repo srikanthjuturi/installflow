@@ -18,6 +18,7 @@ export default function AppLayout() {
         name="avatar-options"
         options={{ presentation: 'transparentModal', animation: 'fade' }}
       />
+      <Stack.Screen name="crop-photo" options={{ presentation: 'fullScreenModal' }} />
     </Stack>
   );
 }

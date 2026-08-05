@@ -57,7 +57,8 @@ export type IconName =
   | 'sparkle'
   | 'camera'
   | 'cameraOff'
-  | 'mapCheck';
+  | 'mapCheck'
+  | 'rotate';
 
 export interface IconProps {
   name: IconName;
@@ -345,6 +346,15 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
         <>
           <Circle cx={12} cy={12} r={9} {...p} />
           <Path d="M12 8v4M12 15v.5" {...p} />
+        </>
+      );
+
+    // Circular arrow — rotate the image 90 degrees.
+    case 'rotate':
+      return (
+        <>
+          <Path d="M4 12a8 8 0 1 1 2.3 5.7" {...p} />
+          <Path d="M4 6v5h5" {...p} />
         </>
       );
 

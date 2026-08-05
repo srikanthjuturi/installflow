@@ -23,10 +23,10 @@ export function AvatarOptionsSheet() {
 
   const dismiss = () => router.back();
 
-  const pick = async (source: 'camera' | 'library') => {
-    await (source === 'camera' ? fromCamera() : fromLibrary());
-    dismiss();
-  };
+  // No dismiss here — a successful pick replaces this route with the crop
+  // screen, and dismissing on cancel would lose the sheet unnecessarily.
+  const pick = (source: 'camera' | 'library') =>
+    source === 'camera' ? fromCamera() : fromLibrary();
 
   return (
     <Sheet onDismiss={dismiss}>
