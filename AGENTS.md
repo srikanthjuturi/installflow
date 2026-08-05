@@ -16,7 +16,7 @@ Two sources of truth:
   design reference, not a requirement the backend shares.
 
 For the per-screen spec, token tables and component patterns, load the **`videocon-tech-app`**
-skill in `.claude/skills/`.
+skill in `mobileapp/.claude/skills/`.
 
 ## Phase: UI only
 
@@ -58,9 +58,61 @@ break Expo Go and force a dev-client build.
 The repo holds more than the app — the Python backend lands beside it later.
 
 ```
-RequirementDocs/        business flow + the approved prototype
-mobileapp/              the Expo app — ALL app work happens in here
+RequirementDocs/        business flow + the approved prototypes
+mobileapp/              the Expo app — ALL technician-app work happens in here
+adminWeb/               the InstallFlow ops console (React + Vite) — see adminWeb/AGENTS.md
+api/                    the Python backend — later phase, currently empty
 ```
+
+## Skill & agent scoping
+
+**A skill lives in the folder it applies to.** Only what is genuinely cross-platform sits at the
+repo root; anything tied to React Native or to the DOM is scoped down, so an agent working in one
+app never picks up the other's tooling.
+
+```
+.claude/skills/             GLOBAL — applies everywhere
+  grill-me                    pressure-test a plan (manual /grilling only)
+  typescript-advanced-types   pure TS, no platform assumptions
+  vercel-composition-patterns React composition; React 19 in both apps
+  vercel-react-best-practices React/JS perf. ⚠ its server-*/hydration/DOM rules are web-only
+mobileapp/.claude/skills/   MOBILE ONLY
+  videocon-tech-app           the 18-screen spec, tokens, penalty bands, proof state machine
+  vercel-react-native-skills  RN performance, navigation, native modules, platform APIs
+  expo-native-ui              Expo native UI: lists, modals, tabs, bottom sheets, haptics
+  expo-router                 the routing model behind `app/` — see rule 4
+  expo-project-structure      file layout conventions for an Expo Router app
+  expo-data-fetching          offline caching, background refresh, sync patterns
+  expo-upgrade                SDK upgrades: breaking changes, native module compat, migration
+adminWeb/.claude/skills/    WEB ONLY — never load these for mobileapp/
+  shadcn                      Radix + react-dom; nothing renders in React Native
+  tailwind-design-system      Tailwind v4 @theme/@apply. NativeWind 4 is Tailwind 3 — wrong here
+  webapp-testing              Playwright against a local HTTP server
+  frontend-design             visual judgment. Mobile's design is already approved and locked
+api/.claude/skills/         BACKEND ONLY — create when the Python phase starts
+```
+
+The same rule governs custom subagents: a mobile-specific agent belongs in
+`mobileapp/.claude/agents/`, not at the root. There are none yet.
+
+Each scope owns its own `skills-lock.json` next to that folder. Restore a scope with
+`npx skills experimental_install` run **from that folder**. When adding a skill, `cd` into the
+right folder first — the CLI installs relative to the working directory. The agent flag is
+`-a claude-code` (plain `claude` is rejected); add `-y` to skip the prompt.
+
+**Check a skill targets our versions before installing it.** A skill written for the next major of
+the stack is worse than no skill — it argues confidently for the wrong thing. Two were removed for
+exactly that: `expo-tailwind-setup` (teaches Tailwind v4 + NativeWind v5 + `react-native-css`;
+this app is NativeWind `4.2.6` / Tailwind `3.4.19`, and it would break the `src/theme/tokens.js`
+single-source rule) and `sleek-design-mobile-apps` (an API client for a paid design SaaS, not a
+knowledge skill). `adminWeb/`'s `tailwind-design-system` is Tailwind **v4** `@theme` syntax and
+does not apply to `mobileapp/` either — that is why it is scoped to the web folder.
+
+A skill install can fail **silently** if the name is wrong — the CLI prints no error, it just
+installs nothing. Always check `ls .claude/skills/` afterwards. Published display names often
+differ from the real skill id (`building-native-ui` → `expo-native-ui`, `native-data-fetching` →
+`expo-data-fetching`, `upgrading-expo` → `expo-upgrade`). List the real ids first with
+`npx skills add <repo-url> --list`.
 
 Inside `mobileapp/`:
 
