@@ -101,6 +101,10 @@ export const color = {
   dangerHero: ['#7a1d1d', '#c81e1e'] as [string, string],
   warnHero: ['#7c4a06', '#d18f16'] as [string, string],
   heroBadge: 'rgba(255,255,255,0.16)',
+  /** Blue-tinted well on the chrome hero — the closure screen. */
+  heroWellBlue: 'rgba(31,111,235,0.16)',
+  /** Outline ring for a step that hasn't happened yet. */
+  stepPending: '#d0d7dd',
   successHeroText: '#c7f0d6',
   dangerHeroText: '#f6cccc',
   warnHeroText: '#fbe6bf',

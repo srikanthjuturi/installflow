@@ -1,15 +1,17 @@
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
-import { Header, Screen } from '@/components/layout';
-import { Button, Card } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useSendFeedbackLink } from '@/features/proof/hooks/useVerification';
 import { useCaptureStore } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
+import { palette } from '@/theme/tokens';
 
 export interface ClosureScreenProps {
   jobId: string;
@@ -25,12 +27,13 @@ const STEPS = [
  * Closure.
  *
  * Deliberately does NOT claim the ticket is closed. The customer closes it by
- * responding, or the ASM force-closes it later with supporting documents —
- * either way it's out of the technician's hands, and the copy says so rather
- * than implying the job is finished when it isn't.
+ * responding, or the ASM force-closes it later with supporting documents. The
+ * third step stays an empty ring for exactly that reason — the technician's
+ * part is finished, the ticket's is not, and the screen has to show both.
  */
 export function ClosureScreen({ jobId }: ClosureScreenProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { data: job } = useJob(jobId);
   const send = useSendFeedbackLink(jobId);
   const reset = useCaptureStore((s) => s.reset);
@@ -45,114 +48,137 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
   };
 
   return (
-    <>
-      <Header showBack={false} />
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="light" />
 
-      <Screen footer={<Button label="Done — back to jobs" onPress={done} />}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         <View
           style={{
-            width: 64,
-            height: 64,
-            borderRadius: radius.full,
-            backgroundColor: color.statusCompleted.bg,
+            backgroundColor: color.chrome,
             alignItems: 'center',
-            justifyContent: 'center',
-            marginTop: 8,
+            paddingTop: insets.top + 46,
+            paddingHorizontal: 26,
+            paddingBottom: 30,
           }}
         >
-          <Icon name="bell" size={30} color={color.statusCompleted.fg} />
+          <Animated.View
+            entering={FadeInDown.duration(400)}
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 24,
+              backgroundColor: color.heroWellBlue,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 18,
+            }}
+          >
+            <Icon name="mapCheck" size={42} color={color.verifyAccent} />
+          </Animated.View>
+
+          <Text
+            style={{ fontFamily: 'Roboto_900Black', fontSize: 22, color: color.textInverse }}
+          >
+            Feedback link sent
+          </Text>
+          <Text
+            style={{
+              fontFamily: 'Roboto_400Regular',
+              fontSize: 14,
+              lineHeight: 21,
+              color: color.textOnChrome,
+              textAlign: 'center',
+              marginTop: 8,
+            }}
+          >
+            {job?.customer ?? 'The customer'} received a WhatsApp link to confirm &amp; rate the
+            install.
+          </Text>
         </View>
 
-        <Text
-          style={{
-            fontFamily: 'Roboto_900Black',
-            fontSize: 25,
-            color: color.textPrimary,
-            marginTop: 18,
-            letterSpacing: -0.5,
-          }}
-        >
-          Feedback link sent
-        </Text>
-
-        <Text
-          style={{
-            fontFamily: 'Roboto_400Regular',
-            fontSize: 14,
-            lineHeight: 21,
-            color: color.textSecondary,
-            marginTop: 6,
-            marginBottom: 20,
-          }}
-        >
-          {job?.customer ?? 'The customer'} received a WhatsApp link to confirm &amp; rate the
-          install.
-        </Text>
-
-        <Card>
-          {STEPS.map((step, i) => (
-            <View
-              key={step.label}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                paddingVertical: 12,
-                borderTopWidth: i === 0 ? 0 : 1,
-                borderTopColor: color.border,
-              }}
-            >
+        <View style={{ paddingVertical: 18, paddingHorizontal: 16 }}>
+          <View
+            style={{
+              backgroundColor: color.surfaceRaised,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: 16,
+              paddingVertical: 4,
+            }}
+          >
+            {STEPS.map((step, i) => (
               <View
+                key={step.label}
                 style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: radius.full,
-                  backgroundColor: step.done ? color.statusCompleted.bg : color.surfaceSunken,
-                  borderWidth: step.done ? 0 : 1,
-                  borderColor: color.borderStrong,
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: 12,
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderTopWidth: i === 0 ? 0 : 1,
+                  borderTopColor: palette.neutral[100],
                 }}
               >
                 {step.done ? (
-                  <Text
+                  <View
                     style={{
-                      fontFamily: 'Roboto_900Black',
-                      fontSize: 12,
-                      color: color.statusCompleted.fg,
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      backgroundColor: color.online,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    ✓
-                  </Text>
-                ) : null}
+                    <Icon name="check" size={15} color={color.textInverse} />
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      borderWidth: 2,
+                      borderColor: color.stepPending,
+                    }}
+                  />
+                )}
+
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 14,
+                    color: step.done ? color.textPrimary : color.textSecondary,
+                  }}
+                >
+                  {step.label}
+                </Text>
               </View>
+            ))}
+          </View>
 
-              <Text
-                style={{
-                  fontFamily: step.done ? 'Roboto_500Medium' : 'Roboto_400Regular',
-                  fontSize: 13.5,
-                  color: step.done ? color.textPrimary : color.textSecondary,
-                }}
-              >
-                {step.label}
-              </Text>
-            </View>
-          ))}
-        </Card>
+          <Text
+            style={{
+              fontFamily: 'Roboto_400Regular',
+              fontSize: 12.5,
+              lineHeight: 19,
+              color: color.textFootnote,
+              marginTop: 16,
+              marginHorizontal: 4,
+            }}
+          >
+            If the customer doesn&apos;t respond in the set window, the ASM can force-close with
+            supporting documents. Every closure records who, when and why.
+          </Text>
 
-        <Text
-          style={{
-            fontFamily: 'Roboto_400Regular',
-            fontSize: 12.5,
-            lineHeight: 19,
-            color: color.textMuted,
-            marginTop: 16,
-          }}
-        >
-          If the customer doesn&apos;t respond in the set window, the ASM can force-close with
-          supporting documents. Every closure records who, when and why.
-        </Text>
-      </Screen>
-    </>
+          <View style={{ marginTop: 22 }}>
+            <Button label="Done · back to jobs" onPress={done} />
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }

@@ -56,7 +56,8 @@ export type IconName =
   | 'edit'
   | 'sparkle'
   | 'camera'
-  | 'cameraOff';
+  | 'cameraOff'
+  | 'mapCheck';
 
 export interface IconProps {
   name: IconName;
@@ -364,6 +365,15 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
         <>
           <Rect x={3} y={7} width={18} height={13} rx={2.5} {...p} />
           <Circle cx={12} cy={13.5} r={3.5} {...p} />
+        </>
+      );
+
+    // Map plus a tick — "the link went out to where they are".
+    case 'mapCheck':
+      return (
+        <>
+          <Path d="M3 8l7-3 4 2 7-3v11l-7 3-4-2-7 3V8z" {...p} strokeWidth={1.7} />
+          <Path d="M9 12l2 2 4-4" {...p} strokeWidth={1.8} />
         </>
       );
 
