@@ -21,7 +21,13 @@ export default function BonusSetupPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
 
-  const { data: escalation, isLoading, isError, error, refetch } = useEscalation(id);
+  const {
+    data: escalation,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useEscalation(id);
   const eligible = useEligibleTechnicians();
   const addBonus = useAddBonus();
 
@@ -40,7 +46,7 @@ export default function BonusSetupPage() {
           });
           navigate("/escalations");
         },
-      },
+      }
     );
   }
 
@@ -51,7 +57,12 @@ export default function BonusSetupPage() {
         description="Fund a re-notification incentive from the penalty pool."
       />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/escalations">
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to="/escalations"
+      >
         <ArrowLeft data-icon="inline-start" />
         Back to escalations
       </LinkButton>
@@ -69,28 +80,40 @@ export default function BonusSetupPage() {
           icon={SearchX}
           title="This ticket is no longer escalated"
           description="Someone has already picked it up, or it was assigned manually."
-          action={<LinkButton to="/escalations">Back to escalations</LinkButton>}
+          action={
+            <LinkButton to="/escalations">Back to escalations</LinkButton>
+          }
         />
       ) : (
         <Card className="max-w-190 gap-0 py-0">
-          <CardHeader className="border-line-2 border-b p-4.5">
+          <CardHeader className="border-b border-line-2 p-4.5">
             <CardTitle>
               <h2>Bonus on re-notification · {escalation.id}</h2>
             </CardTitle>
-            <p className="text-ink-3 text-xs">
-              Incentivize a fast pickup. The bonus is funded from the penalty pool and paid to
-              whoever accepts.
+            <p className="text-xs text-ink-3">
+              Incentivize a fast pickup. The bonus is funded from the penalty
+              pool and paid to whoever accepts.
             </p>
           </CardHeader>
 
           <CardContent className="p-5.5">
             <div className="mb-5 flex flex-wrap gap-3.5">
-              <Stat label="Available pool" value={money(escalation.pool)} tone="ok" />
+              <Stat
+                label="Available pool"
+                value={money(escalation.pool)}
+                tone="ok"
+              />
               <Stat
                 label="Eligible technicians"
-                value={eligible.isLoading ? null : String(eligible.data?.length ?? 0)}
+                value={
+                  eligible.isLoading ? null : String(eligible.data?.length ?? 0)
+                }
               />
-              <Stat label="Time to slot" value={escalation.left} tone="danger" />
+              <Stat
+                label="Time to slot"
+                value={escalation.left}
+                tone="danger"
+              />
             </div>
 
             <BonusPicker
@@ -103,7 +126,7 @@ export default function BonusSetupPage() {
             {addBonus.isError ? (
               <p
                 role="alert"
-                className="bg-danger-bg text-danger mt-5 rounded-md px-4 py-3 text-xs"
+                className="mt-5 rounded-md bg-danger-bg px-4 py-3 text-xs text-danger"
               >
                 {addBonus.error instanceof Error
                   ? addBonus.error.message
@@ -111,17 +134,17 @@ export default function BonusSetupPage() {
               </p>
             ) : null}
 
-            <p className="bg-info-bg text-info border-info/20 mt-5 flex items-start gap-2.5 rounded-md border px-4 py-3.5 text-xs leading-relaxed">
+            <p className="mt-5 flex items-start gap-2.5 rounded-md border border-info/20 bg-info-bg px-4 py-3.5 text-xs leading-relaxed text-info">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>
-                The confirmed slot ({escalation.slot}) stays locked. Re-notification goes to all
-                eligible technicians instantly; product &amp; customer details release only on
-                acceptance.
+                The confirmed slot ({escalation.slot}) stays locked.
+                Re-notification goes to all eligible technicians instantly;
+                product &amp; customer details release only on acceptance.
               </span>
             </p>
           </CardContent>
 
-          <div className="border-line-2 flex flex-wrap justify-end gap-2.5 border-t p-4">
+          <div className="flex flex-wrap justify-end gap-2.5 border-t border-line-2 p-4">
             <LinkButton variant="outline" size="lg" to="/escalations">
               Cancel
             </LinkButton>
@@ -147,8 +170,8 @@ function Stat({
   tone?: "ok" | "danger";
 }) {
   return (
-    <div className="border-line-2 bg-surface-2 min-w-40 flex-1 rounded-md border px-3.75 py-3.25">
-      <div className="text-ink-3 text-[11px] font-semibold tracking-[0.04em] uppercase">
+    <div className="min-w-40 flex-1 rounded-md border border-line-2 bg-surface-2 px-3.75 py-3.25">
+      <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
         {label}
       </div>
       {value === null ? (
@@ -157,9 +180,9 @@ function Stat({
         <div
           className={
             tone === "ok"
-              ? "text-ok mt-1 text-xl font-semibold"
+              ? "mt-1 text-xl font-semibold text-ok"
               : tone === "danger"
-                ? "text-danger mt-1 text-xl font-semibold"
+                ? "mt-1 text-xl font-semibold text-danger"
                 : "mt-1 text-xl font-semibold"
           }
         >
@@ -174,7 +197,7 @@ function Stat({
 function BonusSetupSkeleton() {
   return (
     <Card className="max-w-190 gap-0 py-0">
-      <CardHeader className="border-line-2 border-b p-4.5">
+      <CardHeader className="border-b border-line-2 p-4.5">
         <Skeleton className="h-5 w-72" />
         <Skeleton className="mt-1 h-3.5 w-full max-w-140" />
       </CardHeader>
@@ -183,7 +206,7 @@ function BonusSetupSkeleton() {
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="border-line-2 bg-surface-2 min-w-40 flex-1 rounded-md border px-3.75 py-3.25"
+              className="min-w-40 flex-1 rounded-md border border-line-2 bg-surface-2 px-3.75 py-3.25"
             >
               <Skeleton className="h-3 w-24" />
               <Skeleton className="mt-2 h-6 w-20" />
@@ -199,7 +222,7 @@ function BonusSetupSkeleton() {
         </div>
         <Skeleton className="mt-5 h-16 rounded-md" />
       </CardContent>
-      <div className="border-line-2 flex justify-end gap-2.5 border-t p-4">
+      <div className="flex justify-end gap-2.5 border-t border-line-2 p-4">
         <Skeleton className="h-9 w-20 rounded-lg" />
         <Skeleton className="h-9 w-55 rounded-lg" />
       </div>

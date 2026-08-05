@@ -3,7 +3,15 @@ import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/shared/states";
-import { HeadTr, Table, TableBody, TableHeader, Td, Th, Tr } from "./primitives";
+import {
+  HeadTr,
+  Table,
+  TableBody,
+  TableHeader,
+  Td,
+  Th,
+  Tr,
+} from "./primitives";
 import { Pagination } from "./Pagination";
 import { Toolbar } from "./Toolbar";
 import { useDataTable } from "./useDataTable";
@@ -28,12 +36,16 @@ export function DataTable<T>({
   isLoading,
   error,
   onRetry,
+  errorTitle,
+  bare,
+  skeletonRows,
   search,
   filters,
   toolbarActions,
   pagination = {},
   defaultSort,
   summary,
+  countLabel,
   onRowClick,
   rowClassName,
   minWidth,
@@ -76,23 +88,31 @@ export function DataTable<T>({
     return (
       <>
         {toolbar}
-        <ErrorState error={error} onRetry={onRetry} />
+        <ErrorState title={errorTitle} error={error} onRetry={onRetry} />
       </>
     );
   }
 
   const showEmpty = !isLoading && t.total === 0;
+  const placeholderRows = skeletonRows ?? Math.min(defaultSize, 8);
+  // `bare` drops the rail for a table already inside a Card — two nested
+  // rounded surfaces read as a bug, not as depth.
+  const panel = bare
+    ? undefined
+    : "bg-card overflow-hidden rounded-xl ring-1 ring-foreground/10";
 
   return (
     <>
       {toolbar}
 
-      <div className="bg-card overflow-hidden rounded-xl ring-1 ring-foreground/10">
+      <div className={panel}>
         {summary || paginated ? (
-          <div className="border-line-2 text-ink-2 flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-2 px-4 py-3 text-xs text-ink-2">
             <span aria-live="polite">
               {isLoading ? (
                 "Loading…"
+              ) : countLabel ? (
+                countLabel(t.total)
               ) : (
                 <>
                   <b className="text-ink">{t.total}</b>{" "}
@@ -110,13 +130,14 @@ export function DataTable<T>({
               <EmptyState
                 title={filteredEmptyTitle ?? "Nothing matches those filters"}
                 description={
-                  filteredEmptyDescription ?? "Try a different filter, or clear the search."
+                  filteredEmptyDescription ??
+                  "Try a different filter, or clear the search."
                 }
                 action={
                   <button
                     type="button"
                     onClick={t.clear}
-                    className="text-brand-400 hover:text-brand-500 text-sm font-semibold"
+                    className="text-sm font-semibold text-brand-400 hover:text-brand-500"
                   >
                     Clear filters
                   </button>
@@ -148,11 +169,15 @@ export function DataTable<T>({
                       <Th
                         key={c.id}
                         aria-sort={
-                          active ? (t.sort!.dir === "asc" ? "ascending" : "descending") : undefined
+                          active
+                            ? t.sort!.dir === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : undefined
                         }
                         className={cn(
                           c.align === "right" && "text-right",
-                          c.sticky && "bg-surface-2 sticky left-0 z-10",
+                          c.sticky && "sticky left-0 z-10 bg-surface-2"
                         )}
                       >
                         {c.sortValue ? (
@@ -161,16 +186,20 @@ export function DataTable<T>({
                             onClick={() => t.toggleSort(c.id)}
                             aria-controls={tableId}
                             className={cn(
-                              "hover:text-ink inline-flex items-center gap-1 uppercase transition-colors",
+                              "inline-flex items-center gap-1 uppercase transition-colors hover:text-ink",
                               c.align === "right" && "flex-row-reverse",
-                              active && "text-ink",
+                              active && "text-ink"
                             )}
                           >
-                            <span className={cn(c.hideHeader && "sr-only")}>{c.header}</span>
+                            <span className={cn(c.hideHeader && "sr-only")}>
+                              {c.header}
+                            </span>
                             <SortIcon className="size-3" aria-hidden />
                           </button>
                         ) : (
-                          <span className={cn(c.hideHeader && "sr-only")}>{c.header}</span>
+                          <span className={cn(c.hideHeader && "sr-only")}>
+                            {c.header}
+                          </span>
                         )}
                       </Th>
                     );
@@ -180,7 +209,7 @@ export function DataTable<T>({
 
               <TableBody>
                 {isLoading
-                  ? Array.from({ length: Math.min(defaultSize, 8) }).map((_, r) => (
+                  ? Array.from({ length: placeholderRows }).map((_, r) => (
                       <Tr key={r} className="hover:bg-transparent">
                         {columns.map((c, i) => (
                           <Td key={c.id}>
@@ -198,7 +227,7 @@ export function DataTable<T>({
                         onClick={onRowClick ? () => onRowClick(row) : undefined}
                         className={cn(
                           onRowClick && "cursor-pointer",
-                          rowClassName?.(row),
+                          rowClassName?.(row)
                         )}
                       >
                         {columns.map((c) => (
@@ -206,8 +235,8 @@ export function DataTable<T>({
                             key={c.id}
                             className={cn(
                               c.align === "right" && "text-right",
-                              c.sticky && "bg-card sticky left-0",
-                              c.cellClassName,
+                              c.sticky && "sticky left-0 bg-card",
+                              c.cellClassName
                             )}
                           >
                             {c.cell(row)}

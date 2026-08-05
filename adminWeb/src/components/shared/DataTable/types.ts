@@ -39,6 +39,12 @@ export interface FilterDef {
   onChange?: (value: string) => void;
   /** Value meaning "no filter". Defaults to "All". */
   allValue?: string;
+  /**
+   * Label for the clear-the-filter option. Pills get one prepended
+   * automatically unless `options` already contains `allValue` — without it a
+   * pill filter can be set but never cleared.
+   */
+  allLabel?: string;
   /** `pills` for a small set, `select` for a long one. */
   variant?: "pills" | "select";
   /** Matches a row against the active value. */
@@ -66,6 +72,17 @@ export interface DataTableProps<T> {
   isLoading?: boolean;
   error?: unknown;
   onRetry?: () => void;
+  /** Names what failed to load. Falls back to the generic error copy. */
+  errorTitle?: string;
+
+  /**
+   * Renders without the card rail, for a table that already sits inside a
+   * Card. Without this, the two rounded surfaces nest and read as a bug.
+   */
+  bare?: boolean;
+
+  /** Loading placeholder rows. Defaults to the page size, capped at 8. */
+  skeletonRows?: number;
 
   /** Omit to hide the search box. */
   search?: {
@@ -89,6 +106,8 @@ export interface DataTableProps<T> {
   defaultSort?: SortState;
   /** Shown beside the row count, e.g. "Sorted by SLA urgency". */
   summary?: React.ReactNode;
+  /** Overrides the "N results" phrasing, e.g. "Showing 14 tickets". */
+  countLabel?: (count: number) => React.ReactNode;
 
   /** Makes rows clickable. Pair with a real link inside a cell for keyboard. */
   onRowClick?: (row: T) => void;

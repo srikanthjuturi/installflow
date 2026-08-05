@@ -1,11 +1,4 @@
-import {
-  Bell,
-  Check,
-  Clock,
-  Lock,
-  MessageSquare,
-  Plus,
-} from "lucide-react";
+import { Bell, Check, Clock, Lock, MessageSquare, Plus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TimelineEvent } from "@/types";
@@ -18,7 +11,10 @@ const EVENT: Record<TimelineEvent["ic"], { icon: LucideIcon; tint: string }> = {
   lock: { icon: Lock, tint: "bg-status-ai-review-bg text-status-ai-review" },
   bell: { icon: Bell, tint: "bg-warn-bg text-warn" },
   accept: { icon: Check, tint: "bg-ok-bg text-ok" },
-  progress: { icon: Clock, tint: "bg-status-in-progress-bg text-status-in-progress" },
+  progress: {
+    icon: Clock,
+    tint: "bg-status-in-progress-bg text-status-in-progress",
+  },
 };
 
 /**
@@ -29,10 +25,10 @@ const EVENT: Record<TimelineEvent["ic"], { icon: LucideIcon; tint: string }> = {
 export function Timeline({ events }: { events: TimelineEvent[] }) {
   return (
     <Card>
-      <CardHeader className="border-line-2 border-b pb-4">
+      <CardHeader className="border-b border-line-2 pb-4">
         <CardTitle className="flex items-center gap-2 text-sm">
           Timeline &amp; audit trail
-          <span className="bg-surface-3 text-ink-3 rounded-full px-2 py-0.5 text-[11px] font-semibold">
+          <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-ink-3">
             {events.length} events
           </span>
         </CardTitle>
@@ -51,14 +47,19 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
                   >
                     <Icon className="size-3.5" aria-hidden />
                   </span>
-                  {!isLast && <span className="bg-line-2 min-h-4 w-0.5 flex-1" aria-hidden />}
+                  {!isLast && (
+                    <span
+                      className="min-h-4 w-0.5 flex-1 bg-line-2"
+                      aria-hidden
+                    />
+                  )}
                 </div>
                 <div className={isLast ? "pb-0" : "pb-4"}>
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-[13px] font-semibold">{e.title}</span>
-                    <span className="text-ink-3 text-[11px]">{e.t}</span>
+                    <span className="text-[11px] text-ink-3">{e.t}</span>
                   </div>
-                  <p className="text-ink-2 mt-0.5 text-xs">
+                  <p className="mt-0.5 text-xs text-ink-2">
                     {e.note} · <span className="text-ink-3">by {e.by}</span>
                   </p>
                 </div>

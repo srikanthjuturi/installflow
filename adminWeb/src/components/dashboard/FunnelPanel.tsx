@@ -11,8 +11,10 @@ export function FunnelPanel({ stages }: { stages: FunnelStage[] }) {
           <div key={s.label} className="flex flex-col gap-3">
             {i > 0 && <Separator />}
             <div className="flex items-baseline gap-3">
-              <span className="text-[22px] leading-none font-semibold tabular-nums">{s.n}</span>
-              <span className="text-ink-2 text-[13px]">{s.label}</span>
+              <span className="text-[22px] leading-none font-semibold tabular-nums">
+                {s.n}
+              </span>
+              <span className="text-[13px] text-ink-2">{s.label}</span>
             </div>
           </div>
         ))}

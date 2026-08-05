@@ -1,26 +1,17 @@
 import { useState } from "react";
 import { VendorFormDialog } from "@/components/masters/VendorFormDialog";
 import {
-  HeadTr,
-  Table,
-  TableBody,
-  TableHeader,
-  Td,
-  Th,
-  Tr,
+  INTAKE_CHANNELS,
+  VENDOR_STATUSES,
+} from "@/components/masters/vendorSchema";
+import {
+  DataTable,
+  type Column,
+  type TypedFilterDef,
 } from "@/components/shared/DataTable";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { Vendor } from "@/types";
-
-const COLUMNS = [
-  "Vendor",
-  "Intake channel",
-  "API credentials",
-  "Tickets (lifetime)",
-  "Since",
-  "Status",
-];
 
 /**
  * Requirement §4 — there are exactly three intake channels, and only one of
@@ -47,7 +38,7 @@ function VendorMonogram({ name }: { name: string }) {
   return (
     <div
       aria-hidden
-      className="bg-surface-3 text-ink-2 grid size-8 shrink-0 place-items-center rounded-md text-xs font-semibold"
+      className="grid size-8 shrink-0 place-items-center rounded-md bg-surface-3 text-xs font-semibold text-ink-2"
     >
       {name.slice(0, 2).toUpperCase()}
     </div>
@@ -59,117 +50,156 @@ interface VendorTableProps {
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
+  toolbarActions?: React.ReactNode;
 }
 
-export function VendorTable({ vendors, isLoading, error, onRetry }: VendorTableProps) {
+export function VendorTable({
+  vendors,
+  isLoading,
+  error,
+  onRetry,
+  toolbarActions,
+}: VendorTableProps) {
   // The managed vendor outlives the close so the dialog can animate out.
   const [managed, setManaged] = useState<Vendor | null>(null);
   const [open, setOpen] = useState(false);
 
-  if (error) {
-    return <ErrorState title="Couldn't load vendors" error={error} onRetry={onRetry} />;
-  }
+  const columns: Column<Vendor>[] = [
+    {
+      id: "name",
+      header: "Vendor",
+      sortValue: (v) => v.name,
+      cell: (v) => (
+        <div className="flex items-center gap-2.5">
+          <VendorMonogram name={v.name} />
+          <span className="font-medium">{v.name}</span>
+        </div>
+      ),
+    },
+    {
+      id: "channel",
+      header: "Intake channel",
+      cell: (v) => (
+        // Never colour alone — the channel word is always present.
+        <span
+          className={cn(
+            "inline-block rounded-full px-2.25 py-0.75 text-[11px] font-semibold",
+            CHANNEL_CLASS[v.channel]
+          )}
+        >
+          {v.channel}
+        </span>
+      ),
+    },
+    {
+      id: "key",
+      header: "API credentials",
+      cell: (v) =>
+        // Only API-channel vendors hold credentials; the rest carry the em
+        // dash the prototype shows, which reads as nothing on its own. Already
+        // masked at the source, and it stays that way — a full key must never
+        // reach the DOM.
+        v.channel === "API" && v.key !== "—" ? (
+          <span className="font-mono text-xs text-ink-2">{v.key}</span>
+        ) : (
+          <span className="font-mono text-xs text-ink-2">
+            <span aria-hidden>—</span>
+            <span className="sr-only">Not applicable</span>
+          </span>
+        ),
+    },
+    {
+      id: "tickets",
+      header: "Tickets (lifetime)",
+      sortValue: (v) => v.tickets,
+      cellClassName: "tabular-nums",
+      cell: (v) => v.tickets,
+    },
+    {
+      id: "since",
+      header: "Since",
+      // A four-digit year — compared as a number so 2024 never sorts before
+      // 2021 on a string collation.
+      sortValue: (v) =>
+        Number.isNaN(Number(v.since)) ? null : Number(v.since),
+      cellClassName: "tabular-nums",
+      cell: (v) => v.since,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (v) => (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.25 text-xs font-semibold",
+            STATUS_CLASS[v.status]
+          )}
+        >
+          <span aria-hidden className="size-1.75 rounded-full bg-current" />
+          {v.status}
+        </span>
+      ),
+    },
+    {
+      id: "manage",
+      header: "Manage",
+      hideHeader: true,
+      cell: (v) => (
+        // A Button, not a link: it opens a dialog rather than navigating.
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-xs font-semibold text-brand-400"
+          onClick={() => {
+            setManaged(v);
+            setOpen(true);
+          }}
+        >
+          Manage
+          <span className="sr-only"> {v.name}</span>
+        </Button>
+      ),
+    },
+  ];
 
-  if (!isLoading && !vendors?.length) {
-    return (
-      <EmptyState
-        title="No vendors yet"
-        description="Vendors appear here with their intake channel and lifetime ticket volume."
-      />
-    );
-  }
+  const filters: TypedFilterDef<Vendor>[] = [
+    {
+      id: "channel",
+      label: "Intake channel",
+      variant: "select",
+      options: INTAKE_CHANNELS.map((c) => ({ value: c, label: c })),
+      match: (v, value) => v.channel === value,
+    },
+    {
+      id: "status",
+      label: "Status",
+      variant: "select",
+      options: VENDOR_STATUSES.map((s) => ({ value: s, label: s })),
+      match: (v, value) => v.status === value,
+    },
+  ];
 
   return (
-    <div className="scroll-x">
-      <Table className="min-w-205">
-        <TableHeader>
-          <HeadTr>
-            {COLUMNS.map((c) => (
-              <Th key={c} scope="col">
-                {c}
-              </Th>
-            ))}
-            <Th>
-              <span className="sr-only">Manage</span>
-            </Th>
-          </HeadTr>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableSkeleton rows={5} cols={COLUMNS.length + 1} />
-          ) : (
-            vendors?.map((v) => {
-              // Only API-channel vendors hold credentials; the rest carry the
-              // em dash the prototype shows, which reads as nothing on its own.
-              const hasKey = v.channel === "API" && v.key !== "—";
-
-              return (
-                <Tr key={v.id}>
-                  <Td>
-                    <div className="flex items-center gap-2.5">
-                      <VendorMonogram name={v.name} />
-                      <span className="font-medium">{v.name}</span>
-                    </div>
-                  </Td>
-
-                  <Td>
-                    {/* Never colour alone — the channel word is always present. */}
-                    <span
-                      className={`inline-block rounded-full px-2.25 py-0.75 text-[11px] font-semibold ${CHANNEL_CLASS[v.channel]}`}
-                    >
-                      {v.channel}
-                    </span>
-                  </Td>
-
-                  <Td>
-                    {hasKey ? (
-                      // Already masked at the source, and it stays that way —
-                      // a full key must never reach the DOM.
-                      <span className="text-ink-2 font-mono text-xs">{v.key}</span>
-                    ) : (
-                      <span className="text-ink-2 font-mono text-xs">
-                        <span aria-hidden>—</span>
-                        <span className="sr-only">Not applicable</span>
-                      </span>
-                    )}
-                  </Td>
-
-                  <Td className="tabular-nums">{v.tickets}</Td>
-                  <Td className="tabular-nums">{v.since}</Td>
-
-                  <Td>
-                    <span
-                      className={`inline-flex items-center gap-1.25 text-xs font-semibold ${STATUS_CLASS[v.status]}`}
-                    >
-                      <span
-                        aria-hidden
-                        className="size-1.75 rounded-full bg-current"
-                      />
-                      {v.status}
-                    </span>
-                  </Td>
-
-                  <Td>
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="text-brand-400 h-auto p-0 text-xs font-semibold"
-                      onClick={() => {
-                        setManaged(v);
-                        setOpen(true);
-                      }}
-                    >
-                      Manage
-                      <span className="sr-only"> {v.name}</span>
-                    </Button>
-                  </Td>
-                </Tr>
-              );
-            })
-          )}
-        </TableBody>
-      </Table>
+    <>
+      <DataTable
+        errorTitle="Couldn't load vendors"
+        caption="Vendors, with their intake channel, API credentials, lifetime ticket volume and status"
+        data={vendors}
+        columns={columns}
+        getRowId={(v) => v.id}
+        isLoading={isLoading}
+        error={error}
+        onRetry={onRetry}
+        search={{ placeholder: "Search vendors by name…", keys: ["name"] }}
+        filters={filters}
+        toolbarActions={toolbarActions}
+        minWidth="51.25rem"
+        emptyTitle="No vendors yet"
+        emptyDescription="Vendors appear here with their intake channel and lifetime ticket volume."
+        filteredEmptyTitle="No vendors match those filters"
+        filteredEmptyDescription="Try a different intake channel or status, or clear the search."
+      />
 
       {/* One dialog for the whole table — the row that opened it supplies the
           record, so there is no per-row popup mounted behind every button. */}
@@ -178,6 +208,6 @@ export function VendorTable({ vendors, isLoading, error, onRetry }: VendorTableP
         onOpenChange={setOpen}
         vendor={managed ?? undefined}
       />
-    </div>
+    </>
   );
 }

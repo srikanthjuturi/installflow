@@ -35,7 +35,12 @@ export default function AiReviewDetailPage() {
         description="Proof images, serial comparison and the manual ruling."
       />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/ai-review">
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to="/ai-review"
+      >
         <ArrowLeft data-icon="inline-start" />
         Back to AI queue
       </LinkButton>
@@ -95,7 +100,7 @@ export default function AiReviewDetailPage() {
                     icon={Hash}
                     alt={`Serial number close-up submitted by ${flag.tech}`}
                   >
-                    <span className="text-ink-2 font-mono text-[13px]">
+                    <span className="font-mono text-[13px] text-ink-2">
                       {flag.detectedSerial}
                     </span>
                   </ProofTile>
@@ -138,16 +143,18 @@ export default function AiReviewDetailPage() {
 
               <Card>
                 <CardHeader>
-                  <h2 className="text-sm leading-snug font-semibold">Manual decision</h2>
-                  <p className="text-ink-3 text-xs">
-                    Approve to proceed to closure, or reject to send the technician back
-                    on-site.
+                  <h2 className="text-sm leading-snug font-semibold">
+                    Manual decision
+                  </h2>
+                  <p className="text-xs text-ink-3">
+                    Approve to proceed to closure, or reject to send the
+                    technician back on-site.
                   </p>
                 </CardHeader>
                 <CardContent>
                   <div className="flex gap-2.5">
                     <Button
-                      className="bg-ok hover:bg-ok/90 h-11 flex-1 text-white"
+                      className="h-11 flex-1 bg-ok text-white hover:bg-ok/90"
                       disabled={busy}
                       onClick={() =>
                         approve.mutate(
@@ -160,7 +167,7 @@ export default function AiReviewDetailPage() {
                               });
                               navigate("/ai-review");
                             },
-                          },
+                          }
                         )
                       }
                     >
@@ -168,7 +175,7 @@ export default function AiReviewDetailPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="border-danger text-danger hover:text-danger hover:bg-danger-bg h-11 flex-1"
+                      className="h-11 flex-1 border-danger text-danger hover:bg-danger-bg hover:text-danger"
                       disabled={busy}
                       onClick={() =>
                         reject.mutate(
@@ -177,11 +184,12 @@ export default function AiReviewDetailPage() {
                             onSuccess: () => {
                               toast.add({
                                 title: "Rejected · retake",
-                                description: "Technician prompted to retake on-site.",
+                                description:
+                                  "Technician prompted to retake on-site.",
                               });
                               navigate("/ai-review");
                             },
-                          },
+                          }
                         )
                       }
                     >
@@ -217,10 +225,10 @@ function ProofTile({
 }) {
   return (
     <div>
-      <div className="text-ink-3 mb-1.5 text-[11px] font-semibold tracking-[0.04em] uppercase">
+      <div className="mb-1.5 text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
         {label}
       </div>
-      <div className="bg-surface-3 border-line-2 text-ink-3 flex aspect-4/3 flex-col items-center justify-center gap-1.5 rounded-md border">
+      <div className="flex aspect-4/3 flex-col items-center justify-center gap-1.5 rounded-md border border-line-2 bg-surface-3 text-ink-3">
         <Icon className="size-6" aria-hidden />
         {children}
         <span className="sr-only">{alt}</span>

@@ -2,7 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { useParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/shared/LinkButton";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
@@ -25,9 +25,17 @@ export default function ValidationResultPage() {
 
   return (
     <>
-      <PageMeta title="Upload validation" description="Row-level import result." />
+      <PageMeta
+        title="Upload validation"
+        description="Row-level import result."
+      />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/tickets/import">
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to="/tickets/import"
+      >
         <ArrowLeft data-icon="inline-start" />
         Back to upload
       </LinkButton>
@@ -44,14 +52,16 @@ export default function ValidationResultPage() {
             {stats.map((s) => (
               <Card key={s.label}>
                 <CardContent>
-                  <div className="text-ink-2 text-xs font-medium">{s.label}</div>
+                  <div className="text-xs font-medium text-ink-2">
+                    {s.label}
+                  </div>
                   {isLoading ? (
                     <Skeleton className="mt-2.5 h-7 w-16" />
                   ) : (
                     <div
                       className={cn(
                         "mt-2.5 text-[28px] leading-none font-semibold tabular-nums",
-                        s.tone,
+                        s.tone
                       )}
                     >
                       {s.value}
@@ -62,45 +72,42 @@ export default function ValidationResultPage() {
             ))}
           </div>
 
-          <Card>
-            <CardHeader className="border-line-2 border-b pb-4">
-              <CardTitle className="text-sm">Row-level result</CardTitle>
-              <CardAction>
-                <div className="flex flex-wrap gap-2.5">
-                  {/* Only the rejected rows — the point is to fix and
-                      re-upload them, so passed rows would be noise. */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!rejectedRows.length}
-                    onClick={() =>
-                      downloadCsv(
-                        `installflow-import-errors-${batchId}.csv`,
-                        toCsv(
-                          ["row", "customer_name", "pincode", "mobile", "reason"],
-                          rejectedRows.map((r) => [
-                            r.row,
-                            r.customer,
-                            r.pincode,
-                            r.mobile,
-                            r.reason,
-                          ]),
-                        ),
-                      )
-                    }
-                  >
-                    Download error report
-                  </Button>
-                  <LinkButton size="sm" to="/tickets">
-                    Go to imported tickets
-                  </LinkButton>
-                </div>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-              <ValidationTable rows={data?.rows} isLoading={isLoading} />
-            </CardContent>
-          </Card>
+          {/* No Card around the table — DataTable brings its own card chrome,
+              so wrapping it would draw a box inside a box. */}
+          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
+            <h2 className="text-sm font-medium">Row-level result</h2>
+            <div className="flex flex-wrap gap-2.5">
+              {/* Only the rejected rows — the point is to fix and
+                  re-upload them, so passed rows would be noise. */}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!rejectedRows.length}
+                onClick={() =>
+                  downloadCsv(
+                    `installflow-import-errors-${batchId}.csv`,
+                    toCsv(
+                      ["row", "customer_name", "pincode", "mobile", "reason"],
+                      rejectedRows.map((r) => [
+                        r.row,
+                        r.customer,
+                        r.pincode,
+                        r.mobile,
+                        r.reason,
+                      ])
+                    )
+                  )
+                }
+              >
+                Download error report
+              </Button>
+              <LinkButton size="sm" to="/tickets">
+                Go to imported tickets
+              </LinkButton>
+            </div>
+          </div>
+
+          <ValidationTable rows={data?.rows} isLoading={isLoading} />
         </>
       )}
     </>

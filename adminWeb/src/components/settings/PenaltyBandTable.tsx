@@ -29,10 +29,10 @@ export function PenaltyBandTable({ bands, cap }: PenaltyBandTableProps) {
       <dl className="flex flex-col gap-2.5">
         {bands.map((b) => (
           <div key={b.band} className={ROW}>
-            <dt className="text-ink-2 text-[13px]">{b.band}</dt>
+            <dt className="text-[13px] text-ink-2">{b.band}</dt>
             {/* Money is a debit against the technician; the tint is a second
                 encoding, never the only one — the band name carries it. */}
-            <dd className="text-danger font-mono text-sm font-semibold">
+            <dd className="font-mono text-sm font-semibold text-danger">
               {money(b.amount)}
             </dd>
           </div>
@@ -42,7 +42,7 @@ export function PenaltyBandTable({ bands, cap }: PenaltyBandTableProps) {
       {/* The prototype's own cap string reads "₹5,000 / technician / month",
           which duplicates the sentence it sits inside. Rendered through
           `money()` so the figure matches the ledger's formatting exactly. */}
-      <p className="text-ink-3 mt-3.5 text-xs">
+      <p className="mt-3.5 text-xs text-ink-3">
         Monthly cap: <b className="text-ink">{money(cap)}</b> per technician
       </p>
     </>

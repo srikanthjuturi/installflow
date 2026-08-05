@@ -5,8 +5,14 @@ import { toast } from "@/components/ui/toast";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { TerritoryFormDialog } from "@/components/masters/TerritoryFormDialog";
-import { NEW_REGION, parsePincodes } from "@/components/masters/territorySchema";
-import { TerritoryTree, TerritoryTreeSkeleton } from "@/components/masters/TerritoryTree";
+import {
+  NEW_REGION,
+  parsePincodes,
+} from "@/components/masters/territorySchema";
+import {
+  TerritoryTree,
+  TerritoryTreeSkeleton,
+} from "@/components/masters/TerritoryTree";
 import { useCreateMapping, useTerritory } from "@/hooks/useTerritory";
 
 export default function TerritoryPage() {
@@ -22,8 +28,9 @@ export default function TerritoryPage() {
       />
 
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
-        <p className="text-ink-2 text-[13px]">
-          Region → Regional Service Head → Area Service Manager → serviced pincodes
+        <p className="text-[13px] text-ink-2">
+          Region → Regional Service Head → Area Service Manager → serviced
+          pincodes
         </p>
         <Button onClick={() => setFormOpen(true)}>+ Add mapping</Button>
       </div>
@@ -36,7 +43,8 @@ export default function TerritoryPage() {
         onSubmit={(values) =>
           create.mutate(
             {
-              region: values.region === NEW_REGION ? values.newRegion : values.region,
+              region:
+                values.region === NEW_REGION ? values.newRegion : values.region,
               rsh: values.rsh,
               asm: values.asm,
               area: values.area,
@@ -51,8 +59,11 @@ export default function TerritoryPage() {
                 setFormOpen(false);
               },
               onError: (err) =>
-                toast.add({ title: "Couldn't add mapping", description: err.message }),
-            },
+                toast.add({
+                  title: "Couldn't add mapping",
+                  description: err.message,
+                }),
+            }
           )
         }
       />

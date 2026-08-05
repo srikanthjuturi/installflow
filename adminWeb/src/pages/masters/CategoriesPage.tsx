@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { CategoryCard, CategoryCardSkeleton } from "@/components/masters/CategoryCard";
+import {
+  CategoryCard,
+  CategoryCardSkeleton,
+} from "@/components/masters/CategoryCard";
 import { CategoryFormDialog } from "@/components/masters/CategoryFormDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -36,7 +39,9 @@ export default function CategoriesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
           {isLoading
-            ? Array.from({ length: 4 }).map((_, i) => <CategoryCardSkeleton key={i} />)
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <CategoryCardSkeleton key={i} />
+              ))
             : data?.map((c) => <CategoryCard key={c.name} category={c} />)}
         </div>
       )}

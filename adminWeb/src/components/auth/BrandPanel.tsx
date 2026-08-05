@@ -19,11 +19,12 @@ export function BrandPanel() {
       />
 
       <div className="relative flex items-center gap-3">
-        <div className="text-brand-500 grid size-9.5 place-items-center rounded-[9px] bg-white text-lg font-bold">
+        <div className="grid size-9.5 place-items-center rounded-[9px] bg-white text-lg font-bold text-brand-500">
           IF
         </div>
         <div className="text-base font-semibold">
-          InstallFlow<span className="font-normal opacity-60"> · Ops Console</span>
+          InstallFlow
+          <span className="font-normal opacity-60"> · Ops Console</span>
         </div>
       </div>
 
@@ -31,21 +32,21 @@ export function BrandPanel() {
         <p className="text-[34px] leading-[1.18] font-semibold tracking-tight">
           Installation &amp; Demo operations, under control.
         </p>
-        <p className="text-brand-200 mt-4.5 text-[15px] leading-relaxed">
-          Intake to closure — SLA tracking, escalations, technician assignment, AI proof
-          verification and audit-ready closures in one place.
+        <p className="mt-4.5 text-[15px] leading-relaxed text-brand-200">
+          Intake to closure — SLA tracking, escalations, technician assignment,
+          AI proof verification and audit-ready closures in one place.
         </p>
         <div className="mt-7.5 flex gap-6.5">
           {STATS.map((s) => (
             <div key={s.label}>
               <div className="text-[22px] font-semibold">{s.value}</div>
-              <div className="text-brand-200 text-xs">{s.label}</div>
+              <div className="text-xs text-brand-200">{s.label}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="text-brand-300 relative text-xs">
+      <div className="relative text-xs text-brand-300">
         © 2026 InstallFlow · Internal use only
       </div>
     </div>

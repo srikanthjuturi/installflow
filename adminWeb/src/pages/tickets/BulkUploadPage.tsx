@@ -1,7 +1,13 @@
 import { useNavigate } from "react-router";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { CardDescription } from "@/components/ui/card";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
@@ -23,10 +29,11 @@ export default function BulkUploadPage() {
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.6fr_1fr]">
         <Card>
-          <CardHeader className="border-line-2 border-b pb-4">
+          <CardHeader className="border-b border-line-2 pb-4">
             <CardTitle className="text-sm">Upload ticket file</CardTitle>
             <CardDescription className="text-xs">
-              Use the defined template. Each row is validated individually on import.
+              Use the defined template. Each row is validated individually on
+              import.
             </CardDescription>
             <CardAction>
               {/* The template is the 8 required column headers plus one
@@ -38,18 +45,21 @@ export default function BulkUploadPage() {
                 onClick={() =>
                   downloadCsv(
                     "installflow-ticket-template.csv",
-                    toCsv([...REQUIRED_COLUMNS], [
+                    toCsv(
+                      [...REQUIRED_COLUMNS],
                       [
-                        "Videocon",
-                        "Television",
-                        "Anil Deshmukh",
-                        "+91 98220 41120",
-                        "411014",
-                        "2026-08-10",
-                        '43" 4K UHD',
-                        "24h",
-                      ],
-                    ]),
+                        [
+                          "Videocon",
+                          "Television",
+                          "Anil Deshmukh",
+                          "+91 98220 41120",
+                          "411014",
+                          "2026-08-10",
+                          '43" 4K UHD',
+                          "24h",
+                        ],
+                      ]
+                    )
                   )
                 }
               >
@@ -71,7 +81,8 @@ export default function BulkUploadPage() {
                 isUploading={upload.isPending}
                 onFile={(file) =>
                   upload.mutate(file, {
-                    onSuccess: (batch) => navigate(`/tickets/import/${batch.id}`),
+                    onSuccess: (batch) =>
+                      navigate(`/tickets/import/${batch.id}`),
                   })
                 }
               />
@@ -80,7 +91,7 @@ export default function BulkUploadPage() {
         </Card>
 
         <Card>
-          <CardHeader className="border-line-2 border-b pb-4">
+          <CardHeader className="border-b border-line-2 pb-4">
             <CardTitle className="text-sm">Required columns</CardTitle>
           </CardHeader>
           <CardContent>
@@ -88,16 +99,17 @@ export default function BulkUploadPage() {
               {REQUIRED_COLUMNS.map((c) => (
                 <li
                   key={c}
-                  className="bg-surface-3 text-ink-2 rounded-sm px-2 py-1 font-mono text-[11px]"
+                  className="rounded-sm bg-surface-3 px-2 py-1 font-mono text-[11px] text-ink-2"
                 >
                   {c}
                 </li>
               ))}
             </ul>
             {/* The rule that makes bulk intake usable at all. */}
-            <p className="text-ink-2 mt-3.5 text-xs leading-relaxed">
-              Rows missing required fields, with invalid pincodes, or malformed phone numbers
-              are rejected individually — the rest of the file still imports.
+            <p className="mt-3.5 text-xs leading-relaxed text-ink-2">
+              Rows missing required fields, with invalid pincodes, or malformed
+              phone numbers are rejected individually — the rest of the file
+              still imports.
             </p>
           </CardContent>
         </Card>

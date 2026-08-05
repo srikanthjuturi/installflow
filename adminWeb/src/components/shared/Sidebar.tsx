@@ -31,16 +31,16 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
       className={cn(
         "bg-linear-180 from-(--sidebar-from) to-(--sidebar-to)",
         "flex h-full flex-col transition-[width] duration-200",
-        collapsed ? "w-sidebar-collapsed" : "w-sidebar",
+        collapsed ? "w-sidebar-collapsed" : "w-sidebar"
       )}
     >
       <div
         className={cn(
           "flex h-topbar shrink-0 items-center border-b border-white/10",
-          collapsed ? "justify-center px-2" : "gap-3 px-5",
+          collapsed ? "justify-center px-2" : "gap-3 px-5"
         )}
       >
-        <div className="text-brand-500 grid size-8 shrink-0 place-items-center rounded-md bg-white text-[15px] font-bold">
+        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-white text-[15px] font-bold text-brand-500">
           IF
         </div>
         {!collapsed && (
@@ -49,18 +49,27 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
           </div>
         )}
         {!collapsed && (
-          <CollapseToggle collapsed={collapsed} onToggle={toggleSidebarCollapsed} />
+          <CollapseToggle
+            collapsed={collapsed}
+            onToggle={toggleSidebarCollapsed}
+          />
         )}
       </div>
 
       {collapsed && (
         <div className="flex justify-center border-b border-white/10 py-2">
-          <CollapseToggle collapsed={collapsed} onToggle={toggleSidebarCollapsed} />
+          <CollapseToggle
+            collapsed={collapsed}
+            onToggle={toggleSidebarCollapsed}
+          />
         </div>
       )}
 
       <nav
-        className={cn("flex-1 overflow-y-auto pt-3.5 pb-6", collapsed ? "px-2" : "px-3")}
+        className={cn(
+          "flex-1 overflow-y-auto pt-3.5 pb-6",
+          collapsed ? "px-2" : "px-3"
+        )}
         aria-label="Main"
       >
         {NAV_GROUPS.map((group) => (
@@ -70,7 +79,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
             <div
               className={cn(
                 "pb-2 text-[10px] font-bold tracking-[0.09em] text-white/40 uppercase",
-                collapsed ? "sr-only" : "px-2.5",
+                collapsed ? "sr-only" : "px-2.5"
               )}
             >
               {group.name}
@@ -93,11 +102,19 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
                     collapsed ? "justify-center px-0" : "gap-3 px-2.5",
                     active
                       ? "bg-white/15 font-semibold text-white"
-                      : "font-medium text-white/70 hover:bg-white/8 hover:text-white",
+                      : "font-medium text-white/70 hover:bg-white/8 hover:text-white"
                   )}
                 >
-                  <Icon className="size-[18px] shrink-0" strokeWidth={1.8} aria-hidden />
-                  <span className={cn(collapsed ? "sr-only" : "flex-1 truncate text-left")}>
+                  <Icon
+                    className="size-[18px] shrink-0"
+                    strokeWidth={1.8}
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      collapsed ? "sr-only" : "flex-1 truncate text-left"
+                    )}
+                  >
                     {item.label}
                   </span>
                   {item.badge ? (
@@ -106,7 +123,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
                         "bg-brand-accent text-[10px] font-bold text-white",
                         collapsed
                           ? "absolute top-1 right-1 grid size-4 place-items-center rounded-full"
-                          : "rounded-full px-1.5 py-px",
+                          : "rounded-full px-1.5 py-px"
                       )}
                     >
                       {item.badge}
@@ -119,7 +136,12 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
         ))}
       </nav>
 
-      <div className={cn("shrink-0 border-t border-white/10", collapsed ? "p-2" : "p-3")}>
+      <div
+        className={cn(
+          "shrink-0 border-t border-white/10",
+          collapsed ? "p-2" : "p-3"
+        )}
+      >
         {/* The way to your own record — and the only way to sign out. */}
         <NavLink
           to="/account"
@@ -130,18 +152,22 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
             "flex w-full items-center rounded-md transition-colors",
             "focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
             collapsed ? "justify-center p-1.5" : "gap-2.5 px-2.5 py-2",
-            isActive(pathname, "/account") ? "bg-white/15" : "hover:bg-white/8",
+            isActive(pathname, "/account") ? "bg-white/15" : "hover:bg-white/8"
           )}
         >
           <span className="sr-only">Account</span>
-          <div className="bg-brand-400 grid size-8.5 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-white">
+          <div className="grid size-8.5 shrink-0 place-items-center rounded-full bg-brand-400 text-[13px] font-semibold text-white">
             {initials}
           </div>
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1 text-left">
-                <div className="truncate text-[13px] font-semibold text-white">{name}</div>
-                <div className="truncate text-[11px] text-white/50">{ROLE_LABEL[role]}</div>
+                <div className="truncate text-[13px] font-semibold text-white">
+                  {name}
+                </div>
+                <div className="truncate text-[11px] text-white/50">
+                  {ROLE_LABEL[role]}
+                </div>
               </div>
               <ChevronRight
                 className="size-4 shrink-0 text-white/50"

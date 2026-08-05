@@ -30,13 +30,15 @@ export function CategoryCard({ category }: { category: Category }) {
           <div className="flex items-center gap-3">
             <div
               aria-hidden
-              className="bg-brand-100 text-brand-500 grid size-9.5 shrink-0 place-items-center rounded-lg"
+              className="grid size-9.5 shrink-0 place-items-center rounded-lg bg-brand-100 text-brand-500"
             >
               <Icon className="size-4.5" />
             </div>
             <div>
-              <h2 className="text-[15px] leading-snug font-semibold">{category.name}</h2>
-              <p className="text-ink-3 text-xs">
+              <h2 className="text-[15px] leading-snug font-semibold">
+                {category.name}
+              </h2>
+              <p className="text-xs text-ink-3">
                 {category.techs} technicians certified
               </p>
             </div>
@@ -46,8 +48,8 @@ export function CategoryCard({ category }: { category: Category }) {
           <span
             className={
               category.active
-                ? "text-ok bg-ok-bg shrink-0 rounded-full px-2.25 py-0.75 text-[11px] font-semibold"
-                : "text-warn bg-warn-bg shrink-0 rounded-full px-2.25 py-0.75 text-[11px] font-semibold"
+                ? "shrink-0 rounded-full bg-ok-bg px-2.25 py-0.75 text-[11px] font-semibold text-ok"
+                : "shrink-0 rounded-full bg-warn-bg px-2.25 py-0.75 text-[11px] font-semibold text-warn"
             }
           >
             {category.active ? "Active" : "Paused"}
@@ -55,14 +57,14 @@ export function CategoryCard({ category }: { category: Category }) {
         </div>
 
         <div className="mt-4">
-          <h3 className="text-ink-3 mb-2 text-[11px] font-bold tracking-[0.05em] uppercase">
+          <h3 className="mb-2 text-[11px] font-bold tracking-[0.05em] text-ink-3 uppercase">
             Product models ({category.models.length})
           </h3>
           <ul className="flex flex-wrap gap-1.5">
             {category.models.map((m) => (
               <li
                 key={m}
-                className="bg-surface-3 text-ink-2 rounded-md px-2.75 py-1.25 text-xs font-medium"
+                className="rounded-md bg-surface-3 px-2.75 py-1.25 text-xs font-medium text-ink-2"
               >
                 {m}
               </li>

@@ -18,7 +18,7 @@ export default function TechnicianListPage() {
 
   const categories = useMemo(
     () => [...new Set((data ?? []).flatMap((t) => t.cats))].sort(),
-    [data],
+    [data]
   );
 
   return (
@@ -50,8 +50,11 @@ export default function TechnicianListPage() {
                 setFormOpen(false);
               },
               onError: (err) =>
-                toast.add({ title: "Couldn't add technician", description: err.message }),
-            },
+                toast.add({
+                  title: "Couldn't add technician",
+                  description: err.message,
+                }),
+            }
           )
         }
       />

@@ -31,7 +31,11 @@ interface ConfidenceMeterProps {
   variant?: "inline" | "hero";
 }
 
-export function ConfidenceMeter({ conf, threshold, variant = "inline" }: ConfidenceMeterProps) {
+export function ConfidenceMeter({
+  conf,
+  threshold,
+  variant = "inline",
+}: ConfidenceMeterProps) {
   const pct = Math.round(conf * 100);
   const tone = toneFor(pct, threshold);
   const clears = pct >= threshold;
@@ -41,13 +45,15 @@ export function ConfidenceMeter({ conf, threshold, variant = "inline" }: Confide
   if (variant === "hero") {
     return (
       <div className="py-1.5 text-center">
-        <div className={cn("font-mono text-4xl font-semibold", tone.text)}>{pct}%</div>
-        <p className="text-ink-3 mt-0.5 text-xs">
+        <div className={cn("font-mono text-4xl font-semibold", tone.text)}>
+          {pct}%
+        </div>
+        <p className="mt-0.5 text-xs text-ink-3">
           match confidence · threshold {threshold}%
         </p>
 
         <div
-          className="bg-surface-3 relative mt-3.5 h-1.5 overflow-hidden rounded-full"
+          className="relative mt-3.5 h-1.5 overflow-hidden rounded-full bg-surface-3"
           role="meter"
           aria-valuenow={pct}
           aria-valuemin={0}
@@ -56,9 +62,12 @@ export function ConfidenceMeter({ conf, threshold, variant = "inline" }: Confide
         >
           {/* Width and marker offset are data, not design — they cannot be
               expressed as a static utility class. */}
-          <div className={cn("h-full rounded-full", tone.bar)} style={{ width: `${pct}%` }} />
           <div
-            className="bg-ink-3 absolute inset-y-0 w-0.5"
+            className={cn("h-full rounded-full", tone.bar)}
+            style={{ width: `${pct}%` }}
+          />
+          <div
+            className="absolute inset-y-0 w-0.5 bg-ink-3"
             style={{ left: `${threshold}%` }}
             aria-hidden
           />
@@ -73,18 +82,21 @@ export function ConfidenceMeter({ conf, threshold, variant = "inline" }: Confide
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
         <div
-          className="bg-surface-3 h-1.5 w-12 shrink-0 overflow-hidden rounded-full"
+          className="h-1.5 w-12 shrink-0 overflow-hidden rounded-full bg-surface-3"
           role="meter"
           aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-label={label}
         >
-          <div className={cn("h-full rounded-full", tone.bar)} style={{ width: `${pct}%` }} />
+          <div
+            className={cn("h-full rounded-full", tone.bar)}
+            style={{ width: `${pct}%` }}
+          />
         </div>
         <span className={cn("text-xs font-semibold", tone.text)}>{pct}%</span>
       </div>
-      <span className="text-ink-3 text-[11px]" aria-hidden>
+      <span className="text-[11px] text-ink-3" aria-hidden>
         {verdict}
       </span>
     </div>

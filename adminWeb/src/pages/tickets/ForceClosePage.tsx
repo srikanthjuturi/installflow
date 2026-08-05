@@ -21,7 +21,12 @@ export default function ForceClosePage() {
         description="Manager closure with a recorded reason, justification and attachments."
       />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to={`/tickets/${id}`}>
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to={`/tickets/${id}`}
+      >
         <ArrowLeft data-icon="inline-start" />
         Back to ticket
       </LinkButton>
@@ -66,7 +71,7 @@ export default function ForceClosePage() {
                     });
                     navigate(`/tickets/${closed.id}`);
                   },
-                },
+                }
               )
             }
           />

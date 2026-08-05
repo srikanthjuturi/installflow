@@ -10,38 +10,40 @@ import type { Escalation } from "@/types";
  */
 export function EscalationCard({ escalation: e }: { escalation: Escalation }) {
   return (
-    <Card className="border-l-danger border-l-3">
+    <Card className="border-l-3 border-l-danger">
       <CardContent className="flex flex-wrap items-center gap-4.5">
         <div className="min-w-50 flex-1">
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
               to={`/tickets/${e.id}`}
-              className="hover:text-brand-400 font-mono text-sm font-semibold"
+              className="font-mono text-sm font-semibold hover:text-brand-400"
             >
               {e.id}
             </Link>
-            <span className="text-ink-2 text-xs">
+            <span className="text-xs text-ink-2">
               {e.customer} · {e.product}
             </span>
           </div>
-          <p className="text-ink-3 mt-1.5 text-xs">
+          <p className="mt-1.5 text-xs text-ink-3">
             {e.city} · {e.pincode} · Slot {e.slot}
           </p>
-          <p className="text-danger mt-1.5 text-xs font-medium">{e.reason}</p>
+          <p className="mt-1.5 text-xs font-medium text-danger">{e.reason}</p>
         </div>
 
         <div className="px-3.5 text-center">
-          <div className="text-ink-3 text-[11px] font-semibold tracking-[0.04em] uppercase">
+          <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
             Time to slot
           </div>
-          <div className="text-danger font-mono text-xl font-semibold">{e.left}</div>
+          <div className="font-mono text-xl font-semibold text-danger">
+            {e.left}
+          </div>
         </div>
 
         <div className="px-3.5 text-center">
-          <div className="text-ink-3 text-[11px] font-semibold tracking-[0.04em] uppercase">
+          <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
             Bonus pool
           </div>
-          <div className="text-ok text-lg font-semibold">{money(e.pool)}</div>
+          <div className="text-lg font-semibold text-ok">{money(e.pool)}</div>
         </div>
 
         <div className="flex flex-wrap gap-2">

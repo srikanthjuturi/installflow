@@ -40,7 +40,7 @@ export default function RulesConfigPage() {
           {save.isError ? (
             <p
               role="alert"
-              className="bg-danger-bg text-danger mb-3.5 rounded-md px-4 py-3 text-xs"
+              className="mb-3.5 rounded-md bg-danger-bg px-4 py-3 text-xs text-danger"
             >
               {save.error instanceof Error
                 ? save.error.message

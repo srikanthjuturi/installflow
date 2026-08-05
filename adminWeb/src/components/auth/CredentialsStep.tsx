@@ -3,7 +3,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const schema = z.object({
@@ -33,7 +38,9 @@ export function CredentialsStep({
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <h1 className="text-[22px] font-semibold">Sign in</h1>
-      <p className="text-ink-2 mt-1.5 text-[13px]">Use your ops credentials to continue.</p>
+      <p className="mt-1.5 text-[13px] text-ink-2">
+        Use your ops credentials to continue.
+      </p>
 
       <FieldGroup className="mt-6.5">
         <Field data-invalid={errors.email ? true : undefined}>
@@ -73,21 +80,28 @@ export function CredentialsStep({
         </Field>
       </FieldGroup>
 
-      <div className="text-ink-2 mt-3 flex items-center justify-between text-xs">
+      <div className="mt-3 flex items-center justify-between text-xs text-ink-2">
         <label className="flex cursor-pointer items-center gap-2">
           <Checkbox id="trust" defaultChecked {...register("trustDevice")} />
           Trust this device
         </label>
-        <a href="#reset" className="text-brand-400 hover:text-brand-500 font-medium">
+        <a
+          href="#reset"
+          className="font-medium text-brand-400 hover:text-brand-500"
+        >
           Forgot password?
         </a>
       </div>
 
-      <Button type="submit" className="mt-5.5 h-11.5 w-full" disabled={isSubmitting}>
+      <Button
+        type="submit"
+        className="mt-5.5 h-11.5 w-full"
+        disabled={isSubmitting}
+      >
         Continue
       </Button>
 
-      <p className="text-ink-3 mt-4.5 text-center text-xs">
+      <p className="mt-4.5 text-center text-xs text-ink-3">
         We'll send a one-time code to your registered number.
       </p>
     </form>

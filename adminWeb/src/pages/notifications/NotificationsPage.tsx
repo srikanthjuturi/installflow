@@ -29,7 +29,7 @@ export default function NotificationsPage() {
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">Recent events</h2>
-          <p className="text-ink-3 text-xs">
+          <p className="text-xs text-ink-3">
             {isLoading
               ? "Loading…"
               : unread === 0

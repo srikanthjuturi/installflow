@@ -10,7 +10,10 @@ export default function AccountPage() {
 
   return (
     <>
-      <PageMeta title="Account" description="Your InstallFlow profile, scope and session." />
+      <PageMeta
+        title="Account"
+        description="Your InstallFlow profile, scope and session."
+      />
       <AccountCard
         name={name}
         email={email}

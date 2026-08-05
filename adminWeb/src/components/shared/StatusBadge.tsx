@@ -22,7 +22,7 @@ export function StatusBadge({ status }: { status: TicketStatus }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap",
-        STATUS_CLASS[status],
+        STATUS_CLASS[status]
       )}
     >
       {status}
@@ -47,7 +47,12 @@ const SLA_CLASS: Record<SlaState, string> = {
 /** Carries a word, not just a tint — colour alone fails WCAG 1.4.1. */
 export function SlaBadge({ state }: { state: SlaState }) {
   return (
-    <span className={cn("text-xs font-semibold whitespace-nowrap", SLA_CLASS[state])}>
+    <span
+      className={cn(
+        "text-xs font-semibold whitespace-nowrap",
+        SLA_CLASS[state]
+      )}
+    >
       {SLA_LABEL[state]}
     </span>
   );

@@ -34,7 +34,7 @@ export function Pagination({
   const to = Math.min(page * pageSize, total);
 
   return (
-    <div className="border-line-2 text-ink-2 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-xs">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-2 px-4 py-3 text-xs text-ink-2">
       <div className="flex items-center gap-2">
         <label htmlFor={`${tableId}-size`} className="whitespace-nowrap">
           Rows per page
@@ -65,7 +65,8 @@ export function Pagination({
           "No rows"
         ) : (
           <>
-            Showing <b className="text-ink">{from}</b>–<b className="text-ink">{to}</b> of{" "}
+            Showing <b className="text-ink">{from}</b>–
+            <b className="text-ink">{to}</b> of{" "}
             <b className="text-ink">{total}</b>
           </>
         )}
@@ -83,7 +84,8 @@ export function Pagination({
           <ChevronLeft aria-hidden />
         </Button>
         <span className="whitespace-nowrap">
-          Page <b className="text-ink">{page}</b> of <b className="text-ink">{pageCount}</b>
+          Page <b className="text-ink">{page}</b> of{" "}
+          <b className="text-ink">{pageCount}</b>
         </span>
         <Button
           variant="outline"

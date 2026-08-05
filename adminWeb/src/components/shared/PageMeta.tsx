@@ -17,7 +17,9 @@ export function PageMeta({ title, description }: PageMetaProps) {
     document.title = `InstallFlow · ${title}`;
 
     const set = (name: string, content: string) => {
-      let el = document.head.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+      let el = document.head.querySelector<HTMLMetaElement>(
+        `meta[name="${name}"]`
+      );
       if (!el) {
         el = document.createElement("meta");
         el.name = name;
@@ -29,7 +31,9 @@ export function PageMeta({ title, description }: PageMetaProps) {
     set("robots", "noindex, nofollow");
     if (description) set("description", description);
 
-    let canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    let canonical = document.head.querySelector<HTMLLinkElement>(
+      'link[rel="canonical"]'
+    );
     if (!canonical) {
       canonical = document.createElement("link");
       canonical.rel = "canonical";

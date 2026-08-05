@@ -52,7 +52,7 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
           {/* Definitional, not configurable: a 24h SLA type IS a 24-hour
               window. Changing it would redefine the ticket, not a setting. */}
           <SlaRuleList rules={rules.sla} />
-          <p className="text-ink-3 mt-3 text-xs">
+          <p className="mt-3 text-xs text-ink-3">
             SLA windows are fixed by the ticket's service level and are not
             configurable here.
           </p>
@@ -60,7 +60,9 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
 
         <RuleCard title="Cancellation penalty bands">
           <FieldSet>
-            <FieldLegend className="sr-only">Penalty amount per band</FieldLegend>
+            <FieldLegend className="sr-only">
+              Penalty amount per band
+            </FieldLegend>
             <FieldGroup className="gap-3">
               {fields.map((f, i) => {
                 const err = errors.penalty?.[i]?.amount?.message;
@@ -75,10 +77,16 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                       min={0}
                       aria-invalid={err ? true : undefined}
                       aria-describedby={err ? `${id}-error` : undefined}
-                      {...register(`penalty.${i}.amount`, { valueAsNumber: true })}
+                      {...register(`penalty.${i}.amount`, {
+                        valueAsNumber: true,
+                      })}
                     />
                     {err ? (
-                      <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+                      <FieldDescription
+                        id={`${id}-error`}
+                        role="alert"
+                        className="text-danger"
+                      >
                         {err}
                       </FieldDescription>
                     ) : null}
@@ -87,7 +95,9 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
               })}
 
               <Field data-invalid={errors.penaltyCap ? true : undefined}>
-                <FieldLabel htmlFor="penalty-cap">Monthly cap per technician</FieldLabel>
+                <FieldLabel htmlFor="penalty-cap">
+                  Monthly cap per technician
+                </FieldLabel>
                 <Input
                   id="penalty-cap"
                   type="number"
@@ -100,20 +110,24 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                   {...register("penaltyCap", { valueAsNumber: true })}
                 />
                 {errors.penaltyCap ? (
-                  <FieldDescription id="penalty-cap-error" role="alert" className="text-danger">
+                  <FieldDescription
+                    id="penalty-cap-error"
+                    role="alert"
+                    className="text-danger"
+                  >
                     {errors.penaltyCap.message}
                   </FieldDescription>
                 ) : (
                   <FieldDescription id="penalty-cap-hint">
-                    Currently {money(rules.penaltyCap)}. Penalties fund the escalation
-                    bonus pool.
+                    Currently {money(rules.penaltyCap)}. Penalties fund the
+                    escalation bonus pool.
                   </FieldDescription>
                 )}
               </Field>
             </FieldGroup>
           </FieldSet>
 
-          <p className="bg-warn-bg text-warn mt-3.5 flex items-start gap-2 rounded-md px-3 py-2.5 text-xs">
+          <p className="mt-3.5 flex items-start gap-2 rounded-md bg-warn-bg px-3 py-2.5 text-xs text-warn">
             <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
             <span>
               These bands differ from the technician app's. Saving here does not
@@ -145,14 +159,18 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
               label="Slot-confirm timeout"
               hint="Customer silence before the slot request auto-escalates."
               error={errors.slotConfirmTimeoutHours?.message}
-              register={register("slotConfirmTimeoutHours", { valueAsNumber: true })}
+              register={register("slotConfirmTimeoutHours", {
+                valueAsNumber: true,
+              })}
             />
             <HoursField
               id="escalation-trigger"
               label="Escalation trigger"
               hint="Hours before the slot at which an unassigned ticket escalates."
               error={errors.escalationTriggerHours?.message}
-              register={register("escalationTriggerHours", { valueAsNumber: true })}
+              register={register("escalationTriggerHours", {
+                valueAsNumber: true,
+              })}
             />
             <HoursField
               id="customer-wait"
@@ -163,12 +181,18 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
             />
 
             <FieldSet>
-              <FieldLegend className="text-[13px] font-medium">Bandwidth model</FieldLegend>
+              <FieldLegend className="text-[13px] font-medium">
+                Bandwidth model
+              </FieldLegend>
               <Controller
                 name="bandwidthModel"
                 control={control}
                 render={({ field }) => (
-                  <div className="flex flex-col gap-2" role="radiogroup" aria-label="Bandwidth model">
+                  <div
+                    className="flex flex-col gap-2"
+                    role="radiogroup"
+                    aria-label="Bandwidth model"
+                  >
                     {BANDWIDTH_OPTIONS.map((o) => (
                       <label
                         key={o.value}
@@ -176,18 +200,22 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                           "flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 transition-colors",
                           field.value === o.value
                             ? "border-brand-500 bg-brand-100/40"
-                            : "border-line hover:border-brand-400",
+                            : "border-line hover:border-brand-400"
                         )}
                       >
                         <input
                           type="radio"
-                          className="accent-brand-500 mt-0.5"
+                          className="mt-0.5 accent-brand-500"
                           checked={field.value === o.value}
                           onChange={() => field.onChange(o.value)}
                         />
                         <span>
-                          <span className="block text-[13px] font-semibold">{o.label}</span>
-                          <span className="text-ink-3 block text-xs">{o.detail}</span>
+                          <span className="block text-[13px] font-semibold">
+                            {o.label}
+                          </span>
+                          <span className="block text-xs text-ink-3">
+                            {o.detail}
+                          </span>
                         </span>
                       </label>
                     ))}
@@ -201,7 +229,7 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
 
       <div className="mt-3.5 flex flex-wrap items-center justify-end gap-2.5">
         {isDirty ? (
-          <span className="text-ink-3 mr-auto text-xs">Unsaved changes</span>
+          <span className="mr-auto text-xs text-ink-3">Unsaved changes</span>
         ) : null}
         <Button
           type="button"
@@ -247,10 +275,14 @@ function HoursField({
           aria-describedby={error ? `${id}-error` : `${id}-hint`}
           {...register}
         />
-        <span className="text-ink-2 text-[13px]">hours</span>
+        <span className="text-[13px] text-ink-2">hours</span>
       </div>
       {error ? (
-        <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+        <FieldDescription
+          id={`${id}-error`}
+          role="alert"
+          className="text-danger"
+        >
           {error}
         </FieldDescription>
       ) : (
@@ -260,7 +292,13 @@ function HoursField({
   );
 }
 
-function RuleCard({ title, children }: { title: string; children: React.ReactNode }) {
+function RuleCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <Card className="gap-3.5 [--card-spacing:--spacing(5)]">
       <CardHeader>

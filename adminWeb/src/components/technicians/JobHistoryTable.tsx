@@ -1,24 +1,82 @@
-import {
-  HeadTr,
-  Table,
-  TableBody,
-  TableHeader,
-  Td,
-  Th,
-  Tr,
-} from "@/components/shared/DataTable";
-import { EmptyState, TableSkeleton } from "@/components/shared/states";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { DataTable, type Column } from "@/components/shared/DataTable";
 import { cn } from "@/lib/utils";
 import type { JobHistoryEntry } from "@/services/technicians";
-
-const COLUMNS = ["Ticket", "Category", "Date", "Outcome"];
 
 const OUTCOME_CLASS: Record<JobHistoryEntry["outcome"], string> = {
   Closed: "bg-status-closed-bg text-status-closed",
   Cancelled: "bg-status-cancelled-bg text-status-cancelled",
 };
 
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/**
+ * "Aug 3" carries no year, so it is compared as an in-year ordinal —
+ * month index × 100 + day, giving 803 for "Aug 3" and 730 for "Jul 30".
+ * That orders the four recent jobs correctly; anything unparseable returns
+ * `null` and the table sorts it last.
+ */
+function dayOfYear(date: string): number | null {
+  const [month, day] = date.trim().split(/\s+/);
+  const index = MONTHS.indexOf(month ?? "");
+  const value = Number(day);
+
+  return index < 0 || Number.isNaN(value) ? null : (index + 1) * 100 + value;
+}
+
+const columns: Column<JobHistoryEntry>[] = [
+  {
+    id: "id",
+    header: "Ticket",
+    cell: (h) => (
+      <span className="font-mono text-xs font-semibold text-brand-400">
+        {h.id}
+      </span>
+    ),
+  },
+  { id: "cat", header: "Category", cell: (h) => h.cat },
+  {
+    id: "date",
+    header: "Date",
+    sortValue: (h) => dayOfYear(h.date),
+    cell: (h) => h.date,
+  },
+  {
+    id: "outcome",
+    header: "Outcome",
+    cell: (h) => (
+      <span
+        className={cn(
+          "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
+          OUTCOME_CLASS[h.outcome]
+        )}
+      >
+        {h.outcome}
+      </span>
+    ),
+  },
+];
+
+/**
+ * Four recent jobs inside the technician profile — a short fixed list, not a
+ * workspace, so it carries no search, no filters and no paging.
+ *
+ * DataTable brings the card chrome with it (`rounded-xl bg-card ring-1`, the
+ * same treatment as <Card/>), so wrapping this in a Card again would draw a
+ * card inside a card. The heading sits above it instead.
+ */
 export function JobHistoryTable({
   history,
   isLoading = false,
@@ -27,60 +85,21 @@ export function JobHistoryTable({
   isLoading?: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader className="border-line-2 border-b pb-3.5">
-        <h2 className="text-sm font-semibold">Recent job history</h2>
-      </CardHeader>
+    <section>
+      <h2 className="mb-3.5 text-sm font-semibold">Recent job history</h2>
 
-      <CardContent className="px-0">
-        {!isLoading && !history?.length ? (
-          <EmptyState
-            title="No recent jobs"
-            description="Jobs appear here once this technician accepts and closes a ticket."
-          />
-        ) : (
-          <div className="scroll-x">
-            <Table className="min-w-130">
-              <TableHeader>
-                <HeadTr>
-                  {COLUMNS.map((c) => (
-                    <Th key={c} scope="col">
-                      {c}
-                    </Th>
-                  ))}
-                </HeadTr>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableSkeleton rows={4} cols={COLUMNS.length} />
-                ) : (
-                  history?.map((h) => (
-                    <Tr key={h.id} className="hover:bg-transparent">
-                      <Td>
-                        <span className="text-brand-400 font-mono text-xs font-semibold">
-                          {h.id}
-                        </span>
-                      </Td>
-                      <Td>{h.cat}</Td>
-                      <Td>{h.date}</Td>
-                      <Td>
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
-                            OUTCOME_CLASS[h.outcome],
-                          )}
-                        >
-                          {h.outcome}
-                        </span>
-                      </Td>
-                    </Tr>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      <DataTable
+        caption="Recent job history — ticket, category, date and outcome"
+        data={history}
+        columns={columns}
+        getRowId={(h) => h.id}
+        isLoading={isLoading}
+        pagination={false}
+        defaultSort={{ columnId: "date", dir: "desc" }}
+        minWidth="32.5rem"
+        emptyTitle="No recent jobs"
+        emptyDescription="Jobs appear here once this technician accepts and closes a ticket."
+      />
+    </section>
   );
 }

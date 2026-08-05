@@ -17,10 +17,12 @@ export default function ManualEntryPage() {
       />
 
       <header className="mb-4.5">
-        <h2 className="text-base font-semibold">New installation / demo ticket</h2>
-        <p className="text-ink-2 mt-1 text-[13px]">
-          All fields are required regardless of intake channel. The customer picks a slot after
-          validation.
+        <h2 className="text-base font-semibold">
+          New installation / demo ticket
+        </h2>
+        <p className="mt-1 text-[13px] text-ink-2">
+          All fields are required regardless of intake channel. The customer
+          picks a slot after validation.
         </p>
       </header>
 

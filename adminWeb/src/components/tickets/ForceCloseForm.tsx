@@ -92,7 +92,7 @@ export function ForceCloseForm({
     setValue(
       "attachments",
       attachments.filter((a) => a !== name),
-      { shouldValidate: true },
+      { shouldValidate: true }
     );
 
   const err = (name: keyof ForceCloseFormValues) => errors[name]?.message;
@@ -106,19 +106,19 @@ export function ForceCloseForm({
           <CardTitle className="text-[15px] font-semibold">
             Force-close ticket · <span className="font-mono">{ticketId}</span>
           </CardTitle>
-          <CardDescription className="text-ink-3 text-xs">
-            Only after the customer wait period has elapsed. Supporting documents &amp;
-            images are mandatory and recorded for audit.
+          <CardDescription className="text-xs text-ink-3">
+            Only after the customer wait period has elapsed. Supporting
+            documents &amp; images are mandatory and recorded for audit.
           </CardDescription>
         </CardHeader>
 
         <CardContent className="flex flex-col gap-5 py-1">
           {/* The gate on this whole screen: closure is unavailable until the
               48h customer wait period has elapsed. */}
-          <p className="bg-warn-bg text-warn flex items-start gap-2.5 rounded-md px-3.5 py-3 text-xs leading-relaxed">
+          <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
             <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
-            Customer has not responded for 52 hours (wait period: 48h). Verification
-            already passed.
+            Customer has not responded for 52 hours (wait period: 48h).
+            Verification already passed.
           </p>
 
           <FieldSet>
@@ -133,7 +133,9 @@ export function ForceCloseForm({
                   value={field.value}
                   onValueChange={field.onChange}
                   aria-invalid={err("reason") ? true : undefined}
-                  aria-describedby={err("reason") ? "force-close-reason-error" : undefined}
+                  aria-describedby={
+                    err("reason") ? "force-close-reason-error" : undefined
+                  }
                   className="grid gap-2.5"
                 >
                   {REASONS.map((reason) => (
@@ -143,7 +145,7 @@ export function ForceCloseForm({
                         "flex cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 text-[13px] transition-colors",
                         field.value === reason
                           ? "border-brand-500 bg-brand-100/40"
-                          : "border-line hover:border-brand-400",
+                          : "border-line hover:border-brand-400"
                       )}
                     >
                       <RadioGroupItem value={reason} />
@@ -166,14 +168,18 @@ export function ForceCloseForm({
 
           <FieldGroup className="gap-5">
             <Field data-invalid={err("notes") ? true : undefined}>
-              <FieldLabel htmlFor="force-close-notes">Justification notes</FieldLabel>
+              <FieldLabel htmlFor="force-close-notes">
+                Justification notes
+              </FieldLabel>
               <textarea
                 id="force-close-notes"
                 rows={4}
                 placeholder="Describe the attempts made to reach the customer and the basis for closure…"
                 aria-invalid={err("notes") ? true : undefined}
-                aria-describedby={err("notes") ? "force-close-notes-error" : undefined}
-                className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 min-h-24 w-full resize-y rounded-lg border bg-transparent px-3 py-2.5 text-sm transition-colors outline-none focus-visible:ring-3 aria-invalid:ring-3"
+                aria-describedby={
+                  err("notes") ? "force-close-notes-error" : undefined
+                }
+                className="min-h-24 w-full resize-y rounded-lg border border-input bg-transparent px-3 py-2.5 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
                 {...register("notes")}
               />
               {err("notes") ? (
@@ -191,8 +197,8 @@ export function ForceCloseForm({
               <FieldLabel htmlFor="force-close-files">
                 Supporting attachments (required)
               </FieldLabel>
-              <div className="border-line bg-surface-2 rounded-md border-2 border-dashed px-5 py-5 text-center">
-                <p className="text-ink-2 text-[13px]">
+              <div className="rounded-md border-2 border-dashed border-line bg-surface-2 px-5 py-5 text-center">
+                <p className="text-[13px] text-ink-2">
                   Attach call logs, signed acknowledgment, or on-site photos
                 </p>
                 <input
@@ -222,7 +228,7 @@ export function ForceCloseForm({
                   {attachments.map((name) => (
                     <li
                       key={name}
-                      className="bg-surface-3 text-ink-2 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium"
+                      className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2.5 py-1.5 text-xs font-medium text-ink-2"
                     >
                       <Paperclip className="size-3.5 shrink-0" aria-hidden />
                       {name}
@@ -256,14 +262,14 @@ export function ForceCloseForm({
         {/* Irreversible: the ticket lands on Force-Closed and the closure is
             written to the audit trail. The tint never carries that alone —
             the icon and the verb do too. */}
-        <CardFooter className="bg-danger-bg/40 justify-end gap-2.5">
+        <CardFooter className="justify-end gap-2.5 bg-danger-bg/40">
           <LinkButton variant="outline" to={`/tickets/${ticketId}`}>
             Cancel
           </LinkButton>
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="bg-danger hover:bg-danger/90 focus-visible:ring-danger/30 text-white"
+            className="bg-danger text-white hover:bg-danger/90 focus-visible:ring-danger/30"
           >
             {isSubmitting ? (
               <Spinner data-icon="inline-start" />

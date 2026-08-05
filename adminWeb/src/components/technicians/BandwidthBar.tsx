@@ -47,15 +47,18 @@ export function BandwidthBar({
     <div className={cn("flex items-center gap-2", className)}>
       <div
         className={cn(
-          "bg-surface-3 h-1.5 w-13.5 shrink-0 overflow-hidden rounded-full",
-          trackClassName,
+          "h-1.5 w-13.5 shrink-0 overflow-hidden rounded-full bg-surface-3",
+          trackClassName
         )}
         aria-hidden
       >
-        <div className={cn("h-full rounded-full", FILL[fill])} style={{ width: `${pct}%` }} />
+        <div
+          className={cn("h-full rounded-full", FILL[fill])}
+          style={{ width: `${pct}%` }}
+        />
       </div>
       {showValue ? (
-        <span className="text-ink-2 text-xs tabular-nums">
+        <span className="text-xs text-ink-2 tabular-nums">
           {used}/{total}
         </span>
       ) : null}
@@ -88,8 +91,8 @@ export function TechAvatar({
     <span
       aria-hidden
       className={cn(
-        "bg-status-assigned-bg text-brand-400 grid shrink-0 place-items-center rounded-full font-semibold",
-        AVATAR_SIZE[size],
+        "grid shrink-0 place-items-center rounded-full bg-status-assigned-bg font-semibold text-brand-400",
+        AVATAR_SIZE[size]
       )}
     >
       {initials}
@@ -110,7 +113,7 @@ export function TechStatusPill({ status }: { status: Technician["status"] }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
-        STATUS_CLASS[status],
+        STATUS_CLASS[status]
       )}
     >
       {status}
@@ -146,16 +149,30 @@ const CANCEL_NOTE: Record<CancelBand, string> = {
   high: "High cancellation count",
 };
 
-export function CancelCount({ cancels, className }: { cancels: number; className?: string }) {
+export function CancelCount({
+  cancels,
+  className,
+}: {
+  cancels: number;
+  className?: string;
+}) {
   const band = bandFor(cancels);
 
   return (
     <span
-      className={cn("inline-flex items-center gap-1 font-semibold", CANCEL_CLASS[band], className)}
+      className={cn(
+        "inline-flex items-center gap-1 font-semibold",
+        CANCEL_CLASS[band],
+        className
+      )}
     >
-      {band === "normal" ? null : <AlertTriangle className="size-3.5 shrink-0" aria-hidden />}
+      {band === "normal" ? null : (
+        <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+      )}
       <span className="tabular-nums">{cancels}</span>
-      {band === "normal" ? null : <span className="sr-only">— {CANCEL_NOTE[band]}</span>}
+      {band === "normal" ? null : (
+        <span className="sr-only">— {CANCEL_NOTE[band]}</span>
+      )}
     </span>
   );
 }

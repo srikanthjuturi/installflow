@@ -19,13 +19,14 @@ export function AppShell() {
   // Escape closes the drawer — keyboard users need a way out.
   useEffect(() => {
     if (!sidebarOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSidebarOpen(false);
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setSidebarOpen(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [sidebarOpen, setSidebarOpen]);
 
   return (
-    <div className="bg-background min-h-svh">
+    <div className="min-h-svh bg-background">
       {/* Desktop rail */}
       <div className="fixed inset-y-0 left-0 z-50 hidden md:block">
         <Sidebar collapsed={sidebarCollapsed} />
@@ -60,7 +61,12 @@ export function AppShell() {
         )}
       </AnimatePresence>
 
-      <div className={cn("transition-[margin] duration-200", sidebarCollapsed ? "md:ml-sidebar-collapsed" : "md:ml-sidebar")}>
+      <div
+        className={cn(
+          "transition-[margin] duration-200",
+          sidebarCollapsed ? "md:ml-sidebar-collapsed" : "md:ml-sidebar"
+        )}
+      >
         <Topbar title={meta.title} subtitle={meta.subtitle} />
         {/* Fluid — the console is a work surface, so a wide monitor should
             buy more table, not more margin. */}

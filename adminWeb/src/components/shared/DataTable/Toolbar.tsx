@@ -37,8 +37,8 @@ export function Toolbar<T>({
   return (
     <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
       {search ? (
-        <div className="bg-surface border-line flex h-10 min-w-55 flex-1 items-center gap-2 rounded-md border px-3">
-          <Search className="text-ink-3 size-4 shrink-0" aria-hidden />
+        <div className="flex h-10 min-w-55 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-3">
+          <Search className="size-4 shrink-0 text-ink-3" aria-hidden />
           <input
             type="search"
             value={query}
@@ -46,7 +46,7 @@ export function Toolbar<T>({
             placeholder={search.placeholder}
             aria-label={search.placeholder}
             aria-controls={tableId}
-            className="text-ink w-full border-none bg-transparent text-[13px] outline-none"
+            className="w-full border-none bg-transparent text-[13px] text-ink outline-none"
           />
         </div>
       ) : null}
@@ -57,10 +57,22 @@ export function Toolbar<T>({
 
         // A short option set reads better as pills — they show every choice at
         // once, which a select hides behind an interaction.
-        if ((f.variant ?? (f.options.length <= 7 ? "pills" : "select")) === "pills") {
+        if (
+          (f.variant ?? (f.options.length <= 7 ? "pills" : "select")) ===
+          "pills"
+        ) {
+          // Without a clear option a pill filter can be set but never undone.
+          const pills = f.options.some((o) => o.value === all)
+            ? f.options
+            : [{ value: all, label: f.allLabel ?? all }, ...f.options];
           return (
-            <div key={f.id} className="flex flex-wrap gap-2.5" role="group" aria-label={f.label}>
-              {f.options.map((o) => (
+            <div
+              key={f.id}
+              className="flex flex-wrap gap-2.5"
+              role="group"
+              aria-label={f.label}
+            >
+              {pills.map((o) => (
                 <button
                   key={o.value}
                   type="button"
@@ -71,7 +83,7 @@ export function Toolbar<T>({
                     "h-10 rounded-md border px-3.25 text-xs font-semibold whitespace-nowrap transition-colors",
                     value === o.value
                       ? "border-brand-500 bg-brand-500 text-white"
-                      : "border-line bg-surface text-ink-2 hover:border-brand-400 hover:text-ink",
+                      : "border-line bg-surface text-ink-2 hover:border-brand-400 hover:text-ink"
                   )}
                 >
                   {o.label}
@@ -82,7 +94,11 @@ export function Toolbar<T>({
         }
 
         return (
-          <Select key={f.id} value={value} onValueChange={(v) => onFilter(f, v ?? all)}>
+          <Select
+            key={f.id}
+            value={value}
+            onValueChange={(v) => onFilter(f, v ?? all)}
+          >
             <SelectTrigger className="h-10 w-48" aria-label={f.label}>
               {/* Name the dimension, not just the value — two selects both
                   reading "All" tell you nothing about what they filter. */}

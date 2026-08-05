@@ -1,47 +1,33 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { Plus } from "lucide-react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
-import { TicketFilters } from "@/components/tickets/TicketFilters";
 import { TicketTable } from "@/components/tickets/TicketTable";
-import { useTicketFilters } from "@/hooks/useTicketFilters";
 import { useTickets } from "@/hooks/useTickets";
 
 export default function TicketListPage() {
-  const { filters, search, status, setSearch, setStatus, clear, isFiltered } =
-    useTicketFilters();
-  const { data, isLoading, isError, error, refetch } = useTickets(filters);
+  // One unfiltered fetch: the table owns search, status, sorting and paging
+  // from here, so typing no longer re-queries per keystroke.
+  const { data, isLoading, isError, error, refetch } = useTickets();
 
   return (
     <>
-      <PageMeta title="Tickets" description="All installation & demo tickets." />
-
-      <TicketFilters
-        search={search}
-        status={status}
-        onSearch={setSearch}
-        onStatus={setStatus}
+      <PageMeta
+        title="Tickets"
+        description="All installation & demo tickets."
       />
 
-      <Card>
-        <CardContent className="px-0 pb-0">
-          <div className="border-line-2 text-ink-2 flex items-center justify-between border-b px-4 pb-3 text-xs">
-            <span aria-live="polite">
-              Showing <b className="text-ink">{isLoading ? "…" : (data?.length ?? 0)}</b> tickets
-            </span>
-            <span>
-              Sorted by <b className="text-ink">SLA urgency</b>
-            </span>
-          </div>
-
-          <TicketTable
-            tickets={data}
-            isLoading={isLoading}
-            error={isError ? error : null}
-            isFiltered={isFiltered}
-            onRetry={() => refetch()}
-            onClearFilters={clear}
-          />
-        </CardContent>
-      </Card>
+      <TicketTable
+        tickets={data}
+        isLoading={isLoading}
+        error={isError ? error : null}
+        onRetry={() => refetch()}
+        toolbarActions={
+          <LinkButton className="h-10" to="/tickets/new">
+            <Plus data-icon="inline-start" />
+            New ticket
+          </LinkButton>
+        }
+      />
     </>
   );
 }

@@ -38,14 +38,14 @@ export default function EscalationQueuePage() {
         />
       ) : (
         <>
-          <p className="bg-danger-bg text-danger mb-3.5 flex items-center gap-2.5 rounded-md px-4 py-3.25 text-[13px]">
+          <p className="mb-3.5 flex items-center gap-2.5 rounded-md bg-danger-bg px-4 py-3.25 text-[13px] text-danger">
             <AlertTriangle className="size-4.5 shrink-0" aria-hidden />
             <span>
               <b>
                 {count} ticket{count === 1 ? "" : "s"}
               </b>{" "}
-              {count === 1 ? "is" : "are"} unassigned within 4 hours of their confirmed slot.
-              Add a bonus and re-notify, or assign manually.
+              {count === 1 ? "is" : "are"} unassigned within 4 hours of their
+              confirmed slot. Add a bonus and re-notify, or assign manually.
             </span>
           </p>
 

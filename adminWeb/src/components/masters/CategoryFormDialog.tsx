@@ -36,7 +36,10 @@ interface CategoryFormDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function CategoryFormDialog({ open, onOpenChange }: CategoryFormDialogProps) {
+export function CategoryFormDialog({
+  open,
+  onOpenChange,
+}: CategoryFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -83,7 +86,7 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
           });
           onDone();
         },
-      },
+      }
     );
   }
 
@@ -92,8 +95,8 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
       <DialogHeader>
         <DialogTitle>Add category</DialogTitle>
         <DialogDescription>
-          A category needs at least one product model — manual entry picks a model
-          from this list.
+          A category needs at least one product model — manual entry picks a
+          model from this list.
         </DialogDescription>
       </DialogHeader>
 
@@ -108,7 +111,8 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
             {...register("name")}
           />
           <FieldDescription>
-            Certified technicians are counted from technician records, not set here.
+            Certified technicians are counted from technician records, not set
+            here.
           </FieldDescription>
           {errors.name ? (
             <FieldDescription
@@ -157,7 +161,11 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
                     </Button>
                   </div>
                   {rowError ? (
-                    <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+                    <FieldDescription
+                      id={`${id}-error`}
+                      role="alert"
+                      className="text-danger"
+                    >
                       {rowError}
                     </FieldDescription>
                   ) : null}
@@ -196,7 +204,9 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
                 value={field.value}
                 onValueChange={field.onChange}
                 aria-invalid={errors.status ? true : undefined}
-                aria-describedby={errors.status ? "category-status-error" : undefined}
+                aria-describedby={
+                  errors.status ? "category-status-error" : undefined
+                }
                 className="grid grid-cols-2 gap-2.5"
               >
                 {CATEGORY_STATUSES.map((s) => (
@@ -206,7 +216,7 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
                       "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
                       field.value === s
                         ? "border-brand-500 bg-brand-100/40"
-                        : "border-line hover:border-brand-400",
+                        : "border-line hover:border-brand-400"
                     )}
                   >
                     <RadioGroupItem value={s} />
@@ -232,7 +242,10 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
       </FieldGroup>
 
       {create.error ? (
-        <p role="alert" className="bg-danger-bg text-danger rounded-md px-3 py-2.5 text-xs">
+        <p
+          role="alert"
+          className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
+        >
           {create.error instanceof Error
             ? create.error.message
             : "Couldn't save the category"}

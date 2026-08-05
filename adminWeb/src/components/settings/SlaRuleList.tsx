@@ -21,7 +21,7 @@ export function RuleList({ rules }: { rules: SlaRule[] }) {
     <dl className="flex flex-col gap-2.5">
       {rules.map((rule) => (
         <div key={rule.label} className={ROW}>
-          <dt className="text-ink-2 text-[13px]">{rule.label}</dt>
+          <dt className="text-[13px] text-ink-2">{rule.label}</dt>
           <dd className="text-right text-[13px] font-semibold">{rule.value}</dd>
         </div>
       ))}

@@ -24,7 +24,12 @@ interface AccountCardProps {
  * Identity, not authorization. Role and scope are shown because they explain
  * what this console is showing you — the server decides what you may do.
  */
-export function AccountCard({ name, email, role, onSignOut }: AccountCardProps) {
+export function AccountCard({
+  name,
+  email,
+  role,
+  onSignOut,
+}: AccountCardProps) {
   const facts: Array<[string, string]> = [
     ["Work email", email],
     ["Role", role],
@@ -40,35 +45,38 @@ export function AccountCard({ name, email, role, onSignOut }: AccountCardProps) 
           {/* Decorative — the name is right beside it. */}
           <span
             aria-hidden
-            className="bg-status-assigned-bg text-brand-400 grid size-14 shrink-0 place-items-center rounded-full text-lg font-semibold"
+            className="grid size-14 shrink-0 place-items-center rounded-full bg-status-assigned-bg text-lg font-semibold text-brand-400"
           >
             {initialsOf(name)}
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-[17px] font-semibold">{name}</h2>
-            <p className="text-ink-3 truncate text-xs">{ROLE_LABEL[role]}</p>
+            <p className="truncate text-xs text-ink-3">{ROLE_LABEL[role]}</p>
           </div>
         </div>
 
-        <dl className="border-line-2 divide-line-2 mt-4.5 divide-y overflow-hidden rounded-md border">
+        <dl className="mt-4.5 divide-y divide-line-2 overflow-hidden rounded-md border border-line-2">
           {facts.map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between gap-4 px-3.5 py-2.75">
-              <dt className="text-ink-3 shrink-0 text-xs">{label}</dt>
+            <div
+              key={label}
+              className="flex items-center justify-between gap-4 px-3.5 py-2.75"
+            >
+              <dt className="shrink-0 text-xs text-ink-3">{label}</dt>
               <dd className="truncate text-xs font-medium">{value}</dd>
             </div>
           ))}
         </dl>
 
-        <p className="text-ink-3 mt-4 text-xs">
-          Access is granted by your role on the server. The NH · RSH · ASM tabs in the header
-          change what this console shows, not what you may do. Ask your National Head to change
-          a role or scope.
+        <p className="mt-4 text-xs text-ink-3">
+          Access is granted by your role on the server. The NH · RSH · ASM tabs
+          in the header change what this console shows, not what you may do. Ask
+          your National Head to change a role or scope.
         </p>
 
         <Separator className="my-4.5" />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-ink-2 text-xs">Signs you out of this browser.</p>
+          <p className="text-xs text-ink-2">Signs you out of this browser.</p>
           <Button variant="destructive" onClick={onSignOut}>
             <LogOut data-icon="inline-start" />
             Sign out

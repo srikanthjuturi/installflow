@@ -90,7 +90,8 @@ export function TechnicianFormDialog({
         <DialogHeader>
           <DialogTitle>Add technician</DialogTitle>
           <DialogDescription>
-            Jobs are offered on category, pincode and free bandwidth. All three are required.
+            Jobs are offered on category, pincode and free bandwidth. All three
+            are required.
           </DialogDescription>
         </DialogHeader>
 
@@ -108,7 +109,11 @@ export function TechnicianFormDialog({
                   {...register("name")}
                 />
                 {err("name") ? (
-                  <FieldDescription id="tech-name-error" role="alert" className="text-danger">
+                  <FieldDescription
+                    id="tech-name-error"
+                    role="alert"
+                    className="text-danger"
+                  >
                     {err("name")}
                   </FieldDescription>
                 ) : null}
@@ -122,11 +127,17 @@ export function TechnicianFormDialog({
                   autoComplete="tel"
                   placeholder="+91 "
                   aria-invalid={err("phone") ? true : undefined}
-                  aria-describedby={err("phone") ? "tech-phone-error" : undefined}
+                  aria-describedby={
+                    err("phone") ? "tech-phone-error" : undefined
+                  }
                   {...register("phone")}
                 />
                 {err("phone") ? (
-                  <FieldDescription id="tech-phone-error" role="alert" className="text-danger">
+                  <FieldDescription
+                    id="tech-phone-error"
+                    role="alert"
+                    className="text-danger"
+                  >
                     {err("phone")}
                   </FieldDescription>
                 ) : null}
@@ -166,7 +177,7 @@ export function TechnicianFormDialog({
                                   field.onChange(
                                     next
                                       ? [...field.value, c.name]
-                                      : field.value.filter((v) => v !== c.name),
+                                      : field.value.filter((v) => v !== c.name)
                                   )
                                 }
                               />
@@ -181,7 +192,11 @@ export function TechnicianFormDialog({
                 />
               )}
               {err("cats") ? (
-                <FieldDescription id="tech-cats-error" role="alert" className="text-danger">
+                <FieldDescription
+                  id="tech-cats-error"
+                  role="alert"
+                  className="text-danger"
+                >
                   {err("cats")}
                 </FieldDescription>
               ) : null}
@@ -201,7 +216,11 @@ export function TechnicianFormDialog({
                 {...register("pincodes")}
               />
               {err("pincodes") ? (
-                <FieldDescription id="tech-pincodes-error" role="alert" className="text-danger">
+                <FieldDescription
+                  id="tech-pincodes-error"
+                  role="alert"
+                  className="text-danger"
+                >
                   {err("pincodes")}
                 </FieldDescription>
               ) : (
@@ -223,7 +242,9 @@ export function TechnicianFormDialog({
                       className="w-full"
                       aria-invalid={err("bwTotal") ? true : undefined}
                       aria-describedby={
-                        err("bwTotal") ? "tech-bandwidth-error" : "tech-bandwidth-hint"
+                        err("bwTotal")
+                          ? "tech-bandwidth-error"
+                          : "tech-bandwidth-hint"
                       }
                     >
                       <SelectValue placeholder="Select a cap" />
@@ -241,7 +262,11 @@ export function TechnicianFormDialog({
                 )}
               />
               {err("bwTotal") ? (
-                <FieldDescription id="tech-bandwidth-error" role="alert" className="text-danger">
+                <FieldDescription
+                  id="tech-bandwidth-error"
+                  role="alert"
+                  className="text-danger"
+                >
                   {err("bwTotal")}
                 </FieldDescription>
               ) : (

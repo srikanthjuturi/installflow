@@ -1,21 +1,42 @@
 import { Link } from "react-router";
-import { AlertTriangle, BellOff, Check, Clock, ScanLine, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  BellOff,
+  Check,
+  Clock,
+  ScanLine,
+  ShieldCheck,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { cn } from "@/lib/utils";
-import type { NotificationKind, OpsNotification } from "@/services/notifications";
+import type {
+  NotificationKind,
+  OpsNotification,
+} from "@/services/notifications";
 
 /** Static per-kind classes — an interpolated colour class never compiles. */
-const KIND: Record<NotificationKind, { icon: LucideIcon; wrap: string; label: string }> = {
-  escalation: { icon: AlertTriangle, wrap: "bg-danger-bg text-danger", label: "Escalation" },
+const KIND: Record<
+  NotificationKind,
+  { icon: LucideIcon; wrap: string; label: string }
+> = {
+  escalation: {
+    icon: AlertTriangle,
+    wrap: "bg-danger-bg text-danger",
+    label: "Escalation",
+  },
   ai: {
     icon: ScanLine,
     wrap: "bg-status-ai-review-bg text-status-ai-review",
     label: "AI verification",
   },
-  "force-close": { icon: ShieldCheck, wrap: "bg-warn-bg text-warn", label: "Force closure" },
+  "force-close": {
+    icon: ShieldCheck,
+    wrap: "bg-warn-bg text-warn",
+    label: "Force closure",
+  },
   slot: { icon: Clock, wrap: "bg-info-bg text-info", label: "Slot" },
 };
 
@@ -38,7 +59,13 @@ export function NotificationList({
   pendingId,
 }: NotificationListProps) {
   if (error)
-    return <ErrorState title="Couldn't load notifications" error={error} onRetry={onRetry} />;
+    return (
+      <ErrorState
+        title="Couldn't load notifications"
+        error={error}
+        onRetry={onRetry}
+      />
+    );
 
   if (isLoading) return <NotificationSkeleton />;
 
@@ -52,7 +79,7 @@ export function NotificationList({
     );
 
   return (
-    <ul className="divide-line-2 divide-y">
+    <ul className="divide-y divide-line-2">
       {items.map((n) => {
         const kind = KIND[n.kind];
         const Icon = kind.icon;
@@ -61,10 +88,13 @@ export function NotificationList({
             {/* The row navigates to the screen that clears the event. */}
             <Link
               to={n.to}
-              className="hover:bg-surface-2 flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-3 transition-colors"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-surface-2"
             >
               <span
-                className={cn("grid size-9 shrink-0 place-items-center rounded-md", kind.wrap)}
+                className={cn(
+                  "grid size-9 shrink-0 place-items-center rounded-md",
+                  kind.wrap
+                )}
               >
                 <Icon className="size-4.5" aria-hidden />
               </span>
@@ -74,27 +104,29 @@ export function NotificationList({
                   <span
                     className={cn(
                       "truncate text-[13px]",
-                      n.read ? "text-ink-2 font-medium" : "font-semibold",
+                      n.read ? "font-medium text-ink-2" : "font-semibold"
                     )}
                   >
                     {n.title}
                   </span>
                   {n.read ? null : (
-                    <span className="bg-brand-100 text-brand-500 shrink-0 rounded-full px-2 py-px text-[10px] font-bold tracking-[0.04em] uppercase">
+                    <span className="shrink-0 rounded-full bg-brand-100 px-2 py-px text-[10px] font-bold tracking-[0.04em] text-brand-500 uppercase">
                       Unread
                     </span>
                   )}
                 </span>
-                <span className="text-ink-3 block truncate text-xs">
+                <span className="block truncate text-xs text-ink-3">
                   {kind.label} · {n.detail}
                 </span>
               </span>
-              <span className="text-ink-3 shrink-0 text-xs whitespace-nowrap">{n.when}</span>
+              <span className="shrink-0 text-xs whitespace-nowrap text-ink-3">
+                {n.when}
+              </span>
             </Link>
 
             {/* Acting on the row, not going anywhere — so a Button. */}
             {n.read ? (
-              <span className="text-ink-3 hidden w-24 shrink-0 items-center gap-1 px-2 text-xs sm:flex">
+              <span className="hidden w-24 shrink-0 items-center gap-1 px-2 text-xs text-ink-3 sm:flex">
                 <Check className="size-3.5" aria-hidden />
                 Read
               </span>
@@ -120,7 +152,7 @@ export function NotificationList({
 /** Matches the real row's shape so nothing jumps when the feed lands. */
 function NotificationSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <ul className="divide-line-2 divide-y">
+    <ul className="divide-y divide-line-2">
       {Array.from({ length: rows }).map((_, i) => (
         <li key={i} className="flex items-center gap-3 px-2 py-3">
           <Skeleton className="size-9 shrink-0 rounded-md" />

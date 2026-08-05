@@ -1,5 +1,11 @@
 import { Link } from "react-router";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import type { FunnelStage, SlaBreakdown } from "@/types";
 
 interface SlaPanelProps {
@@ -23,12 +29,14 @@ export function SlaPanel({ sla, stages }: SlaPanelProps) {
 
   return (
     <Card className="h-full">
-      <CardHeader className="border-line-2 border-b pb-4">
-        <CardTitle className="text-sm">SLA status across open tickets</CardTitle>
+      <CardHeader className="border-b border-line-2 pb-4">
+        <CardTitle className="text-sm">
+          SLA status across open tickets
+        </CardTitle>
         <CardAction>
           <Link
             to="/tickets"
-            className="text-brand-400 hover:text-brand-500 text-xs font-semibold"
+            className="text-xs font-semibold text-brand-400 hover:text-brand-500"
           >
             View all →
           </Link>
@@ -44,7 +52,11 @@ export function SlaPanel({ sla, stages }: SlaPanelProps) {
             .join(", ")}`}
         >
           {segments.map((s) => (
-            <div key={s.key} className={s.tint} style={{ width: `${pct(s.n)}%` }} />
+            <div
+              key={s.key}
+              className={s.tint}
+              style={{ width: `${pct(s.n)}%` }}
+            />
           ))}
         </div>
 
@@ -53,7 +65,10 @@ export function SlaPanel({ sla, stages }: SlaPanelProps) {
         <dl className="mt-3.5 flex flex-wrap gap-x-5.5 gap-y-2 text-[13px]">
           {segments.map((s) => (
             <div key={s.key} className="flex items-center gap-1.5">
-              <span className={`size-2.25 rounded-[2px] ${s.tint}`} aria-hidden />
+              <span
+                className={`size-2.25 rounded-[2px] ${s.tint}`}
+                aria-hidden
+              />
               <dt>{s.label}</dt>
               <dd className="font-semibold">{s.n}</dd>
             </div>
@@ -64,10 +79,12 @@ export function SlaPanel({ sla, stages }: SlaPanelProps) {
           {stages.map((s) => (
             <div
               key={s.label}
-              className="border-line-2 bg-surface-2 rounded-md border px-3.5 py-3.25"
+              className="rounded-md border border-line-2 bg-surface-2 px-3.5 py-3.25"
             >
-              <div className="text-[23px] leading-none font-semibold tabular-nums">{s.n}</div>
-              <div className="text-ink-2 mt-1.5 text-xs">{s.label}</div>
+              <div className="text-[23px] leading-none font-semibold tabular-nums">
+                {s.n}
+              </div>
+              <div className="mt-1.5 text-xs text-ink-2">{s.label}</div>
             </div>
           ))}
         </div>

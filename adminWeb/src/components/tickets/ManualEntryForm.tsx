@@ -24,7 +24,11 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { CATEGORIES, REQUEST_TYPES, VENDORS } from "@/services/mocks/masters";
-import { SLA_OPTIONS, ticketSchema, type TicketFormValues } from "./ticketSchema";
+import {
+  SLA_OPTIONS,
+  ticketSchema,
+  type TicketFormValues,
+} from "./ticketSchema";
 
 interface ManualEntryFormProps {
   onSubmit: (values: TicketFormValues) => void;
@@ -32,7 +36,11 @@ interface ManualEntryFormProps {
   isSubmitting: boolean;
 }
 
-export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntryFormProps) {
+export function ManualEntryForm({
+  onSubmit,
+  onCancel,
+  isSubmitting,
+}: ManualEntryFormProps) {
   const {
     control,
     register,
@@ -67,13 +75,17 @@ export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntr
       <Card>
         <CardContent className="flex flex-col gap-6">
           <FieldSet>
-            <FieldLegend className="text-sm font-semibold">Vendor &amp; product</FieldLegend>
+            <FieldLegend className="text-sm font-semibold">
+              Vendor &amp; product
+            </FieldLegend>
             <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <SelectField
                 name="vendor"
                 label="Company / vendor"
                 placeholder="Select vendor"
-                options={VENDORS.filter((v) => v.status === "Active").map((v) => v.name)}
+                options={VENDORS.filter((v) => v.status === "Active").map(
+                  (v) => v.name
+                )}
                 control={control}
                 error={err("vendor")}
               />
@@ -84,12 +96,16 @@ export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntr
                 options={CATEGORIES.map((c) => c.name)}
                 control={control}
                 error={err("category")}
-                onChanged={() => setValue("product", "", { shouldValidate: false })}
+                onChanged={() =>
+                  setValue("product", "", { shouldValidate: false })
+                }
               />
               <SelectField
                 name="product"
                 label="Product model"
-                placeholder={category ? "Select model" : "Pick a category first"}
+                placeholder={
+                  category ? "Select model" : "Pick a category first"
+                }
                 options={models}
                 disabled={!category}
                 control={control}
@@ -107,7 +123,9 @@ export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntr
           </FieldSet>
 
           <FieldSet>
-            <FieldLegend className="text-sm font-semibold">Customer</FieldLegend>
+            <FieldLegend className="text-sm font-semibold">
+              Customer
+            </FieldLegend>
             <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <TextField
                 name="customer"
@@ -146,7 +164,9 @@ export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntr
           </FieldSet>
 
           <FieldSet>
-            <FieldLegend className="text-sm font-semibold">Service level</FieldLegend>
+            <FieldLegend className="text-sm font-semibold">
+              Service level
+            </FieldLegend>
             <Controller
               name="slaType"
               control={control}
@@ -163,13 +183,17 @@ export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntr
                         "flex cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 transition-colors",
                         field.value === o.value
                           ? "border-brand-500 bg-brand-100/40"
-                          : "border-line hover:border-brand-400",
+                          : "border-line hover:border-brand-400"
                       )}
                     >
                       <RadioGroupItem value={o.value} />
                       <span>
-                        <span className="block text-[13px] font-semibold">{o.title}</span>
-                        <span className="text-ink-3 block text-xs">{o.detail}</span>
+                        <span className="block text-[13px] font-semibold">
+                          {o.title}
+                        </span>
+                        <span className="block text-xs text-ink-3">
+                          {o.detail}
+                        </span>
                       </span>
                     </label>
                   ))}
@@ -180,10 +204,10 @@ export function ManualEntryForm({ onSubmit, onCancel, isSubmitting }: ManualEntr
 
           {/* The single most misunderstood rule in the flow, stated on the
               screen where someone could get it wrong. */}
-          <p className="bg-info-bg text-info flex items-start gap-2.5 rounded-md px-3.5 py-3 text-xs leading-relaxed">
+          <p className="flex items-start gap-2.5 rounded-md bg-info-bg px-3.5 py-3 text-xs leading-relaxed text-info">
             <Info className="mt-px size-4 shrink-0" aria-hidden />
-            On submit, a WhatsApp/SMS slot request is sent to the customer. The technician is
-            notified only after the customer confirms a slot.
+            On submit, a WhatsApp/SMS slot request is sent to the customer. The
+            technician is notified only after the customer confirms a slot.
           </p>
         </CardContent>
       </Card>
@@ -232,7 +256,11 @@ function TextField({
         {...input}
       />
       {error ? (
-        <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+        <FieldDescription
+          id={`${id}-error`}
+          role="alert"
+          className="text-danger"
+        >
           {error}
         </FieldDescription>
       ) : null}
@@ -297,7 +325,11 @@ function SelectField({
         )}
       />
       {error ? (
-        <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+        <FieldDescription
+          id={`${id}-error`}
+          role="alert"
+          className="text-danger"
+        >
           {error}
         </FieldDescription>
       ) : null}

@@ -27,7 +27,10 @@ function diffSummary(expected: string, detected: string, mask: boolean[]) {
   if (positions.length === 0) return null;
   return positions
     .slice(0, 3)
-    .map((i) => `position ${i + 1}: expected "${expected[i]}", detected "${detected[i]}"`)
+    .map(
+      (i) =>
+        `position ${i + 1}: expected "${expected[i]}", detected "${detected[i]}"`
+    )
     .join(" · ");
 }
 
@@ -41,18 +44,21 @@ function SerialText({
   className?: string;
 }) {
   return (
-    <span className={cn("font-mono text-xs font-semibold", className)} aria-hidden>
+    <span
+      className={cn("font-mono text-xs font-semibold", className)}
+      aria-hidden
+    >
       {value.split("").map((char, i) =>
         mask[i] ? (
           <mark
             key={i}
-            className="bg-danger-bg text-danger rounded-xs px-px underline decoration-2 underline-offset-2"
+            className="rounded-xs bg-danger-bg px-px text-danger underline decoration-2 underline-offset-2"
           >
             {char}
           </mark>
         ) : (
           <span key={i}>{char}</span>
-        ),
+        )
       )}
     </span>
   );
@@ -71,7 +77,7 @@ export function DetectedSerial({
 }) {
   if (!hasSerial(detected)) {
     return (
-      <span className="text-ink-3 font-mono text-xs">
+      <span className="font-mono text-xs text-ink-3">
         <span aria-hidden>{detected}</span>
         <span className="sr-only">No serial could be read</span>
       </span>
@@ -88,7 +94,11 @@ export function DetectedSerial({
           ? `Detected ${detected}, matches the expected serial`
           : `Detected ${detected}, does not match the expected serial ${expected}`}
       </span>
-      <SerialText value={detected} mask={mask} className={matches ? undefined : "text-danger"} />
+      <SerialText
+        value={detected}
+        mask={mask}
+        className={matches ? undefined : "text-danger"}
+      />
     </>
   );
 }
@@ -113,8 +123,8 @@ export function SerialCompare({
 
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="bg-surface-2 flex items-center justify-between gap-3 rounded-md px-3 py-2.5">
-        <span className="text-ink-2 text-xs">Expected serial</span>
+      <div className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-3 py-2.5">
+        <span className="text-xs text-ink-2">Expected serial</span>
         <span className="text-right">
           <span className="sr-only">{expected}</span>
           <SerialText value={expected} mask={mask} />
@@ -124,22 +134,22 @@ export function SerialCompare({
       <div
         className={cn(
           "flex items-center justify-between gap-3 rounded-md px-3 py-2.5",
-          matches ? "bg-ok-bg" : "bg-danger-bg",
+          matches ? "bg-ok-bg" : "bg-danger-bg"
         )}
       >
-        <span className="text-ink-2 text-xs">Detected serial</span>
+        <span className="text-xs text-ink-2">Detected serial</span>
         <span className="text-right">
           <DetectedSerial expected={expected} detected={detected} />
         </span>
       </div>
 
       {summary ? (
-        <p className="text-ink-2 px-3 text-[11px]">{summary}</p>
+        <p className="px-3 text-[11px] text-ink-2">{summary}</p>
       ) : null}
 
-      <div className="bg-surface-2 flex items-center justify-between gap-3 rounded-md px-3 py-2.5">
-        <span className="text-ink-2 text-xs">Flag reason</span>
-        <span className="text-danger text-xs font-semibold">{flag}</span>
+      <div className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-3 py-2.5">
+        <span className="text-xs text-ink-2">Flag reason</span>
+        <span className="text-xs font-semibold text-danger">{flag}</span>
       </div>
     </div>
   );

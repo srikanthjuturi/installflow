@@ -1,15 +1,11 @@
 import { useState } from "react";
 import {
-  HeadTr,
-  Table,
-  TableBody,
-  TableHeader,
-  Td,
-  Th,
-  Tr,
+  DataTable,
+  type Column,
+  type TypedFilterDef,
 } from "@/components/shared/DataTable";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/shared/states";
 import { EditAccessDialog } from "@/components/settings/EditAccessDialog";
+import { ROLE_OPTIONS } from "@/components/settings/userSchema";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Role, User } from "@/types";
@@ -21,8 +17,6 @@ import type { Role, User } from "@/types";
  * RBAC is enforced server-side. Hiding or showing a row here would change
  * nothing about what a request is allowed to do.
  */
-
-const COLUMNS = ["User", "Role", "Scope", "Last active", "Status"];
 
 /**
  * The management hierarchy, widest scope first: NH covers every region, an RSH
@@ -46,107 +40,168 @@ const STATUS_CLASS: Record<User["status"], string> = {
   Suspended: "text-danger",
 };
 
+const STATUSES: User["status"][] = ["Active", "Invited", "Suspended"];
+
+/** Minutes in each suffix the "last active" strings use. */
+const LAST_ACTIVE_UNIT: Record<string, number> = {
+  m: 1,
+  h: 60,
+  d: 1440,
+  w: 10080,
+};
+
+/**
+ * "Last active" is a human string — "Online", "40m ago", "6d ago", "—".
+ * Sorting it alphabetically would put "1h ago" beside "15m ago" and call it a
+ * date, so it is compared as **minutes since last seen**: ascending is most
+ * recent first, "Online" is 0, and a user who has never signed in returns
+ * `null`, which the table always sorts last.
+ */
+function minutesSinceActive(last: string): number | null {
+  const value = last.trim();
+  if (value === "Online") return 0;
+
+  const match = /^(\d+)\s*([mhdw])\s+ago$/i.exec(value);
+  if (!match) return null;
+
+  return Number(match[1]) * LAST_ACTIVE_UNIT[match[2].toLowerCase()];
+}
+
 interface UserTableProps {
   users?: User[];
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
+  toolbarActions?: React.ReactNode;
 }
 
-export function UserTable({ users, isLoading, error, onRetry }: UserTableProps) {
+export function UserTable({
+  users,
+  isLoading,
+  error,
+  onRetry,
+  toolbarActions,
+}: UserTableProps) {
   // The row being edited. One dialog for the whole table, not one per row.
   const [editing, setEditing] = useState<User | null>(null);
 
-  if (error) {
-    return <ErrorState title="Couldn't load users" error={error} onRetry={onRetry} />;
-  }
+  const columns: Column<User>[] = [
+    {
+      id: "name",
+      header: "User",
+      sortValue: (u) => u.name,
+      cell: (u) => (
+        <div className="flex items-center gap-2.5">
+          <UserAvatar name={u.name} />
+          <div>
+            <div className="font-medium">{u.name}</div>
+            <div className="text-[11px] text-ink-3">{u.email}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "role",
+      header: "Role",
+      cell: (u) => (
+        // The role word carries the meaning; the tint only reinforces it.
+        <span
+          className={cn(
+            "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
+            ROLE_CLASS[u.role]
+          )}
+        >
+          {u.role}
+        </span>
+      ),
+    },
+    { id: "region", header: "Scope", cell: (u) => u.region },
+    {
+      id: "last",
+      header: "Last active",
+      sortValue: (u) => minutesSinceActive(u.last),
+      cell: (u) => <span className="text-xs text-ink-2">{u.last}</span>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (u) => (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap",
+            STATUS_CLASS[u.status]
+          )}
+        >
+          <span
+            className="size-1.75 shrink-0 rounded-full bg-current"
+            aria-hidden
+          />
+          {u.status}
+        </span>
+      ),
+    },
+    {
+      id: "edit",
+      // The actions column has no visible heading in the approved design, but
+      // an empty `<th>` is a hole for screen readers.
+      header: "Edit access",
+      hideHeader: true,
+      align: "right",
+      cell: (u) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditing(u)}
+          aria-label={`Edit access for ${u.name}`}
+          className="-mr-2 text-brand-400"
+        >
+          Edit access
+        </Button>
+      ),
+    },
+  ];
 
-  if (!isLoading && !users?.length) {
-    return (
-      <EmptyState
-        title="No users yet"
-        description="Invited and active console users appear here with their role and scope."
-      />
-    );
-  }
+  const filters: TypedFilterDef<User>[] = [
+    {
+      id: "role",
+      label: "Role",
+      variant: "select",
+      // Hierarchy order, widest first — the same source the invite form uses.
+      options: ROLE_OPTIONS.map((r) => ({ value: r.value, label: r.value })),
+      match: (u, value) => u.role === value,
+    },
+    {
+      id: "status",
+      label: "Status",
+      variant: "select",
+      options: STATUSES.map((s) => ({ value: s, label: s })),
+      match: (u, value) => u.status === value,
+    },
+  ];
 
   return (
-    <div className="scroll-x">
-      <Table className="min-w-205">
-        <caption className="sr-only">Users &amp; roles</caption>
-        <TableHeader>
-          <HeadTr>
-            {COLUMNS.map((c) => (
-              <Th key={c} scope="col">
-                {c}
-              </Th>
-            ))}
-            <Th scope="col">
-              {/* The actions column has no visible heading in the approved
-                  design, but an empty `<th>` is a hole for screen readers. */}
-              <span className="sr-only">Edit access</span>
-            </Th>
-          </HeadTr>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableSkeleton rows={7} cols={COLUMNS.length + 1} />
-          ) : (
-            users?.map((u) => (
-              <Tr key={u.id}>
-                <Td>
-                  <div className="flex items-center gap-2.5">
-                    <UserAvatar name={u.name} />
-                    <div>
-                      <div className="font-medium">{u.name}</div>
-                      <div className="text-ink-3 text-[11px]">{u.email}</div>
-                    </div>
-                  </div>
-                </Td>
-                <Td>
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
-                      ROLE_CLASS[u.role],
-                    )}
-                  >
-                    {u.role}
-                  </span>
-                </Td>
-                <Td>{u.region}</Td>
-                <Td>
-                  <span className="text-ink-2 text-xs">{u.last}</span>
-                </Td>
-                <Td>
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap",
-                      STATUS_CLASS[u.status],
-                    )}
-                  >
-                    <span
-                      className="size-1.75 shrink-0 rounded-full bg-current"
-                      aria-hidden
-                    />
-                    {u.status}
-                  </span>
-                </Td>
-                <Td className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditing(u)}
-                    aria-label={`Edit access for ${u.name}`}
-                    className="text-brand-400 -mr-2"
-                  >
-                    Edit access
-                  </Button>
-                </Td>
-              </Tr>
-            ))
-          )}
-        </TableBody>
-      </Table>
+    <>
+      <DataTable
+        errorTitle="Couldn't load users"
+        caption="Users & roles"
+        data={users}
+        columns={columns}
+        getRowId={(u) => u.id}
+        isLoading={isLoading}
+        error={error}
+        onRetry={onRetry}
+        search={{
+          placeholder: "Search users by name or email…",
+          keys: ["name", "email"],
+        }}
+        filters={filters}
+        toolbarActions={toolbarActions}
+        minWidth="51.25rem"
+        emptyTitle="No users yet"
+        emptyDescription="Invited and active console users appear here with their role and scope."
+        filteredEmptyTitle="No users match those filters"
+        filteredEmptyDescription="Try a different role or status, or clear the search."
+      />
 
       <EditAccessDialog
         user={editing}
@@ -154,7 +209,7 @@ export function UserTable({ users, isLoading, error, onRetry }: UserTableProps) 
           if (!open) setEditing(null);
         }}
       />
-    </div>
+    </>
   );
 }
 
@@ -169,7 +224,7 @@ function UserAvatar({ name }: { name: string }) {
   return (
     <span
       aria-hidden
-      className="bg-status-assigned-bg text-brand-400 grid size-8.5 shrink-0 place-items-center rounded-full text-xs font-semibold"
+      className="grid size-8.5 shrink-0 place-items-center rounded-full bg-status-assigned-bg text-xs font-semibold text-brand-400"
     >
       {initials}
     </span>

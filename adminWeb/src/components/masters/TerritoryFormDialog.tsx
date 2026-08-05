@@ -11,7 +11,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -24,7 +29,11 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { RegionTerritory } from "@/types";
-import { NEW_REGION, territorySchema, type TerritoryFormValues } from "./territorySchema";
+import {
+  NEW_REGION,
+  territorySchema,
+  type TerritoryFormValues,
+} from "./territorySchema";
 
 const EMPTY: TerritoryFormValues = {
   region: "",
@@ -83,7 +92,8 @@ export function TerritoryFormDialog({
         <DialogHeader>
           <DialogTitle>Add mapping</DialogTitle>
           <DialogDescription>
-            Region → Regional Service Head → Area Service Manager → serviced pincodes.
+            Region → Regional Service Head → Area Service Manager → serviced
+            pincodes.
           </DialogDescription>
         </DialogHeader>
 
@@ -100,7 +110,9 @@ export function TerritoryFormDialog({
                       id="map-region"
                       className="w-full"
                       aria-invalid={err("region") ? true : undefined}
-                      aria-describedby={err("region") ? "map-region-error" : undefined}
+                      aria-describedby={
+                        err("region") ? "map-region-error" : undefined
+                      }
                     >
                       <SelectValue placeholder="Select a region" />
                     </SelectTrigger>
@@ -118,7 +130,11 @@ export function TerritoryFormDialog({
                 )}
               />
               {err("region") ? (
-                <FieldDescription id="map-region-error" role="alert" className="text-danger">
+                <FieldDescription
+                  id="map-region-error"
+                  role="alert"
+                  className="text-danger"
+                >
                   {err("region")}
                 </FieldDescription>
               ) : rsh ? (
@@ -134,7 +150,9 @@ export function TerritoryFormDialog({
                     id="map-new-region"
                     placeholder="South"
                     aria-invalid={err("newRegion") ? true : undefined}
-                    aria-describedby={err("newRegion") ? "map-new-region-error" : undefined}
+                    aria-describedby={
+                      err("newRegion") ? "map-new-region-error" : undefined
+                    }
                     {...register("newRegion")}
                   />
                   {err("newRegion") ? (
@@ -149,7 +167,9 @@ export function TerritoryFormDialog({
                 </Field>
 
                 <Field data-invalid={err("rsh") ? true : undefined}>
-                  <FieldLabel htmlFor="map-rsh">Regional Service Head</FieldLabel>
+                  <FieldLabel htmlFor="map-rsh">
+                    Regional Service Head
+                  </FieldLabel>
                   <Input
                     id="map-rsh"
                     autoComplete="off"
@@ -159,7 +179,11 @@ export function TerritoryFormDialog({
                     {...register("rsh")}
                   />
                   {err("rsh") ? (
-                    <FieldDescription id="map-rsh-error" role="alert" className="text-danger">
+                    <FieldDescription
+                      id="map-rsh-error"
+                      role="alert"
+                      className="text-danger"
+                    >
                       {err("rsh")}
                     </FieldDescription>
                   ) : null}
@@ -179,7 +203,11 @@ export function TerritoryFormDialog({
                   {...register("asm")}
                 />
                 {err("asm") ? (
-                  <FieldDescription id="map-asm-error" role="alert" className="text-danger">
+                  <FieldDescription
+                    id="map-asm-error"
+                    role="alert"
+                    className="text-danger"
+                  >
                     {err("asm")}
                   </FieldDescription>
                 ) : null}
@@ -196,7 +224,11 @@ export function TerritoryFormDialog({
                   {...register("area")}
                 />
                 {err("area") ? (
-                  <FieldDescription id="map-area-error" role="alert" className="text-danger">
+                  <FieldDescription
+                    id="map-area-error"
+                    role="alert"
+                    className="text-danger"
+                  >
                     {err("area")}
                   </FieldDescription>
                 ) : null}
@@ -211,16 +243,23 @@ export function TerritoryFormDialog({
                 inputMode="numeric"
                 placeholder="411001, 411014, 411021"
                 aria-invalid={err("pincodes") ? true : undefined}
-                aria-describedby={err("pincodes") ? "map-pincodes-error" : "map-pincodes-hint"}
+                aria-describedby={
+                  err("pincodes") ? "map-pincodes-error" : "map-pincodes-hint"
+                }
                 {...register("pincodes")}
               />
               {err("pincodes") ? (
-                <FieldDescription id="map-pincodes-error" role="alert" className="text-danger">
+                <FieldDescription
+                  id="map-pincodes-error"
+                  role="alert"
+                  className="text-danger"
+                >
                   {err("pincodes")}
                 </FieldDescription>
               ) : (
                 <FieldDescription id="map-pincodes-hint">
-                  6-digit pincodes, comma separated. A pincode belongs to one ASM only.
+                  6-digit pincodes, comma separated. A pincode belongs to one
+                  ASM only.
                 </FieldDescription>
               )}
             </Field>

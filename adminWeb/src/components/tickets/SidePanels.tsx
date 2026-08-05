@@ -20,23 +20,26 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-3">
-          <div className="bg-brand-100 text-brand-500 grid size-11 shrink-0 place-items-center rounded-full text-base font-semibold">
+          <div className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-100 text-base font-semibold text-brand-500">
             {initials(ticket.customer)}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{ticket.customer}</div>
+            <div className="truncate text-sm font-semibold">
+              {ticket.customer}
+            </div>
             <a
               href={`tel:${ticket.mobile.replace(/\s/g, "")}`}
-              className="text-ink-2 hover:text-brand-400 text-xs"
+              className="text-xs text-ink-2 hover:text-brand-400"
             >
               {ticket.mobile}
             </a>
           </div>
         </div>
-        <p className="text-ink-2 mt-3.5 text-xs leading-relaxed">
+        <p className="mt-3.5 text-xs leading-relaxed text-ink-2">
           {ticket.city} · {ticket.pincode}
           <br />
-          Confirmed slot: <b className="text-ink font-semibold">{ticket.slot}</b>
+          Confirmed slot:{" "}
+          <b className="font-semibold text-ink">{ticket.slot}</b>
         </p>
       </CardContent>
     </Card>
@@ -54,23 +57,25 @@ export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
       <CardContent>
         {assigned ? (
           <div className="flex items-center gap-3">
-            <div className="bg-brand-100 text-brand-500 grid size-11 shrink-0 place-items-center rounded-full text-base font-semibold">
+            <div className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-100 text-base font-semibold text-brand-500">
               {initials(ticket.tech)}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">{ticket.tech}</div>
+              <div className="truncate text-sm font-semibold">
+                {ticket.tech}
+              </div>
               {/* Assignment is first-accept-wins — never allocated by a manager. */}
-              <div className="text-ink-3 truncate text-xs">
+              <div className="truncate text-xs text-ink-3">
                 First-accept · {ticket.category}
               </div>
             </div>
-            <span className="bg-ok-bg text-ok rounded-full px-2.25 py-0.75 text-xs font-semibold">
+            <span className="rounded-full bg-ok-bg px-2.25 py-0.75 text-xs font-semibold text-ok">
               On job
             </span>
           </div>
         ) : (
           <div className="flex flex-col items-start gap-3">
-            <p className="text-ink-2 text-[13px]">No technician assigned yet</p>
+            <p className="text-[13px] text-ink-2">No technician assigned yet</p>
             <LinkButton
               variant="outline"
               size="sm"
@@ -108,7 +113,7 @@ export function ProofPanel({ hasProof }: { hasProof: boolean }) {
                 return (
                   <div
                     key={p.label}
-                    className="bg-surface-3 text-ink-2 flex aspect-4/3 flex-col items-center justify-center gap-1.5 rounded-md"
+                    className="flex aspect-4/3 flex-col items-center justify-center gap-1.5 rounded-md bg-surface-3 text-ink-2"
                   >
                     <Icon className="size-5" aria-hidden />
                     <span className="text-[11px] font-medium">{p.label}</span>
@@ -116,13 +121,13 @@ export function ProofPanel({ hasProof }: { hasProof: boolean }) {
                 );
               })}
             </div>
-            <p className="text-ink-2 mt-3 flex items-center gap-1.5 text-xs">
-              <span className="bg-ok size-1.75 rounded-full" aria-hidden />
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-2">
+              <span className="size-1.75 rounded-full bg-ok" aria-hidden />
               Geo-tag matched ticket pincode
             </p>
           </>
         ) : (
-          <p className="text-ink-2 text-[13px]">
+          <p className="text-[13px] text-ink-2">
             Not submitted yet. Proof is captured on site at job completion.
           </p>
         )}

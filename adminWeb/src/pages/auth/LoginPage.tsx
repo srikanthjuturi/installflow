@@ -21,11 +21,14 @@ export default function LoginPage() {
 
   return (
     <>
-      <PageMeta title="Sign in" description="InstallFlow ops console sign-in." />
+      <PageMeta
+        title="Sign in"
+        description="InstallFlow ops console sign-in."
+      />
       <div className="grid min-h-svh md:grid-cols-[1.05fr_0.95fr]">
         <BrandPanel />
 
-        <div className="bg-surface flex items-center justify-center px-8 py-10">
+        <div className="flex items-center justify-center bg-surface px-8 py-10">
           <motion.div
             key={step}
             initial={{ opacity: 0, y: 8 }}

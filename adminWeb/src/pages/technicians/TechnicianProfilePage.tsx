@@ -4,7 +4,10 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
-import { TechProfileHeader, TechStats } from "@/components/technicians/TechProfileHeader";
+import {
+  TechProfileHeader,
+  TechStats,
+} from "@/components/technicians/TechProfileHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTechnician } from "@/hooks/useTechnicians";
 
@@ -19,7 +22,12 @@ export default function TechnicianProfilePage() {
         description="Category, pincode, bandwidth, cancellations and job history."
       />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/technicians">
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to="/technicians"
+      >
         <ArrowLeft data-icon="inline-start" />
         Back to technicians
       </LinkButton>
@@ -50,7 +58,10 @@ export default function TechnicianProfilePage() {
             )}
 
             {/* The skeleton is the real table, row for row — never a spinner. */}
-            <JobHistoryTable history={tech?.history} isLoading={isLoading || !tech} />
+            <JobHistoryTable
+              history={tech?.history}
+              isLoading={isLoading || !tech}
+            />
           </div>
         </div>
       )}

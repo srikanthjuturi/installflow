@@ -35,7 +35,9 @@ export function EmptyState({
           <Icon aria-hidden />
         </EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>
-        {description ? <EmptyDescription>{description}</EmptyDescription> : null}
+        {description ? (
+          <EmptyDescription>{description}</EmptyDescription>
+        ) : null}
       </EmptyHeader>
       {action ? <EmptyContent>{action}</EmptyContent> : null}
     </Empty>
@@ -77,14 +79,23 @@ export function ErrorState({
 }
 
 /** Matches the real table's shape so nothing jumps when data lands. */
-export function TableSkeleton({ rows = 6, cols = 6 }: { rows?: number; cols?: number }) {
+export function TableSkeleton({
+  rows = 6,
+  cols = 6,
+}: {
+  rows?: number;
+  cols?: number;
+}) {
   return (
     <>
       {Array.from({ length: rows }).map((_, r) => (
         <Tr key={r} className="hover:bg-transparent">
           {Array.from({ length: cols }).map((__, c) => (
             <Td key={c}>
-              <Skeleton className="h-4" style={{ width: c === 0 ? "70%" : "55%" }} />
+              <Skeleton
+                className="h-4"
+                style={{ width: c === 0 ? "70%" : "55%" }}
+              />
             </Td>
           ))}
         </Tr>

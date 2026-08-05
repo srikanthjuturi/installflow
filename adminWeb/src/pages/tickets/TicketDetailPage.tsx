@@ -24,9 +24,17 @@ export default function TicketDetailPage() {
 
   return (
     <>
-      <PageMeta title={`Ticket ${id}`} description="Ticket timeline and audit trail." />
+      <PageMeta
+        title={`Ticket ${id}`}
+        description="Ticket timeline and audit trail."
+      />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/tickets">
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to="/tickets"
+      >
         <ArrowLeft data-icon="inline-start" />
         Back to tickets
       </LinkButton>
@@ -57,11 +65,13 @@ export default function TicketDetailPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2.5">
-                      <h2 className="font-mono text-base font-semibold">{ticket.id}</h2>
+                      <h2 className="font-mono text-base font-semibold">
+                        {ticket.id}
+                      </h2>
                       <StatusBadge status={ticket.status} />
                       <SlaBadge state={ticket.sla} />
                     </div>
-                    <p className="text-ink-2 mt-1.5 text-[13px]">
+                    <p className="mt-1.5 text-[13px] text-ink-2">
                       {ticket.product} · {ticket.slaType} SLA
                     </p>
                   </div>

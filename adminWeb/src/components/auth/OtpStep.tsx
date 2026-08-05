@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 24;
@@ -32,9 +36,9 @@ export function OtpStep({
       </Button>
 
       <h1 className="mt-4.5 text-[22px] font-semibold">Verify it's you</h1>
-      <p className="text-ink-2 mt-1.5 text-[13px]">
+      <p className="mt-1.5 text-[13px] text-ink-2">
         Enter the 6-digit code sent to{" "}
-        <b className="text-ink font-semibold">+91 98••• ••210</b>.
+        <b className="font-semibold text-ink">+91 98••• ••210</b>.
       </p>
 
       <form
@@ -54,24 +58,32 @@ export function OtpStep({
         >
           <InputOTPGroup className="gap-2.5">
             {Array.from({ length: OTP_LENGTH }).map((_, i) => (
-              <InputOTPSlot key={i} index={i} className="size-13 font-mono text-xl" />
+              <InputOTPSlot
+                key={i}
+                index={i}
+                className="size-13 font-mono text-xl"
+              />
             ))}
           </InputOTPGroup>
         </InputOTP>
 
-        <Button type="submit" className="mt-6 h-11.5 w-full" disabled={!complete}>
+        <Button
+          type="submit"
+          className="mt-6 h-11.5 w-full"
+          disabled={!complete}
+        >
           Verify &amp; sign in
         </Button>
       </form>
 
-      <p className="text-ink-3 mt-4 text-center text-xs">
+      <p className="mt-4 text-center text-xs text-ink-3">
         Didn't get it?{" "}
         {secondsLeft > 0 ? (
           <span>Resend in 0:{String(secondsLeft).padStart(2, "0")}</span>
         ) : (
           <button
             type="button"
-            className="text-brand-400 hover:text-brand-500 font-medium"
+            className="font-medium text-brand-400 hover:text-brand-500"
             onClick={() => setSecondsLeft(RESEND_SECONDS)}
           >
             Resend code

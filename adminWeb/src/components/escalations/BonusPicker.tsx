@@ -32,11 +32,18 @@ export function BonusPicker({
 }: BonusPickerProps) {
   return (
     <div>
-      <span id="bonus-amount-label" className="text-ink-2 mb-1.5 block text-xs font-semibold">
+      <span
+        id="bonus-amount-label"
+        className="mb-1.5 block text-xs font-semibold text-ink-2"
+      >
         Bonus amount
       </span>
 
-      <div role="group" aria-labelledby="bonus-amount-label" className="flex flex-wrap gap-2.5">
+      <div
+        role="group"
+        aria-labelledby="bonus-amount-label"
+        className="flex flex-wrap gap-2.5"
+      >
         {amounts.map((amount) => {
           const selected = amount === value;
           const unfunded = typeof max === "number" && amount > max;
@@ -49,10 +56,10 @@ export function BonusPicker({
               disabled={disabled || unfunded}
               onClick={() => onChange(amount)}
               className={cn(
-                "focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-11 items-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-50",
+                "inline-flex h-11 items-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
                 selected
                   ? "border-brand-500 bg-brand-500 text-primary-foreground"
-                  : "border-line bg-surface text-ink hover:bg-surface-2",
+                  : "border-line bg-surface text-ink hover:bg-surface-2"
               )}
             >
               {selected ? <Check className="size-4" aria-hidden /> : null}

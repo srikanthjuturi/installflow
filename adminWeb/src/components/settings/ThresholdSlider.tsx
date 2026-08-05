@@ -32,16 +32,16 @@ export function ThresholdSlider({
 }: ThresholdSliderProps) {
   return (
     <div>
-      <p id={HINT_ID} className="text-ink-3 mb-4 text-xs">
+      <p id={HINT_ID} className="mb-4 text-xs text-ink-3">
         Below this confidence, tickets are flagged for manual ASM review.
       </p>
 
       {/* The value is readable as text, not only as a knob position. */}
       <p className="flex items-baseline gap-1.5">
-        <span className="text-brand-500 text-[40px] leading-none font-semibold tabular-nums">
+        <span className="text-[40px] leading-none font-semibold text-brand-500 tabular-nums">
           {value}
         </span>
-        <span className="text-ink-3 text-lg">%</span>
+        <span className="text-lg text-ink-3">%</span>
       </p>
 
       <label htmlFor={INPUT_ID} className="sr-only">
@@ -58,15 +58,15 @@ export function ThresholdSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         aria-describedby={HINT_ID}
         aria-valuetext={`${value} percent`}
-        className="accent-brand-500 mt-3 w-full"
+        className="mt-3 w-full accent-brand-500"
       />
 
-      <div className="text-ink-3 mt-1 flex justify-between text-[11px]">
+      <div className="mt-1 flex justify-between text-[11px] text-ink-3">
         <span>{min}% · lenient</span>
         <span>{max}% · strict</span>
       </div>
 
-      <p className="border-line-2 bg-surface-2 text-ink-2 mt-3.5 rounded-md border px-3.25 py-2.75 text-xs">
+      <p className="mt-3.5 rounded-md border border-line-2 bg-surface-2 px-3.25 py-2.75 text-xs text-ink-2">
         Unreadable image → technician prompted to retake on-site.
       </p>
     </div>

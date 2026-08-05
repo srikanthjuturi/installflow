@@ -53,16 +53,22 @@ export function UploadDropzone({ onFile, isUploading }: UploadDropzoneProps) {
         }}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors",
-          dragging ? "border-brand-500 bg-brand-100/40" : "border-line bg-surface-2",
+          dragging
+            ? "border-brand-500 bg-brand-100/40"
+            : "border-line bg-surface-2"
         )}
       >
-        <span className="bg-surface-3 text-ink-2 mb-3.5 grid size-12 place-items-center rounded-full">
-          {isUploading ? <Spinner className="size-5" /> : <UploadCloud className="size-5" />}
+        <span className="mb-3.5 grid size-12 place-items-center rounded-full bg-surface-3 text-ink-2">
+          {isUploading ? (
+            <Spinner className="size-5" />
+          ) : (
+            <UploadCloud className="size-5" />
+          )}
         </span>
         <span className="text-sm font-semibold">
           {isUploading ? "Validating rows…" : "Drag & drop your .xlsx here"}
         </span>
-        <span className="text-ink-3 mt-1 text-xs">
+        <span className="mt-1 text-xs text-ink-3">
           or click to browse · max {MAX_ROWS} rows
         </span>
         <Button
@@ -79,7 +85,7 @@ export function UploadDropzone({ onFile, isUploading }: UploadDropzoneProps) {
       </label>
 
       {rejected ? (
-        <p role="alert" className="text-danger mt-2.5 text-xs">
+        <p role="alert" className="mt-2.5 text-xs text-danger">
           {rejected}
         </p>
       ) : null}

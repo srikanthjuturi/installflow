@@ -54,7 +54,11 @@ interface VendorFormDialogProps {
  * the name is identity and the rest of the record — lifetime tickets, the
  * year onboarded, the API key — is either derived or issued server-side.
  */
-export function VendorFormDialog({ open, onOpenChange, vendor }: VendorFormDialogProps) {
+export function VendorFormDialog({
+  open,
+  onOpenChange,
+  vendor,
+}: VendorFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -70,7 +74,13 @@ export function VendorFormDialog({ open, onOpenChange, vendor }: VendorFormDialo
   );
 }
 
-function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void }) {
+function VendorForm({
+  vendor,
+  onDone,
+}: {
+  vendor?: Vendor;
+  onDone: () => void;
+}) {
   const create = useCreateVendor();
   const update = useUpdateVendor();
 
@@ -108,7 +118,7 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
             });
             onDone();
           },
-        },
+        }
       );
       return;
     }
@@ -135,7 +145,9 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
   return (
     <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>{vendor ? `Manage ${vendor.name}` : "Add vendor"}</DialogTitle>
+        <DialogTitle>
+          {vendor ? `Manage ${vendor.name}` : "Add vendor"}
+        </DialogTitle>
         <DialogDescription>
           {vendor
             ? "Change how tickets arrive, or pause new ones."
@@ -156,10 +168,16 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
             {...register("name")}
           />
           {vendor ? (
-            <FieldDescription>The name can&apos;t be changed here.</FieldDescription>
+            <FieldDescription>
+              The name can&apos;t be changed here.
+            </FieldDescription>
           ) : null}
           {err("name") ? (
-            <FieldDescription id="vendor-name-error" role="alert" className="text-danger">
+            <FieldDescription
+              id="vendor-name-error"
+              role="alert"
+              className="text-danger"
+            >
               {err("name")}
             </FieldDescription>
           ) : null}
@@ -176,7 +194,9 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
                   id="vendor-channel"
                   className="w-full"
                   aria-invalid={err("channel") ? true : undefined}
-                  aria-describedby={err("channel") ? "vendor-channel-error" : undefined}
+                  aria-describedby={
+                    err("channel") ? "vendor-channel-error" : undefined
+                  }
                 >
                   <SelectValue placeholder="Select channel" />
                 </SelectTrigger>
@@ -212,12 +232,12 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
         {channel === "API" ? (
           <Field>
             <FieldTitle>API credentials</FieldTitle>
-            <p className="text-ink-2 font-mono text-xs">
+            <p className="font-mono text-xs text-ink-2">
               {keepsKey ? vendor.key : "Issued on save"}
             </p>
             <FieldDescription>
-              Keys are issued by the platform and stored masked. The console never
-              shows or accepts a full key.
+              Keys are issued by the platform and stored masked. The console
+              never shows or accepts a full key.
             </FieldDescription>
           </Field>
         ) : null}
@@ -237,7 +257,9 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
                 value={field.value}
                 onValueChange={field.onChange}
                 aria-invalid={err("status") ? true : undefined}
-                aria-describedby={err("status") ? "vendor-status-error" : undefined}
+                aria-describedby={
+                  err("status") ? "vendor-status-error" : undefined
+                }
                 className="grid grid-cols-2 gap-2.5"
               >
                 {VENDOR_STATUSES.map((s) => (
@@ -247,7 +269,7 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
                       "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
                       field.value === s
                         ? "border-brand-500 bg-brand-100/40"
-                        : "border-line hover:border-brand-400",
+                        : "border-line hover:border-brand-400"
                     )}
                   >
                     <RadioGroupItem value={s} />
@@ -257,9 +279,15 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
               </RadioGroup>
             )}
           />
-          <FieldDescription>Paused vendors stop sending new tickets.</FieldDescription>
+          <FieldDescription>
+            Paused vendors stop sending new tickets.
+          </FieldDescription>
           {err("status") ? (
-            <FieldDescription id="vendor-status-error" role="alert" className="text-danger">
+            <FieldDescription
+              id="vendor-status-error"
+              role="alert"
+              className="text-danger"
+            >
               {err("status")}
             </FieldDescription>
           ) : null}
@@ -267,8 +295,13 @@ function VendorForm({ vendor, onDone }: { vendor?: Vendor; onDone: () => void })
       </FieldGroup>
 
       {failure ? (
-        <p role="alert" className="bg-danger-bg text-danger rounded-md px-3 py-2.5 text-xs">
-          {failure instanceof Error ? failure.message : "Couldn't save the vendor"}
+        <p
+          role="alert"
+          className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
+        >
+          {failure instanceof Error
+            ? failure.message
+            : "Couldn't save the vendor"}
         </p>
       ) : null}
 

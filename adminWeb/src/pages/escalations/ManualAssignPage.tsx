@@ -5,7 +5,13 @@ import { EligibleTechTable } from "@/components/escalations/EligibleTechTable";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useAssignTechnician, useEscalation } from "@/hooks/useEscalations";
@@ -16,7 +22,13 @@ export default function ManualAssignPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
 
-  const { data: escalation, isLoading, isError, error, refetch } = useEscalation(id);
+  const {
+    data: escalation,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useEscalation(id);
   const techs = useEligibleTechnicians();
   const assign = useAssignTechnician();
 
@@ -32,7 +44,7 @@ export default function ManualAssignPage() {
           navigate("/escalations");
         },
         onSettled: () => setPending(null),
-      },
+      }
     );
   }
 
@@ -43,7 +55,12 @@ export default function ManualAssignPage() {
         description="Assign an eligible technician to an escalated ticket."
       />
 
-      <LinkButton variant="ghost" size="sm" className="mb-3.5 -ml-2" to="/escalations">
+      <LinkButton
+        variant="ghost"
+        size="sm"
+        className="mb-3.5 -ml-2"
+        to="/escalations"
+      >
         <ArrowLeft data-icon="inline-start" />
         Back
       </LinkButton>
@@ -59,23 +76,27 @@ export default function ManualAssignPage() {
           icon={SearchX}
           title="This ticket is no longer escalated"
           description="Someone has already picked it up, or it was assigned manually."
-          action={<LinkButton to="/escalations">Back to escalations</LinkButton>}
+          action={
+            <LinkButton to="/escalations">Back to escalations</LinkButton>
+          }
         />
       ) : (
         <Card className="gap-0 py-0">
-          <CardHeader className="border-line-2 border-b p-4.5">
+          <CardHeader className="border-b border-line-2 p-4.5">
             <CardTitle>
               <h2>Manual technician assignment</h2>
             </CardTitle>
-            <p className="text-ink-3 text-xs">
-              Eligible by category, pincode and available bandwidth. Sorted by best fit.
+            <p className="text-xs text-ink-3">
+              Eligible by category, pincode and available bandwidth. Sorted by
+              best fit.
             </p>
             <CardAction className="self-center">
               {isLoading || !escalation ? (
                 <Skeleton className="h-4 w-56" />
               ) : (
-                <span className="text-ink-2 text-xs">
-                  Ticket <b className="font-mono">{escalation.id}</b> · {escalation.product}
+                <span className="text-xs text-ink-2">
+                  Ticket <b className="font-mono">{escalation.id}</b> ·{" "}
+                  {escalation.product}
                 </span>
               )}
             </CardAction>
@@ -85,7 +106,7 @@ export default function ManualAssignPage() {
             {assign.isError ? (
               <p
                 role="alert"
-                className="bg-danger-bg text-danger border-line-2 border-b px-4.5 py-3 text-xs"
+                className="border-b border-line-2 bg-danger-bg px-4.5 py-3 text-xs text-danger"
               >
                 {assign.error instanceof Error
                   ? assign.error.message
@@ -93,15 +114,19 @@ export default function ManualAssignPage() {
               </p>
             ) : null}
 
-            <EligibleTechTable
-              technicians={techs.data}
-              isLoading={isLoading || techs.isLoading}
-              error={techs.error}
-              onRetry={() => techs.refetch()}
-              onAssign={onAssign}
-              assigningName={pending}
-              isAssigning={assign.isPending}
-            />
+            {/* DataTable brings its own toolbar and panel, so it is inset
+                inside the card rather than sitting flush against it. */}
+            <div className="p-4.5">
+              <EligibleTechTable
+                technicians={techs.data}
+                isLoading={isLoading || techs.isLoading}
+                error={techs.error}
+                onRetry={() => techs.refetch()}
+                onAssign={onAssign}
+                assigningName={pending}
+                isAssigning={assign.isPending}
+              />
+            </div>
           </CardContent>
         </Card>
       )}

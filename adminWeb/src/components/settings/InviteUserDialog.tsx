@@ -52,7 +52,10 @@ interface InviteUserDialogProps {
  * nothing here grants permission: the role and scope are recorded for the
  * server, which is where RBAC is enforced.
  */
-export function InviteUserDialog({ open, onOpenChange }: InviteUserDialogProps) {
+export function InviteUserDialog({
+  open,
+  onOpenChange,
+}: InviteUserDialogProps) {
   const invite = useInviteUser();
 
   return (
@@ -61,8 +64,8 @@ export function InviteUserDialog({ open, onOpenChange }: InviteUserDialogProps) 
         <DialogHeader>
           <DialogTitle>Invite user</DialogTitle>
           <DialogDescription>
-            They receive an email invite and stay <strong>Invited</strong> until they
-            accept.
+            They receive an email invite and stay <strong>Invited</strong> until
+            they accept.
           </DialogDescription>
         </DialogHeader>
 
@@ -128,7 +131,11 @@ function InviteUserForm({
               {...register("name")}
             />
             {errors.name ? (
-              <FieldDescription id="invite-name-error" role="alert" className="text-danger">
+              <FieldDescription
+                id="invite-name-error"
+                role="alert"
+                className="text-danger"
+              >
                 {errors.name.message}
               </FieldDescription>
             ) : null}
@@ -165,7 +172,9 @@ function InviteUserForm({
             scopeError={errors.scope?.message}
             onChange={(next) => {
               setValue("role", next.role, { shouldValidate: false });
-              setValue("scope", next.scope, { shouldValidate: Boolean(errors.scope) });
+              setValue("scope", next.scope, {
+                shouldValidate: Boolean(errors.scope),
+              });
             }}
           />
         </FieldGroup>
@@ -174,7 +183,9 @@ function InviteUserForm({
       <ServerError error={error} />
 
       <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+        <DialogClose render={<Button type="button" variant="outline" />}>
+          Cancel
+        </DialogClose>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <Spinner data-icon="inline-start" />}
           Send invite
@@ -229,7 +240,10 @@ export function RoleScopeFields({
           value={role}
           onValueChange={(value) => {
             const next = value as Role;
-            onChange({ role: next, scope: reconcileScope(next, scope, territory) });
+            onChange({
+              role: next,
+              scope: reconcileScope(next, scope, territory),
+            });
           }}
         >
           <SelectTrigger
@@ -251,7 +265,11 @@ export function RoleScopeFields({
           </SelectContent>
         </Select>
         {roleError ? (
-          <FieldDescription id={`${roleId}-error`} role="alert" className="text-danger">
+          <FieldDescription
+            id={`${roleId}-error`}
+            role="alert"
+            className="text-danger"
+          >
             {roleError}
           </FieldDescription>
         ) : null}
@@ -265,7 +283,9 @@ export function RoleScopeFields({
         ) : (
           <Select
             value={scope}
-            onValueChange={(value) => onChange({ role, scope: value as string })}
+            onValueChange={(value) =>
+              onChange({ role, scope: value as string })
+            }
             disabled={options.length === 0}
           >
             <SelectTrigger
@@ -290,7 +310,11 @@ export function RoleScopeFields({
           </Select>
         )}
         {scopeError ? (
-          <FieldDescription id={`${scopeId}-error`} role="alert" className="text-danger">
+          <FieldDescription
+            id={`${scopeId}-error`}
+            role="alert"
+            className="text-danger"
+          >
             {scopeError}
           </FieldDescription>
         ) : (
@@ -308,8 +332,13 @@ export function ServerError({ error }: { error: unknown }) {
   if (!error) return null;
 
   return (
-    <p role="alert" className="bg-danger-bg text-danger rounded-md px-3 py-2.5 text-xs">
-      {error instanceof Error ? error.message : "Something went wrong. Try again."}
+    <p
+      role="alert"
+      className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
+    >
+      {error instanceof Error
+        ? error.message
+        : "Something went wrong. Try again."}
     </p>
   );
 }

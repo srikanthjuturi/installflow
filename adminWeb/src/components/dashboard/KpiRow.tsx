@@ -9,11 +9,11 @@ export function KpiRow({ kpis }: { kpis: Kpi[] }) {
         <Card key={k.key}>
           <CardContent className="flex flex-col">
             <div className="flex items-start justify-between gap-2">
-              <div className="text-ink-2 text-xs font-medium">{k.label}</div>
+              <div className="text-xs font-medium text-ink-2">{k.label}</div>
               <span
                 className={cn(
                   "rounded-full px-1.75 py-0.5 text-[11px] font-semibold whitespace-nowrap",
-                  k.good ? "bg-ok-bg text-ok" : "bg-danger-bg text-danger",
+                  k.good ? "bg-ok-bg text-ok" : "bg-danger-bg text-danger"
                 )}
               >
                 {k.delta}
@@ -22,7 +22,7 @@ export function KpiRow({ kpis }: { kpis: Kpi[] }) {
             <div className="mt-2.5 text-[28px] leading-none font-semibold tracking-tight">
               {k.value}
             </div>
-            <div className="text-ink-3 mt-1.5 text-xs">{k.sub}</div>
+            <div className="mt-1.5 text-xs text-ink-3">{k.sub}</div>
           </CardContent>
         </Card>
       ))}

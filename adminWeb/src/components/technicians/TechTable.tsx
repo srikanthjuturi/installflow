@@ -1,7 +1,16 @@
 import { Link, useNavigate } from "react-router";
 import { Users } from "lucide-react";
-import { DataTable, type Column, type TypedFilterDef } from "@/components/shared/DataTable";
-import { BandwidthBar, CancelCount, TechAvatar, TechStatusPill } from "./BandwidthBar";
+import {
+  DataTable,
+  type Column,
+  type TypedFilterDef,
+} from "@/components/shared/DataTable";
+import {
+  BandwidthBar,
+  CancelCount,
+  TechAvatar,
+  TechStatusPill,
+} from "./BandwidthBar";
 import type { Technician } from "@/types";
 
 interface TechTableProps {
@@ -37,11 +46,11 @@ export function TechTable({
             <Link
               to={`/technicians/${t.id}`}
               onClick={(e) => e.stopPropagation()}
-              className="hover:text-brand-400 font-medium"
+              className="font-medium hover:text-brand-400"
             >
               {t.name}
             </Link>
-            <div className="text-ink-3 font-mono text-xs">{t.id}</div>
+            <div className="font-mono text-xs text-ink-3">{t.id}</div>
           </div>
         </div>
       ),
@@ -114,6 +123,7 @@ export function TechTable({
 
   return (
     <DataTable
+      errorTitle="Couldn't load technicians"
       caption="Technicians, with their categories, service pincodes, bandwidth and cancellation history"
       data={technicians}
       columns={columns}

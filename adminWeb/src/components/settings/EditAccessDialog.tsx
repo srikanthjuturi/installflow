@@ -29,7 +29,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useUpdateUserAccess } from "@/hooks/useSettings";
 import { RoleScopeFields, ServerError } from "./InviteUserDialog";
-import { editAccessSchema, statusOptions, type EditAccessValues } from "./userSchema";
+import {
+  editAccessSchema,
+  statusOptions,
+  type EditAccessValues,
+} from "./userSchema";
 import type { User } from "@/types";
 
 interface EditAccessDialogProps {
@@ -45,7 +49,10 @@ interface EditAccessDialogProps {
  * change, not an access change. Saving records what this person should be
  * allowed to do — the server is what enforces it.
  */
-export function EditAccessDialog({ user, onOpenChange }: EditAccessDialogProps) {
+export function EditAccessDialog({
+  user,
+  onOpenChange,
+}: EditAccessDialogProps) {
   const update = useUpdateUserAccess();
 
   return (
@@ -79,7 +86,7 @@ export function EditAccessDialog({ user, onOpenChange }: EditAccessDialogProps) 
                     });
                     onOpenChange(false);
                   },
-                },
+                }
               )
             }
           />
@@ -129,7 +136,9 @@ function EditAccessForm({
             scopeError={errors.scope?.message}
             onChange={(next) => {
               setValue("role", next.role, { shouldValidate: false });
-              setValue("scope", next.scope, { shouldValidate: Boolean(errors.scope) });
+              setValue("scope", next.scope, {
+                shouldValidate: Boolean(errors.scope),
+              });
             }}
           />
 
@@ -138,7 +147,9 @@ function EditAccessForm({
             <Select
               value={status}
               onValueChange={(value) =>
-                setValue("status", value as User["status"], { shouldValidate: false })
+                setValue("status", value as User["status"], {
+                  shouldValidate: false,
+                })
               }
             >
               <SelectTrigger
@@ -158,7 +169,10 @@ function EditAccessForm({
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <FieldDescription id="edit-access-status-description" className="text-xs">
+            <FieldDescription
+              id="edit-access-status-description"
+              className="text-xs"
+            >
               {user.status === "Invited"
                 ? "Invited clears itself when they accept. A pending invite can still be suspended."
                 : "A suspended user keeps their record but cannot sign in."}
@@ -170,7 +184,9 @@ function EditAccessForm({
       <ServerError error={error} />
 
       <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+        <DialogClose render={<Button type="button" variant="outline" />}>
+          Cancel
+        </DialogClose>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <Spinner data-icon="inline-start" />}
           Save changes
