@@ -17,6 +17,8 @@ const EscalationQueuePage = lazy(
 const ValidationResultPage = lazy(
   () => import("@/pages/tickets/ValidationResultPage"),
 );
+const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
+const ManualAssignPage = lazy(() => import("@/pages/escalations/ManualAssignPage"));
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -46,6 +48,8 @@ export const routes: RouteObject[] = [
           { path: "tickets/import/:batchId", element: <ValidationResultPage /> },
           { path: "tickets/:id", element: <TicketDetailPage /> },
           { path: "escalations", element: <EscalationQueuePage /> },
+          { path: "escalations/:id/bonus", element: <BonusSetupPage /> },
+          { path: "escalations/:id/assign", element: <ManualAssignPage /> },
         ],
       },
     ],
