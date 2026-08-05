@@ -218,12 +218,18 @@ the ramp position — that indirection is what makes a re-skin one file.
 
 ### Layout tokens
 
-sidebar `236px` · topbar `60px` · content max-width `1360px` · page padding `22px` (`16px` on
-mobile). Custom Tailwind breakpoints to match the prototype, **not** Tailwind's defaults:
+sidebar `236px` · topbar `60px` · page padding `22px` (`16px` on mobile). Custom Tailwind
+breakpoints to match the prototype, **not** Tailwind's defaults:
 
 ```
 sm 560px   md 880px (sidebar → drawer)   lg 1000px (search appears)   xl 1360px
 ```
+
+**There is no content max-width.** `AppShell`'s `<main>` is fluid and every screen inherits it —
+a console is a work surface, so a wide monitor should buy more table, not more margin. Never add
+`max-w-*` to a page root or a full-width card. (The prototype caps content at 1360px; that is the
+one place we deliberately depart from it.) Constrain reading width only where a long paragraph
+would otherwise stretch — a form column, a justification note — never a table or a card grid.
 
 ### Dark mode
 
@@ -326,8 +332,8 @@ fails loudly at parse time instead of rendering `undefined`.
 Mobile-first, tokens above. `< 880px`: sidebar becomes an overlay drawer with a scrim, page
 padding drops to 16px, multi-column grids collapse to one. `< 560px`: every grid is single
 column. Tables get a horizontal scroll container with a sticky first column — never a squeezed
-table, never a card-list rewrite that loses columns. Content is centred and capped at 1360px so
-ultra-wide monitors get whitespace, not stretched rows.
+table, never a card-list rewrite that loses columns. Content is **fluid at every width** — no max
+cap — so an ultra-wide monitor shows more of the table instead of dead margin.
 
 ## SEO strategy
 

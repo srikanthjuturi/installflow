@@ -111,10 +111,10 @@
   --breakpoint-lg: 62.5rem; /* 1000px — topbar search appears */
   --breakpoint-xl: 85rem; /* 1360px — content max width */
 
-  /* Layout */
+  /* Layout. No content max-width on purpose — the console is fluid, so a
+     wide monitor buys more table rather than more margin. */
   --spacing-sidebar: 236px;
   --spacing-topbar: 60px;
-  --spacing-content: 1360px;
 
   /* Shape */
   --radius-sm: 6px;
