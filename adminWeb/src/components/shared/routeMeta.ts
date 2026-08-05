@@ -18,6 +18,9 @@ const STATIC: Record<string, Meta> = {
   "/categories": { title: "Categories & models", subtitle: "Product master" },
   "/settings/rules": { title: "Rules configuration", subtitle: "SLA · penalty · AI · wait period" },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
+  /* Net-new — the prototype has no account or notifications screen. */
+  "/notifications": { title: "Notifications", subtitle: "Recent operational events" },
+  "/account": { title: "Account", subtitle: "Your profile & session" },
 };
 
 /** Longest-prefix rules for parameterised routes. */

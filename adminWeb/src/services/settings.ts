@@ -1,10 +1,10 @@
-import { mockResponse } from "./client";
+import { ApiError, mockResponse, notFound } from "./client";
 import {
   AI_CONFIDENCE_MAX,
   AI_CONFIDENCE_MIN,
   AI_CONFIDENCE_THRESHOLD,
 } from "./rulesDefaults";
-import type { User } from "@/types";
+import type { Role, User } from "@/types";
 
 /**
  * Settings: the rules engine and console access.
@@ -207,4 +207,69 @@ const USERS: User[] = [
 
 export function listUsers(): Promise<User[]> {
   return mockResponse(() => USERS);
+}
+
+/* ----------------------------------------------------------- user mutations */
+
+/**
+ * `User.region` is the scope column: "All India" for an NH, a region for an
+ * RSH, an ASM area for an ASM or Ops Staff. The input calls it `scope` because
+ * that is what the form is choosing.
+ */
+export interface InviteUserInput {
+  name: string;
+  email: string;
+  role: Role;
+  scope: string;
+}
+
+/**
+ * An invite requests access; it does not grant it. The new user is created
+ * "Invited" — never "Active" — and stays there until they accept. RBAC is
+ * enforced server-side, so this record is a statement of intent, not a
+ * permission.
+ */
+export function inviteUser(input: InviteUserInput): Promise<User> {
+  return mockResponse(() => {
+    const email = input.email.trim().toLowerCase();
+    if (USERS.some((u) => u.email.toLowerCase() === email)) {
+      throw new ApiError(`${email} already has console access`, 409);
+    }
+
+    const nextId = Math.max(...USERS.map((u) => Number(u.id.slice(2)))) + 1;
+    const user: User = {
+      id: `U-${nextId}`,
+      name: input.name.trim(),
+      email,
+      role: input.role,
+      region: input.scope,
+      status: "Invited",
+      /** Nothing to report until they sign in — the prototype's em dash. */
+      last: "—",
+    };
+    USERS.push(user);
+    return user;
+  });
+}
+
+export interface UpdateUserAccessInput {
+  id: string;
+  role: Role;
+  scope: string;
+  status: User["status"];
+}
+
+/**
+ * Role, scope and status only. Name and email are account identity, not
+ * access, and are not editable from the access form.
+ */
+export function updateUserAccess(input: UpdateUserAccessInput): Promise<User> {
+  return mockResponse(() => {
+    const user = USERS.find((u) => u.id === input.id);
+    if (!user) notFound("User", input.id);
+    user.role = input.role;
+    user.region = input.scope;
+    user.status = input.status;
+    return user;
+  });
 }

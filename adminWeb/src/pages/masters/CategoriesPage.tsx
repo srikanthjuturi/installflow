@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { CategoryCard, CategoryCardSkeleton } from "@/components/masters/CategoryCard";
+import { CategoryFormDialog } from "@/components/masters/CategoryFormDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -7,15 +9,14 @@ import { useCategories } from "@/hooks/useMasters";
 
 export default function CategoriesPage() {
   const { data, isLoading, isError, error, refetch } = useCategories();
+  const [adding, setAdding] = useState(false);
 
   return (
     <>
       <PageMeta title="Categories & models" description="Product master" />
 
       <div className="mb-3.5 flex justify-end">
-        {/* No category form is designed yet, so the action is present and
-            deliberately inert rather than invented. */}
-        <Button className="h-10" disabled>
+        <Button type="button" className="h-10" onClick={() => setAdding(true)}>
           <Plus data-icon="inline-start" />
           Add category
         </Button>
@@ -39,6 +40,8 @@ export default function CategoriesPage() {
             : data?.map((c) => <CategoryCard key={c.name} category={c} />)}
         </div>
       )}
+
+      <CategoryFormDialog open={adding} onOpenChange={setAdding} />
     </>
   );
 }

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
+import { InviteUserDialog } from "@/components/settings/InviteUserDialog";
 import { UserTable } from "@/components/settings/UserTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +17,7 @@ import { useUsers } from "@/hooks/useSettings";
  */
 export default function UsersRolesPage() {
   const { data, isLoading, isError, error, refetch } = useUsers();
+  const [inviting, setInviting] = useState(false);
 
   return (
     <>
@@ -24,14 +27,14 @@ export default function UsersRolesPage() {
       />
 
       <div className="mb-3.5 flex justify-end">
-        {/* No invite form is designed yet, and provisioning is a server-side
-            concern — so the action is present and deliberately inert rather
-            than invented. */}
-        <Button disabled>
+        <Button onClick={() => setInviting(true)}>
           <Plus data-icon="inline-start" />
           Invite user
         </Button>
       </div>
+
+      <InviteUserDialog open={inviting} onOpenChange={setInviting} />
+
 
       <Card>
         <CardContent className="px-0">

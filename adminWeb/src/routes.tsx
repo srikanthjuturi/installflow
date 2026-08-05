@@ -26,6 +26,10 @@ const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
 const TerritoryPage = lazy(() => import("@/pages/masters/TerritoryPage"));
 const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
 const UsersRolesPage = lazy(() => import("@/pages/settings/UsersRolesPage"));
+const AccountPage = lazy(() => import("@/pages/account/AccountPage"));
+const NotificationsPage = lazy(
+  () => import("@/pages/notifications/NotificationsPage"),
+);
 const TechnicianListPage = lazy(
   () => import("@/pages/technicians/TechnicianListPage"),
 );
@@ -78,6 +82,8 @@ export const routes: RouteObject[] = [
           { path: "territory", element: <TerritoryPage /> },
           { path: "settings/rules", element: <RulesConfigPage /> },
           { path: "settings/users", element: <UsersRolesPage /> },
+          { path: "notifications", element: <NotificationsPage /> },
+          { path: "account", element: <AccountPage /> },
         ],
       },
     ],

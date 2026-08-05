@@ -1,7 +1,9 @@
 import { Bell, Menu, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { LinkButton } from "./LinkButton";
 import { ThemeToggle } from "./ThemeToggle";
+import { useUnreadNotificationCount } from "@/hooks/useNotifications";
 import { useSession } from "@/store/session";
 import type { Role } from "@/types";
 
@@ -14,6 +16,7 @@ interface TopbarProps {
 
 export function Topbar({ title, subtitle }: TopbarProps) {
   const { role, setRole, setSidebarOpen } = useSession();
+  const { data: unread = 0 } = useUnreadNotificationCount();
 
   return (
     <header className="bg-surface border-line sticky top-0 z-30 flex h-topbar items-center gap-3.5 border-b px-5.5">
@@ -68,10 +71,20 @@ export function Topbar({ title, subtitle }: TopbarProps) {
 
       <ThemeToggle />
 
-      <Button variant="outline" size="icon" className="relative rounded-full" aria-label="Notifications">
+      {/* It navigates, so it is a link. The dot is decorative — the count is
+          in the accessible name, never carried by colour alone. */}
+      <LinkButton
+        to="/notifications"
+        variant="outline"
+        size="icon"
+        className="relative rounded-full"
+        aria-label={unread > 0 ? `Notifications · ${unread} unread` : "Notifications"}
+      >
         <Bell aria-hidden />
-        <span className="bg-brand-accent border-surface-2 absolute top-1.5 right-2 size-2 rounded-full border-[1.5px]" />
-      </Button>
+        {unread > 0 ? (
+          <span className="bg-brand-accent border-surface-2 absolute top-1.5 right-2 size-2 rounded-full border-[1.5px]" />
+        ) : null}
+      </LinkButton>
     </header>
   );
 }

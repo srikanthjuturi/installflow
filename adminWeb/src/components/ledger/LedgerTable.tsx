@@ -1,6 +1,8 @@
 import { Link } from "react-router";
+import { Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { downloadCsv, toCsv } from "@/utils/csv";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   HeadTr,
@@ -39,8 +41,29 @@ export function LedgerTable({ entries, isLoading, error, onRetry }: LedgerTableP
       <CardContent className="px-0 pb-0">
         <div className="border-line-2 flex flex-wrap items-center justify-between gap-2.5 border-b px-4 pb-3.5">
           <h2 className="text-sm font-semibold">Transaction ledger</h2>
-          {/* No-op until the backend phase — there is no export endpoint yet. */}
-          <Button variant="outline" className="h-10 px-4 text-[13px] font-semibold">
+          {/* Exported in the browser — the rows are already here, so this
+              needs no endpoint. Amounts export as raw signed numbers, not
+              money() strings: a spreadsheet has to be able to sum them. */}
+          <Button
+            variant="outline"
+            className="h-10 px-4 text-[13px] font-semibold"
+            disabled={!entries?.length}
+            onClick={() =>
+              downloadCsv(
+                "installflow-ledger.csv",
+                toCsv(COLUMNS, (entries ?? []).map((e) => [
+                  e.id,
+                  e.date,
+                  e.type,
+                  e.tech,
+                  e.ticket,
+                  e.reason,
+                  e.amt,
+                ])),
+              )
+            }
+          >
+            <Download data-icon="inline-start" />
             Export CSV
           </Button>
         </div>

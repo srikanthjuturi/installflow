@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from "react-router";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "./nav";
 import { ROLE_LABEL, useSession } from "@/store/session";
@@ -69,15 +70,27 @@ export function Sidebar() {
       </nav>
 
       <div className="shrink-0 border-t border-white/10 p-3">
-        <div className="flex items-center gap-2.5 rounded-md px-2.5 py-2">
+        {/* The way to your own record — and the only way to sign out. */}
+        <NavLink
+          to="/account"
+          onClick={() => setSidebarOpen(false)}
+          aria-current={isActive(pathname, "/account") ? "page" : undefined}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors",
+            "focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
+            isActive(pathname, "/account") ? "bg-white/15" : "hover:bg-white/8",
+          )}
+        >
+          <span className="sr-only">Account</span>
           <div className="bg-brand-400 grid size-8.5 place-items-center rounded-full text-[13px] font-semibold text-white">
             {initials}
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 text-left">
             <div className="truncate text-[13px] font-semibold text-white">{name}</div>
             <div className="truncate text-[11px] text-white/50">{ROLE_LABEL[role]}</div>
           </div>
-        </div>
+          <ChevronRight className="size-4 shrink-0 text-white/50" strokeWidth={1.8} aria-hidden />
+        </NavLink>
       </div>
     </aside>
   );

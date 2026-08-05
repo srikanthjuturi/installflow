@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { PageMeta } from "@/components/shared/PageMeta";
+import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
+import { parsePincodes } from "@/components/technicians/technicianSchema";
 import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useTechnicians } from "@/hooks/useTechnicians";
+import { toast } from "@/components/ui/toast";
+import { useCreateTechnician, useTechnicians } from "@/hooks/useTechnicians";
 
 const ALL = "All";
 
@@ -23,6 +26,9 @@ export default function TechnicianListPage() {
   const [params, setParams] = useSearchParams();
   const search = params.get("q") ?? "";
   const category = params.get("cat") ?? "";
+
+  const [isFormOpen, setFormOpen] = useState(false);
+  const create = useCreateTechnician();
 
   const set = (key: string, value: string) =>
     setParams(
@@ -95,13 +101,39 @@ export default function TechnicianListPage() {
           </SelectContent>
         </Select>
 
-        {/* No onboarding form is designed yet, so the action is present and
-            deliberately inert rather than invented. */}
-        <Button className="h-10" disabled>
+        <Button className="h-10" onClick={() => setFormOpen(true)}>
           <Plus data-icon="inline-start" />
           Add technician
         </Button>
       </div>
+
+      <TechnicianFormDialog
+        open={isFormOpen}
+        onOpenChange={setFormOpen}
+        isSubmitting={create.isPending}
+        onSubmit={(values) =>
+          create.mutate(
+            {
+              name: values.name,
+              phone: values.phone,
+              cats: values.cats,
+              pincodes: parsePincodes(values.pincodes),
+              bwTotal: Number(values.bwTotal),
+            },
+            {
+              onSuccess: (technician) => {
+                toast.add({
+                  title: `${technician.name} added`,
+                  description: `${technician.id} · ${technician.bwTotal} jobs/day.`,
+                });
+                setFormOpen(false);
+              },
+              onError: (err) =>
+                toast.add({ title: "Couldn't add technician", description: err.message }),
+            },
+          )
+        }
+      />
 
       <Card>
         <CardContent className="px-0 pb-0">

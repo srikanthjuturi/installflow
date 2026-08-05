@@ -8,11 +8,14 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { ValidationTable } from "@/components/tickets/ValidationTable";
 import { useBatch } from "@/hooks/useImports";
+import { downloadCsv, toCsv } from "@/utils/csv";
 import { cn } from "@/lib/utils";
 
 export default function ValidationResultPage() {
   const { batchId = "" } = useParams();
   const { data, isLoading, isError, error, refetch } = useBatch(batchId);
+
+  const rejectedRows = data?.rows.filter((r) => r.result === "Rejected") ?? [];
 
   const stats = [
     { label: "Total rows", value: data?.total, tone: "" },
@@ -64,7 +67,28 @@ export default function ValidationResultPage() {
               <CardTitle className="text-sm">Row-level result</CardTitle>
               <CardAction>
                 <div className="flex flex-wrap gap-2.5">
-                  <Button variant="outline" size="sm">
+                  {/* Only the rejected rows — the point is to fix and
+                      re-upload them, so passed rows would be noise. */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!rejectedRows.length}
+                    onClick={() =>
+                      downloadCsv(
+                        `installflow-import-errors-${batchId}.csv`,
+                        toCsv(
+                          ["row", "customer_name", "pincode", "mobile", "reason"],
+                          rejectedRows.map((r) => [
+                            r.row,
+                            r.customer,
+                            r.pincode,
+                            r.mobile,
+                            r.reason,
+                          ]),
+                        ),
+                      )
+                    }
+                  >
                     Download error report
                   </Button>
                   <LinkButton size="sm" to="/tickets">

@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { listTerritory } from "@/services/territory";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createMapping, listTerritory } from "@/services/territory";
 
 export const territoryKeys = {
   all: ["territory"] as const,
@@ -12,5 +12,16 @@ export function useTerritory() {
     queryKey: territoryKeys.regions(),
     queryFn: listTerritory,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** Maps an ASM and their pincodes into a region, creating the region if new. */
+export function useCreateMapping() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createMapping,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: territoryKeys.all });
+    },
   });
 }

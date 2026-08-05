@@ -1,5 +1,11 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { getRulesConfig, listUsers, saveRulesConfig } from "@/services/settings";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  getRulesConfig,
+  inviteUser,
+  listUsers,
+  saveRulesConfig,
+  updateUserAccess,
+} from "@/services/settings";
 
 export const settingsKeys = {
   all: ["settings"] as const,
@@ -35,5 +41,23 @@ export function useUsers() {
     queryKey: settingsKeys.users(),
     queryFn: listUsers,
     staleTime: 60_000,
+  });
+}
+
+/** The invited user lands in the list as "Invited", so the list must refetch. */
+export function useInviteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inviteUser,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
+  });
+}
+
+/** Role, scope or status changed — the row is stale until the list refetches. */
+export function useUpdateUserAccess() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateUserAccess,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
   });
 }

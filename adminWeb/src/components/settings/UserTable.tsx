@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   HeadTr,
   Table,
@@ -8,6 +9,7 @@ import {
   Tr,
 } from "@/components/shared/DataTable";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/shared/states";
+import { EditAccessDialog } from "@/components/settings/EditAccessDialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Role, User } from "@/types";
@@ -52,6 +54,9 @@ interface UserTableProps {
 }
 
 export function UserTable({ users, isLoading, error, onRetry }: UserTableProps) {
+  // The row being edited. One dialog for the whole table, not one per row.
+  const [editing, setEditing] = useState<User | null>(null);
+
   if (error) {
     return <ErrorState title="Couldn't load users" error={error} onRetry={onRetry} />;
   }
@@ -127,13 +132,10 @@ export function UserTable({ users, isLoading, error, onRetry }: UserTableProps) 
                   </span>
                 </Td>
                 <Td className="text-right">
-                  {/* No access-editing form is designed yet, and permissions
-                      are a server-side concern — so the action is present and
-                      deliberately inert rather than invented. */}
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled
+                    onClick={() => setEditing(u)}
                     aria-label={`Edit access for ${u.name}`}
                     className="text-brand-400 -mr-2"
                   >
@@ -145,6 +147,13 @@ export function UserTable({ users, isLoading, error, onRetry }: UserTableProps) 
           )}
         </TableBody>
       </Table>
+
+      <EditAccessDialog
+        user={editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      />
     </div>
   );
 }

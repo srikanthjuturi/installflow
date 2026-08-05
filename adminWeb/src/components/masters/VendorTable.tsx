@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { VendorFormDialog } from "@/components/masters/VendorFormDialog";
 import {
   HeadTr,
   Table,
@@ -60,6 +62,10 @@ interface VendorTableProps {
 }
 
 export function VendorTable({ vendors, isLoading, error, onRetry }: VendorTableProps) {
+  // The managed vendor outlives the close so the dialog can animate out.
+  const [managed, setManaged] = useState<Vendor | null>(null);
+  const [open, setOpen] = useState(false);
+
   if (error) {
     return <ErrorState title="Couldn't load vendors" error={error} onRetry={onRetry} />;
   }
@@ -144,13 +150,15 @@ export function VendorTable({ vendors, isLoading, error, onRetry }: VendorTableP
                   </Td>
 
                   <Td>
-                    {/* No vendor form is designed yet, so the action is present
-                        and deliberately inert rather than invented. */}
                     <Button
+                      type="button"
                       variant="link"
                       size="sm"
-                      disabled
                       className="text-brand-400 h-auto p-0 text-xs font-semibold"
+                      onClick={() => {
+                        setManaged(v);
+                        setOpen(true);
+                      }}
                     >
                       Manage
                       <span className="sr-only"> {v.name}</span>
@@ -162,6 +170,14 @@ export function VendorTable({ vendors, isLoading, error, onRetry }: VendorTableP
           )}
         </TableBody>
       </Table>
+
+      {/* One dialog for the whole table — the row that opened it supplies the
+          record, so there is no per-row popup mounted behind every button. */}
+      <VendorFormDialog
+        open={open}
+        onOpenChange={setOpen}
+        vendor={managed ?? undefined}
+      />
     </div>
   );
 }

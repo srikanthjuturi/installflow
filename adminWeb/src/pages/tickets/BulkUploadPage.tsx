@@ -7,6 +7,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { UploadDropzone } from "@/components/tickets/UploadDropzone";
 import { useUploadBatch } from "@/hooks/useImports";
+import { downloadCsv, toCsv } from "@/utils/csv";
 import { REQUIRED_COLUMNS } from "@/types";
 
 export default function BulkUploadPage() {
@@ -28,7 +29,30 @@ export default function BulkUploadPage() {
               Use the defined template. Each row is validated individually on import.
             </CardDescription>
             <CardAction>
-              <Button variant="outline" size="sm">
+              {/* The template is the 8 required column headers plus one
+                  example row, so an ops user can see the expected format
+                  rather than guess it. */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  downloadCsv(
+                    "installflow-ticket-template.csv",
+                    toCsv([...REQUIRED_COLUMNS], [
+                      [
+                        "Videocon",
+                        "Television",
+                        "Anil Deshmukh",
+                        "+91 98220 41120",
+                        "411014",
+                        "2026-08-10",
+                        '43" 4K UHD',
+                        "24h",
+                      ],
+                    ]),
+                  )
+                }
+              >
                 <Download data-icon="inline-start" />
                 Download template
               </Button>

@@ -1,12 +1,18 @@
+import { useState } from "react";
 import { Map } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
+import { TerritoryFormDialog } from "@/components/masters/TerritoryFormDialog";
+import { NEW_REGION, parsePincodes } from "@/components/masters/territorySchema";
 import { TerritoryTree, TerritoryTreeSkeleton } from "@/components/masters/TerritoryTree";
-import { useTerritory } from "@/hooks/useTerritory";
+import { useCreateMapping, useTerritory } from "@/hooks/useTerritory";
 
 export default function TerritoryPage() {
   const { data, isLoading, isError, error, refetch } = useTerritory();
+  const [isFormOpen, setFormOpen] = useState(false);
+  const create = useCreateMapping();
 
   return (
     <>
@@ -19,10 +25,37 @@ export default function TerritoryPage() {
         <p className="text-ink-2 text-[13px]">
           Region → Regional Service Head → Area Service Manager → serviced pincodes
         </p>
-        {/* No mapping form is designed yet, so this stays inert rather than
-            inventing one. */}
-        <Button disabled>+ Add mapping</Button>
+        <Button onClick={() => setFormOpen(true)}>+ Add mapping</Button>
       </div>
+
+      <TerritoryFormDialog
+        open={isFormOpen}
+        onOpenChange={setFormOpen}
+        regions={data ?? []}
+        isSubmitting={create.isPending}
+        onSubmit={(values) =>
+          create.mutate(
+            {
+              region: values.region === NEW_REGION ? values.newRegion : values.region,
+              rsh: values.rsh,
+              asm: values.asm,
+              area: values.area,
+              pincodes: parsePincodes(values.pincodes),
+            },
+            {
+              onSuccess: (region) => {
+                toast.add({
+                  title: `${values.asm} mapped to ${region.region}`,
+                  description: `${region.pincount} pincodes now serviced in this region.`,
+                });
+                setFormOpen(false);
+              },
+              onError: (err) =>
+                toast.add({ title: "Couldn't add mapping", description: err.message }),
+            },
+          )
+        }
+      />
 
       {isError ? (
         <ErrorState

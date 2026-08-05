@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Plus } from "lucide-react";
+import { VendorFormDialog } from "@/components/masters/VendorFormDialog";
 import { VendorTable } from "@/components/masters/VendorTable";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { Button } from "@/components/ui/button";
@@ -7,15 +9,14 @@ import { useVendors } from "@/hooks/useMasters";
 
 export default function VendorsPage() {
   const { data, isLoading, isError, error, refetch } = useVendors();
+  const [adding, setAdding] = useState(false);
 
   return (
     <>
       <PageMeta title="Vendors" description="Master & API credentials" />
 
       <div className="mb-3.5 flex justify-end">
-        {/* No vendor-onboarding form is designed yet, so the action is present
-            and deliberately inert rather than invented. */}
-        <Button className="h-10" disabled>
+        <Button type="button" className="h-10" onClick={() => setAdding(true)}>
           <Plus data-icon="inline-start" />
           Add vendor
         </Button>
@@ -32,6 +33,10 @@ export default function VendorsPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Onboarding — no vendor prop. The per-row Manage dialog lives with the
+          table, since the row is what supplies the record. */}
+      <VendorFormDialog open={adding} onOpenChange={setAdding} />
     </>
   );
 }
