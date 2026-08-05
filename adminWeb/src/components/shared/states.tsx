@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { TableCell, TableRow } from "@/components/ui/table";
+import { Td, Tr } from "./DataTable";
 
 /* -------------------------------------------------------------------------
    Every list screen ships all three of these. Not optional.
@@ -81,13 +81,13 @@ export function TableSkeleton({ rows = 6, cols = 6 }: { rows?: number; cols?: nu
   return (
     <>
       {Array.from({ length: rows }).map((_, r) => (
-        <TableRow key={r}>
+        <Tr key={r} className="hover:bg-transparent">
           {Array.from({ length: cols }).map((__, c) => (
-            <TableCell key={c}>
+            <Td key={c}>
               <Skeleton className="h-4" style={{ width: c === 0 ? "70%" : "55%" }} />
-            </TableCell>
+            </Td>
           ))}
-        </TableRow>
+        </Tr>
       ))}
     </>
   );
