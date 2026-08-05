@@ -53,7 +53,10 @@ export type IconName =
   | 'navigation'
   | 'play'
   | 'info'
-  | 'edit';
+  | 'edit'
+  | 'sparkle'
+  | 'camera'
+  | 'cameraOff';
 
 export interface IconProps {
   name: IconName;
@@ -85,6 +88,7 @@ const STROKE_OVERRIDE: Partial<Record<IconName, number>> = {
   play: 2,
   info: 1.7,
   edit: 1.7,
+  sparkle: 1.6,
 };
 
 export function Icon({
@@ -345,6 +349,32 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
 
     case 'edit':
       return <Path d="M17 3l4 4-11 11-4 1 1-4L18 4" {...p} />;
+
+    // Four-point star — the app's mark for "AI is working on this".
+    case 'sparkle':
+      return (
+        <Path
+          d="M12 3l1.9 4.6L18.5 9l-3.4 3 1 4.9L12 14.6 7.9 16.9l1-4.9L5.5 9l4.6-1.4L12 3z"
+          {...p}
+        />
+      );
+
+    case 'camera':
+      return (
+        <>
+          <Rect x={3} y={7} width={18} height={13} rx={2.5} {...p} />
+          <Circle cx={12} cy={13.5} r={3.5} {...p} />
+        </>
+      );
+
+    case 'cameraOff':
+      return (
+        <>
+          <Rect x={3} y={6} width={18} height={14} rx={2.5} {...p} />
+          <Path d="M8 6l1.4-2.2h5.2L16 6" {...p} />
+          <Path d="M4 4l16 18" {...p} />
+        </>
+      );
   }
 }
 

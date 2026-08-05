@@ -95,6 +95,21 @@ export const color = {
   debit: palette.danger[500],
   bonus: palette.secondary[600],
 
+  // ── verification hero ───────────────────────────────────────────────────
+  /** Full-bleed gradient headers on the three AI outcomes. */
+  successHero: ['#0f5132', '#16a34a'] as [string, string],
+  dangerHero: ['#7a1d1d', '#c81e1e'] as [string, string],
+  warnHero: ['#7c4a06', '#d18f16'] as [string, string],
+  heroBadge: 'rgba(255,255,255,0.16)',
+  successHeroText: '#c7f0d6',
+  dangerHeroText: '#f6cccc',
+  warnHeroText: '#fbe6bf',
+  /** The verifying spinner: an expanding pulse behind a partial ring. */
+  verifyPulse: 'rgba(31,111,235,0.25)',
+  verifyTrack: 'rgba(255,255,255,0.12)',
+  verifyAccent: palette.primary[400],
+  verifyStrongText: '#cdd9e6',
+
   // ── confirmation panel ──────────────────────────────────────────────────
   /** Tinted ground for a passed check. Softer than the success ramp. */
   successSurface: '#eaf7ef',
