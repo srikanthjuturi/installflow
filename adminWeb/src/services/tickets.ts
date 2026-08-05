@@ -27,6 +27,47 @@ export function listTickets(filters: TicketFilters = {}): Promise<Ticket[]> {
   });
 }
 
+export interface CreateTicketInput {
+  vendor: string;
+  category: string;
+  product: string;
+  requestType: string;
+  customer: string;
+  mobile: string;
+  pincode: string;
+  expected: string;
+  slaType: "24h" | "48h";
+}
+
+/**
+ * Creating a ticket does NOT assign a technician. It fires the slot request
+ * to the customer; only once they confirm does the ticket reach technicians.
+ * The new ticket therefore starts at "Slot Pending" with no slot and no tech.
+ */
+export function createTicket(input: CreateTicketInput): Promise<Ticket> {
+  return mockResponse(() => {
+    const ticket: Ticket = {
+      id: `INST-${241000 + TICKETS.length}`,
+      vendor: input.vendor,
+      category: input.category,
+      product: input.product,
+      customer: input.customer,
+      mobile: input.mobile,
+      city: "Pune",
+      pincode: input.pincode,
+      slaType: input.slaType,
+      slot: "—",
+      tech: "—",
+      status: "Slot Pending",
+      sla: "ok",
+      created: "just now",
+      expected: input.expected,
+    };
+    TICKETS.unshift(ticket);
+    return ticket;
+  });
+}
+
 export function getTicket(id: string): Promise<TicketDetail> {
   return mockResponse(() => {
     const ticket = TICKETS.find((t) => t.id === id);

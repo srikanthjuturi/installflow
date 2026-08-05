@@ -3,6 +3,7 @@ import { BrowserRouter, useRoutes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { routes } from "./routes";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
+import { Toaster, ToastProvider } from "@/components/ui/toast";
 import { ApiError } from "@/services/client";
 
 const queryClient = new QueryClient({
@@ -31,11 +32,14 @@ function Routes() {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Suspense fallback={<PageSkeleton />}>
-          <Routes />
-        </Suspense>
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Suspense fallback={<PageSkeleton />}>
+            <Routes />
+          </Suspense>
+        </BrowserRouter>
+        <Toaster />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

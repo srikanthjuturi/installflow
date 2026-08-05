@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { getTicket, listTickets } from "@/services/tickets";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createTicket, getTicket, listTickets } from "@/services/tickets";
+import { dashboardKeys } from "./useDashboard";
 import type { TicketFilters } from "@/types";
 
 /**
@@ -24,5 +25,18 @@ export function useTicket(id: string) {
     queryKey: ticketKeys.detail(id),
     queryFn: () => getTicket(id),
     enabled: Boolean(id),
+  });
+}
+
+export function useCreateTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createTicket,
+    onSuccess: () => {
+      // Invalidate by prefix — every ticket list, whatever its filters,
+      // plus the dashboard counts that summarise them.
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
   });
 }
