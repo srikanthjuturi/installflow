@@ -19,7 +19,9 @@ export type ButtonVariant =
   /** Transparent with red text — "Cancel this job". */
   | 'dangerGhost'
   /** White with a blue outline — the Call / Navigate pair. */
-  | 'outline';
+  | 'outline'
+  /** White with a red outline — Log out. */
+  | 'dangerOutline';
 
 export interface ButtonProps {
   label: string;
@@ -50,6 +52,7 @@ const HEIGHT: Record<ButtonVariant, number> = {
   ghost: 46,
   dangerGhost: 46,
   outline: 46,
+  dangerOutline: 50,
 };
 
 /** Full-size CTAs are r14; the smaller inline controls are r12. */
@@ -60,6 +63,7 @@ const RADIUS: Record<ButtonVariant, number> = {
   ghost: 14,
   dangerGhost: 12,
   outline: 12,
+  dangerOutline: 14,
 };
 
 const FONT_SIZE: Record<ButtonVariant, number> = {
@@ -69,6 +73,7 @@ const FONT_SIZE: Record<ButtonVariant, number> = {
   ghost: 14,
   dangerGhost: 14,
   outline: 14,
+  dangerOutline: 15,
 };
 
 const VARIANT_BG: Record<ButtonVariant, string> = {
@@ -78,6 +83,7 @@ const VARIANT_BG: Record<ButtonVariant, string> = {
   destructive: color.debit,
   dangerGhost: 'transparent',
   outline: color.surfaceRaised,
+  dangerOutline: color.surfaceRaised,
 };
 
 const VARIANT_FG: Record<ButtonVariant, string> = {
@@ -87,6 +93,7 @@ const VARIANT_FG: Record<ButtonVariant, string> = {
   destructive: color.actionFg,
   dangerGhost: color.debit,
   outline: color.actionBg,
+  dangerOutline: color.debit,
 };
 
 export function Button({
@@ -100,7 +107,8 @@ export function Button({
   disabledHint,
 }: ButtonProps) {
   const inert = disabled || loading;
-  const bordered = variant === 'secondary' || variant === 'outline';
+  const bordered =
+    variant === 'secondary' || variant === 'outline' || variant === 'dangerOutline';
   const fg = disabled ? color.actionFgDisabled : VARIANT_FG[variant];
 
   // Spring-back press, not an opacity flash. On the low-end Androids these
@@ -156,8 +164,13 @@ export function Button({
               justifyContent: 'center',
               gap: 8,
               backgroundColor: disabled ? color.actionBgDisabled : VARIANT_BG[variant],
-              borderWidth: bordered ? (variant === 'outline' ? 1.5 : 1) : 0,
-              borderColor: variant === 'outline' ? palette.primary[200] : color.border,
+              borderWidth: bordered ? (variant === 'secondary' ? 1 : 1.5) : 0,
+              borderColor:
+                variant === 'outline'
+                  ? palette.primary[200]
+                  : variant === 'dangerOutline'
+                    ? color.dangerSurfaceBorder
+                    : color.border,
             },
             animated,
           ]}

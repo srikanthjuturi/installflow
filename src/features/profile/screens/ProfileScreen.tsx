@@ -1,17 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Header, Screen } from '@/components/layout';
-import { Button, Card } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { qk } from '@/lib/queryKeys';
-import { technician } from '@/mocks/db';
 import { delay } from '@/mocks/delay';
+import { technician } from '@/mocks/db';
 import { color } from '@/theme/semantic';
-import { radius } from '@/theme/spacing';
-import type { Technician } from '@/types/domain';
+import { palette } from '@/theme/tokens';
+import type { ProductCategory, Technician } from '@/types/domain';
 
 /** Binding phase: `GET /me`. */
 async function getMe(): Promise<Technician> {
@@ -25,9 +26,17 @@ const SETTINGS: { label: string; value: string; icon: IconName }[] = [
   { label: 'Payout account', value: '••4432', icon: 'wallet' },
 ];
 
+/** The coverage row abbreviates, matching the prototype — the full names wrap. */
+const SHORT_CATEGORY: Partial<Record<ProductCategory, string>> = {
+  Television: 'TV',
+  'Air Conditioner': 'AC',
+  'Water Purifier': 'Purifier',
+};
+
 /** Screen 16 — Profile & settings. */
 export function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { data: me } = useQuery({ queryKey: qk.me(), queryFn: getMe });
 
   const initials = (me?.name ?? '')
@@ -37,27 +46,36 @@ export function ProfileScreen() {
     .slice(0, 2)
     .toUpperCase();
 
-  return (
-    <>
-      <Header title="Profile" showBack={false} />
+  const categories = me?.categories.map((c) => SHORT_CATEGORY[c] ?? c).join(' · ') ?? '—';
 
-      <Screen>
-        <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
-          {/* Guard on the value, not on isPending: destructuring the query
-              result breaks TanStack's discriminated union, so isPending can't
-              narrow `me` for TypeScript. */}
+  return (
+    <View style={{ flex: 1, backgroundColor: color.surface }}>
+      <StatusBar style="light" />
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <View
+          style={{
+            backgroundColor: color.chrome,
+            alignItems: 'center',
+            paddingTop: insets.top + 22,
+            paddingHorizontal: 20,
+            paddingBottom: 24,
+            borderBottomLeftRadius: 22,
+            borderBottomRightRadius: 22,
+          }}
+        >
           {!me ? (
             <View style={{ alignItems: 'center', gap: 10 }}>
-              <Skeleton width={64} height={64} rounded={radius.full} />
-              <Skeleton width={140} height={18} />
+              <Skeleton width={74} height={74} rounded={22} />
+              <Skeleton width={150} height={20} />
             </View>
           ) : (
             <>
               <View
                 style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: radius.full,
+                  width: 74,
+                  height: 74,
+                  borderRadius: 22,
                   backgroundColor: color.actionBg,
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -66,7 +84,7 @@ export function ProfileScreen() {
                 <Text
                   style={{
                     fontFamily: 'Roboto_900Black',
-                    fontSize: 24,
+                    fontSize: 28,
                     color: color.actionFg,
                   }}
                 >
@@ -77,8 +95,8 @@ export function ProfileScreen() {
               <Text
                 style={{
                   fontFamily: 'Roboto_900Black',
-                  fontSize: 20,
-                  color: color.textPrimary,
+                  fontSize: 19,
+                  color: color.textInverse,
                   marginTop: 12,
                 }}
               >
@@ -88,120 +106,156 @@ export function ProfileScreen() {
                 style={{
                   fontFamily: 'Roboto_400Regular',
                   fontSize: 12.5,
-                  color: color.textSecondary,
+                  color: color.textOnChrome,
                   marginTop: 2,
                 }}
               >
                 Technician · ID {me.id}
               </Text>
 
-              <View style={{ flexDirection: 'row', marginTop: 20, alignSelf: 'stretch' }}>
-                <Stat value={me.rating.toFixed(1)} label="Rating" />
-                <Stat value={String(me.jobsDone)} label="Jobs done" divider />
-                <Stat value={`${me.onTimePct}%`} label="On-time" divider />
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, alignSelf: 'stretch' }}>
+                <ChromeStat value={me.rating.toFixed(1)} label="Rating" />
+                <ChromeStat value={String(me.jobsDone)} label="Jobs done" />
+                <ChromeStat value={`${me.onTimePct}%`} label="On-time" />
               </View>
             </>
           )}
-        </Card>
+        </View>
 
-        <SectionLabel>SERVICE COVERAGE</SectionLabel>
-        <Card padded={false} style={{ paddingHorizontal: 16 }}>
-          <CoverageRow label="Categories" value={me?.categories.join(', ') ?? '—'} first />
-          <CoverageRow label="Pincodes" value={me?.pincodes.join(', ') ?? '—'} />
-        </Card>
+        <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+          <View
+            style={{
+              backgroundColor: color.surfaceRaised,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 16,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: 'Roboto_700Bold',
+                fontSize: 11,
+                letterSpacing: 0.88,
+                textTransform: 'uppercase',
+                color: color.textFootnote,
+                marginBottom: 12,
+              }}
+            >
+              Service coverage
+            </Text>
 
-        <Pressable
-          onPress={() => router.push('/availability')}
-          accessibilityRole="button"
-          style={{ marginTop: 12 }}
-        >
-          {({ pressed }) => (
-            <Card style={{ opacity: pressed ? 0.7 : 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Icon name="jobs" size={20} color={color.actionBg} />
+            <CoverageRow label="Categories" value={categories} first />
+            <CoverageRow label="Pincodes" value={me?.pincodes.join(', ') ?? '—'} />
+          </View>
+
+          <View
+            style={{
+              backgroundColor: color.surfaceRaised,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: 16,
+              overflow: 'hidden',
+            }}
+          >
+            <Pressable
+              onPress={() => router.push('/availability')}
+              accessibilityRole="button"
+              accessibilityLabel="Availability and bandwidth"
+            >
+              {({ pressed }) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 13,
+                    paddingVertical: 15,
+                    paddingHorizontal: 16,
+                    backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
+                  }}
+                >
+                  <Icon name="calendar" size={21} color={color.textLabel} strokeWidth={1.7} />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 14.5,
+                      color: color.textPrimary,
+                    }}
+                  >
+                    Availability &amp; bandwidth
+                  </Text>
+                  <Icon name="chevronRight" size={19} color={color.textMuted} />
+                </View>
+              )}
+            </Pressable>
+
+            {SETTINGS.map((row) => (
+              <View
+                key={row.label}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 13,
+                  paddingVertical: 15,
+                  paddingHorizontal: 16,
+                  borderTopWidth: 1,
+                  borderTopColor: palette.neutral[100],
+                }}
+              >
+                <Icon name={row.icon} size={21} color={color.textLabel} strokeWidth={1.7} />
                 <Text
                   style={{
                     flex: 1,
                     fontFamily: 'Roboto_500Medium',
-                    fontSize: 14,
+                    fontSize: 14.5,
                     color: color.textPrimary,
                   }}
                 >
-                  Availability &amp; bandwidth
+                  {row.label}
                 </Text>
-                <Text style={{ fontSize: 18, color: color.textMuted }}>›</Text>
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_400Regular',
+                    fontSize: 13,
+                    color: color.textMuted,
+                  }}
+                >
+                  {row.value}
+                </Text>
               </View>
-            </Card>
-          )}
-        </Pressable>
+            ))}
+          </View>
 
-        <SectionLabel>SETTINGS</SectionLabel>
-        <Card padded={false} style={{ paddingHorizontal: 16 }}>
-          {SETTINGS.map((row, i) => (
-            <View
-              key={row.label}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 12,
-                paddingVertical: 14,
-                borderTopWidth: i === 0 ? 0 : 1,
-                borderTopColor: color.border,
-              }}
-            >
-              <Icon name={row.icon} size={19} color={color.textSecondary} />
-              <Text
-                style={{
-                  flex: 1,
-                  fontFamily: 'Roboto_500Medium',
-                  fontSize: 14,
-                  color: color.textPrimary,
-                }}
-              >
-                {row.label}
-              </Text>
-              <Text
-                style={{ fontFamily: 'Roboto_400Regular', fontSize: 13, color: color.textMuted }}
-              >
-                {row.value}
-              </Text>
-            </View>
-          ))}
-        </Card>
-
-        <View style={{ marginTop: 24 }}>
-          <Button
-            label="Log out"
-            variant="secondary"
-            onPress={() => router.replace('/(auth)/login')}
-          />
+          <View style={{ marginTop: 16 }}>
+            <Button
+              label="Log out"
+              variant="dangerOutline"
+              onPress={() => router.replace('/(auth)/login')}
+            />
+          </View>
         </View>
-      </Screen>
-    </>
+      </ScrollView>
+    </View>
   );
 }
 
-function Stat({ value, label, divider }: { value: string; label: string; divider?: boolean }) {
+function ChromeStat({ value, label }: { value: string; label: string }) {
   return (
     <View
       style={{
         flex: 1,
+        backgroundColor: color.chromePanel,
+        borderRadius: 12,
+        padding: 10,
         alignItems: 'center',
-        borderLeftWidth: divider ? 1 : 0,
-        borderLeftColor: color.border,
       }}
     >
-      <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 18, color: color.textPrimary }}>
+      <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 17, color: color.textInverse }}>
         {value}
       </Text>
-      <Text
-        style={{
-          fontFamily: 'Roboto_400Regular',
-          fontSize: 11.5,
-          color: color.textMuted,
-          marginTop: 2,
-        }}
-      >
+      <Text style={{ fontFamily: 'Roboto_400Regular', fontSize: 11, color: color.textOnChrome }}>
         {label}
       </Text>
     </View>
@@ -212,41 +266,29 @@ function CoverageRow({ label, value, first }: { label: string; value: string; fi
   return (
     <View
       style={{
-        paddingVertical: 13,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 16,
+        paddingVertical: 7,
         borderTopWidth: first ? 0 : 1,
-        borderTopColor: color.border,
+        borderTopColor: palette.neutral[100],
       }}
     >
-      <Text style={{ fontFamily: 'Roboto_400Regular', fontSize: 12, color: color.textMuted }}>
+      <Text style={{ fontFamily: 'Roboto_400Regular', fontSize: 13, color: color.textSecondary }}>
         {label}
       </Text>
       <Text
         style={{
-          fontFamily: 'Roboto_500Medium',
-          fontSize: 14,
+          fontFamily: 'Roboto_700Bold',
+          fontSize: 13,
           color: color.textPrimary,
-          marginTop: 3,
+          flexShrink: 1,
+          textAlign: 'right',
         }}
       >
         {value}
       </Text>
     </View>
-  );
-}
-
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <Text
-      style={{
-        fontFamily: 'Roboto_700Bold',
-        fontSize: 11,
-        letterSpacing: 1.4,
-        color: color.textSecondary,
-        marginTop: 26,
-        marginBottom: 10,
-      }}
-    >
-      {children}
-    </Text>
   );
 }
