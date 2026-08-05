@@ -1,0 +1,306 @@
+/* ============================================================================
+   InstallFlow · Ops Console — design tokens
+   SINGLE SOURCE OF TRUTH. No hex value belongs anywhere else in this codebase.
+
+   Values are lifted from the approved prototype at
+   webdesign/Admin Portal.dc.html — they are not invented.
+   ========================================================================= */
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Tailwind theme — what `bg-*`, `text-*`, `border-*` utilities can name.
+   ------------------------------------------------------------------------ */
+@theme inline {
+  /* Type */
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+
+  /* Brand ramp — 500 is primary */
+  --color-brand-100: var(--brand-color-100);
+  --color-brand-200: var(--brand-color-200);
+  --color-brand-300: var(--brand-color-300);
+  --color-brand-400: var(--brand-color-400);
+  --color-brand-500: var(--brand-color-500);
+  --color-brand-600: var(--brand-color-600);
+
+  /* Surfaces & ink */
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--border);
+  --color-line-2: var(--border-2);
+
+  /* Status roles — screens name these, never a ramp position */
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-brand-accent: var(--brand-accent);
+
+  /* shadcn/ui semantic scale — its components resolve these names */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Ticket status */
+  --color-status-new: var(--status-new);
+  --color-status-new-bg: var(--status-new-bg);
+  --color-status-slot-pending: var(--status-slot-pending);
+  --color-status-slot-pending-bg: var(--status-slot-pending-bg);
+  --color-status-assigned: var(--status-assigned);
+  --color-status-assigned-bg: var(--status-assigned-bg);
+  --color-status-in-progress: var(--status-in-progress);
+  --color-status-in-progress-bg: var(--status-in-progress-bg);
+  --color-status-ai-review: var(--status-ai-review);
+  --color-status-ai-review-bg: var(--status-ai-review-bg);
+  --color-status-escalated: var(--status-escalated);
+  --color-status-escalated-bg: var(--status-escalated-bg);
+  --color-status-closed: var(--status-closed);
+  --color-status-closed-bg: var(--status-closed-bg);
+  --color-status-force-closed: var(--status-force-closed);
+  --color-status-force-closed-bg: var(--status-force-closed-bg);
+  --color-status-cancelled: var(--status-cancelled);
+  --color-status-cancelled-bg: var(--status-cancelled-bg);
+
+  /* SLA state */
+  --color-sla-ok: var(--ok);
+  --color-sla-warn: var(--warn);
+  --color-sla-breach: var(--danger);
+  --color-sla-done: var(--ink-3);
+
+  /* Breakpoints — the prototype's, not Tailwind's defaults */
+  --breakpoint-sm: 35rem; /* 560px — grids collapse to one column */
+  --breakpoint-md: 55rem; /* 880px — sidebar becomes a drawer */
+  --breakpoint-lg: 62.5rem; /* 1000px — topbar search appears */
+  --breakpoint-xl: 85rem; /* 1360px — content max width */
+
+  /* Layout */
+  --spacing-sidebar: 236px;
+  --spacing-topbar: 60px;
+  --spacing-content: 1360px;
+
+  /* Shape */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-4xl: 28px;
+
+  /* Elevation */
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-lg);
+}
+
+/* ---------------------------------------------------------------------------
+   Light — the approved theme. These screens are read at a desk all day.
+   ------------------------------------------------------------------------ */
+:root {
+  /* Brand ramp */
+  --brand-color-100: #eceeff;
+  --brand-color-200: #c4c6ee;
+  --brand-color-300: #a9ace0;
+  --brand-color-400: #3a3f9e;
+  --brand-color-500: #2c2f74;
+  --brand-color-600: #22245c;
+
+  /* Surfaces */
+  --bg: #eef0f4;
+  --surface: #ffffff;
+  --surface-2: #f7f8fb;
+  --surface-3: #f1f3f7;
+
+  /* Lines */
+  --border: #e2e5ec;
+  --border-2: #eceef3;
+
+  /* Ink */
+  --ink: #171a21;
+  --ink-2: #565c68;
+  --ink-3: #8b909d;
+
+  /* Accent — badges and alert dots only, never a button fill.
+     Deliberately NOT shadcn's `--accent`, which is a muted hover surface. */
+  --brand-accent: #e5562b;
+
+  /* Semantic */
+  --ok: #1a8a4d;
+  --ok-bg: #e6f5ec;
+  --warn: #b9770a;
+  --warn-bg: #fbf1de;
+  --danger: #cf3446;
+  --danger-bg: #fceef0;
+  --info: #215fa6;
+  --info-bg: #e9f1fb;
+
+  /* Ticket status */
+  --status-new: #4a4fb0;
+  --status-new-bg: #eceeff;
+  --status-slot-pending: var(--info);
+  --status-slot-pending-bg: var(--info-bg);
+  --status-assigned: #2f5bbf;
+  --status-assigned-bg: #e8eefc;
+  --status-in-progress: #1c74b8;
+  --status-in-progress-bg: #eaf6ff;
+  --status-ai-review: #7a3fc0;
+  --status-ai-review-bg: #f3ecfd;
+  --status-escalated: var(--danger);
+  --status-escalated-bg: var(--danger-bg);
+  --status-closed: var(--ok);
+  --status-closed-bg: var(--ok-bg);
+  --status-force-closed: #565c68;
+  --status-force-closed-bg: #eef0f4;
+  --status-cancelled: #a8503f;
+  --status-cancelled-bg: #f4eae9;
+
+  /* Elevation */
+  --shadow:
+    0 1px 2px rgb(20 24 40 / 0.06), 0 1px 3px rgb(20 24 40 / 0.04);
+  --shadow-lg: 0 8px 30px rgb(20 24 40 / 0.14);
+
+  /* Sidebar gradient */
+  --sidebar-from: #26285f;
+  --sidebar-to: #2c2f74;
+
+  /* --- shadcn/ui semantic mapping — so its components inherit the brand --- */
+  --radius: 8px;
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand-color-500);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--surface-3);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger);
+  --input: var(--border);
+  --ring: var(--brand-color-400);
+  --chart-1: var(--brand-color-500);
+  --chart-2: var(--info);
+  --chart-3: var(--ok);
+  --chart-4: var(--warn);
+  --chart-5: var(--danger);
+  --sidebar: var(--brand-color-500);
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: var(--brand-color-500);
+  --sidebar-accent: rgb(255 255 255 / 0.13);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 0.09);
+  --sidebar-ring: var(--brand-color-200);
+}
+
+/* ---------------------------------------------------------------------------
+   Dark — DERIVED, not approved. The prototype is light-only; this palette
+   is our extrapolation and is pending design sign-off.
+   ------------------------------------------------------------------------ */
+.dark {
+  --brand-color-100: #1b1d3d;
+  --brand-color-200: #2a2d63;
+  --brand-color-300: #5f63c0;
+  --brand-color-400: #7b80d8;
+  --brand-color-500: #8d92e8;
+  --brand-color-600: #a9ade8;
+
+  --bg: #101219;
+  --surface: #171a23;
+  --surface-2: #1d2029;
+  --surface-3: #242833;
+
+  --border: #2b2f3b;
+  --border-2: #23262f;
+
+  --ink: #e9eaf0;
+  --ink-2: #a4a9b8;
+  --ink-3: #767c8c;
+
+  --brand-accent: #ff7a52;
+  --accent: var(--surface-3);
+  --accent-foreground: var(--ink);
+
+  --ok: #4ec27f;
+  --ok-bg: #10301f;
+  --warn: #e0a341;
+  --warn-bg: #33260d;
+  --danger: #f0697a;
+  --danger-bg: #3a1720;
+  --info: #5b9be0;
+  --info-bg: #12263c;
+
+  --status-new: #9296e6;
+  --status-new-bg: #1e2044;
+  --status-slot-pending: var(--info);
+  --status-slot-pending-bg: var(--info-bg);
+  --status-assigned: #7aa3ef;
+  --status-assigned-bg: #172441;
+  --status-in-progress: #5fb2e8;
+  --status-in-progress-bg: #10293c;
+  --status-ai-review: #b18ae6;
+  --status-ai-review-bg: #271a3c;
+  --status-escalated: var(--danger);
+  --status-escalated-bg: var(--danger-bg);
+  --status-closed: var(--ok);
+  --status-closed-bg: var(--ok-bg);
+  --status-force-closed: #a4a9b8;
+  --status-force-closed-bg: #23262f;
+  --status-cancelled: #d18a79;
+  --status-cancelled-bg: #35211c;
+
+  --shadow:
+    0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 8px 30px rgb(0 0 0 / 0.55);
+
+  --sidebar-from: #14161f;
+  --sidebar-to: #1a1d2b;
+
+  --primary-foreground: #101219;
+  --sidebar: var(--surface);
+  --sidebar-primary: var(--brand-color-500);
+  --sidebar-primary-foreground: #101219;
+  --sidebar-accent: rgb(255 255 255 / 0.08);
+  --sidebar-border: rgb(255 255 255 / 0.07);
+}
