@@ -6,7 +6,8 @@ description: >
   layout and interaction detail for all 18 screens, extracted from the client-approved
   prototype at RequirementDocs/Technician Field App.html, plus the penalty bands, proof-capture
   state machine and job status rules. Load this before building or changing any screen, adding
-  a component to src/components/ui, touching src/theme, or writing mock data — it prevents
+  a component to mobileapp/src/components/ui, touching mobileapp/src/theme, or writing mock
+  data — it prevents
   re-deriving the spec from the prototype bundle every time. Trigger on requests like "build
   the job pool screen", "add the accept sheet", "what does screen 7 look like", "what are the
   penalty bands", "add a status badge".
@@ -24,6 +25,8 @@ several questions the document left open.
 ---
 
 ## 1. Design tokens
+
+The app lives in `mobileapp/`; every path below is relative to it.
 
 Colours live in `src/theme/tokens.js` (CJS, so `tailwind.config.js` and TypeScript share one
 source). Screens consume **semantic roles** from `src/theme/semantic.ts`, never ramp positions.

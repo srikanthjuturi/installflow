@@ -52,6 +52,15 @@ break Expo Go and force a dev-client build.
 
 ## Layout
 
+The repo holds more than the app — the Python backend lands beside it later.
+
+```
+RequirementDocs/        business flow + the approved prototype
+mobileapp/              the Expo app — ALL app work happens in here
+```
+
+Inside `mobileapp/`:
+
 ```
 app/                    routes only (Expo Router)
   (auth)/               invite · coverage · login
@@ -71,7 +80,10 @@ read that one file, so a colour is never declared twice. Types come from `tokens
 
 ## Commands
 
+**Run these from `mobileapp/`, not the repo root.**
+
 ```bash
+cd mobileapp
 npm start        # expo start — scan the QR with Expo Go
 npm run lint     # must pass before every commit
 npm run typecheck
