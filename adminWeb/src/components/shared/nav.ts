@@ -8,12 +8,15 @@ import {
   Map,
   ScanLine,
   SlidersHorizontal,
+  Store,
   Tags,
   Upload,
   UserCog,
+  UserPlus,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { Role } from "@/types";
 
 export interface NavItem {
   label: string;
@@ -28,7 +31,18 @@ export interface NavItem {
 export interface NavGroup {
   name: string;
   items: NavItem[];
+  /**
+   * Roles the group is shown to. Absent means everyone.
+   *
+   * Presentation only — hiding a rail entry is not authorization (hard rule 8).
+   * The route stays reachable by URL and the server is the authority on who
+   * may act; this only keeps a rail free of links a role never uses.
+   */
+  roles?: Role[];
 }
+
+/** Appointing partners is a management act — Ops Staff do intake only. */
+const MANAGEMENT: Role[] = ["Admin", "NH", "RSH", "ASM"];
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -65,6 +79,14 @@ export const NAV_GROUPS: NavGroup[] = [
         badge: 4,
         match: ["/ai-review/"],
       },
+    ],
+  },
+  {
+    name: "Partners",
+    roles: MANAGEMENT,
+    items: [
+      { label: "Freelancers", to: "/partners/freelancers", icon: UserPlus },
+      { label: "Franchises", to: "/partners/franchises", icon: Store },
     ],
   },
   {

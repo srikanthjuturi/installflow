@@ -225,9 +225,13 @@ export function DataTable<T>({
                     return (
                       <Th
                         key={c.id}
+                        // From `activeSort`, not local state: in server mode
+                        // the sort lives in the query params and `t.sort` is
+                        // undefined, so reading it here crashed the table the
+                        // moment a server-sorted column matched a column id.
                         aria-sort={
                           active
-                            ? t.sort!.dir === "asc"
+                            ? activeSort!.dir === "asc"
                               ? "ascending"
                               : "descending"
                             : undefined

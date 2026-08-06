@@ -111,3 +111,4 @@ export interface RegionTerritory {
   asms: AsmTerritory[];
 }
 export * from "./imports";
+export * from "./partner";

@@ -23,6 +23,10 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { name, role, avatarUrl, setSidebarOpen, toggleSidebarCollapsed } =
     useSession();
 
+  // A group with a `roles` list is only rendered for those roles. That is
+  // presentation — the route is still reachable and the server still guards it.
+  const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role));
+
   return (
     <aside
       className={cn(
@@ -69,7 +73,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
         )}
         aria-label="Main"
       >
-        {NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.name} className="mb-4">
             {/* Collapsed, the group name has nowhere to go — but it still
                 labels the group for assistive tech. */}
