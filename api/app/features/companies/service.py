@@ -47,6 +47,22 @@ async def _unique_slug(session: AsyncSession, name: str) -> str:
     return candidate
 
 
+async def _ensure_gst_unique(
+    session: AsyncSession, gst_number: str, *, exclude_id: uuid.UUID | None = None
+) -> None:
+    """409 if any company (incl. soft-deleted, matching the unique index) uses this GSTIN."""
+    stmt = select(func.count()).select_from(Company).where(
+        func.lower(Company.gst_number) == gst_number.lower()
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(Company.id != exclude_id)
+    if await session.scalar(stmt):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="GST number already registered",
+        )
+
+
 def _company_out(
     company: Company, *, admin_email: str | None = None, user_count: int | None = None
 ) -> CompanyOut:
@@ -57,6 +73,14 @@ def _company_out(
         email=company.email,
         phone=company.phone,
         isActive=company.is_active,
+        gstNumber=company.gst_number,
+        pan=company.pan,
+        gstCompanyStatus=company.gst_company_status,
+        addressLine1=company.address_line1,
+        addressLine2=company.address_line2,
+        city=company.city,
+        state=company.state,
+        pincode=company.pincode,
         adminEmail=admin_email,
         userCount=user_count,
         createdAt=company.created_at,
@@ -105,6 +129,7 @@ async def _user_count(session: AsyncSession, company_id: uuid.UUID) -> int:
 async def create_company(
     session: AsyncSession, principal: Principal, body: CompanyCreateRequest
 ) -> CompanyOut:
+    await _ensure_gst_unique(session, body.gstNumber)
     slug = await _unique_slug(session, body.name)
     company = Company(
         name=body.name,
@@ -112,6 +137,14 @@ async def create_company(
         email=str(body.email),
         phone=body.phone,
         is_active=True,
+        gst_number=body.gstNumber,
+        pan=body.pan,
+        gst_company_status=body.gstCompanyStatus,
+        address_line1=body.addressLine1,
+        address_line2=body.addressLine2,
+        city=body.city,
+        state=body.state,
+        pincode=body.pincode,
         created_by=principal.user_id,
     )
     session.add(company)
@@ -197,6 +230,23 @@ async def update_company(
         company.email = str(body.email)
     if body.phone is not None:
         company.phone = body.phone
+    if body.gstNumber is not None and body.gstNumber.lower() != company.gst_number.lower():
+        await _ensure_gst_unique(session, body.gstNumber, exclude_id=company.id)
+        company.gst_number = body.gstNumber
+    if body.pan is not None:
+        company.pan = body.pan
+    if body.gstCompanyStatus is not None:
+        company.gst_company_status = body.gstCompanyStatus
+    if body.addressLine1 is not None:
+        company.address_line1 = body.addressLine1
+    if body.addressLine2 is not None:
+        company.address_line2 = body.addressLine2
+    if body.city is not None:
+        company.city = body.city
+    if body.state is not None:
+        company.state = body.state
+    if body.pincode is not None:
+        company.pincode = body.pincode
     company.updated_by = principal.user_id
     await session.commit()
     await session.refresh(company)
