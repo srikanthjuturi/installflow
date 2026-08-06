@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # ─── Superadmin bootstrap (used by app.scripts.bootstrap) ──────────────
+    SUPERADMIN_EMAIL: str = "superadmin@videocon.local"
+    SUPERADMIN_PASSWORD: str = "ChangeMe_Superadmin@123"
+    SUPERADMIN_NAME: str = "Super Admin"
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL(self) -> str:

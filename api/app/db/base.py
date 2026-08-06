@@ -8,4 +8,5 @@ Alembic inspects it. As features add models, import them below, e.g.:
 
 from app.db.base_class import Base  # noqa: F401
 
-# Feature models are imported here as they are created.
+# Import every model so Base.metadata is fully populated for Alembic autogenerate.
+import app.models  # noqa: F401,E402
