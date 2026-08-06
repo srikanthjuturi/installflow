@@ -11,8 +11,40 @@ Alembic · JWT (PyJWT) · bcrypt
 and `app/db`; each business capability is a self-contained vertical slice under
 `app/features/<slice>/`.
 
-> **Status: scaffold only.** The database connection, settings, JWT/security helpers, and
-> Alembic are wired and verified. No business API endpoints exist yet.
+> **Status: multi-tenant core live.** Auth, companies, users, and RBAC slices are implemented
+> and verified end-to-end against Azure PostgreSQL.
+
+## Multi-tenancy model
+
+- **Identity vs membership.** One `user` (globally-unique email) has a **fixed role** and can
+  belong to **many companies** via `membership`. Login is email + password only; the header
+  company switcher (`/auth/switch-company`) re-issues a token scoped to the chosen company.
+- **Superadmin** (`role='superadmin'`, no membership) manages companies. **Admin** (created
+  atomically with a company) manages everything inside it and provisions users into the roles
+  **below** them: `national_head → regional_head → area_manager → technician`. Roles never change.
+- **Tenant isolation** is enforced in the service layer: every company-scoped query filters by the
+  active `company_id` from the token, so cross-tenant reads/writes return 404.
+- **Backend-driven features.** `/auth/me` returns the effective feature keys for the caller's role
+  in the active company — `COALESCE(company override, role default, false)`. Admins toggle features
+  for lower roles via `/role-features` (per-company overrides). The frontend shows/hides off this.
+
+## Endpoints (`/api/v1`)
+
+| Area | Endpoints |
+|---|---|
+| auth | `POST /auth/login` · `POST /auth/switch-company` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me` |
+| companies (superadmin) | `POST /companies` · `GET /companies` · `GET/PUT/DELETE /companies/{id}` · `PATCH /companies/{id}/status` |
+| users (tenant-scoped) | `GET /users` · `POST /users` · `GET/PUT/DELETE /users/{membershipId}` |
+| rbac | `GET /roles` · `GET /features` · `GET/PUT /role-features` |
+
+All responses use the envelope `{ success, statusCode, message, timestamp, data, errors[] }`; list
+endpoints add a `pagination` block. List query params: `page, limit, search, sortBy, sortDir`.
+
+## Bootstrap the superadmin
+
+```bash
+python -m app.scripts.bootstrap    # reads SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD from .env
+```
 
 ## Layout
 
