@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     # ─── App ───────────────────────────────────────────────────────────────
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
+    SQL_ECHO: bool = False
     PROJECT_NAME: str = "Videocon Installation API"
     API_V1_PREFIX: str = "/api/v1"
 
@@ -36,7 +37,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ─── Superadmin bootstrap (used by app.scripts.bootstrap) ──────────────
-    SUPERADMIN_EMAIL: str = "superadmin@videocon.local"
+    SUPERADMIN_EMAIL: str = "superadmin@videocon.com"
     SUPERADMIN_PASSWORD: str = "ChangeMe_Superadmin@123"
     SUPERADMIN_NAME: str = "Super Admin"
 

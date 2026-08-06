@@ -1,8 +1,4 @@
-"""FastAPI application factory.
-
-Phase note: no business API routes yet. Feature routers will be included here
-as they are built (e.g. `app.include_router(jobs.router, prefix=...)`).
-"""
+"""FastAPI application factory."""
 
 import asyncio
 import sys
@@ -12,8 +8,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import engine
+from app.core.errors import register_exception_handlers
 
 # psycopg's async driver cannot run on Windows' default ProactorEventLoop.
 # Select the SelectorEventLoop before any loop is created (import time). NB: for
@@ -39,11 +37,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+register_exception_handlers(app)
+
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
     return {"status": "ok", "environment": settings.ENVIRONMENT}
 
 
-# Feature routers are included below as they are built:
-# app.include_router(jobs.router, prefix=settings.API_V1_PREFIX)
+app.include_router(api_router, prefix=settings.API_V1_PREFIX)

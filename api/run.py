@@ -6,6 +6,7 @@ the event-loop policy has to be selected *before* uvicorn creates its loop.
 """
 
 import asyncio
+import os
 import sys
 import warnings
 
@@ -21,9 +22,11 @@ import uvicorn  # noqa: E402
 from app.core.config import settings  # noqa: E402
 
 if __name__ == "__main__":
+    # RELOAD env overrides; defaults to DEBUG. Set RELOAD=0 for a stable server.
+    reload = os.getenv("RELOAD", "1" if settings.DEBUG else "0") == "1"
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=settings.DEBUG,
+        port=int(os.getenv("PORT", "8000")),
+        reload=reload,
     )
