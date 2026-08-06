@@ -35,6 +35,8 @@ export const technicianSchema = z.object({
       "Every pincode must be 6 digits"
     ),
   bwTotal: z.string().min(1, "Select a daily job cap"),
+  /** Optional cropped profile photo, carried as a data URL. */
+  photo: z.string().optional(),
 });
 
 export type TechnicianFormValues = z.infer<typeof technicianSchema>;

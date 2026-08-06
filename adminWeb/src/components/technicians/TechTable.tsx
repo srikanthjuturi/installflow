@@ -5,12 +5,8 @@ import {
   type Column,
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
-import {
-  BandwidthBar,
-  CancelCount,
-  TechAvatar,
-  TechStatusPill,
-} from "./BandwidthBar";
+import { UserAvatar } from "@/components/shared/UserAvatar";
+import { BandwidthBar, CancelCount, TechStatusPill } from "./BandwidthBar";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { Technician } from "@/types";
 
@@ -61,7 +57,11 @@ export function TechTable({
       sortValue: (t) => t.name,
       cell: (t) => (
         <div className="flex items-center gap-2.5">
-          <TechAvatar name={t.name} />
+          <UserAvatar
+            name={t.name}
+            src={t.photoUrl}
+            className="size-8.5 text-xs"
+          />
           <div className="min-w-0">
             {/* A real link so the row is keyboard reachable and opens in a
                 new tab — the row click is a convenience on top. */}

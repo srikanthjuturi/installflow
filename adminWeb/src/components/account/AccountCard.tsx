@@ -1,17 +1,10 @@
-import { LogOut } from "lucide-react";
+import { LogOut, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ROLE_LABEL, roleFromApi } from "@/store/session";
+import { ROLE_LABEL, roleFromApi, useSession } from "@/store/session";
+import { AvatarPicker } from "@/components/shared/AvatarPicker";
 import type { AuthUser } from "@/types/api";
-
-function initialsOf(name: string) {
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2);
-}
 
 /**
  * An ISO instant as a person reads it. A malformed or missing timestamp shows
@@ -46,6 +39,10 @@ export function AccountCard({ user, onSignOut }: AccountCardProps) {
   // The wire carries a number; this is the only vocabulary the screens speak.
   const role = roleFromApi(user.role);
 
+  // The avatar is client state until the backend grows an upload endpoint.
+  const avatarUrl = useSession((s) => s.avatarUrl);
+  const setAvatar = useSession((s) => s.setAvatar);
+
   const facts: Array<[string, string]> = [
     ["Work email", email],
     ["Role", role],
@@ -62,16 +59,26 @@ export function AccountCard({ user, onSignOut }: AccountCardProps) {
     <Card className="max-w-3xl [--card-spacing:--spacing(5.5)]">
       <CardContent>
         <div className="flex items-center gap-4">
-          {/* Decorative — the name is right beside it. */}
-          <span
-            aria-hidden
-            className="grid size-14 shrink-0 place-items-center rounded-full bg-status-assigned-bg text-lg font-semibold text-brand-400"
-          >
-            {initialsOf(name)}
-          </span>
+          {/* The camera badge opens the crop dialog; the name sits beside it. */}
+          <AvatarPicker
+            name={name}
+            value={avatarUrl}
+            onChange={setAvatar}
+            avatarClassName="size-14 text-lg"
+          />
           <div className="min-w-0">
             <h2 className="truncate text-[17px] font-semibold">{name}</h2>
             <p className="truncate text-xs text-ink-3">{ROLE_LABEL[role]}</p>
+            {avatarUrl ? (
+              <button
+                type="button"
+                onClick={() => setAvatar(null)}
+                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger"
+              >
+                <Trash2 className="size-3" aria-hidden />
+                Remove photo
+              </button>
+            ) : null}
           </div>
         </div>
 

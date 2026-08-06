@@ -323,6 +323,8 @@ export interface InviteUserInput {
   email: string;
   role: Role;
   scope: string;
+  /** Optional cropped profile photo as a data URL. */
+  photoUrl?: string;
 }
 
 /**
@@ -343,6 +345,7 @@ export function inviteUser(input: InviteUserInput): Promise<User> {
       id: `U-${nextId}`,
       name: input.name.trim(),
       email,
+      photoUrl: input.photoUrl,
       role: input.role,
       region: input.scope,
       status: "Invited",

@@ -1,5 +1,6 @@
 import { Barcode, Camera, Hash, MapPin } from "lucide-react";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { TicketDetail } from "@/services/tickets";
 
@@ -57,9 +58,7 @@ export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
       <CardContent>
         {assigned ? (
           <div className="flex items-center gap-3">
-            <div className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-100 text-base font-semibold text-brand-500">
-              {initials(ticket.tech)}
-            </div>
+            <UserAvatar name={ticket.tech} className="size-11 text-base" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">
                 {ticket.tech}

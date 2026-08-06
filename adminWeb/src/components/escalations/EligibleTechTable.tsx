@@ -1,4 +1,5 @@
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -13,14 +14,6 @@ interface EligibleTechTableProps {
   /** Name of the technician whose assignment is in flight, if any. */
   assigningName?: string | null;
   isAssigning?: boolean;
-}
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2);
 }
 
 /**
@@ -47,12 +40,7 @@ export function EligibleTechTable({
       header: "Technician",
       cell: (t) => (
         <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-status-assigned-bg text-xs font-semibold text-brand-400"
-          >
-            {initials(t.name)}
-          </span>
+          <UserAvatar name={t.name} src={t.photoUrl} className="size-8 text-xs" />
           <span>
             <span className="block font-medium">{t.name}</span>
             <span className="block text-xs text-ink-3">{t.phone}</span>

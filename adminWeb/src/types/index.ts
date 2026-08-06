@@ -11,6 +11,9 @@ export interface Technician {
   id: string;
   name: string;
   phone: string;
+  /** Optional profile photo as a data URL. Absent → the initials avatar.
+   *  Client-set today; a real upload endpoint replaces it later. */
+  photoUrl?: string;
   cats: string[];
   pincodes: string;
   /** Bandwidth is a plain jobs-per-day count. The Rules screen calls it
@@ -85,6 +88,9 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  /** Optional profile photo as a data URL. Absent → the initials avatar.
+   *  Client-set today; a real upload endpoint replaces it later. */
+  photoUrl?: string;
   role: Role;
   region: string;
   status: "Active" | "Invited" | "Suspended";

@@ -5,11 +5,13 @@ import type { Technician } from "@/types";
 /**
  * The technician presentation atoms.
  *
- * `BandwidthBar` is the headline export, but the initials avatar, the
- * Active/Inactive pill and the cancellation count are each rendered
- * identically by the master list and the profile. They live here — the
- * leaf module with no card or table dependency — so neither screen has to
- * import the other's chunk to reuse them, and the two can never drift.
+ * `BandwidthBar` is the headline export, but the Active/Inactive pill and the
+ * cancellation count are each rendered identically by the master list and the
+ * profile. They live here — the leaf module with no card or table dependency —
+ * so neither screen has to import the other's chunk to reuse them, and the two
+ * can never drift. (The avatar itself is the shared `UserAvatar`, so a
+ * technician's face looks the same here, in the pool and in the escalation
+ * shortlist.)
  */
 
 /* ---------------------------------------------------------------- bandwidth */
@@ -63,40 +65,6 @@ export function BandwidthBar({
         </span>
       ) : null}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------- avatar */
-
-const AVATAR_SIZE = {
-  sm: "size-8.5 text-xs",
-  lg: "size-18 text-[26px]",
-};
-
-/** Initials disc. Decorative — the name is always rendered beside or below it. */
-export function TechAvatar({
-  name,
-  size = "sm",
-}: {
-  name: string;
-  size?: keyof typeof AVATAR_SIZE;
-}) {
-  const initials = name
-    .split(" ")
-    .map((part) => part[0] ?? "")
-    .join("")
-    .slice(0, 2);
-
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "grid shrink-0 place-items-center rounded-full bg-status-assigned-bg font-semibold text-brand-400",
-        AVATAR_SIZE[size]
-      )}
-    >
-      {initials}
-    </span>
   );
 }
 

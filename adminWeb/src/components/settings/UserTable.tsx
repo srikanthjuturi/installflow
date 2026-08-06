@@ -6,6 +6,7 @@ import {
 } from "@/components/shared/DataTable";
 import { EditAccessDialog } from "@/components/settings/EditAccessDialog";
 import { ROLE_OPTIONS } from "@/components/settings/userSchema";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import {
   filterValue,
@@ -99,7 +100,11 @@ export function UserTable({
       sortValue: (u) => u.name,
       cell: (u) => (
         <div className="flex items-center gap-2.5">
-          <UserAvatar name={u.name} />
+          <UserAvatar
+            name={u.name}
+            src={u.photoUrl}
+            className="size-8.5 text-xs"
+          />
           <div>
             <div className="font-medium">{u.name}</div>
             <div className="text-[11px] text-ink-3">{u.email}</div>
@@ -231,23 +236,5 @@ export function UserTable({
         }}
       />
     </>
-  );
-}
-
-/** Initials disc. Decorative — the name is always rendered beside it. */
-function UserAvatar({ name }: { name: string }) {
-  const initials = name
-    .split(" ")
-    .map((part) => part[0] ?? "")
-    .join("")
-    .slice(0, 2);
-
-  return (
-    <span
-      aria-hidden
-      className="grid size-8.5 shrink-0 place-items-center rounded-full bg-status-assigned-bg text-xs font-semibold text-brand-400"
-    >
-      {initials}
-    </span>
   );
 }

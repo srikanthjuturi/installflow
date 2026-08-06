@@ -1,5 +1,7 @@
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Trash2 } from "lucide-react";
+import { AvatarPicker } from "@/components/shared/AvatarPicker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -76,15 +78,24 @@ export function InviteUserDialog({
             isSubmitting={invite.isPending}
             error={invite.error}
             onSubmit={(values) =>
-              invite.mutate(values, {
-                onSuccess: (user) => {
-                  toast.add({
-                    title: `Invite sent to ${user.email}`,
-                    description: `${user.role} · ${user.region}. Invited until they accept.`,
-                  });
-                  onOpenChange(false);
+              invite.mutate(
+                {
+                  name: values.name,
+                  email: values.email,
+                  role: values.role,
+                  scope: values.scope,
+                  photoUrl: values.photo,
                 },
-              })
+                {
+                  onSuccess: (user) => {
+                    toast.add({
+                      title: `Invite sent to ${user.email}`,
+                      description: `${user.role} · ${user.region}. Invited until they accept.`,
+                    });
+                    onOpenChange(false);
+                  },
+                }
+              )
             }
           />
         ) : null}
@@ -110,16 +121,52 @@ function InviteUserForm({
     formState: { errors },
   } = useForm<InviteUserValues>({
     resolver: zodResolver(inviteUserSchema),
-    defaultValues: { name: "", email: "", role: "ASM", scope: "" },
+    defaultValues: { name: "", email: "", role: "ASM", scope: "", photo: undefined },
   });
 
   const role = useWatch({ control, name: "role" });
   const scope = useWatch({ control, name: "scope" });
+  // Initials fallback tracks the name until a photo is chosen.
+  const watchedName = useWatch({ control, name: "name" });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="contents">
       <FieldSet>
         <FieldGroup className="gap-4">
+          <Field orientation="horizontal">
+            <Controller
+              name="photo"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center gap-4">
+                  <AvatarPicker
+                    name={watchedName}
+                    value={field.value ?? null}
+                    onChange={(v) => field.onChange(v ?? undefined)}
+                    label="user"
+                    avatarClassName="size-16 text-xl"
+                  />
+                  <div className="min-w-0">
+                    <FieldLabel>Profile photo</FieldLabel>
+                    <FieldDescription>
+                      Optional. Tap the camera to add and crop a photo.
+                    </FieldDescription>
+                    {field.value ? (
+                      <button
+                        type="button"
+                        onClick={() => field.onChange(undefined)}
+                        className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger"
+                      >
+                        <Trash2 className="size-3" aria-hidden />
+                        Remove photo
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            />
+          </Field>
+
           <Field data-invalid={errors.name ? true : undefined}>
             <FieldLabel htmlFor="invite-name">Full name</FieldLabel>
             <Input

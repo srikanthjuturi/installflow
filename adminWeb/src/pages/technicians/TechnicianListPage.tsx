@@ -62,6 +62,7 @@ export default function TechnicianListPage() {
               cats: values.cats,
               pincodes: parsePincodes(values.pincodes),
               bwTotal: Number(values.bwTotal),
+              photoUrl: values.photo,
             },
             {
               onSuccess: (technician) => {

@@ -87,6 +87,8 @@ export interface CreateTechnicianInput {
   pincodes: string[];
   /** Plain jobs-per-day cap, 1–12. */
   bwTotal: number;
+  /** Optional cropped profile photo as a data URL. */
+  photoUrl?: string;
 }
 
 /**
@@ -112,6 +114,7 @@ export function createTechnician(
       id: `TCH-${4100 + TECHNICIANS.length}`,
       name: input.name,
       phone: input.phone,
+      photoUrl: input.photoUrl,
       cats: input.cats,
       pincodes: input.pincodes.join(", "),
       bwUsed: 0,

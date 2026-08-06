@@ -3,6 +3,7 @@ import { ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "./nav";
 import { ROLE_LABEL, useSession } from "@/store/session";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 
 function isActive(pathname: string, to: string, match?: string[]) {
   if (to === "/") return pathname === "/";
@@ -19,12 +20,8 @@ function isActive(pathname: string, to: string, match?: string[]) {
  */
 export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { pathname } = useLocation();
-  const { name, role, setSidebarOpen, toggleSidebarCollapsed } = useSession();
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2);
+  const { name, role, avatarUrl, setSidebarOpen, toggleSidebarCollapsed } =
+    useSession();
 
   return (
     <aside
@@ -67,7 +64,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       <nav
         className={cn(
-          "flex-1 overflow-y-auto pt-3.5 pb-6",
+          "scroll-slim flex-1 overflow-y-auto pt-3.5 pb-6",
           collapsed ? "px-2" : "px-3"
         )}
         aria-label="Main"
@@ -156,9 +153,11 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
           )}
         >
           <span className="sr-only">Account</span>
-          <div className="grid size-8.5 shrink-0 place-items-center rounded-full bg-brand-400 text-[13px] font-semibold text-white">
-            {initials}
-          </div>
+          <UserAvatar
+            name={name}
+            src={avatarUrl}
+            className="size-8.5 bg-brand-400 text-[13px] text-white"
+          />
           {!collapsed && (
             <>
               <div className="min-w-0 flex-1 text-left">

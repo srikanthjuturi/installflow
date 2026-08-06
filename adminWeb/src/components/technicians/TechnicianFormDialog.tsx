@@ -1,6 +1,8 @@
 import { useEffect } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Trash2 } from "lucide-react";
+import { AvatarPicker } from "@/components/shared/AvatarPicker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -76,6 +78,11 @@ export function TechnicianFormDialog({
     defaultValues: EMPTY,
   });
 
+  // The initials fallback should track the name as it is typed, before a photo
+  // is chosen. `useWatch` subscribes to just this field (and, unlike `watch()`,
+  // does not opt the whole form out of the React Compiler).
+  const watchedName = useWatch({ control, name: "name" });
+
   // The dialog stays mounted, so a reopened form would otherwise still hold
   // the last attempt.
   useEffect(() => {
@@ -97,6 +104,41 @@ export function TechnicianFormDialog({
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <FieldGroup>
+            <Field orientation="horizontal">
+              <Controller
+                name="photo"
+                control={control}
+                render={({ field }) => (
+                  <div className="flex items-center gap-4">
+                    <AvatarPicker
+                      name={watchedName}
+                      value={field.value ?? null}
+                      onChange={(v) => field.onChange(v ?? undefined)}
+                      label="technician"
+                      avatarClassName="size-16 text-xl"
+                    />
+                    <div className="min-w-0">
+                      <FieldLabel>Profile photo</FieldLabel>
+                      <FieldDescription>
+                        Optional. Tap the camera to add and crop a clear face
+                        photo.
+                      </FieldDescription>
+                      {field.value ? (
+                        <button
+                          type="button"
+                          onClick={() => field.onChange(undefined)}
+                          className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger"
+                        >
+                          <Trash2 className="size-3" aria-hidden />
+                          Remove photo
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+              />
+            </Field>
+
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <Field data-invalid={err("name") ? true : undefined}>
                 <FieldLabel htmlFor="tech-name">Full name</FieldLabel>

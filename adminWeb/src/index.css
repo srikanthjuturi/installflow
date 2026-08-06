@@ -63,4 +63,32 @@
     @apply overflow-x-auto;
     scrollbar-width: thin;
   }
+
+  /* A slim, translucent scrollbar that reads as part of the dark sidebar
+     rather than the OS chunky default. Firefox honours `scrollbar-*`; the
+     `::-webkit-` block covers Chrome/Edge/Safari. The track is transparent so
+     it disappears into the navy gradient, and the thumb is a soft white that
+     brightens on hover. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+  }
+
+  .scroll-slim::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background-color: rgb(255 255 255 / 0.22);
+    border-radius: 9999px;
+  }
+
+  .scroll-slim::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(255 255 255 / 0.38);
+  }
 }

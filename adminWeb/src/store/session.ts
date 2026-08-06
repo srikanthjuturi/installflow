@@ -86,6 +86,14 @@ interface SessionState {
    */
   name: string;
   email: string;
+  /**
+   * The signed-in user's chosen avatar as a data URL, or `null` for the
+   * initials fallback. Client state on purpose: the backend has no avatar
+   * field yet (see `AuthUser`), so until it does the picture lives here and is
+   * persisted so a reload keeps it. When the upload endpoint lands, `signIn`
+   * seeds this from `user.avatarUrl` and this becomes a cached mirror.
+   */
+  avatarUrl: string | null;
   /** The scope being viewed. Server-side guards are the real authority;
    *  this only drives presentation. */
   role: Role;
@@ -96,6 +104,8 @@ interface SessionState {
   sidebarCollapsed: boolean;
   signIn: (payload: AuthPayload) => void;
   signOut: () => void;
+  /** Set or clear the avatar. `null` restores the initials fallback. */
+  setAvatar: (avatarUrl: string | null) => void;
   setRole: (role: Role) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebarCollapsed: () => void;
@@ -109,6 +119,7 @@ export const useSession = create<SessionState>()(
       user: null,
       name: "",
       email: "",
+      avatarUrl: null,
       role: DEFAULT_VIEW_ROLE,
       sidebarOpen: false,
       sidebarCollapsed: false,
@@ -130,8 +141,10 @@ export const useSession = create<SessionState>()(
           user: null,
           name: "",
           email: "",
+          avatarUrl: null,
           role: DEFAULT_VIEW_ROLE,
         }),
+      setAvatar: (avatarUrl) => set({ avatarUrl }),
       setRole: (role) => set({ role }),
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
       toggleSidebarCollapsed: () =>
@@ -151,6 +164,7 @@ export const useSession = create<SessionState>()(
           user: null,
           name: "",
           email: "",
+          avatarUrl: null,
         }) as SessionState,
       partialize: (s) => ({
         signedIn: s.signedIn,
@@ -158,6 +172,7 @@ export const useSession = create<SessionState>()(
         user: s.user,
         email: s.email,
         name: s.name,
+        avatarUrl: s.avatarUrl,
         role: s.role,
         sidebarCollapsed: s.sidebarCollapsed,
       }),

@@ -1,12 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { money } from "@/utils/money";
 import type { Technician } from "@/types";
-import {
-  BandwidthBar,
-  CancelCount,
-  TechAvatar,
-  TechStatusPill,
-} from "./BandwidthBar";
+import { BandwidthBar, CancelCount, TechStatusPill } from "./BandwidthBar";
 
 /* ------------------------------------------------------------------ identity */
 
@@ -29,7 +25,11 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
     <Card className="h-fit [--card-spacing:--spacing(5.5)]">
       <CardContent>
         <div className="flex flex-col items-center text-center">
-          <TechAvatar name={tech.name} size="lg" />
+          <UserAvatar
+            name={tech.name}
+            src={tech.photoUrl}
+            className="size-18 text-[26px]"
+          />
           <h2 className="mt-3 text-[17px] font-semibold">{tech.name}</h2>
           <p className="font-mono text-xs text-ink-3">{tech.id}</p>
           <div className="mt-2">

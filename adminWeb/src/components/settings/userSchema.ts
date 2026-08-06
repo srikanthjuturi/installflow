@@ -186,6 +186,8 @@ export const inviteUserSchema = z
     email: workEmail,
     role: roleField,
     scope: z.string(),
+    /** Optional cropped profile photo, carried as a data URL. */
+    photo: z.string().optional(),
   })
   .superRefine(checkScope);
 
