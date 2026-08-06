@@ -1,0 +1,228 @@
+"""Company (tenant) management — superadmin only.
+
+Creating a company is atomic: the company row, the admin identity (reused if the
+email already exists as an admin, else created with the given password), and the
+admin membership are all committed together.
+"""
+
+import re
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import HTTPException, status
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.deps import Principal
+from app.core.schemas import ListParams
+from app.core.security import hash_password
+from app.db.repository import paginate
+from app.features.companies.schemas import (
+    CompanyCreateRequest,
+    CompanyOut,
+    CompanyUpdateRequest,
+)
+from app.models.company import Company
+from app.models.membership import Membership
+from app.models.role import ADMIN
+from app.models.user import User
+
+
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "company"
+
+
+async def _unique_slug(session: AsyncSession, name: str) -> str:
+    base = _slugify(name)
+    candidate = base
+    n = 2
+    while await session.scalar(
+        select(func.count()).select_from(Company).where(
+            func.lower(Company.slug) == candidate
+        )
+    ):
+        candidate = f"{base}-{n}"
+        n += 1
+    return candidate
+
+
+def _company_out(
+    company: Company, *, admin_email: str | None = None, user_count: int | None = None
+) -> CompanyOut:
+    return CompanyOut(
+        id=company.id,
+        name=company.name,
+        slug=company.slug,
+        email=company.email,
+        phone=company.phone,
+        isActive=company.is_active,
+        adminEmail=admin_email,
+        userCount=user_count,
+        createdAt=company.created_at,
+    )
+
+
+async def _load_company(session: AsyncSession, company_id: uuid.UUID) -> Company:
+    company = await session.scalar(
+        select(Company).where(
+            Company.id == company_id, Company.deleted_at.is_(None)
+        )
+    )
+    if company is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
+        )
+    return company
+
+
+async def _admin_email(session: AsyncSession, company_id: uuid.UUID) -> str | None:
+    return await session.scalar(
+        select(User.email)
+        .join(Membership, Membership.user_id == User.id)
+        .where(
+            Membership.company_id == company_id,
+            Membership.deleted_at.is_(None),
+            User.role == ADMIN,
+        )
+        .order_by(Membership.created_at)
+        .limit(1)
+    )
+
+
+async def _user_count(session: AsyncSession, company_id: uuid.UUID) -> int:
+    return int(
+        await session.scalar(
+            select(func.count()).select_from(Membership).where(
+                Membership.company_id == company_id,
+                Membership.deleted_at.is_(None),
+            )
+        )
+        or 0
+    )
+
+
+async def create_company(
+    session: AsyncSession, principal: Principal, body: CompanyCreateRequest
+) -> CompanyOut:
+    slug = await _unique_slug(session, body.name)
+    company = Company(
+        name=body.name,
+        slug=slug,
+        email=str(body.email),
+        phone=body.phone,
+        is_active=True,
+        created_by=principal.user_id,
+    )
+    session.add(company)
+    await session.flush()  # populate company.id
+
+    existing = await session.scalar(
+        select(User).where(func.lower(User.email) == str(body.email).lower())
+    )
+    if existing is not None:
+        if existing.deleted_at is not None or existing.role != ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already belongs to another user",
+            )
+        admin_user = existing  # reuse identity → admin of multiple companies
+    else:
+        admin_user = User(
+            email=str(body.email),
+            password_hash=hash_password(body.password),
+            full_name=body.adminName,
+            role=ADMIN,
+            is_active=True,
+            created_by=principal.user_id,
+        )
+        session.add(admin_user)
+        await session.flush()
+
+    session.add(
+        Membership(
+            user_id=admin_user.id,
+            company_id=company.id,
+            is_active=True,
+            created_by=principal.user_id,
+        )
+    )
+    await session.commit()
+    await session.refresh(company)
+    return _company_out(company, admin_email=admin_user.email, user_count=1)
+
+
+async def list_companies(
+    session: AsyncSession, params: ListParams
+) -> tuple[list[CompanyOut], int]:
+    stmt = select(Company).where(Company.deleted_at.is_(None))
+    if params.search:
+        term = f"%{params.search.lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(Company.name).like(term),
+                func.lower(Company.email).like(term),
+                func.lower(Company.slug).like(term),
+            )
+        )
+    sort_col = {
+        "name": Company.name,
+        "email": Company.email,
+        "isActive": Company.is_active,
+        "createdAt": Company.created_at,
+    }.get(params.sortBy or "createdAt", Company.created_at)
+    stmt = stmt.order_by(sort_col.desc() if params.sortDir == "desc" else sort_col.asc())
+
+    rows, total = await paginate(session, stmt, page=params.page, limit=params.limit)
+    return [_company_out(c) for c in rows], total
+
+
+async def get_company(session: AsyncSession, company_id: uuid.UUID) -> CompanyOut:
+    company = await _load_company(session, company_id)
+    return _company_out(
+        company,
+        admin_email=await _admin_email(session, company_id),
+        user_count=await _user_count(session, company_id),
+    )
+
+
+async def update_company(
+    session: AsyncSession, company_id: uuid.UUID, body: CompanyUpdateRequest,
+    principal: Principal,
+) -> CompanyOut:
+    company = await _load_company(session, company_id)
+    if body.name is not None:
+        company.name = body.name
+    if body.email is not None:
+        company.email = str(body.email)
+    if body.phone is not None:
+        company.phone = body.phone
+    company.updated_by = principal.user_id
+    await session.commit()
+    await session.refresh(company)
+    return _company_out(
+        company,
+        admin_email=await _admin_email(session, company_id),
+        user_count=await _user_count(session, company_id),
+    )
+
+
+async def set_status(
+    session: AsyncSession, company_id: uuid.UUID, is_active: bool, principal: Principal
+) -> CompanyOut:
+    company = await _load_company(session, company_id)
+    company.is_active = is_active
+    company.updated_by = principal.user_id
+    await session.commit()
+    await session.refresh(company)
+    return _company_out(company)
+
+
+async def delete_company(
+    session: AsyncSession, company_id: uuid.UUID, principal: Principal
+) -> None:
+    company = await _load_company(session, company_id)
+    company.deleted_at = datetime.now(timezone.utc)
+    company.is_active = False
+    company.updated_by = principal.user_id
+    await session.commit()
