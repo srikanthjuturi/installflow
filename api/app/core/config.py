@@ -25,9 +25,14 @@ class Settings(BaseSettings):
     # ─── CORS ──────────────────────────────────────────────────────────────
     # Origins allowed to call the API from a browser (the adminWeb dev server).
     # Set CORS_ORIGINS in .env as a JSON array to override.
+    # Vite auto-increments its port when one is taken, so allow the usual range.
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
     ]
 
     # ─── Database ──────────────────────────────────────────────────────────
