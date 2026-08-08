@@ -5,6 +5,10 @@ import {
   type ApiRole,
   type AuthPayload,
   type AuthUser,
+  type BackendMembership,
+  type BackendRole,
+  type BackendUser,
+  type LoginResponse,
 } from "@/types/api";
 import type { Role } from "@/types";
 
@@ -59,6 +63,28 @@ export function apiRoleOf(role: Role): ApiRole {
   }
 }
 
+/**
+ * Map the live backend's string role to the console's display `Role`. Superadmin
+ * has no ops-console equivalent — it renders its own shell — so the chrome role
+ * is never actually read for one; it falls back to the least-privileged label.
+ */
+export function roleFromBackend(role: BackendRole): Role {
+  switch (role) {
+    case "admin":
+      return "Admin";
+    case "national_head":
+      return "NH";
+    case "regional_head":
+      return "RSH";
+    case "area_manager":
+      return "ASM";
+    case "technician":
+      return "Ops Staff";
+    default:
+      return LEAST_PRIVILEGED_ROLE;
+  }
+}
+
 /* ------------------------------------------------------------------- store */
 
 /** The scope the console opens on before anyone signs in. */
@@ -80,6 +106,14 @@ interface SessionState {
   accessToken: string | null;
   /** The signed-in account exactly as the API returned it. */
   user: AuthUser | null;
+  /**
+   * Real-backend identity (live FastAPI auth). Set by `signInBackend`; the
+   * superadmin companies module reads these. Kept separate from the mock `user`
+   * above so the still-mocked ops-console screens keep compiling untouched.
+   */
+  superadmin: boolean;
+  backendUser: BackendUser | null;
+  memberships: BackendMembership[];
   /**
    * Flattened mirrors of `user`, written only by `signIn` / `signOut`. The
    * shared chrome (sidebar, account link) reads these directly.
@@ -103,6 +137,8 @@ interface SessionState {
    *  and having it reset on every reload would be worse than not having it. */
   sidebarCollapsed: boolean;
   signIn: (payload: AuthPayload) => void;
+  /** Sign in from the live backend's login payload (the superadmin path). */
+  signInBackend: (payload: LoginResponse) => void;
   signOut: () => void;
   /** Set or clear the avatar. `null` restores the initials fallback. */
   setAvatar: (avatarUrl: string | null) => void;
@@ -117,6 +153,9 @@ export const useSession = create<SessionState>()(
       signedIn: false,
       accessToken: null,
       user: null,
+      superadmin: false,
+      backendUser: null,
+      memberships: [],
       name: "",
       email: "",
       avatarUrl: null,
@@ -134,11 +173,25 @@ export const useSession = create<SessionState>()(
           email: user.email,
           role: roleFromApi(user.role),
         }),
+      signInBackend: ({ accessToken, user, memberships }) =>
+        set({
+          signedIn: true,
+          accessToken,
+          superadmin: user.isSuperadmin,
+          backendUser: user,
+          memberships,
+          name: user.fullName ?? user.email,
+          email: user.email,
+          role: roleFromBackend(user.role),
+        }),
       signOut: () =>
         set({
           signedIn: false,
           accessToken: null,
           user: null,
+          superadmin: false,
+          backendUser: null,
+          memberships: [],
           name: "",
           email: "",
           avatarUrl: null,
@@ -152,16 +205,19 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: "installflow.session",
-      version: 2,
-      // v1 persisted a hardcoded name and email and no token at all. There is
-      // no token to recover from it, so a v1 session cannot be honoured —
-      // keep the workspace preference and make the user sign in again.
+      version: 3,
+      // Older sessions predate the live backend — any token in them is a mock
+      // string the real API would reject. Keep the workspace preference and
+      // make the user sign in again against the backend.
       migrate: (persisted) =>
         ({
           ...(persisted as Partial<SessionState>),
           signedIn: false,
           accessToken: null,
           user: null,
+          superadmin: false,
+          backendUser: null,
+          memberships: [],
           name: "",
           email: "",
           avatarUrl: null,
@@ -170,6 +226,9 @@ export const useSession = create<SessionState>()(
         signedIn: s.signedIn,
         accessToken: s.accessToken,
         user: s.user,
+        superadmin: s.superadmin,
+        backendUser: s.backendUser,
+        memberships: s.memberships,
         email: s.email,
         name: s.name,
         avatarUrl: s.avatarUrl,

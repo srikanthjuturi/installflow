@@ -85,3 +85,47 @@ export const API_ROLE = {
 } as const;
 
 export type ApiRole = (typeof API_ROLE)[keyof typeof API_ROLE];
+
+/* --------------------------------------------------- real backend auth ----
+ * The live FastAPI backend speaks STRING roles (not the numeric codes above)
+ * and adds a superadmin platform role plus the caller's company memberships.
+ * These types describe `POST /auth/login`'s `data` block exactly. The numeric
+ * `API_ROLE` above stays for the still-mocked ops-console screens.
+ */
+
+export type BackendRole =
+  | "superadmin"
+  | "admin"
+  | "national_head"
+  | "regional_head"
+  | "area_manager"
+  | "technician";
+
+export interface BackendUser {
+  id: string;
+  email: string;
+  fullName: string | null;
+  phone: string | null;
+  role: BackendRole;
+  roleLabel: string;
+  profileImageUrl: string | null;
+  isSuperadmin: boolean;
+}
+
+export interface BackendMembership {
+  companyId: string;
+  companyName: string;
+  companySlug: string;
+  role: BackendRole;
+  isActive: boolean;
+}
+
+/** `POST /auth/login` payload (already unwrapped from the envelope). */
+export interface LoginResponse {
+  user: BackendUser;
+  memberships: BackendMembership[];
+  activeCompanyId: string | null;
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+}

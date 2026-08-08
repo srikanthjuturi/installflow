@@ -10,6 +10,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const schema = z.object({
   email: z.email("Enter a valid work email"),
@@ -35,6 +36,8 @@ export function CredentialsStep({
     formState: { errors, isSubmitting },
   } = useForm<Credentials>({
     resolver: zodResolver(schema),
+    // Validate as the user types so errors surface on change, not only submit.
+    mode: "onChange",
     defaultValues: { email: defaultEmail, password: "", trustDevice: true },
   });
 
@@ -85,9 +88,8 @@ export function CredentialsStep({
 
         <Field data-invalid={errors.password ? true : undefined}>
           <FieldLabel htmlFor="password">Password</FieldLabel>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             placeholder="••••••••"
             aria-invalid={errors.password ? true : undefined}
@@ -131,11 +133,11 @@ export function CredentialsStep({
         className="mt-5.5 h-11.5 w-full"
         disabled={isSubmitting}
       >
-        Continue
+        Sign in
       </Button>
 
       <p className="mt-4.5 text-center text-xs text-ink-3">
-        We'll send a one-time code to your registered number.
+        Access is restricted to authorised console accounts.
       </p>
     </form>
   );

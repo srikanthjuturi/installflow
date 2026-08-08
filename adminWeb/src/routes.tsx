@@ -1,6 +1,7 @@
 import { lazy } from "react";
 import { Navigate, Outlet, type RouteObject } from "react-router";
 import { AppShell } from "@/components/shared/AppShell";
+import { SuperadminShell } from "@/components/superadmin/SuperadminShell";
 import { useSession } from "@/store/session";
 
 /* Route-based code splitting — each page is its own chunk, resolved behind
@@ -48,21 +49,45 @@ const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
 const AiReviewDetailPage = lazy(
   () => import("@/pages/ai-review/AiReviewDetailPage")
 );
+const CompaniesPage = lazy(() => import("@/pages/superadmin/CompaniesPage"));
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
-  return signedIn ? <Outlet /> : <Navigate to="/login" replace />;
+  const superadmin = useSession((s) => s.superadmin);
+  if (!signedIn) return <Navigate to="/login" replace />;
+  // The superadmin console is a separate surface — keep it out of the ops app.
+  if (superadmin) return <Navigate to="/companies" replace />;
+  return <Outlet />;
+}
+
+function RequireSuperadmin() {
+  const signedIn = useSession((s) => s.signedIn);
+  const superadmin = useSession((s) => s.superadmin);
+  if (!signedIn) return <Navigate to="/login" replace />;
+  if (!superadmin) return <Navigate to="/" replace />;
+  return <Outlet />;
 }
 
 function RedirectIfSignedIn() {
   const signedIn = useSession((s) => s.signedIn);
-  return signedIn ? <Navigate to="/" replace /> : <Outlet />;
+  const superadmin = useSession((s) => s.superadmin);
+  if (!signedIn) return <Outlet />;
+  return <Navigate to={superadmin ? "/companies" : "/"} replace />;
 }
 
 export const routes: RouteObject[] = [
   {
     element: <RedirectIfSignedIn />,
     children: [{ path: "/login", element: <LoginPage /> }],
+  },
+  {
+    element: <RequireSuperadmin />,
+    children: [
+      {
+        element: <SuperadminShell />,
+        children: [{ path: "companies", element: <CompaniesPage /> }],
+      },
+    ],
   },
   {
     element: <RequireAuth />,
