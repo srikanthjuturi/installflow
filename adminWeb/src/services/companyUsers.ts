@@ -9,6 +9,7 @@ import type { ListParams, Page } from "@/types/api";
 import type {
   CompanyUser,
   CreateUserInput,
+  Region,
   RoleOption,
   UpdateUserInput,
 } from "@/types/user";
@@ -35,4 +36,9 @@ export function deleteUser(membershipId: string): Promise<null> {
 /** The role catalog (non-superadmin), with ranks. Stable — cache aggressively. */
 export function listRoles(): Promise<RoleOption[]> {
   return apiGet<RoleOption[]>("/roles");
+}
+
+/** The five regions of India. Reference data — cache aggressively. */
+export function listRegions(): Promise<Region[]> {
+  return apiGet<Region[]>("/regions");
 }

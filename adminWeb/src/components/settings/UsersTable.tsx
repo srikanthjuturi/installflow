@@ -109,6 +109,21 @@ export function UsersTable({
       ),
     },
     {
+      id: "scope",
+      header: "Scope",
+      cell: (u) => (
+        <div className="leading-tight">
+          <p className="text-[13px] text-ink">{u.scopeLabel}</p>
+          {u.pincodes.length ? (
+            <p className="font-mono text-[11px] text-ink-3">
+              {u.pincodes.slice(0, 3).join(", ")}
+              {u.pincodes.length > 3 ? ` +${u.pincodes.length - 3}` : ""}
+            </p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
       id: "phone",
       header: "Phone",
       cell: (u) =>

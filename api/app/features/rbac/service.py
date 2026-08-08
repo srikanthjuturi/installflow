@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import Principal, ensure_below_rank
 from app.features.rbac.schemas import (
     FeatureOut,
+    RegionOut,
     RoleFeatureItem,
     RoleFeaturesOut,
     RoleOut,
 )
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
 from app.models.role import ROLE_RANKS, SUPERADMIN, Role
+from app.models.territory import Region
 
 
 async def list_roles(session: AsyncSession) -> list[RoleOut]:
@@ -24,6 +26,14 @@ async def list_roles(session: AsyncSession) -> list[RoleOut]:
         select(Role).where(Role.key != SUPERADMIN).order_by(Role.rank)
     )
     return [RoleOut(key=r.key, label=r.label, rank=r.rank) for r in rows]
+
+
+async def list_regions(session: AsyncSession) -> list[RegionOut]:
+    """The regions of India — global reference data, like the role catalog."""
+    rows = await session.scalars(
+        select(Region).where(Region.is_active.is_(True)).order_by(Region.sort_order)
+    )
+    return [RegionOut(id=r.id, code=r.code, name=r.name) for r in rows]
 
 
 async def list_features(session: AsyncSession) -> list[FeatureOut]:

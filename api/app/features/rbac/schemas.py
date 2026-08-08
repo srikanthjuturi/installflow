@@ -1,5 +1,7 @@
 """RBAC request/response models: roles, feature catalog, role-feature overrides."""
 
+import uuid
+
 from pydantic import BaseModel
 
 from app.core.schemas import AppModel
@@ -9,6 +11,14 @@ class RoleOut(AppModel):
     key: str
     label: str
     rank: int
+
+
+class RegionOut(AppModel):
+    """A region of India. Global reference data, like the role catalog."""
+
+    id: uuid.UUID
+    code: str
+    name: str
 
 
 class FeatureOut(AppModel):

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.deps import Principal
 from app.core.features import effective_features
+from app.core.scope import own_scope, scope_label
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -22,6 +23,7 @@ from app.features.auth.schemas import (
     MembershipOut,
     MeResponse,
     RefreshResponse,
+    RegionOut,
     SwitchCompanyResponse,
     UserOut,
 )
@@ -237,10 +239,16 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
     features = await effective_features(
         session, role=principal.role, company_id=principal.company_id
     )
+    _own_id, scope = await own_scope(
+        session, user_id=principal.user_id, company_id=principal.company_id
+    )
     return MeResponse(
         user=_user_out(user),
         activeCompany=_company_out(active_company) if active_company else None,
         role=principal.role,
         features=features,
         memberships=[_membership_out(user, m, c) for m, c in memberships],
+        regions=[RegionOut(id=r.id, code=r.code, name=r.name) for r in scope.regions],
+        pincodes=list(scope.pincodes),
+        scopeLabel=scope_label(principal.role, scope),
     )

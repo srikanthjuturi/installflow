@@ -1,4 +1,4 @@
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +28,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useAssignableRoles, useCreateUser } from "@/hooks/useCompanyUsers";
+import { ScopeField } from "./ScopeField";
 import {
   createUserResolver,
   EMPTY_INVITE,
@@ -58,6 +59,7 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
     control,
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<CreateUserValues>({
     resolver: createUserResolver(roles.map((r) => r.key)),
@@ -67,6 +69,12 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
 
   const err = (name: keyof CreateUserValues) => errors[name]?.message;
 
+  // The role decides what a territory even is, so these three drive the scope
+  // field; a stale pick must not survive a role change (cleared on select).
+  const role = useWatch({ control, name: "role" });
+  const regionIds = useWatch({ control, name: "regionIds" });
+  const pincodes = useWatch({ control, name: "pincodes" });
+
   function submit(values: CreateUserValues) {
     create.mutate(
       {
@@ -75,6 +83,8 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
         fullName: values.fullName.trim(),
         phone: values.phone.trim() || null,
         password: values.password,
+        regionIds: values.regionIds,
+        pincodes: values.pincodes,
       },
       {
         onSuccess: (u) => {
@@ -138,17 +148,31 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
             name="role"
             control={control}
             render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
+              <Select
+                value={field.value}
+                onValueChange={(v) => {
+                  field.onChange(v);
+                  // A region picked for one role means nothing for another.
+                  setValue("regionIds", [], { shouldValidate: false });
+                  setValue("pincodes", [], { shouldValidate: false });
+                }}
+              >
                 <SelectTrigger
                   id="role"
                   className="w-full"
                   aria-invalid={err("role") ? true : undefined}
                 >
+                  {/* Map the role key back to its label — the trigger would
+                      otherwise show the raw `area_manager` key. */}
                   <SelectValue
                     placeholder={
                       roles.length ? "Select a role" : "No assignable roles"
                     }
-                  />
+                  >
+                    {(v) =>
+                      roles.find((r) => r.key === v)?.label ?? "Select a role"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -171,6 +195,20 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
             </FieldDescription>
           ) : null}
         </Field>
+
+        <ScopeField
+          role={role}
+          regionIds={regionIds}
+          pincodes={pincodes}
+          onRegionIds={(next) =>
+            setValue("regionIds", next, { shouldValidate: true })
+          }
+          onPincodes={(next) =>
+            setValue("pincodes", next, { shouldValidate: true })
+          }
+          regionError={err("regionIds")}
+          pincodeError={err("pincodes")}
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field data-invalid={err("phone") ? true : undefined}>

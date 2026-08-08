@@ -1,4 +1,4 @@
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +24,7 @@ import { toast } from "@/components/ui/toast";
 import { useUpdateUser } from "@/hooks/useCompanyUsers";
 import { cn } from "@/lib/utils";
 import type { CompanyUser } from "@/types/user";
+import { ScopeField } from "./ScopeField";
 import { editUserResolver, type EditUserValues } from "./companyUserSchema";
 
 export function EditUserDialog({
@@ -63,18 +64,24 @@ function EditUserForm({
     control,
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<EditUserValues>({
-    resolver: editUserResolver,
+    resolver: editUserResolver(user.role),
     mode: "onChange",
     defaultValues: {
       fullName: user.fullName ?? "",
       phone: user.phone ?? "",
       isActive: user.isActive,
+      regionIds: user.regions.map((r) => r.id),
+      pincodes: user.pincodes,
     },
   });
 
   const err = (name: keyof EditUserValues) => errors[name]?.message;
+  // Only the scope fields drive conditional UI, so only those are watched.
+  const regionIds = useWatch({ control, name: "regionIds" });
+  const pincodes = useWatch({ control, name: "pincodes" });
 
   function submit(values: EditUserValues) {
     update.mutate(
@@ -84,6 +91,8 @@ function EditUserForm({
           fullName: values.fullName.trim(),
           phone: values.phone.trim() || null,
           isActive: values.isActive,
+          regionIds: values.regionIds,
+          pincodes: values.pincodes,
         },
       },
       {
@@ -136,6 +145,20 @@ function EditUserForm({
             </FieldDescription>
           ) : null}
         </Field>
+
+        <ScopeField
+          role={user.role}
+          regionIds={regionIds}
+          pincodes={pincodes}
+          onRegionIds={(next) =>
+            setValue("regionIds", next, { shouldValidate: true })
+          }
+          onPincodes={(next) =>
+            setValue("pincodes", next, { shouldValidate: true })
+          }
+          regionError={err("regionIds")}
+          pincodeError={err("pincodes")}
+        />
 
         <FieldSet>
           <FieldLegend variant="label" className="text-sm font-medium">

@@ -4,16 +4,26 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useMe } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
 import type { ListParams } from "@/types/api";
-import type { CreateUserInput, RoleOption, UpdateUserInput } from "@/types/user";
+import type {
+  CreateUserInput,
+  Region,
+  RoleOption,
+  UpdateUserInput,
+} from "@/types/user";
 import {
   createUser,
   deleteUser,
+  listRegions,
   listRoles,
   listUsers,
   updateUser,
 } from "@/services/companyUsers";
+
+/** Roles whose reach is the whole country — they hand out any region. */
+const ALL_INDIA_ROLES = new Set(["superadmin", "admin", "national_head"]);
 
 export const companyUserKeys = {
   all: ["company-users"] as const,
@@ -38,6 +48,31 @@ export function useRoles() {
   });
 }
 
+/** The regions of India. Reference data — cached like the role catalog. */
+export function useRegions() {
+  return useQuery({
+    queryKey: ["regions"],
+    queryFn: listRegions,
+    staleTime: 60 * 60_000,
+  });
+}
+
+/**
+ * Regions the signed-in user may hand out: their own, or all five for an
+ * all-India role. The server enforces the same rule — this only keeps the
+ * dropdown from offering a choice that would be rejected.
+ */
+export function useAssignableRegions(): Region[] {
+  const { data: regions } = useRegions();
+  const me = useMe();
+  const own = me.data?.regions ?? [];
+  const role = me.data?.role;
+  if (!regions) return [];
+  if (!role || ALL_INDIA_ROLES.has(role)) return regions;
+  const mine = new Set(own.map((r) => r.id));
+  return regions.filter((r) => mine.has(r.id));
+}
+
 /**
  * Roles the signed-in user may assign — strictly below their own rank. The
  * backend enforces the same rule; this only keeps the UI from offering choices
@@ -60,8 +95,11 @@ export function useMyRank(): number {
 
 function useInvalidateUsers() {
   const queryClient = useQueryClient();
-  return () =>
+  return () => {
     queryClient.invalidateQueries({ queryKey: companyUserKeys.list() });
+    // The territory tree IS the assignments, so changing one changes the other.
+    queryClient.invalidateQueries({ queryKey: ["territory"] });
+  };
 }
 
 export function useCreateUser() {

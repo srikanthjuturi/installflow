@@ -157,4 +157,8 @@ export interface MeResponse {
   role: BackendRole;
   features: string[];
   memberships: BackendMembership[];
+  /** The caller's OWN territory — what they cover, and what they may hand out. */
+  regions: { id: string; code: string; name: string }[];
+  pincodes: string[];
+  scopeLabel: string;
 }

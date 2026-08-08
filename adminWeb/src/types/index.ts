@@ -97,18 +97,7 @@ export interface User {
   last: string;
 }
 
-export interface AsmTerritory {
-  name: string;
-  area: string;
-  initial: string;
-  pincodes: string[];
-}
-
-export interface RegionTerritory {
-  region: string;
-  rsh: string;
-  pincount: number;
-  asms: AsmTerritory[];
-}
+/* Territory types moved to `types/territory.ts` when the mapping became real —
+   it is now derived from user assignments rather than its own mock records. */
 export * from "./imports";
 export * from "./partner";

@@ -75,9 +75,19 @@ class RefreshResponse(AppModel):
     tokenType: str = "bearer"
 
 
+class RegionOut(AppModel):
+    id: uuid.UUID
+    code: str
+    name: str
+
+
 class MeResponse(AppModel):
     user: UserOut
     activeCompany: CompanyOut | None
     role: str
     features: list[str]
     memberships: list[MembershipOut]
+    # The caller's OWN territory — what they cover, and what they may hand out.
+    regions: list[RegionOut]
+    pincodes: list[str]
+    scopeLabel: str

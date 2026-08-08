@@ -11,6 +11,7 @@ from app.core.schemas import ApiEnvelope, envelope
 from app.features.rbac import service
 from app.features.rbac.schemas import (
     FeatureOut,
+    RegionOut,
     RoleFeaturesOut,
     RoleFeaturesUpdateRequest,
     RoleOut,
@@ -25,6 +26,13 @@ ManageFeatures = Annotated[Principal, Depends(require_feature("features.manage")
 @router.get("/roles", response_model=ApiEnvelope[list[RoleOut]])
 async def list_roles(principal: CompanyPrincipal, db: Db) -> ApiEnvelope[list[RoleOut]]:
     return envelope(await service.list_roles(db))
+
+
+@router.get("/regions", response_model=ApiEnvelope[list[RegionOut]])
+async def list_regions(
+    principal: CompanyPrincipal, db: Db
+) -> ApiEnvelope[list[RegionOut]]:
+    return envelope(await service.list_regions(db))
 
 
 @router.get("/features", response_model=ApiEnvelope[list[FeatureOut]])

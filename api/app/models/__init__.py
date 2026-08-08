@@ -5,6 +5,7 @@ from app.models.company import Company
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
 from app.models.membership import Membership
 from app.models.role import Role
+from app.models.territory import MembershipPincode, MembershipRegion, Region
 from app.models.token import RefreshToken
 from app.models.user import User
 
@@ -14,7 +15,10 @@ __all__ = [
     "CompanyRoleFeature",
     "Feature",
     "Membership",
+    "MembershipPincode",
+    "MembershipRegion",
     "RefreshToken",
+    "Region",
     "Role",
     "RoleFeatureDefault",
     "User",

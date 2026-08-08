@@ -135,7 +135,9 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Territory",
         to: "/territory",
         icon: Map,
-        feature: "settings.view",
+        // Its own feature, so a National Head can see the territory without
+        // also getting Vendors, Categories and Rules Config.
+        feature: "territory.view",
       },
       {
         label: "Categories",

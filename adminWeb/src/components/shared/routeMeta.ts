@@ -34,7 +34,7 @@ const STATIC: Record<string, Meta> = {
   "/vendors": { title: "Vendors", subtitle: "Master & API credentials" },
   "/territory": {
     title: "Territory mapping",
-    subtitle: "Region → RSH → ASM → pincode",
+    subtitle: "Region → Regional Head → Area Manager → pincode",
   },
   "/categories": { title: "Categories & models", subtitle: "Product master" },
   "/settings/rules": {
