@@ -24,9 +24,17 @@ from app.core.config import settings  # noqa: E402
 if __name__ == "__main__":
     # RELOAD env overrides; defaults to DEBUG. Set RELOAD=0 for a stable server.
     reload = os.getenv("RELOAD", "1" if settings.DEBUG else "0") == "1"
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", "8000")),
-        reload=reload,
-    )
+    host = "0.0.0.0"
+    port = int(os.getenv("PORT", "8000"))
+
+    if reload:
+        # The reload worker re-imports app.main (which re-applies the selector
+        # policy), so uvicorn's own loop setup is fine here.
+        uvicorn.run("app.main:app", host=host, port=port, reload=True)
+    else:
+        # Single-process: uvicorn's Windows loop setup would install a
+        # ProactorEventLoop (which psycopg can't use). Bypass it by serving
+        # inside a loop we create from the selector policy set above.
+        config = uvicorn.Config("app.main:app", host=host, port=port)
+        server = uvicorn.Server(config)
+        asyncio.run(server.serve())

@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Videocon Installation API"
     API_V1_PREFIX: str = "/api/v1"
 
+    # ─── CORS ──────────────────────────────────────────────────────────────
+    # Origins allowed to call the API from a browser (the adminWeb dev server).
+    # Set CORS_ORIGINS in .env as a JSON array to override.
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
     # ─── Database ──────────────────────────────────────────────────────────
     POSTGRES_HOST: str
     POSTGRES_PORT: int = 5432

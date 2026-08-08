@@ -6,6 +6,7 @@ import warnings
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.router import api_router
@@ -38,6 +39,15 @@ app = FastAPI(
 )
 
 register_exception_handlers(app)
+
+# Browser clients (the adminWeb console) call this API cross-origin in dev.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health", tags=["meta"])
