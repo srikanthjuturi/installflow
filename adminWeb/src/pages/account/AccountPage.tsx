@@ -1,28 +1,31 @@
-import { useNavigate } from "react-router";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { AccountCard } from "@/components/account/AccountCard";
-import { useAuthUser, useSignOut } from "@/hooks/useAuth";
+import { useCurrentUser, useSignOut } from "@/hooks/useAuth";
+import { useSession } from "@/store/session";
 
 /** The signed-in user's own record, and the only way out of the console. */
 export default function AccountPage() {
-  const user = useAuthUser();
+  const user = useCurrentUser();
+  const memberships = useSession((s) => s.memberships);
+  const activeCompanyId = useSession((s) => s.activeCompanyId);
   const signOut = useSignOut();
-  const navigate = useNavigate();
 
   return (
     <>
       <PageMeta
         title="Account"
-        description="Your InstallFlow profile, scope and session."
+        description="Your profile, companies and session."
       />
       {/* The route guard only lets a signed-in session through, so `user` is
           present here — the check is what makes that a type, not a hope. */}
       {user ? (
         <AccountCard
           user={user}
-          onSignOut={() => {
-            signOut();
-            navigate("/login", { replace: true });
+          memberships={memberships}
+          activeCompanyId={activeCompanyId}
+          onSignOut={async () => {
+            await signOut();
+            window.location.assign("/login");
           }}
         />
       ) : null}

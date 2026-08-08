@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { login, logout } from "@/services/auth";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { login, logout, me, switchCompany } from "@/services/auth";
 import { useSession } from "@/store/session";
 
 /**
@@ -41,6 +41,59 @@ export function useLogin() {
 /** The signed-in backend account, or `null` when signed out. */
 export function useCurrentUser() {
   return useSession((s) => s.backendUser);
+}
+
+/**
+ * The caller's identity + EFFECTIVE features for the active company. This is
+ * what drives navigation and screen gating — the same set the server enforces,
+ * so the rail can never offer a screen the API would refuse.
+ *
+ * Re-fetched after a company switch because `queryClient.clear()` drops it.
+ */
+export function useMe() {
+  const signedIn = useSession((s) => s.signedIn);
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: me,
+    enabled: signedIn,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Feature gating for the UI. Returns:
+ *  - `loading` while the set is still arriving (callers must not redirect yet)
+ *  - `has(key)` — true when the feature is granted, or when the key is absent
+ *    (an ungated screen).
+ *
+ * Presentation only: hiding a link is not authorization. The server is the
+ * authority and rejects a direct call regardless of what the rail shows.
+ */
+export function useFeatureAccess() {
+  const { data, isPending } = useMe();
+  const features = data?.features;
+  return {
+    loading: isPending,
+    has: (key?: string) => !key || !!features?.includes(key),
+  };
+}
+
+/**
+ * Switch the active company. On success the re-scoped token replaces the old
+ * one and every cached query is cleared — all list/detail data is per-company,
+ * so it must refetch for the new scope.
+ */
+export function useSwitchCompany() {
+  const setActiveCompany = useSession((s) => s.setActiveCompany);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (companyId: string) => switchCompany(companyId),
+    onSuccess: (payload) => {
+      setActiveCompany(payload);
+      queryClient.clear();
+    },
+  });
 }
 
 /**

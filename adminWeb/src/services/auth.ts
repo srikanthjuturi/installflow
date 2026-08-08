@@ -1,5 +1,9 @@
-import { apiPost } from "./http";
-import type { LoginResponse } from "@/types/api";
+import { apiGet, apiPost } from "./http";
+import type {
+  LoginResponse,
+  MeResponse,
+  SwitchCompanyResponse,
+} from "@/types/api";
 
 /**
  * Sign in against the live backend (`POST /auth/login`).
@@ -23,4 +27,16 @@ export function login(email: string, password: string): Promise<LoginResponse> {
  */
 export function logout(): Promise<null> {
   return apiPost<null>("/auth/logout", {});
+}
+
+/** The caller's identity plus their effective features for the active company. */
+export function me(): Promise<MeResponse> {
+  return apiGet<MeResponse>("/auth/me");
+}
+
+/** Re-scope the session to another company the caller belongs to. */
+export function switchCompany(
+  companyId: string
+): Promise<SwitchCompanyResponse> {
+  return apiPost<SwitchCompanyResponse>("/auth/switch-company", { companyId });
 }

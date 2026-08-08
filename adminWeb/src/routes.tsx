@@ -1,7 +1,10 @@
 import { lazy } from "react";
-import { Navigate, Outlet, type RouteObject } from "react-router";
+import { Navigate, Outlet, useLocation, type RouteObject } from "react-router";
 import { AppShell } from "@/components/shared/AppShell";
+import { PageSkeleton } from "@/components/shared/PageSkeleton";
+import { featureForPath } from "@/components/shared/nav";
 import { SuperadminShell } from "@/components/superadmin/SuperadminShell";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
 
 /* Route-based code splitting — each page is its own chunk, resolved behind
@@ -68,6 +71,24 @@ function RequireSuperadmin() {
   return <Outlet />;
 }
 
+/**
+ * Blocks a route whose backing feature this user does not have, sending them to
+ * the dashboard rather than a screen whose every request would 403. Pairs with
+ * the sidebar filter — both read the same map, so a hidden link is also an
+ * unreachable URL. The server remains the authority.
+ */
+function RequireFeature() {
+  const { pathname } = useLocation();
+  const feature = featureForPath(pathname);
+  const { loading, has } = useFeatureAccess();
+
+  // Ungated routes (dashboard, account, notifications) never wait on /auth/me.
+  if (!feature) return <Outlet />;
+  // Don't bounce anyone before the feature set has actually arrived.
+  if (loading) return <PageSkeleton />;
+  return has(feature) ? <Outlet /> : <Navigate to="/" replace />;
+}
+
 function RedirectIfSignedIn() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
@@ -95,33 +116,40 @@ export const routes: RouteObject[] = [
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <DashboardPage /> },
-          { path: "tickets", element: <TicketListPage /> },
-          { path: "tickets/new", element: <ManualEntryPage /> },
-          { path: "tickets/import", element: <BulkUploadPage /> },
           {
-            path: "tickets/import/:batchId",
-            element: <ValidationResultPage />,
+            // Every in-app page sits behind the feature guard; ungated paths
+            // pass straight through.
+            element: <RequireFeature />,
+            children: [
+              { index: true, element: <DashboardPage /> },
+              { path: "tickets", element: <TicketListPage /> },
+              { path: "tickets/new", element: <ManualEntryPage /> },
+              { path: "tickets/import", element: <BulkUploadPage /> },
+              {
+                path: "tickets/import/:batchId",
+                element: <ValidationResultPage />,
+              },
+              { path: "tickets/:id", element: <TicketDetailPage /> },
+              { path: "tickets/:id/force-close", element: <ForceClosePage /> },
+              { path: "escalations", element: <EscalationQueuePage /> },
+              { path: "escalations/:id/bonus", element: <BonusSetupPage /> },
+              { path: "escalations/:id/assign", element: <ManualAssignPage /> },
+              { path: "ai-review", element: <AiQueuePage /> },
+              { path: "ai-review/:id", element: <AiReviewDetailPage /> },
+              { path: "partners/freelancers", element: <FreelancerListPage /> },
+              { path: "partners/franchises", element: <FranchiseListPage /> },
+              { path: "technicians", element: <TechnicianListPage /> },
+              { path: "technicians/:id", element: <TechnicianProfilePage /> },
+              { path: "ledger", element: <LedgerPage /> },
+              { path: "vendors", element: <VendorsPage /> },
+              { path: "categories", element: <CategoriesPage /> },
+              { path: "territory", element: <TerritoryPage /> },
+              { path: "settings/rules", element: <RulesConfigPage /> },
+              { path: "settings/users", element: <UsersRolesPage /> },
+              { path: "notifications", element: <NotificationsPage /> },
+              { path: "account", element: <AccountPage /> },
+            ],
           },
-          { path: "tickets/:id", element: <TicketDetailPage /> },
-          { path: "tickets/:id/force-close", element: <ForceClosePage /> },
-          { path: "escalations", element: <EscalationQueuePage /> },
-          { path: "escalations/:id/bonus", element: <BonusSetupPage /> },
-          { path: "escalations/:id/assign", element: <ManualAssignPage /> },
-          { path: "ai-review", element: <AiQueuePage /> },
-          { path: "ai-review/:id", element: <AiReviewDetailPage /> },
-          { path: "partners/freelancers", element: <FreelancerListPage /> },
-          { path: "partners/franchises", element: <FranchiseListPage /> },
-          { path: "technicians", element: <TechnicianListPage /> },
-          { path: "technicians/:id", element: <TechnicianProfilePage /> },
-          { path: "ledger", element: <LedgerPage /> },
-          { path: "vendors", element: <VendorsPage /> },
-          { path: "categories", element: <CategoriesPage /> },
-          { path: "territory", element: <TerritoryPage /> },
-          { path: "settings/rules", element: <RulesConfigPage /> },
-          { path: "settings/users", element: <UsersRolesPage /> },
-          { path: "notifications", element: <NotificationsPage /> },
-          { path: "account", element: <AccountPage /> },
         ],
       },
     ],

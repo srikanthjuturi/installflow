@@ -5,7 +5,7 @@ interface Meta {
 
 /** Exact copy from the approved prototype's page header. */
 const STATIC: Record<string, Meta> = {
-  "/": { title: "Dashboard", subtitle: "Area Service Manager · Pune region" },
+  "/": { title: "Dashboard", subtitle: "Operations overview" },
   "/tickets": { title: "Tickets", subtitle: "All installation & demo tickets" },
   "/tickets/new": {
     title: "Manual ticket entry",

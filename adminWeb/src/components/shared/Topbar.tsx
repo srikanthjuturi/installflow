@@ -1,13 +1,10 @@
 import { Bell, Menu, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { CompanySwitcher } from "./CompanySwitcher";
 import { LinkButton } from "./LinkButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { useUnreadNotificationCount } from "@/hooks/useNotifications";
 import { useSession } from "@/store/session";
-import type { Role } from "@/types";
-
-const SCOPES: Role[] = ["NH", "RSH", "ASM"];
 
 interface TopbarProps {
   title: string;
@@ -15,7 +12,7 @@ interface TopbarProps {
 }
 
 export function Topbar({ title, subtitle }: TopbarProps) {
-  const { role, setRole, setSidebarOpen } = useSession();
+  const setSidebarOpen = useSession((s) => s.setSidebarOpen);
   const { data: unread = 0 } = useUnreadNotificationCount();
 
   return (
@@ -49,29 +46,9 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         />
       </div>
 
-      {/* Presentation only — real scoping is a server-side guard. */}
-      <div
-        className="flex items-center gap-1 rounded-full border border-line bg-surface-2 p-0.5"
-        role="group"
-        aria-label="View scope"
-      >
-        {SCOPES.map((r) => (
-          <button
-            key={r}
-            type="button"
-            aria-pressed={role === r}
-            onClick={() => setRole(r)}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-              role === r
-                ? "bg-brand-500 text-white"
-                : "text-ink-2 hover:text-ink"
-            )}
-          >
-            {r}
-          </button>
-        ))}
-      </div>
+      {/* The company this session is scoped to; a dropdown when there's more
+          than one. Replaces the old presentation-only role tabs. */}
+      <CompanySwitcher />
 
       <ThemeToggle />
 

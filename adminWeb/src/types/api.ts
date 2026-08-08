@@ -129,3 +129,32 @@ export interface LoginResponse {
   refreshToken: string;
   tokenType: string;
 }
+
+/** `POST /auth/switch-company` payload — a token re-scoped to the new company. */
+export interface SwitchCompanyResponse {
+  accessToken: string;
+  activeCompanyId: string;
+}
+
+/** Company summary as `/auth/me` returns it. */
+export interface ActiveCompany {
+  id: string;
+  name: string;
+  slug: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+}
+
+/**
+ * `GET /auth/me` — the single source the console uses to render navigation and
+ * gate screens. `features` is the caller's EFFECTIVE feature set for the active
+ * company (company override → role default → false).
+ */
+export interface MeResponse {
+  user: BackendUser;
+  activeCompany: ActiveCompany | null;
+  role: BackendRole;
+  features: string[];
+  memberships: BackendMembership[];
+}

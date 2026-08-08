@@ -26,6 +26,15 @@ export interface NavItem {
   badge?: number;
   /** Child routes that should keep this item lit. */
   match?: string[];
+  /**
+   * Backend feature key required to see this entry and reach its route.
+   * Absent = ungated (shown to every signed-in user).
+   *
+   * These mirror the server's feature catalog, so the rail can never offer a
+   * screen the API would refuse. Escalations and AI review are deliberately
+   * ungated: the domain puts both in the Area Service Manager's hands.
+   */
+  feature?: string;
 }
 
 export interface NavGroup {
@@ -57,9 +66,20 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/tickets",
         icon: ListFilter,
         match: ["/tickets/"],
+        feature: "jobs.view",
       },
-      { label: "Manual Entry", to: "/tickets/new", icon: FileText },
-      { label: "Bulk Upload", to: "/tickets/import", icon: Upload },
+      {
+        label: "Manual Entry",
+        to: "/tickets/new",
+        icon: FileText,
+        feature: "jobs.create",
+      },
+      {
+        label: "Bulk Upload",
+        to: "/tickets/import",
+        icon: Upload,
+        feature: "jobs.create",
+      },
     ],
   },
   {
@@ -97,20 +117,75 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/technicians",
         icon: Users,
         match: ["/technicians/"],
+        feature: "technicians.view",
       },
-      { label: "Penalty & Bonus", to: "/ledger", icon: Coins },
-      { label: "Vendors", to: "/vendors", icon: Boxes },
-      { label: "Territory", to: "/territory", icon: Map },
-      { label: "Categories", to: "/categories", icon: Tags },
+      {
+        label: "Penalty & Bonus",
+        to: "/ledger",
+        icon: Coins,
+        feature: "earnings.view",
+      },
+      {
+        label: "Vendors",
+        to: "/vendors",
+        icon: Boxes,
+        feature: "settings.view",
+      },
+      {
+        label: "Territory",
+        to: "/territory",
+        icon: Map,
+        feature: "settings.view",
+      },
+      {
+        label: "Categories",
+        to: "/categories",
+        icon: Tags,
+        feature: "settings.view",
+      },
     ],
   },
   {
     name: "Configuration",
     items: [
-      { label: "Rules Config", to: "/settings/rules", icon: SlidersHorizontal },
-      { label: "Users & Roles", to: "/settings/users", icon: UserCog },
+      {
+        label: "Rules Config",
+        to: "/settings/rules",
+        icon: SlidersHorizontal,
+        feature: "settings.view",
+      },
+      {
+        label: "Users & Roles",
+        to: "/settings/users",
+        icon: UserCog,
+        feature: "users.view",
+      },
     ],
   },
 ];
+
+/**
+ * The feature a path requires, or `undefined` when it is ungated.
+ *
+ * Derived from NAV_GROUPS so the rail and the route guard can never disagree —
+ * a link that is hidden is also unreachable by typing the URL.
+ */
+export function featureForPath(pathname: string): string | undefined {
+  const items = NAV_GROUPS.flatMap((g) => g.items);
+
+  const exact = items.find((i) => i.to === pathname);
+  if (exact) return exact.feature;
+
+  // Longest prefix wins, so /settings/users beats a hypothetical /settings.
+  const prefixed = items
+    .filter(
+      (i) =>
+        (i.to !== "/" && pathname.startsWith(`${i.to}/`)) ||
+        i.match?.some((m) => pathname.startsWith(m))
+    )
+    .sort((a, b) => b.to.length - a.to.length)[0];
+
+  return prefixed?.feature;
+}
 
 export { UserCog };

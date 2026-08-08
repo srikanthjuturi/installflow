@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "./nav";
 import { ROLE_LABEL, useSession } from "@/store/session";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { useFeatureAccess } from "@/hooks/useAuth";
 
 function isActive(pathname: string, to: string, match?: string[]) {
   if (to === "/") return pathname === "/";
@@ -20,12 +21,27 @@ function isActive(pathname: string, to: string, match?: string[]) {
  */
 export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { pathname } = useLocation();
-  const { name, role, avatarUrl, setSidebarOpen, toggleSidebarCollapsed } =
-    useSession();
+  const {
+    name,
+    role,
+    backendUser,
+    avatarUrl,
+    setSidebarOpen,
+    toggleSidebarCollapsed,
+  } = useSession();
+  // Prefer the real backend role label; the mock `role` can drift from a stale
+  // persisted session, so it's only a fallback for the still-mocked chrome.
+  const roleLabel = backendUser?.roleLabel ?? ROLE_LABEL[role];
 
-  // A group with a `roles` list is only rendered for those roles. That is
-  // presentation — the route is still reachable and the server still guards it.
-  const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role));
+  // Two filters, then drop groups left empty:
+  //   1. `roles` — the console's own coarse grouping (mock chrome).
+  //   2. `feature` — the backend's effective feature set for this user in this
+  //      company. A hidden link is also blocked by the route guard, and the
+  //      server refuses the call regardless.
+  const { has } = useFeatureAccess();
+  const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
+    .map((g) => ({ ...g, items: g.items.filter((i) => has(i.feature)) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <aside
@@ -169,7 +185,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
                   {name}
                 </div>
                 <div className="truncate text-[11px] text-white/50">
-                  {ROLE_LABEL[role]}
+                  {roleLabel}
                 </div>
               </div>
               <ChevronRight

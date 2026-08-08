@@ -114,6 +114,8 @@ interface SessionState {
   superadmin: boolean;
   backendUser: BackendUser | null;
   memberships: BackendMembership[];
+  /** The company the token is currently scoped to (the header switcher's value). */
+  activeCompanyId: string | null;
   /**
    * Flattened mirrors of `user`, written only by `signIn` / `signOut`. The
    * shared chrome (sidebar, account link) reads these directly.
@@ -139,6 +141,11 @@ interface SessionState {
   signIn: (payload: AuthPayload) => void;
   /** Sign in from the live backend's login payload (the superadmin path). */
   signInBackend: (payload: LoginResponse) => void;
+  /** Apply a re-scoped token after switching companies. */
+  setActiveCompany: (next: {
+    accessToken: string;
+    activeCompanyId: string;
+  }) => void;
   signOut: () => void;
   /** Set or clear the avatar. `null` restores the initials fallback. */
   setAvatar: (avatarUrl: string | null) => void;
@@ -156,6 +163,7 @@ export const useSession = create<SessionState>()(
       superadmin: false,
       backendUser: null,
       memberships: [],
+      activeCompanyId: null,
       name: "",
       email: "",
       avatarUrl: null,
@@ -173,17 +181,20 @@ export const useSession = create<SessionState>()(
           email: user.email,
           role: roleFromApi(user.role),
         }),
-      signInBackend: ({ accessToken, user, memberships }) =>
+      signInBackend: ({ accessToken, user, memberships, activeCompanyId }) =>
         set({
           signedIn: true,
           accessToken,
           superadmin: user.isSuperadmin,
           backendUser: user,
           memberships,
+          activeCompanyId,
           name: user.fullName ?? user.email,
           email: user.email,
           role: roleFromBackend(user.role),
         }),
+      setActiveCompany: ({ accessToken, activeCompanyId }) =>
+        set({ accessToken, activeCompanyId }),
       signOut: () =>
         set({
           signedIn: false,
@@ -192,6 +203,7 @@ export const useSession = create<SessionState>()(
           superadmin: false,
           backendUser: null,
           memberships: [],
+          activeCompanyId: null,
           name: "",
           email: "",
           avatarUrl: null,
@@ -205,10 +217,11 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: "installflow.session",
-      version: 3,
-      // Older sessions predate the live backend — any token in them is a mock
-      // string the real API would reject. Keep the workspace preference and
-      // make the user sign in again against the backend.
+      version: 4,
+      // Older sessions predate the live backend (or carry a stale view-role
+      // from the removed role toggle, or lack activeCompanyId). None can be
+      // trusted — keep the workspace preference and re-sign-in against the
+      // backend, which re-derives role and active company from scratch.
       migrate: (persisted) =>
         ({
           ...(persisted as Partial<SessionState>),
@@ -218,6 +231,7 @@ export const useSession = create<SessionState>()(
           superadmin: false,
           backendUser: null,
           memberships: [],
+          activeCompanyId: null,
           name: "",
           email: "",
           avatarUrl: null,
@@ -229,6 +243,7 @@ export const useSession = create<SessionState>()(
         superadmin: s.superadmin,
         backendUser: s.backendUser,
         memberships: s.memberships,
+        activeCompanyId: s.activeCompanyId,
         email: s.email,
         name: s.name,
         avatarUrl: s.avatarUrl,

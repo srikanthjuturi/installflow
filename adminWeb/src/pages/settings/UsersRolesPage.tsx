@@ -1,36 +1,33 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
-import { InviteUserDialog } from "@/components/settings/InviteUserDialog";
-import { UserTable } from "@/components/settings/UserTable";
+import { AddUserDialog } from "@/components/settings/AddUserDialog";
+import { UsersTable } from "@/components/settings/UsersTable";
 import { Button } from "@/components/ui/button";
+import { useCompanyUsers } from "@/hooks/useCompanyUsers";
 import { useListParams } from "@/hooks/useListParams";
-import { useUsers } from "@/hooks/useSettings";
 
 /**
- * Who can sign in to the console, and the scope each of them works inside:
- * NH across every region, RSH one region, ASM a pincode range, Ops Staff
- * intake only. The customer and the technician never appear here.
- *
- * Presentation only — RBAC is enforced server-side, so nothing on this screen
- * grants or revokes anything.
+ * Company users — who can sign in to this company and as what role. Backed by
+ * the live `/users` API and scoped to the caller's company. Role assignment and
+ * row actions are limited to roles below the signed-in user's own; the backend
+ * enforces the same rule.
  */
 export default function UsersRolesPage() {
-  // The page owns the query string; the table reports intent into it.
   const [params, setParams] = useListParams();
-  const { data, isLoading, isError, error, refetch } = useUsers(params);
+  const { data, isLoading, isError, error, refetch } = useCompanyUsers(params);
   const [inviting, setInviting] = useState(false);
 
   return (
     <>
       <PageMeta
         title="Users & roles"
-        description="Console access management — role, scope and status per user."
+        description="Company access management — role and status per user."
       />
 
-      <InviteUserDialog open={inviting} onOpenChange={setInviting} />
+      <AddUserDialog open={inviting} onOpenChange={setInviting} />
 
-      <UserTable
+      <UsersTable
         users={data?.rows}
         meta={data?.pagination}
         params={params}
