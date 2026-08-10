@@ -1,0 +1,294 @@
+"""Self-registration from an invite link. Unauthenticated by definition.
+
+The flow is four calls:
+
+    GET  /onboarding/invites/{token}              who invited you, which region
+    POST /onboarding/invites/{token}/otp          code to the invited number
+    POST /onboarding/invites/{token}/otp/verify   -> a 15-minute registration token
+    POST /onboarding/invites/{token}/register     creates everything, signs you in
+
+The OTP step is not ceremony. The invite token arrives over WhatsApp and is
+forwardable, so without proving possession of the phone, whoever receives a
+forwarded message could mint an account that accepts jobs and earns money
+against someone else's number. The registration token is a JWT of type
+`invite_reg`, which `get_current_principal` rejects outright — it can never be
+used as a session token.
+"""
+
+import uuid
+from datetime import datetime, timedelta, timezone
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import jwt
+
+from app.core.config import settings
+from app.core.security import _create_token, decode_token
+from app.features.auth.otp_service import consume_code, issue_code, sign_in
+from app.features.auth.schemas import LoginResponse, OtpRequestResponse
+from app.features.masters.service import get_tree
+from app.features.onboarding.schemas import (
+    InviteResolveOut,
+    RegistrationTokenOut,
+    SelfRegisterRequest,
+)
+from app.features.technicians import service as tech_service
+from app.models.company import Company
+from app.models.otp import PURPOSE_INVITE
+from app.models.technician import (
+    ACTIVE,
+    CANCELLED,
+    EXPIRED,
+    LIVE_INVITE_STATUSES,
+    MODE_INVITE,
+    REG_SELF,
+    REGISTERED,
+    TechnicianInvite,
+    TechnicianProfile,
+)
+from app.models.territory import Region
+from app.models.user import User
+
+REG_TOKEN_TYPE = "invite_reg"
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _gone(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_410_GONE, detail=detail)
+
+
+def _conflict(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+async def _load_invite(
+    session: AsyncSession, token: str, *, lock: bool = False
+) -> TechnicianInvite:
+    stmt = select(TechnicianInvite).where(TechnicianInvite.token == token)
+    if lock:
+        # Serialises two taps of the same button: the second waits, then sees
+        # status='registered' and takes the replay path.
+        stmt = stmt.with_for_update()
+    invite = await session.scalar(stmt)
+    if invite is None:
+        # Unknown and cancelled are indistinguishable here on purpose, so a
+        # token cannot be probed for existence.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="This invite link is not valid"
+        )
+    return invite
+
+
+async def _assert_usable(session: AsyncSession, invite: TechnicianInvite) -> None:
+    if invite.status == REGISTERED:
+        raise _conflict("This invite has already been used")
+    if invite.status == CANCELLED:
+        raise _conflict("This invite was cancelled — ask your manager for a new link")
+    if invite.expires_at <= _now():
+        if invite.status in LIVE_INVITE_STATUSES:
+            invite.status = EXPIRED
+            await session.commit()
+        raise _gone("This invite has expired — ask your manager for a new link")
+
+
+async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
+    invite = await _load_invite(session, token)
+    await _assert_usable(session, invite)
+
+    company = await session.scalar(
+        select(Company).where(Company.id == invite.company_id)
+    )
+    region = await session.scalar(select(Region).where(Region.id == invite.region_id))
+    inviter = (
+        await session.scalar(select(User).where(User.id == invite.invited_by_user_id))
+        if invite.invited_by_user_id
+        else None
+    )
+
+    # The catalogue, read with the inviting company's scope rather than a
+    # caller's — there is no caller here.
+    class _AnonPrincipal:
+        company_id = invite.company_id
+        user_id = None
+
+    categories = await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]
+    allowed = await tech_service._inviter_pincode_limit(session, invite)
+
+    return InviteResolveOut(
+        phone=invite.phone,
+        companyName=company.name if company else "Videocon Service",
+        regionName=region.name if region else "—",
+        invitedByName=inviter.full_name if inviter else None,
+        expiresAt=invite.expires_at,
+        dailyJobCap=invite.daily_job_cap,
+        categories=categories,
+        allowedPincodes=allowed,
+    )
+
+
+async def request_invite_code(
+    session: AsyncSession, token: str, request_ip: str | None
+) -> OtpRequestResponse:
+    invite = await _load_invite(session, token)
+    await _assert_usable(session, invite)
+    return await issue_code(
+        session,
+        phone=invite.phone,
+        purpose=PURPOSE_INVITE,
+        invite_id=invite.id,
+        request_ip=request_ip,
+    )
+
+
+async def verify_invite_code(
+    session: AsyncSession, token: str, code: str
+) -> RegistrationTokenOut:
+    invite = await _load_invite(session, token)
+    await _assert_usable(session, invite)
+    await consume_code(
+        session, phone=invite.phone, code=code, purpose=PURPOSE_INVITE
+    )
+
+    expires_at = _now() + timedelta(minutes=settings.REGISTRATION_TOKEN_MINUTES)
+    return RegistrationTokenOut(
+        registrationToken=_create_token(
+            invite.id,
+            timedelta(minutes=settings.REGISTRATION_TOKEN_MINUTES),
+            token_type=REG_TOKEN_TYPE,
+            extra_claims={"phone": invite.phone},
+        ),
+        expiresAt=expires_at,
+    )
+
+
+def _decode_registration_token(
+    registration_token: str, invite: TechnicianInvite
+) -> None:
+    unauthorized = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Verify your mobile number before registering",
+    )
+    try:
+        payload = decode_token(registration_token)
+    except jwt.PyJWTError:
+        raise unauthorized from None
+    if payload.get("type") != REG_TOKEN_TYPE:
+        raise unauthorized
+    if str(payload.get("sub")) != str(invite.id):
+        raise unauthorized
+
+
+async def register(
+    session: AsyncSession,
+    token: str,
+    registration_token: str,
+    body: SelfRegisterRequest,
+) -> LoginResponse:
+    """Create the technician, in one transaction, and sign them in.
+
+    Everything the technician typed is committed here and nowhere earlier: until
+    the OTP was verified the invite token was the only credential, so an
+    abandoned registration leaves no partial server record and an intercepted
+    link writes nothing.
+    """
+    invite = await _load_invite(session, token, lock=True)
+    _decode_registration_token(registration_token, invite)
+
+    if invite.status == REGISTERED:
+        # Replay — the classic lost-response-on-a-flaky-connection case. The
+        # holder of a valid registration token for THIS invite is the person
+        # who just registered, so hand back a fresh session rather than
+        # stranding them in a field with a 409.
+        user = await session.scalar(
+            select(User).where(User.id == invite.registered_user_id)
+        )
+        if user is not None:
+            return await sign_in(session, user)
+        raise _conflict("This invite has already been used")
+
+    await _assert_usable(session, invite)
+
+    subcategory_ids = await tech_service.validate_subcategories(
+        session, invite.company_id, body.subcategoryIds
+    )
+
+    # The inviting manager's restriction follows the link: an area manager's
+    # invitee cannot claim coverage outside that manager's area.
+    allowed = await tech_service._inviter_pincode_limit(session, invite)
+    if allowed is not None:
+        outside = sorted(set(body.pincodes) - set(allowed))
+        if outside:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Outside your manager's area: "
+                    f"{', '.join(outside)}. Pick from the areas they cover."
+                ),
+            )
+
+    actor = invite.invited_by_user_id
+
+    user = await tech_service.reuse_or_create_user(
+        session,
+        phone=invite.phone,
+        full_name=body.fullName,
+        profile_image_url=body.profileImageUrl,
+        # created_by is the INVITING MANAGER throughout: the row exists on their
+        # authority. That the technician typed it is carried by
+        # registered_by='self', not by overloading this.
+        actor_id=actor,
+    )
+    await session.flush()
+
+    membership = await tech_service.reuse_or_create_membership(
+        session,
+        user=user,
+        company_id=invite.company_id,
+        manager_id=invite.manager_membership_id or invite.invited_by_membership_id,
+        actor_id=actor,
+    )
+    await session.flush()
+    await tech_service.set_membership_region(
+        session, membership=membership, region_id=invite.region_id, actor_id=actor
+    )
+
+    now = _now()
+    profile = TechnicianProfile(
+        membership_id=membership.id,
+        company_id=invite.company_id,
+        code=await tech_service.next_code(session, invite.company_id),
+        region_id=invite.region_id,
+        daily_job_cap=body.dailyJobCap or invite.daily_job_cap,
+        status=ACTIVE,
+        onboarding_mode=MODE_INVITE,
+        appointed_by_user_id=invite.invited_by_user_id,
+        appointed_by_membership_id=invite.invited_by_membership_id,
+        appointed_at=invite.created_at,
+        registered_by=REG_SELF,
+        registered_at=now,
+        invite_id=invite.id,
+        created_by=actor,
+    )
+    session.add(profile)
+    await session.flush()
+
+    await tech_service.set_certifications(
+        session, profile=profile, subcategory_ids=subcategory_ids, actor_id=actor
+    )
+    await tech_service.set_coverage(
+        session, profile=profile, pincodes=body.pincodes, actor_id=actor
+    )
+
+    invite.status = REGISTERED
+    invite.registered_at = now
+    invite.registered_user_id = user.id
+    invite.registered_membership_id = membership.id
+    invite.updated_by = user.id
+
+    # sign_in commits, so the whole registration lands in one transaction.
+    return await sign_in(session, user)

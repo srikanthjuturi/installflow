@@ -2,18 +2,21 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import CurrentPrincipal
 from app.core.schemas import ApiEnvelope, envelope
-from app.features.auth import service
+from app.features.auth import otp_service, service
 from app.features.auth.schemas import (
     LoginRequest,
     LoginResponse,
     LogoutRequest,
     MeResponse,
+    OtpRequestRequest,
+    OtpRequestResponse,
+    OtpVerifyRequest,
     RefreshRequest,
     RefreshResponse,
     SwitchCompanyRequest,
@@ -29,6 +32,23 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 async def login(body: LoginRequest, db: Db) -> ApiEnvelope[LoginResponse]:
     data = await service.login(db, body.email, body.password)
     return envelope(data, message="Logged in")
+
+
+@router.post("/otp/request", response_model=ApiEnvelope[OtpRequestResponse])
+async def request_otp(
+    body: OtpRequestRequest, request: Request, db: Db
+) -> ApiEnvelope[OtpRequestResponse]:
+    """Send a technician a sign-in code. Unauthenticated by nature."""
+    client = request.client.host if request.client else None
+    data = await otp_service.request_login_code(db, body.phone, client)
+    return envelope(data, message="Code sent" if data.sent else "Code could not be sent")
+
+
+@router.post("/otp/verify", response_model=ApiEnvelope[LoginResponse])
+async def verify_otp(body: OtpVerifyRequest, db: Db) -> ApiEnvelope[LoginResponse]:
+    """Exchange a code for the same token pair `/auth/login` issues."""
+    data = await otp_service.verify_login_code(db, body.phone, body.code)
+    return envelope(data, message="Signed in")
 
 
 @router.post("/switch-company", response_model=ApiEnvelope[SwitchCompanyResponse])

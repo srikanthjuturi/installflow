@@ -4,13 +4,24 @@ import uuid
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.phone import Phone
 from app.core.schemas import AppModel
+from app.features.technicians.schemas import TechnicianSessionOut
 
 
 # ─── Requests ──────────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1)
+
+
+class OtpRequestRequest(BaseModel):
+    phone: Phone
+
+
+class OtpVerifyRequest(BaseModel):
+    phone: Phone
+    code: str = Field(min_length=4, max_length=8)
 
 
 class SwitchCompanyRequest(BaseModel):
@@ -64,6 +75,21 @@ class LoginResponse(AppModel):
     accessToken: str
     refreshToken: str
     tokenType: str = "bearer"
+    #: Non-null exactly when this account is a technician with a complete
+    #: profile. That is the mobile app's "go straight to Home" signal, so it
+    #: does not need a second round trip to find out.
+    technicianProfile: TechnicianSessionOut | None = None
+
+
+class OtpRequestResponse(AppModel):
+    sent: bool
+    #: 'whatsapp' | 'log'. Which channel took it.
+    channel: str
+    expiresInSeconds: int
+    resendInSeconds: int
+    #: Development only, and only when OTP_DEV_ECHO is on — startup refuses to
+    #: boot with it enabled in production.
+    devCode: str | None = None
 
 
 class SwitchCompanyResponse(AppModel):

@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from app.features.auth.router import router as auth_router
 from app.features.companies.router import router as companies_router
 from app.features.masters.router import router as masters_router
+from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
 from app.features.technicians.router import router as technicians_router
 from app.features.territory.router import router as territory_router
@@ -22,3 +23,4 @@ api_router.include_router(rbac_router)
 api_router.include_router(territory_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
+api_router.include_router(onboarding_router)
