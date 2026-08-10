@@ -39,6 +39,26 @@ export type IconName =
   | 'ac'
   | 'micro'
   | 'purifier'
+  // product master — the rest of the curated catalogue an ops manager can pick
+  // from. See `productIcons.ts` for the server-key mapping.
+  | 'fan'
+  | 'wind'
+  | 'flame'
+  | 'laptop'
+  | 'smartphone'
+  | 'monitor'
+  | 'printer'
+  | 'headphones'
+  | 'speaker'
+  | 'coffee'
+  | 'utensils'
+  | 'sofa'
+  | 'lightbulb'
+  | 'plug'
+  | 'battery'
+  | 'zap'
+  | 'wrench'
+  | 'package'
   // chrome
   | 'chevronLeft'
   | 'arrowRight'
@@ -275,6 +295,161 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
     case 'purifier':
       return <Path d="M12 3s5 6 5 10a5 5 0 01-10 0c0-4 5-10 5-10z" {...p} />;
 
+    /* Product-master catalogue. Traced in the same house style as the six
+       approved category glyphs above — rects, circles and short paths — rather
+       than copied from lucide, so a picked icon sits beside the approved ones
+       without looking imported. adminWeb draws lucide's version of the same
+       concept; the shapes differ there exactly as the six already do. */
+
+    case 'fan':
+      return (
+        <>
+          <Circle cx={12} cy={12} r={1.8} {...p} />
+          <Path
+            d="M12 10.2V4.6a3.6 3.6 0 013.6 3.6c0 1.4-1.2 2-3.6 2M13.8 12h5.6a3.6 3.6 0 01-3.6 3.6c-1.4 0-2-1.2-2-3.6M12 13.8v5.6a3.6 3.6 0 01-3.6-3.6c0-1.4 1.2-2 3.6-2M10.2 12H4.6a3.6 3.6 0 013.6-3.6c1.4 0 2 1.2 2 3.6"
+            {...p}
+          />
+        </>
+      );
+
+    case 'wind':
+      return (
+        <Path
+          d="M3 8h9a2.6 2.6 0 10-2.6-2.6M3 12h12a2.6 2.6 0 11-2.6 2.6M3 16h7"
+          {...p}
+        />
+      );
+
+    case 'flame':
+      return (
+        <>
+          <Path d="M12 21a5.5 5.5 0 005.5-5.5C17.5 11 12 5 12 5s-5.5 6-5.5 10.5A5.5 5.5 0 0012 21z" {...p} />
+          <Path d="M12 21a2.4 2.4 0 002.4-2.4c0-2-2.4-4.2-2.4-4.2s-2.4 2.2-2.4 4.2A2.4 2.4 0 0012 21z" {...p} />
+        </>
+      );
+
+    case 'laptop':
+      return (
+        <>
+          <Rect x={4} y={5} width={16} height={11} rx={2} {...p} />
+          <Path d="M2 19.5h20" {...p} />
+        </>
+      );
+
+    case 'smartphone':
+      return (
+        <>
+          <Rect x={7} y={2} width={10} height={20} rx={2.5} {...p} />
+          <Path d="M11 18.6h2" {...p} />
+        </>
+      );
+
+    case 'monitor':
+      return (
+        <>
+          <Rect x={2.5} y={4} width={19} height={12} rx={2} {...p} />
+          <Path d="M12 16v4M7.5 20h9" {...p} />
+        </>
+      );
+
+    case 'printer':
+      return (
+        <>
+          <Path d="M7 8V3h10v5" {...p} />
+          <Rect x={3.5} y={8} width={17} height={8} rx={2} {...p} />
+          <Rect x={7} y={14} width={10} height={7} rx={1} {...p} />
+        </>
+      );
+
+    case 'headphones':
+      return (
+        <>
+          <Path d="M4 15.5V12a8 8 0 0116 0v3.5" {...p} />
+          <Rect x={2} y={14} width={4.5} height={6.5} rx={2} {...p} />
+          <Rect x={17.5} y={14} width={4.5} height={6.5} rx={2} {...p} />
+        </>
+      );
+
+    case 'speaker':
+      return (
+        <>
+          <Rect x={6} y={2} width={12} height={20} rx={2.5} {...p} />
+          <Circle cx={12} cy={15} r={3.2} {...p} />
+          <Circle cx={12} cy={6.5} r={0.8} fill={stroke} />
+        </>
+      );
+
+    case 'coffee':
+      return (
+        <>
+          <Path d="M4 9h13v6a5 5 0 01-5 5H9a5 5 0 01-5-5V9z" {...p} />
+          <Path d="M17 10.5h1.5a2.5 2.5 0 010 5H17" {...p} />
+          <Path d="M7.5 3v2.5M11 3v2.5" {...p} />
+        </>
+      );
+
+    case 'utensils':
+      return (
+        <Path
+          d="M6.5 3v5.5a2.5 2.5 0 005 0V3M9 11v10M17.5 3c-2 2-2 6.5 0 8.5V21"
+          {...p}
+        />
+      );
+
+    case 'sofa':
+      return (
+        <>
+          <Path d="M4.5 11.5V8a2 2 0 012-2h11a2 2 0 012 2v3.5" {...p} />
+          <Rect x={2.5} y={11.5} width={19} height={6.5} rx={2.2} {...p} />
+          <Path d="M6.5 18v2M17.5 18v2M8 11.5V9.5h8v2" {...p} />
+        </>
+      );
+
+    case 'lightbulb':
+      return (
+        <>
+          <Path d="M9 16.5a5.8 5.8 0 116 0V19H9v-2.5z" {...p} />
+          <Path d="M10 22h4" {...p} />
+        </>
+      );
+
+    case 'plug':
+      return (
+        <>
+          <Path d="M9 2.5v5.5M15 2.5v5.5" {...p} />
+          <Path d="M6 8h12v3a6 6 0 01-12 0V8z" {...p} />
+          <Path d="M12 17v4.5" {...p} />
+        </>
+      );
+
+    case 'battery':
+      return (
+        <>
+          <Rect x={2} y={7} width={17} height={10} rx={2.5} {...p} />
+          <Path d="M21.5 10.5v3" {...p} />
+          <Path d="M6 11v2M9.5 11v2M13 11v2" {...p} />
+        </>
+      );
+
+    case 'zap':
+      return <Path d="M13 2.5L4.5 13.5H11l-1 8 8.5-11H12l1-7.5z" {...p} />;
+
+    case 'wrench':
+      return (
+        <Path
+          d="M15.5 3a5.5 5.5 0 00-5.2 7.3L3.6 17a2.1 2.1 0 003 3l6.7-6.7A5.5 5.5 0 0021 8.5a5.5 5.5 0 00-.3-1.8l-3.1 3.1-2.4-2.4 3.1-3.1A5.5 5.5 0 0015.5 3z"
+          {...p}
+        />
+      );
+
+    case 'package':
+      return (
+        <>
+          <Path d="M20.5 7.6v8.8a1.8 1.8 0 01-.9 1.5l-6.7 3.8a1.8 1.8 0 01-1.8 0l-6.7-3.8a1.8 1.8 0 01-.9-1.5V7.6a1.8 1.8 0 01.9-1.5l6.7-3.8a1.8 1.8 0 011.8 0l6.7 3.8a1.8 1.8 0 01.9 1.5z" {...p} />
+          <Path d="M3.6 6.8L12 11.7l8.4-4.9M12 21.4V11.7" {...p} />
+        </>
+      );
+
     case 'chevronLeft':
       return <Path d="M15 5l-7 7 7 7" {...p} />;
 
@@ -398,7 +573,13 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
   }
 }
 
-/** Product category → icon, as mapped in the prototype's registration screen. */
+/**
+ * Product category → icon, as mapped in the prototype's registration screen.
+ *
+ * @deprecated Keyed by category NAME, which the product master replaced with a
+ * server-chosen `iconKey`. Use `productIcon()` from `./productIcons` instead.
+ * Still here only until CoverageScreen reads the catalogue from the API.
+ */
 export const CATEGORY_ICONS: Record<string, IconName> = {
   Television: 'tv',
   'Washing Machine': 'washer',
