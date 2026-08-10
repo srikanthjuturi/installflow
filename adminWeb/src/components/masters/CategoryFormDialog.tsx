@@ -1,6 +1,5 @@
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,42 +15,57 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useCreateCategory } from "@/hooks/useMasters";
-import { cn } from "@/lib/utils";
+import { useCreateCategory, useUpdateCategory } from "@/hooks/useProductMaster";
+import type { ProductCategory } from "@/types/product";
+import { IconPicker } from "./IconPicker";
+import { StatusField } from "./StatusField";
 import {
-  CATEGORY_STATUSES,
   categorySchema,
+  statusOf,
   type CategoryFormValues,
 } from "./categorySchema";
+import { DEFAULT_ICON_KEY } from "./icons";
 
 interface CategoryFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Omit to add. Pass a category to edit it in place. */
+  category?: ProductCategory;
 }
 
 export function CategoryFormDialog({
   open,
   onOpenChange,
+  category,
 }: CategoryFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        {/* The popup unmounts on close, so the form is fresh on every open. */}
-        <CategoryForm onDone={() => onOpenChange(false)} />
+      {/* Wider than the other two: the icon grid needs the room to lay out in
+          a few rows rather than a dozen. */}
+      <DialogContent className="sm:max-w-xl">
+        {/* The popup unmounts on close, so the form is fresh on every open and
+            an edit never opens holding the previous row's values. */}
+        <CategoryForm category={category} onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-function CategoryForm({ onDone }: { onDone: () => void }) {
+function CategoryForm({
+  category,
+  onDone,
+}: {
+  category?: ProductCategory;
+  onDone: () => void;
+}) {
+  const isEdit = category !== undefined;
   const create = useCreateCategory();
+  const update = useUpdateCategory();
+  const pending = create.isPending || update.isPending;
 
   const {
     control,
@@ -60,43 +74,40 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
     formState: { errors },
   } = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
-    defaultValues: { name: "", models: [{ name: "" }], status: "Active" },
+    defaultValues: {
+      name: category?.name ?? "",
+      iconKey: category?.iconKey ?? DEFAULT_ICON_KEY,
+      status: statusOf(category?.isActive ?? true),
+    },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: "models" });
-
-  // Zod's array-level message lands on `root`; the per-row messages sit on
-  // each entry.
-  const modelsError = errors.models?.root?.message ?? errors.models?.message;
-
   function submit(values: CategoryFormValues) {
-    create.mutate(
-      {
-        name: values.name,
-        models: values.models.map((m) => m.name),
-        active: values.status === "Active",
-      },
-      {
-        onSuccess: (saved) => {
-          toast.add({
-            title: `${saved.name} added`,
-            description: `${saved.models.length} product ${
-              saved.models.length === 1 ? "model" : "models"
-            } · ${saved.active ? "Active" : "Paused"}.`,
-          });
-          onDone();
-        },
-      }
-    );
+    const body = {
+      name: values.name,
+      iconKey: values.iconKey,
+      isActive: values.status === "Active",
+    };
+    const done = (saved: ProductCategory) => {
+      toast.add({
+        title: `${saved.name} ${isEdit ? "updated" : "added"}`,
+        description: `${saved.subcategories.length} subcategor${
+          saved.subcategories.length === 1 ? "y" : "ies"
+        } · ${saved.isActive ? "Active" : "Paused"}.`,
+      });
+      onDone();
+    };
+
+    if (isEdit) update.mutate({ id: category.id, ...body }, { onSuccess: done });
+    else create.mutate(body, { onSuccess: done });
   }
 
   return (
     <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>Add category</DialogTitle>
+        <DialogTitle>{isEdit ? "Edit category" : "Add category"}</DialogTitle>
         <DialogDescription>
-          A category needs at least one product model — manual entry picks a
-          model from this list.
+          A category groups the product types your technicians service. Add
+          subcategories to it next — that is what a technician is certified for.
         </DialogDescription>
       </DialogHeader>
 
@@ -105,7 +116,7 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
           <FieldLabel htmlFor="category-name">Category name</FieldLabel>
           <Input
             id="category-name"
-            placeholder="e.g. Dishwasher"
+            placeholder="e.g. Electric"
             aria-invalid={errors.name ? true : undefined}
             aria-describedby={errors.name ? "category-name-error" : undefined}
             {...register("name")}
@@ -125,120 +136,41 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
           ) : null}
         </Field>
 
-        <FieldSet data-invalid={modelsError ? true : undefined}>
-          <FieldLegend variant="label" className="text-sm font-medium">
-            Product models
-          </FieldLegend>
-
-          <div className="grid gap-2.5">
-            {fields.map((row, i) => {
-              const rowError = errors.models?.[i]?.name?.message;
-              const id = `category-model-${i}`;
-              return (
-                <Field key={row.id} data-invalid={rowError ? true : undefined}>
-                  <FieldLabel htmlFor={id} className="sr-only">
-                    Product model {i + 1}
-                  </FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id={id}
-                      placeholder={`Model ${i + 1}`}
-                      aria-invalid={rowError ? true : undefined}
-                      aria-describedby={rowError ? `${id}-error` : undefined}
-                      {...register(`models.${i}.name`)}
-                    />
-                    {/* Never below one — a category with no model can't be
-                        picked on the manual entry form. */}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      disabled={fields.length === 1}
-                      aria-label={`Remove product model ${i + 1}`}
-                      onClick={() => remove(i)}
-                    >
-                      <X aria-hidden />
-                    </Button>
-                  </div>
-                  {rowError ? (
-                    <FieldDescription
-                      id={`${id}-error`}
-                      role="alert"
-                      className="text-danger"
-                    >
-                      {rowError}
-                    </FieldDescription>
-                  ) : null}
-                </Field>
-              );
-            })}
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-fit"
-            onClick={() => append({ name: "" })}
-          >
-            <Plus data-icon="inline-start" aria-hidden />
-            Add model
-          </Button>
-
-          {modelsError ? (
-            <FieldDescription role="alert" className="text-danger">
-              {modelsError}
-            </FieldDescription>
-          ) : null}
-        </FieldSet>
-
-        <FieldSet data-invalid={errors.status ? true : undefined}>
-          <FieldLegend variant="label" className="text-sm font-medium">
-            Status
-          </FieldLegend>
+        <Field data-invalid={errors.iconKey ? true : undefined}>
+          <FieldLabel htmlFor="category-icon">Icon</FieldLabel>
           <Controller
-            name="status"
+            name="iconKey"
             control={control}
             render={({ field }) => (
-              <RadioGroup
-                aria-label="Status"
+              <IconPicker
+                id="category-icon"
+                label="Category icon"
                 value={field.value}
-                onValueChange={field.onChange}
-                aria-invalid={errors.status ? true : undefined}
-                aria-describedby={
-                  errors.status ? "category-status-error" : undefined
-                }
-                className="grid grid-cols-2 gap-2.5"
-              >
-                {CATEGORY_STATUSES.map((s) => (
-                  <label
-                    key={s}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
-                      field.value === s
-                        ? "border-brand-500 bg-brand-100/40"
-                        : "border-line hover:border-brand-400"
-                    )}
-                  >
-                    <RadioGroupItem value={s} />
-                    <span>{s}</span>
-                  </label>
-                ))}
-              </RadioGroup>
+                onChange={field.onChange}
+                aria-invalid={errors.iconKey ? true : undefined}
+                aria-describedby="category-icon-hint"
+              />
             )}
           />
-          <FieldDescription>
-            Paused categories stay out of new ticket entry.
+          <FieldDescription id="category-icon-hint">
+            Shown here and in the technician app. Subcategories use it unless
+            they pick their own.
           </FieldDescription>
-          {errors.status ? (
-            <FieldDescription
-              id="category-status-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.status.message}
-            </FieldDescription>
-          ) : null}
-        </FieldSet>
+        </Field>
+
+        <Controller
+          name="status"
+          control={control}
+          render={({ field }) => (
+            <StatusField
+              value={field.value}
+              onChange={field.onChange}
+              description="Paused categories stay out of new ticket entry."
+              error={errors.status?.message}
+              errorId="category-status-error"
+            />
+          )}
+        />
       </FieldGroup>
 
       {/* The failure is reported in the toaster (App.tsx), not here. */}
@@ -246,9 +178,9 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
         </DialogClose>
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? <Spinner data-icon="inline-start" /> : null}
-          Add category
+        <Button type="submit" disabled={pending}>
+          {pending ? <Spinner data-icon="inline-start" /> : null}
+          {isEdit ? "Save changes" : "Add category"}
         </Button>
       </DialogFooter>
     </form>

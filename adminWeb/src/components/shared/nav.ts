@@ -130,7 +130,10 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Categories",
         to: "/categories",
         icon: Tags,
-        feature: "settings.view",
+        // Its own feature since the product master became real — the screen
+        // now writes, and `settings.view` would have handed that to anyone
+        // who could open Rules Config.
+        feature: "masters.view",
       },
     ],
   },
