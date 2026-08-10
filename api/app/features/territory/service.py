@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
-from app.core.scope import load_scopes, own_scope
+from app.core.scope import ALL_INDIA_ROLES, load_scopes, own_scope
 from app.db.repository import territory_scope
 from app.features.territory.schemas import (
     TerritoryAreaManager,
@@ -26,6 +26,10 @@ from app.models.user import User
 async def get_territory(
     session: AsyncSession, principal: Principal
 ) -> list[TerritoryRegion]:
+    own_id, own = await own_scope(
+        session, user_id=principal.user_id, company_id=principal.company_id
+    )
+
     regions = list(
         (
             await session.scalars(
@@ -35,10 +39,10 @@ async def get_territory(
             )
         ).all()
     )
-
-    own_id, own = await own_scope(
-        session, user_id=principal.user_id, company_id=principal.company_id
-    )
+    # All-India roles see the whole map; anyone else sees only their own
+    # regions, so the page can't invite them to act somewhere they'd be refused.
+    if principal.role not in ALL_INDIA_ROLES:
+        regions = [r for r in regions if r.id in own.region_ids]
     stmt = (
         select(Membership, User)
         .join(User, User.id == Membership.user_id)

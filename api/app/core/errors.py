@@ -1,13 +1,17 @@
 """Exception handlers that render every error in the standard API envelope."""
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 _HTTP_422 = 422
+
+logger = logging.getLogger(__name__)
 
 
 def _error_body(status_code: int, message: str, errors: list[str]) -> dict:
@@ -42,4 +46,31 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=_HTTP_422,
             content=_error_body(_HTTP_422, "Validation failed", errors),
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def _integrity_exc(request: Request, exc: IntegrityError) -> JSONResponse:
+        """A constraint the service layer meant to pre-check, hit anyway.
+
+        Usually a race: two writers pass the same "is this free?" check and the
+        database settles it. The caller gets the same 409 the pre-check would
+        have given, not a 500 — and never the SQL.
+        """
+        logger.warning("Integrity error on %s: %s", request.url.path, exc.orig)
+        message = "That value is already taken"
+        return JSONResponse(
+            status_code=409, content=_error_body(409, message, [message])
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exc(request: Request, exc: Exception) -> JSONResponse:
+        """Last resort: log the detail, return the envelope.
+
+        Without this, an unhandled error renders a raw traceback into the
+        response body — internals a client should never see.
+        """
+        logger.exception("Unhandled error on %s", request.url.path)
+        message = "Something went wrong"
+        return JSONResponse(
+            status_code=500, content=_error_body(500, message, [message])
         )

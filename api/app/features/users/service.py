@@ -321,20 +321,25 @@ async def create_user(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Email already belongs to another user",
             )
-        already = await session.scalar(
-            select(Membership.id).where(
+        # One membership row per (user, company) — enforced by a UNIQUE — and a
+        # removed member keeps their (soft-deleted) row. So look for ANY row:
+        # an active one is a conflict, a removed one is revived rather than
+        # inserted, which is what makes "remove then add back" work.
+        prior = await session.scalar(
+            select(Membership).where(
                 Membership.user_id == existing.id,
                 Membership.company_id == principal.company_id,
-                Membership.deleted_at.is_(None),
             )
         )
-        if already is not None:
+        if prior is not None and prior.deleted_at is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="User is already a member of this company",
             )
+        revived = prior
         user = existing
     else:
+        revived = None
         if not body.password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -356,14 +361,22 @@ async def create_user(
     if body.managerId is not None:
         await _validate_manager(session, principal.company_id, body.managerId)
 
-    membership = Membership(
-        user_id=user.id,
-        company_id=principal.company_id,
-        manager_id=body.managerId,
-        is_active=True,
-        created_by=principal.user_id,
-    )
-    session.add(membership)
+    if revived is not None:
+        # Bring the removed member back rather than inserting a second row.
+        membership = revived
+        membership.deleted_at = None
+        membership.is_active = True
+        membership.manager_id = body.managerId
+        membership.updated_by = principal.user_id
+    else:
+        membership = Membership(
+            user_id=user.id,
+            company_id=principal.company_id,
+            manager_id=body.managerId,
+            is_active=True,
+            created_by=principal.user_id,
+        )
+        session.add(membership)
     await session.flush()  # membership.id, needed by the scope rows
     await _set_scope(
         session,

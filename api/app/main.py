@@ -32,9 +32,13 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+# NB: `debug=` is deliberately NOT passed. Starlette's error middleware returns
+# a raw HTML traceback when debug is on, bypassing our exception handlers — so
+# the client would get a stack trace instead of the standard error envelope, and
+# the console would fail to parse it. The traceback is still logged server-side
+# by the handler in app.core.errors, which is where a developer should read it.
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    debug=settings.DEBUG,
     lifespan=lifespan,
 )
 
