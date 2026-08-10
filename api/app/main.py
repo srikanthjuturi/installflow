@@ -23,8 +23,29 @@ if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
+def _check_production_settings() -> None:
+    """Refuse to boot with development-only OTP settings in production.
+
+    Both of these are silent in every log and in every response — the only
+    moment they can be caught is startup. OTP_DEV_ECHO returns the code in the
+    response body, and an empty OTP_PEPPER leaves a 6-digit code stored as a
+    bare sha256, which a database dump reverses by brute force in under a
+    second.
+    """
+    if settings.ENVIRONMENT != "production":
+        return
+    problems = []
+    if settings.OTP_DEV_ECHO:
+        problems.append("OTP_DEV_ECHO must be false")
+    if not settings.OTP_PEPPER:
+        problems.append("OTP_PEPPER must be set")
+    if problems:
+        raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _check_production_settings()
     # Verify DB connectivity on startup — fail fast if unreachable.
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))

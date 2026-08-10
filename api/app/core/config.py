@@ -60,6 +60,51 @@ class Settings(BaseSettings):
     # verification. Never disable verification instead.
     HTTP_CA_BUNDLE: str = ""
 
+    # ─── WhatsApp Cloud API ────────────────────────────────────────────────
+    # Unset in development: sends then fail softly and the code is logged
+    # instead. Nothing in the flow blocks on Meta being configured.
+    WHATSAPP_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_BUSINESS_ID: str = ""
+    WHATSAPP_API_VERSION: str = "v21.0"
+    # The invite template (UTILITY category).
+    WHATSAPP_TEMPLATE_NAME: str = ""
+    WHATSAPP_TEMPLATE_LANG: str = "en_US"
+    # OTP needs its OWN template in the AUTHENTICATION category — Meta reviews
+    # it separately from the invite one and will not deliver a one-time code
+    # through a UTILITY template.
+    WHATSAPP_OTP_TEMPLATE_NAME: str = ""
+    WHATSAPP_OTP_TEMPLATE_LANG: str = "en_US"
+
+    # ─── Technician onboarding ─────────────────────────────────────────────
+    # Where an invite link points. The custom scheme is the DEVELOPMENT default:
+    # it opens the app directly from `npx uri-scheme open` and needs no domain.
+    #
+    # It cannot ship: WhatsApp only auto-links http(s), so a `videocontech://`
+    # link arrives as dead text. Production needs an https universal/app link
+    # (ios.associatedDomains + android.intentFilters) with a web fallback —
+    # e.g. INVITE_LINK_BASE=https://install.videocon.app/invite
+    INVITE_LINK_BASE: str = "videocontech://invite"
+    INVITE_EXPIRY_DAYS: int = 14
+
+    # ─── OTP ───────────────────────────────────────────────────────────────
+    OTP_TTL_SECONDS: int = 300
+    OTP_LENGTH: int = 6
+    OTP_MAX_ATTEMPTS: int = 5
+    OTP_RESEND_SECONDS: int = 30
+    OTP_MAX_PER_HOUR: int = 5
+    OTP_MAX_PER_IP_PER_HOUR: int = 20
+    # Server-side secret mixed into the stored hash. A 6-digit code has 10^6
+    # entropy, so without this a database dump reverses every live code by
+    # brute force in under a second. Startup refuses to run without it in
+    # production.
+    OTP_PEPPER: str = ""
+    # Returns the code in the response body so the flow can be walked without
+    # Meta credentials. Startup refuses to run with it on in production.
+    OTP_DEV_ECHO: bool = True
+    # How long the post-OTP registration token lives.
+    REGISTRATION_TOKEN_MINUTES: int = 15
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL(self) -> str:
