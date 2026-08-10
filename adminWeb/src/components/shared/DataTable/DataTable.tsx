@@ -144,7 +144,9 @@ export function DataTable<T>({
   }
 
   const showEmpty = !isLoading && total === 0;
-  const placeholderRows = skeletonRows ?? Math.min(defaultSize, 8);
+  // Two skeleton rows are enough to signal "a table is loading" without
+  // painting a full page of placeholders. Callers can override via `skeletonRows`.
+  const placeholderRows = skeletonRows ?? 2;
   // `bare` drops the rail for a table already inside a Card — two nested
   // rounded surfaces read as a bug, not as depth.
   const panel = bare
