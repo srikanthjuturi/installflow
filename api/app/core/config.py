@@ -54,6 +54,27 @@ class Settings(BaseSettings):
     SUPERADMIN_PASSWORD: str = "ChangeMe_Superadmin@123"
     SUPERADMIN_NAME: str = "Super Admin"
 
+    # ─── WhatsApp Cloud API (partner invites) ──────────────────────────────
+    # One platform-level sender for every company, for now.
+    WHATSAPP_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_BUSINESS_ID: str = ""
+    WHATSAPP_API_VERSION: str = "v21.0"
+    # Empty template name = send plain text, which only reaches someone who
+    # messaged the business in the last 24h. Set it once a template is approved.
+    WHATSAPP_TEMPLATE_NAME: str = ""
+    WHATSAPP_TEMPLATE_LANG: str = "en_US"
+
+    # ─── Partner invites ───────────────────────────────────────────────────
+    PARTNER_APP_LINK: str = "https://install.videocon.app/technician"
+    INVITE_LINK_BASE: str = "https://install.videocon.app/invite"
+
+    # Path to a CA bundle for outbound HTTPS. Only needed where something
+    # intercepts TLS (corporate proxy, or antivirus web-shield on a dev box) and
+    # its root is in the OS store but not in certifi's. Empty = normal
+    # verification. Never disable verification instead.
+    HTTP_CA_BUNDLE: str = ""
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL(self) -> str:

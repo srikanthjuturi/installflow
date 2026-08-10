@@ -5,41 +5,59 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  createPartner,
-  listPartners,
-  type CreatePartnerInput,
+  cancelInvite,
+  createInvite,
+  listInvites,
+  resendInvite,
 } from "@/services/partners";
 import type { ListParams } from "@/types/api";
-import type { PartnerKind } from "@/types";
+import type { CreateInviteInput, PartnerType } from "@/types/partner";
 
 export const partnerKeys = {
   all: ["partners"] as const,
-  /** Per kind — a new freelancer must not blank the franchise table. */
-  kind: (kind: PartnerKind) => ["partners", kind] as const,
-  /** The whole params object — page, search, sort and filters all key the cache. */
-  list: (kind: PartnerKind, params: ListParams) =>
-    ["partners", kind, "list", params] as const,
+  /** Per type — a new freelancer must not blank the franchise table. */
+  type: (t: PartnerType) => ["partners", t] as const,
+  list: (t: PartnerType, params: ListParams) =>
+    ["partners", t, "list", params] as const,
 };
 
-/**
- * `keepPreviousData` holds the page on screen while the next one is fetched.
- * Without it every page change, filter and keystroke would blank the table to
- * skeletons and jump the scroll position.
- */
-export function usePartners(kind: PartnerKind, params: ListParams = {}) {
+export function usePartnerInvites(partnerType: PartnerType, params: ListParams) {
   return useQuery({
-    queryKey: partnerKeys.list(kind, params),
-    queryFn: () => listPartners(kind, params),
+    queryKey: partnerKeys.list(partnerType, params),
+    queryFn: () => listInvites(partnerType, params),
     placeholderData: keepPreviousData,
   });
 }
 
-export function useCreatePartner(kind: PartnerKind) {
+function useInvalidate(partnerType: PartnerType) {
   const queryClient = useQueryClient();
+  return () =>
+    queryClient.invalidateQueries({ queryKey: partnerKeys.type(partnerType) });
+}
+
+export function useCreateInvite(partnerType: PartnerType) {
+  const invalidate = useInvalidate(partnerType);
   return useMutation({
-    mutationFn: (input: CreatePartnerInput) => createPartner(kind, input),
-    // By prefix — every page, sort and filter combination of this kind's list.
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: partnerKeys.kind(kind) }),
+    meta: { errorTitle: "Couldn't create the invite" },
+    mutationFn: (input: CreateInviteInput) => createInvite(input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useResendInvite(partnerType: PartnerType) {
+  const invalidate = useInvalidate(partnerType);
+  return useMutation({
+    meta: { errorTitle: "Couldn't resend the invite" },
+    mutationFn: (id: string) => resendInvite(id),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCancelInvite(partnerType: PartnerType) {
+  const invalidate = useInvalidate(partnerType);
+  return useMutation({
+    meta: { errorTitle: "Couldn't cancel the invite" },
+    mutationFn: (id: string) => cancelInvite(id),
+    onSuccess: invalidate,
   });
 }

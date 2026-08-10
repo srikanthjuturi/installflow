@@ -1,113 +1,126 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { PartnerInviteDialog } from "@/components/partners/PartnerInviteDialog";
-import { PartnerTable } from "@/components/partners/PartnerTable";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import {
+  useCancelInvite,
+  useCreateInvite,
+  usePartnerInvites,
+  useResendInvite,
+} from "@/hooks/usePartners";
+import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import { useListParams } from "@/hooks/useListParams";
-import { useCreatePartner, usePartners } from "@/hooks/usePartners";
-import { useSession } from "@/store/session";
-import type { ListParams } from "@/types/api";
-import type { PartnerKind } from "@/types";
+import { toE164 } from "@/utils/phone";
+import { PARTNER_TYPE_OF, type PartnerInvite, type PartnerKind } from "@/types/partner";
+import { PartnerInviteDialog } from "./PartnerInviteDialog";
+import { PartnerTable } from "./PartnerTable";
 
-const COPY: Record<
-  PartnerKind,
-  { title: string; description: string; action: string }
-> = {
+const COPY: Record<PartnerKind, { title: string; description: string; action: string }> = {
   Freelancer: {
     title: "Freelancers",
     description: "Independent technicians appointed as service partners.",
-    action: "Create freelancer",
+    action: "Invite freelancer",
   },
   Franchise: {
     title: "Franchises",
     description: "Partner firms appointed to service jobs.",
-    action: "Create franchise",
+    action: "Invite franchise",
   },
 };
 
 /**
- * Both partner screens are the same screen — a server-paged table and one
- * dialog that appoints by mobile number. The kind picks the list and the copy.
+ * One screen, two kinds. Sending is the server's job: it talks to WhatsApp and
+ * records the outcome, so a refused message comes back as a `failed` row with a
+ * reason rather than an error that loses the record.
  */
 export function PartnerListScreen({ kind }: { kind: PartnerKind }) {
   const copy = COPY[kind];
-  const [isDialogOpen, setDialogOpen] = useState(false);
-  const create = useCreatePartner(kind);
+  const partnerType = PARTNER_TYPE_OF[kind];
 
-  // Who appointed them is part of the record. The scope the console is being
-  // viewed as is what gets stamped — the server is still the authority on
-  // whether this role may appoint at all.
-  const role = useSession((s) => s.role);
-
-  // The query the server answers. Search, filters, sort and page all live in
-  // one object so the table can hand back a whole new intent in one call.
-  const [params, setParams] = useListParams({ sortBy: "id", sortDir: "asc" });
-
-  /**
-   * Merged into the current query, not swapped for it — "Clear filters" resets
-   * the search box and every filter in the same tick, and a setter that
-   * replaced would let the last of those calls put the search term back.
-   */
-  const applyParams = (next: ListParams) =>
-    setParams((prev) => ({
-      ...prev,
-      ...next,
-      filters: { ...prev.filters, ...next.filters },
-    }));
-
-  const { data, isLoading, isError, error, refetch } = usePartners(
-    kind,
+  const [params, setParams] = useListParams();
+  const { data, isLoading, isError, error, refetch } = usePartnerInvites(
+    partnerType,
     params
   );
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const create = useCreateInvite(partnerType);
+  const resend = useResendInvite(partnerType);
+  const cancel = useCancelInvite(partnerType);
+  const { regions } = useAssignableRegions();
 
   return (
     <>
       <PageMeta title={copy.title} description={copy.description} />
 
-      <PartnerInviteDialog
-        kind={kind}
-        open={isDialogOpen}
-        onOpenChange={setDialogOpen}
-        isSubmitting={create.isPending}
-        onSubmit={(values) =>
-          create.mutate(
-            { phone: values.phone, appointedBy: role },
-            {
-              onSuccess: (partner) => {
-                toast.add({
-                  title: `${partner.phone} invited`,
-                  description: `${partner.id} · invite sent, awaiting registration.`,
-                });
-                setDialogOpen(false);
-              },
-              // A duplicate number comes back 409 — it belongs on the dialog
-              // that submitted it, not on a page the reader has moved past.
-              onError: (err) =>
-                toast.add({
-                  title: `Couldn't create the ${kind.toLowerCase()}`,
-                  description: err.message,
-                }),
-            }
-          )
-        }
-      />
-
       <PartnerTable
         kind={kind}
-        partners={data?.rows}
+        invites={data?.rows}
         meta={data?.pagination}
         params={params}
-        onParams={applyParams}
+        onParams={setParams}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}
+        isBusy={resend.isPending || cancel.isPending}
+        onResend={(invite: PartnerInvite) =>
+          resend.mutate(invite.id, {
+            onSuccess: (updated) =>
+              toast.add({
+                title:
+                  updated.status === "sent"
+                    ? `Invite resent to ${updated.phone}`
+                    : `Still couldn't reach ${updated.phone}`,
+                description: updated.failureReason ?? undefined,
+              }),
+          })
+        }
+        onCancel={(invite: PartnerInvite) =>
+          cancel.mutate(invite.id, {
+            onSuccess: () =>
+              toast.add({ title: `Invite to ${invite.phone} cancelled` }),
+          })
+        }
         toolbarActions={
           <Button className="h-10" onClick={() => setDialogOpen(true)}>
             <Plus data-icon="inline-start" />
             {copy.action}
           </Button>
+        }
+      />
+
+      <PartnerInviteDialog
+        kind={kind}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        isSubmitting={create.isPending}
+        onSubmit={(values) =>
+          create.mutate(
+            {
+              partnerType,
+              phone: toE164(values.phone),
+              fullName: values.fullName.trim() || null,
+              // Blank means "I hold exactly one region" — the server uses it.
+              regionId: values.regionId || regions[0]?.id || null,
+            },
+            {
+              onSuccess: (invite) => {
+                // A refused message is not an error: the invite exists and can
+                // be resent, so it is reported where the row now lives.
+                toast.add({
+                  title:
+                    invite.status === "sent"
+                      ? `Invite sent to ${invite.phone}`
+                      : `Invite saved, but not delivered`,
+                  description:
+                    invite.failureReason ??
+                    `They'll install the technician app and register as a ${kind.toLowerCase()}.`,
+                });
+                setDialogOpen(false);
+              },
+            }
+          )
         }
       />
     </>

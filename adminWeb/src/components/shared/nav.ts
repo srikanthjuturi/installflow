@@ -105,8 +105,18 @@ export const NAV_GROUPS: NavGroup[] = [
     name: "Partners",
     roles: MANAGEMENT,
     items: [
-      { label: "Freelancers", to: "/partners/freelancers", icon: UserPlus },
-      { label: "Franchises", to: "/partners/franchises", icon: Store },
+      {
+        label: "Freelancers",
+        to: "/partners/freelancers",
+        icon: UserPlus,
+        feature: "partners.view",
+      },
+      {
+        label: "Franchises",
+        to: "/partners/franchises",
+        icon: Store,
+        feature: "partners.view",
+      },
     ],
   },
   {
