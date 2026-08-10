@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import { AREA_MANAGER, PINCODE_RE, REGIONAL_HEAD } from "./companyUserSchema";
 
@@ -52,6 +53,15 @@ export function ScopeField({
   const regionOptions = React.useMemo(
     () => regions.map((r) => ({ value: r.id, label: r.name })),
     [regions]
+  );
+
+  // An area manager holds exactly one region — if only one is on offer, fill it.
+  // (The regional-head case is a multi-select, so it is left alone.)
+  useAutoSelectSingle(
+    regions.map((r) => r.id),
+    regionIds[0],
+    (id) => onRegionIds([id]),
+    role === AREA_MANAGER
   );
 
   /** While the catalog loads, ids have no names yet — say so, don't guess. */

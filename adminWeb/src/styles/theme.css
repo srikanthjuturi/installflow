@@ -218,7 +218,9 @@
   --accent: var(--surface-3);
   --accent-foreground: var(--ink);
   --destructive: var(--danger);
-  --input: var(--border);
+  /* Input borders are a step darker than plain --border so a field's edge reads
+     clearly against a white surface — faint hairlines made controls hard to see. */
+  --input: #cbd2dc;
   --ring: var(--brand-color-400);
   --chart-1: var(--brand-color-500);
   --chart-2: var(--info);
@@ -254,6 +256,8 @@
 
   --border: #2b2f3b;
   --border-2: #23262f;
+  /* A step lighter than --border, so a field edge stays visible on a dark surface. */
+  --input: #3d4250;
 
   --ink: #e9eaf0;
   --ink-2: #a4a9b8;

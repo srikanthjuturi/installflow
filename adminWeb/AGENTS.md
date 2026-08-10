@@ -261,6 +261,13 @@ mode outright because technicians work outdoors; a desk console has no such cons
 9. **Every API error surfaces in the toaster — everywhere, no exceptions.** Never hand-roll an
    inline red box for a failed request, and never let a rejection die in a silent `catch`. See
    *Error reporting* below.
+10. **A single-option dropdown fills itself.** Any select whose choices are computed from data
+    (role, region, vendor, category, model…) must auto-pick the sole option when exactly one is
+    available — never make the user open a one-item menu. Use `useAutoSelectSingle` (in
+    `src/hooks/`); it only writes while the field is empty, so it never overrides a real choice or
+    a value loaded into an edit form, and takes an `enabled` flag to stay quiet while the list is
+    loading or the control is disabled. Static, fixed-length selects (status filters, page size,
+    SLA type) are exempt — they can never collapse to one.
 
 ---
 

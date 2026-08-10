@@ -93,13 +93,16 @@ export function useAssignableRegions(): {
  * Roles the signed-in user may assign — strictly below their own rank. The
  * backend enforces the same rule; this only keeps the UI from offering choices
  * that would be rejected. Returns [] until the catalog loads.
+ *
+ * Technician is excluded on purpose: technicians are onboarded from the
+ * Technicians tab, not the Users & Roles screen, so it is never offered here.
  */
 export function useAssignableRoles(): RoleOption[] {
   const { data: roles } = useRoles();
   const myRole = useSession((s) => s.backendUser?.role);
   if (!roles || !myRole) return [];
   const myRank = roles.find((r) => r.key === myRole)?.rank ?? -Infinity;
-  return roles.filter((r) => r.rank > myRank);
+  return roles.filter((r) => r.rank > myRank && r.key !== "technician");
 }
 
 /** The signed-in user's rank (from the role catalog), or -Infinity if unknown. */
