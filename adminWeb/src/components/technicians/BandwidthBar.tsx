@@ -1,6 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Technician } from "@/types";
+import type { TechnicianStatus } from "@/types/technician";
 
 /**
  * The technician presentation atoms.
@@ -70,13 +70,21 @@ export function BandwidthBar({
 
 /* ------------------------------------------------------------------- status */
 
-const STATUS_CLASS: Record<Technician["status"], string> = {
-  Active: "bg-ok-bg text-ok",
-  Inactive: "bg-background text-ink-3",
+/** Static strings — an interpolated `bg-${status}` is never generated. */
+const STATUS_CLASS: Record<TechnicianStatus, string> = {
+  active: "bg-ok-bg text-ok",
+  inactive: "bg-background text-ink-3",
+  suspended: "bg-danger-bg text-danger",
+};
+
+const STATUS_LABEL: Record<TechnicianStatus, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  suspended: "Suspended",
 };
 
 /** Carries the word, not just the tint. */
-export function TechStatusPill({ status }: { status: Technician["status"] }) {
+export function TechStatusPill({ status }: { status: TechnicianStatus }) {
   return (
     <span
       className={cn(
@@ -84,7 +92,7 @@ export function TechStatusPill({ status }: { status: Technician["status"] }) {
         STATUS_CLASS[status]
       )}
     >
-      {status}
+      {STATUS_LABEL[status]}
     </span>
   );
 }

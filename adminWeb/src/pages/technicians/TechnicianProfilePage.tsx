@@ -5,6 +5,10 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
 import {
+  TechOnboardingCard,
+  TechOnboardingCardSkeleton,
+} from "@/components/technicians/TechOnboardingCard";
+import {
   TechProfileHeader,
   TechStats,
 } from "@/components/technicians/TechProfileHeader";
@@ -57,11 +61,17 @@ export default function TechnicianProfilePage() {
               <TechStats tech={tech} />
             )}
 
-            {/* The skeleton is the real table, row for row — never a spinner. */}
-            <JobHistoryTable
-              history={tech?.history}
-              isLoading={isLoading || !tech}
-            />
+            {/* Who appointed them, who filled the record in, and when. */}
+            {isLoading || !tech ? (
+              <TechOnboardingCardSkeleton />
+            ) : (
+              <TechOnboardingCard tech={tech} />
+            )}
+
+            {/* The skeleton is the real table, row for row — never a spinner.
+                History stays empty until the jobs slice exists; inventing rows
+                here would be the one number on this page that is not real. */}
+            <JobHistoryTable history={[]} isLoading={isLoading || !tech} />
           </div>
         </div>
       )}

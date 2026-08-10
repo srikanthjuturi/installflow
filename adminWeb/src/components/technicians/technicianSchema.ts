@@ -10,6 +10,8 @@ import { z } from "zod";
  * conditioners because both hang off the same grouping.
  */
 
+export const PINCODE_RE = /^\d{6}$/;
+
 /** Accepts commas, spaces or newlines so a pasted list works as typed. */
 export function parsePincodes(value: string): string[] {
   return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
@@ -29,14 +31,14 @@ export const technicianSchema = z.object({
       /^(\+91[\s-]?)?[6-9]\d{9}$/,
       "Enter a valid 10-digit Indian mobile number"
     ),
+  regionId: z.string().min(1, "Select a region"),
   /** Subcategory ids, not names — a rename must not orphan a certification. */
   subcategoryIds: z.array(z.string()).min(1, "Select at least one category"),
   pincodes: z
-    .string()
-    .trim()
-    .refine((v) => parsePincodes(v).length > 0, "Enter at least one pincode")
+    .array(z.string())
+    .min(1, "Add at least one pincode")
     .refine(
-      (v) => parsePincodes(v).every((p) => /^\d{6}$/.test(p)),
+      (v) => v.every((p) => PINCODE_RE.test(p)),
       "Every pincode must be 6 digits"
     ),
   bwTotal: z.string().min(1, "Select a daily job cap"),

@@ -7,7 +7,15 @@ export * from "./dashboard";
  */
 export type Role = "Admin" | "NH" | "RSH" | "ASM" | "Ops Staff";
 
-export interface Technician {
+/**
+ * A candidate on the escalation shortlist.
+ *
+ * This is NOT the technician master record — that lives in `types/technician.ts`
+ * and comes from the API. This shape stays because "who has bandwidth left for
+ * this ticket" needs open assignments, and there is no jobs table yet; the
+ * escalation screens read it from a mock until there is.
+ */
+export interface EligibleTechnician {
   id: string;
   name: string;
   phone: string;

@@ -1,6 +1,6 @@
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { cn } from "@/lib/utils";
-import type { JobHistoryEntry } from "@/services/technicians";
+import type { JobHistoryEntry } from "@/types/technician";
 
 const OUTCOME_CLASS: Record<JobHistoryEntry["outcome"], string> = {
   Closed: "bg-status-closed-bg text-status-closed",

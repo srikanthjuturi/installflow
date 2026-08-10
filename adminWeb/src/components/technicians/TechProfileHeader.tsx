@@ -1,23 +1,36 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { money } from "@/utils/money";
-import type { Technician } from "@/types";
+import { formatPhone } from "@/utils/phone";
+import type { Technician } from "@/types/technician";
 import { BandwidthBar, CancelCount, TechStatusPill } from "./BandwidthBar";
 
 /* ------------------------------------------------------------------ identity */
 
 export function TechProfileHeader({ tech }: { tech: Technician }) {
   const facts: Array<[string, React.ReactNode]> = [
-    ["Phone", tech.phone],
-    ["Joined", tech.joined],
+    ["Phone", formatPhone(tech.phone)],
+    ["Region", tech.regionName],
+    [
+      "Joined",
+      new Date(tech.createdAt).toLocaleDateString("en-IN", {
+        month: "short",
+        year: "numeric",
+      }),
+    ],
     [
       "Rating",
-      <>
-        {tech.rating}{" "}
-        <span className="text-warn" aria-hidden>
-          ★
-        </span>
-      </>,
+      // A technician with no closed jobs has no rating — showing 0 would read
+      // as the worst possible score rather than "not yet known".
+      tech.rating === null ? (
+        "—"
+      ) : (
+        <>
+          {tech.rating}{" "}
+          <span className="text-warn" aria-hidden>
+            ★
+          </span>
+        </>
+      ),
     ],
   ];
 
@@ -27,11 +40,11 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
         <div className="flex flex-col items-center text-center">
           <UserAvatar
             name={tech.name}
-            src={tech.photoUrl}
+            src={tech.profileImageUrl ?? undefined}
             className="size-18 text-[26px]"
           />
           <h2 className="mt-3 text-[17px] font-semibold">{tech.name}</h2>
-          <p className="font-mono text-xs text-ink-3">{tech.id}</p>
+          <p className="font-mono text-xs text-ink-3">{tech.code}</p>
           <div className="mt-2">
             <TechStatusPill status={tech.status} />
           </div>
@@ -54,12 +67,13 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
             Categories
           </h3>
           <ul className="flex flex-wrap gap-1.5">
-            {tech.cats.map((c) => (
+            {tech.subcategories.map((c) => (
               <li
-                key={c}
+                key={c.id}
                 className="rounded-full bg-surface-3 px-2.5 py-1 text-xs font-medium text-ink-2"
+                title={`${c.categoryName} · ${c.name}`}
               >
-                {c}
+                {c.name}
               </li>
             ))}
           </ul>
@@ -69,7 +83,7 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
           <h3 className="mb-2 text-[11px] font-bold tracking-[0.04em] text-ink-3 uppercase">
             Service pincodes
           </h3>
-          <p className="font-mono text-xs text-ink-2">{tech.pincodes}</p>
+          <p className="font-mono text-xs text-ink-2">{tech.pincodes.join(", ")}</p>
         </section>
       </CardContent>
     </Card>
@@ -79,27 +93,28 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
 /* --------------------------------------------------------------------- stats */
 
 /**
- * The four numbers an ASM reads first. Cancels and the net ledger are the
- * judgement calls: a high cancel count is a risk signal, and the net ledger
- * is bonuses earned minus penalties charged — negative means this technician
- * has cost the pool more than they have earned from it.
+ * The four numbers an ASM reads first. Cancels is the judgement call: a high
+ * count is a risk signal, since every cancellation costs a banded penalty and,
+ * close to the slot, escalates.
+ *
+ * On-time percentage stands where the net ledger used to. The ledger is real
+ * money and belongs to the ledger slice; reading it off the technician record
+ * would have meant keeping the same rupees in two places.
  */
 export function TechStats({ tech }: { tech: Technician }) {
-  const net = tech.bonus - tech.penalty;
-
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <StatTile label="Jobs done">
-        <span className="tabular-nums">{tech.jobs}</span>
+        <span className="tabular-nums">{tech.jobsCompleted}</span>
       </StatTile>
 
       <StatTile label="Bandwidth">
         <span className="tabular-nums">
-          {tech.bwUsed}/{tech.bwTotal}
+          {tech.bwUsed}/{tech.dailyJobCap}
         </span>
         <BandwidthBar
           used={tech.bwUsed}
-          total={tech.bwTotal}
+          total={tech.dailyJobCap}
           showValue={false}
           className="mt-2"
           trackClassName="w-full"
@@ -107,14 +122,12 @@ export function TechStats({ tech }: { tech: Technician }) {
       </StatTile>
 
       <StatTile label="Cancels">
-        <CancelCount cancels={tech.cancels} />
+        <CancelCount cancels={tech.jobsCancelled} />
       </StatTile>
 
-      {/* money() writes debits with a real minus sign, so the sign — not the
-          tint — is what tells you the ledger is negative. */}
-      <StatTile label="Net ledger">
-        <span className={net < 0 ? "text-danger" : "text-ok"}>
-          {money(net)}
+      <StatTile label="On time">
+        <span className="tabular-nums">
+          {tech.onTimePct === null ? "—" : `${tech.onTimePct}%`}
         </span>
       </StatTile>
     </div>

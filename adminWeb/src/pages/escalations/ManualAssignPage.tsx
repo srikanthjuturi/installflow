@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useAssignTechnician, useEscalation } from "@/hooks/useEscalations";
 import { useEligibleTechnicians } from "@/hooks/useTechnicians";
-import type { Technician } from "@/types";
+import type { EligibleTechnician } from "@/types";
 
 export default function ManualAssignPage() {
   const { id = "" } = useParams();
@@ -34,7 +34,7 @@ export default function ManualAssignPage() {
 
   const [pending, setPending] = useState<string | null>(null);
 
-  function onAssign(tech: Technician) {
+  function onAssign(tech: EligibleTechnician) {
     setPending(tech.name);
     assign.mutate(
       { id, techName: tech.name },

@@ -3,14 +3,14 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import type { Technician } from "@/types";
+import type { EligibleTechnician } from "@/types";
 
 interface EligibleTechTableProps {
-  technicians?: Technician[];
+  technicians?: EligibleTechnician[];
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
-  onAssign: (tech: Technician) => void;
+  onAssign: (tech: EligibleTechnician) => void;
   /** Name of the technician whose assignment is in flight, if any. */
   assigningName?: string | null;
   isAssigning?: boolean;
@@ -34,7 +34,7 @@ export function EligibleTechTable({
   assigningName,
   isAssigning = false,
 }: EligibleTechTableProps) {
-  const columns: Column<Technician>[] = [
+  const columns: Column<EligibleTechnician>[] = [
     {
       id: "name",
       header: "Technician",

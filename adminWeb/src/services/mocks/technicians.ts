@@ -1,6 +1,6 @@
-import type { Technician } from "@/types";
+import type { EligibleTechnician } from "@/types";
 
-export const TECHNICIANS: Technician[] = [
+export const TECHNICIANS: EligibleTechnician[] = [
   {
     id: "TCH-4021",
     name: "Sunil Pawar",

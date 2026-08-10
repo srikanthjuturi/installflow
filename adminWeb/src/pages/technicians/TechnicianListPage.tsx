@@ -1,59 +1,56 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Send } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
-import { parsePincodes } from "@/components/technicians/technicianSchema";
+import { TechnicianInviteDialog } from "@/components/technicians/TechnicianInviteDialog";
 import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { useSubcategoryOptions } from "@/hooks/useProductMaster";
+import { useFeatureAccess } from "@/hooks/useAuth";
+import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import {
+  useCancelInvite,
   useCreateTechnician,
-  useTechnicianCategories,
+  useInviteTechnician,
+  useResendInvite,
   useTechnicians,
 } from "@/hooks/useTechnicians";
-import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
-import { subcategoryNames } from "@/types/product";
+import { useListParams } from "@/hooks/useListParams";
+import type { TechnicianRow } from "@/types/technician";
+import { formatPhone, toE164 } from "@/utils/phone";
 
 export default function TechnicianListPage() {
   const [isFormOpen, setFormOpen] = useState(false);
+  const [isInviteOpen, setInviteOpen] = useState(false);
+
   const create = useCreateTechnician();
-  // The technician store is still mock-backed and keyed on names. Resolving
-  // here — rather than in the form — keeps ids the only thing the form knows
-  // about, so binding to the API later deletes this line and nothing else.
-  const { options: subcategories } = useSubcategoryOptions();
+  const invite = useInviteTechnician();
+  const resend = useResendInvite();
+  const cancel = useCancelInvite();
 
-  // The query the server answers. Search, filters, sort and page all live in
-  // one object so the table can hand back a whole new intent in one call.
-  const [params, setParams] = useState<ListParams>({
-    page: 1,
-    limit: DEFAULT_PAGE_SIZE,
-    sortBy: "name",
-    sortDir: "asc",
-  });
+  const { has } = useFeatureAccess();
+  const canCreate = has("technicians.create");
+  const canInvite = has("technicians.invite");
+  const { regions } = useAssignableRegions();
 
-  /**
-   * Merged into the current query, not swapped for it.
-   *
-   * "Clear filters" resets the search box and every filter in the same tick.
-   * A setter that replaced would let the last of those calls win and quietly
-   * put the search term back.
-   */
-  const applyParams = (next: ListParams) =>
-    setParams((prev) => ({
-      ...prev,
-      ...next,
-      filters: { ...prev.filters, ...next.filters },
-    }));
+  // The query the server answers. Search, filters and page all live in one
+  // object so the table can hand back a whole new intent in one call. The
+  // table already strips "All" — it is a control value, not a filter — so
+  // nothing here has to know which values are sentinels.
+  const [params, setParams] = useListParams();
 
   const { data, isLoading, isError, error, refetch } = useTechnicians(params);
-  const categories = useTechnicianCategories();
+
+  const busyInviteId =
+    resend.isPending || cancel.isPending
+      ? ((resend.variables ?? cancel.variables) as string | undefined) ?? null
+      : null;
 
   return (
     <>
       <PageMeta
         title="Technicians"
-        description="Technician master list — categories, pincodes, bandwidth and cancellations."
+        description="Technician master list — categories, pincodes, region, bandwidth and how each was onboarded."
       />
 
       <TechnicianFormDialog
@@ -63,45 +60,112 @@ export default function TechnicianListPage() {
         onSubmit={(values) =>
           create.mutate(
             {
-              name: values.name,
-              phone: values.phone,
-              cats: subcategoryNames(subcategories, values.subcategoryIds),
-              pincodes: parsePincodes(values.pincodes),
-              bwTotal: Number(values.bwTotal),
-              photoUrl: values.photo,
+              fullName: values.name,
+              phone: toE164(values.phone),
+              regionId: values.regionId,
+              subcategoryIds: values.subcategoryIds,
+              pincodes: values.pincodes,
+              dailyJobCap: Number(values.bwTotal),
+              profileImageUrl: values.photo ?? null,
             },
             {
               onSuccess: (technician) => {
                 toast.add({
                   title: `${technician.name} added`,
-                  description: `${technician.id} · ${technician.bwTotal} jobs/day.`,
+                  description: `${technician.code} · ${technician.dailyJobCap} jobs/day.`,
                 });
                 setFormOpen(false);
               },
-              onError: (err) =>
+            }
+          )
+        }
+      />
+
+      <TechnicianInviteDialog
+        open={isInviteOpen}
+        onOpenChange={setInviteOpen}
+        isSubmitting={invite.isPending}
+        onSubmit={(values) =>
+          invite.mutate(
+            {
+              phone: toE164(values.phone),
+              regionId: values.regionId || null,
+            },
+            {
+              onSuccess: (created) => {
+                /* A refused send is not an error: the invite exists and can be
+                   resent, and the link is on the row to send by hand. */
                 toast.add({
-                  title: "Couldn't add technician",
-                  description: err.message,
-                }),
+                  title:
+                    created.status === "sent"
+                      ? `Invite sent to ${formatPhone(created.phone)}`
+                      : "Invite saved, but not delivered",
+                  description:
+                    created.status === "sent"
+                      ? undefined
+                      : (created.failureReason ??
+                        "Copy the link from the row and send it another way."),
+                });
+                setInviteOpen(false);
+              },
             }
           )
         }
       />
 
       <TechTable
-        technicians={data?.rows}
+        rows={data?.rows}
         meta={data?.pagination}
         params={params}
-        onParams={applyParams}
-        categories={categories.data ?? []}
+        onParams={setParams}
+        regions={regions}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}
+        canEdit={canInvite}
+        busyInviteId={busyInviteId}
+        onResend={(row: TechnicianRow) =>
+          resend.mutate(row.id, {
+            onSuccess: (updated) =>
+              toast.add({
+                title:
+                  updated.status === "sent"
+                    ? `Invite resent to ${formatPhone(updated.phone)}`
+                    : `Still couldn't reach ${formatPhone(updated.phone)}`,
+                description:
+                  updated.status === "sent"
+                    ? undefined
+                    : (updated.failureReason ?? undefined),
+              }),
+          })
+        }
+        onCancel={(row: TechnicianRow) =>
+          cancel.mutate(row.id, {
+            onSuccess: () =>
+              toast.add({
+                title: `Invite to ${formatPhone(row.phone)} cancelled`,
+              }),
+          })
+        }
         toolbarActions={
-          <Button className="h-10" onClick={() => setFormOpen(true)}>
-            <Plus data-icon="inline-start" />
-            Add technician
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canInvite ? (
+              <Button
+                variant="outline"
+                className="h-10"
+                onClick={() => setInviteOpen(true)}
+              >
+                <Send data-icon="inline-start" />
+                Invite technician
+              </Button>
+            ) : null}
+            {canCreate ? (
+              <Button className="h-10" onClick={() => setFormOpen(true)}>
+                <Plus data-icon="inline-start" />
+                Add technician
+              </Button>
+            ) : null}
+          </div>
         }
       />
     </>
