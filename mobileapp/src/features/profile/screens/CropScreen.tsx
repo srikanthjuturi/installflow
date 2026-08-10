@@ -157,7 +157,11 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
       });
 
       setAvatar(saved.uri);
-      router.dismissAll();
+      // `back()`, not `dismissAll()`: the picker sheet `replace`s itself with
+      // this screen, so exactly one modal is ever on the stack and the two are
+      // identical here — but `back()` also returns correctly when the crop was
+      // opened from the registration flow rather than from Profile.
+      router.back();
     } finally {
       setBusy(false);
     }

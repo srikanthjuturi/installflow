@@ -75,6 +75,15 @@ export const color = {
   borderStrong: palette.neutral[350],
   borderFocus: palette.primary[500],
 
+  /**
+   * A validation or request failure shown next to the control it belongs to.
+   *
+   * Its own role rather than reusing `debit`: that one means money leaving the
+   * technician's account, and a form error that turns out to share a token
+   * with a penalty is the kind of thing a re-skin gets wrong.
+   */
+  textDanger: palette.danger[500],
+
   // ── actions ─────────────────────────────────────────────────────────────
   actionBg: palette.primary[500],
   actionBgPress: palette.primary[600],

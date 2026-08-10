@@ -7,6 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandMark, Button } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
+import { requestOtp, verifyOtp } from '@/features/auth/api/session';
+import { ApiError } from '@/lib/api';
+import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 
 const OTP_LENGTH = 6;
@@ -28,9 +31,52 @@ export function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const signIn = useSession((s) => s.signIn);
+
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await requestOtp('+91' + phone);
+      setCode('');
+      setStep('otp');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not send a code. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verify = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await verifyOtp('+91' + phone, code);
+      if (!result.technicianProfile) {
+        // A real account, but not a technician one — or one whose onboarding
+        // never completed. Signing them in would land them on a Home screen
+        // with nothing behind it.
+        setError('This number is not set up as a technician yet.');
+        return;
+      }
+      signIn({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        technician: result.technicianProfile,
+      });
+      router.replace('/(app)/(tabs)');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <View
@@ -74,14 +120,32 @@ export function LoginScreen() {
         </Text>
 
         {step === 'phone' ? (
-          <PhoneStep phone={phone} setPhone={setPhone} onNext={() => setStep('otp')} />
+          <PhoneStep
+            phone={phone}
+            setPhone={(v) => {
+              setPhone(v);
+              setError(null);
+            }}
+            onNext={send}
+            busy={busy}
+            error={error}
+          />
         ) : (
           <OtpStep
             phone={phone}
             code={code}
-            setCode={setCode}
-            onBack={() => setStep('phone')}
-            onVerify={() => router.replace('/(app)/(tabs)')}
+            setCode={(v) => {
+              setCode(v);
+              setError(null);
+            }}
+            onBack={() => {
+              setStep('phone');
+              setError(null);
+            }}
+            onVerify={verify}
+            onResend={send}
+            busy={busy}
+            error={error}
           />
         )}
       </KeyboardAvoidingView>
@@ -93,9 +157,11 @@ interface PhoneStepProps {
   phone: string;
   setPhone: (next: string) => void;
   onNext: () => void;
+  busy: boolean;
+  error: string | null;
 }
 
-function PhoneStep({ phone, setPhone, onNext }: PhoneStepProps) {
+function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
   const [focused, setFocused] = useState(false);
   const valid = phone.length === PHONE_LENGTH;
 
@@ -155,9 +221,11 @@ function PhoneStep({ phone, setPhone, onNext }: PhoneStepProps) {
 
       {/* `margin-top:auto` in the prototype — the CTA sits at the bottom of the
           page, not in a bordered footer bar. */}
+      {error ? <FormError message={error} /> : null}
+
       <View style={{ flex: 1 }} />
 
-      <Button label="Send OTP" onPress={onNext} disabled={!valid} />
+      <Button label="Send OTP" onPress={onNext} disabled={!valid || busy} loading={busy} />
 
       <Text
         style={{
@@ -180,12 +248,25 @@ interface OtpStepProps {
   setCode: (next: string) => void;
   onBack: () => void;
   onVerify: () => void;
+  onResend: () => void;
+  busy: boolean;
+  error: string | null;
 }
 
-function OtpStep({ phone, code, setCode, onBack, onVerify }: OtpStepProps) {
+function OtpStep({
+  phone,
+  code,
+  setCode,
+  onBack,
+  onVerify,
+  onResend,
+  busy,
+  error,
+}: OtpStepProps) {
   // Hook lives here rather than in LoginScreen so the countdown starts when the
-  // OTP step mounts, not when the screen first renders.
-  const { label, canResend, restart } = useResendTimer(24);
+  // OTP step mounts, not when the screen first renders. 30s matches the
+  // server's resend throttle — a shorter timer would only earn a 429.
+  const { label, canResend, restart } = useResendTimer(30);
   const valid = code.length === OTP_LENGTH;
 
   const pretty = `+91 ${phone.slice(0, 5)} ${phone.slice(5)}`.trim();
@@ -216,7 +297,14 @@ function OtpStep({ phone, code, setCode, onBack, onVerify }: OtpStepProps) {
       </View>
 
       <Text
-        onPress={canResend ? restart : undefined}
+        onPress={
+          canResend && !busy
+            ? () => {
+                restart();
+                onResend();
+              }
+            : undefined
+        }
         style={{
           fontFamily: 'Roboto_400Regular',
           fontSize: 13,
@@ -227,9 +315,38 @@ function OtpStep({ phone, code, setCode, onBack, onVerify }: OtpStepProps) {
         {canResend ? 'Resend code' : `Resend code in ${label}`}
       </Text>
 
+      {error ? <FormError message={error} /> : null}
+
       <View style={{ flex: 1 }} />
 
-      <Button label="Verify & continue" onPress={onVerify} disabled={!valid} />
+      <Button
+        label="Verify & continue"
+        onPress={onVerify}
+        disabled={!valid || busy}
+        loading={busy}
+      />
     </>
+  );
+}
+
+/**
+ * A failure the technician can act on, shown in the flow rather than in a
+ * toast — "that code did not match" is only useful beside the boxes it refers
+ * to.
+ */
+function FormError({ message }: { message: string }) {
+  return (
+    <Text
+      accessibilityRole="alert"
+      style={{
+        fontFamily: 'Roboto_500Medium',
+        fontSize: 13,
+        lineHeight: 19,
+        color: color.textDanger,
+        marginTop: 14,
+      }}
+    >
+      {message}
+    </Text>
   );
 }

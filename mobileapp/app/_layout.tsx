@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -23,9 +24,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 /**
- * UI phase: every queryFn returns mock data, so there is nothing to retry and
- * nothing to refetch. These defaults keep the devtools quiet and make the
- * later swap to real endpoints a per-hook change, not a global one.
+ * Jobs and earnings are still mock; auth and onboarding are real. `retry: false`
+ * stays because a field technician on a bad connection is better served by an
+ * immediate error they can act on than by three silent retries.
  */
 function createQueryClient() {
   return new QueryClient({
@@ -41,6 +42,7 @@ function createQueryClient() {
 
 export default function RootLayout() {
   const [queryClient] = useState(createQueryClient);
+  const hydrated = useSession((s) => s.hydrated);
 
   const [fontsLoaded, fontError] = useFonts({
     Roboto_400Regular,
@@ -53,15 +55,25 @@ export default function RootLayout() {
     RobotoMono_700Bold,
   });
 
+  const ready = (fontsLoaded || fontError) && hydrated;
+
   useEffect(() => {
     // Hide the splash on font error too, otherwise a font CDN failure leaves
     // the user staring at a splash screen forever.
-    if (fontsLoaded || fontError) {
+    if (ready) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [ready]);
 
-  if (!fontsLoaded && !fontError) return null;
+  /**
+   * The splash covers session rehydration as well as fonts.
+   *
+   * SecureStore is async, so on the first frame the token is null whatever the
+   * truth is. Rendering the router before it resolves would send a signed-in
+   * technician to the login screen and then snap them back — holding the splash
+   * instead is why there is no loading screen in the boot path.
+   */
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -76,7 +88,19 @@ export default function RootLayout() {
               headerShown: false,
               contentStyle: { backgroundColor: color.surface },
             }}
-          />
+          >
+            {/* The photo modals live at the root, not under `(app)`, because
+                a technician registering from an invite link takes their
+                profile photo before they have a session. */}
+            <Stack.Screen
+              name="avatar-options"
+              options={{ presentation: 'transparentModal', animation: 'fade' }}
+            />
+            <Stack.Screen
+              name="crop-photo"
+              options={{ presentation: 'fullScreenModal' }}
+            />
+          </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

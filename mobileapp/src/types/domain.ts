@@ -10,6 +10,14 @@ export type SlaType = '24h' | '48h';
 export type ProofKind = 'barcode' | 'serial' | 'photos' | 'live';
 export type VerificationOutcome = 'match' | 'mismatch' | 'unreadable';
 
+/**
+ * The six product types the seeded catalogue ships with.
+ *
+ * Still a literal union because `Job` is mock data and its category is a plain
+ * string. A technician's real certifications are `SubcategoryRef[]` from the
+ * API — when the jobs slice lands, `Job.category` becomes one too and this
+ * union goes with it.
+ */
 export type ProductCategory =
   | 'Television'
   | 'Washing Machine'
@@ -17,6 +25,41 @@ export type ProductCategory =
   | 'Air Conditioner'
   | 'Microwave'
   | 'Water Purifier';
+
+/** One thing a technician is certified for, as the API names it. */
+export interface SubcategoryRef {
+  id: string;
+  name: string;
+  categoryName: string;
+  /** A key from `components/icons/productIcons`. Already resolved by the API. */
+  iconKey?: string;
+}
+
+/**
+ * The signed-in technician, straight off the login response.
+ *
+ * Its presence on a login response is what says "this account is a technician
+ * and onboarding is complete" — the app needs no second call to decide whether
+ * to show Home or the registration flow.
+ */
+export interface TechnicianSession {
+  id: string;
+  code: string;
+  name: string;
+  phone: string;
+  profileImageUrl: string | null;
+  regionName: string;
+  /** Display-only, e.g. "Priya Deshmukh · Videocon Service". */
+  onboardedBy: string;
+  subcategories: SubcategoryRef[];
+  pincodes: string[];
+  dailyJobCap: number;
+  status: 'active' | 'inactive' | 'suspended';
+  /** Null until they have closed a job — a dash, not a zero. */
+  rating: number | null;
+  jobsCompleted: number;
+  onTimePct: number | null;
+}
 
 export interface Job {
   id: string;

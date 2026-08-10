@@ -624,6 +624,9 @@ async def technician_session(
         pincodes=pins,
         dailyJobCap=profile.daily_job_cap,
         status=profile.status,
+        rating=float(profile.rating) if profile.rating is not None else None,
+        jobsCompleted=profile.jobs_completed,
+        onTimePct=profile.on_time_pct,
     )
 
 

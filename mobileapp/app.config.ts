@@ -68,6 +68,9 @@ const config: ExpoConfig = {
         backgroundColor: INK,
       },
     ],
+    // Session tokens live in the Keychain / Android Keystore, never in plain
+    // storage. First-party Expo, so Expo Go still runs the app unbuilt.
+    'expo-secure-store',
   ],
   extra: {
     surfaceColor: SURFACE,

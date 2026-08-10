@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -8,18 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { Avatar, Button, Switch } from '@/components/ui';
-import { qk } from '@/lib/queryKeys';
-import { delay } from '@/mocks/delay';
-import { technician } from '@/mocks/db';
+import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
-import type { ProductCategory, Technician } from '@/types/domain';
-
-/** Binding phase: `GET /me`. */
-async function getMe(): Promise<Technician> {
-  await delay('me');
-  return technician;
-}
 
 /**
  * Push notifications is a switch rather than an "On" label: it's the one
@@ -32,8 +22,14 @@ const SETTINGS: { label: string; value: string; icon: IconName }[] = [
   { label: 'Payout account', value: '••4432', icon: 'wallet' },
 ];
 
-/** The coverage row abbreviates, matching the prototype — the full names wrap. */
-const SHORT_CATEGORY: Partial<Record<ProductCategory, string>> = {
+/**
+ * The coverage row abbreviates, matching the prototype — the full names wrap.
+ *
+ * Keyed by name rather than by id: the catalogue is per-company and editable,
+ * so an id here would be a value from one tenant's database baked into the app.
+ * A name with no entry falls through unabbreviated.
+ */
+const SHORT_CATEGORY: Record<string, string> = {
   Television: 'TV',
   'Air Conditioner': 'AC',
   'Water Purifier': 'Purifier',
@@ -43,10 +39,15 @@ const SHORT_CATEGORY: Partial<Record<ProductCategory, string>> = {
 export function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data: me } = useQuery({ queryKey: qk.me(), queryFn: getMe });
+  // Straight from the session — it is written at sign-in and is the same
+  // payload `GET /technicians/me` returns, so a query here would refetch what
+  // the app already holds.
+  const me = useSession((s) => s.technician);
+  const signOut = useSession((s) => s.signOut);
   const [pushEnabled, setPushEnabled] = useState(true);
 
-  const categories = me?.categories.map((c) => SHORT_CATEGORY[c] ?? c).join(' · ') ?? '—';
+  const categories =
+    me?.subcategories.map((c) => SHORT_CATEGORY[c.name] ?? c.name).join(' · ') ?? '—';
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -101,13 +102,22 @@ export function ProfileScreen() {
                   marginTop: 2,
                 }}
               >
-                Technician · ID {me.id}
+                Technician · ID {me.code}
               </Text>
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, alignSelf: 'stretch' }}>
-                <ChromeStat value={me.rating.toFixed(1)} label="Rating" />
-                <ChromeStat value={String(me.jobsDone)} label="Jobs done" />
-                <ChromeStat value={`${me.onTimePct}%`} label="On-time" />
+                {/* A dash, not a zero: a technician who has closed nothing
+                    yet has no rating, and 0.0 reads as the worst score there
+                    is. */}
+                <ChromeStat
+                  value={me.rating === null ? '—' : me.rating.toFixed(1)}
+                  label="Rating"
+                />
+                <ChromeStat value={String(me.jobsCompleted)} label="Jobs done" />
+                <ChromeStat
+                  value={me.onTimePct === null ? '—' : `${me.onTimePct}%`}
+                  label="On-time"
+                />
               </View>
             </>
           )}
@@ -256,7 +266,12 @@ export function ProfileScreen() {
             <Button
               label="Log out"
               variant="dangerOutline"
-              onPress={() => router.replace('/(auth)/login')}
+              onPress={() => {
+                // Clear the session first: the `(app)` guard redirects on its
+                // own, and navigating before the token is gone would race it.
+                signOut();
+                router.replace('/(auth)/login');
+              }}
             />
           </View>
         </View>

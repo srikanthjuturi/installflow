@@ -164,3 +164,9 @@ class TechnicianSessionOut(AppModel):
     pincodes: list[str]
     dailyJobCap: int
     status: TechnicianStatus
+    #: The three figures the Profile tab shows in its chrome header. Null
+    #: rating means no closed jobs yet — the app renders a dash, because 0
+    #: would read as the worst possible score.
+    rating: float | None
+    jobsCompleted: int
+    onTimePct: int | None
