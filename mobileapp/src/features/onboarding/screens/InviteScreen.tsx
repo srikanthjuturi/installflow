@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { ScrollView, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
-import { useInvite } from '@/features/onboarding/hooks/useInvite';
+import { resolveInvite } from '@/features/onboarding/api/invite';
+import { qk } from '@/lib/queryKeys';
+import { useRegistration } from '@/store/registration.store';
 import { color } from '@/theme/semantic';
 
 export interface InviteScreenProps {
@@ -15,12 +18,23 @@ export interface InviteScreenProps {
   token: string;
 }
 
+/** "+919876543210" → "+91 98765 43210". */
+function prettyPhone(e164: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(e164);
+  return m ? `+91 ${m[1]} ${m[2]}` : e164;
+}
+
 /**
  * R1 — Register via invite link.
  *
- * Identity is set by the ASM who onboarded this technician, so every field is
- * read-only. The technician confirms rather than fills in; the only route to a
- * correction is through their ASM.
+ * A confirmation screen, not a form: it shows what the manager already decided
+ * and the technician confirms it. That is unchanged from the approved design.
+ *
+ * What changed is how much is known. A manager can invite with nothing but a
+ * phone number, so the panel renders the rows that HAVE a value rather than a
+ * fixed five — the name and technician ID do not exist yet, and blank rows for
+ * them would read as missing data rather than as data still to come. The
+ * typing moved to its own screen (R1b) so this one keeps its approved pixels.
  *
  * Layout values are taken verbatim from the approved prototype: white page at
  * 30/26/26 padding, a 58px dark tile, the panel on #f6f8fa at radius 16, and
@@ -29,17 +43,27 @@ export interface InviteScreenProps {
 export function InviteScreen({ token }: InviteScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data, isPending, isError, refetch } = useInvite(token);
+  const start = useRegistration((s) => s.start);
 
-  const firstName = data?.fullName.split(' ')[0] ?? '';
+  const {
+    data,
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: qk.invite(token),
+    queryFn: () => resolveInvite(token),
+    // The link is single-use and short-lived; refetching it mid-flow would
+    // only ever turn a working screen into an error.
+    staleTime: Infinity,
+    retry: false,
+  });
 
   const fields = data
     ? [
-        { label: 'Full name', value: data.fullName },
-        { label: 'Mobile', value: data.mobile },
-        { label: 'Technician ID', value: data.technicianId },
-        { label: 'Onboarded by', value: data.onboardedBy },
-        { label: 'Region', value: data.region },
+        { label: 'Mobile', value: prettyPhone(data.phone) },
+        { label: 'Onboarded by', value: data.invitedByName ?? data.companyName },
+        { label: 'Region', value: data.regionName },
       ]
     : [];
 
@@ -101,8 +125,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
               marginTop: 18,
             }}
           >
-            {isPending ? 'Welcome —' : `Welcome, ${firstName} —`}
-            {'\n'}set up your account
+            Welcome —{'\n'}set up your account
           </Animated.Text>
 
           <Animated.Text
@@ -115,8 +138,8 @@ export function InviteScreen({ token }: InviteScreenProps) {
               marginTop: 8,
             }}
           >
-            Your onboarding partner pre-filled these details in this link. Confirm they&apos;re
-            correct.
+            Your onboarding partner set these up for you. Confirm they&apos;re correct — you
+            add the rest next.
           </Animated.Text>
 
           <Animated.View
@@ -132,7 +155,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
             }}
           >
             {isPending
-              ? [0, 1, 2, 3, 4].map((i) => (
+              ? [0, 1, 2].map((i) => (
                   <View
                     key={i}
                     style={{
@@ -201,7 +224,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
                 color: color.textFootnote,
               }}
             >
-              Details are locked. Contact your ASM to change name or phone.
+              Your mobile number is locked to this invite. Contact your ASM to change it.
             </Text>
           </Animated.View>
 
@@ -212,7 +235,11 @@ export function InviteScreen({ token }: InviteScreenProps) {
             <Button
               label="Confirm & continue"
               trailingIcon="arrowRight"
-              onPress={() => router.push('/coverage')}
+              onPress={() => {
+                if (!data) return;
+                start(token, data);
+                router.push('/register/profile');
+              }}
               disabled={!data}
             />
           </Animated.View>

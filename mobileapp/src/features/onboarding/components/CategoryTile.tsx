@@ -1,12 +1,15 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
+import { Icon } from '@/components/icons/Icon';
+import { productIcon } from '@/components/icons/productIcons';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
-import type { ProductCategory } from '@/types/domain';
 
 export interface CategoryTileProps {
-  category: ProductCategory;
+  /** Display name of the subcategory, e.g. "Television". */
+  category: string;
+  /** Server-chosen icon key. Falls back when a newer deploy sends an unknown one. */
+  iconKey?: string;
   selected: boolean;
   onToggle: () => void;
 }
@@ -24,7 +27,12 @@ export interface CategoryTileProps {
  * badge, because a 1px tint is easy to miss in daylight — and mis-setting this
  * list means never being offered the right work.
  */
-export function CategoryTile({ category, selected, onToggle }: CategoryTileProps) {
+export function CategoryTile({
+  category,
+  iconKey,
+  selected,
+  onToggle,
+}: CategoryTileProps) {
   return (
     <Pressable
       onPress={onToggle}
@@ -56,7 +64,7 @@ export function CategoryTile({ category, selected, onToggle }: CategoryTileProps
             }}
           >
             <Icon
-              name={CATEGORY_ICONS[category] ?? 'tv'}
+              name={productIcon(iconKey)}
               size={24}
               color={selected ? color.actionBg : color.textSecondary}
             />

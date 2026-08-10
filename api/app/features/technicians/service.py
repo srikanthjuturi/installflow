@@ -685,6 +685,10 @@ async def set_certifications(
                 created_by=actor_id,
             )
         )
+    # The session runs with autoflush=False, so a caller that reads the
+    # certifications back before committing — self-registration builds its
+    # sign-in payload that way — would otherwise see none of these.
+    await session.flush()
 
 
 async def set_coverage(
@@ -706,6 +710,9 @@ async def set_coverage(
                 created_by=actor_id,
             )
         )
+    # Same reason as set_certifications: autoflush is off, and the coverage is
+    # read straight back into the response that signs the technician in.
+    await session.flush()
 
 
 async def reuse_or_create_user(
