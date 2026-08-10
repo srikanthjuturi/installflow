@@ -39,12 +39,24 @@ Three rules it establishes:
 To run the prototype: serve `webdesign/` over HTTP and open `Admin Portal.dc.html`. Login is
 prefilled (`ravi.sharma@installflow.in` / `demopass`); any 6 digits pass OTP.
 
-## Phase: UI only
+## Phase: partly bound
 
-**Do not build a real API client, interceptors, or a response envelope yet.** `api/` at the repo
-root is empty; the Python backend is a later phase. Screens render from typed mock data in
-`src/services/mocks/`, returned by TanStack Query hooks — so binding later is a one-line change
-per hook, and we get loading / empty / error states today.
+`services/http.ts` is the real transport. Live: auth, companies, **users & roles**, territory,
+the **product master** (`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
+
+Still mock, in `src/services/mocks/` behind TanStack Query hooks: tickets, escalations, the
+ledger, AI review, dashboard, vendors, imports and notifications — so binding each stays a
+one-line change and loading / empty / error states are already there.
+
+Two seams to know about:
+- `services/client.ts` is the MOCK transport, `services/http.ts` the real one. Both unwrap the
+  same envelope, so a slice moves between them without touching its hooks.
+- `listEligibleTechnicians` is deliberately still mocked even though technicians are live: it
+  answers "who has bandwidth left for this ticket", which needs open assignments and therefore
+  the jobs slice. The old flat technician shape survives as `EligibleTechnician` for it alone.
+
+**Do not fake a number that has a real source.** A null rating renders `—`, not `0`; the
+technician job-history table renders empty rather than inventing rows.
 
 ---
 

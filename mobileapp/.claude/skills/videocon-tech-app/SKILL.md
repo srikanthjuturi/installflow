@@ -55,12 +55,15 @@ weights 400/500/700/900 — headline numbers are 900.
 
 ## 2. Screen inventory
 
-18 screens. The prototype's own index numbering is kept so it's easy to cross-reference.
+18 screens in the prototype, 20 now. The prototype's own index numbering is kept so it's easy
+to cross-reference; the two additions came with real onboarding and are marked NEW.
 
 | # | Route | Screen |
 |---|---|---|
-| R1 | `(auth)/invite` | Register — invite link |
-| R2 | `(auth)/coverage` | Register — categories + pincodes |
+| R1 | `(auth)/invite/[token]` | Register — invite link (also `invite/index` for `?token=`) |
+| R1b | `(auth)/register/profile` | **NEW** — the technician's own name + photo |
+| R2 | `(auth)/coverage` | Register — subcategories + pincodes |
+| — | `(auth)/register/verify` | **NEW** — confirm the number, then register |
 | 1 | `(auth)/login` | Login / OTP |
 | 2 | `(app)/(tabs)/index` | Home — today's jobs |
 | 3 | `(app)/availability` | Availability & bandwidth |
@@ -77,6 +80,27 @@ weights 400/500/700/900 — headline numbers are 900.
 | — | `(app)/job/[id]/proof/closure` | Feedback link sent |
 | 15 | `(app)/(tabs)/earnings` | Earnings ledger |
 | 16 | `(app)/(tabs)/profile` | Profile & settings |
+| — | `avatar-options`, `crop-photo` | Photo modals — at the ROOT, not under `(app)` |
+
+### The two onboarding paths
+
+A technician arrives one of two ways, and the boot route is what separates them:
+
+```
+cold open, signed out   ->  /(auth)/login          NOT /invite
+```
+
+**Direct** — a manager created the whole record. Phone + OTP, then Home. `technicianProfile`
+being non-null on the login response IS that signal; there is no second call.
+
+**Invite** — reachable ONLY from the deep link `videocontech://invite/<token>`:
+`R1 -> R1b -> R2 -> register/verify -> Home`. Nothing is written until the last screen; the
+draft lives in `store/registration.store.ts` (persisted, so backgrounding the app mid-flow does
+not lose it) and the whole registration commits in one call.
+
+`app/(app)/_layout.tsx` guards the authenticated area. `app/_layout.tsx` holds the SPLASH until
+the session rehydrates — SecureStore is async, so redirecting before it resolves bounces a
+signed-in technician to login and back.
 
 ---
 
@@ -85,25 +109,57 @@ weights 400/500/700/900 — headline numbers are 900.
 Exact strings. Do not paraphrase.
 
 ### R1 — Invite link
-Eyebrow `SECURE INVITE LINK` · Title `Welcome, {firstName} — set up your account` ·
-Body `Your onboarding partner pre-filled these details in this link. Confirm they're correct.`
-Locked rows: Full name · Mobile · Technician ID · Onboarded by · Region.
-Footnote `Details are locked. Contact your ASM to change name or phone.` · CTA `Confirm & continue`
+> **Changed when onboarding became real.** A manager can now invite with nothing but a phone
+> number, so the panel has no name or technician ID to show. It renders the rows that HAVE a
+> value rather than a fixed five. **The strings below are NOT client-approved** — they replace
+> approved ones and are pending sign-off.
+
+Eyebrow `SECURE INVITE LINK` · Title `Welcome — set up your account` ·
+Body `Your onboarding partner set these up for you. Confirm they're correct — you add the rest next.`
+Rows, when known: Mobile · Onboarded by · Region.
+Footnote `Your mobile number is locked to this invite. Contact your ASM to change it.` ·
+CTA `Confirm & continue`
+
+*Superseded (approved, no longer reachable — a phone-only invite has neither field):*
+title `Welcome, {firstName} — set up your account`, body `Your onboarding partner pre-filled these
+details in this link. Confirm they're correct.`, rows Full name · Technician ID, footnote
+`Details are locked. Contact your ASM to change name or phone.`
+
+### R1b — Your name and photo  *(NEW — no approved copy)*
+The invite path only. Exists because the manager may have supplied only a phone number.
+`Tell us who you are` / `Your name and photo are what the customer sees when you arrive for a job.`
+`Tap to add a clear face photo. You can change it later.` · field `Full name` /
+placeholder `As it appears on your ID` · field `Mobile` (read-only) /
+`From your invite. Contact your ASM to change it.`
+CTA `Continue`, disabled hint `Enter your full name`.
 
 ### R2 — Coverage
 `What do you install?` / `Pick every category you're trained for. You'll only be offered jobs
 that match — pick more to get more work.`
-Categories: Television · Washing Machine · Refrigerator · Air Conditioner · Microwave · Water Purifier
+Tiles are one per **subcategory**, grouped under the parent category's name, fetched from
+`GET /onboarding/invites/{token}` — no longer a hardcoded six. Icons come from the server's
+`iconKey`. When an area manager sent the invite the pincode field becomes a **picker** over the
+areas that manager covers, with the intro `Pick the areas you can service. These are the areas
+your manager covers.` (not approved).
 `Which areas do you cover?` / `Add every pincode you can service — you'll be offered jobs from
 any of them.` · button `Add` · hint `Add at least one pincode. Most technicians cover 2–5 nearby areas.`
 CTA `Continue`, with summary `N categories · N areas`.
+**StepDots is now 4, not 3** — R1b was inserted. This is a change to an approved visual and is
+the item to lead any copy-approval request with.
 Disabled hints: `Select at least one category` then `Add at least one pincode`.
 Pincode input is 6 digits, numeric only; Add enables only at exactly 6 and rejects duplicates.
 
 ### 1 — Login / OTP
 `Technician sign-in` / `Installation & Demo field partner app.` · `Mobile number`, prefix `+91` ·
 CTA `Send OTP` · `By continuing you agree to the partner terms.`
-OTP step: `Enter the 6-digit code sent to +91 ….` · `Change` · `Resend code in 0:24` · `Verify & continue`
+OTP step: `Enter the 6-digit code sent to +91 ….` · `Change` · `Resend code in 0:30` · `Verify & continue`
+Resend is **0:30**, not 0:24 — it matches the server's `OTP_RESEND_SECONDS`, and a shorter timer
+would only earn a 429. Failures render inline (not approved), e.g.
+`This number is not set up as a technician yet.`
+
+### Register — confirm your number  *(NEW — no approved copy)*
+The last step of the invite path. `Confirm your number` /
+`Enter the 6-digit code sent to <number>. This is the last step.` · CTA `Create my account`.
 
 ### 2 — Home
 `Good morning` + name · toggle `You're online` / `Receiving job offers` — off state
@@ -277,7 +333,23 @@ Live in `src/components/`:
   serial · photos · geo · bell · globe · plus · minus · gift · card · warn · tv · washer ·
   fridge · ac · micro · purifier.
 
-## 6. Mock data
+## 6. Mock data — and what is no longer mocked
+
+**Auth and onboarding are REAL.** `src/lib/api.ts` talks to the FastAPI backend; the base URL is
+inferred from the Metro host, because a phone in Expo Go resolves `localhost` to itself, not to
+the laptop serving the API. Override with `EXPO_PUBLIC_API_URL`.
+
+Real: sign-in (`/auth/otp/*`), invite resolution and self-registration (`/onboarding/*`), the
+technician's own profile (`/technicians/me`), and the product catalogue. The signed-in technician
+comes from `store/session.store.ts`, **not** `mocks/db.ts` — Profile reads the session.
+
+Still mock: jobs, the pool, earnings, availability, proof capture. `Job.category` is still a
+`ProductCategory` literal; a technician's real certifications are `SubcategoryRef[]` from the API.
+When the jobs slice lands, `Job.category` becomes one too and that union goes.
+
+Two things the app deliberately does NOT fake: a null `rating` renders `—`, not `0.0` (which
+reads as the worst possible score), and a self-registered technician's photo is stored locally
+but **not uploaded** — there is no upload endpoint, so the console shows no photo for them yet.
 
 `src/mocks/db.ts` — seeded, deterministic. Aim for ~20 jobs across every category, pincode, SLA
 type and distance so pagination, filters and empty states are all reachable. The prototype's
