@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   Field,
   FieldDescription,
@@ -45,7 +46,22 @@ export function ScopeField({
   regionError?: string;
   pincodeError?: string;
 }) {
-  const regions = useAssignableRegions();
+  const { regions, isLoading, isError } = useAssignableRegions();
+
+  // Stable identity so the combobox's memoised item list doesn't churn.
+  const regionOptions = React.useMemo(
+    () => regions.map((r) => ({ value: r.id, label: r.name })),
+    [regions]
+  );
+
+  /** While the catalog loads, ids have no names yet — say so, don't guess. */
+  const regionPlaceholder = isLoading
+    ? "Loading regions…"
+    : isError
+      ? "Couldn't load regions"
+      : regions.length
+        ? "Type to search regions…"
+        : "No regions available";
 
   if (role === "national_head") {
     return (
@@ -66,10 +82,9 @@ export function ScopeField({
           id="regionIds"
           value={regionIds}
           onValueChange={onRegionIds}
-          options={regions.map((r) => ({ value: r.id, label: r.name }))}
-          placeholder={
-            regions.length ? "Type to search regions…" : "No regions available"
-          }
+          options={regionOptions}
+          disabled={isLoading || isError}
+          placeholder={regionPlaceholder}
           aria-invalid={regionError ? true : undefined}
           aria-describedby={regionError ? "regionIds-error" : undefined}
         />
@@ -130,6 +145,8 @@ export function ScopeField({
             value={pincodes}
             onValueChange={onPincodes}
             allowCustom
+            // "560 001" is how people write it; a pasted list separates on commas.
+            normalizeCustom={(raw) => raw.replace(/\s+/g, "")}
             validateCustom={(raw) =>
               PINCODE_RE.test(raw) ? null : "Enter a 6-digit pincode"
             }

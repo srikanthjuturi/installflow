@@ -1,7 +1,8 @@
 import { Map } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { TerritoryAreaManager, TerritoryRegion } from "@/types/territory";
+import { cn } from "@/lib/utils";
+import type { TerritoryPerson, TerritoryRegion } from "@/types/territory";
 
 /** "Ravi Sharma" → "RS". Derived, so no initials field has to be stored. */
 function initialsOf(name: string): string {
@@ -29,8 +30,14 @@ export function TerritoryTree({ regions }: { regions: TerritoryRegion[] }) {
   );
 }
 
+/** "1 pincode" / "3 pincodes" — the count is the point, so it reads correctly. */
+function count(n: number, one: string, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 function RegionCard({ region }: { region: TerritoryRegion }) {
-  const heads = region.regionalHeads.map((h) => h.name).join(", ");
+  const { regionalHeads, areaManagers } = region;
+  const empty = regionalHeads.length === 0 && areaManagers.length === 0;
 
   return (
     <Card className="[--card-spacing:0rem]">
@@ -41,73 +48,110 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
         >
           <Map className="size-4.5" />
         </span>
-        <div>
-          <h2 className="text-[15px] font-semibold">{region.name} Region</h2>
-          <p className="text-xs text-ink-3">
-            {heads ? `RSH · ${heads}` : "No Regional Head assigned"}
-          </p>
-        </div>
+        <h2 className="text-[15px] font-semibold">{region.name} Region</h2>
         <span className="ml-auto text-xs text-ink-3">
-          {region.areaManagers.length} ASMs · {region.pincodeCount} pincodes
+          {count(regionalHeads.length, "Regional Head")} ·{" "}
+          {count(areaManagers.length, "Area Manager")} ·{" "}
+          {count(region.pincodeCount, "pincode")}
         </span>
       </div>
 
-      {region.areaManagers.length ? (
-        <ul
-          className="flex flex-col p-2.5"
-          aria-label={`Area Managers in ${region.name} Region`}
-        >
-          {region.areaManagers.map((asm) => (
-            <li key={asm.membershipId}>
-              <AsmRow asm={asm} />
-            </li>
-          ))}
-        </ul>
-      ) : (
+      {empty ? (
         /* An unmapped region is information, not a row to hide: nobody is
            notified for tickets in it. */
         <p className="px-4.5 py-4 text-xs text-ink-3">
-          No Area Manager covers this region yet — assign one from Users &amp;
-          roles.
+          Nobody covers this region yet — assign a Regional Head or an Area
+          Manager from Users &amp; roles.
         </p>
+      ) : (
+        /* Both levels are rows: the region's people are the mapping, and a
+           Regional Head shown only as a caption reads as decoration. */
+        <ul
+          className="flex flex-col p-2.5"
+          aria-label={`People in ${region.name} Region`}
+        >
+          {regionalHeads.map((head) => (
+            <li key={head.membershipId}>
+              <PersonRow person={head} role="Regional Head" />
+            </li>
+          ))}
+          {areaManagers.map((asm) => (
+            <li key={asm.membershipId}>
+              <PersonRow person={asm} role="Area Manager" pincodes={asm.pincodes} />
+            </li>
+          ))}
+          {regionalHeads.length === 0 ? (
+            <li className="px-3 py-2 text-[11px] text-ink-3">
+              No Regional Head assigned to this region.
+            </li>
+          ) : null}
+          {areaManagers.length === 0 ? (
+            <li className="px-3 py-2 text-[11px] text-ink-3">
+              No Area Manager covers this region yet.
+            </li>
+          ) : null}
+        </ul>
       )}
     </Card>
   );
 }
 
 /**
- * An area manager owns a pincode range, and that range is one of the three
- * things technician notification matches on (category + pincode + free
- * bandwidth). The chips are the mapping itself, not decoration.
+ * One person in the region. An area manager owns a pincode range, and that
+ * range is one of the three things technician notification matches on (category
+ * + pincode + free bandwidth), so the chips are the mapping itself, not
+ * decoration. A regional head owns the region rather than any pincode, so it
+ * has none — the row says who, the chips say where.
  */
-function AsmRow({ asm }: { asm: TerritoryAreaManager }) {
+function PersonRow({
+  person,
+  role,
+  pincodes,
+}: {
+  person: TerritoryPerson;
+  role: string;
+  pincodes?: string[];
+}) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md px-3 py-2.75 transition-colors hover:bg-surface-2">
       <span
-        className="grid size-7.5 shrink-0 place-items-center rounded-full bg-status-assigned-bg text-[11px] font-semibold text-brand-400"
+        className={cn(
+          "grid size-7.5 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
+          // The head of a region reads as the senior row at a glance.
+          pincodes
+            ? "bg-status-assigned-bg text-brand-400"
+            : "bg-brand-500 text-white"
+        )}
         aria-hidden
       >
-        {initialsOf(asm.name)}
+        {initialsOf(person.name)}
       </span>
       <div className="min-w-37.5">
-        <h3 className="text-[13px] font-semibold">{asm.name}</h3>
+        <h3 className="text-[13px] font-semibold">{person.name}</h3>
         <p className="text-[11px] text-ink-3">
-          ASM{asm.isActive ? "" : " · Suspended"}
+          {role}
+          {person.isActive ? "" : " · Suspended"}
         </p>
       </div>
-      <ul
-        className="flex flex-1 flex-wrap gap-1.5"
-        aria-label={`Pincodes serviced by ${asm.name}`}
-      >
-        {asm.pincodes.map((pincode) => (
-          <li
-            key={pincode}
-            className="rounded-sm bg-surface-3 px-2 py-0.75 font-mono text-[11px] font-medium text-ink-2"
-          >
-            {pincode}
-          </li>
-        ))}
-      </ul>
+      {pincodes ? (
+        <ul
+          className="flex flex-1 flex-wrap gap-1.5"
+          aria-label={`Pincodes serviced by ${person.name}`}
+        >
+          {pincodes.map((pincode) => (
+            <li
+              key={pincode}
+              className="rounded-sm bg-surface-3 px-2 py-0.75 font-mono text-[11px] font-medium text-ink-2"
+            >
+              {pincode}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="flex-1 text-[11px] text-ink-3">
+          Covers the whole region
+        </span>
+      )}
     </div>
   );
 }

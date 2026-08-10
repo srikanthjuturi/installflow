@@ -60,6 +60,7 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
     register,
     handleSubmit,
     setValue,
+    clearErrors,
     formState: { errors },
   } = useForm<CreateUserValues>({
     resolver: createUserResolver(roles.map((r) => r.key)),
@@ -99,7 +100,7 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
+<form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
       <DialogHeader>
         <DialogTitle>Invite user</DialogTitle>
         <DialogDescription>
@@ -152,9 +153,11 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
                 value={field.value}
                 onValueChange={(v) => {
                   field.onChange(v);
-                  // A region picked for one role means nothing for another.
+                  // A region picked for one role means nothing for another —
+                  // and neither does the error it left behind.
                   setValue("regionIds", [], { shouldValidate: false });
                   setValue("pincodes", [], { shouldValidate: false });
+                  clearErrors(["regionIds", "pincodes"]);
                 }}
               >
                 <SelectTrigger
@@ -245,17 +248,7 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
         </div>
       </FieldGroup>
 
-      {create.error ? (
-        <p
-          role="alert"
-          className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-        >
-          {create.error instanceof Error
-            ? create.error.message
-            : "Couldn't add the user"}
-        </p>
-      ) : null}
-
+      {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel

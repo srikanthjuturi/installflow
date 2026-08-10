@@ -61,16 +61,32 @@ export function useRegions() {
  * Regions the signed-in user may hand out: their own, or all five for an
  * all-India role. The server enforces the same rule — this only keeps the
  * dropdown from offering a choice that would be rejected.
+ *
+ * Reports `isLoading` rather than an empty list, because the two are not the
+ * same thing: an empty list while the catalog is still arriving would render
+ * selected regions as raw ids and read as "you have no regions".
  */
-export function useAssignableRegions(): Region[] {
-  const { data: regions } = useRegions();
+export function useAssignableRegions(): {
+  regions: Region[];
+  isLoading: boolean;
+  isError: boolean;
+} {
+  const catalog = useRegions();
   const me = useMe();
-  const own = me.data?.regions ?? [];
-  const role = me.data?.role;
-  if (!regions) return [];
-  if (!role || ALL_INDIA_ROLES.has(role)) return regions;
-  const mine = new Set(own.map((r) => r.id));
-  return regions.filter((r) => mine.has(r.id));
+  const loading = catalog.isPending || me.isPending;
+  const failed = catalog.isError || me.isError;
+
+  if (loading || failed || !catalog.data || !me.data) {
+    return { regions: [], isLoading: loading, isError: failed };
+  }
+  // Fail closed: without a known role, offer nothing rather than everything.
+  const role = me.data.role;
+  const regions = ALL_INDIA_ROLES.has(role)
+    ? catalog.data
+    : catalog.data.filter(
+        (r) => new Set(me.data.regions.map((x) => x.id)).has(r.id)
+      );
+  return { regions, isLoading: false, isError: false };
 }
 
 /**
@@ -105,6 +121,7 @@ function useInvalidateUsers() {
 export function useCreateUser() {
   const invalidate = useInvalidateUsers();
   return useMutation({
+    meta: { errorTitle: "Couldn't add the user" },
     mutationFn: (input: CreateUserInput) => createUser(input),
     onSuccess: invalidate,
   });
@@ -113,6 +130,7 @@ export function useCreateUser() {
 export function useUpdateUser() {
   const invalidate = useInvalidateUsers();
   return useMutation({
+    meta: { errorTitle: "Couldn't update the user" },
     mutationFn: ({ id, input }: { id: string; input: UpdateUserInput }) =>
       updateUser(id, input),
     onSuccess: invalidate,
@@ -122,6 +140,7 @@ export function useUpdateUser() {
 export function useDeleteUser() {
   const invalidate = useInvalidateUsers();
   return useMutation({
+    meta: { errorTitle: "Couldn't remove the user" },
     mutationFn: (id: string) => deleteUser(id),
     onSuccess: invalidate,
   });

@@ -105,7 +105,7 @@ function EditUserForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
+<form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
       <DialogHeader>
         <DialogTitle>Edit {user.fullName ?? user.email}</DialogTitle>
         <DialogDescription>
@@ -200,17 +200,7 @@ function EditUserForm({
         </FieldSet>
       </FieldGroup>
 
-      {update.error ? (
-        <p
-          role="alert"
-          className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-        >
-          {update.error instanceof Error
-            ? update.error.message
-            : "Couldn't update the user"}
-        </p>
-      ) : null}
-
+      {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
