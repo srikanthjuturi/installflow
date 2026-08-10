@@ -1,4 +1,4 @@
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { Controller, useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { cn } from "@/lib/utils";
 import { CATEGORIES, REQUEST_TYPES, VENDORS } from "@/services/mocks/masters";
 import {
@@ -289,41 +290,39 @@ function SelectField({
   onChanged?: () => void;
 }) {
   const id = `field-${name}`;
+  const { field } = useController({ name, control });
+
+  const select = (v: string) => {
+    field.onChange(v);
+    onChanged?.();
+  };
+
+  // A dropdown with a single choice fills itself — but not while it's disabled
+  // (the model select before a category is picked) or its list is empty.
+  useAutoSelectSingle(options, field.value, select, !disabled);
+
   return (
     <Field data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Controller
-        name={name}
-        control={control}
-        render={({ field }) => (
-          <Select
-            value={field.value}
-            onValueChange={(v) => {
-              field.onChange(v);
-              onChanged?.();
-            }}
-            disabled={disabled}
-          >
-            <SelectTrigger
-              id={id}
-              className="w-full"
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? `${id}-error` : undefined}
-            >
-              <SelectValue placeholder={placeholder} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {options.map((o) => (
-                  <SelectItem key={o} value={o}>
-                    {o}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        )}
-      />
+      <Select value={field.value} onValueChange={select} disabled={disabled}>
+        <SelectTrigger
+          id={id}
+          className="w-full"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+        >
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {options.map((o) => (
+              <SelectItem key={o} value={o}>
+                {o}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
       {error ? (
         <FieldDescription
           id={`${id}-error`}

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useAssignableRoles, useCreateUser } from "@/hooks/useCompanyUsers";
 import { ScopeField } from "./ScopeField";
 import {
@@ -75,6 +76,13 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
   const role = useWatch({ control, name: "role" });
   const regionIds = useWatch({ control, name: "regionIds" });
   const pincodes = useWatch({ control, name: "pincodes" });
+
+  // One assignable role (e.g. an RSH who can only appoint an ASM) fills itself.
+  useAutoSelectSingle(
+    roles.map((r) => r.key),
+    role,
+    (key) => setValue("role", key, { shouldValidate: true })
+  );
 
   function submit(values: CreateUserValues) {
     create.mutate(
