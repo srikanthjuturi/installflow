@@ -42,12 +42,6 @@ const TechnicianListPage = lazy(
 const TechnicianProfilePage = lazy(
   () => import("@/pages/technicians/TechnicianProfilePage")
 );
-const FreelancerListPage = lazy(
-  () => import("@/pages/partners/FreelancerListPage")
-);
-const FranchiseListPage = lazy(
-  () => import("@/pages/partners/FranchiseListPage")
-);
 const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
 const AiReviewDetailPage = lazy(
   () => import("@/pages/ai-review/AiReviewDetailPage")
@@ -136,8 +130,6 @@ export const routes: RouteObject[] = [
               { path: "escalations/:id/assign", element: <ManualAssignPage /> },
               { path: "ai-review", element: <AiQueuePage /> },
               { path: "ai-review/:id", element: <AiReviewDetailPage /> },
-              { path: "partners/freelancers", element: <FreelancerListPage /> },
-              { path: "partners/franchises", element: <FranchiseListPage /> },
               { path: "technicians", element: <TechnicianListPage /> },
               { path: "technicians/:id", element: <TechnicianProfilePage /> },
               { path: "ledger", element: <LedgerPage /> },

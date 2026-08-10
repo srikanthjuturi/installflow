@@ -21,15 +21,6 @@ const STATIC: Record<string, Meta> = {
   },
   "/ai-review": { title: "AI review queue", subtitle: "Flagged verifications" },
   "/technicians": { title: "Technicians", subtitle: "Technician master list" },
-  /* Net-new — service partners are not in the approved prototype. */
-  "/partners/freelancers": {
-    title: "Freelancers",
-    subtitle: "Independent service partners",
-  },
-  "/partners/franchises": {
-    title: "Franchises",
-    subtitle: "Partner firms",
-  },
   "/ledger": { title: "Penalty & bonus pool", subtitle: "Financial ledger" },
   "/vendors": { title: "Vendors", subtitle: "Master & API credentials" },
   "/territory": {

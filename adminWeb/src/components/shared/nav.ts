@@ -8,11 +8,9 @@ import {
   Map,
   ScanLine,
   SlidersHorizontal,
-  Store,
   Tags,
   Upload,
   UserCog,
-  UserPlus,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -49,9 +47,6 @@ export interface NavGroup {
    */
   roles?: Role[];
 }
-
-/** Appointing partners is a management act — Ops Staff do intake only. */
-const MANAGEMENT: Role[] = ["Admin", "NH", "RSH", "ASM"];
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -98,24 +93,6 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ScanLine,
         badge: 4,
         match: ["/ai-review/"],
-      },
-    ],
-  },
-  {
-    name: "Partners",
-    roles: MANAGEMENT,
-    items: [
-      {
-        label: "Freelancers",
-        to: "/partners/freelancers",
-        icon: UserPlus,
-        feature: "partners.view",
-      },
-      {
-        label: "Franchises",
-        to: "/partners/franchises",
-        icon: Store,
-        feature: "partners.view",
       },
     ],
   },
