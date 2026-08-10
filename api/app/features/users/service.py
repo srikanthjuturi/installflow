@@ -41,6 +41,7 @@ from app.models.role import (
     ROLE_RANKS,
     ROLES_WITHOUT_PROFILE_IMAGE,
     SUPERADMIN,
+    TECHNICIAN,
 )
 from app.models.territory import MembershipPincode, MembershipRegion, Region
 from app.models.user import User
@@ -266,6 +267,9 @@ async def list_users(
         .where(
             Membership.company_id == principal.company_id,
             Membership.deleted_at.is_(None),
+            # Users and Technicians are disjoint screens. A technician also has
+            # no email, so they would sort and search as a row of blanks here.
+            User.role != TECHNICIAN,
         )
     )
     # A regional head's list simply never contains another region's people.
@@ -301,6 +305,14 @@ async def create_user(
 ) -> UserOut:
     if body.role == SUPERADMIN or body.role not in ROLE_RANKS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+    # A technician needs a profile, certifications and coverage, none of which
+    # this endpoint can create. One made here would be a membership no
+    # technician endpoint can see and no job can be offered to.
+    if body.role == TECHNICIAN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Onboard technicians from the Technicians screen",
+        )
     ensure_below_rank(principal, body.role)
 
     # Territory is validated before anything is written, so a bad scope never

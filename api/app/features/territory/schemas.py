@@ -8,7 +8,10 @@ from app.core.schemas import AppModel
 class TerritoryPerson(AppModel):
     membershipId: uuid.UUID
     name: str
-    email: str
+    #: Defensively nullable. Only RH/AM rows reach this schema and both always
+    #: have an email, but `users.email` is nullable now and a 500 here would be
+    #: a whole screen lost to one bad row.
+    email: str | None
     isActive: bool
 
 

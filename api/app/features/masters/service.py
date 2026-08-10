@@ -31,6 +31,7 @@ from app.features.masters.schemas import (
     SubcategoryUpdateRequest,
 )
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
+from app.models.technician import TechnicianSubcategory
 
 
 def _now() -> datetime:
@@ -271,20 +272,12 @@ async def _technician_counts(
 ) -> dict[uuid.UUID, int]:
     """How many technicians are certified per subcategory.
 
-    Imported lazily so this slice does not hard-depend on the technicians slice
-    at module load. The console shows this number ("34 technicians certified"),
-    and it must be a real count, not seed data.
+    A real count. The console shows this number ("34 technicians certified"),
+    and it is exactly the kind of figure that quietly stays seed data forever if
+    nobody wires it.
     """
     if not subcategory_ids:
         return {}
-    try:
-        from app.models.technician import TechnicianSubcategory  # noqa: PLC0415
-    except ImportError:
-        # The technicians slice has not landed yet. Remove this guard with it —
-        # a permanently-zero count is exactly the kind of number that quietly
-        # stays fake.
-        return {}
-
     rows = await db.execute(
         select(
             TechnicianSubcategory.subcategory_id, func.count(TechnicianSubcategory.id)

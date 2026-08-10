@@ -127,6 +127,12 @@ async def login(session: AsyncSession, email: str, password: str) -> LoginRespon
     )
     if user is None or user.deleted_at is not None:
         raise invalid
+    # A technician has no password at all — they sign in with a phone and a
+    # one-time code. Without this guard `verify_password` calls .encode() on
+    # None and the catch-all handler turns an ordinary wrong-account attempt
+    # into a 500.
+    if user.password_hash is None:
+        raise invalid
     if not verify_password(password, user.password_hash):
         raise invalid
     if not user.is_active:

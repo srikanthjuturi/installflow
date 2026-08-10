@@ -48,7 +48,8 @@ class RegionOut(AppModel):
 class UserOut(AppModel):
     membershipId: uuid.UUID
     userId: uuid.UUID
-    email: str
+    #: Null for a technician, who is identified by phone.
+    email: str | None
     fullName: str | None
     phone: str | None
     role: str

@@ -28,7 +28,9 @@ class LogoutRequest(BaseModel):
 # ─── Response fragments ────────────────────────────────────────────────────
 class UserOut(AppModel):
     id: uuid.UUID
-    email: str
+    #: Null for a technician — they are identified by phone and sign in with a
+    #: one-time code, so most never have a work email.
+    email: str | None
     fullName: str | None
     phone: str | None
     role: str
