@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { useCategories } from "@/hooks/useMasters";
+import { useCategoryTree } from "@/hooks/useProductMaster";
 import {
   BANDWIDTH_OPTIONS,
   technicianSchema,
@@ -43,7 +43,7 @@ import {
 const EMPTY: TechnicianFormValues = {
   name: "",
   phone: "",
-  cats: [],
+  subcategoryIds: [],
   pincodes: "",
   bwTotal: "",
 };
@@ -65,7 +65,7 @@ export function TechnicianFormDialog({
   onSubmit,
   isSubmitting,
 }: TechnicianFormDialogProps) {
-  const { data: categories, isLoading: loadingCategories } = useCategories();
+  const { data: tree, isLoading: loadingCategories } = useCategoryTree();
 
   const {
     control,
@@ -187,11 +187,15 @@ export function TechnicianFormDialog({
             </FieldGroup>
 
             {/* A multi-choice set is checkboxes in a fieldset — the group is
-                named by its legend and described by the error. */}
+                named by its legend and described by the error. Subcategories
+                sit under their parent's name: that is the level a job offer
+                matches on, and ungrouped they read as one long flat list. */}
             <FieldSet
-              data-invalid={err("cats") ? true : undefined}
-              aria-invalid={err("cats") ? true : undefined}
-              aria-describedby={err("cats") ? "tech-cats-error" : undefined}
+              data-invalid={err("subcategoryIds") ? true : undefined}
+              aria-invalid={err("subcategoryIds") ? true : undefined}
+              aria-describedby={
+                err("subcategoryIds") ? "tech-cats-error" : undefined
+              }
             >
               <FieldLegend variant="label">Categories</FieldLegend>
               <FieldDescription>
@@ -201,45 +205,57 @@ export function TechnicianFormDialog({
                 <FieldDescription>Loading categories…</FieldDescription>
               ) : (
                 <Controller
-                  name="cats"
+                  name="subcategoryIds"
                   control={control}
                   render={({ field }) => (
-                    <FieldGroup className="grid gap-2.5 sm:grid-cols-2">
-                      {(categories ?? [])
-                        .filter((c) => c.active)
-                        .map((c) => {
-                          const id = `tech-cat-${c.name.replace(/\s+/g, "-").toLowerCase()}`;
-                          const checked = field.value.includes(c.name);
-                          return (
-                            <Field key={c.name} orientation="horizontal">
-                              <Checkbox
-                                id={id}
-                                checked={checked}
-                                onCheckedChange={(next) =>
-                                  field.onChange(
-                                    next
-                                      ? [...field.value, c.name]
-                                      : field.value.filter((v) => v !== c.name)
-                                  )
-                                }
-                              />
-                              <FieldLabel htmlFor={id} className="font-normal">
-                                {c.name}
-                              </FieldLabel>
-                            </Field>
-                          );
-                        })}
-                    </FieldGroup>
+                    <div className="grid gap-3.5">
+                      {(tree ?? []).map((category) => (
+                        <div key={category.id}>
+                          <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+                            {category.name}
+                          </p>
+                          <FieldGroup className="grid gap-2.5 sm:grid-cols-2">
+                            {category.subcategories.map((sub) => {
+                              const id = `tech-cat-${sub.id}`;
+                              const checked = field.value.includes(sub.id);
+                              return (
+                                <Field key={sub.id} orientation="horizontal">
+                                  <Checkbox
+                                    id={id}
+                                    checked={checked}
+                                    onCheckedChange={(next) =>
+                                      field.onChange(
+                                        next
+                                          ? [...field.value, sub.id]
+                                          : field.value.filter(
+                                              (v) => v !== sub.id
+                                            )
+                                      )
+                                    }
+                                  />
+                                  <FieldLabel
+                                    htmlFor={id}
+                                    className="font-normal"
+                                  >
+                                    {sub.name}
+                                  </FieldLabel>
+                                </Field>
+                              );
+                            })}
+                          </FieldGroup>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 />
               )}
-              {err("cats") ? (
+              {err("subcategoryIds") ? (
                 <FieldDescription
                   id="tech-cats-error"
                   role="alert"
                   className="text-danger"
                 >
-                  {err("cats")}
+                  {err("subcategoryIds")}
                 </FieldDescription>
               ) : null}
             </FieldSet>

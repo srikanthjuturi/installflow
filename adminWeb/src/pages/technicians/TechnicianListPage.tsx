@@ -6,16 +6,22 @@ import { parsePincodes } from "@/components/technicians/technicianSchema";
 import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { useSubcategoryOptions } from "@/hooks/useProductMaster";
 import {
   useCreateTechnician,
   useTechnicianCategories,
   useTechnicians,
 } from "@/hooks/useTechnicians";
 import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
+import { subcategoryNames } from "@/types/product";
 
 export default function TechnicianListPage() {
   const [isFormOpen, setFormOpen] = useState(false);
   const create = useCreateTechnician();
+  // The technician store is still mock-backed and keyed on names. Resolving
+  // here — rather than in the form — keeps ids the only thing the form knows
+  // about, so binding to the API later deletes this line and nothing else.
+  const { options: subcategories } = useSubcategoryOptions();
 
   // The query the server answers. Search, filters, sort and page all live in
   // one object so the table can hand back a whole new intent in one call.
@@ -59,7 +65,7 @@ export default function TechnicianListPage() {
             {
               name: values.name,
               phone: values.phone,
-              cats: values.cats,
+              cats: subcategoryNames(subcategories, values.subcategoryIds),
               pincodes: parsePincodes(values.pincodes),
               bwTotal: Number(values.bwTotal),
               photoUrl: values.photo,

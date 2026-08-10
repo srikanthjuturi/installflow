@@ -1,4 +1,4 @@
-import type { Category, Vendor } from "@/types";
+import type { Vendor } from "@/types";
 
 export const VENDORS: Vendor[] = [
   {
@@ -48,38 +48,6 @@ export const VENDORS: Vendor[] = [
   },
 ];
 
-export const CATEGORIES: Category[] = [
-  {
-    name: "Television",
-    models: ['43" 4K UHD', '55" QLED', '50" 4K', '32" HD', '40" FHD'],
-    techs: 34,
-    active: true,
-  },
-  {
-    name: "Refrigerator",
-    models: ["340L Frost-Free", "253L Direct Cool", "470L Side-by-Side"],
-    techs: 28,
-    active: true,
-  },
-  {
-    name: "Washing Machine",
-    models: ["7kg Front Load", "6.5kg Top Load", "8kg Front Load"],
-    techs: 22,
-    active: true,
-  },
-  {
-    name: "Air Conditioner",
-    models: ["1.5T Inverter Split", "1T Window AC", "2T Cassette"],
-    techs: 19,
-    active: true,
-  },
-  {
-    name: "Microwave",
-    models: ["28L Convection", "20L Solo", "30L Grill"],
-    techs: 15,
-    active: true,
-  },
-];
 
 /** Not in the requirement doc's required-field list, but the prototype
  *  collects it — flagged as an open question. */

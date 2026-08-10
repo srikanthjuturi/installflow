@@ -6,9 +6,9 @@ import {
   notFound,
   sortRows,
 } from "./client";
-import { CATEGORIES, VENDORS } from "./mocks/masters";
+import { VENDORS } from "./mocks/masters";
 import type { ListParams, Page } from "@/types/api";
-import type { Category, Vendor } from "@/types";
+import type { Vendor } from "@/types";
 
 /**
  * Sortable columns, and the value each one compares on.
@@ -46,10 +46,6 @@ export function listVendors(params: ListParams = {}): Promise<Page<Vendor>> {
 
     return sortRows(rows, params.sortBy, params.sortDir, VENDOR_SORT);
   }, params);
-}
-
-export function listCategories(): Promise<Category[]> {
-  return mockResponse(() => CATEGORIES);
 }
 
 /** The em dash the table already renders for a vendor with no credentials. */
@@ -137,31 +133,3 @@ export function updateVendor(input: UpdateVendorInput): Promise<Vendor> {
   });
 }
 
-export interface CreateCategoryInput {
-  name: string;
-  models: string[];
-  active: boolean;
-}
-
-/**
- * A category is meaningless without at least one product model, so the list
- * is required. The certified-technician count is derived from technician
- * records — a brand-new category has nobody certified on it yet.
- */
-export function createCategory(input: CreateCategoryInput): Promise<Category> {
-  return mockResponse(() => {
-    const name = input.name.trim();
-    if (CATEGORIES.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
-      throw new ApiError(`${name} already exists`, 409);
-    }
-
-    const models = input.models.map((m) => m.trim()).filter(Boolean);
-    if (models.length === 0) {
-      throw new ApiError("A category needs at least one product model", 422);
-    }
-
-    const category: Category = { name, models, techs: 0, active: input.active };
-    CATEGORIES.push(category);
-    return category;
-  });
-}

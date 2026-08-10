@@ -77,12 +77,11 @@ export interface Vendor {
   since: string;
 }
 
-export interface Category {
-  name: string;
-  models: string[];
-  techs: number;
-  active: boolean;
-}
+/* `Category` moved to `types/product.ts` when the product master became real.
+   It was `{ name, models[], techs, active }` with no id, which made `name` the
+   join key for technician certifications and ticket categories alike — so a
+   rename silently orphaned both. It is now category → subcategory → model, each
+   with a UUID. */
 
 export interface User {
   id: string;

@@ -1,9 +1,13 @@
 import { z } from "zod";
 
 /**
- * A technician is offered a job on three things at once: the category, the
+ * A technician is offered a job on three things at once: the subcategory, the
  * pincode and free bandwidth. All three are therefore required at onboarding —
  * a technician missing any one of them is never notified about anything.
+ *
+ * Certification is at the SUBCATEGORY level (Television, Air Conditioner), not
+ * the parent category (Electric) — a TV specialist should not be offered air
+ * conditioners because both hang off the same grouping.
  */
 
 /** Accepts commas, spaces or newlines so a pasted list works as typed. */
@@ -25,7 +29,8 @@ export const technicianSchema = z.object({
       /^(\+91[\s-]?)?[6-9]\d{9}$/,
       "Enter a valid 10-digit Indian mobile number"
     ),
-  cats: z.array(z.string()).min(1, "Select at least one category"),
+  /** Subcategory ids, not names — a rename must not orphan a certification. */
+  subcategoryIds: z.array(z.string()).min(1, "Select at least one category"),
   pincodes: z
     .string()
     .trim()

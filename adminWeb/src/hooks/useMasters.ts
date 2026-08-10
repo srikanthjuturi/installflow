@@ -4,21 +4,18 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  createCategory,
-  createVendor,
-  listCategories,
-  listVendors,
-  updateVendor,
-} from "@/services/masters";
+import { createVendor, listVendors, updateVendor } from "@/services/masters";
 import type { ListParams } from "@/types/api";
 
+/**
+ * Vendors only. The product master moved to `useProductMaster` when categories
+ * became a real three-level tree with its own endpoints.
+ */
 export const masterKeys = {
   all: ["masters"] as const,
   /** Prefix — invalidating this catches every page and filter combination. */
   vendors: () => ["masters", "vendors"] as const,
   vendorPage: (params: ListParams) => ["masters", "vendors", params] as const,
-  categories: () => ["masters", "categories"] as const,
 };
 
 /**
@@ -32,13 +29,6 @@ export function useVendors(params: ListParams) {
     // Paging must not blank the table: the previous page stays on screen until
     // the next one lands, so the toolbar and row heights never jump.
     placeholderData: keepPreviousData,
-  });
-}
-
-export function useCategories() {
-  return useQuery({
-    queryKey: masterKeys.categories(),
-    queryFn: listCategories,
   });
 }
 
@@ -60,14 +50,3 @@ function useVendorMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
 
 export const useCreateVendor = () => useVendorMutation(createVendor);
 export const useUpdateVendor = () => useVendorMutation(updateVendor);
-
-export function useCreateCategory() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    meta: { errorTitle: "Couldn't save the category" },
-    mutationFn: createCategory,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: masterKeys.categories() });
-    },
-  });
-}

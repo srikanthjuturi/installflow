@@ -6,8 +6,13 @@ import { z } from "zod";
  */
 export const ticketSchema = z.object({
   vendor: z.string().min(1, "Select a vendor"),
-  category: z.string().min(1, "Select a category"),
-  product: z.string().min(1, "Select a product model"),
+  /**
+   * A subcategory id — Television, Air Conditioner. This is what the Category
+   * dropdown offers and what a job offer matches a technician on; the parent
+   * category (Electric, Home Appliance) is only the dropdown's group heading.
+   */
+  subcategoryId: z.string().min(1, "Select a category"),
+  modelId: z.string().min(1, "Select a product model"),
   requestType: z.string().min(1, "Select a request type"),
   customer: z.string().trim().min(2, "Customer name is required"),
   mobile: z
@@ -26,6 +31,21 @@ export const ticketSchema = z.object({
 });
 
 export type TicketFormValues = z.infer<typeof ticketSchema>;
+
+/**
+ * What the form hands upward once the ids are resolved to the names a ticket
+ * records. The ids ride along so ticket intake is ready for the API without
+ * another pass over this form.
+ */
+export interface TicketSubmitValues
+  extends Omit<TicketFormValues, "subcategoryId" | "modelId"> {
+  /** The subcategory NAME. `Ticket.category` has always held this level. */
+  category: string;
+  /** The model name. */
+  product: string;
+  subcategoryId: string;
+  modelId: string;
+}
 
 export const SLA_OPTIONS = [
   {

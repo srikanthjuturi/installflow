@@ -18,21 +18,40 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
+import { useCategoryTree } from "@/hooks/useProductMaster";
 import { cn } from "@/lib/utils";
-import { CATEGORIES, REQUEST_TYPES, VENDORS } from "@/services/mocks/masters";
+import { REQUEST_TYPES, VENDORS } from "@/services/mocks/masters";
 import {
   SLA_OPTIONS,
   ticketSchema,
   type TicketFormValues,
+  type TicketSubmitValues,
 } from "./ticketSchema";
 
+/** `{ value, label }` because the selects now store ids and show names. */
+interface Option {
+  value: string;
+  label: string;
+}
+
+interface OptionGroup {
+  /** A parent category — rendered as the dropdown's group heading. */
+  label?: string;
+  options: Option[];
+}
+
+const plain = (values: readonly string[]): OptionGroup[] => [
+  { options: values.map((v) => ({ value: v, label: v })) },
+];
+
 interface ManualEntryFormProps {
-  onSubmit: (values: TicketFormValues) => void;
+  onSubmit: (values: TicketSubmitValues) => void;
   onCancel: () => void;
   isSubmitting: boolean;
 }
@@ -42,6 +61,8 @@ export function ManualEntryForm({
   onCancel,
   isSubmitting,
 }: ManualEntryFormProps) {
+  const { data: tree } = useCategoryTree();
+
   const {
     control,
     register,
@@ -52,8 +73,8 @@ export function ManualEntryForm({
     resolver: zodResolver(ticketSchema),
     defaultValues: {
       vendor: "",
-      category: "",
-      product: "",
+      subcategoryId: "",
+      modelId: "",
       requestType: "Installation",
       customer: "",
       mobile: "",
@@ -63,16 +84,55 @@ export function ManualEntryForm({
     },
   });
 
-  // Models belong to a category, so the second select depends on the first.
+  // Models belong to a subcategory, so the second select depends on the first.
   // useWatch subscribes to just this field — watch() re-renders on every
   // keystroke anywhere in the form and isn't memoization-safe.
-  const category = useWatch({ control, name: "category" });
-  const models = CATEGORIES.find((c) => c.name === category)?.models ?? [];
+  const subcategoryId = useWatch({ control, name: "subcategoryId" });
+
+  /* The master is three levels deep but the approved form has one Category
+     field, so the parent becomes the dropdown's group heading rather than a
+     fifth control. A technician is certified for subcategories, so this is
+     also the level the ticket has to record. */
+  const categoryGroups: OptionGroup[] = (tree ?? []).map((category) => ({
+    label: category.name,
+    options: category.subcategories.map((s) => ({
+      value: s.id,
+      label: s.name,
+    })),
+  }));
+
+  const subcategory = (tree ?? [])
+    .flatMap((c) => c.subcategories)
+    .find((s) => s.id === subcategoryId);
+
+  const modelGroups: OptionGroup[] = [
+    {
+      options: (subcategory?.models ?? []).map((m) => ({
+        value: m.id,
+        label: m.name,
+      })),
+    },
+  ];
 
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
+  /* Ids are what the selects hold; names are what a ticket records. Resolving
+     here keeps the page a pass-through and leaves the ids available for when
+     ticket intake binds to the API. */
+  function submit(values: TicketFormValues) {
+    const model = subcategory?.models.find((m) => m.id === values.modelId);
+    const { subcategoryId: subId, modelId, ...rest } = values;
+    onSubmit({
+      ...rest,
+      subcategoryId: subId,
+      modelId,
+      category: subcategory?.name ?? "",
+      product: model?.name ?? "",
+    });
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleSubmit(submit)} noValidate>
       <Card>
         <CardContent className="flex flex-col gap-6">
           <FieldSet>
@@ -84,39 +144,39 @@ export function ManualEntryForm({
                 name="vendor"
                 label="Company / vendor"
                 placeholder="Select vendor"
-                options={VENDORS.filter((v) => v.status === "Active").map(
-                  (v) => v.name
+                groups={plain(
+                  VENDORS.filter((v) => v.status === "Active").map((v) => v.name)
                 )}
                 control={control}
                 error={err("vendor")}
               />
               <SelectField
-                name="category"
+                name="subcategoryId"
                 label="Category"
                 placeholder="Select category"
-                options={CATEGORIES.map((c) => c.name)}
+                groups={categoryGroups}
                 control={control}
-                error={err("category")}
+                error={err("subcategoryId")}
                 onChanged={() =>
-                  setValue("product", "", { shouldValidate: false })
+                  setValue("modelId", "", { shouldValidate: false })
                 }
               />
               <SelectField
-                name="product"
+                name="modelId"
                 label="Product model"
                 placeholder={
-                  category ? "Select model" : "Pick a category first"
+                  subcategoryId ? "Select model" : "Pick a category first"
                 }
-                options={models}
-                disabled={!category}
+                groups={modelGroups}
+                disabled={!subcategoryId}
                 control={control}
-                error={err("product")}
+                error={err("modelId")}
               />
               <SelectField
                 name="requestType"
                 label="Request type"
                 placeholder="Select type"
-                options={[...REQUEST_TYPES]}
+                groups={plain([...REQUEST_TYPES])}
                 control={control}
                 error={err("requestType")}
               />
@@ -273,7 +333,7 @@ function SelectField({
   name,
   label,
   placeholder,
-  options,
+  groups,
   control,
   error,
   disabled,
@@ -282,7 +342,7 @@ function SelectField({
   name: keyof TicketFormValues;
   label: string;
   placeholder: string;
-  options: string[];
+  groups: OptionGroup[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   control: any;
   error?: string;
@@ -292,14 +352,25 @@ function SelectField({
   const id = `field-${name}`;
   const { field } = useController({ name, control });
 
+  const options = groups.flatMap((g) => g.options);
+
   const select = (v: string) => {
     field.onChange(v);
     onChanged?.();
   };
 
   // A dropdown with a single choice fills itself — but not while it's disabled
-  // (the model select before a category is picked) or its list is empty.
-  useAutoSelectSingle(options, field.value, select, !disabled);
+  // (the model select before a category is picked) or its list is empty. The
+  // values are what the control stores, so ids here, not labels.
+  useAutoSelectSingle(
+    options.map((o) => o.value),
+    field.value,
+    select,
+    !disabled
+  );
+
+  // The trigger holds the id, so the label has to be looked up to display it.
+  const selected = options.find((o) => o.value === field.value);
 
   return (
     <Field data-invalid={error ? true : undefined}>
@@ -311,16 +382,23 @@ function SelectField({
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
         >
-          <SelectValue placeholder={placeholder} />
+          <SelectValue placeholder={placeholder}>
+            {() => selected?.label ?? placeholder}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectGroup>
-            {options.map((o) => (
-              <SelectItem key={o} value={o}>
-                {o}
-              </SelectItem>
-            ))}
-          </SelectGroup>
+          {groups.map((group, i) => (
+            <SelectGroup key={group.label ?? i}>
+              {group.label ? (
+                <SelectLabel>{group.label}</SelectLabel>
+              ) : null}
+              {group.options.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
         </SelectContent>
       </Select>
       {error ? (
