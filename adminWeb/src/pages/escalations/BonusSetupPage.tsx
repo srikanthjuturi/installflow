@@ -123,17 +123,7 @@ export default function BonusSetupPage() {
               max={escalation.pool}
             />
 
-            {addBonus.isError ? (
-              <p
-                role="alert"
-                className="mt-5 rounded-md bg-danger-bg px-4 py-3 text-xs text-danger"
-              >
-                {addBonus.error instanceof Error
-                  ? addBonus.error.message
-                  : "Something went wrong. Try again."}
-              </p>
-            ) : null}
-
+            {/* The failure is reported in the toaster (App.tsx), not here. */}
             <p className="mt-5 flex items-start gap-2.5 rounded-md border border-info/20 bg-info-bg px-4 py-3.5 text-xs leading-relaxed text-info">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
               <span>

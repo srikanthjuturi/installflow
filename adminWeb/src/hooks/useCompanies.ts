@@ -42,6 +42,7 @@ function useInvalidateCompanies() {
 export function useCreateCompany() {
   const invalidate = useInvalidateCompanies();
   return useMutation({
+    meta: { errorTitle: "Couldn't save the company" },
     mutationFn: (input: CreateCompanyInput) => createCompany(input),
     onSuccess: invalidate,
   });
@@ -50,6 +51,7 @@ export function useCreateCompany() {
 export function useUpdateCompany() {
   const invalidate = useInvalidateCompanies();
   return useMutation({
+    meta: { errorTitle: "Couldn't save the company" },
     mutationFn: ({ id, input }: { id: string; input: UpdateCompanyInput }) =>
       updateCompany(id, input),
     onSuccess: invalidate,
@@ -59,6 +61,7 @@ export function useUpdateCompany() {
 export function useSetCompanyStatus() {
   const invalidate = useInvalidateCompanies();
   return useMutation({
+    meta: { errorTitle: "Couldn't change the company status" },
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       setCompanyStatus(id, isActive),
     onSuccess: invalidate,
@@ -68,6 +71,7 @@ export function useSetCompanyStatus() {
 export function useDeleteCompany() {
   const invalidate = useInvalidateCompanies();
   return useMutation({
+    meta: { errorTitle: "Couldn't delete the company" },
     mutationFn: (id: string) => deleteCompany(id),
     onSuccess: invalidate,
   });

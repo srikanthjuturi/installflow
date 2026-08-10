@@ -27,6 +27,9 @@ export function useLogin() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // Reported in the toaster like every other API failure — the credentials
+    // form itself only shows Zod validation.
+    meta: { errorTitle: "Couldn't sign in" },
     mutationFn: ({ email, password }: LoginVariables) => login(email, password),
     onSuccess: (payload) => {
       queryClient.clear();
@@ -88,6 +91,7 @@ export function useSwitchCompany() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { errorTitle: "Couldn't switch company" },
     mutationFn: (companyId: string) => switchCompany(companyId),
     onSuccess: (payload) => {
       setActiveCompany(payload);
@@ -115,7 +119,9 @@ export function useSignOut() {
 
   return useCallback(async () => {
     try {
-      await logout();
+      // This device's token only — the backend revokes every token the user
+      // holds when it isn't given one, which would sign them out everywhere.
+      await logout(useSession.getState().refreshToken);
     } catch {
       // Best-effort — clear locally regardless of the network result.
     }

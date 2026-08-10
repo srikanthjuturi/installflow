@@ -130,6 +130,15 @@ export interface LoginResponse {
   tokenType: string;
 }
 
+/**
+ * `POST /auth/refresh` payload. The backend **rotates**: the presented refresh
+ * token is revoked and a new pair issued, so both values must be stored.
+ */
+export interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
 /** `POST /auth/switch-company` payload — a token re-scoped to the new company. */
 export interface SwitchCompanyResponse {
   accessToken: string;

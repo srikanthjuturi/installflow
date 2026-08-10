@@ -25,6 +25,7 @@ export const importKeys = {
 export function useUploadBatch() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't upload the file" },
     mutationFn: uploadBatch,
     onSuccess: () => {
       // Passed rows became tickets, so every list and the counts are stale.

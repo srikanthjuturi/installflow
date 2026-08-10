@@ -42,17 +42,7 @@ export function DeleteCompanyDialog({
               </DialogDescription>
             </DialogHeader>
 
-            {del.error ? (
-              <p
-                role="alert"
-                className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-              >
-                {del.error instanceof Error
-                  ? del.error.message
-                  : "Couldn't delete the company"}
-              </p>
-            ) : null}
-
+            {/* The failure is reported in the toaster (App.tsx), not here. */}
             <DialogFooter>
               <DialogClose render={<Button type="button" variant="outline" />}>
                 Cancel

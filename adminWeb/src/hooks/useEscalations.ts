@@ -40,10 +40,12 @@ export function useEscalation(id: string) {
 }
 
 function useEscalationMutation<TVars, TData>(
-  fn: (vars: TVars) => Promise<TData>
+  fn: (vars: TVars) => Promise<TData>,
+  errorTitle: string
 ) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle },
     mutationFn: fn,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: escalationKeys.all });
@@ -53,6 +55,7 @@ function useEscalationMutation<TVars, TData>(
   });
 }
 
-export const useAddBonus = () => useEscalationMutation(addBonusAndRenotify);
+export const useAddBonus = () =>
+  useEscalationMutation(addBonusAndRenotify, "Couldn't add the bonus");
 export const useAssignTechnician = () =>
-  useEscalationMutation(assignTechnician);
+  useEscalationMutation(assignTechnician, "Couldn't assign the technician");

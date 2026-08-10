@@ -41,6 +41,7 @@ export function useRulesConfig() {
 export function useSaveRulesConfig() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't save the rules" },
     mutationFn: saveRulesConfig,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.rules() });
@@ -69,6 +70,7 @@ export function useUsers(params: ListParams) {
 export function useInviteUser() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't invite the user" },
     mutationFn: inviteUser,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
@@ -79,6 +81,7 @@ export function useInviteUser() {
 export function useUpdateUserAccess() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't update access" },
     mutationFn: updateUserAccess,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),

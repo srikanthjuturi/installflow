@@ -37,6 +37,7 @@ export function useUnreadNotificationCount() {
 export function useMarkNotificationRead() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't update the notification" },
     mutationFn: markNotificationRead,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: notificationKeys.all }),
@@ -46,6 +47,7 @@ export function useMarkNotificationRead() {
 export function useMarkAllNotificationsRead() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't update the notifications" },
     mutationFn: () => markAllNotificationsRead(),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: notificationKeys.all }),

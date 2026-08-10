@@ -258,6 +258,9 @@ mode outright because technicians work outdoors; a desk console has no such cons
    inline `toLocaleString`.
 8. **RBAC is enforced server-side.** The prototype's NH/RSH/ASM tabs only swap a label — real
    scoping is undesigned. Hiding UI is presentation, never authorization.
+9. **Every API error surfaces in the toaster — everywhere, no exceptions.** Never hand-roll an
+   inline red box for a failed request, and never let a rejection die in a silent `catch`. See
+   *Error reporting* below.
 
 ---
 
@@ -324,6 +327,66 @@ in `hooks/` wrap them in `useQuery` / `useMutation` and are **the only thing com
 When the Python backend lands, only the bodies in `services/` change. No component and no hook
 signature moves. Zod schemas in `types/` validate at that boundary, so a backend field rename
 fails loudly at parse time instead of rendering `undefined`.
+
+## Auth & token refresh
+
+Access token **30 min**, refresh token **7 days**, and the backend **rotates**: every call to
+`POST /auth/refresh` revokes the token presented and issues a new pair. Both are stored in the
+session store and persisted (`localStorage` — an httpOnly cookie would be safer, but the backend
+returns both in the response body, so that is an API change, not a client one).
+
+Renewal lives in `services/http.ts` and **nothing above it knows it exists**. A 401 triggers one
+refresh and replays the original request; the screen sees only the eventual result.
+
+- **Single-flight.** All concurrent 401s share one refresh promise. Six queries failing together
+  must not fire six refreshes — rotation would revoke five of them mid-flight and kill the session.
+- **One replay.** If the second attempt also 401s, the token was not the problem.
+- **`NO_REFRESH`** excludes `/auth/refresh` (a failed refresh ends the session), `/auth/login`
+  (its 401 means *wrong password* — replaying resends bad credentials) and `/auth/logout`.
+- **Only 401/403 from the refresh endpoint ends the session** — `signOut()` plus a hard
+  `location.replace("/login")`, which drops the query cache with the rest of the page. A 500 or a
+  network failure proves nothing about the token, so the session survives.
+- **`logout` must be given the refresh token.** Called without one the backend revokes *every*
+  unrevoked token the user holds, signing them out of every other browser. Verified against the
+  live API, both branches.
+- Bump the persist `version` in `store/session.ts` whenever the token shape changes — a
+  half-migrated session that holds an access token with no way to renew it is worse than a
+  sign-in prompt.
+
+## Error reporting
+
+**One rule: every API error shows up in the toaster.** A failed request is never silent, and it
+is never reported in two places at once.
+
+It is wired **once**, in the `QueryCache` and `MutationCache` handlers in `src/App.tsx`, which
+call `toastApiError` from `src/lib/apiError.ts`. That means a new hook or screen gets error
+reporting for free and cannot forget it — there is nothing to remember at the call site.
+
+| Concern | Where |
+|---|---|
+| The failure message itself | the toaster, always — global handler |
+| Which action failed | `meta: { errorTitle: "Couldn't add the user" }` on the query/mutation |
+| A list/detail that has no data to render | `ErrorState` in place, with **Retry** |
+| Field-level validation | RHF + Zod on the field, `aria-invalid` + `role="alert"` |
+
+- `describeError` normalises anything thrown into `{ title, description }`. `title` is the call
+  site's `meta.errorTitle`, falling back to a short status label (`Network error`,
+  `Check the details`, `Not allowed`, `Server error`…); `description` is the envelope's `message`
+  plus its `errors[]`, de-duplicated. Toasts are `type: "error"`, `priority: "high"` and live
+  8s — long enough to read while re-typing a form.
+- Repeats inside a 4s window collapse to one toast, so a dead backend failing twelve queries at
+  once is **one** message, not twelve.
+- The toast viewport sits above the dialog layer, so a mutation fired inside a dialog can report
+  its failure over the open dialog.
+- `meta: { suppressErrorToast: true }` is the only opt-out, and only when the screen genuinely
+  owns the message. Both meta keys are typed in `src/types/query-meta.d.ts`, so a typo is a
+  compile error rather than a silently lost title.
+- `ErrorState` is **not** a duplicate of the toast: it fills the region a table or a detail would
+  have occupied and offers Retry. Keep it for query failures (hard rule 5). Do not add one for a
+  mutation — the toaster has that.
+- Anything that awaits a mutation outside a hook (a form's `onSubmit`) may swallow the rejection,
+  because the global handler has already reported it. `try { … } catch { /* toasted */ }` — never
+  `setError("root", …)`.
 
 ---
 

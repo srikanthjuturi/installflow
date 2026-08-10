@@ -22,11 +22,18 @@ export function login(email: string, password: string): Promise<LoginResponse> {
 }
 
 /**
- * Revoke the caller's refresh tokens server-side. Uses the current bearer token
- * (added by the transport), so call it BEFORE clearing the session locally.
+ * Revoke the session server-side. Uses the current bearer token (added by the
+ * transport), so call it BEFORE clearing the session locally.
+ *
+ * The refresh token is **required** for a single-device sign-out: omit it and
+ * the backend revokes every unrevoked token this user holds, signing them out
+ * of every other browser too. Pass `null` only to mean exactly that.
+ *
+ * Renewal itself is not here — it lives in `services/http.ts`, because it is
+ * transport plumbing that fires on a 401, not something a screen ever calls.
  */
-export function logout(): Promise<null> {
-  return apiPost<null>("/auth/logout", {});
+export function logout(refreshToken: string | null): Promise<null> {
+  return apiPost<null>("/auth/logout", { refreshToken });
 }
 
 /** The caller's identity plus their effective features for the active company. */

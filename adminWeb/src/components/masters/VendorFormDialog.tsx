@@ -103,7 +103,6 @@ function VendorForm({
   const channel = useWatch({ control, name: "channel" });
 
   const isSubmitting = create.isPending || update.isPending;
-  const failure = create.error ?? update.error;
   const err = (name: keyof VendorFormValues) => errors[name]?.message;
 
   function submit(values: VendorFormValues) {
@@ -294,17 +293,7 @@ function VendorForm({
         </FieldSet>
       </FieldGroup>
 
-      {failure ? (
-        <p
-          role="alert"
-          className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-        >
-          {failure instanceof Error
-            ? failure.message
-            : "Couldn't save the vendor"}
-        </p>
-      ) : null}
-
+      {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel

@@ -241,17 +241,7 @@ function CategoryForm({ onDone }: { onDone: () => void }) {
         </FieldSet>
       </FieldGroup>
 
-      {create.error ? (
-        <p
-          role="alert"
-          className="rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-        >
-          {create.error instanceof Error
-            ? create.error.message
-            : "Couldn't save the category"}
-        </p>
-      ) : null}
-
+      {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel

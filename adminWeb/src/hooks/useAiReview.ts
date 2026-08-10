@@ -81,9 +81,13 @@ export function useAiFlag(id: string) {
 }
 
 /** Either ruling removes the ticket from the queue and moves it on. */
-function useAiDecision<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
+function useAiDecision<TVars, TData>(
+  fn: (vars: TVars) => Promise<TData>,
+  errorTitle: string
+) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle },
     mutationFn: fn,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: aiKeys.all });
@@ -93,5 +97,7 @@ function useAiDecision<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   });
 }
 
-export const useApproveMatch = () => useAiDecision(approveMatch);
-export const useRejectAndRetake = () => useAiDecision(rejectAndRetake);
+export const useApproveMatch = () =>
+  useAiDecision(approveMatch, "Couldn't approve the match");
+export const useRejectAndRetake = () =>
+  useAiDecision(rejectAndRetake, "Couldn't reject the proof");

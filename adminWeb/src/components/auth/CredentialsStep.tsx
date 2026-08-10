@@ -31,8 +31,6 @@ export function CredentialsStep({
   const {
     register,
     handleSubmit,
-    setError,
-    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<Credentials>({
     resolver: zodResolver(schema),
@@ -42,21 +40,16 @@ export function CredentialsStep({
   });
 
   /**
-   * Awaited so `isSubmitting` covers the request, not just validation. A
-   * failure is reported where the form is, rather than leaving the button
-   * enabled and the step silently unchanged.
+   * Awaited so `isSubmitting` covers the request, not just validation. The
+   * rejection is swallowed on purpose: the global handler in `App.tsx` has
+   * already put the reason in the toaster, and rethrowing here would only
+   * surface an unhandled rejection.
    */
   const submit = async (values: Credentials) => {
-    clearErrors("root");
     try {
       await onSubmit(values);
-    } catch (err) {
-      setError("root", {
-        message:
-          err instanceof Error
-            ? err.message
-            : "Something went wrong. Try again.",
-      });
+    } catch {
+      // Reported in the toaster.
     }
   };
 
@@ -117,17 +110,8 @@ export function CredentialsStep({
         </a>
       </div>
 
-      {/* Whatever the envelope reported, in the same shape every other form in
-          the console uses for a failed request. */}
-      {errors.root ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-        >
-          {errors.root.message}
-        </p>
-      ) : null}
-
+      {/* Whatever the envelope reported goes to the toaster, like every other
+          failed request in the console. */}
       <Button
         type="submit"
         className="mt-5.5 h-11.5 w-full"

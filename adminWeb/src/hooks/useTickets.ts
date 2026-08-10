@@ -49,6 +49,7 @@ export function useTicket(id: string) {
 export function useCreateTicket() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't create the ticket" },
     mutationFn: createTicket,
     onSuccess: () => {
       // Invalidate by prefix — every ticket list, whatever its filters,
@@ -62,6 +63,7 @@ export function useCreateTicket() {
 export function useForceCloseTicket() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't force-close the ticket" },
     mutationFn: forceCloseTicket,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });

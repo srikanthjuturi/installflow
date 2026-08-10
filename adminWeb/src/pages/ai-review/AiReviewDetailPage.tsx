@@ -26,7 +26,6 @@ export default function AiReviewDetailPage() {
   const approve = useApproveMatch();
   const reject = useRejectAndRetake();
   const busy = approve.isPending || reject.isPending;
-  const decisionError = approve.error ?? reject.error;
 
   return (
     <>
@@ -61,19 +60,8 @@ export default function AiReviewDetailPage() {
         </div>
       ) : (
         <>
-          {decisionError ? (
-            <div className="mb-3.5">
-              <ErrorState
-                title="Couldn't record that decision"
-                error={decisionError}
-                onRetry={() => {
-                  approve.reset();
-                  reject.reset();
-                }}
-              />
-            </div>
-          ) : null}
-
+          {/* A failed ruling is reported in the toaster (App.tsx); the page
+              keeps the proof on screen so the ruling can be retried. */}
           <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.3fr_1fr]">
             <Card>
               <CardHeader>

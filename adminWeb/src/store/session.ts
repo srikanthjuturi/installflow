@@ -99,11 +99,19 @@ interface SessionState {
   /**
    * Bearer token from `AuthPayload`. Persisted so a reload keeps the session.
    *
-   * ⚠ Persisted means `localStorage`, which any injected script can read. A
-   * refresh token in an httpOnly cookie is the safer shape once the backend
-   * offers one. It is never put in a URL, logged, or rendered.
+   * ⚠ Persisted means `localStorage`, which any injected script can read. An
+   * httpOnly cookie is the safer shape, but the backend returns both tokens in
+   * the response body, so moving them there is an API change, not a client
+   * one. Neither is ever put in a URL, logged, or rendered.
    */
   accessToken: string | null;
+  /**
+   * Long-lived token that buys a new access token when the 30-minute one
+   * expires — see `services/http.ts`, which is the only consumer. The backend
+   * rotates on every use, so this value changes as the session runs and is
+   * persisted alongside the access token.
+   */
+  refreshToken: string | null;
   /** The signed-in account exactly as the API returned it. */
   user: AuthUser | null;
   /**
@@ -141,6 +149,11 @@ interface SessionState {
   signIn: (payload: AuthPayload) => void;
   /** Sign in from the live backend's login payload (the superadmin path). */
   signInBackend: (payload: LoginResponse) => void;
+  /**
+   * Store a rotated token pair. Called by the transport after a successful
+   * refresh — the identity is unchanged, so nothing else is touched.
+   */
+  setTokens: (next: { accessToken: string; refreshToken: string }) => void;
   /** Apply a re-scoped token after switching companies. */
   setActiveCompany: (next: {
     accessToken: string;
@@ -159,6 +172,7 @@ export const useSession = create<SessionState>()(
     (set) => ({
       signedIn: false,
       accessToken: null,
+      refreshToken: null,
       user: null,
       superadmin: false,
       backendUser: null,
@@ -176,15 +190,25 @@ export const useSession = create<SessionState>()(
         set({
           signedIn: true,
           accessToken,
+          // The mock sign-in issues no refresh token; make that explicit so a
+          // previous backend session's token can never be left behind.
+          refreshToken: null,
           user,
           name: user.name,
           email: user.email,
           role: roleFromApi(user.role),
         }),
-      signInBackend: ({ accessToken, user, memberships, activeCompanyId }) =>
+      signInBackend: ({
+        accessToken,
+        refreshToken,
+        user,
+        memberships,
+        activeCompanyId,
+      }) =>
         set({
           signedIn: true,
           accessToken,
+          refreshToken,
           superadmin: user.isSuperadmin,
           backendUser: user,
           memberships,
@@ -193,12 +217,17 @@ export const useSession = create<SessionState>()(
           email: user.email,
           role: roleFromBackend(user.role),
         }),
+      setTokens: ({ accessToken, refreshToken }) =>
+        set({ accessToken, refreshToken }),
+      // Switching company re-scopes the access token only — the backend does
+      // not rotate the refresh token here, so it is deliberately left alone.
       setActiveCompany: ({ accessToken, activeCompanyId }) =>
         set({ accessToken, activeCompanyId }),
       signOut: () =>
         set({
           signedIn: false,
           accessToken: null,
+          refreshToken: null,
           user: null,
           superadmin: false,
           backendUser: null,
@@ -217,9 +246,10 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: "installflow.session",
-      version: 4,
+      version: 5,
       // Older sessions predate the live backend (or carry a stale view-role
-      // from the removed role toggle, or lack activeCompanyId). None can be
+      // from the removed role toggle, lack activeCompanyId, or — before v5 —
+      // hold an access token with no refresh token to renew it). None can be
       // trusted — keep the workspace preference and re-sign-in against the
       // backend, which re-derives role and active company from scratch.
       migrate: (persisted) =>
@@ -227,6 +257,7 @@ export const useSession = create<SessionState>()(
           ...(persisted as Partial<SessionState>),
           signedIn: false,
           accessToken: null,
+          refreshToken: null,
           user: null,
           superadmin: false,
           backendUser: null,
@@ -239,6 +270,7 @@ export const useSession = create<SessionState>()(
       partialize: (s) => ({
         signedIn: s.signedIn,
         accessToken: s.accessToken,
+        refreshToken: s.refreshToken,
         user: s.user,
         superadmin: s.superadmin,
         backendUser: s.backendUser,

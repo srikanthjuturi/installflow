@@ -50,6 +50,7 @@ export function useCategories() {
 function useVendorMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't save the vendor" },
     mutationFn: fn,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: masterKeys.vendors() });
@@ -63,6 +64,7 @@ export const useUpdateVendor = () => useVendorMutation(updateVendor);
 export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't save the category" },
     mutationFn: createCategory,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: masterKeys.categories() });

@@ -60,6 +60,7 @@ export function useTechnician(id: string) {
 export function useCreateTechnician() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "Couldn't add the technician" },
     mutationFn: createTechnician,
     onSuccess: () => {
       // By prefix — every page, sort and filter combination, the category
