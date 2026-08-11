@@ -143,9 +143,35 @@ python -m app.scripts.seed_catalogue       # starter product master, per company
 python -m app.scripts.audit_tenancy        # after any schema change
 ```
 
-⚠ **`--reload` has been unreliable on Windows here** — it has twice served stale code after an
-edit, which reads exactly like a regression. If a change seems not to have taken effect, restart
-the server before debugging it.
+### ⚠ Orphaned workers, and why "stale code" keeps happening on Windows
+
+Killing the uvicorn **reloader** does not always kill the worker it spawned. The orphan keeps
+running and keeps the listening socket, and Windows lets a new server bind :8000 alongside it. You
+then have two or more servers answering the same port, each holding the `.env` and the module
+graph it started with, and requests land on whichever one wins — so a change appears to take
+effect intermittently. This has cost hours across several sessions, presenting each time as
+"`--reload` served stale code" or "the fix regressed".
+
+It is not a reload bug. **Before concluding anything is stale, count the servers:**
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like '%python%'" |
+  Select-Object ProcessId, CreationDate, CommandLine        # orphans are the old CreationDate ones
+Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object {
+  "$($_.OwningProcess) alive=$([bool](Get-Process -Id $_.OwningProcess -EA SilentlyContinue))" }
+```
+
+A listener whose process is dead is a harmless stale socket entry. A `spawn_main` python process
+older than your last restart is an orphan — `Stop-Process -Id <pid> -Force` it.
+
+Two traps that hid this:
+
+- **`taskkill /PID` does not work from Git Bash.** MSYS rewrites `/PID` into a path and taskkill
+  errors out. Use PowerShell `Stop-Process`, and never redirect the kill's output to `/dev/null` —
+  suppressing it is what let a failed kill look like a successful one.
+- **Background commands do not inherit a `cd` from an earlier Bash call.** Launch the server with
+  absolute paths, or it exits 127 and the previous server keeps serving while you believe you
+  restarted it.
 
 ## Testing onboarding without Meta credentials
 
