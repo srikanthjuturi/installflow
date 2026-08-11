@@ -161,3 +161,22 @@ npx uri-scheme open "videocontech://invite/<token>" --android
 
 That default cannot ship — WhatsApp only auto-links `http(s)`, so a custom-scheme link arrives as
 dead text. Production needs an https universal/app link with a web fallback.
+
+### When WhatsApp is configured and sends still fail
+
+The `failureReason` on the invite row is Meta's own message. The ones seen so far:
+
+| Code | Means | Fix |
+|---|---|---|
+| `133010` **Account not registered** | The phone number is verified but has never been registered to the **Cloud API**. `GET /{phone_number_id}` shows `status: PENDING` and `platform_type: NOT_APPLICABLE`. Nothing can be sent — not templates, not free-form. | `POST /{phone_number_id}/register` with `{"messaging_product":"whatsapp","pin":"<6-digit>"}`, or register it in WhatsApp Manager. The PIN is the number's two-step verification PIN. |
+| `131047` | Outside the 24-hour customer-service window — the recipient has not messaged the business number recently. Free-form text cannot reach them. | Send through an approved template instead. |
+| `132001` | Template name or language does not exist. Language is exact: a template registered as `en` will not match `en_US`. | Check `GET /{business_id}/message_templates`. |
+
+`WHATSAPP_TEMPLATE_NAME` (the invite) is deliberately EMPTY unless a UTILITY template exists whose
+body takes exactly one parameter — the link. Pointing it at an unrelated approved template sends
+that template's words, not an invite. With it empty the code falls back to free-form text, which
+only reaches someone inside the 24-hour window; that is fine for testing against your own number
+and not fine for real onboarding.
+
+`WHATSAPP_OTP_TEMPLATE_NAME` must be an **AUTHENTICATION**-category template with one body
+parameter and a copy-code button — `_template_payload(otp_button=True)` fills the code into both.
