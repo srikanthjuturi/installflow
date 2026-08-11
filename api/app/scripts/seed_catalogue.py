@@ -30,13 +30,20 @@ from app.models.product import (  # noqa: E402
     ProductSubcategory,
 )
 
-# (category, icon, [(subcategory, icon, [models])])
+# (category, icon, [(subcategory, icon, [(model, capacity, warranty_months)])])
 #
 # The six subcategories are exactly what `mobileapp/src/mocks/db.ts` and
 # `adminWeb/src/services/mocks/masters.ts` already hardcode — including Water
 # Purifier, which mobile had and the console did not. Seeding both from one
 # place is what stops the two drifting again.
-CATALOGUE: list[tuple[str, str, list[tuple[str, str, list[str]]]]] = [
+#
+# The model names are kept verbatim from the approved prototype, so the demo
+# path still reads as designed — which means the size appears twice for these
+# rows, once in the name and once in `capacity`. That duplication is the point
+# of the column: a model added from now on splits them properly, and these can
+# be tidied without touching anything that references them by id.
+Models = list[tuple[str, str | None, int | None]]
+CATALOGUE: list[tuple[str, str, list[tuple[str, str, Models]]]] = [
     (
         "Electric",
         "zap",
@@ -44,12 +51,22 @@ CATALOGUE: list[tuple[str, str, list[tuple[str, str, list[str]]]]] = [
             (
                 "Television",
                 "tv",
-                ['43" 4K UHD', '55" QLED', '50" 4K', '32" HD', '40" FHD'],
+                [
+                    ('43" 4K UHD', "43 inch", 24),
+                    ('55" QLED', "55 inch", 24),
+                    ('50" 4K', "50 inch", 24),
+                    ('32" HD', "32 inch", 12),
+                    ('40" FHD', "40 inch", 12),
+                ],
             ),
             (
                 "Air Conditioner",
                 "air-vent",
-                ["1.5T Inverter Split", "1T Window AC", "2T Cassette"],
+                [
+                    ("1.5T Inverter Split", "1.5 ton", 60),
+                    ("1T Window AC", "1 ton", 12),
+                    ("2T Cassette", "2 ton", 60),
+                ],
             ),
         ],
     ),
@@ -60,15 +77,35 @@ CATALOGUE: list[tuple[str, str, list[tuple[str, str, list[str]]]]] = [
             (
                 "Washing Machine",
                 "washing-machine",
-                ["7kg Front Load", "6.5kg Top Load", "8kg Front Load"],
+                [
+                    ("7kg Front Load", "7 kg", 24),
+                    ("6.5kg Top Load", "6.5 kg", 24),
+                    ("8kg Front Load", "8 kg", 24),
+                ],
             ),
             (
                 "Refrigerator",
                 "refrigerator",
-                ["340L Frost-Free", "253L Direct Cool", "470L Side-by-Side"],
+                [
+                    ("340L Frost-Free", "340 L", 120),
+                    ("253L Direct Cool", "253 L", 120),
+                    ("470L Side-by-Side", "470 L", 120),
+                ],
             ),
-            ("Microwave", "microwave", ["28L Convection", "20L Solo", "30L Grill"]),
-            ("Water Purifier", "droplets", ["RO 8L", "UV + UF 7L"]),
+            (
+                "Microwave",
+                "microwave",
+                [
+                    ("28L Convection", "28 L", 12),
+                    ("20L Solo", "20 L", 12),
+                    ("30L Grill", "30 L", 12),
+                ],
+            ),
+            (
+                "Water Purifier",
+                "droplets",
+                [("RO 8L", "8 L", 12), ("UV + UF 7L", "7 L", 12)],
+            ),
         ],
     ),
 ]
@@ -119,12 +156,16 @@ async def seed() -> None:
                     session.add(subcategory)
                     await session.flush()
 
-                    for m_order, model_name in enumerate(models, start=1):
+                    for m_order, (name, capacity, warranty) in enumerate(
+                        models, start=1
+                    ):
                         session.add(
                             ProductModel(
                                 company_id=company.id,
                                 subcategory_id=subcategory.id,
-                                name=model_name,
+                                name=name,
+                                capacity=capacity,
+                                warranty_months=warranty,
                                 sort_order=m_order,
                                 is_active=True,
                             )

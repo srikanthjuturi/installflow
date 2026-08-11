@@ -26,6 +26,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     Uuid,
@@ -110,6 +111,13 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Uuid, ForeignKey("product_subcategories.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: Size or rating — "43 inch", "7 kg", "340 L". Its own column rather than
+    #: part of the name, which is where it lives today and where it cannot be
+    #: sorted, filtered or shown on its own.
+    capacity: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: What a technician gets asked in front of the unit, and what a later
+    #: claim quotes. CHECK 0..240 in the migration.
+    warranty_months: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")

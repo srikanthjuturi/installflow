@@ -227,6 +227,8 @@ async def get_tree(
                 id=m.id,
                 subcategoryId=m.subcategory_id,
                 name=m.name,
+                capacity=m.capacity,
+                warrantyMonths=m.warranty_months,
                 imageUrl=m.image_url,
                 isActive=m.is_active,
                 sortOrder=m.sort_order,
@@ -497,6 +499,8 @@ async def create_model(
             company_id=principal.company_id,
             subcategory_id=subcategory_id,
             name=name,
+            capacity=(body.capacity or "").strip() or None,
+            warranty_months=body.warrantyMonths,
             image_url=body.imageUrl,
             is_active=body.isActive,
             sort_order=sort_order,
@@ -520,10 +524,15 @@ async def update_model(
         name = body.name.strip()
         await _assert_model_name_free(db, row.subcategory_id, name, exclude_id=model_id)
         row.name = name
-    # An explicit null clears the photo, so this cannot use the "is not None"
-    # test the other fields use — the field is in the payload or it is not.
+    # These three can be CLEARED, so they test presence in the payload rather
+    # than "is not None" — an explicit null has to mean "remove it", which the
+    # other fields' test would read as "leave it alone".
     if "imageUrl" in body.model_fields_set:
         row.image_url = body.imageUrl
+    if "capacity" in body.model_fields_set:
+        row.capacity = (body.capacity or "").strip() or None
+    if "warrantyMonths" in body.model_fields_set:
+        row.warranty_months = body.warrantyMonths
     if body.isActive is not None:
         row.is_active = body.isActive
     if body.sortOrder is not None:

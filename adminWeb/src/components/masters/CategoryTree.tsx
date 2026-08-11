@@ -311,6 +311,16 @@ function ModelChip({
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
 }) {
+  /* Capacity rides inline because it is the thing that tells two models apart
+     at a glance; warranty is a detail you go looking for, so it stays in the
+     tooltip rather than making every chip a third longer. */
+  const detail = [
+    model.capacity,
+    model.warrantyMonths === null
+      ? null
+      : `${model.warrantyMonths} month warranty`,
+  ].filter(Boolean);
+
   const body = (
     <>
       <span
@@ -326,12 +336,24 @@ function ModelChip({
       <span className={cn(model.isActive ? undefined : "line-through")}>
         {model.name}
       </span>
+      {model.capacity ? (
+        <span className="text-[11px] font-normal text-ink-3">
+          {model.capacity}
+        </span>
+      ) : null}
     </>
   );
 
+  const title = detail.length
+    ? `${model.name} · ${detail.join(" · ")}`
+    : model.name;
+
   if (!canEdit) {
     return (
-      <span className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2 py-1.25 text-xs font-medium text-ink-2">
+      <span
+        title={title}
+        className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2 py-1.25 text-xs font-medium text-ink-2"
+      >
         {body}
       </span>
     );
@@ -343,6 +365,7 @@ function ModelChip({
         render={
           <button
             type="button"
+            title={title}
             className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2 py-1.25 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-1 focus-visible:ring-3 focus-visible:ring-brand-500/40"
           />
         }

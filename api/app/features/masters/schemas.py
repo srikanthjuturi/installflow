@@ -84,14 +84,30 @@ class SubcategoryUpdateRequest(BaseModel):
     sortOrder: int | None = Field(default=None, ge=0)
 
 
+#: Size or rating — "43 inch", "7 kg", "340 L".
+Capacity = Annotated[str | None, Field(default=None, max_length=64)]
+#: 0–240 months. The ceiling catches a year count typed into a months field.
+WarrantyMonths = Annotated[int | None, Field(default=None, ge=0, le=240)]
+
+
 class ModelCreateRequest(BaseModel):
+    """Only the name is required.
+
+    A model is worth recording as soon as it has one; ops fill the rest in as
+    they learn it, and a half-known model still lets a ticket reference it.
+    """
+
     name: Name120
+    capacity: Capacity = None
+    warrantyMonths: WarrantyMonths = None
     imageUrl: ImageUrl = None
     isActive: bool = True
 
 
 class ModelUpdateRequest(BaseModel):
     name: Name120 | None = None
+    capacity: Capacity = None
+    warrantyMonths: WarrantyMonths = None
     imageUrl: ImageUrl = None
     isActive: bool | None = None
     sortOrder: int | None = Field(default=None, ge=0)
@@ -104,6 +120,8 @@ class ProductModelOut(AppModel):
     id: uuid.UUID
     subcategoryId: uuid.UUID
     name: str
+    capacity: str | None
+    warrantyMonths: int | None
     imageUrl: str | None
     isActive: bool
     sortOrder: int

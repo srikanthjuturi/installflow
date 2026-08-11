@@ -32,6 +32,17 @@ export const subcategorySchema = z.object({
  */
 export const modelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
+  /** Everything below is optional — a model is worth recording as soon as it
+   *  has a name, and ops fill the rest in as they learn it. */
+  capacity: z.string().trim().max(64, "Keep it short, e.g. 43 inch or 7 kg"),
+  warrantyMonths: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d{1,3}$/.test(v), "Enter a whole number of months")
+    .refine(
+      (v) => v === "" || Number(v) <= 240,
+      "That looks like years — enter the number of months",
+    ),
   imageUrl: z
     .string()
     .trim()

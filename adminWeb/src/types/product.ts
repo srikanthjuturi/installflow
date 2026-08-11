@@ -17,6 +17,15 @@ export interface ProductModel {
   subcategoryId: string;
   name: string;
   /**
+   * Size or rating — "43 inch", "7 kg", "340 L".
+   *
+   * Its own field rather than part of the name, which is where it lives in the
+   * seeded rows and where it cannot be sorted, filtered or shown on its own.
+   */
+  capacity: string | null;
+  /** 0–240. Null means nobody has recorded it yet, not "no warranty". */
+  warrantyMonths: number | null;
+  /**
    * An http(s) URL. The API rejects `data:` on purpose — a base64 photo in
    * every list response is expensive, and refusing it keeps the eventual move
    * to blob storage a service change rather than a data migration.
@@ -83,6 +92,8 @@ export interface UpdateSubcategoryInput {
 export interface CreateModelInput {
   subcategoryId: string;
   name: string;
+  capacity?: string | null;
+  warrantyMonths?: number | null;
   imageUrl?: string | null;
   isActive: boolean;
 }
@@ -90,6 +101,8 @@ export interface CreateModelInput {
 export interface UpdateModelInput {
   id: string;
   name?: string;
+  capacity?: string | null;
+  warrantyMonths?: number | null;
   imageUrl?: string | null;
   isActive?: boolean;
 }

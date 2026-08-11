@@ -79,6 +79,11 @@ function ModelForm({
     resolver: zodResolver(modelSchema),
     defaultValues: {
       name: model?.name ?? "",
+      capacity: model?.capacity ?? "",
+      warrantyMonths:
+        model?.warrantyMonths === null || model?.warrantyMonths === undefined
+          ? ""
+          : String(model.warrantyMonths),
       imageUrl: model?.imageUrl ?? "",
       status: statusOf(model?.isActive ?? true),
     },
@@ -92,7 +97,12 @@ function ModelForm({
   function submit(values: ModelFormValues) {
     const body = {
       name: values.name,
-      // An empty box means "no photo", which the API stores as null.
+      // An empty box means "not recorded", which the API stores as null —
+      // never an empty string, so "unknown" and "blank" cannot diverge.
+      capacity: values.capacity.trim() || null,
+      warrantyMonths: values.warrantyMonths.trim()
+        ? Number(values.warrantyMonths)
+        : null,
       imageUrl: values.imageUrl.trim() || null,
       isActive: values.status === "Active",
     };
@@ -143,6 +153,65 @@ function ModelForm({
             </FieldDescription>
           ) : null}
         </Field>
+
+        {/* Both optional, and side by side because they are read together —
+            "43 inch, 24 months" is one thought about the unit. */}
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={errors.capacity ? true : undefined}>
+            <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
+            <Input
+              id="model-capacity"
+              placeholder="e.g. 43 inch, 7 kg, 340 L"
+              aria-invalid={errors.capacity ? true : undefined}
+              aria-describedby={
+                errors.capacity ? "model-capacity-error" : "model-capacity-hint"
+              }
+              {...register("capacity")}
+            />
+            {errors.capacity ? (
+              <FieldDescription
+                id="model-capacity-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.capacity.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-capacity-hint">
+                Optional. Kept apart from the name so it can be read on its own.
+              </FieldDescription>
+            )}
+          </Field>
+
+          <Field data-invalid={errors.warrantyMonths ? true : undefined}>
+            <FieldLabel htmlFor="model-warranty">Warranty (months)</FieldLabel>
+            <Input
+              id="model-warranty"
+              inputMode="numeric"
+              placeholder="e.g. 24"
+              aria-invalid={errors.warrantyMonths ? true : undefined}
+              aria-describedby={
+                errors.warrantyMonths
+                  ? "model-warranty-error"
+                  : "model-warranty-hint"
+              }
+              {...register("warrantyMonths")}
+            />
+            {errors.warrantyMonths ? (
+              <FieldDescription
+                id="model-warranty-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.warrantyMonths.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-warranty-hint">
+                Optional. Months, not years.
+              </FieldDescription>
+            )}
+          </Field>
+        </FieldGroup>
 
         <Field data-invalid={errors.imageUrl ? true : undefined}>
           <FieldLabel htmlFor="model-image">Photo link (optional)</FieldLabel>
