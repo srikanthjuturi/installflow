@@ -71,6 +71,14 @@ def _too_many(detail: str, retry_after: int) -> HTTPException:
     )
 
 
+def _wait_phrase(seconds: int) -> str:
+    """`Retry-After` is for the client; this is for the person reading it."""
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes = -(-seconds // 60)  # round up: never promise sooner than the truth
+    return "a minute" if minutes == 1 else f"{minutes} minutes"
+
+
 async def _check_throttles(
     session: AsyncSession, phone: str, request_ip: str | None
 ) -> None:
@@ -86,23 +94,39 @@ async def _check_throttles(
             wait = int(settings.OTP_RESEND_SECONDS - elapsed) + 1
             raise _too_many(f"Wait {wait}s before requesting another code", wait)
 
-    hour_ago = now - timedelta(hours=1)
-    per_phone = await session.scalar(
-        select(func.count(OtpCode.id)).where(
-            OtpCode.phone == phone, OtpCode.created_at > hour_ago
+    window = timedelta(minutes=settings.OTP_WINDOW_MINUTES)
+    window_start = now - window
+
+    async def _oldest_and_count(*where) -> tuple[int, datetime | None]:
+        row = (
+            await session.execute(
+                select(func.count(OtpCode.id), func.min(OtpCode.created_at)).where(
+                    *where, OtpCode.created_at > window_start
+                )
+            )
+        ).one()
+        return int(row[0] or 0), row[1]
+
+    def _refuse(oldest: datetime | None) -> None:
+        # The wait is until the OLDEST request ages out of the window and frees
+        # a slot — not the whole window. Someone who used their last code four
+        # minutes ago waits one minute, not five. Quoting the window length
+        # would be wrong in the direction that makes people force-quit the app.
+        remaining = int((oldest + window - now).total_seconds()) + 1 if oldest else 1
+        remaining = max(remaining, 1)
+        raise _too_many(
+            f"Too many codes requested. Try again in {_wait_phrase(remaining)}.",
+            remaining,
         )
-    )
-    if (per_phone or 0) >= settings.OTP_MAX_PER_HOUR:
-        raise _too_many("Too many codes requested. Try again in an hour.", 3600)
+
+    per_phone, oldest_phone = await _oldest_and_count(OtpCode.phone == phone)
+    if per_phone >= settings.OTP_MAX_PER_WINDOW:
+        _refuse(oldest_phone)
 
     if request_ip:
-        per_ip = await session.scalar(
-            select(func.count(OtpCode.id)).where(
-                OtpCode.request_ip == request_ip, OtpCode.created_at > hour_ago
-            )
-        )
-        if (per_ip or 0) >= settings.OTP_MAX_PER_IP_PER_HOUR:
-            raise _too_many("Too many codes requested. Try again in an hour.", 3600)
+        per_ip, oldest_ip = await _oldest_and_count(OtpCode.request_ip == request_ip)
+        if per_ip >= settings.OTP_MAX_PER_IP_PER_WINDOW:
+            _refuse(oldest_ip)
 
 
 async def issue_code(

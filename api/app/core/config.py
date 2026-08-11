@@ -102,8 +102,16 @@ class Settings(BaseSettings):
     OTP_LENGTH: int = 6
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RESEND_SECONDS: int = 30
-    OTP_MAX_PER_HOUR: int = 5
-    OTP_MAX_PER_IP_PER_HOUR: int = 20
+    # The rolling window the two counters below are measured over. It used to be
+    # a hard-coded hour, which meant one mistyped number could lock a technician
+    # out of their own app for an hour in the field — far past the point of
+    # deterring anyone. Five minutes still costs an attacker more than it is
+    # worth (a 6-digit code needs ~10^6 guesses) while a real person waits out a
+    # tea break. Named for what it is, so changing it does not leave a setting
+    # called PER_HOUR measuring five minutes.
+    OTP_WINDOW_MINUTES: int = 5
+    OTP_MAX_PER_WINDOW: int = 5
+    OTP_MAX_PER_IP_PER_WINDOW: int = 20
     # Server-side secret mixed into the stored hash. A 6-digit code has 10^6
     # entropy, so without this a database dump reverses every live code by
     # brute force in under a second. Startup refuses to run without it in
