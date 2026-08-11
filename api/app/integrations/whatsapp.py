@@ -139,6 +139,32 @@ def build_otp_payload(phone: str, code: str) -> dict:
     )
 
 
+#: Meta failure codes worth translating, because each one has a different fix
+#: and the raw text names none of them. Anything absent falls through to Meta's
+#: own message rather than being flattened into "something went wrong".
+EXPLAINED: dict[int, str] = {
+    131047: (
+        "WhatsApp will not deliver a plain message to someone who has not "
+        "messaged this number in the last 24 hours. An approved template is "
+        "needed."
+    ),
+    132001: (
+        "The WhatsApp template is not approved yet — Meta is still reviewing "
+        "it. Invites will send as soon as it is."
+    ),
+    132000: "The template was sent the wrong number of values. This is a bug, not a setting.",
+    133010: (
+        "This number is verified but was never registered to the WhatsApp "
+        "Cloud API, so it cannot send. It needs a one-time registration with a "
+        "6-digit PIN."
+    ),
+    131026: "That number cannot receive WhatsApp messages.",
+    190: "The WhatsApp access token has expired. A new one is needed.",
+    100: "WhatsApp rejected the request as malformed. This is a bug, not a setting.",
+    80007: "WhatsApp is rate limiting this number. Try again shortly.",
+}
+
+
 def _allowed(phone: str) -> bool:
     """Whether this number may receive a real message.
 
@@ -188,12 +214,14 @@ async def _send(payload: dict, *, what: str) -> SendResult:
 
     if response.status_code >= 400 or "error" in body:
         err = body.get("error", {})
-        # 131047 = outside the 24h window, i.e. a template is required.
-        detail = err.get("message") or f"HTTP {response.status_code}"
+        raw = err.get("message") or f"HTTP {response.status_code}"
         code = err.get("code")
-        if code:
-            detail = f"[{code}] {detail}"
-        logger.warning("WhatsApp rejected a %s: %s", what, detail)
+        # The console shows this string to a manager who cannot act on
+        # "(#132001) Template name does not exist in the translation" but can
+        # act on "the template is still being reviewed". The raw text still
+        # goes to the log, where the person who CAN act will look.
+        detail = EXPLAINED.get(code, raw)
+        logger.warning("WhatsApp rejected a %s: [%s] %s", what, code, raw)
         return SendResult.failure(detail)
 
     message_id = (body.get("messages") or [{}])[0].get("id")
