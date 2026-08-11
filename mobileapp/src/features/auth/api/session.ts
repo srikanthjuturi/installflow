@@ -1,4 +1,4 @@
-import { apiRequest } from '@/lib/api';
+import { apiRequest, authedRequest } from '@/lib/api';
 import type { TechnicianSession } from '@/types/domain';
 
 /**
@@ -40,6 +40,15 @@ export function verifyOtp(phone: string, code: string): Promise<LoginResult> {
   });
 }
 
-export function fetchMyProfile(token: string): Promise<TechnicianSession> {
-  return apiRequest<TechnicianSession>('/technicians/me', { token });
+/**
+ * The signed-in technician's own profile.
+ *
+ * `/technicians/me` rather than `/auth/me`: the latter answers the console's
+ * question (features, memberships, scope label) and carries none of the
+ * name, coverage, cap or performance figures the Profile tab renders. It also
+ * has no feature guard, because a technician is never granted
+ * `technicians.view` and would be 403'd against their own record.
+ */
+export function fetchMyProfile(): Promise<TechnicianSession> {
+  return authedRequest<TechnicianSession>('/technicians/me');
 }

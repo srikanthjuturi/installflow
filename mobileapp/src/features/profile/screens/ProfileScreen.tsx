@@ -1,12 +1,15 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Skeleton } from '@/components/feedback';
+import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { Avatar, Button, Switch } from '@/components/ui';
+import { useMe } from '@/features/profile/hooks/useMe';
+import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -39,21 +42,49 @@ const SHORT_CATEGORY: Record<string, string> = {
 export function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // Straight from the session — it is written at sign-in and is the same
-  // payload `GET /technicians/me` returns, so a query here would refetch what
-  // the app already holds.
-  const me = useSession((s) => s.technician);
+  const queryClient = useQueryClient();
+
+  // Server state, seeded from the session so this paints on the first frame.
+  const { data: me, isError, error, isFetching, refetch } = useMe();
+
   const signOut = useSession((s) => s.signOut);
+  const clearAvatar = useProfileStore((s) => s.clearAvatar);
   const [pushEnabled, setPushEnabled] = useState(true);
 
   const categories =
     me?.subcategories.map((c) => SHORT_CATEGORY[c.name] ?? c.name).join(' · ') ?? '—';
 
+  // Only when there is nothing at all to show. With a session seed the screen
+  // stays usable offline and a failed refetch is silent — a technician out of
+  // signal should still be able to read their own pincodes.
+  if (!me && isError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: color.surface, justifyContent: 'center' }}>
+        <StatusBar style="dark" />
+        <ErrorState
+          title="Couldn't load your profile"
+          body={error instanceof Error ? error.message : undefined}
+          onRetry={() => refetch()}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <StatusBar style="light" />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isFetching}
+            onRefresh={refetch}
+            tintColor={color.textMuted}
+          />
+        }
+      >
         <View
           style={{
             backgroundColor: color.chrome,
@@ -270,6 +301,12 @@ export function ProfileScreen() {
                 // Clear the session first: the `(app)` guard redirects on its
                 // own, and navigating before the token is gone would race it.
                 signOut();
+                // Then everything derived from it. Without this the next
+                // technician to sign in on this handset opens on the previous
+                // one's name, coverage and photo until the first refetch
+                // lands — one company's data showing inside another's session.
+                queryClient.clear();
+                clearAvatar();
                 router.replace('/(auth)/login');
               }}
             />

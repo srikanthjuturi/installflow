@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+import { getAccessToken, getRefreshToken, useSession } from '@/store/session.store';
+
 /**
  * HTTP transport for the FastAPI backend.
  *
@@ -90,4 +92,70 @@ export async function apiRequest<T>(
   }
 
   return envelope.data as T;
+}
+
+/**
+ * One refresh at a time, shared by every caller that hit a 401.
+ *
+ * The server ROTATES refresh tokens: presenting one revokes it. So if three
+ * screens refetch at once and all three 401, three parallel refreshes would
+ * see the first succeed and the other two present an already-revoked token —
+ * and a technician mid-job would be signed out for no reason. Everyone waits
+ * on the same promise instead.
+ */
+let refreshInFlight: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return null;
+    try {
+      // The endpoint is spelled here rather than imported from
+      // features/auth/api/session.ts, which imports this module — the cycle
+      // would break Metro's module graph.
+      const next = await apiRequest<{ accessToken: string; refreshToken: string }>(
+        '/auth/refresh',
+        { method: 'POST', body: { refreshToken } },
+      );
+      useSession.getState().setTokens(next);
+      return next.accessToken;
+    } catch {
+      // Expired, revoked, or the account was deactivated. Not recoverable.
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/**
+ * A request as the signed-in technician, with one automatic retry.
+ *
+ * Access tokens last 30 minutes. Without this, an app left open through a
+ * single job stops working with no explanation and no way back except killing
+ * it — so every authenticated call goes through here, not `apiRequest`.
+ *
+ * A 401 that survives the refresh means the session is genuinely gone, so the
+ * store is cleared and the `(app)` guard redirects to sign-in on its own.
+ */
+export async function authedRequest<T>(
+  path: string,
+  options: Omit<RequestOptions, 'token'> = {},
+): Promise<T> {
+  try {
+    return await apiRequest<T>(path, { ...options, token: getAccessToken() });
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+
+    const fresh = await refreshAccessToken();
+    if (!fresh) {
+      useSession.getState().signOut();
+      throw new ApiError('Your session has ended. Please sign in again.', 401);
+    }
+    return apiRequest<T>(path, { ...options, token: fresh });
+  }
 }

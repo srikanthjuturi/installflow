@@ -28,6 +28,13 @@ interface SessionState {
   }) => void;
   signOut: () => void;
   setTechnician: (technician: TechnicianSession) => void;
+  /**
+   * Both tokens, after a refresh. The server ROTATES the refresh token and
+   * revokes the one presented, so storing only the new access token would
+   * leave a dead refresh token behind and log the technician out at the next
+   * expiry.
+   */
+  setTokens: (payload: { accessToken: string; refreshToken: string }) => void;
 }
 
 export const useSession = create<SessionState>()(
@@ -45,6 +52,8 @@ export const useSession = create<SessionState>()(
         set({ accessToken: null, refreshToken: null, technician: null }),
 
       setTechnician: (technician) => set({ technician }),
+
+      setTokens: ({ accessToken, refreshToken }) => set({ accessToken, refreshToken }),
     }),
     {
       name: 'videocon.session',
@@ -110,3 +119,4 @@ export function useSessionStatus(): SessionStatus {
 
 /** For non-React callers (the API layer). Never read the token from a closure. */
 export const getAccessToken = () => useSession.getState().accessToken;
+export const getRefreshToken = () => useSession.getState().refreshToken;
