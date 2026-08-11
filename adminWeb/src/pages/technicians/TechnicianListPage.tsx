@@ -17,6 +17,7 @@ import {
 } from "@/hooks/useTechnicians";
 import { useListParams } from "@/hooks/useListParams";
 import type { TechnicianRow } from "@/types/technician";
+import { copyToClipboard } from "@/utils/clipboard";
 import { formatPhone, toE164 } from "@/utils/phone";
 
 export default function TechnicianListPage() {
@@ -147,6 +148,19 @@ export default function TechnicianListPage() {
               }),
           })
         }
+        onCopyLink={(row: TechnicianRow) => {
+          if (row.registered) return;
+          void copyToClipboard(row.inviteLink).then((copied) =>
+            toast.add({
+              title: copied
+                ? `Invite link copied for ${formatPhone(row.phone)}`
+                : "Couldn't copy the link",
+              // Shown either way: when the copy failed it is the only way to
+              // get the link, and when it worked it confirms what was copied.
+              description: row.inviteLink,
+            })
+          );
+        }}
         toolbarActions={
           <div className="flex flex-wrap gap-2">
             {canInvite ? (

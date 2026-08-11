@@ -38,6 +38,7 @@ interface TechTableProps {
   canEdit: boolean;
   onResend: (row: TechnicianRow) => void;
   onCancel: (row: TechnicianRow) => void;
+  onCopyLink: (row: TechnicianRow) => void;
   busyInviteId?: string | null;
 }
 
@@ -54,6 +55,7 @@ export function TechTable({
   canEdit,
   onResend,
   onCancel,
+  onCopyLink,
   busyInviteId,
 }: TechTableProps) {
   const navigate = useNavigate();
@@ -184,6 +186,18 @@ export function TechTable({
             className="flex justify-end gap-1"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* The way an invite actually reaches someone when WhatsApp is not
+                configured, or when Meta refuses the send. Without this the
+                "send it another way" toast points at nothing. */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onCopyLink(t)}
+            >
+              Copy link
+              <span className="sr-only"> for {formatPhone(t.phone)}</span>
+            </Button>
             <Button
               type="button"
               variant="ghost"
