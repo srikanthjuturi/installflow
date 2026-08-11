@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KeyboardFlow } from '@/components/layout';
 import { BrandMark, Button, StepDots } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
@@ -140,10 +141,7 @@ export function RegisterVerifyScreen() {
         <StepDots total={REGISTRATION_STEP_COUNT} current={stepNumber('verify')} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardFlow>
         <View style={{ marginTop: 18 }}>
           <BrandMark />
         </View>
@@ -270,7 +268,7 @@ export function RegisterVerifyScreen() {
           disabled={code.length !== OTP_LENGTH || busy}
           loading={busy}
         />
-      </KeyboardAvoidingView>
+      </KeyboardFlow>
     </View>
   );
 }

@@ -159,7 +159,10 @@ export function CoverageScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          automaticallyAdjustKeyboardInsets
+          // NOT automaticallyAdjustKeyboardInsets: the KeyboardAvoidingView
+          // above already accounts for the keyboard on iOS, and having both
+          // subtracts it twice — leaving a keyboard-sized gap under the
+          // content. See the note in components/layout/KeyboardFlow.tsx.
         >
           <Text
             style={{
