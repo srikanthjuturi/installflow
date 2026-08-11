@@ -1112,6 +1112,14 @@ async def resend_invite(
             detail="This invite has expired — send a new one",
         )
 
+    # Resending RESTARTS the clock. A manager resending on day 13 otherwise
+    # hands out a link that dies tomorrow, with nothing on screen saying so —
+    # and their only real fix would be cancel-then-reinvite, which is more work
+    # and changes the link. A resend is a fresh attempt to reach someone, so it
+    # gets a fresh window. Still single-use, still cancellable, so nothing here
+    # becomes permanent.
+    invite.expires_at = _now() + timedelta(days=settings.INVITE_EXPIRY_DAYS)
+
     await _send_and_record(session, invite)
     invite.updated_by = principal.user_id
     await session.commit()

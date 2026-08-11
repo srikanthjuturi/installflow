@@ -15,13 +15,36 @@ import {
 } from "@/hooks/useListParams";
 import { formatPhone } from "@/utils/phone";
 import type { ListParams, PaginationMeta } from "@/types/api";
-import type { TechnicianRow } from "@/types/technician";
+import type { TechnicianInvite, TechnicianRow } from "@/types/technician";
 import { BandwidthBar, CancelCount } from "./BandwidthBar";
 import { OnboardingStatusCell } from "./OnboardingStatusCell";
-import { INVITE_STATUSES, STATUS_LABEL, isResendable } from "./onboarding";
+import {
+  INVITE_STATUSES,
+  STATUS_LABEL,
+  expiryLabel,
+  isResendable,
+} from "./onboarding";
 
 /** A typographic null. Not copy — an invite simply has no value to show. */
 const NONE = "—";
+
+/**
+ * The line under an invited number.
+ *
+ * Only a LIVE invite gets a countdown — for a cancelled one the status cell
+ * already says so, and a countdown on a dead link is noise.
+ */
+function InviteSubtitle({ row }: { row: TechnicianInvite }) {
+  if (!isResendable(row.status)) {
+    return <div className="text-xs text-ink-3">Invited, not registered</div>;
+  }
+  const expiry = expiryLabel(row.expiresAt);
+  return (
+    <div className="text-xs text-ink-3">
+      Invited · <span className={expiry.className}>{expiry.text}</span>
+    </div>
+  );
+}
 
 interface TechTableProps {
   /** One page of rows, already searched, filtered and sorted by the server. */
@@ -99,12 +122,14 @@ export function TechTable({
           </div>
         ) : (
           /* Until they register, the number IS the record — so it is the
-             primary line rather than a subtitle under a blank name. */
+             primary line rather than a subtitle under a blank name. The second
+             line carries the countdown, which costs no extra row height and
+             puts it where the eye already is. */
           <div className="flex items-center gap-2.5">
             <UserAvatar name="?" className="size-8.5 text-xs opacity-60" />
             <div className="min-w-0">
               <div className="font-mono font-medium">{formatPhone(t.phone)}</div>
-              <div className="text-xs text-ink-3">Invited, not registered</div>
+              <InviteSubtitle row={t} />
             </div>
           </div>
         ),

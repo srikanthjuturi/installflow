@@ -53,6 +53,33 @@ export const MODE_LABEL: Record<OnboardingMode, string> = {
 export const isResendable = (status: InviteStatus) =>
   status === "pending" || status === "sent" || status === "failed";
 
+/** Below this, the countdown is worth drawing attention to. */
+const EXPIRY_WARN_DAYS = 3;
+
+/**
+ * How long an invite link has left.
+ *
+ * Shown because a link silently dies after 14 days: without this a manager
+ * cannot tell a pending invite with two weeks left from one with two hours, and
+ * only finds out when the technician reports a dead link. Resending restarts
+ * the window, so the number is actionable rather than just informative.
+ *
+ * Classes are static strings — an interpolated `text-${tone}` never compiles.
+ */
+export function expiryLabel(expiresAt: string): {
+  text: string;
+  className: string;
+} {
+  const msLeft = new Date(expiresAt).getTime() - Date.now();
+  const days = Math.ceil(msLeft / 86_400_000);
+
+  if (msLeft <= 0) return { text: "Link expired", className: "text-danger" };
+  if (days <= 1) return { text: "Expires today", className: "text-warn" };
+  if (days <= EXPIRY_WARN_DAYS)
+    return { text: `Expires in ${days} days`, className: "text-warn" };
+  return { text: `Expires in ${days} days`, className: "text-ink-3" };
+}
+
 /* ----------------------------------------------------------------- schema */
 
 export const inviteSchema = z.object({
