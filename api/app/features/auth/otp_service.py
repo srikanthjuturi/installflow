@@ -144,6 +144,21 @@ async def issue_code(
     row.wa_error = result.error
     await session.commit()
 
+    # In development the code has to be findable even when a real channel was
+    # attempted. The logging channel prints it only when WhatsApp is
+    # unconfigured — so the moment credentials exist (and every send is failing
+    # or allowlist-blocked) the code would vanish, and nobody could sign in on a
+    # phone. OTP_DEV_ECHO already gates this, and startup refuses to boot with
+    # it enabled in production.
+    if settings.OTP_DEV_ECHO and channel.name != "log":
+        logger.warning(
+            "OTP for %s is %s (channel=%s, delivered=%s)",
+            phone,
+            code,
+            channel.name,
+            result.ok,
+        )
+
     return OtpRequestResponse(
         sent=result.ok,
         channel=channel.name,

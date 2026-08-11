@@ -1,7 +1,14 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Text, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandMark, Button } from '@/components/ui';
@@ -38,12 +45,17 @@ export function LoginScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Development only — the server sends this ONLY when OTP_DEV_ECHO is on, and
+  // it refuses to boot with that enabled in production. Without it there is no
+  // way to sign in on a phone while WhatsApp delivery is still unavailable.
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   const send = async () => {
     setBusy(true);
     setError(null);
     try {
-      await requestOtp('+91' + phone);
+      const result = await requestOtp('+91' + phone);
+      setDevCode(result.devCode ?? null);
       setCode('');
       setStep('otp');
     } catch (e) {
@@ -146,6 +158,7 @@ export function LoginScreen() {
             onResend={send}
             busy={busy}
             error={error}
+            devCode={devCode}
           />
         )}
       </KeyboardAvoidingView>
@@ -251,6 +264,7 @@ interface OtpStepProps {
   onResend: () => void;
   busy: boolean;
   error: string | null;
+  devCode: string | null;
 }
 
 function OtpStep({
@@ -262,6 +276,7 @@ function OtpStep({
   onResend,
   busy,
   error,
+  devCode,
 }: OtpStepProps) {
   // Hook lives here rather than in LoginScreen so the countdown starts when the
   // OTP step mounts, not when the screen first renders. 30s matches the
@@ -317,6 +332,8 @@ function OtpStep({
 
       {error ? <FormError message={error} /> : null}
 
+      {devCode ? <DevCode code={devCode} onUse={() => setCode(devCode)} /> : null}
+
       <View style={{ flex: 1 }} />
 
       <Button
@@ -348,5 +365,63 @@ function FormError({ message }: { message: string }) {
     >
       {message}
     </Text>
+  );
+}
+
+/**
+ * The code, on screen, in development only.
+ *
+ * The server returns `devCode` exclusively when OTP_DEV_ECHO is set, and
+ * startup refuses to boot with that enabled in production — so this cannot
+ * reach a real technician. It exists because until WhatsApp delivery works
+ * there is otherwise no way to get past this screen on a phone.
+ */
+function DevCode({ code, onUse }: { code: string; onUse: () => void }) {
+  return (
+    <Pressable onPress={onUse} accessibilityRole="button">
+      <View
+        style={{
+          marginTop: 16,
+          padding: 12,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderStyle: 'dashed',
+          borderColor: color.borderStrong,
+          backgroundColor: color.surfaceSunken,
+        }}
+      >
+        <Text
+          style={{
+            fontFamily: 'Roboto_700Bold',
+            fontSize: 11,
+            letterSpacing: 0.4,
+            color: color.textMuted,
+          }}
+        >
+          DEVELOPMENT ONLY
+        </Text>
+        <Text
+          style={{
+            fontFamily: 'RobotoMono_700Bold',
+            fontSize: 22,
+            letterSpacing: 4,
+            color: color.textPrimary,
+            marginTop: 4,
+          }}
+        >
+          {code}
+        </Text>
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 12,
+            color: color.textFootnote,
+            marginTop: 2,
+          }}
+        >
+          Tap to fill. Not shown once WhatsApp delivery is live.
+        </Text>
+      </View>
+    </Pressable>
   );
 }

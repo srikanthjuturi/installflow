@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandMark, Button, StepDots } from '@/components/ui';
@@ -53,6 +53,8 @@ export function RegisterVerifyScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Development only — see the note on LoginScreen's DevCode.
+  const [devCode, setDevCode] = useState<string | null>(null);
   const { label, canResend, restart } = useResendTimer(30);
 
   // One code on arrival, and only one: without the ref, a re-render would send
@@ -61,9 +63,11 @@ export function RegisterVerifyScreen() {
   useEffect(() => {
     if (!draft || requested.current) return;
     requested.current = true;
-    requestInviteOtp(draft.token).catch(() => {
-      setError('We could not send your code. Tap resend to try again.');
-    });
+    requestInviteOtp(draft.token)
+      .then((r) => setDevCode(r.devCode ?? null))
+      .catch(() => {
+        setError('We could not send your code. Tap resend to try again.');
+      });
   }, [draft]);
 
   if (!draft) {
@@ -113,9 +117,11 @@ export function RegisterVerifyScreen() {
     restart();
     setCode('');
     setError(null);
-    requestInviteOtp(draft.token).catch(() => {
-      setError('We could not send your code. Try again in a moment.');
-    });
+    requestInviteOtp(draft.token)
+      .then((r) => setDevCode(r.devCode ?? null))
+      .catch(() => {
+        setError('We could not send your code. Try again in a moment.');
+      });
   };
 
   return (
@@ -206,6 +212,54 @@ export function RegisterVerifyScreen() {
           >
             {error}
           </Text>
+        ) : null}
+
+        {devCode ? (
+          <Pressable onPress={() => setCode(devCode)} accessibilityRole="button">
+            <View
+              style={{
+                marginTop: 16,
+                padding: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderStyle: 'dashed',
+                borderColor: color.borderStrong,
+                backgroundColor: color.surfaceSunken,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: 'Roboto_700Bold',
+                  fontSize: 11,
+                  letterSpacing: 0.4,
+                  color: color.textMuted,
+                }}
+              >
+                DEVELOPMENT ONLY
+              </Text>
+              <Text
+                style={{
+                  fontFamily: 'RobotoMono_700Bold',
+                  fontSize: 22,
+                  letterSpacing: 4,
+                  color: color.textPrimary,
+                  marginTop: 4,
+                }}
+              >
+                {devCode}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: 'Roboto_400Regular',
+                  fontSize: 12,
+                  color: color.textFootnote,
+                  marginTop: 2,
+                }}
+              >
+                Tap to fill. Not shown once WhatsApp delivery is live.
+              </Text>
+            </View>
+          </Pressable>
         ) : null}
 
         <View style={{ flex: 1 }} />
