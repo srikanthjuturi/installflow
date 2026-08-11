@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.router import api_router
+from app.features.onboarding.landing import router as invite_landing_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.errors import register_exception_handlers
@@ -81,3 +82,7 @@ async def health() -> dict[str, str]:
 
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+# NOT under /api/v1 — this is the page a technician's browser lands on when
+# they tap the invite link, so the URL has to stay short and human.
+app.include_router(invite_landing_router)

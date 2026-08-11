@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     # (ios.associatedDomains + android.intentFilters) with a web fallback —
     # e.g. INVITE_LINK_BASE=https://install.videocon.app/invite
     INVITE_LINK_BASE: str = "videocontech://invite"
+    # Where the landing page sends someone who does not have the app yet.
+    TECHNICIAN_APP_LINK: str = "https://install.videocon.app/technician"
     INVITE_EXPIRY_DAYS: int = 14
 
     # ─── OTP ───────────────────────────────────────────────────────────────
