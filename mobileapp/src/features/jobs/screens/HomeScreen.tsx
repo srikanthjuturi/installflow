@@ -8,7 +8,7 @@ import { Icon } from '@/components/icons/Icon';
 import { Avatar } from '@/components/ui';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
-import { technician } from '@/mocks/db';
+import { useMe } from '@/features/profile/hooks/useMe';
 import { useAvailabilityStore } from '@/store/availability.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -25,6 +25,12 @@ import { palette } from '@/theme/tokens';
 export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  // The signed-in technician. Shares the `me` query with the Profile tab, so
+  // this is one request, not two — and it replaces a `technician` record
+  // imported straight from the mock database, which greeted every user by the
+  // same seeded name after they had just proved who they were with an OTP.
+  const { data: me } = useMe();
 
   const online = useAvailabilityStore((s) => s.online);
   const setOnline = useAvailabilityStore((s) => s.setOnline);
@@ -74,7 +80,7 @@ export function HomeScreen() {
                     opacity: pressed ? 0.75 : 1,
                   }}
                 >
-                  <Avatar name={technician.name} size={44} radius={13} />
+                  <Avatar name={me?.name ?? ''} size={44} radius={13} />
 
                   <View style={{ flex: 1 }}>
                     <Text
@@ -94,7 +100,7 @@ export function HomeScreen() {
                       }}
                       numberOfLines={1}
                     >
-                      {technician.name}
+                      {me?.name ?? ''}
                     </Text>
                   </View>
                 </View>
