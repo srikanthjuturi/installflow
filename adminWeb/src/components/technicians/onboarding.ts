@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { isE164, toE164 } from "@/utils/phone";
-import type {
-  InviteStatus,
-  OnboardingMode,
-  RegisteredBy,
-} from "@/types/technician";
+import type { InviteStatus, OnboardingMode } from "@/types/technician";
 
 /**
  * Onboarding presentation: the lifecycle vocabulary shared by the table, the
@@ -51,11 +47,6 @@ export const STATUS_DOT: Record<InviteStatus, string> = {
 export const MODE_LABEL: Record<OnboardingMode, string> = {
   invite: "Self-registered",
   direct: "Added by manager",
-};
-
-export const REGISTERED_BY_LABEL: Record<RegisteredBy, string> = {
-  self: "The technician",
-  manager: "Their manager",
 };
 
 /** Statuses a manager can still act on. */

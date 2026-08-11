@@ -81,6 +81,11 @@ class OnboardingOut(AppModel):
     registeredBy: RegisteredBy
     appointedByName: str | None
     appointedByEmail: str | None
+    #: The appointer's role AT THE TIME the console reads it. "Appointed by
+    #: Priya Deshmukh" leaves out the thing that makes it meaningful — whether
+    #: that was an Area Manager or a National Head.
+    appointedByRole: str | None
+    appointedByRoleLabel: str | None
     appointedAt: datetime
     registeredAt: datetime
 

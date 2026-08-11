@@ -124,9 +124,29 @@ def build_otp_payload(phone: str, code: str) -> dict:
     )
 
 
+def _allowed(phone: str) -> bool:
+    """Whether this number may receive a real message.
+
+    An empty allowlist means "anyone" — the production setting. A non-empty one
+    is the dev guard: live credentials and a test suite together will otherwise
+    send WhatsApp messages to invented numbers that belong to real people.
+    """
+    raw = settings.WHATSAPP_ALLOWLIST.strip()
+    if not raw:
+        return True
+    return phone in {n.strip() for n in raw.split(",") if n.strip()}
+
+
 async def _send(payload: dict, *, what: str) -> SendResult:
     if not is_configured():
         return SendResult.failure("WhatsApp is not configured on this server")
+
+    to = str(payload.get("to", ""))
+    if not _allowed(to):
+        logger.warning("Blocked a %s to %s — not in WHATSAPP_ALLOWLIST", what, to)
+        return SendResult.failure(
+            f"{to} is not in WHATSAPP_ALLOWLIST, so nothing was sent"
+        )
 
     url = (
         f"{GRAPH}/{settings.WHATSAPP_API_VERSION}"

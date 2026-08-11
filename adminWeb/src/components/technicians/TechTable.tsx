@@ -165,7 +165,17 @@ export function TechTable({
         const name = t.registered
           ? t.onboarding.appointedByName
           : t.invitedByName;
-        return <span className="text-xs text-ink-2">{name ?? NONE}</span>;
+        // The role is the half that carries meaning: an Area Manager onboarding
+        // into their own pincodes and a National Head reaching across the
+        // country are different acts, and a bare name hides which.
+        const role = t.registered ? t.onboarding.appointedByRoleLabel : null;
+        if (!name) return <span className="text-xs text-ink-2">{NONE}</span>;
+        return (
+          <div className="min-w-0">
+            <div className="text-xs text-ink-2">{name}</div>
+            {role ? <div className="text-[11px] text-ink-3">{role}</div> : null}
+          </div>
+        );
       },
     },
     {

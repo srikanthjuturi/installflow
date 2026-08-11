@@ -20,6 +20,30 @@ interface IconPickerProps {
 }
 
 /**
+ * Interaction styles shared by every tile — the inherit pill and the icon
+ * squares behave identically, only their box differs.
+ *
+ * Hover is scoped to `data-unchecked` so the selected tile keeps its brand
+ * colours while the pointer crosses it on the way to another icon. The brand
+ * ramp is a dark navy, so a hover that only shifts the glyph's ink is
+ * invisible — the tint, the border and the lift are what make it read.
+ */
+const TILE_INTERACTION = cn(
+  "cursor-pointer outline-none",
+  "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out",
+  "data-unchecked:hover:border-brand-400 data-unchecked:hover:bg-brand-100",
+  "data-unchecked:hover:text-brand-400 data-unchecked:hover:shadow-md",
+  /* Lift only — no scale. A scaled tile widens the grid's scrollable overflow,
+     and the rightmost one puts a horizontal scrollbar on the dialog. An upward
+     translate and a shadow cost no layout. */
+  "motion-safe:data-unchecked:hover:-translate-y-0.5",
+  "focus-visible:ring-3 focus-visible:ring-brand-500/40",
+  "data-checked:border-brand-500 data-checked:bg-brand-100 data-checked:text-brand-500",
+  "data-checked:hover:bg-brand-200",
+  "active:translate-y-0 active:shadow-none"
+);
+
+/**
  * A grid of icons, one selectable.
  *
  * Built on the base-ui radio primitives rather than `components/ui/radio-group`
@@ -58,10 +82,9 @@ export function IconPicker({
         <Radio.Root
           value="__inherit__"
           className={cn(
-            "flex h-11 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium outline-none transition-colors",
-            "border-line-2 text-ink-3 hover:bg-surface-2",
-            "focus-visible:ring-3 focus-visible:ring-brand-500/40",
-            "data-checked:border-brand-500 data-checked:bg-brand-100 data-checked:text-brand-500"
+            "flex h-11 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium",
+            "border-line-2 text-ink-3",
+            TILE_INTERACTION
           )}
         >
           <InheritIcon className="size-4.5" aria-hidden />
@@ -80,10 +103,9 @@ export function IconPicker({
             aria-label={iconLabel(key)}
             title={iconLabel(key)}
             className={cn(
-              "grid size-11 place-items-center rounded-lg border outline-none transition-colors",
-              "border-line-2 text-ink-2 hover:bg-surface-2",
-              "focus-visible:ring-3 focus-visible:ring-brand-500/40",
-              "data-checked:border-brand-500 data-checked:bg-brand-100 data-checked:text-brand-500"
+              "grid size-11 place-items-center rounded-lg border",
+              "border-line-2 text-ink-2",
+              TILE_INTERACTION
             )}
           >
             <Icon className="size-5" aria-hidden />

@@ -41,7 +41,7 @@ from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductSubcategory
-from app.models.role import AREA_MANAGER, TECHNICIAN
+from app.models.role import AREA_MANAGER, ROLE_LABELS, TECHNICIAN
 from app.models.technician import (
     ACTIVE,
     CANCELLED,
@@ -324,6 +324,12 @@ async def _technicians_out(
                     registeredBy=profile.registered_by,
                     appointedByName=(appointer.full_name if appointer else None),
                     appointedByEmail=(appointer.email if appointer else None),
+                    appointedByRole=(appointer.role if appointer else None),
+                    appointedByRoleLabel=(
+                        ROLE_LABELS.get(appointer.role, appointer.role)
+                        if appointer
+                        else None
+                    ),
                     appointedAt=profile.appointed_at,
                     registeredAt=profile.registered_at,
                 ),

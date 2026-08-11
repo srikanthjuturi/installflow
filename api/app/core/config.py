@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     # through a UTILITY template.
     WHATSAPP_OTP_TEMPLATE_NAME: str = ""
     WHATSAPP_OTP_TEMPLATE_LANG: str = "en_US"
+    # Comma-separated E.164 numbers. When set, ONLY these receive a real send;
+    # anything else is refused before it reaches Meta.
+    #
+    # This exists because live credentials plus a test suite is a bad
+    # combination: the verification scripts request codes for invented numbers
+    # like +919110000001, and those belong to real people. Set this to your own
+    # number while testing, and leave it empty in production.
+    WHATSAPP_ALLOWLIST: str = ""
 
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:

@@ -34,6 +34,10 @@ export interface TechnicianOnboarding {
   registeredBy: RegisteredBy;
   appointedByName: string | null;
   appointedByEmail: string | null;
+  /** The raw role key, e.g. `national_head`. */
+  appointedByRole: string | null;
+  /** Display form, e.g. "National Head". */
+  appointedByRoleLabel: string | null;
   appointedAt: string;
   registeredAt: string;
 }
