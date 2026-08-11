@@ -98,7 +98,14 @@ class Settings(BaseSettings):
     INVITE_EXPIRY_DAYS: int = 14
 
     # ─── OTP ───────────────────────────────────────────────────────────────
-    OTP_TTL_SECONDS: int = 300
+    # MUST match what the WhatsApp template tells the technician. The approved
+    # `yar_otp` template says "Expires in 10 minutes" in its footer AND in its
+    # copy-code button (code_expiration_minutes=10). At 300 the message
+    # promised ten minutes and the code died at five, so someone who came back
+    # after six was told their code was wrong — by an app that was wrong.
+    # Change one of these and you must change the other; the template text is
+    # the half that needs a Meta review, so the server is the half that moves.
+    OTP_TTL_SECONDS: int = 600
     OTP_LENGTH: int = 6
     OTP_MAX_ATTEMPTS: int = 5
     OTP_RESEND_SECONDS: int = 30
