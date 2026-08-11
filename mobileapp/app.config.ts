@@ -9,6 +9,10 @@ const SURFACE = '#eef1f3';
 const config: ExpoConfig = {
   name: 'Videocon Technician',
   slug: 'videocon-technician',
+  // The organisation, not a personal account: builds and — more importantly —
+  // the Android signing key belong to the team. A signing key cannot be changed
+  // after the app is published without every user reinstalling.
+  owner: 'srikanthjuturis-team',
   scheme: 'videocontech', // invite deep links: videocontech://invite/<token>
   version: '1.0.0',
   orientation: 'portrait',
@@ -74,6 +78,10 @@ const config: ExpoConfig = {
   ],
   extra: {
     surfaceColor: SURFACE,
+    // Written by hand because `eas init` cannot edit a dynamic config.
+    eas: {
+      projectId: 'c7b3c920-371b-4aed-b72e-517c16f554da',
+    },
   },
 };
 
