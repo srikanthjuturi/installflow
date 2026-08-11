@@ -8,6 +8,7 @@ import {
   BANDWIDTH_MAX,
   BANDWIDTH_MIN,
   useAvailabilityStore,
+  useBandwidthPerDay,
 } from '@/store/availability.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -31,8 +32,12 @@ const DAYS: { key: WeekdayKey; label: string; hours: string }[] = [
  * count is the only version a technician can reason about in the field.
  */
 export function AvailabilityScreen() {
-  const { days, bandwidthPerDay, timeOff, toggleDay, setBandwidth, setTimeOff } =
-    useAvailabilityStore();
+  const { days, timeOff, toggleDay, setBandwidth, setTimeOff } = useAvailabilityStore();
+
+  // Their own edit if they made one, otherwise the cap their manager set.
+  // Null means the profile has not loaded yet — a dash, never a guess, because
+  // this number tells a technician how much work they will be offered.
+  const bandwidthPerDay = useBandwidthPerDay();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -141,8 +146,8 @@ export function AvailabilityScreen() {
           >
             <StepperButton
               glyph="−"
-              onPress={() => setBandwidth(bandwidthPerDay - 1)}
-              disabled={bandwidthPerDay <= BANDWIDTH_MIN}
+              onPress={() => bandwidthPerDay && setBandwidth(bandwidthPerDay - 1)}
+              disabled={bandwidthPerDay === null || bandwidthPerDay <= BANDWIDTH_MIN}
               label="Decrease bandwidth"
             />
 
@@ -155,7 +160,7 @@ export function AvailabilityScreen() {
                   color: color.textPrimary,
                 }}
               >
-                {bandwidthPerDay}
+                {bandwidthPerDay ?? '—'}
               </Text>
               <Text
                 style={{
@@ -171,8 +176,8 @@ export function AvailabilityScreen() {
 
             <StepperButton
               glyph="+"
-              onPress={() => setBandwidth(bandwidthPerDay + 1)}
-              disabled={bandwidthPerDay >= BANDWIDTH_MAX}
+              onPress={() => bandwidthPerDay && setBandwidth(bandwidthPerDay + 1)}
+              disabled={bandwidthPerDay === null || bandwidthPerDay >= BANDWIDTH_MAX}
               label="Increase bandwidth"
             />
           </View>

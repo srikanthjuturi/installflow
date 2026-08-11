@@ -21,8 +21,13 @@ import { palette } from '@/theme/tokens';
  * they stay as values.
  */
 const SETTINGS: { label: string; value: string; icon: IconName }[] = [
+  // English is a fact about this build — there is no i18n and no language
+  // setting to read. The payout account is NOT: those digits were invented,
+  // and a technician reading them would believe their money is going to an
+  // account ending 4432. There is no payout account anywhere in the schema
+  // yet, so this renders the same dash every unknown value does.
   { label: 'Language', value: 'English', icon: 'globe' },
-  { label: 'Payout account', value: '••4432', icon: 'wallet' },
+  { label: 'Payout account', value: '—', icon: 'wallet' },
 ];
 
 /**

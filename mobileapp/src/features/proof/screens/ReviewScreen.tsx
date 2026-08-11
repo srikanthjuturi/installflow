@@ -46,9 +46,13 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
     router.push(`/job/${jobId}/proof/capture`);
   };
 
+  // Nothing has been read yet at this point — a CapturedShot is a file URI and
+  // a timestamp, and the AI run only starts after this screen submits. So these
+  // say what is true (an artifact was captured); the decoded barcode and the
+  // serial appear on the result screen, which has them.
   const tiles: { step: ProofKind; meta: string; shot: CapturedShot | null }[] = [
-    { step: 'barcode', meta: 'Barcode · decoded', shot: barcode },
-    { step: 'serial', meta: 'Serial · VCN-••••-8841', shot: serial },
+    { step: 'barcode', meta: 'Barcode · captured', shot: barcode },
+    { step: 'serial', meta: 'Serial · captured', shot: serial },
     {
       step: 'photos',
       meta: `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`,

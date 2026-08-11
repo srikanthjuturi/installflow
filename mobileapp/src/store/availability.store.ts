@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import { availability as seed } from '@/mocks/db';
+import { useSession } from '@/store/session.store';
 import type { WeekdayKey } from '@/types/domain';
 
 /**
@@ -14,7 +15,16 @@ import type { WeekdayKey } from '@/types/domain';
 interface AvailabilityState {
   online: boolean;
   days: Record<WeekdayKey, boolean>;
-  bandwidthPerDay: number;
+  /**
+   * Null until the technician changes it, and then it is THEIR edit.
+   *
+   * The daily cap is not ours to invent — it is set by whoever onboarded them
+   * and arrives on the profile as `dailyJobCap`. Seeding this from mock data
+   * showed every technician the same made-up number and told them they would
+   * be offered more work than their manager allows. Read it with
+   * `useBandwidthPerDay()`, which falls back to the real value.
+   */
+  bandwidthPerDay: number | null;
   timeOff: boolean;
 
   setOnline: (next: boolean) => void;
@@ -30,7 +40,7 @@ export const BANDWIDTH_MAX = 12;
 export const useAvailabilityStore = create<AvailabilityState>((set) => ({
   online: true,
   days: { ...seed.days },
-  bandwidthPerDay: seed.bandwidthPerDay,
+  bandwidthPerDay: null,
   timeOff: seed.timeOff,
 
   setOnline: (online) => set({ online }),
@@ -39,3 +49,13 @@ export const useAvailabilityStore = create<AvailabilityState>((set) => ({
     set({ bandwidthPerDay: Math.min(BANDWIDTH_MAX, Math.max(BANDWIDTH_MIN, next)) }),
   setTimeOff: (timeOff) => set({ timeOff }),
 }));
+
+/**
+ * The cap to show: the technician's own edit if they made one, otherwise the
+ * cap their manager set. Never a seeded constant.
+ */
+export function useBandwidthPerDay(): number | null {
+  const edited = useAvailabilityStore((s) => s.bandwidthPerDay);
+  const assigned = useSession((s) => s.technician?.dailyJobCap);
+  return edited ?? assigned ?? null;
+}

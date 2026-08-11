@@ -41,7 +41,12 @@ export function VerifyingScreen({ jobId }: VerifyingScreenProps) {
 
   useEffect(() => {
     if (verification && verification.status !== 'pending') {
-      router.replace(`/job/${jobId}/proof/result?status=${verification.status}`);
+      // The id travels with the outcome so the result screen can render what
+      // the run actually read, rather than inventing a serial from the pincode.
+      router.replace(
+        `/job/${jobId}/proof/result?status=${verification.status}` +
+          `&verificationId=${encodeURIComponent(verification.id)}`,
+      );
     }
   }, [verification, jobId, router]);
 

@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -7,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
+import type { Verification } from '@/features/proof/api/verification';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCaptureStore } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
@@ -16,6 +18,8 @@ import type { VerificationOutcome } from '@/types/domain';
 export interface ResultScreenProps {
   jobId: string;
   status: VerificationOutcome;
+  /** Which run produced this outcome — carries the serial and confidence. */
+  verificationId?: string;
 }
 
 /**
@@ -31,11 +35,21 @@ export interface ResultScreenProps {
  * serial before the technician drives away is the difference between a
  * 20-second retake and a second visit.
  */
-export function ResultScreen({ jobId, status }: ResultScreenProps) {
+export function ResultScreen({ jobId, status, verificationId }: ResultScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: job } = useJob(jobId);
   const { setStep, clearStep } = useCaptureStore();
+
+  // What the run actually read, from the cache the verifying screen filled a
+  // moment ago. A read rather than a query because the result is terminal —
+  // there is nothing left to poll. If the app was reloaded straight onto this
+  // route the cache is empty and the rows render as dashes, which is the
+  // honest answer: this device no longer knows what the serial was.
+  const verification = useQueryClient().getQueryData<Verification>([
+    'verifications',
+    verificationId,
+  ]);
 
   const retakeSerial = () => {
     clearStep('serial');
@@ -158,9 +172,18 @@ export function ResultScreen({ jobId, status }: ResultScreenProps) {
           overflow: 'hidden',
         }}
       >
-        <ResultRow label="Model matched" value={job?.model ?? '—'} />
-        <ResultRow label="Serial read" value={`VCN-${job?.pincode ?? ''}-8841`} mono />
-        <ResultRow label="Confidence" value="98% · Auto-pass" tint={color.credit} last />
+        <ResultRow label="Model matched" value={verification?.modelMatched ?? job?.model ?? '—'} />
+        <ResultRow label="Serial read" value={verification?.serialRead ?? '—'} mono />
+        <ResultRow
+          label="Confidence"
+          value={
+            verification?.confidence === undefined
+              ? '—'
+              : `${verification.confidence}% · Auto-pass`
+          }
+          tint={color.credit}
+          last
+        />
       </View>
 
       <View style={{ marginTop: 16 }}>
