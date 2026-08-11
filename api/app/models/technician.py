@@ -26,6 +26,7 @@ from decimal import Decimal
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    ForeignKeyConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -195,6 +196,11 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     __table_args__ = (
         UniqueConstraint("membership_id", name="uq_technician_profiles_membership"),
         UniqueConstraint("company_id", "code", name="uq_technician_profiles_company_code"),
+        # What the coverage and certification tables' composite FKs point at, so
+        # neither can reference a technician from another company.
+        UniqueConstraint(
+            "company_id", "id", name="uq_technician_profiles_company_id_id"
+        ),
         Index("ix_technician_profiles_company_status", "company_id", "status"),
         Index("ix_technician_profiles_region_id", "region_id"),
         Index("ix_technician_profiles_appointed_by", "appointed_by_user_id"),
@@ -218,24 +224,42 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
 
 
 class TechnicianSubcategory(Base, IdMixin, AuditMixin):
-    """What this technician is certified for — the level a job offer matches on."""
+    """What this technician is certified for — the level a job offer matches on.
+
+    `company_id` is here so BOTH ends of the link can be checked by the
+    database: a technician from company A being certified for company B's
+    Television is impossible, not merely rejected by a service-layer check that
+    a race or a future refactor could slip past.
+    """
 
     __tablename__ = "technician_subcategories"
 
-    technician_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("technician_profiles.id", ondelete="CASCADE"), nullable=False
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
-    subcategory_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("product_subcategories.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
+    #: Both FKs are COMPOSITE — see __table_args__.
+    technician_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    subcategory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
             "technician_id", "subcategory_id", name="uq_technician_subcategory"
         ),
         Index("ix_technician_subcategories_subcategory_id", "subcategory_id"),
+        ForeignKeyConstraint(
+            ["company_id", "technician_id"],
+            ["technician_profiles.company_id", "technician_profiles.id"],
+            name="fk_technician_subcategories_company_technician",
+            ondelete="CASCADE",
+        ),
+        # RESTRICT: removing a subcategory somebody is certified for must be
+        # refused with a message, not silently decertify them.
+        ForeignKeyConstraint(
+            ["company_id", "subcategory_id"],
+            ["product_subcategories.company_id", "product_subcategories.id"],
+            name="fk_technician_subcategories_company_subcategory",
+            ondelete="RESTRICT",
+        ),
     )
 
 
@@ -254,9 +278,8 @@ class TechnicianPincode(Base, IdMixin, AuditMixin):
 
     __tablename__ = "technician_pincodes"
 
-    technician_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("technician_profiles.id", ondelete="CASCADE"), nullable=False
-    )
+    #: The FK is COMPOSITE, declared in __table_args__ — see there.
+    technician_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
@@ -265,4 +288,10 @@ class TechnicianPincode(Base, IdMixin, AuditMixin):
     __table_args__ = (
         UniqueConstraint("technician_id", "pincode", name="uq_technician_pincode"),
         Index("ix_technician_pincodes_company_pincode", "company_id", "pincode"),
+        ForeignKeyConstraint(
+            ["company_id", "technician_id"],
+            ["technician_profiles.company_id", "technician_profiles.id"],
+            name="fk_technician_pincodes_company_technician",
+            ondelete="CASCADE",
+        ),
     )

@@ -680,6 +680,10 @@ async def set_certifications(
     for sub_id in dict.fromkeys(subcategory_ids):
         session.add(
             TechnicianSubcategory(
+                # Denormalised so the composite FKs can check BOTH ends: a
+                # technician certified against another company's catalogue is
+                # rejected by the database, not just by the caller above.
+                company_id=profile.company_id,
                 technician_id=profile.id,
                 subcategory_id=sub_id,
                 created_by=actor_id,

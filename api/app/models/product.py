@@ -23,12 +23,14 @@ import uuid
 
 from sqlalchemy import (
     Boolean,
+    ForeignKeyConstraint,
     ForeignKey,
     Index,
     Integer,
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     text,
 )
@@ -60,6 +62,9 @@ class ProductCategory(Base, IdMixin, AuditMixin, SoftDeleteMixin):
 
     __table_args__ = (
         Index("ix_product_categories_company_id", "company_id"),
+        # What a child's composite FK points at, so a subcategory physically
+        # cannot hang off another company's category.
+        UniqueConstraint("company_id", "id", name="uq_product_categories_company_id_id"),
     )
 
 
@@ -71,9 +76,8 @@ class ProductSubcategory(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("product_categories.id", ondelete="CASCADE"), nullable=False
-    )
+    #: The FK is COMPOSITE, declared in __table_args__ — see there.
+    category_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     #: Nullable, and the API resolves it to the parent's icon when unset. This
     #: is the level the technician app actually draws — its coverage grid is one
@@ -90,6 +94,18 @@ class ProductSubcategory(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     __table_args__ = (
         Index("ix_product_subcategories_category_id", "category_id"),
         Index("ix_product_subcategories_company_id", "company_id"),
+        UniqueConstraint(
+            "company_id", "id", name="uq_product_subcategories_company_id_id"
+        ),
+        # Composite, not a plain category_id FK: the pair has to match, so a
+        # subcategory under another company's category cannot be written at
+        # all — not by a race, not by a future refactor that forgets the check.
+        ForeignKeyConstraint(
+            ["company_id", "category_id"],
+            ["product_categories.company_id", "product_categories.id"],
+            name="fk_product_subcategories_company_category",
+            ondelete="CASCADE",
+        ),
     )
 
 
@@ -107,9 +123,8 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
-    subcategory_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("product_subcategories.id", ondelete="CASCADE"), nullable=False
-    )
+    #: The FK is COMPOSITE, declared in __table_args__ — see there.
+    subcategory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     #: Size or rating — "43 inch", "7 kg", "340 L". Its own column rather than
     #: part of the name, which is where it lives today and where it cannot be
@@ -129,4 +144,10 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     __table_args__ = (
         Index("ix_product_models_subcategory_id", "subcategory_id"),
         Index("ix_product_models_company_id", "company_id"),
+        ForeignKeyConstraint(
+            ["company_id", "subcategory_id"],
+            ["product_subcategories.company_id", "product_subcategories.id"],
+            name="fk_product_models_company_subcategory",
+            ondelete="CASCADE",
+        ),
     )
