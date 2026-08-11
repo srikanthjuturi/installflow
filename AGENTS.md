@@ -43,6 +43,25 @@ break Expo Go and force a dev-client build.
 
 ## Hard rules
 
+### 0. This product is MULTI-TENANT. Applies everywhere, before anything below.
+
+Every company's data is its own. One company's categories, technicians, tickets or users must
+never appear in, link to, or be reachable from another's — not in a list, not through a guessed
+id, not through a join somebody forgot to scope.
+
+- **Backend:** every tenant table carries `company_id`; every parent/child link is a COMPOSITE
+  foreign key on `(company_id, parent_id)`; every query filters on `principal.company_id`; a
+  guessed id returns **404, not 403**. Full detail and the enforcement script in `api/AGENTS.md`.
+- **Both clients:** the active company comes from the session, never from a URL, a form field or
+  a cached list. Never build a request that names a company id the user did not switch to.
+- **Seed and demo data:** each company gets its OWN rows. Two companies starting from the same
+  starter catalogue is fine; two companies SHARING a row is not.
+
+Run `python -m app.scripts.audit_tenancy` from `api/` after any schema change. It exits non-zero
+if isolation is broken, and it found a real gap the day it was written.
+
+---
+
 1. **No hex colours** outside `src/theme/`. Use a NativeWind class (`bg-primary-500`) or import
    `color` from `@/theme/semantic`. ESLint fails the build otherwise.
 2. **Screens use semantic roles, not ramp positions.** `color.statusCompleted`, not
@@ -68,6 +87,7 @@ mobileapp/              the Expo app — ALL technician-app work happens in here
 adminWeb/               the InstallFlow ops console (React + Vite) — see adminWeb/AGENTS.md
 api/                    the FastAPI backend — auth, tenancy, territory, product master,
                         technician onboarding. Jobs and money are still to come.
+                        Has its OWN hard rules — see api/AGENTS.md, tenancy first.
 ```
 
 ## Skill & agent scoping
@@ -95,7 +115,7 @@ adminWeb/.claude/skills/    WEB ONLY — never load these for mobileapp/
   tailwind-design-system      Tailwind v4 @theme/@apply. NativeWind 4 is Tailwind 3 — wrong here
   webapp-testing              Playwright against a local HTTP server
   frontend-design             visual judgment. Mobile's design is already approved and locked
-api/.claude/skills/         BACKEND ONLY — create when the Python phase starts
+api/.claude/skills/         BACKEND ONLY — none yet; api/AGENTS.md carries the rules
 ```
 
 The same rule governs custom subagents: a mobile-specific agent belongs in

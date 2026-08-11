@@ -257,6 +257,20 @@ mode outright because technicians work outdoors; a desk console has no such cons
 
 ## Hard rules
 
+### 0. Multi-tenant. The active company is the session's, and never the client's to choose.
+
+Every list, form and detail page shows ONE company's data — whichever the user has switched to.
+The console never sends a company id it was not given, never caches rows across a company switch,
+and never assumes an id from one company resolves in another.
+
+Concretely: after `CompanySwitcher` changes company, invalidate the queries rather than filtering
+client-side; treat a 404 on a detail route as "not yours", which is exactly what the server means
+by it; and never put a company id in a URL as a way of selecting one.
+
+The server enforces all of this — see the tenancy rules in `api/AGENTS.md` — so a bug here is a
+confusing screen, not a leak. That is not a reason to be careless with it.
+
+
 1. **No hex outside `theme.css`.** Use a Tailwind token class or `var(--…)`.
 2. **No inline styles, no per-component CSS.** The prototype is 100% inline styles — that is an
    artifact of the DC runtime's powerless template language, not a design decision. Translate it.

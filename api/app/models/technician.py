@@ -145,9 +145,9 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
 
     __tablename__ = "technician_profiles"
 
-    membership_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("memberships.id", ondelete="CASCADE"), nullable=False
-    )
+    #: The FK is COMPOSITE, declared in __table_args__ — a profile in one
+    #: company must not be able to point at another company's membership.
+    membership_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
@@ -200,6 +200,12 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         # neither can reference a technician from another company.
         UniqueConstraint(
             "company_id", "id", name="uq_technician_profiles_company_id_id"
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "membership_id"],
+            ["memberships.company_id", "memberships.id"],
+            name="fk_technician_profiles_company_membership",
+            ondelete="CASCADE",
         ),
         Index("ix_technician_profiles_company_status", "company_id", "status"),
         Index("ix_technician_profiles_region_id", "region_id"),
