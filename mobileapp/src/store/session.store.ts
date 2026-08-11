@@ -57,16 +57,47 @@ export const useSession = create<SessionState>()(
         refreshToken: s.refreshToken,
         technician: s.technician,
       }),
-      onRehydrateStorage: () => (state, error) => {
-        // Flip it either way: a read failure means "no session", and leaving it
-        // false would hold the splash forever.
-        if (error) console.warn('Session rehydration failed', error);
-        useSession.setState({ hydrated: true });
-        void state;
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) console.warn('[session] rehydration failed', error);
       },
     },
   ),
 );
+
+/**
+ * Flip `hydrated` once storage has been read — wired from OUT here, not from
+ * inside the `create()` call above.
+ *
+ * Referencing `useSession` inside its own config is a temporal-dead-zone trap:
+ * if rehydration settles before this module finishes evaluating, the callback
+ * throws inside a promise, the rejection is swallowed, `hydrated` never becomes
+ * true, and the splash screen stays up forever with no error anywhere. The app
+ * looks frozen and nothing explains why.
+ */
+function markHydrated() {
+  if (!useSession.getState().hydrated) {
+    useSession.setState({ hydrated: true });
+  }
+}
+
+useSession.persist.onFinishHydration(markHydrated);
+// Covers the race where rehydration already finished before this line ran.
+if (useSession.persist.hasHydrated()) markHydrated();
+
+/**
+ * Failsafe. If the Keychain read hangs — a locked device, a corrupt entry, a
+ * platform quirk — the app must still start. Signed-out is the safe assumption:
+ * the worst case is one unnecessary sign-in, against an app that never opens.
+ */
+const HYDRATION_TIMEOUT_MS = 3000;
+setTimeout(() => {
+  if (!useSession.getState().hydrated) {
+    console.warn(
+      `[session] storage did not respond in ${HYDRATION_TIMEOUT_MS}ms — starting signed out`,
+    );
+    markHydrated();
+  }
+}, HYDRATION_TIMEOUT_MS);
 
 export type SessionStatus = 'loading' | 'signedOut' | 'authenticated';
 

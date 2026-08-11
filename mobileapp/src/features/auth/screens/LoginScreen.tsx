@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -64,6 +65,28 @@ export function LoginScreen() {
       setBusy(false);
     }
   };
+
+  /**
+   * Android back, handled explicitly.
+   *
+   * This is the FIRST screen, so there is nothing behind it — React Navigation
+   * logs a red "GO_BACK was not handled by any navigator" box every time, which
+   * reads like a crash and is the loudest thing in the dev console. From the
+   * OTP step back belongs to the flow (return to the number); from the phone
+   * step it belongs to the OS (leave the app).
+   */
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (step === 'otp') {
+        setStep('phone');
+        setError(null);
+        return true;
+      }
+      BackHandler.exitApp();
+      return true;
+    });
+    return () => sub.remove();
+  }, [step]);
 
   const verify = async () => {
     setBusy(true);

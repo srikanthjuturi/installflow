@@ -19,6 +19,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 
+/**
+ * The boot route, pinned.
+ *
+ * Expo Router picks a navigator's initial route from the first declared screen
+ * when children are given explicitly. Declaring the photo modals first made the
+ * app open the avatar picker on launch, ahead of the login screen. This states
+ * the intent so route order cannot decide it silently again.
+ */
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* already hidden — safe to ignore */
 });
@@ -72,8 +84,20 @@ export default function RootLayout() {
    * truth is. Rendering the router before it resolves would send a signed-in
    * technician to the login screen and then snap them back — holding the splash
    * instead is why there is no loading screen in the boot path.
+   *
+   * Traced because a stall here is invisible: the app just sits on the splash
+   * with nothing in the console. `session.store` has a 3s failsafe so this can
+   * never hang forever, but the trace says WHICH half was slow.
    */
-  if (!ready) return null;
+  if (!ready) {
+    if (__DEV__) {
+      console.log(
+        `[boot] waiting — fonts=${fontsLoaded || !!fontError} session=${hydrated}`,
+      );
+    }
+    return null;
+  }
+  if (__DEV__) console.log('[boot] ready — rendering router');
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -89,9 +113,19 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: color.surface },
             }}
           >
-            {/* The photo modals live at the root, not under `(app)`, because
-                a technician registering from an invite link takes their
-                profile photo before they have a session. */}
+            {/* ORDER IS LOAD-BEARING. The first declared screen becomes the
+                navigator's initial route, so `index` has to come first — with
+                the photo modals first the app opened the picker at launch,
+                before anyone had signed in. `unstable_settings` above pins it
+                too; both are here because either alone is easy to undo by
+                accident. */}
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(app)" />
+
+            {/* The photo modals live at the root, not under `(app)`, because a
+                technician registering from an invite link takes their profile
+                photo before they have a session. */}
             <Stack.Screen
               name="avatar-options"
               options={{ presentation: 'transparentModal', animation: 'fade' }}
