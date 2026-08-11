@@ -86,21 +86,36 @@ def _text_payload(phone: str, body: str, *, preview_url: bool = False) -> dict:
     }
 
 
-def build_invite_payload(phone: str, link: str) -> dict:
-    """The invite request body. Split out so it can be asserted without a send."""
+def build_invite_payload(phone: str, link: str, company: str) -> dict:
+    """The invite request body. Split out so it can be asserted without a send.
+
+    Two parameters, company then link, matching the `technician_invite`
+    template. The company is a parameter rather than baked into the template
+    because this platform is multi-tenant — one WABA sends for every company on
+    it, and a template naming one of them would be wrong for all the others.
+
+    The link is a BODY parameter and not a URL button on purpose: a button
+    stores its domain inside the template, so moving off the dev tunnel to a
+    real domain would need a fresh template and another Meta review. As a
+    parameter the domain is just INVITE_LINK_BASE.
+    """
     if settings.WHATSAPP_TEMPLATE_NAME:
         return _template_payload(
             phone,
             settings.WHATSAPP_TEMPLATE_NAME,
             settings.WHATSAPP_TEMPLATE_LANG,
-            [link],
+            [company, link],
         )
+    # No template configured. Meta accepts this and returns a message id, but
+    # only DELIVERS it if the recipient messaged this number in the last 24
+    # hours — otherwise it is dropped with 131047, which is invisible without a
+    # webhook. Development only; a template is what makes an invite arrive.
     return _text_payload(
         phone,
         (
-            "You have been invited to join Videocon Service as a technician.\n\n"
+            f"You have been invited to join {company} as a service technician.\n\n"
             f"Install the technician app and register here:\n{link}\n\n"
-            "This link is personal to you — please don't share it."
+            "This link is personal to you. Please do not share it."
         ),
         preview_url=True,
     )
@@ -185,9 +200,9 @@ async def _send(payload: dict, *, what: str) -> SendResult:
     return SendResult(ok=True, message_id=message_id)
 
 
-async def send_invite(phone: str, link: str) -> SendResult:
+async def send_invite(phone: str, link: str, company: str) -> SendResult:
     """Send one invite. Returns the outcome; never raises for a delivery failure."""
-    return await _send(build_invite_payload(phone, link), what="invite")
+    return await _send(build_invite_payload(phone, link, company), what="invite")
 
 
 async def send_otp(phone: str, code: str) -> SendResult:

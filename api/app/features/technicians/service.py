@@ -1006,9 +1006,20 @@ async def _send_and_record(session: AsyncSession, invite: TechnicianInvite) -> N
     A refusal is not an error for the caller: the invite exists and can be
     resent, which is more useful than a 500 and a lost row.
     """
-    result = await whatsapp.send_invite(invite.phone, invite_link(invite.token))
+    # The invite names the company the technician is joining — theirs, resolved
+    # from the invite row rather than from a constant, because one WhatsApp
+    # number sends for every tenant on this platform.
+    company_name = await session.scalar(
+        select(Company.name).where(Company.id == invite.company_id)
+    )
+
+    result = await whatsapp.send_invite(
+        invite.phone, invite_link(invite.token), company_name or "Videocon Service"
+    )
     invite.send_attempts = (invite.send_attempts or 0) + 1
     if result.ok:
+        # Meta ACCEPTED it. That is not the same as delivered — without a
+        # webhook we never learn about an asynchronous drop (131047).
         invite.status = SENT
         invite.wa_message_id = result.message_id
         invite.wa_error = None
