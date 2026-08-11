@@ -7,6 +7,7 @@ import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { Avatar } from '@/components/ui';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
+import { useGreeting } from '@/features/jobs/hooks/useGreeting';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { useAvailabilityStore } from '@/store/availability.store';
@@ -31,6 +32,7 @@ export function HomeScreen() {
   // imported straight from the mock database, which greeted every user by the
   // same seeded name after they had just proved who they were with an OTP.
   const { data: me } = useMe();
+  const greeting = useGreeting();
 
   const online = useAvailabilityStore((s) => s.online);
   const setOnline = useAvailabilityStore((s) => s.setOnline);
@@ -90,7 +92,7 @@ export function HomeScreen() {
                         color: color.textOnChrome,
                       }}
                     >
-                      Good morning
+                      {greeting}
                     </Text>
                     <Text
                       style={{
