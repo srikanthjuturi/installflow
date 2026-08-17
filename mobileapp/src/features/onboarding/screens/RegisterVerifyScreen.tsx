@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardFlow } from '@/components/layout';
 import { BrandMark, Button, StepDots } from '@/components/ui';
+import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import {
@@ -14,6 +15,8 @@ import {
   verifyInviteOtp,
 } from '@/features/onboarding/api/invite';
 import { ApiError } from '@/lib/api';
+import { uploadImage } from '@/lib/uploads';
+import { useProfileStore } from '@/store/profile.store';
 import {
   REGISTRATION_STEP_COUNT,
   stepNumber,
@@ -83,8 +86,9 @@ export function RegisterVerifyScreen() {
       const { registrationToken } = await verifyInviteOtp(draft.token, code);
       const result = await submitRegistration(draft.token, registrationToken, {
         fullName: draft.fullName,
-        // A local file uri is not something the server can fetch. Photos wait
-        // for the upload endpoint; sending this would store a dead path.
+        // Null here even when a photo was cropped: the file has to be uploaded,
+        // uploading needs a signed-in principal, and the account does not exist
+        // until this call returns. The photo follows immediately below.
         profileImageUrl: null,
         subcategoryIds: draft.subcategoryIds,
         pincodes: draft.pincodes,
@@ -100,6 +104,22 @@ export function RegisterVerifyScreen() {
         refreshToken: result.refreshToken,
         technician: result.technicianProfile,
       });
+
+      // Now that there is a session, the photo they framed on the profile step
+      // can go up. Best-effort on purpose: registration has already succeeded,
+      // and a flaky connection must not strand a technician on this screen over
+      // a picture they can re-set from Profile at any time.
+      const localAvatar = useProfileStore.getState().avatarUri;
+      if (localAvatar) {
+        try {
+          const url = await uploadImage(localAvatar, 'profile');
+          await saveMyProfilePhoto(url);
+          useProfileStore.getState().setAvatar(url);
+        } catch {
+          // Keeps the local uri: it is still their photo on this device, and
+          // Profile will offer to set it again.
+        }
+      }
       // Only now — a cleared draft with no session would strand them.
       clear();
       router.replace('/(app)/(tabs)');

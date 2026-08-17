@@ -52,3 +52,17 @@ export function verifyOtp(phone: string, code: string): Promise<LoginResult> {
 export function fetchMyProfile(): Promise<TechnicianSession> {
   return authedRequest<TechnicianSession>('/technicians/me');
 }
+
+/**
+ * Save the caller's own profile photo — `null` removes it.
+ *
+ * `PATCH /auth/me` rather than a technicians endpoint: the subject is the
+ * caller, so there is no feature guard to fail, and the console uses the same
+ * call for the same reason. The photo must already be uploaded — what is
+ * stored is the URL, never the image.
+ *
+ * The response is the console's `me` payload, which this app has no use for.
+ */
+export async function saveMyProfilePhoto(profileImageUrl: string | null): Promise<void> {
+  await authedRequest('/auth/me', { method: 'PATCH', body: { profileImageUrl } });
+}

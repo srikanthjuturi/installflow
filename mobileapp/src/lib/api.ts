@@ -49,6 +49,7 @@ interface Envelope<T> {
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** JSON by default; a `FormData` is sent as multipart instead. */
   body?: unknown;
   /** Bearer token. Callers pass it explicitly — see `request` in the store. */
   token?: string | null;
@@ -59,16 +60,20 @@ export async function apiRequest<T>(
   path: string,
   { method = 'GET', body, token, signal }: RequestOptions = {},
 ): Promise<T> {
+  // A file upload is multipart, and its Content-Type carries a boundary only
+  // fetch can generate — setting the header ourselves would corrupt it.
+  const multipart = body instanceof FormData;
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       signal,
       headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(body === undefined || multipart ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
     });
   } catch {
     // A field technician loses signal constantly. This has to read as

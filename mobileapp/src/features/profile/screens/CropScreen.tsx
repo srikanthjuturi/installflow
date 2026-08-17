@@ -1,14 +1,19 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { saveMyProfilePhoto } from '@/features/auth/api/session';
+import { getAccessToken } from '@/store/session.store';
+import { qk } from '@/lib/queryKeys';
+import { uploadImage } from '@/lib/uploads';
 import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 
@@ -37,6 +42,8 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
   const setAvatar = useProfileStore((s) => s.setAvatar);
+  const clearAvatar = useProfileStore((s) => s.clearAvatar);
+  const queryClient = useQueryClient();
 
   const [source, setSource] = useState({ uri, width, height });
   const [busy, setBusy] = useState(false);
@@ -156,7 +163,29 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
         compress: 0.85,
       });
 
+      // Shown immediately, from the local file — the upload is what makes it
+      // permanent, not what makes it visible.
       setAvatar(saved.uri);
+
+      // No session yet means this is the registration flow: the account does
+      // not exist, so there is nothing to attach a photo to and nobody to
+      // authenticate the upload. RegisterVerifyScreen sends it the moment the
+      // technician is signed in.
+      if (getAccessToken()) {
+        try {
+          const url = await uploadImage(saved.uri, 'profile');
+          await saveMyProfilePhoto(url);
+          // Swap the local path for the stored URL, so the photo survives a
+          // reinstall and shows on every other device.
+          setAvatar(url);
+          await queryClient.invalidateQueries({ queryKey: qk.me() });
+        } catch {
+          // Roll the optimistic preview back rather than leave a face on
+          // screen that no other device will ever show.
+          clearAvatar();
+          Alert.alert("Couldn't save your photo", 'Check your connection and try again.');
+        }
+      }
       // `back()`, not `dismissAll()`: the picker sheet `replace`s itself with
       // this screen, so exactly one modal is ever on the stack and the two are
       // identical here — but `back()` also returns correctly when the crop was

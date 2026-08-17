@@ -3,13 +3,15 @@ import { create } from 'zustand';
 /**
  * Client state for the technician's own profile photo.
  *
- * The URI is a local file path from the picker. It lives here rather than in
- * TanStack Query because until it's uploaded it isn't server state at all —
- * and keeping it as a file path is what will let the offline outbox pick it
- * up later, the same way proof captures work.
+ * Holds one of two things, and the difference matters:
+ *  - a local `file://` path, straight out of the crop screen — OPTIMISTIC,
+ *    only true on this device, and what registration still has to upload once
+ *    a session exists;
+ *  - the stored blob URL, once `POST /uploads` and `PATCH /auth/me` have both
+ *    succeeded — the real value, mirrored here so the avatar paints without
+ *    waiting for a query.
  *
- * UI phase: in-memory, so it resets on reload. Binding phase adds
- * `POST /me/avatar` and this becomes the optimistic value while it uploads.
+ * In-memory, so it resets on reload; `useMe` reseeds it from the server.
  */
 interface ProfileState {
   avatarUri: string | null;
