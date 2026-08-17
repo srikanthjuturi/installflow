@@ -26,11 +26,11 @@ export interface ProductModel {
   /** 0–240. Null means nobody has recorded it yet, not "no warranty". */
   warrantyMonths: number | null;
   /**
-   * An http(s) URL. The API rejects `data:` on purpose — a base64 photo in
-   * every list response is expensive, and refusing it keeps the eventual move
-   * to blob storage a service change rather than a data migration.
+   * Up to five http(s) URLs into blob storage, ordered — the first is the
+   * thumbnail. The API rejects `data:` on purpose: a base64 photo in every list
+   * response is expensive, so the file is uploaded and only its URL stored.
    */
-  imageUrl: string | null;
+  imageUrls: string[];
   isActive: boolean;
   sortOrder: number;
 }
@@ -94,7 +94,7 @@ export interface CreateModelInput {
   name: string;
   capacity?: string | null;
   warrantyMonths?: number | null;
-  imageUrl?: string | null;
+  imageUrls?: string[];
   isActive: boolean;
 }
 
@@ -103,7 +103,8 @@ export interface UpdateModelInput {
   name?: string;
   capacity?: string | null;
   warrantyMonths?: number | null;
-  imageUrl?: string | null;
+  /** Sent whole — an empty array clears the gallery. */
+  imageUrls?: string[];
   isActive?: boolean;
 }
 

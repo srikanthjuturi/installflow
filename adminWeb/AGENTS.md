@@ -477,6 +477,46 @@ runtime into an internal ops console works directly against the 95+ target. If a
 visual is wanted later, it must be lazy-loaded, behind `prefers-reduced-motion`, and approved
 first.
 
+## Image upload — one flow, everywhere
+
+Every control that takes an image behaves identically. Do not invent a second
+shape for it, and do not hand-roll a file input:
+
+1. **Click opens the file explorer.** The camera badge, the Add tile, the upload
+   button — one click, and the OS picker is up. There is **no intermediate
+   "choose a photo" dialog**: the click already said "choose a photo", so asking
+   again is a step that exists only to be dismissed.
+2. **The crop dialog opens on the chosen file**, already showing it, with Save
+   and Cancel. Nothing else in between.
+3. **Save uploads it** to `POST /uploads` and hands the caller back a URL.
+
+**Everything is also a drop target.** Dragging files onto the avatar disc, the
+photo strip or the dropzone does exactly what choosing them does — same
+validation, same crop dialog, same upload. The target highlights with
+`ring-2 ring-brand-500` while files hover it, and it is the whole area a user
+would aim at, never a 64px tile.
+
+**Where the field holds a gallery, the picker is `multiple`.** Several files
+picked or dropped at once queue up and are cropped one at a time in place —
+"Photo 2 of 3" — because each photo needs its own framing. `max` is the room
+actually left, so a pick that overflows is refused with a reason rather than
+silently truncated.
+
+The two pieces are [`useImagePicker`](src/components/shared/useImagePicker.ts)
+(hidden input, click-to-open, drag-and-drop, validation) and
+[`ImageCropDialog`](src/components/shared/ImageCropDialog.tsx) (the cropper and
+the queue). `AvatarPicker` is the single-round-crop case built on both.
+
+Limits, and where each comes from: PNG/JPG/WebP · 10 MB source (a decode
+ceiling, refused client-side) · 8 MB upload (`blob.py`) · 512 px output, WebP
+with a JPEG fallback. **What is stored is a URL, never the image** — the API
+rejects `data:` and a local `file://` path, for the reasons in
+`api/app/core/images.py`.
+
+The technician app runs the same flow with its own chrome: tap the avatar →
+camera-or-library sheet → `CropScreen` → upload. Drag-and-drop has no meaning
+there; everything else matches.
+
 ## Images
 
 Placeholders only, in `public/images/placeholders/` — `hero-placeholder.webp`,

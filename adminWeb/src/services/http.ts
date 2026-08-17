@@ -148,15 +148,25 @@ async function send(
   path: string,
   body?: unknown
 ): Promise<Response> {
+  // A file upload is multipart, and its Content-Type carries a boundary only
+  // the browser can generate — setting the header ourselves would corrupt it.
+  const multipart = body instanceof FormData;
   try {
     return await fetch(`${BASE_URL}${path}`, {
       method,
       headers: {
         Accept: "application/json",
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(body !== undefined && !multipart
+          ? { "Content-Type": "application/json" }
+          : {}),
         ...authHeaders(),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body:
+        body === undefined
+          ? undefined
+          : multipart
+            ? body
+            : JSON.stringify(body),
     });
   } catch {
     // Network-level failure: server down, wrong port, CORS blocked outright.
@@ -220,6 +230,14 @@ export async function apiGetPage<T>(
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return unwrap(await request<T>("POST", path, body ?? {}));
+}
+
+/**
+ * Multipart POST. Goes through `request`, so a 401 still refreshes and replays
+ * — a FormData body can be sent twice, the browser re-reads the file.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  return unwrap(await request<T>("POST", path, form));
 }
 
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {

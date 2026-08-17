@@ -42,8 +42,15 @@ export const technicianSchema = z.object({
       "Every pincode must be 6 digits"
     ),
   bwTotal: z.string().min(1, "Select a daily job cap"),
-  /** Optional cropped profile photo, carried as a data URL. */
-  photo: z.string().optional(),
+  /** Optional profile photo — the URL the crop was uploaded to, never inline
+   *  image data, which the API refuses. */
+  photo: z
+    .string()
+    .refine(
+      (v) => /^https?:\/\//i.test(v),
+      "That photo was not stored. Upload it again."
+    )
+    .optional(),
 });
 
 export type TechnicianFormValues = z.infer<typeof technicianSchema>;

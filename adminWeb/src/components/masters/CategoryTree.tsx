@@ -327,8 +327,13 @@ function ModelChip({
         className="grid size-5 shrink-0 place-items-center overflow-hidden rounded-sm bg-surface-3 text-ink-3"
         aria-hidden
       >
-        {model.imageUrl ? (
-          <img src={model.imageUrl} alt="" className="size-full object-cover" />
+        {/* The first photo is the model's face everywhere a list draws one. */}
+        {model.imageUrls[0] ? (
+          <img
+            src={model.imageUrls[0]}
+            alt=""
+            className="size-full object-cover"
+          />
         ) : (
           <ImageOff className="size-3" />
         )}

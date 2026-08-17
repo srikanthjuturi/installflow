@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./http";
+import { apiGet, apiPatch, apiPost } from "./http";
 import type {
   LoginResponse,
   MeResponse,
@@ -39,6 +39,20 @@ export function logout(refreshToken: string | null): Promise<null> {
 /** The caller's identity plus their effective features for the active company. */
 export function me(): Promise<MeResponse> {
   return apiGet<MeResponse>("/auth/me");
+}
+
+/**
+ * Set or clear the caller's OWN profile photo — `null` removes it.
+ *
+ * Self-service, and deliberately not `PUT /users/{membership}`: that endpoint
+ * is a manager editing somebody else and is feature-guarded accordingly. The
+ * photo must be uploaded first (`services/uploads.ts`); what is stored is its
+ * URL.
+ */
+export function updateMyProfileImage(
+  profileImageUrl: string | null
+): Promise<MeResponse> {
+  return apiPatch<MeResponse>("/auth/me", { profileImageUrl });
 }
 
 /** Re-scope the session to another company the caller belongs to. */

@@ -323,7 +323,8 @@ export interface InviteUserInput {
   email: string;
   role: Role;
   scope: string;
-  /** Optional cropped profile photo as a data URL. */
+  /** Optional profile photo — the URL a crop was uploaded to. Mock-only for
+   *  now; the live path is `POST /users`, whose API refuses inline image data. */
   photoUrl?: string;
 }
 

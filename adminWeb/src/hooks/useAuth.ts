@@ -1,6 +1,12 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { login, logout, me, switchCompany } from "@/services/auth";
+import {
+  login,
+  logout,
+  me,
+  switchCompany,
+  updateMyProfileImage,
+} from "@/services/auth";
 import { useSession } from "@/store/session";
 
 /**
@@ -96,6 +102,29 @@ export function useSwitchCompany() {
     onSuccess: (payload) => {
       setActiveCompany(payload);
       queryClient.clear();
+    },
+  });
+}
+
+/**
+ * Set or clear the caller's own profile photo.
+ *
+ * The photo is already in blob storage by the time this runs — `AvatarPicker`
+ * uploads the crop and hands back a URL — so this only persists the reference
+ * and refreshes the two places identity is read from: the `me` query and the
+ * session's cached mirror the rail draws.
+ */
+export function useUpdateMyPhoto() {
+  const setAvatar = useSession((s) => s.setAvatar);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { errorTitle: "Couldn't update your photo" },
+    mutationFn: (profileImageUrl: string | null) =>
+      updateMyProfileImage(profileImageUrl),
+    onSuccess: (next) => {
+      setAvatar(next.user.profileImageUrl);
+      queryClient.setQueryData(["me"], next);
     },
   });
 }

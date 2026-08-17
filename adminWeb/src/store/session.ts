@@ -131,11 +131,12 @@ interface SessionState {
   name: string;
   email: string;
   /**
-   * The signed-in user's chosen avatar as a data URL, or `null` for the
-   * initials fallback. Client state on purpose: the backend has no avatar
-   * field yet (see `AuthUser`), so until it does the picture lives here and is
-   * persisted so a reload keeps it. When the upload endpoint lands, `signIn`
-   * seeds this from `user.avatarUrl` and this becomes a cached mirror.
+   * The signed-in user's avatar URL, or `null` for the initials fallback.
+   *
+   * A cached MIRROR of `backendUser.profileImageUrl`, not the source: sign-in
+   * seeds it and `PATCH /auth/me` updates it. It exists so the rail can draw
+   * the avatar without holding a query subscription, and it is persisted so a
+   * reload draws it before `me` returns.
    */
   avatarUrl: string | null;
   /** The scope being viewed. Server-side guards are the real authority;
@@ -215,6 +216,9 @@ export const useSession = create<SessionState>()(
           activeCompanyId,
           name: user.fullName ?? user.email,
           email: user.email,
+          // Seeded from the server, so the photo follows the account to any
+          // browser rather than living only where it was cropped.
+          avatarUrl: user.profileImageUrl,
           role: roleFromBackend(user.role),
         }),
       setTokens: ({ accessToken, refreshToken }) =>

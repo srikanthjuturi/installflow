@@ -1,6 +1,14 @@
+import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ImageOff } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
+import { ImageCropDialog } from "@/components/shared/ImageCropDialog";
+import {
+  useImagePicker,
+  type PickedImage,
+} from "@/components/shared/useImagePicker";
+import { uploadImage } from "@/services/uploads";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,7 +35,12 @@ import type {
   ProductSubcategory,
 } from "@/types/product";
 import { StatusField } from "./StatusField";
-import { modelSchema, statusOf, type ModelFormValues } from "./categorySchema";
+import {
+  MAX_MODEL_IMAGES,
+  modelSchema,
+  statusOf,
+  type ModelFormValues,
+} from "./categorySchema";
 
 interface ModelFormDialogProps {
   open: boolean;
@@ -70,9 +83,13 @@ function ModelForm({
   const update = useUpdateModel();
   const pending = create.isPending || update.isPending;
 
+  const [queue, setQueue] = useState<PickedImage[]>([]);
+
   const {
     control,
     register,
+    setValue,
+    getValues,
     handleSubmit,
     formState: { errors },
   } = useForm<ModelFormValues>({
@@ -84,15 +101,41 @@ function ModelForm({
         model?.warrantyMonths === null || model?.warrantyMonths === undefined
           ? ""
           : String(model.warrantyMonths),
-      imageUrl: model?.imageUrl ?? "",
+      imageUrls: model?.imageUrls ?? [],
       status: statusOf(model?.isActive ?? true),
     },
   });
 
   // Subscribes to just this field, and unlike `watch()` does not opt the whole
   // form out of the React Compiler.
-  const imageUrl = useWatch({ control, name: "imageUrl" });
-  const previewable = /^https?:\/\//i.test(imageUrl ?? "");
+  const imageUrls = useWatch({ control, name: "imageUrls" }) ?? [];
+  const full = imageUrls.length >= MAX_MODEL_IMAGES;
+
+  function setImages(next: string[]) {
+    setValue("imageUrls", next, { shouldValidate: true, shouldDirty: true });
+  }
+
+  // Several at once: `max` is the room actually left, so five files dropped on
+  // a model that already has three are refused with a reason rather than
+  // silently truncated to two.
+  const picker = useImagePicker({
+    multiple: true,
+    max: MAX_MODEL_IMAGES - imageUrls.length,
+    onFiles: setQueue,
+  });
+
+  /**
+   * Each crop is uploaded as soon as it is framed, not on submit: the field
+   * holds URLs, so the previews below are the stored images themselves rather
+   * than local copies. Abandoning the form leaves orphan blobs — a few KB under
+   * a UUID nobody links to, which is the cheaper end of the trade.
+   */
+  async function handleCropped(blob: Blob) {
+    const url = await uploadImage(blob, "product");
+    // Read at call time, not from the closure: an upload takes seconds, and the
+    // list it appends to must be the one on screen when it lands.
+    setImages([...getValues("imageUrls"), url]);
+  }
 
   function submit(values: ModelFormValues) {
     const body = {
@@ -103,7 +146,7 @@ function ModelForm({
       warrantyMonths: values.warrantyMonths.trim()
         ? Number(values.warrantyMonths)
         : null,
-      imageUrl: values.imageUrl.trim() || null,
+      imageUrls: values.imageUrls,
       isActive: values.status === "Active",
     };
     const done = (saved: ProductCategory) => {
@@ -213,54 +256,113 @@ function ModelForm({
           </Field>
         </FieldGroup>
 
-        <Field data-invalid={errors.imageUrl ? true : undefined}>
-          <FieldLabel htmlFor="model-image">Photo link (optional)</FieldLabel>
-          <div className="flex items-start gap-3">
-            {/* A live preview is the only way to tell a working link from a
-                typo before saving. */}
-            <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-md border border-line-2 bg-surface-2 text-ink-3">
-              {previewable ? (
+        <Field data-invalid={errors.imageUrls ? true : undefined}>
+          <FieldLabel htmlFor="model-image">
+            Photos (optional) · {imageUrls.length}/{MAX_MODEL_IMAGES}
+          </FieldLabel>
+
+          <input {...picker.inputProps} />
+
+          {/* The whole strip takes a drop, not just the Add tile — a dragged
+              photo is aimed at "the photos", and asking for a 64px target is
+              asking to miss. */}
+          <div
+            {...picker.dropProps}
+            className={cn(
+              "flex flex-wrap items-start gap-2 rounded-md ring-offset-2 ring-offset-card transition-shadow",
+              picker.dragging && "ring-2 ring-brand-500"
+            )}
+          >
+            {imageUrls.map((url, index) => (
+              <span
+                key={url}
+                className="group relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-md border border-line-2 bg-surface-2 text-ink-3"
+              >
                 <img
-                  src={imageUrl}
+                  src={url}
                   alt=""
                   className="size-full object-cover"
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
                   }}
                 />
-              ) : (
-                <ImageOff className="size-5" aria-hidden />
-              )}
-            </span>
-            <div className="min-w-0 flex-1">
-              <Input
-                id="model-image"
-                type="url"
-                inputMode="url"
-                placeholder="https://…"
-                aria-invalid={errors.imageUrl ? true : undefined}
-                aria-describedby={
-                  errors.imageUrl ? "model-image-error" : "model-image-hint"
-                }
-                {...register("imageUrl")}
-              />
-              {errors.imageUrl ? (
-                <FieldDescription
-                  id="model-image-error"
-                  role="alert"
-                  className="mt-1.5 text-danger"
+                {/* The first photo is the one every list draws, so it is worth
+                    saying which one that is rather than leaving order implicit. */}
+                {index === 0 ? (
+                  <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-medium text-white">
+                    Main
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon-xs"
+                  onClick={() =>
+                    setImages(imageUrls.filter((_, i) => i !== index))
+                  }
+                  aria-label={`Remove photo ${index + 1}`}
+                  className="absolute -top-1 -right-1 rounded-full ring-2 ring-card"
                 >
-                  {errors.imageUrl.message}
-                </FieldDescription>
-              ) : (
-                <FieldDescription id="model-image-hint" className="mt-1.5">
-                  Paste a link to a hosted image. Uploading from this screen
-                  comes with file storage.
-                </FieldDescription>
-              )}
-            </div>
+                  <X />
+                </Button>
+              </span>
+            ))}
+
+            {/* Kept mounted when full, and disabled: the label points at it,
+                and a tile that greys out reads as "that is the limit" where a
+                vanished one reads as a bug. */}
+            <button
+              id="model-image"
+              type="button"
+              onClick={picker.open}
+              disabled={full}
+              title={full ? `Up to ${MAX_MODEL_IMAGES} photos` : undefined}
+              aria-describedby={
+                errors.imageUrls ? "model-image-error" : "model-image-hint"
+              }
+              className="grid size-16 shrink-0 place-items-center gap-0.5 rounded-md border border-dashed border-line bg-surface-2 text-ink-3 transition-colors hover:border-brand-400 hover:text-brand-400 disabled:pointer-events-none disabled:opacity-50"
+            >
+              <ImagePlus className="size-5" aria-hidden />
+              <span className="text-[10px] font-medium">
+                {imageUrls.length ? "Add" : "Upload"}
+              </span>
+            </button>
           </div>
+
+          {picker.error ? (
+            <FieldDescription role="alert" className="text-danger">
+              {picker.error}
+            </FieldDescription>
+          ) : errors.imageUrls ? (
+            <FieldDescription
+              id="model-image-error"
+              role="alert"
+              className="text-danger"
+            >
+              {errors.imageUrls.message ??
+                errors.imageUrls.root?.message ??
+                `Up to ${MAX_MODEL_IMAGES} photos per model`}
+            </FieldDescription>
+          ) : (
+            <FieldDescription id="model-image-hint">
+              Drop images here or click to browse — several at once. PNG, JPG or
+              WebP, up to {MAX_MODEL_IMAGES}. Each is cropped to a square; the
+              first is the one ticket intake shows.
+            </FieldDescription>
+          )}
         </Field>
+
+        <ImageCropDialog
+          images={queue}
+          onClose={() => {
+            setQueue([]);
+            picker.release();
+          }}
+          title="Product photo"
+          description="drag to reposition and zoom to frame the product."
+          saveLabel="Add photo"
+          onSave={handleCropped}
+        />
 
         <Controller
           name="status"

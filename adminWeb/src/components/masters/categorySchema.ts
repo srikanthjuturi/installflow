@@ -23,12 +23,16 @@ export const subcategorySchema = z.object({
   status,
 });
 
+/** Photos per model. Mirrors MAX_IMAGES in app/features/masters/schemas.py. */
+export const MAX_MODEL_IMAGES = 5;
+
 /**
- * Mirrors the server rule: an http(s) URL, never a `data:` one.
+ * Mirrors the server rule: http(s) URLs, never `data:` ones, at most five.
  *
- * The API refuses base64 so a product photo cannot bloat every list response,
- * and so moving to blob storage later stays a service change. Rejecting it here
- * too means the user finds out while typing rather than on submit.
+ * The API refuses base64 so a product photo cannot bloat every list response —
+ * the photo itself lives in blob storage and the record keeps only its URL.
+ * Nobody types these (the form uploads each crop and stores what comes back),
+ * so the checks guard the seam rather than the typist.
  */
 export const modelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
@@ -43,14 +47,18 @@ export const modelSchema = z.object({
       (v) => v === "" || Number(v) <= 240,
       "That looks like years — enter the number of months",
     ),
-  imageUrl: z
-    .string()
-    .trim()
-    .refine(
-      (v) => v === "" || /^https?:\/\//i.test(v),
-      "Enter a link starting with http:// or https://"
+  imageUrls: z
+    .array(
+      z
+        .string()
+        .trim()
+        .refine(
+          (v) => /^https?:\/\//i.test(v),
+          "That photo was not stored. Upload it again."
+        )
+        .refine((v) => v.length <= 2048, "That photo link is too long")
     )
-    .refine((v) => v.length <= 2048, "That link is too long"),
+    .max(MAX_MODEL_IMAGES, `Up to ${MAX_MODEL_IMAGES} photos per model`),
   status,
 });
 

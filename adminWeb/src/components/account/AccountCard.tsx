@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AvatarPicker } from "@/components/shared/AvatarPicker";
+import { useUpdateMyPhoto } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
 import { cn } from "@/lib/utils";
 import type { BackendMembership, BackendUser } from "@/types/api";
@@ -16,8 +17,9 @@ interface AccountCardProps {
 
 /**
  * Identity, not authorization. Role and company are shown because they explain
- * what this console is showing you — the server decides what you may do. Avatars
- * are a local placeholder until blob storage lands.
+ * what this console is showing you — the server decides what you may do. The
+ * photo is the one thing here the user owns: cropped, uploaded to blob storage
+ * and saved with `PATCH /auth/me`.
  */
 export function AccountCard({
   user,
@@ -34,9 +36,10 @@ export function AccountCard({
     memberships.find((m) => m.companyId === effectiveActiveId)?.companyName ??
     "—";
 
-  // The avatar is client state until the backend grows an upload endpoint.
+  // A mirror of the server's value, so the disc is drawn before `me` returns.
+  // The picker uploads the crop; this only persists the URL it hands back.
   const avatarUrl = useSession((s) => s.avatarUrl);
-  const setAvatar = useSession((s) => s.setAvatar);
+  const updatePhoto = useUpdateMyPhoto();
 
   const facts: Array<[string, string]> = [
     ["Email", user.email],
@@ -52,7 +55,7 @@ export function AccountCard({
           <AvatarPicker
             name={name}
             value={avatarUrl}
-            onChange={setAvatar}
+            onChange={(url) => updatePhoto.mutate(url)}
             avatarClassName="size-14 text-lg"
           />
           <div className="min-w-0">
@@ -61,8 +64,9 @@ export function AccountCard({
             {avatarUrl ? (
               <button
                 type="button"
-                onClick={() => setAvatar(null)}
-                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger"
+                onClick={() => updatePhoto.mutate(null)}
+                disabled={updatePhoto.isPending}
+                className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger disabled:opacity-50"
               >
                 <Trash2 className="size-3" aria-hidden />
                 Remove photo
