@@ -1,18 +1,11 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { KeyboardFlow } from '@/components/layout';
 import { Button, StepDots } from '@/components/ui';
 import { CategoryTile } from '@/features/onboarding/components/CategoryTile';
 import { PincodeChip } from '@/features/onboarding/components/PincodeChip';
@@ -49,7 +42,6 @@ const PINCODE_LENGTH = 6;
 export function CoverageScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
 
   const draft = useRegistration((s) => s.draft);
   const setCoverage = useRegistration((s) => s.setCoverage);
@@ -147,23 +139,32 @@ export function CoverageScreen() {
       </View>
 
       {/* Wraps BOTH the scroll and the footer so the CTA rides above the
-          keyboard instead of being buried by it. Android resizes the window
-          itself (softwareKeyboardLayoutMode: resize), so it needs no behavior. */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboard instead of being buried by it. */}
+      <KeyboardFlow
+        footer={
+          <View
+            style={{
+              paddingTop: 12,
+              paddingHorizontal: 22,
+              paddingBottom: 16,
+              borderTopWidth: 1,
+              borderTopColor: color.surface,
+            }}
+          >
+            {/* When blocked, the hint IS the button label rather than a line
+                beneath it — one control, always saying what it needs. */}
+            <Button
+              label={ready ? `Continue · ${summary}` : hint}
+              onPress={() => {
+                setCoverage([...selected], pincodes);
+                router.push('/register/verify');
+              }}
+              disabled={!ready}
+            />
+          </View>
+        }
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={{ paddingTop: 6, paddingHorizontal: 22, paddingBottom: 20 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          // NOT automaticallyAdjustKeyboardInsets: the KeyboardAvoidingView
-          // above already accounts for the keyboard on iOS, and having both
-          // subtracts it twice — leaving a keyboard-sized gap under the
-          // content. See the note in components/layout/KeyboardFlow.tsx.
-        >
+        <View style={{ paddingTop: 6, paddingHorizontal: 22, paddingBottom: 20 }}>
           <Text
             style={{
               fontFamily: 'Roboto_900Black',
@@ -298,14 +299,7 @@ export function CoverageScreen() {
                     onChangeText={(v) =>
                       setPincodeDraft(v.replace(/\D/g, '').slice(0, PINCODE_LENGTH))
                     }
-                    onFocus={() => {
-                      setFocused(true);
-                      // The pincode field sits at the very bottom of a long
-                      // scroll. Resizing alone leaves it flush against the
-                      // keyboard, so pull it fully into view once the frame
-                      // has settled.
-                      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 250);
-                    }}
+                    onFocus={() => setFocused(true)}
                     onBlur={() => setFocused(false)}
                     placeholder="Enter 6-digit pincode"
                     placeholderTextColor={color.textMuted}
@@ -387,29 +381,8 @@ export function CoverageScreen() {
               </>
             )}
           </View>
-        </ScrollView>
-
-        <View
-          style={{
-            paddingTop: 12,
-            paddingHorizontal: 22,
-            paddingBottom: insets.bottom + 16,
-            borderTopWidth: 1,
-            borderTopColor: color.surface,
-          }}
-        >
-          {/* When blocked, the hint IS the button label rather than a line
-              beneath it — one control, always saying what it needs. */}
-          <Button
-            label={ready ? `Continue · ${summary}` : hint}
-            onPress={() => {
-              setCoverage([...selected], pincodes);
-              router.push('/register/verify');
-            }}
-            disabled={!ready}
-          />
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardFlow>
     </View>
   );
 }

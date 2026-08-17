@@ -45,7 +45,7 @@ export function AddUserDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
         <AddUserForm onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>

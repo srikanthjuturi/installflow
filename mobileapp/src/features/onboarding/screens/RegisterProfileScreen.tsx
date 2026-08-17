@@ -1,17 +1,11 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { KeyboardFlow } from '@/components/layout';
 import { Avatar, Button, Input, StepDots } from '@/components/ui';
 import {
   REGISTRATION_STEP_COUNT,
@@ -105,19 +99,31 @@ export function RegisterProfileScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardFlow
+        footer={
+          <View
+            style={{
+              paddingTop: 12,
+              paddingHorizontal: 22,
+              paddingBottom: 16,
+              borderTopWidth: 1,
+              borderTopColor: color.surface,
+            }}
+          >
+            {/* Blocked, the hint IS the label — one control, always saying what
+                it needs. Same pattern as the coverage screen. */}
+            <Button
+              label={ready ? 'Continue' : 'Enter your full name'}
+              onPress={() => {
+                setProfile(trimmed, avatarUri);
+                router.push('/coverage');
+              }}
+              disabled={!ready}
+            />
+          </View>
+        }
       >
-        <ScrollView
-          contentContainerStyle={{
-            paddingTop: 6,
-            paddingHorizontal: 22,
-            paddingBottom: 20,
-          }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={{ paddingTop: 6, paddingHorizontal: 22, paddingBottom: 20 }}>
           <Text
             style={{
               fontFamily: 'Roboto_900Black',
@@ -200,29 +206,8 @@ export function RegisterProfileScreen() {
               From your invite. Contact your ASM to change it.
             </Text>
           </View>
-        </ScrollView>
-
-        <View
-          style={{
-            paddingTop: 12,
-            paddingHorizontal: 22,
-            paddingBottom: insets.bottom + 16,
-            borderTopWidth: 1,
-            borderTopColor: color.surface,
-          }}
-        >
-          {/* Blocked, the hint IS the label — one control, always saying what
-              it needs. Same pattern as the coverage screen. */}
-          <Button
-            label={ready ? 'Continue' : 'Enter your full name'}
-            onPress={() => {
-              setProfile(trimmed, avatarUri);
-              router.push('/coverage');
-            }}
-            disabled={!ready}
-          />
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardFlow>
     </View>
   );
 }

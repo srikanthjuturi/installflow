@@ -54,9 +54,13 @@ const config: ExpoConfig = {
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
-    // Explicit rather than relying on the default: with edge-to-edge on, the
-    // window must resize when the keyboard opens or it covers the field being
-    // typed into (pincode entry, OTP).
+    // Inert while edgeToEdgeEnabled is on — the app draws behind the IME, so
+    // the window does NOT resize for the keyboard and this setting has nothing
+    // to act on. Keyboard avoidance is done in JS instead; see
+    // src/components/layout/KeyboardFlow.tsx. Kept at the default so that
+    // turning edge-to-edge off restores resizing rather than panning — but
+    // KeyboardFlow's `behavior` would then need revisiting, or the keyboard
+    // gets subtracted twice.
     softwareKeyboardLayoutMode: 'resize',
     // Android App Link. `autoVerify` makes Android fetch
     // https://<host>/.well-known/assetlinks.json AT INSTALL TIME and, if it

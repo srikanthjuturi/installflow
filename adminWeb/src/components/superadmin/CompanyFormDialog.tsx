@@ -43,7 +43,7 @@ export function CompanyFormDialog({
 }: CompanyFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
         {/* Remounts on open so the form is always clean; the key also covers
             reopening on a different row. */}
         <CompanyForm

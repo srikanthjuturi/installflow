@@ -84,7 +84,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       <nav
         className={cn(
-          "scroll-slim flex-1 overflow-y-auto pt-3.5 pb-6",
+          "scroll-slim scroll-slim-invert flex-1 overflow-y-auto pt-3.5 pb-6",
           collapsed ? "px-2" : "px-3"
         )}
         aria-label="Main"

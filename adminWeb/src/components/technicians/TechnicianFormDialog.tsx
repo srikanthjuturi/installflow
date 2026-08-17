@@ -116,7 +116,7 @@ export function TechnicianFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="scroll-slim max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Add technician</DialogTitle>
           <DialogDescription>

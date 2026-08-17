@@ -176,7 +176,10 @@ function ModelForm({
         </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup className="max-h-[60vh] gap-4 overflow-y-auto">
+      {/* `-mr-4 pr-4` cancels the dialog's own padding on this edge only, so
+          the scrollbar rides the popup wall instead of floating in a gutter,
+          while the fields keep their inset. */}
+      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
         <Field data-invalid={errors.name ? true : undefined}>
           <FieldLabel htmlFor="model-name">Model name</FieldLabel>
           <Input

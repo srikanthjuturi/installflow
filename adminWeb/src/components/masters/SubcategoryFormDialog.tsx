@@ -124,7 +124,7 @@ function SubcategoryForm({
         </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup className="max-h-[60vh] gap-4 overflow-y-auto">
+      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
         <Field data-invalid={errors.name ? true : undefined}>
           <FieldLabel htmlFor="subcategory-name">Subcategory name</FieldLabel>
           <Input

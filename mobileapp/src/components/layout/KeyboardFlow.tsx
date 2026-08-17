@@ -1,8 +1,34 @@
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+/** True while the software keyboard is on screen. */
+function useKeyboardVisible(): boolean {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    // iOS gets the `will` pair so the footer moves with the keyboard rather
+    // than a frame behind it; Android only ever emits the `did` pair.
+    const show = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hide = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subs = [
+      Keyboard.addListener(show, () => setVisible(true)),
+      Keyboard.addListener(hide, () => setVisible(false)),
+    ];
+    return () => subs.forEach((s) => s.remove());
+  }, []);
+
+  return visible;
+}
 
 export interface KeyboardFlowProps {
   children: ReactNode;
+  /**
+   * Pinned below the scroll and above the keyboard — a screen's CTA bar.
+   * Clearance for the navigation bar is handled here, so a footer passed in
+   * must NOT add `insets.bottom` itself.
+   */
+  footer?: ReactNode;
 }
 
 /**
@@ -25,19 +51,33 @@ export interface KeyboardFlowProps {
  *  - without room the container grows past the viewport and the view scrolls
  *    instead of clipping.
  *
- * `behavior` is iOS-only on purpose. Android is set to
- * `softwareKeyboardLayoutMode: 'resize'` in app.config.ts, so the OS already
- * shrinks the window; adding `height` or `padding` on top of that subtracts the
- * keyboard twice and leaves a gap the size of a keyboard above it. For the same
- * reason nothing here may also set `automaticallyAdjustKeyboardInsets` — that
- * is the iOS half of the same double count.
+ * ## `behavior` is set on Android too, and must be
+ *
+ * A `KeyboardAvoidingView` with no `behavior` is a plain `View`: React Native's
+ * own implementation falls through to a `default` branch that renders one with
+ * no keyboard adjustment at all. The familiar Android advice — "just having the
+ * KeyboardAvoidingView prevents covering the input" — only ever held because
+ * `windowSoftInputMode: adjustResize` shrank the window underneath it.
+ *
+ * Edge-to-edge ends that. The app draws behind the system bars and the IME, so
+ * the window no longer resizes and `softwareKeyboardLayoutMode: 'resize'` in
+ * app.config.ts is inert; Expo's own note on the change is "like on iOS, you'll
+ * need to use KeyboardAvoidingView". Leaving `behavior` unset therefore meant
+ * nothing on Android moved for the keyboard on any screen — the field being
+ * typed into stayed covered and the CTA stayed buried.
+ *
+ * Hence `padding` on both platforms. If `edgeToEdgeEnabled` is ever turned off
+ * the window would start resizing again and this would subtract the keyboard
+ * twice, so revisit here first. For the same reason nothing inside may also set
+ * `automaticallyAdjustKeyboardInsets` — that is the iOS half of the same double
+ * count.
  */
-export function KeyboardFlow({ children }: KeyboardFlowProps) {
+export function KeyboardFlow({ children, footer }: KeyboardFlowProps) {
+  const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
@@ -50,6 +90,13 @@ export function KeyboardFlow({ children }: KeyboardFlowProps) {
       >
         {children}
       </ScrollView>
+
+      {footer ? (
+        /* With the keyboard up the navigation bar sits on top of it, so the
+           footer is already clear of it — adding the inset then would leave a
+           bar-sized gap between the CTA and the keys. */
+        <View style={{ paddingBottom: keyboardVisible ? 0 : insets.bottom }}>{footer}</View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
