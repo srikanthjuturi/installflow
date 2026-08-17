@@ -4,6 +4,9 @@ Thumbs.db
 
 # editors
 *.swp
+# Visual Studio's solution cache. Untracked but NOT ignored meant EAS copied it
+# into the build tarball and died on a locked .vsidx while VS held it open.
+.vs/
 
 # local env files — each package keeps its own .gitignore too
 .env
