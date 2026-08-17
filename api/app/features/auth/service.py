@@ -22,6 +22,7 @@ from app.features.auth.schemas import (
     LoginResponse,
     MembershipOut,
     MeResponse,
+    MeUpdateRequest,
     RefreshResponse,
     RegionOut,
     SwitchCompanyResponse,
@@ -232,6 +233,23 @@ async def logout(
     for row in (await session.scalars(stmt)).all():
         row.revoked_at = now
     await session.commit()
+
+
+async def update_me(
+    session: AsyncSession, principal: Principal, body: MeUpdateRequest
+) -> MeResponse:
+    """Apply a self-service change and answer with the whole `me` payload.
+
+    Returning `MeResponse` rather than the changed field keeps the client's one
+    source of identity truth in one shape — the caller replaces its `me` cache
+    instead of patching a copy of it.
+    """
+    user = principal.user
+    if "profileImageUrl" in body.model_fields_set:
+        user.profile_image_url = body.profileImageUrl
+    await session.commit()
+    await session.refresh(user)
+    return await get_me(session, principal)
 
 
 async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:

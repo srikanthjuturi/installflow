@@ -4,6 +4,7 @@ import uuid
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.images import ImageUrl
 from app.core.phone import Phone
 from app.core.schemas import AppModel
 from app.features.technicians.schemas import TechnicianSessionOut
@@ -30,6 +31,18 @@ class SwitchCompanyRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refreshToken: str
+
+
+class MeUpdateRequest(BaseModel):
+    """The little a signed-in user may change about themselves.
+
+    Name, role, territory and company are somebody else's decision — a manager's
+    — so they are not here. A profile photo is nobody else's, which is why this
+    endpoint exists at all: both clients could crop one and neither had anywhere
+    to put it. Send `null` to remove the photo.
+    """
+
+    profileImageUrl: ImageUrl = None
 
 
 class LogoutRequest(BaseModel):

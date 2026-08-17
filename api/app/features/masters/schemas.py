@@ -6,10 +6,9 @@ Two validators carry real weight here:
 the mobile app has not traced would render as a blank square on a technician's
 phone, so an unknown key is a 422 rather than something the client falls back on.
 
-`ImageUrl` accepts http(s) only and explicitly rejects `data:`. Both consoles can
-already produce a base64 data URL from a crop, and letting one through would put
-tens of kilobytes into every list response and turn the eventual move to blob
-storage into a data migration instead of a service change.
+`ImageUrls` accepts http(s) only and explicitly rejects `data:` — see
+`app.core.images` for why, which is the same reason every other slice that takes
+an image URL uses that module's `ImageUrl`.
 """
 
 import uuid
@@ -18,9 +17,12 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, Field
 
 from app.core.icons import PRODUCT_ICON_KEYS
+from app.core.images import check_image_url
 from app.core.schemas import AppModel
 
-MAX_IMAGE_URL = 2048
+#: Photos per model. Enough for the front, the label and the box; low enough
+#: that the gallery still fits a phone screen and a list response stays small.
+MAX_IMAGES = 5
 
 
 def _check_icon(value: str) -> str:
@@ -31,24 +33,18 @@ def _check_icon(value: str) -> str:
     return value
 
 
-def _check_image_url(value: str | None) -> str | None:
-    if value is None:
-        return None
-    url = value.strip()
-    if not url:
-        return None
-    if len(url) > MAX_IMAGE_URL:
-        raise ValueError("Image URL is too long")
-    if not url.lower().startswith(("http://", "https://")):
-        raise ValueError(
-            "Image URL must start with http:// or https:// — "
-            "inline image data is not accepted"
-        )
-    return url
+def _check_image_urls(values: list[str]) -> list[str]:
+    """Clean and bound the gallery. Order is the client's and is preserved —
+    the first photo is the thumbnail, so reordering is a real edit."""
+    urls = [v.strip() for v in values]
+    urls = [u for u in urls if u]
+    if len(urls) > MAX_IMAGES:
+        raise ValueError(f"Up to {MAX_IMAGES} photos per model")
+    return [check_image_url(url) for url in urls]
 
 
 IconKey = Annotated[str, Field(max_length=32), AfterValidator(_check_icon)]
-ImageUrl = Annotated[str | None, AfterValidator(_check_image_url)]
+ImageUrls = Annotated[list[str], AfterValidator(_check_image_urls)]
 
 Name64 = Annotated[str, Field(min_length=2, max_length=64)]
 Name120 = Annotated[str, Field(min_length=1, max_length=120)]
@@ -100,7 +96,7 @@ class ModelCreateRequest(BaseModel):
     name: Name120
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
-    imageUrl: ImageUrl = None
+    imageUrls: ImageUrls = Field(default_factory=list)
     isActive: bool = True
 
 
@@ -108,7 +104,9 @@ class ModelUpdateRequest(BaseModel):
     name: Name120 | None = None
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
-    imageUrl: ImageUrl = None
+    #: Sent whole, never patched entry by entry — an empty list clears the
+    #: gallery, and omitting the key leaves it alone.
+    imageUrls: ImageUrls | None = None
     isActive: bool | None = None
     sortOrder: int | None = Field(default=None, ge=0)
 
@@ -122,7 +120,8 @@ class ProductModelOut(AppModel):
     name: str
     capacity: str | None
     warrantyMonths: int | None
-    imageUrl: str | None
+    #: Ordered; the first is the thumbnail. Empty when no photo was uploaded.
+    imageUrls: list[str]
     isActive: bool
     sortOrder: int
 

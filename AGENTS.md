@@ -241,4 +241,14 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   street is the normal case, which is why they are separate tables.
 - A technician certifies on a **subcategory** (Television), not a category (Electric). The
   product master is category → subcategory → model, company-scoped, with an icon on the first two
-  levels and a photo URL on the model.
+  levels and **up to five photo URLs** on the model — ordered, the first being the thumbnail every
+  list draws.
+- **Images are uploaded, never embedded.** The file goes to blob storage via `POST /uploads`; the
+  record stores its URL. The API refuses a `data:` URL and a local `file://` path in every slice
+  that takes one — see `api/app/core/images.py`. A signed-in principal is required, which is why a
+  self-registering technician's photo is sent right AFTER their account exists, not with it.
+- **One upload flow in both clients:** tapping or clicking an image control opens the file
+  picker straight away → the crop screen/dialog opens on the chosen photo → saving uploads it.
+  Never an extra "choose a photo" step in between. On the web every control also accepts a drop,
+  and a gallery field takes several files at once, cropped one after another. Details and the
+  shared pieces: `adminWeb/AGENTS.md` → "Image upload".

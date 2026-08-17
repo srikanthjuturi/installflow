@@ -229,7 +229,7 @@ async def get_tree(
                 name=m.name,
                 capacity=m.capacity,
                 warrantyMonths=m.warranty_months,
-                imageUrl=m.image_url,
+                imageUrls=list(m.image_urls or []),
                 isActive=m.is_active,
                 sortOrder=m.sort_order,
             )
@@ -501,7 +501,7 @@ async def create_model(
             name=name,
             capacity=(body.capacity or "").strip() or None,
             warranty_months=body.warrantyMonths,
-            image_url=body.imageUrl,
+            image_urls=list(body.imageUrls),
             is_active=body.isActive,
             sort_order=sort_order,
             created_by=principal.user_id,
@@ -527,8 +527,9 @@ async def update_model(
     # These three can be CLEARED, so they test presence in the payload rather
     # than "is not None" — an explicit null has to mean "remove it", which the
     # other fields' test would read as "leave it alone".
-    if "imageUrl" in body.model_fields_set:
-        row.image_url = body.imageUrl
+    if "imageUrls" in body.model_fields_set:
+        # A new list, not a mutation: SQLAlchemy does not track JSONB in place.
+        row.image_urls = list(body.imageUrls or [])
     if "capacity" in body.model_fields_set:
         row.capacity = (body.capacity or "").strip() or None
     if "warrantyMonths" in body.model_fields_set:

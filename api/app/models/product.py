@@ -29,11 +29,11 @@ from sqlalchemy import (
     Integer,
     SmallInteger,
     String,
-    Text,
     UniqueConstraint,
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
@@ -112,10 +112,9 @@ class ProductSubcategory(Base, IdMixin, AuditMixin, SoftDeleteMixin):
 class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     """Bottom level, e.g. 43" 4K UHD. The thing a ticket names.
 
-    `image_url` is an http(s) URL and the schema layer rejects `data:` — the
-    console can already produce base64 from a crop, and letting one in would
-    put tens of kilobytes into every list response and turn the eventual move
-    to blob storage into a data migration instead of a service change.
+    `image_urls` holds http(s) URLs into blob storage and the schema layer
+    rejects `data:` — both consoles can produce base64 from a crop, and letting
+    one in would put tens of kilobytes into every list response.
     """
 
     __tablename__ = "product_models"
@@ -133,7 +132,17 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: What a technician gets asked in front of the unit, and what a later
     #: claim quotes. CHECK 0..240 in the migration.
     warranty_months: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
-    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Up to five photos, ordered — the first is the thumbnail every list draws.
+    #: JSONB rather than a child table: the list is bounded, always read whole
+    #: with its model and never queried on its own, so a join would buy nothing
+    #: and cost a second composite-FK relationship to keep tenant-safe. The
+    #: ceiling is enforced in the schema layer, not by a CHECK.
+    #:
+    #: Assign a NEW list to change it. SQLAlchemy does not track mutation of a
+    #: plain JSONB value in place, so `row.image_urls.append(...)` saves nothing.
+    image_urls: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )

@@ -14,6 +14,7 @@ from app.features.auth.schemas import (
     LoginResponse,
     LogoutRequest,
     MeResponse,
+    MeUpdateRequest,
     OtpRequestRequest,
     OtpRequestResponse,
     OtpVerifyRequest,
@@ -77,3 +78,17 @@ async def logout(
 async def me(principal: CurrentPrincipal, db: Db) -> ApiEnvelope[MeResponse]:
     data = await service.get_me(db, principal)
     return envelope(data, message="Current user")
+
+
+@router.patch("/me", response_model=ApiEnvelope[MeResponse])
+async def update_me(
+    body: MeUpdateRequest, principal: CurrentPrincipal, db: Db
+) -> ApiEnvelope[MeResponse]:
+    """Change your own profile photo.
+
+    No feature guard: the subject is the caller. A technician has no console
+    permissions at all and still owns their own face — the same reasoning that
+    puts `POST /uploads` behind "any signed-in principal".
+    """
+    data = await service.update_me(db, principal, body)
+    return envelope(data, message="Profile updated")

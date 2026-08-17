@@ -6,6 +6,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.images import ImageUrl
 from app.core.schemas import AppModel
 
 
@@ -19,7 +20,7 @@ class UserCreateRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
     # Required only when the email is new (a fresh identity). Ignored on reuse.
     password: str | None = Field(default=None, min_length=8, max_length=128)
-    profileImageUrl: str | None = None
+    profileImageUrl: ImageUrl = None
     managerId: uuid.UUID | None = None  # a membership id in the same company
     # Territory. Which of these is required depends on the role — see the
     # service; a regional head needs regions, an area manager one region and
@@ -31,7 +32,7 @@ class UserCreateRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     fullName: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=32)
-    profileImageUrl: str | None = None
+    profileImageUrl: ImageUrl = None
     isActive: bool | None = None
     managerId: uuid.UUID | None = None
     # Omit to leave the territory untouched; send a list to REPLACE it.

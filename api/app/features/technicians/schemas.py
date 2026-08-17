@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.images import ImageUrl
 from app.core.phone import Phone
 from app.core.schemas import AppModel
 
@@ -33,7 +34,7 @@ class TechnicianCreateRequest(BaseModel):
 
     fullName: str = Field(min_length=2, max_length=255)
     phone: Phone
-    profileImageUrl: str | None = None
+    profileImageUrl: ImageUrl = None
     #: Optional when the caller holds exactly one region (every area manager).
     regionId: uuid.UUID | None = None
     #: Who the technician reports to. Defaults to the creator's own membership.
@@ -47,7 +48,7 @@ class TechnicianUpdateRequest(BaseModel):
     """Omit a field to leave it alone; send a list to REPLACE it."""
 
     fullName: str | None = Field(default=None, min_length=2, max_length=255)
-    profileImageUrl: str | None = None
+    profileImageUrl: ImageUrl = None
     regionId: uuid.UUID | None = None
     managerId: uuid.UUID | None = None
     subcategoryIds: list[uuid.UUID] | None = None

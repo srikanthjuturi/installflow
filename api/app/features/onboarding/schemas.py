@@ -6,6 +6,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from app.core.images import ImageUrl
 from app.core.schemas import AppModel
 from app.features.masters.schemas import ProductCategoryOut
 
@@ -51,7 +52,7 @@ class SelfRegisterRequest(BaseModel):
     """
 
     fullName: str = Field(min_length=2, max_length=255)
-    profileImageUrl: str | None = None
+    profileImageUrl: ImageUrl = None
     subcategoryIds: list[uuid.UUID] = Field(min_length=1)
     pincodes: list[Pincode] = Field(min_length=1, max_length=50)
     #: Falls back to whatever the manager pre-set on the invite.
