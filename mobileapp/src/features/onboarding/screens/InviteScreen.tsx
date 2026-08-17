@@ -9,6 +9,7 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
 import { resolveInvite } from '@/features/onboarding/api/invite';
+import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useRegistration } from '@/store/registration.store';
 import { color } from '@/theme/semantic';
@@ -49,6 +50,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
     data,
     isPending,
     isError,
+    error,
     refetch,
   } = useQuery({
     queryKey: qk.invite(token),
@@ -108,8 +110,26 @@ export function InviteScreen({ token }: InviteScreenProps) {
 
       {isError ? (
         <ErrorState
-          title="This invite couldn't be opened"
-          body="The link may have expired. Ask your ASM to send a new one."
+          title={
+            error instanceof ApiError && error.status === 0
+              ? "Can't reach the server"
+              : "This invite couldn't be opened"
+          }
+          /*
+           * The SERVER's message, not a guess.
+           *
+           * This used to say "the link may have expired" for every failure,
+           * including a network one — so an app that simply could not reach the
+           * API told the technician their invite had expired, and the manager
+           * reissued a perfectly good link. The API already distinguishes
+           * cancelled, expired and already-registered, and each has a different
+           * remedy.
+           */
+          body={
+            error instanceof ApiError && error.message
+              ? error.message
+              : 'Ask your manager to send a new link.'
+          }
           onRetry={() => refetch()}
         />
       ) : (
