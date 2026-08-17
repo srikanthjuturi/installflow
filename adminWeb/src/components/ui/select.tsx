@@ -59,9 +59,13 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Base UI's native-select behaviour: the popup is placed so the SELECTED item
+  // lands on the trigger, which means it covers the trigger and the field label
+  // above it. These are form fields with labels, so the list belongs below the
+  // trigger — flipping above it only when there's no room.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<

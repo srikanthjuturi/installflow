@@ -16,15 +16,13 @@ import { STATUS_CLASS, STATUS_DOT, STATUS_LABEL } from "./onboarding";
  */
 export function OnboardingStatusCell({ row }: { row: TechnicianRow }) {
   if (row.registered) {
-    return (
-      <div className="flex flex-col gap-0.5">
-        <TechStatusPill status={row.status} />
-      </div>
-    );
+    return <TechStatusPill status={row.status} />;
   }
 
   return (
-    <div className="flex flex-col gap-0.5">
+    /* `items-start` or the column stretches the pill to the cell width — a
+       flex parent overrides the child's own inline sizing. */
+    <div className="flex flex-col items-start gap-0.5">
       <span
         className={cn(
           "inline-flex items-center gap-1.5 text-xs font-medium",

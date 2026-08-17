@@ -88,7 +88,9 @@ export function TechStatusPill({ status }: { status: TechnicianStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
+        // `w-fit` so a flex or grid parent cannot stretch the tint across the
+        // whole cell — the pill sizes to its word wherever it is dropped.
+        "inline-flex w-fit items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
         STATUS_CLASS[status]
       )}
     >
