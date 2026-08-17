@@ -97,6 +97,20 @@ class Settings(BaseSettings):
     TECHNICIAN_APP_LINK: str = "https://install.videocon.app/technician"
     INVITE_EXPIRY_DAYS: int = 14
 
+    # ─── Android App Links ─────────────────────────────────────────────────
+    # Served at /.well-known/assetlinks.json so Android can verify that invite
+    # links belong to the app and open it directly instead of a browser.
+    #
+    # The fingerprint is the SHA-256 of the APK's SIGNING certificate, not of
+    # the APK. Read it from a built artifact with:
+    #   apksigner verify --print-certs app.apk
+    # It is not a secret — it is published deliberately — and it stays constant
+    # for as long as the same keystore signs the app. A Play Store release
+    # signed by Google App Signing has a DIFFERENT fingerprint, and both must be
+    # listed here or links break for exactly one of the two install sources.
+    ANDROID_PACKAGE: str = "net.deccansoft.videocontechnician"
+    ANDROID_CERT_FINGERPRINTS: str = ""
+
     # ─── OTP ───────────────────────────────────────────────────────────────
     # MUST match what the WhatsApp template tells the technician. The approved
     # `yar_otp` template says "Expires in 10 minutes" in its footer AND in its

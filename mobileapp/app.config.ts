@@ -6,6 +6,27 @@ import type { ExpoConfig } from 'expo/config';
 const INK = '#141b22';
 const SURFACE = '#eef1f3';
 
+/**
+ * The host that serves invite links, taken from the API URL so there is exactly
+ * ONE place to change when the dev tunnel hands out a new name.
+ *
+ * It is compiled into the Android intent filter below, which is what lets a
+ * WhatsApp invite open the app directly instead of a browser. That also means
+ * a new hostname needs a new build — the price of a throwaway tunnel, and the
+ * thing a real domain would end.
+ */
+function inviteHost(): string | undefined {
+  const api = process.env.EXPO_PUBLIC_API_URL;
+  if (!api) return undefined;
+  try {
+    return new URL(api).host;
+  } catch {
+    return undefined;
+  }
+}
+
+const INVITE_HOST = inviteHost();
+
 const config: ExpoConfig = {
   name: 'Videocon Technician',
   slug: 'videocon-technician',
@@ -37,6 +58,26 @@ const config: ExpoConfig = {
     // window must resize when the keyboard opens or it covers the field being
     // typed into (pincode entry, OTP).
     softwareKeyboardLayoutMode: 'resize',
+    // Android App Link. `autoVerify` makes Android fetch
+    // https://<host>/.well-known/assetlinks.json AT INSTALL TIME and, if it
+    // names this package and signing certificate, hand the link straight to the
+    // app — so a technician taps the invite in WhatsApp and lands on the invite
+    // screen, with no browser page in between.
+    //
+    // Omitted entirely when the host is unknown: an intent filter with no host
+    // would claim every https link on the device.
+    ...(INVITE_HOST
+      ? {
+          intentFilters: [
+            {
+              action: 'VIEW',
+              autoVerify: true,
+              category: ['BROWSABLE', 'DEFAULT'],
+              data: [{ scheme: 'https', host: INVITE_HOST, pathPrefix: '/invite' }],
+            },
+          ],
+        }
+      : {}),
   },
   web: {
     favicon: './assets/favicon.png',
