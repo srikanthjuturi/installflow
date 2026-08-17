@@ -17,3 +17,7 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+# Azure publish profile — contains a deployment password
+*.PublishSettings
+.env.production

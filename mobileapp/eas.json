@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://auto-quantity-horse-cad.trycloudflare.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1"
       }
     },
     "preview": {
@@ -20,7 +20,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://auto-quantity-horse-cad.trycloudflare.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1"
       }
     },
     "production": {

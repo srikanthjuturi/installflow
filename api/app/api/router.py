@@ -13,6 +13,7 @@ from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
 from app.features.technicians.router import router as technicians_router
 from app.features.territory.router import router as territory_router
+from app.features.uploads.router import router as uploads_router
 from app.features.users.router import router as users_router
 
 api_router = APIRouter()
@@ -24,3 +25,4 @@ api_router.include_router(territory_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
 api_router.include_router(onboarding_router)
+api_router.include_router(uploads_router)

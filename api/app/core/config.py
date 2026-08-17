@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # number while testing, and leave it empty in production.
     WHATSAPP_ALLOWLIST: str = ""
 
+    # ─── Azure Blob Storage ────────────────────────────────────────────────
+    # Where uploaded images live. Empty disables uploads with a clear message
+    # rather than a 500 — the same shape as the WhatsApp integration.
+    AZURE_STORAGE_CONNECTION_STRING: str = ""
+    AZURE_BLOB_CONTAINER: str = "installflow-media"
+
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:
     # it opens the app directly from `npx uri-scheme open` and needs no domain.
