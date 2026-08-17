@@ -115,7 +115,8 @@ adminWeb/.claude/skills/    WEB ONLY — never load these for mobileapp/
   tailwind-design-system      Tailwind v4 @theme/@apply. NativeWind 4 is Tailwind 3 — wrong here
   webapp-testing              Playwright against a local HTTP server
   frontend-design             visual judgment. Mobile's design is already approved and locked
-api/.claude/skills/         BACKEND ONLY — none yet; api/AGENTS.md carries the rules
+api/.claude/skills/         BACKEND ONLY
+  publish-api                 deploy to Azure App Service; the ARM gap, Oryx, log reading
 ```
 
 The same rule governs custom subagents: a mobile-specific agent belongs in
