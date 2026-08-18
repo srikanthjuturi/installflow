@@ -22,8 +22,10 @@ export type SlaState = "ok" | "warn" | "breach" | "done";
 /** 24h or 48h from slot confirmation. */
 export type SlaType = "24h" | "48h";
 
-/** How the ticket entered the system. §4 of the requirement doc. */
-export type IntakeChannel = "API" | "Excel" | "Manual";
+/* `IntakeChannel` lived here, declared but never used — `Ticket` has no such
+   field. It now lives in `types/vendor.ts`, because that is where the value is
+   actually stored: a vendor records how ITS tickets arrive. Import it from
+   there if a ticket ever needs to say which channel it came in on. */
 
 export interface Ticket {
   id: string;

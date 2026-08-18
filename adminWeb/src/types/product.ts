@@ -12,10 +12,25 @@ import type { IconKey } from "@/components/masters/icons";
  * matches on, and the level the technician app draws one tile per.
  */
 
+/**
+ * What a technician can be sent to do with a model.
+ *
+ * Mirrors SERVICE_TYPES in `api/app/core/service_types.py`. A model declares
+ * which it supports, and that is what a ticket raised against it will be
+ * allowed to ask for — the ticket side reads this when the jobs slice lands.
+ */
+export type ServiceType = "Installation + Demo" | "Tech Visit" | "Service";
+
 export interface ProductModel {
   id: string;
   subcategoryId: string;
+  /** The brand — a vendor of this company. Mandatory. */
+  vendorId: string;
+  /** Resolved by the API, so no list fetches the vendor list to draw a row. */
+  vendorName: string;
   name: string;
+  /** At least one, always in catalogue order — the API normalises it. */
+  serviceTypes: ServiceType[];
   /**
    * Size or rating — "43 inch", "7 kg", "340 L".
    *
@@ -92,6 +107,8 @@ export interface UpdateSubcategoryInput {
 export interface CreateModelInput {
   subcategoryId: string;
   name: string;
+  vendorId: string;
+  serviceTypes: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
   imageUrls?: string[];
@@ -101,6 +118,10 @@ export interface CreateModelInput {
 export interface UpdateModelInput {
   id: string;
   name?: string;
+  /** Re-branding is allowed; clearing the brand is not. */
+  vendorId?: string;
+  /** Sent whole — omit to leave alone; an empty array is refused. */
+  serviceTypes?: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
   /** Sent whole — an empty array clears the gallery. */

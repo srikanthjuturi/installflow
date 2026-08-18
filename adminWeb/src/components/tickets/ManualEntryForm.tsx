@@ -26,7 +26,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCategoryTree } from "@/hooks/useProductMaster";
 import { cn } from "@/lib/utils";
-import { REQUEST_TYPES, VENDORS } from "@/services/mocks/masters";
+import { REQUEST_TYPES, VENDOR_NAMES } from "@/services/mocks/masters";
 import {
   SLA_OPTIONS,
   ticketSchema,
@@ -144,9 +144,7 @@ export function ManualEntryForm({
                 name="vendor"
                 label="Company / vendor"
                 placeholder="Select vendor"
-                groups={plain(
-                  VENDORS.filter((v) => v.status === "Active").map((v) => v.name)
-                )}
+                groups={plain([...VENDOR_NAMES])}
                 control={control}
                 error={err("vendor")}
               />

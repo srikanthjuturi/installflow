@@ -19,24 +19,42 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
+  FieldSeparator,
+  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCreateModel, useUpdateModel } from "@/hooks/useProductMaster";
+import { useVendorOptions } from "@/hooks/useVendors";
+import type { VendorOption } from "@/types/vendor";
 import type {
   ProductCategory,
   ProductModel,
   ProductSubcategory,
+  ServiceType,
 } from "@/types/product";
 import { StatusField } from "./StatusField";
 import {
   MAX_MODEL_IMAGES,
+  SERVICE_TYPES,
+  SERVICE_TYPE_HINT,
   modelSchema,
   statusOf,
   type ModelFormValues,
@@ -58,7 +76,10 @@ export function ModelFormDialog({
 }: ModelFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      {/* Wider than it was: the photo strip is five 64px tiles plus an Add
+          tile, which wrapped to a second row at the old 32rem and made a
+          half-filled gallery look broken. */}
+      <DialogContent className="sm:max-w-2xl">
         <ModelForm
           subcategory={subcategory}
           model={model}
@@ -96,6 +117,10 @@ function ModelForm({
     resolver: zodResolver(modelSchema),
     defaultValues: {
       name: model?.name ?? "",
+      vendorId: model?.vendorId ?? "",
+      // Installation + demo is what this product exists for, so it is the
+      // starting point for a new model rather than an empty set.
+      serviceTypes: model?.serviceTypes ?? ["Installation + Demo"],
       capacity: model?.capacity ?? "",
       warrantyMonths:
         model?.warrantyMonths === null || model?.warrantyMonths === undefined
@@ -140,6 +165,8 @@ function ModelForm({
   function submit(values: ModelFormValues) {
     const body = {
       name: values.name,
+      vendorId: values.vendorId,
+      serviceTypes: values.serviceTypes,
       // An empty box means "not recorded", which the API stores as null —
       // never an empty string, so "unknown" and "blank" cannot diverge.
       capacity: values.capacity.trim() || null,
@@ -179,30 +206,81 @@ function ModelForm({
       {/* `-mr-4 pr-4` cancels the dialog's own padding on this edge only, so
           the scrollbar rides the popup wall instead of floating in a gutter,
           while the fields keep their inset. */}
-      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
-        <Field data-invalid={errors.name ? true : undefined}>
-          <FieldLabel htmlFor="model-name">Model name</FieldLabel>
-          <Input
-            id="model-name"
-            placeholder={'e.g. 43" 4K UHD'}
-            aria-invalid={errors.name ? true : undefined}
-            aria-describedby={errors.name ? "model-name-error" : undefined}
-            {...register("name")}
-          />
-          {errors.name ? (
-            <FieldDescription
-              id="model-name-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.name.message}
-            </FieldDescription>
-          ) : null}
-        </Field>
+      <FieldGroup className="scroll-slim -mr-6 max-h-[62vh] gap-5 overflow-y-auto pr-6">
+        {/* Name and brand together: they are the two required fields and the
+            pair that identifies the unit — "Samsung 43-inch" is one thought,
+            and splitting them across two rows hides that the brand is not
+            optional detail like the two below. */}
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field data-invalid={errors.name ? true : undefined}>
+            <FieldLabel htmlFor="model-name">Model name</FieldLabel>
+            <Input
+              id="model-name"
+              placeholder={'e.g. 43" 4K UHD'}
+              autoComplete="off"
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "model-name-error" : undefined}
+              {...register("name")}
+            />
+            {errors.name ? (
+              <FieldDescription
+                id="model-name-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.name.message}
+              </FieldDescription>
+            ) : null}
+          </Field>
+
+          <Field data-invalid={errors.vendorId ? true : undefined}>
+            <FieldLabel htmlFor="model-vendor">Brand</FieldLabel>
+            <Controller
+              name="vendorId"
+              control={control}
+              render={({ field }) => (
+                <BrandSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  invalid={errors.vendorId !== undefined}
+                />
+              )}
+            />
+            {errors.vendorId ? (
+              <FieldDescription
+                id="model-vendor-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.vendorId.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-vendor-hint">
+                The vendor who makes it.
+              </FieldDescription>
+            )}
+          </Field>
+        </div>
+
+        <FieldSeparator />
+
+        <Controller
+          name="serviceTypes"
+          control={control}
+          render={({ field }) => (
+            <ServiceTypeField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.serviceTypes?.message}
+            />
+          )}
+        />
+
+        <FieldSeparator />
 
         {/* Both optional, and side by side because they are read together —
             "43 inch, 24 months" is one thought about the unit. */}
-        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+        <FieldGroup className="grid gap-5 sm:grid-cols-2">
           <Field data-invalid={errors.capacity ? true : undefined}>
             <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
             <Input
@@ -258,6 +336,8 @@ function ModelForm({
             )}
           </Field>
         </FieldGroup>
+
+        <FieldSeparator />
 
         <Field data-invalid={errors.imageUrls ? true : undefined}>
           <FieldLabel htmlFor="model-image">
@@ -367,6 +447,8 @@ function ModelForm({
           onSave={handleCropped}
         />
 
+        <FieldSeparator />
+
         <Controller
           name="status"
           control={control}
@@ -392,5 +474,181 @@ function ModelForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/**
+ * What a technician can be sent to do with this model.
+ *
+ * Checkboxes rather than a dropdown: most models support more than one, and a
+ * multi-select dropdown hides the choices behind a click when there are only
+ * three of them. All three fit on screen, so show all three.
+ *
+ * "Select all" is a plain checkbox, not a tri-state one. An indeterminate box
+ * would mean editing `ui/checkbox.tsx`, which is shadcn and not hand-edited —
+ * and a half-filled square communicates through shape alone. The live count
+ * beside the legend says "2 of 3 selected" in words instead, which is both
+ * clearer and readable by a screen reader.
+ */
+function ServiceTypeField({
+  value,
+  onChange,
+  error,
+}: {
+  value: ServiceType[];
+  onChange: (next: ServiceType[]) => void;
+  error?: string;
+}) {
+  const allSelected = value.length === SERVICE_TYPES.length;
+
+  function toggle(type: ServiceType, checked: boolean) {
+    // Rebuilt from SERVICE_TYPES rather than appended, so the order sent is
+    // catalogue order however the boxes were clicked — matching what the API
+    // stores, so a saved model never reorders under the user.
+    const next = new Set(value);
+    if (checked) next.add(type);
+    else next.delete(type);
+    onChange(SERVICE_TYPES.filter((t) => next.has(t)));
+  }
+
+  return (
+    <FieldSet
+      className="gap-3"
+      data-invalid={error ? true : undefined}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? "model-service-error" : "model-service-hint"}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="grid gap-0.5">
+          <FieldLegend variant="label" className="mb-0 text-ink">
+            Service types
+          </FieldLegend>
+          <FieldDescription id="model-service-hint" className="mt-0">
+            What a technician can be sent to do with this model.{" "}
+            <span className="tabular-nums">
+              {value.length} of {SERVICE_TYPES.length} selected
+            </span>
+            .
+          </FieldDescription>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-ink-2">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={(next) =>
+              onChange(next === true ? [...SERVICE_TYPES] : [])
+            }
+          />
+          Select all
+        </label>
+      </div>
+
+      <div className="grid gap-2">
+        {SERVICE_TYPES.map((type) => {
+          const checked = value.includes(type);
+          return (
+            <label
+              key={type}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                checked
+                  ? "border-brand-500 bg-brand-100/40"
+                  : "border-line hover:border-brand-400"
+              )}
+            >
+              <Checkbox
+                className="mt-0.5"
+                checked={checked}
+                onCheckedChange={(next) => toggle(type, next === true)}
+              />
+              <span className="grid gap-0.5">
+                <span className="text-[13px] font-medium">{type}</span>
+                <span className="text-xs text-ink-2">
+                  {SERVICE_TYPE_HINT[type]}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <FieldDescription
+          id="model-service-error"
+          role="alert"
+          className="text-danger"
+        >
+          {error}
+        </FieldDescription>
+      ) : null}
+    </FieldSet>
+  );
+}
+
+/**
+ * The brand picker, driven by the active vendors.
+ *
+ * Its empty state matters more than usual: a brand is required, so a company
+ * with no vendors yet cannot add a model at all. Saying that — and where to go
+ * — beats an empty menu that reads as a broken control.
+ */
+function BrandSelect({
+  value,
+  onChange,
+  invalid,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+}) {
+  const { data, isPending, isError } = useVendorOptions();
+  const vendors: VendorOption[] = data ?? [];
+  const disabled = isPending || isError || vendors.length === 0;
+
+  // Hard rule 10 — a single-option dropdown fills itself. Held off while the
+  // list is still loading, or one arriving option would look like "the only one".
+  useAutoSelectSingle(
+    vendors.map((v) => v.id),
+    value,
+    onChange,
+    !disabled
+  );
+
+  const selected = vendors.find((v) => v.id === value);
+
+  const placeholder = isPending
+    ? "Loading brands…"
+    : isError
+      ? "Couldn't load brands"
+      : vendors.length === 0
+        ? "No vendors yet — add one first"
+        : "Select a brand";
+
+  return (
+    <Select
+      value={value}
+      onValueChange={(v) => onChange(v ?? "")}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        id="model-vendor"
+        className="w-full"
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={invalid ? "model-vendor-error" : "model-vendor-hint"}
+      >
+        <SelectValue placeholder={placeholder}>
+          {() => selected?.name ?? placeholder}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {vendors.map((v) => (
+            <SelectItem key={v.id} value={v.id}>
+              {v.name}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }

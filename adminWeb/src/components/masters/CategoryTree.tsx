@@ -311,14 +311,19 @@ function ModelChip({
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
 }) {
-  /* Capacity rides inline because it is the thing that tells two models apart
+  /* Brand and capacity ride inline because they are what tell two models apart
      at a glance; warranty is a detail you go looking for, so it stays in the
      tooltip rather than making every chip a third longer. */
   const detail = [
+    model.vendorName || null,
     model.capacity,
     model.warrantyMonths === null
       ? null
       : `${model.warrantyMonths} month warranty`,
+    // In the tooltip rather than on the chip: three service types would double
+    // a chip's width, and this is a detail you go looking for once the brand
+    // and size have told you which model you are looking at.
+    model.serviceTypes.length ? model.serviceTypes.join(", ") : null,
   ].filter(Boolean);
 
   const body = (
@@ -341,6 +346,13 @@ function ModelChip({
       <span className={cn(model.isActive ? undefined : "line-through")}>
         {model.name}
       </span>
+      {/* The brand is what a technician reads first on a job card, so it earns
+          its place on the chip rather than living only in the tooltip. */}
+      {model.vendorName ? (
+        <span className="text-[11px] font-medium text-brand-400">
+          {model.vendorName}
+        </span>
+      ) : null}
       {model.capacity ? (
         <span className="text-[11px] font-normal text-ink-3">
           {model.capacity}

@@ -2,33 +2,23 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from app.core.schemas import AppModel
 
-
-def _upper(v: object) -> object:
-    return v.strip().upper() if isinstance(v, str) else v
-
-
-def _strip(v: object) -> object:
-    return v.strip() if isinstance(v, str) else v
-
-
-# Reusable validated field types: normalize (strip/upper) first, then pattern-check.
-GstNumber = Annotated[
-    str,
-    BeforeValidator(_upper),
-    Field(pattern=r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$"),
-]
-Pan = Annotated[str, BeforeValidator(_upper), Field(pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]$")]
-Pincode = Annotated[str, BeforeValidator(_strip), Field(pattern=r"^[0-9]{6}$")]
-GstStatus = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=64)]
-AddrLine = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=255)]
-AddrLineOpt = Annotated[str, BeforeValidator(_strip), Field(max_length=255)]
-CityState = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=120)]
+# Normalise-then-validate field types. They live in app/core/statutory.py because
+# vendors need the same GSTIN and address shapes, and hard rule 4 forbids that
+# slice importing this one. Re-exported here so existing readers still find them.
+from app.core.statutory import (  # noqa: F401
+    AddrLine,
+    AddrLineOpt,
+    CityState,
+    GstNumber,
+    GstStatus,
+    Pan,
+    Pincode,
+)
 
 
 class CompanyCreateRequest(BaseModel):

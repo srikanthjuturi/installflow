@@ -75,15 +75,13 @@ export interface LedgerEntry {
   reason: string;
 }
 
-export interface Vendor {
-  id: string;
-  name: string;
-  channel: "API" | "Excel" | "Manual";
-  status: "Active" | "Paused";
-  tickets: number;
-  key: string;
-  since: string;
-}
+/* `Vendor` moved to `types/vendor.ts` when vendors became real. It used to
+   describe a ticket-INTAKE source — intake channel, API credentials, lifetime
+   ticket volume, "since" year — none of which has a backend source yet. A
+   vendor is now the company whose products get installed, carrying a GSTIN and
+   a contact, and it is the brand on every product model. The intake facts
+   return with the jobs slice that can supply them. */
+export * from "./vendor";
 
 /* `Category` moved to `types/product.ts` when the product master became real.
    It was `{ name, models[], techs, active }` with no id, which made `name` the

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ServiceType } from "@/types/product";
 import { ICON_KEYS, type IconKey } from "./icons";
 
 /** Active / Paused. Separate from deletion — a paused row still exists. */
@@ -34,10 +35,41 @@ export const MAX_MODEL_IMAGES = 5;
  * Nobody types these (the form uploads each crop and stores what comes back),
  * so the checks guard the seam rather than the typist.
  */
+/**
+ * What a technician can be sent to do with a model. Mirrors SERVICE_TYPES in
+ * `api/app/core/service_types.py` — same order, which is the order the API
+ * stores them in however the boxes were ticked.
+ *
+ * `satisfies` keeps this honest if the `ServiceType` union ever changes.
+ */
+export const SERVICE_TYPES = [
+  "Installation + Demo",
+  "Tech Visit",
+  "Service",
+] as const satisfies readonly ServiceType[];
+
+/** One line each, shown beside the option so the choice is not a guess. */
+export const SERVICE_TYPE_HINT: Record<ServiceType, string> = {
+  "Installation + Demo": "Fit the unit and show the customer how to use it.",
+  "Tech Visit": "Attend an installed unit to diagnose or check it.",
+  Service: "Maintenance on a unit that is already installed.",
+};
+
 export const modelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
+  /** The brand. Required — a model with no maker names nothing a technician
+   *  can be sent to install, and a brand backfilled later is one nobody
+   *  remembers. `min(1)` rather than `.uuid()`: the control stores "" when
+   *  empty, and "Select a brand" is the message that belongs on an empty
+   *  dropdown, not "invalid uuid". */
+  vendorId: z.string().min(1, "Select a brand"),
+  /** At least one — a model nobody can be sent to do anything with is not a
+   *  model. Order does not matter here; the API stores catalogue order. */
+  serviceTypes: z
+    .array(z.enum(SERVICE_TYPES))
+    .min(1, "Pick at least one service type"),
   /** Everything below is optional — a model is worth recording as soon as it
-   *  has a name, and ops fill the rest in as they learn it. */
+   *  has a name and a brand, and ops fill the rest in as they learn it. */
   capacity: z.string().trim().max(64, "Keep it short, e.g. 43 inch or 7 kg"),
   warrantyMonths: z
     .string()

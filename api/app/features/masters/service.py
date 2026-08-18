@@ -32,6 +32,7 @@ from app.features.masters.schemas import (
 )
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
 from app.models.technician import TechnicianSubcategory
+from app.models.vendor import Vendor
 
 
 def _now() -> datetime:
@@ -156,6 +157,37 @@ async def _assert_model_name_free(
         raise _conflict(f"This subcategory already has a model called {name}")
 
 
+async def _validate_vendor(
+    db: AsyncSession, company_id: uuid.UUID, vendor_id: uuid.UUID
+) -> uuid.UUID:
+    """Resolve a client-supplied vendor id inside the caller's own company.
+
+    A scoped query, not a bare load: the id arrives in a request body, which
+    makes it an assertion rather than a fact. Cross-company ids and paused
+    vendors both fail here, so the composite FK never has to be the thing that
+    catches them.
+
+    This queries the Vendor MODEL directly rather than calling the vendors
+    service — hard rule 4 forbids one slice importing another's service, while
+    sharing models across slices is normal (technicians reads ProductSubcategory
+    the same way).
+    """
+    found = await db.scalar(
+        select(Vendor.id).where(
+            Vendor.id == vendor_id,
+            Vendor.company_id == company_id,
+            Vendor.is_active.is_(True),
+            Vendor.deleted_at.is_(None),
+        )
+    )
+    if found is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unknown or inactive vendor",
+        )
+    return found
+
+
 async def subcategory_ids_for_company(
     db: AsyncSession, company_id: uuid.UUID, ids: list[uuid.UUID]
 ) -> list[uuid.UUID]:
@@ -220,13 +252,24 @@ async def get_tree(
         await db.scalars(model_stmt.order_by(ProductModel.sort_order, ProductModel.name))
     )
 
+    # One extra query for the brand names, joined in Python like everything else
+    # here. Not filtered to the models on hand: the catalogue is tens of rows and
+    # this keeps a removed-but-still-referenced vendor resolvable.
+    vendor_rows = await db.execute(
+        select(Vendor.id, Vendor.name).where(Vendor.company_id == company_id)
+    )
+    vendor_names = {vendor_id: name for vendor_id, name in vendor_rows}
+
     models_by_sub: dict[uuid.UUID, list[ProductModelOut]] = {}
     for m in models:
         models_by_sub.setdefault(m.subcategory_id, []).append(
             ProductModelOut(
                 id=m.id,
                 subcategoryId=m.subcategory_id,
+                vendorId=m.vendor_id,
+                vendorName=vendor_names.get(m.vendor_id, ""),
                 name=m.name,
+                serviceTypes=list(m.service_types or []),
                 capacity=m.capacity,
                 warrantyMonths=m.warranty_months,
                 imageUrls=list(m.image_urls or []),
@@ -486,6 +529,7 @@ async def create_model(
     parent = await _load_subcategory(db, principal.company_id, subcategory_id)
     name = body.name.strip()
     await _assert_model_name_free(db, subcategory_id, name)
+    await _validate_vendor(db, principal.company_id, body.vendorId)
 
     sort_order = await _next_sort(
         db,
@@ -498,7 +542,9 @@ async def create_model(
         ProductModel(
             company_id=principal.company_id,
             subcategory_id=subcategory_id,
+            vendor_id=body.vendorId,
             name=name,
+            service_types=list(body.serviceTypes),
             capacity=(body.capacity or "").strip() or None,
             warranty_months=body.warrantyMonths,
             image_urls=list(body.imageUrls),
@@ -524,6 +570,12 @@ async def update_model(
         name = body.name.strip()
         await _assert_model_name_free(db, row.subcategory_id, name, exclude_id=model_id)
         row.name = name
+    if body.vendorId is not None:
+        await _validate_vendor(db, principal.company_id, body.vendorId)
+        row.vendor_id = body.vendorId
+    if body.serviceTypes is not None:
+        # A new list, not a mutation: SQLAlchemy does not track JSONB in place.
+        row.service_types = list(body.serviceTypes)
     # These three can be CLEARED, so they test presence in the payload rather
     # than "is not None" — an explicit null has to mean "remove it", which the
     # other fields' test would read as "leave it alone".

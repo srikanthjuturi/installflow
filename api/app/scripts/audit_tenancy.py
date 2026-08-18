@@ -59,6 +59,7 @@ GLOBAL_TABLES: dict[str, str] = {
 TENANT_LINKS = [
     ("product_subcategories", "category_id", "product_categories"),
     ("product_models", "subcategory_id", "product_subcategories"),
+    ("product_models", "vendor_id", "vendors"),
     ("technician_subcategories", "technician_id", "technician_profiles"),
     ("technician_subcategories", "subcategory_id", "product_subcategories"),
     ("technician_pincodes", "technician_id", "technician_profiles"),

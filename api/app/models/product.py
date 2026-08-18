@@ -124,7 +124,22 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
     #: The FK is COMPOSITE, declared in __table_args__ — see there.
     subcategory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: The brand. Mandatory: a model nobody makes is not a model anybody can be
+    #: sent to install. Also a COMPOSITE FK — see __table_args__.
+    vendor_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: What a technician can be sent to do with this model — one or more of
+    #: `app.core.service_types.SERVICE_TYPES`, in catalogue order.
+    #:
+    #: JSONB for the same reasons as `image_urls` below: bounded at three,
+    #: always read whole with its model, never queried on its own. Membership
+    #: and "at least one" are a CHECK in the migration.
+    #:
+    #: Assign a NEW list to change it — SQLAlchemy does not track JSONB
+    #: mutation in place.
+    service_types: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[\"Installation + Demo\"]'::jsonb")
+    )
     #: Size or rating — "43 inch", "7 kg", "340 L". Its own column rather than
     #: part of the name, which is where it lives today and where it cannot be
     #: sorted, filtered or shown on its own.
@@ -153,10 +168,21 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     __table_args__ = (
         Index("ix_product_models_subcategory_id", "subcategory_id"),
         Index("ix_product_models_company_id", "company_id"),
+        Index("ix_product_models_vendor_id", "vendor_id"),
         ForeignKeyConstraint(
             ["company_id", "subcategory_id"],
             ["product_subcategories.company_id", "product_subcategories.id"],
             name="fk_product_models_company_subcategory",
             ondelete="CASCADE",
+        ),
+        # RESTRICT, not CASCADE: removing a vendor that still brands models must
+        # be refused with a message the user can act on, never take the models
+        # down with it. Same reasoning as technician_subcategories' subcategory
+        # side, which refuses to silently decertify somebody.
+        ForeignKeyConstraint(
+            ["company_id", "vendor_id"],
+            ["vendors.company_id", "vendors.id"],
+            name="fk_product_models_company_vendor",
+            ondelete="RESTRICT",
         ),
     )
