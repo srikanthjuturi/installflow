@@ -25,13 +25,13 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCategoryTree } from "@/hooks/useProductMaster";
+import { useVendorOptions } from "@/hooks/useVendors";
 import { cn } from "@/lib/utils";
-import { REQUEST_TYPES, VENDOR_NAMES } from "@/services/mocks/masters";
+import type { CreateTicketInput } from "@/types/ticket";
 import {
-  SLA_OPTIONS,
+  SERVICE_LEVEL_OPTIONS,
   ticketSchema,
   type TicketFormValues,
-  type TicketSubmitValues,
 } from "./ticketSchema";
 
 /** `{ value, label }` because the selects now store ids and show names. */
@@ -46,12 +46,8 @@ interface OptionGroup {
   options: Option[];
 }
 
-const plain = (values: readonly string[]): OptionGroup[] => [
-  { options: values.map((v) => ({ value: v, label: v })) },
-];
-
 interface ManualEntryFormProps {
-  onSubmit: (values: TicketSubmitValues) => void;
+  onSubmit: (values: CreateTicketInput) => void;
   onCancel: () => void;
   isSubmitting: boolean;
 }
@@ -62,6 +58,7 @@ export function ManualEntryForm({
   isSubmitting,
 }: ManualEntryFormProps) {
   const { data: tree } = useCategoryTree();
+  const { data: vendors } = useVendorOptions();
 
   const {
     control,
@@ -72,15 +69,22 @@ export function ManualEntryForm({
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
     defaultValues: {
-      vendor: "",
+      vendorId: "",
       subcategoryId: "",
       modelId: "",
-      requestType: "Installation",
-      customer: "",
-      mobile: "",
+      serviceType: "Installation + Demo",
+      description: "",
+      serialNumber: "",
+      customerName: "",
+      customerPhone: "",
+      address: "",
+      city: "",
+      state: "",
       pincode: "",
-      expected: "",
-      slaType: "24h",
+      expectedDate: "",
+      serviceLevelHours: 24,
+      slotStart: "",
+      slotEnd: "",
     },
   });
 
@@ -88,6 +92,9 @@ export function ManualEntryForm({
   // useWatch subscribes to just this field — watch() re-renders on every
   // keystroke anywhere in the form and isn't memoization-safe.
   const subcategoryId = useWatch({ control, name: "subcategoryId" });
+  const modelId = useWatch({ control, name: "modelId" });
+  const serviceType = useWatch({ control, name: "serviceType" });
+  const slotStart = useWatch({ control, name: "slotStart" });
 
   /* The master is three levels deep but the approved form has one Category
      field, so the parent becomes the dropdown's group heading rather than a
@@ -114,20 +121,47 @@ export function ManualEntryForm({
     },
   ];
 
+  /* The service types on offer are the ones the CHOSEN MODEL declares it
+     supports — a microwave that only does installation must not be raised as a
+     Tech Visit. The server enforces the same rule; this stops the user finding
+     out after they submit. */
+  const model = subcategory?.models.find((m) => m.id === modelId);
+  const serviceTypeGroups: OptionGroup[] = [
+    { options: (model?.serviceTypes ?? []).map((t) => ({ value: t, label: t })) },
+  ];
+
+  // Only these two carry a fault to describe. An installation explains itself.
+  const needsProblem = serviceType === "Tech Visit" || serviceType === "Service";
+
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
-  /* Ids are what the selects hold; names are what a ticket records. Resolving
-     here keeps the page a pass-through and leaves the ids available for when
-     ticket intake binds to the API. */
+  /**
+   * `datetime-local` gives a wall-clock string with no zone; the API stores an
+   * instant. `new Date(...)` reads it in the browser's zone, which is the one
+   * the person typing is in and the one the customer was quoted.
+   */
+  const instant = (local: string) => (local ? new Date(local).toISOString() : null);
+
   function submit(values: TicketFormValues) {
-    const model = subcategory?.models.find((m) => m.id === values.modelId);
-    const { subcategoryId: subId, modelId, ...rest } = values;
     onSubmit({
-      ...rest,
-      subcategoryId: subId,
-      modelId,
-      category: subcategory?.name ?? "",
-      product: model?.name ?? "",
+      vendorId: values.vendorId,
+      subcategoryId: values.subcategoryId,
+      modelId: values.modelId,
+      serviceType: values.serviceType,
+      // Empty means "not recorded", which the API stores as null — never an
+      // empty string, so "unknown" and "blank" cannot diverge.
+      description: values.description.trim() || null,
+      serialNumber: values.serialNumber.trim() || null,
+      customerName: values.customerName,
+      customerPhone: values.customerPhone,
+      address: values.address,
+      city: values.city,
+      state: values.state,
+      pincode: values.pincode,
+      expectedDate: values.expectedDate,
+      serviceLevelHours: values.serviceLevelHours,
+      slotStart: instant(values.slotStart),
+      slotEnd: instant(values.slotEnd),
     });
   }
 
@@ -141,12 +175,19 @@ export function ManualEntryForm({
             </FieldLegend>
             <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <SelectField
-                name="vendor"
+                name="vendorId"
                 label="Company / vendor"
                 placeholder="Select vendor"
-                groups={plain([...VENDOR_NAMES])}
+                groups={[
+                  {
+                    options: (vendors ?? []).map((v) => ({
+                      value: v.id,
+                      label: v.name,
+                    })),
+                  },
+                ]}
                 control={control}
-                error={err("vendor")}
+                error={err("vendorId")}
               />
               <SelectField
                 name="subcategoryId"
@@ -155,9 +196,14 @@ export function ManualEntryForm({
                 groups={categoryGroups}
                 control={control}
                 error={err("subcategoryId")}
-                onChanged={() =>
-                  setValue("modelId", "", { shouldValidate: false })
-                }
+                onChanged={() => {
+                  // Both depend on the category: a model from the old one, and
+                  // a service type the new model may not even support.
+                  setValue("modelId", "", { shouldValidate: false });
+                  setValue("serviceType", "Installation + Demo", {
+                    shouldValidate: false,
+                  });
+                }}
               />
               <SelectField
                 name="modelId"
@@ -169,39 +215,110 @@ export function ManualEntryForm({
                 disabled={!subcategoryId}
                 control={control}
                 error={err("modelId")}
+                onChanged={() =>
+                  setValue("serviceType", "Installation + Demo", {
+                    shouldValidate: false,
+                  })
+                }
               />
               <SelectField
-                name="requestType"
-                label="Request type"
-                placeholder="Select type"
-                groups={plain([...REQUEST_TYPES])}
+                name="serviceType"
+                label="Service type"
+                placeholder={modelId ? "Select type" : "Pick a model first"}
+                groups={serviceTypeGroups}
+                disabled={!modelId}
                 control={control}
-                error={err("requestType")}
+                error={err("serviceType")}
               />
             </FieldGroup>
+
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              {/* Only the two service types that describe a fault. Rendering it
+                  always would invite a description the API then refuses. */}
+              {needsProblem ? (
+                <TextField
+                  name="description"
+                  label="What is the problem?"
+                  placeholder="e.g. Cooling has dropped and the outdoor unit rattles"
+                  register={register}
+                  error={err("description")}
+                />
+              ) : null}
+              <TextField
+                name="serialNumber"
+                label="Serial number (optional)"
+                placeholder="As printed on the box"
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={64}
+                register={register}
+                error={err("serialNumber")}
+              />
+            </FieldGroup>
+            {/* Said once, here, because "which serial?" is the obvious question
+                and the answer decides whether AI review can do its job. */}
+            <FieldDescription>
+              The serial you EXPECT to find, off the invoice — the technician
+              photographs the real one on site, and a mismatch is what AI review
+              catches. Leave it blank if you do not have it.
+            </FieldDescription>
           </FieldSet>
 
           <FieldSet>
             <FieldLegend className="text-sm font-semibold">
               Customer
             </FieldLegend>
-            <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <TextField
-                name="customer"
+                name="customerName"
                 label="Customer name"
                 placeholder="Full name"
                 autoComplete="name"
                 register={register}
-                error={err("customer")}
+                error={err("customerName")}
               />
               <TextField
-                name="mobile"
+                name="customerPhone"
                 label="Mobile number"
                 placeholder="+91 "
                 inputMode="tel"
                 autoComplete="tel"
                 register={register}
-                error={err("mobile")}
+                error={err("customerPhone")}
+              />
+            </FieldGroup>
+
+            {/* The address is new. Without it the technician has a pincode and
+                a name, which is enough to be dispatched and not enough to
+                arrive. */}
+            <FieldGroup className="grid gap-4">
+              <TextField
+                name="address"
+                label="Address"
+                placeholder="Flat / building, street, area"
+                autoComplete="address-line1"
+                register={register}
+                error={err("address")}
+              />
+            </FieldGroup>
+
+            <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <TextField
+                name="city"
+                label="City"
+                placeholder="Pune"
+                autoComplete="address-level2"
+                register={register}
+                error={err("city")}
+              />
+              <TextField
+                name="state"
+                label="State"
+                placeholder="Maharashtra"
+                autoComplete="address-level1"
+                register={register}
+                error={err("state")}
               />
               <TextField
                 name="pincode"
@@ -213,11 +330,11 @@ export function ManualEntryForm({
                 error={err("pincode")}
               />
               <TextField
-                name="expected"
+                name="expectedDate"
                 label="Expected date"
                 type="date"
                 register={register}
-                error={err("expected")}
+                error={err("expectedDate")}
               />
             </FieldGroup>
           </FieldSet>
@@ -227,15 +344,15 @@ export function ManualEntryForm({
               Service level
             </FieldLegend>
             <Controller
-              name="slaType"
+              name="serviceLevelHours"
               control={control}
               render={({ field }) => (
                 <RadioGroup
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  className="grid gap-3 sm:grid-cols-2"
+                  value={String(field.value)}
+                  onValueChange={(v) => field.onChange(Number(v))}
+                  className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
                 >
-                  {SLA_OPTIONS.map((o) => (
+                  {SERVICE_LEVEL_OPTIONS.map((o) => (
                     <label
                       key={o.value}
                       className={cn(
@@ -245,7 +362,7 @@ export function ManualEntryForm({
                           : "border-line hover:border-brand-400"
                       )}
                     >
-                      <RadioGroupItem value={o.value} />
+                      <RadioGroupItem value={String(o.value)} />
                       <span>
                         <span className="block text-[13px] font-semibold">
                           {o.title}
@@ -261,12 +378,49 @@ export function ManualEntryForm({
             />
           </FieldSet>
 
+          <FieldSet>
+            <FieldLegend className="text-sm font-semibold">
+              Slot (optional)
+            </FieldLegend>
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                name="slotStart"
+                label="Slot starts"
+                type="datetime-local"
+                register={register}
+                error={err("slotStart")}
+              />
+              <TextField
+                name="slotEnd"
+                label="Slot ends"
+                type="datetime-local"
+                register={register}
+                error={err("slotEnd")}
+              />
+            </FieldGroup>
+            <FieldDescription>
+              Fill this in if you already agreed a time on the call. Leave it
+              blank and the customer is asked to pick one.
+            </FieldDescription>
+          </FieldSet>
+
           {/* The single most misunderstood rule in the flow, stated on the
-              screen where someone could get it wrong. */}
+              screen where someone could get it wrong — and now stated to match
+              what was actually entered, rather than always promising a request. */}
           <p className="flex items-start gap-2.5 rounded-md bg-info-bg px-3.5 py-3 text-xs leading-relaxed text-info">
             <Info className="mt-px size-4 shrink-0" aria-hidden />
-            On submit, a WhatsApp/SMS slot request is sent to the customer. The
-            technician is notified only after the customer confirms a slot.
+            {slotStart ? (
+              <>
+                The slot is locked to the ticket and it goes straight to
+                eligible technicians. A technician accepts that fixed time — they
+                never propose one.
+              </>
+            ) : (
+              <>
+                With no slot the ticket waits as <b>Slot Pending</b>. No
+                technician is told it exists until a time is confirmed.
+              </>
+            )}
           </p>
         </CardContent>
       </Card>
@@ -277,7 +431,9 @@ export function ManualEntryForm({
         </Button>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <Spinner data-icon="inline-start" />}
-          Create ticket &amp; request slot
+          {/* Follows the slot, like the banner above: with a time already
+              agreed there is no request to send. */}
+          {slotStart ? "Create ticket" : "Create ticket & request slot"}
         </Button>
       </div>
     </form>

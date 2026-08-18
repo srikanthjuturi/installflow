@@ -63,13 +63,16 @@ export default function ForceClosePage() {
               forceClose.mutate(
                 { id: ticket.id, ...values },
                 {
-                  onSuccess: (closed) => {
+                  // Force-closing is not wired to the API yet, so this never
+                  // runs — the rejection is surfaced by the global toaster
+                  // instead. Kept so the page needs no rework when it lands.
+                  onSuccess: () => {
                     toast.add({
-                      title: `${closed.id} force-closed`,
+                      title: `${ticket.code} force-closed`,
                       description:
                         "Reason, notes and attachments recorded for audit.",
                     });
-                    navigate(`/tickets/${closed.id}`);
+                    navigate(`/tickets/${ticket.id}`);
                   },
                 }
               )

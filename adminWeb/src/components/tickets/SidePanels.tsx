@@ -2,7 +2,8 @@ import { Barcode, Camera, Hash, MapPin } from "lucide-react";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { TicketDetail } from "@/services/tickets";
+import { EMPTY, formatSlot } from "@/utils/datetime";
+import type { TicketDetail } from "@/types/ticket";
 
 const initials = (name: string) =>
   name
@@ -22,17 +23,17 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
       <CardContent>
         <div className="flex items-center gap-3">
           <div className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-100 text-base font-semibold text-brand-500">
-            {initials(ticket.customer)}
+            {initials(ticket.customerName)}
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">
-              {ticket.customer}
+              {ticket.customerName}
             </div>
             <a
-              href={`tel:${ticket.mobile.replace(/\s/g, "")}`}
+              href={`tel:${ticket.customerPhone.replace(/\s/g, "")}`}
               className="text-xs text-ink-2 hover:text-brand-400"
             >
-              {ticket.mobile}
+              {ticket.customerPhone}
             </a>
           </div>
         </div>
@@ -40,7 +41,7 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
           {ticket.city} · {ticket.pincode}
           <br />
           Confirmed slot:{" "}
-          <b className="font-semibold text-ink">{ticket.slot}</b>
+          <b className="font-semibold text-ink">{formatSlot(ticket.slotStart, ticket.slotEnd)}</b>
         </p>
       </CardContent>
     </Card>
@@ -48,7 +49,8 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
 }
 
 export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
-  const assigned = ticket.tech !== "—";
+  // A real null now, not the "—" sentinel the mock used to mean "nobody".
+  const assigned = ticket.technicianName !== null;
 
   return (
     <Card>
@@ -58,14 +60,14 @@ export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
       <CardContent>
         {assigned ? (
           <div className="flex items-center gap-3">
-            <UserAvatar name={ticket.tech} className="size-11 text-base" />
+            <UserAvatar name={ticket.technicianName ?? EMPTY} className="size-11 text-base" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">
-                {ticket.tech}
+                {ticket.technicianName ?? EMPTY}
               </div>
               {/* Assignment is first-accept-wins — never allocated by a manager. */}
               <div className="truncate text-xs text-ink-3">
-                First-accept · {ticket.category}
+                First-accept · {ticket.subcategoryName}
               </div>
             </div>
             <span className="rounded-full bg-ok-bg px-2.25 py-0.75 text-xs font-semibold text-ok">

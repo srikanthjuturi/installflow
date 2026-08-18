@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
+import { EMPTY, formatSlot } from "@/utils/datetime";
 import type { Ticket } from "@/types";
 
 const columns: Column<Ticket>[] = [
@@ -13,9 +14,9 @@ const columns: Column<Ticket>[] = [
           to={`/tickets/${t.id}`}
           className="font-semibold hover:text-brand-400"
         >
-          {t.id}
+          {t.code}
         </Link>
-        <div className="text-xs text-ink-3">{t.vendor}</div>
+        <div className="text-xs text-ink-3">{t.vendorName}</div>
       </>
     ),
   },
@@ -24,7 +25,7 @@ const columns: Column<Ticket>[] = [
     header: "Customer",
     cell: (t) => (
       <>
-        <div className="font-medium">{t.customer}</div>
+        <div className="font-medium">{t.customerName}</div>
         <div className="text-xs text-ink-3">
           {t.city} · {t.pincode}
         </div>
@@ -36,19 +37,27 @@ const columns: Column<Ticket>[] = [
     header: "Category",
     cell: (t) => (
       <>
-        <div>{t.category}</div>
-        <div className="max-w-45 truncate text-xs text-ink-3">{t.product}</div>
+        <div>{t.subcategoryName}</div>
+        <div className="max-w-45 truncate text-xs text-ink-3">{t.modelName}</div>
       </>
     ),
   },
-  { id: "slot", header: "Slot", cell: (t) => t.slot },
-  { id: "tech", header: "Technician", cell: (t) => t.tech },
+  {
+    id: "slot",
+    header: "Slot",
+    cell: (t) => formatSlot(t.slotStart, t.slotEnd),
+  },
+  {
+    id: "tech",
+    header: "Technician",
+    cell: (t) => t.technicianName ?? EMPTY,
+  },
   {
     id: "status",
     header: "Status",
     cell: (t) => <StatusBadge status={t.status} />,
   },
-  { id: "sla", header: "SLA", cell: (t) => <SlaBadge state={t.sla} /> },
+  { id: "sla", header: "SLA", cell: (t) => <SlaBadge state={t.slaState} /> },
 ];
 
 interface RecentTicketsProps {

@@ -1,102 +1,41 @@
-import {
-  ApiError,
-  matches,
-  mockPage,
-  mockResponse,
-  notFound,
-  sortRows,
-} from "./client";
-import { TICKETS, timelineFor } from "./mocks/tickets";
-import type { ListParams, Page } from "@/types/api";
-import type { Ticket, TimelineEvent } from "@/types";
-
-/** Breach first — the whole point of the list is triage. */
-const SLA_RANK = { breach: 0, warn: 1, ok: 2, done: 3 } as const;
-
-export interface TicketDetail extends Ticket {
-  timeline: TimelineEvent[];
-}
-
 /**
- * The sort keys the list endpoint accepts.
+ * Ticket transport — live FastAPI, not the mock client.
  *
- * Keyed by the TicketTable column id, so `sortBy` round-trips: the header the
- * user clicked is the key that goes out and comes back in the URL.
+ * The list is territory-scoped on the server: an Area Manager sees only the
+ * pincodes they cover, and a ticket id from outside their area returns 404
+ * rather than 403. Nothing here has to know that; it is simply what arrives.
  */
-const TICKET_SORTS: Record<string, (t: Ticket) => string | number | null> = {
-  ticket: (t) => t.id,
-  customer: (t) => t.customer,
-  category: (t) => t.category,
-  sla: (t) => t.slaType,
-  slot: (t) => t.slot,
-  tech: (t) => t.tech,
-  status: (t) => t.status,
-  // The cell shows a word; the sort runs on the urgency rank behind it.
-  slaState: (t) => SLA_RANK[t.sla],
-};
 
-/** Triage order, and what the list falls back to when nothing is asked for. */
-const DEFAULT_SORT_BY = "slaState";
+import type { ListParams, Page } from "@/types/api";
+import type { CreateTicketInput, Ticket, TicketDetail } from "@/types/ticket";
+import { ApiError } from "./client";
+import { apiGet, apiGetPage, apiPost } from "./http";
 
 /**
- * Searching, filtering, sorting and slicing all happen HERE, because they all
- * happen on the server — the browser only ever sees one page.
+ * One page of tickets.
+ *
+ * Default order is SLA urgency — breach, warn, ok, done — because triage is
+ * what the screen is for. `sortBy: "createdAt"` gives the chronological view.
+ * The sort runs in SQL, so a page's total agrees with the rows on it.
  */
 export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {
-  return mockPage(() => {
-    const status = params.filters?.status;
-    const rows = TICKETS.filter((t) => {
-      if (status && status !== "All" && t.status !== status) return false;
-      return matches(t, ["id", "customer", "mobile", "pincode"], params.search);
-    });
-    return sortRows(
-      rows,
-      params.sortBy ?? DEFAULT_SORT_BY,
-      params.sortDir ?? "asc",
-      TICKET_SORTS
-    );
-  }, params);
+  return apiGetPage<Ticket>("/tickets", params);
 }
 
-export interface CreateTicketInput {
-  vendor: string;
-  category: string;
-  product: string;
-  requestType: string;
-  customer: string;
-  mobile: string;
-  pincode: string;
-  expected: string;
-  slaType: "24h" | "48h";
+export function getTicket(id: string): Promise<TicketDetail> {
+  return apiGet<TicketDetail>(`/tickets/${id}`);
 }
 
 /**
- * Creating a ticket does NOT assign a technician. It fires the slot request
- * to the customer; only once they confirm does the ticket reach technicians.
- * The new ticket therefore starts at "Slot Pending" with no slot and no tech.
+ * Raise a ticket by hand — §4's third intake channel.
+ *
+ * A slot decides where it lands: with one the customer has already agreed a
+ * time and the ticket is ready for technicians ("New"); without one it waits
+ * ("Slot Pending"). The WhatsApp that tells the customer either way is a
+ * later slice — nothing is sent yet.
  */
 export function createTicket(input: CreateTicketInput): Promise<Ticket> {
-  return mockResponse(() => {
-    const ticket: Ticket = {
-      id: `INST-${241000 + TICKETS.length}`,
-      vendor: input.vendor,
-      category: input.category,
-      product: input.product,
-      customer: input.customer,
-      mobile: input.mobile,
-      city: "Pune",
-      pincode: input.pincode,
-      slaType: input.slaType,
-      slot: "—",
-      tech: "—",
-      status: "Slot Pending",
-      sla: "ok",
-      created: "just now",
-      expected: input.expected,
-    };
-    TICKETS.unshift(ticket);
-    return ticket;
-  });
+  return apiPost<Ticket>("/tickets", input);
 }
 
 export interface ForceCloseInput {
@@ -107,30 +46,24 @@ export interface ForceCloseInput {
 }
 
 /**
- * Manager closure (§10). Only available once the customer wait period has
- * elapsed, and only WITH supporting documents — the attachment list is not
- * optional, and who closed it, when and on what basis is recorded for audit.
+ * NOT IMPLEMENTED — deliberately, and loudly.
+ *
+ * The mock flipped a status in memory and threw the reason, the notes and the
+ * attachments away, while the screen promised they were "recorded for audit".
+ * With the list now real, quietly keeping that would mean a force-close that
+ * appears to work, changes nothing a colleague can see, and records none of the
+ * justification it insisted on collecting.
+ *
+ * So it fails where it can be seen. Force-closure needs a status transition, a
+ * real attachment upload and an audit row; it lands with the closure slice.
  */
 export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
-  return mockResponse(() => {
-    const ticket = TICKETS.find((t) => t.id === input.id);
-    if (!ticket) notFound("Ticket", input.id);
-    if (input.attachments.length === 0) {
-      throw new ApiError(
-        "Supporting attachments are required to force-close",
-        422
-      );
-    }
-    ticket.status = "Force-Closed";
-    ticket.sla = "done";
-    return ticket;
-  });
-}
-
-export function getTicket(id: string): Promise<TicketDetail> {
-  return mockResponse(() => {
-    const ticket = TICKETS.find((t) => t.id === id);
-    if (!ticket) notFound("Ticket", id);
-    return { ...ticket, timeline: timelineFor(ticket) };
-  });
+  void input;
+  return Promise.reject(
+    new ApiError(
+      "Force-closing isn't wired up yet — the ticket list is real now, but " +
+        "closure still needs its own slice. Nothing has been changed.",
+      501
+    )
+  );
 }
