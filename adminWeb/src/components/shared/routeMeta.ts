@@ -22,7 +22,10 @@ const STATIC: Record<string, Meta> = {
   "/ai-review": { title: "AI review queue", subtitle: "Flagged verifications" },
   "/technicians": { title: "Technicians", subtitle: "Technician master list" },
   "/ledger": { title: "Penalty & bonus pool", subtitle: "Financial ledger" },
-  "/vendors": { title: "Vendors", subtitle: "Master & API credentials" },
+  "/vendors": {
+    title: "Vendors",
+    subtitle: "The companies whose products you install",
+  },
   "/territory": {
     title: "Territory mapping",
     subtitle: "Region → Regional Head → Area Manager → pincode",

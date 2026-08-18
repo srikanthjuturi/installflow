@@ -1,53 +1,28 @@
-import type { Vendor } from "@/types";
+/**
+ * What is left of the masters mock now that vendors are real.
+ *
+ * The vendor list used to live here as full records — intake channel, API
+ * credentials, lifetime ticket volume — and backed the Vendors screen. That
+ * screen now reads `/vendors`, so all that remains is the names, for the one
+ * consumer that still needs a list and cannot have the real one.
+ */
 
-export const VENDORS: Vendor[] = [
-  {
-    id: "VN-01",
-    name: "Videocon",
-    channel: "API",
-    status: "Active",
-    tickets: 1284,
-    key: "vc_live_9f2a…c41",
-    since: "2021",
-  },
-  {
-    id: "VN-02",
-    name: "Kelvinator",
-    channel: "Excel",
-    status: "Active",
-    tickets: 642,
-    key: "—",
-    since: "2022",
-  },
-  {
-    id: "VN-03",
-    name: "Sansui",
-    channel: "API",
-    status: "Active",
-    tickets: 398,
-    key: "ss_live_71be…9d0",
-    since: "2022",
-  },
-  {
-    id: "VN-04",
-    name: "Electrolux",
-    channel: "Manual",
-    status: "Active",
-    tickets: 157,
-    key: "—",
-    since: "2023",
-  },
-  {
-    id: "VN-05",
-    name: "Onida",
-    channel: "Excel",
-    status: "Paused",
-    tickets: 44,
-    key: "—",
-    since: "2024",
-  },
-];
-
+/**
+ * Vendor names for the mocked manual ticket-entry form.
+ *
+ * Deliberately NOT `useVendorOptions()`. The real endpoint is National Head and
+ * above, while `jobs.create` reaches down to Area Manager — so binding this
+ * select to it would 403 the very people who key tickets in. It becomes real
+ * when the jobs slice lands and a ticket carries a vendor id rather than a
+ * name typed into a string field.
+ */
+export const VENDOR_NAMES = [
+  "Videocon",
+  "Kelvinator",
+  "Sansui",
+  "Electrolux",
+  "Onida",
+] as const;
 
 /** Not in the requirement doc's required-field list, but the prototype
  *  collects it — flagged as an open question. */

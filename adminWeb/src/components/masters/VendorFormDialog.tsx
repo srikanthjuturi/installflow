@@ -1,4 +1,4 @@
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,45 +15,23 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
-  FieldTitle,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
-import { useCreateVendor, useUpdateVendor } from "@/hooks/useMasters";
-import { cn } from "@/lib/utils";
-import {
-  CHANNEL_HINT,
-  INTAKE_CHANNELS,
-  VENDOR_STATUSES,
-  vendorSchema,
-  type VendorFormValues,
-} from "./vendorSchema";
-import type { Vendor } from "@/types";
+import { useCreateVendor, useUpdateVendor } from "@/hooks/useVendors";
+import type { Vendor } from "@/types/vendor";
+import { StatusField } from "./StatusField";
+import { statusOf, vendorSchema, type VendorFormValues } from "./vendorSchema";
 
 interface VendorFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Present → manage that vendor. Absent → onboard a new one. */
+  /** Omit to add. Pass a vendor to edit it in place. */
   vendor?: Vendor;
 }
 
-/**
- * One dialog for both jobs. Onboarding needs a name; managing does not, since
- * the name is identity and the rest of the record — lifetime tickets, the
- * year onboarded, the API key — is either derived or issued server-side.
- */
 export function VendorFormDialog({
   open,
   onOpenChange,
@@ -61,16 +39,23 @@ export function VendorFormDialog({
 }: VendorFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        {/* The popup unmounts on close, so the form starts clean every time it
-            opens; the key covers reopening on a different row. */}
-        <VendorForm
-          key={vendor?.id ?? "new"}
-          vendor={vendor}
-          onDone={() => onOpenChange(false)}
-        />
+      {/* Wider than the category dialog: this form has a full postal address. */}
+      <DialogContent className="sm:max-w-xl">
+        {/* The popup unmounts on close, so the form is fresh on every open and
+            an edit never opens holding the previous row's values. */}
+        <VendorForm vendor={vendor} onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** One field, one id — spelled out so the error and hint ids never drift. */
+function ErrorText({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <FieldDescription id={id} role="alert" className="text-danger">
+      {message}
+    </FieldDescription>
   );
 }
 
@@ -81,8 +66,10 @@ function VendorForm({
   vendor?: Vendor;
   onDone: () => void;
 }) {
+  const isEdit = vendor !== undefined;
   const create = useCreateVendor();
   const update = useUpdateVendor();
+  const pending = create.isPending || update.isPending;
 
   const {
     control,
@@ -93,204 +80,200 @@ function VendorForm({
     resolver: zodResolver(vendorSchema),
     defaultValues: {
       name: vendor?.name ?? "",
-      // Most vendors have no CRM, so the common case is the default.
-      channel: vendor?.channel ?? "Excel",
-      status: vendor?.status ?? "Active",
+      gstNumber: vendor?.gstNumber ?? "",
+      cin: vendor?.cin ?? "",
+      contactPerson: vendor?.contactPerson ?? "",
+      phone: vendor?.phone ?? "",
+      address: vendor?.address ?? "",
+      city: vendor?.city ?? "",
+      state: vendor?.state ?? "",
+      pincode: vendor?.pincode ?? "",
+      status: statusOf(vendor?.isActive ?? true),
     },
   });
 
-  // Only this field drives conditional markup, so only this field is watched.
-  const channel = useWatch({ control, name: "channel" });
-
-  const isSubmitting = create.isPending || update.isPending;
-  const err = (name: keyof VendorFormValues) => errors[name]?.message;
-
   function submit(values: VendorFormValues) {
-    if (vendor) {
-      update.mutate(
-        { id: vendor.id, channel: values.channel, status: values.status },
-        {
-          onSuccess: (saved) => {
-            toast.add({
-              title: `${saved.name} updated`,
-              description: `Intake ${saved.channel} · ${saved.status}.`,
-            });
-            onDone();
-          },
-        }
-      );
-      return;
-    }
+    const body = {
+      name: values.name,
+      gstNumber: values.gstNumber,
+      // An empty box means "not recorded", which the API stores as null —
+      // never an empty string.
+      cin: values.cin === "" ? null : values.cin,
+      contactPerson: values.contactPerson,
+      phone: values.phone,
+      address: values.address,
+      city: values.city,
+      state: values.state,
+      pincode: values.pincode,
+      isActive: values.status === "Active",
+    };
+    const done = (saved: Vendor) => {
+      toast.add({
+        title: `${saved.name} ${isEdit ? "updated" : "added"}`,
+        description: `${saved.city} · ${saved.isActive ? "Active" : "Paused"}.`,
+      });
+      onDone();
+    };
 
-    create.mutate(values, {
-      onSuccess: (saved) => {
-        toast.add({
-          title: `${saved.name} added`,
-          description:
-            saved.channel === "API"
-              ? "API key issued. It is stored masked and never shown in full."
-              : `Intake channel: ${saved.channel}.`,
-        });
-        onDone();
-      },
-    });
+    if (isEdit) update.mutate({ id: vendor.id, ...body }, { onSuccess: done });
+    else create.mutate(body, { onSuccess: done });
   }
-
-  // Credentials exist for the API channel and nowhere else. Nothing below is
-  // an input — the console never captures or displays a full key.
-  const keepsKey = vendor?.channel === "API" && vendor.key !== "—";
-  const losesKey = vendor?.channel === "API" && channel !== "API";
 
   return (
     <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>
-          {vendor ? `Manage ${vendor.name}` : "Add vendor"}
-        </DialogTitle>
+        <DialogTitle>{isEdit ? "Edit vendor" : "Add vendor"}</DialogTitle>
         <DialogDescription>
-          {vendor
-            ? "Change how tickets arrive, or pause new ones."
-            : "Onboard a vendor and set how its tickets arrive."}
+          The company whose products you install. A vendor becomes a brand you
+          can pick when adding a product model.
         </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup className="gap-4">
-        <Field data-invalid={err("name") ? true : undefined}>
-          <FieldLabel htmlFor="vendor-name">Vendor name</FieldLabel>
+      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
+        <Field data-invalid={errors.name ? true : undefined}>
+          <FieldLabel htmlFor="vendor-name">Company name</FieldLabel>
           <Input
             id="vendor-name"
-            placeholder="Company name"
-            autoComplete="organization"
-            disabled={Boolean(vendor)}
-            aria-invalid={err("name") ? true : undefined}
-            aria-describedby={err("name") ? "vendor-name-error" : undefined}
+            placeholder="e.g. Videocon Industries"
+            aria-invalid={errors.name ? true : undefined}
+            aria-describedby={errors.name ? "vendor-name-error" : "vendor-name-hint"}
             {...register("name")}
           />
-          {vendor ? (
-            <FieldDescription>
-              The name can&apos;t be changed here.
-            </FieldDescription>
-          ) : null}
-          {err("name") ? (
-            <FieldDescription
-              id="vendor-name-error"
-              role="alert"
-              className="text-danger"
-            >
-              {err("name")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        <Field data-invalid={err("channel") ? true : undefined}>
-          <FieldLabel htmlFor="vendor-channel">Intake channel</FieldLabel>
-          <Controller
-            name="channel"
-            control={control}
-            render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger
-                  id="vendor-channel"
-                  className="w-full"
-                  aria-invalid={err("channel") ? true : undefined}
-                  aria-describedby={
-                    err("channel") ? "vendor-channel-error" : undefined
-                  }
-                >
-                  <SelectValue placeholder="Select channel" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {INTAKE_CHANNELS.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
-          />
-          <FieldDescription>{CHANNEL_HINT[channel]}</FieldDescription>
-          {losesKey ? (
-            <FieldDescription className="text-warn">
-              Leaving API revokes this vendor&apos;s key on save.
-            </FieldDescription>
-          ) : null}
-          {err("channel") ? (
-            <FieldDescription
-              id="vendor-channel-error"
-              role="alert"
-              className="text-danger"
-            >
-              {err("channel")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        {channel === "API" ? (
-          <Field>
-            <FieldTitle>API credentials</FieldTitle>
-            <p className="font-mono text-xs text-ink-2">
-              {keepsKey ? vendor.key : "Issued on save"}
-            </p>
-            <FieldDescription>
-              Keys are issued by the platform and stored masked. The console
-              never shows or accepts a full key.
-            </FieldDescription>
-          </Field>
-        ) : null}
-
-        {/* A radiogroup has no labelable control, so it gets a legend and its
-            own accessible name rather than a <label for>. */}
-        <FieldSet data-invalid={err("status") ? true : undefined}>
-          <FieldLegend variant="label" className="text-sm font-medium">
-            Status
-          </FieldLegend>
-          <Controller
-            name="status"
-            control={control}
-            render={({ field }) => (
-              <RadioGroup
-                aria-label="Status"
-                value={field.value}
-                onValueChange={field.onChange}
-                aria-invalid={err("status") ? true : undefined}
-                aria-describedby={
-                  err("status") ? "vendor-status-error" : undefined
-                }
-                className="grid grid-cols-2 gap-2.5"
-              >
-                {VENDOR_STATUSES.map((s) => (
-                  <label
-                    key={s}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
-                      field.value === s
-                        ? "border-brand-500 bg-brand-100/40"
-                        : "border-line hover:border-brand-400"
-                    )}
-                  >
-                    <RadioGroupItem value={s} />
-                    <span>{s}</span>
-                  </label>
-                ))}
-              </RadioGroup>
-            )}
-          />
-          <FieldDescription>
-            Paused vendors stop sending new tickets.
+          <FieldDescription id="vendor-name-hint">
+            This is the brand shown on every product model you attribute to it.
           </FieldDescription>
-          {err("status") ? (
-            <FieldDescription
-              id="vendor-status-error"
-              role="alert"
-              className="text-danger"
-            >
-              {err("status")}
+          <ErrorText id="vendor-name-error" message={errors.name?.message} />
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={errors.gstNumber ? true : undefined}>
+            <FieldLabel htmlFor="vendor-gst">GSTIN</FieldLabel>
+            <Input
+              id="vendor-gst"
+              placeholder="27AAACV1234A1Z5"
+              autoCapitalize="characters"
+              aria-invalid={errors.gstNumber ? true : undefined}
+              aria-describedby={errors.gstNumber ? "vendor-gst-error" : undefined}
+              {...register("gstNumber")}
+            />
+            <ErrorText id="vendor-gst-error" message={errors.gstNumber?.message} />
+          </Field>
+
+          <Field data-invalid={errors.cin ? true : undefined}>
+            <FieldLabel htmlFor="vendor-cin">CIN</FieldLabel>
+            <Input
+              id="vendor-cin"
+              placeholder="L32100MH1985PLC123456"
+              autoCapitalize="characters"
+              aria-invalid={errors.cin ? true : undefined}
+              aria-describedby={errors.cin ? "vendor-cin-error" : "vendor-cin-hint"}
+              {...register("cin")}
+            />
+            <FieldDescription id="vendor-cin-hint">
+              Optional — only a registered company has one.
             </FieldDescription>
-          ) : null}
-        </FieldSet>
+            <ErrorText id="vendor-cin-error" message={errors.cin?.message} />
+          </Field>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={errors.contactPerson ? true : undefined}>
+            <FieldLabel htmlFor="vendor-contact">Contact person</FieldLabel>
+            <Input
+              id="vendor-contact"
+              placeholder="e.g. Rakesh Mehta"
+              aria-invalid={errors.contactPerson ? true : undefined}
+              aria-describedby={
+                errors.contactPerson ? "vendor-contact-error" : undefined
+              }
+              {...register("contactPerson")}
+            />
+            <ErrorText
+              id="vendor-contact-error"
+              message={errors.contactPerson?.message}
+            />
+          </Field>
+
+          <Field data-invalid={errors.phone ? true : undefined}>
+            <FieldLabel htmlFor="vendor-phone">Mobile number</FieldLabel>
+            <Input
+              id="vendor-phone"
+              type="tel"
+              inputMode="tel"
+              placeholder="98200 11001"
+              aria-invalid={errors.phone ? true : undefined}
+              aria-describedby={errors.phone ? "vendor-phone-error" : undefined}
+              {...register("phone")}
+            />
+            <ErrorText id="vendor-phone-error" message={errors.phone?.message} />
+          </Field>
+        </div>
+
+        <Field data-invalid={errors.address ? true : undefined}>
+          <FieldLabel htmlFor="vendor-address">Address</FieldLabel>
+          <Textarea
+            id="vendor-address"
+            rows={3}
+            placeholder="Building, street, area"
+            aria-invalid={errors.address ? true : undefined}
+            aria-describedby={errors.address ? "vendor-address-error" : undefined}
+            {...register("address")}
+          />
+          <ErrorText id="vendor-address-error" message={errors.address?.message} />
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field data-invalid={errors.city ? true : undefined}>
+            <FieldLabel htmlFor="vendor-city">City</FieldLabel>
+            <Input
+              id="vendor-city"
+              placeholder="Mumbai"
+              aria-invalid={errors.city ? true : undefined}
+              aria-describedby={errors.city ? "vendor-city-error" : undefined}
+              {...register("city")}
+            />
+            <ErrorText id="vendor-city-error" message={errors.city?.message} />
+          </Field>
+
+          <Field data-invalid={errors.state ? true : undefined}>
+            <FieldLabel htmlFor="vendor-state">State</FieldLabel>
+            <Input
+              id="vendor-state"
+              placeholder="Maharashtra"
+              aria-invalid={errors.state ? true : undefined}
+              aria-describedby={errors.state ? "vendor-state-error" : undefined}
+              {...register("state")}
+            />
+            <ErrorText id="vendor-state-error" message={errors.state?.message} />
+          </Field>
+
+          <Field data-invalid={errors.pincode ? true : undefined}>
+            <FieldLabel htmlFor="vendor-pincode">Pincode</FieldLabel>
+            <Input
+              id="vendor-pincode"
+              inputMode="numeric"
+              placeholder="400099"
+              aria-invalid={errors.pincode ? true : undefined}
+              aria-describedby={errors.pincode ? "vendor-pincode-error" : undefined}
+              {...register("pincode")}
+            />
+            <ErrorText id="vendor-pincode-error" message={errors.pincode?.message} />
+          </Field>
+        </div>
+
+        <Controller
+          name="status"
+          control={control}
+          render={({ field }) => (
+            <StatusField
+              value={field.value}
+              onChange={field.onChange}
+              description="Paused vendors stay out of the brand picker. Models already carrying the brand keep it."
+              error={errors.status?.message}
+              errorId="vendor-status-error"
+            />
+          )}
+        />
       </FieldGroup>
 
       {/* The failure is reported in the toaster (App.tsx), not here. */}
@@ -298,9 +281,9 @@ function VendorForm({
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
         </DialogClose>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
-          {vendor ? "Save changes" : "Add vendor"}
+        <Button type="submit" disabled={pending}>
+          {pending ? <Spinner data-icon="inline-start" /> : null}
+          {isEdit ? "Save changes" : "Add vendor"}
         </Button>
       </DialogFooter>
     </form>

@@ -116,7 +116,11 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Vendors",
         to: "/vendors",
         icon: Boxes,
-        feature: "settings.view",
+        // Its own feature since vendors became real and gained a GSTIN, a
+        // contact and the brand relation to every product model. The server
+        // also holds a National-Head rank floor that no per-company feature
+        // override can lift, so this key alone does not open the screen.
+        feature: "vendors.view",
       },
       {
         label: "Territory",
