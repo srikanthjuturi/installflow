@@ -12,9 +12,9 @@ Two guards on every route, and they are not redundant:
 Superadmin is refused by both, because each builds on `CompanyPrincipal`: a
 platform superadmin holds no membership and no company feature.
 
-`/options` is declared BEFORE `/{vendor_id}` — otherwise FastAPI matches the
-literal against `uuid.UUID` and 422s, the same trap the technicians router
-documents for `/invites` and `/me`.
+`/channels` and `/options` are declared BEFORE `/{vendor_id}` — otherwise
+FastAPI matches the literal against `uuid.UUID` and 422s, the same trap the
+technicians router documents for `/invites` and `/me`.
 """
 
 import uuid
@@ -35,6 +35,7 @@ from app.core.schemas import (
 )
 from app.features.vendors import service
 from app.features.vendors.schemas import (
+    IntakeChannelOut,
     VendorCreateRequest,
     VendorOptionOut,
     VendorOut,
@@ -58,11 +59,28 @@ async def list_vendors(
     principal: CanView,
     params: Annotated[ListParams, Depends(list_params)],
     status: Annotated[str | None, Query(pattern="^(active|paused)$")] = None,
+    channel: Annotated[str | None, Query(pattern="^(API|Excel|Manual)$")] = None,
 ) -> PaginatedEnvelope[VendorOut]:
     rows, total = await service.list_vendors(
-        db, principal, params, status_filter=status
+        db, principal, params, status_filter=status, channel=channel
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.get(
+    "/channels",
+    response_model=ApiEnvelope[list[IntakeChannelOut]],
+    dependencies=[NationalHeadUp],
+)
+async def list_intake_channels(
+    principal: CanView,
+) -> ApiEnvelope[list[IntakeChannelOut]]:
+    """The three intake channels, and which of them can be picked today.
+
+    Served rather than mirrored in the console so the "coming soon" reason
+    lives in one place and the form cannot offer something the API refuses.
+    """
+    return envelope(service.list_channels())
 
 
 @router.get(

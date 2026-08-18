@@ -41,12 +41,19 @@ from app.models.product import (  # noqa: E402
 )
 from app.models.vendor import Vendor  # noqa: E402
 
-# (name, gst_number, cin, contact_person, phone, address, city, state, pincode)
+# (name, gst_number, cin, contact_person, phone, address, city, state, pincode,
+#  intake_channels)
 #
 # Placeholder statutory numbers, but FORMAT-VALID ones: the seed writes through
 # the ORM and so bypasses the Pydantic types, and a row that cannot survive its
 # own edit form is a trap for whoever opens it first.
-VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
+#
+# The channel mix is deliberate. None is "API", even for the vendors the
+# prototype showed as API integrations — that channel is not selectable yet
+# (app/core/intake.py), and seeding a value the edit form would refuse to save
+# back is exactly the trap described above. Two vendors carry BOTH channels, so
+# the multi-select is exercised the moment anyone opens the screen.
+VENDORS: list[tuple[str, str, str, str, str, str, str, str, str, list[str]]] = [
     (
         "Videocon Industries",
         "27AAACV1234A1Z5",
@@ -57,6 +64,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
         "Mumbai",
         "Maharashtra",
         "400099",
+        ["Excel", "Manual"],
     ),
     (
         "Samsung India Electronics",
@@ -68,6 +76,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
         "Noida",
         "Uttar Pradesh",
         "201301",
+        ["Excel"],
     ),
     (
         "LG Electronics India",
@@ -79,6 +88,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
         "New Delhi",
         "Delhi",
         "110044",
+        ["Excel"],
     ),
     (
         "Whirlpool of India",
@@ -90,6 +100,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
         "Pune",
         "Maharashtra",
         "411014",
+        ["Manual"],
     ),
     (
         "Voltas Limited",
@@ -101,6 +112,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
         "Mumbai",
         "Maharashtra",
         "400033",
+        ["Excel", "Manual"],
     ),
     (
         "Godrej Appliances",
@@ -112,6 +124,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
         "Mumbai",
         "Maharashtra",
         "400079",
+        ["Manual"],
     ),
 ]
 
@@ -230,7 +243,18 @@ async def _seed_vendors(session, company) -> list:
         print(f"{company.name}: {len(existing)} vendors already — skipped")
         return existing
 
-    for name, gst, cin, contact, phone, address, city, state, pincode in VENDORS:
+    for (
+        name,
+        gst,
+        cin,
+        contact,
+        phone,
+        address,
+        city,
+        state,
+        pincode,
+        channels,
+    ) in VENDORS:
         session.add(
             Vendor(
                 company_id=company.id,
@@ -243,6 +267,9 @@ async def _seed_vendors(session, company) -> list:
                 city=city,
                 state=state,
                 pincode=pincode,
+                # A copy per company — the literal above is shared, and a JSONB
+                # column handed the same list object twice is a bug waiting.
+                intake_channels=list(channels),
                 is_active=True,
             )
         )

@@ -20,9 +20,16 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
+from app.core.intake import (
+    CHANNEL_DESCRIPTION,
+    INTAKE_CHANNELS,
+    UNAVAILABLE_REASON,
+    is_available,
+)
 from app.core.schemas import ListParams
 from app.db.repository import paginate
 from app.features.vendors.schemas import (
+    IntakeChannelOut,
     VendorCreateRequest,
     VendorOptionOut,
     VendorOut,
@@ -141,8 +148,11 @@ def _to_out(row: Vendor, model_count: int) -> VendorOut:
         city=row.city,
         state=row.state,
         pincode=row.pincode,
+        intakeChannels=list(row.intake_channels or []),
         isActive=row.is_active,
         modelCount=model_count,
+        # 0 until the jobs slice exists — see VendorOut.ticketCount.
+        ticketCount=0,
         createdAt=row.created_at,
     )
 
@@ -176,6 +186,7 @@ async def list_vendors(
     params: ListParams,
     *,
     status_filter: str | None = None,
+    channel: str | None = None,
 ) -> tuple[list[VendorOut], int]:
     stmt = select(Vendor).where(
         Vendor.company_id == principal.company_id,
@@ -186,6 +197,10 @@ async def list_vendors(
         stmt = stmt.where(Vendor.is_active.is_(True))
     elif status_filter == "paused":
         stmt = stmt.where(Vendor.is_active.is_(False))
+    if channel:
+        # JSONB containment, so the GIN index on intake_channels does the work
+        # rather than a scan that unpacks every row's array.
+        stmt = stmt.where(Vendor.intake_channels.contains([channel]))
 
     column = SORTABLE.get(params.sortBy or "name", Vendor.name)
     stmt = stmt.order_by(column.desc() if params.sortDir == "desc" else column.asc())
@@ -199,6 +214,27 @@ async def get_vendor(
     db: AsyncSession, principal: Principal, vendor_id: uuid.UUID
 ) -> VendorOut:
     return await _one(db, await _load(db, principal.company_id, vendor_id))
+
+
+def list_channels() -> list[IntakeChannelOut]:
+    """The intake-channel catalogue, in requirement-document order.
+
+    Not a database read — the three channels are code on every surface. This
+    endpoint exists so the console renders one "coming soon" reason and cannot
+    offer a channel the schema layer would refuse, not so the set can change at
+    runtime. Same reasoning as `GET /masters/icons`.
+    """
+    return [
+        IntakeChannelOut(
+            value=channel,
+            description=CHANNEL_DESCRIPTION[channel],
+            available=is_available(channel),
+            unavailableReason=(
+                None if is_available(channel) else UNAVAILABLE_REASON.get(channel)
+            ),
+        )
+        for channel in INTAKE_CHANNELS
+    ]
 
 
 async def list_options(
@@ -244,6 +280,7 @@ async def create_vendor(
         city=body.city,
         state=body.state,
         pincode=body.pincode,
+        intake_channels=list(body.intakeChannels),
         is_active=body.isActive,
         created_by=principal.user_id,
     )
@@ -285,6 +322,9 @@ async def update_vendor(
         row.state = body.state
     if body.pincode is not None:
         row.pincode = body.pincode
+    if body.intakeChannels is not None:
+        # A new list, not a mutation: SQLAlchemy does not track JSONB in place.
+        row.intake_channels = list(body.intakeChannels)
     if body.isActive is not None:
         row.is_active = body.isActive
     row.updated_by = principal.user_id

@@ -29,6 +29,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
@@ -45,6 +46,24 @@ class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
     #: The trading name, and the label the brand picker shows.
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    #: How this vendor's tickets reach us — one or more of
+    #: `app.core.intake.INTAKE_CHANNELS`, in the order they were picked.
+    #:
+    #: JSONB rather than a child table, for the same reason as
+    #: `ProductModel.image_urls`: the list is bounded at three, always read
+    #: whole with its vendor, and never queried on its own — a join would buy
+    #: nothing and cost a second composite-FK relationship to keep tenant-safe.
+    #: Membership and "at least one" are a CHECK in the migration; which of them
+    #: may be SELECTED today is a schema-layer rule, because that changes when
+    #: the API push endpoint ships and should not need a migration.
+    #:
+    #: Assign a NEW list to change it. SQLAlchemy does not track mutation of a
+    #: plain JSONB value in place, so `row.intake_channels.append(...)` saves
+    #: nothing.
+    intake_channels: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[\"Manual\"]'::jsonb")
+    )
 
     # Statutory identity. Entered by hand today, like companies.
     gst_number: Mapped[str] = mapped_column(String(15), nullable=False)
