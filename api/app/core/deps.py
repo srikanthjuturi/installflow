@@ -20,7 +20,7 @@ from app.core.database import get_db
 from app.core.features import effective_features
 from app.core.security import decode_token
 from app.models.membership import Membership
-from app.models.role import ROLE_RANKS, SUPERADMIN
+from app.models.role import ROLE_LABELS, ROLE_RANKS, SUPERADMIN
 from app.models.user import User
 
 _bearer = HTTPBearer(auto_error=False)
@@ -144,6 +144,38 @@ def require_feature(feature_key: str):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing feature: {feature_key}",
+            )
+        return principal
+
+    return _guard
+
+
+def require_min_rank(role_key: str):
+    """Dependency factory: a seniority floor a per-company override cannot lift.
+
+    `require_feature` alone is not enough when a requirement is stated in terms
+    of ROLES rather than capability. Feature grants are deliberately overridable
+    per company through `company_role_features`, so an admin could hand a
+    national-head-only screen to a Regional Head by flipping a row. Where the
+    rule is "this role and above, full stop", this guard says so in code.
+
+    Use it ALONGSIDE `require_feature`, never instead: hard rule 2 still wants
+    every endpoint carrying a feature key, and the console reads that key to
+    decide what to render.
+
+    Superadmin is already refused, because this builds on `CompanyPrincipal` —
+    they hold no membership and their feature set is only `companies.*`.
+    """
+    floor = ROLE_RANKS.get(role_key)
+    if floor is None:  # a typo in a route definition, caught at import time
+        raise ValueError(f"Unknown role: {role_key}")
+    label = ROLE_LABELS.get(role_key, role_key)
+
+    def _guard(principal: CompanyPrincipal) -> Principal:
+        if principal.rank > floor:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"{label} and above only",
             )
         return principal
 
