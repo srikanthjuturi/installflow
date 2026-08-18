@@ -19,12 +19,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldLegend,
   FieldSeparator,
+  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,10 +48,13 @@ import type {
   ProductCategory,
   ProductModel,
   ProductSubcategory,
+  ServiceType,
 } from "@/types/product";
 import { StatusField } from "./StatusField";
 import {
   MAX_MODEL_IMAGES,
+  SERVICE_TYPES,
+  SERVICE_TYPE_HINT,
   modelSchema,
   statusOf,
   type ModelFormValues,
@@ -112,6 +118,9 @@ function ModelForm({
     defaultValues: {
       name: model?.name ?? "",
       vendorId: model?.vendorId ?? "",
+      // Installation + demo is what this product exists for, so it is the
+      // starting point for a new model rather than an empty set.
+      serviceTypes: model?.serviceTypes ?? ["Installation + Demo"],
       capacity: model?.capacity ?? "",
       warrantyMonths:
         model?.warrantyMonths === null || model?.warrantyMonths === undefined
@@ -157,6 +166,7 @@ function ModelForm({
     const body = {
       name: values.name,
       vendorId: values.vendorId,
+      serviceTypes: values.serviceTypes,
       // An empty box means "not recorded", which the API stores as null —
       // never an empty string, so "unknown" and "blank" cannot diverge.
       capacity: values.capacity.trim() || null,
@@ -251,6 +261,20 @@ function ModelForm({
             )}
           </Field>
         </div>
+
+        <FieldSeparator />
+
+        <Controller
+          name="serviceTypes"
+          control={control}
+          render={({ field }) => (
+            <ServiceTypeField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.serviceTypes?.message}
+            />
+          )}
+        />
 
         <FieldSeparator />
 
@@ -450,6 +474,114 @@ function ModelForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/**
+ * What a technician can be sent to do with this model.
+ *
+ * Checkboxes rather than a dropdown: most models support more than one, and a
+ * multi-select dropdown hides the choices behind a click when there are only
+ * three of them. All three fit on screen, so show all three.
+ *
+ * "Select all" is a plain checkbox, not a tri-state one. An indeterminate box
+ * would mean editing `ui/checkbox.tsx`, which is shadcn and not hand-edited —
+ * and a half-filled square communicates through shape alone. The live count
+ * beside the legend says "2 of 3 selected" in words instead, which is both
+ * clearer and readable by a screen reader.
+ */
+function ServiceTypeField({
+  value,
+  onChange,
+  error,
+}: {
+  value: ServiceType[];
+  onChange: (next: ServiceType[]) => void;
+  error?: string;
+}) {
+  const allSelected = value.length === SERVICE_TYPES.length;
+
+  function toggle(type: ServiceType, checked: boolean) {
+    // Rebuilt from SERVICE_TYPES rather than appended, so the order sent is
+    // catalogue order however the boxes were clicked — matching what the API
+    // stores, so a saved model never reorders under the user.
+    const next = new Set(value);
+    if (checked) next.add(type);
+    else next.delete(type);
+    onChange(SERVICE_TYPES.filter((t) => next.has(t)));
+  }
+
+  return (
+    <FieldSet
+      className="gap-3"
+      data-invalid={error ? true : undefined}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? "model-service-error" : "model-service-hint"}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="grid gap-0.5">
+          <FieldLegend variant="label" className="mb-0 text-ink">
+            Service types
+          </FieldLegend>
+          <FieldDescription id="model-service-hint" className="mt-0">
+            What a technician can be sent to do with this model.{" "}
+            <span className="tabular-nums">
+              {value.length} of {SERVICE_TYPES.length} selected
+            </span>
+            .
+          </FieldDescription>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-ink-2">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={(next) =>
+              onChange(next === true ? [...SERVICE_TYPES] : [])
+            }
+          />
+          Select all
+        </label>
+      </div>
+
+      <div className="grid gap-2">
+        {SERVICE_TYPES.map((type) => {
+          const checked = value.includes(type);
+          return (
+            <label
+              key={type}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                checked
+                  ? "border-brand-500 bg-brand-100/40"
+                  : "border-line hover:border-brand-400"
+              )}
+            >
+              <Checkbox
+                className="mt-0.5"
+                checked={checked}
+                onCheckedChange={(next) => toggle(type, next === true)}
+              />
+              <span className="grid gap-0.5">
+                <span className="text-[13px] font-medium">{type}</span>
+                <span className="text-xs text-ink-2">
+                  {SERVICE_TYPE_HINT[type]}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <FieldDescription
+          id="model-service-error"
+          role="alert"
+          className="text-danger"
+        >
+          {error}
+        </FieldDescription>
+      ) : null}
+    </FieldSet>
   );
 }
 

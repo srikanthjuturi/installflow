@@ -320,6 +320,10 @@ function ModelChip({
     model.warrantyMonths === null
       ? null
       : `${model.warrantyMonths} month warranty`,
+    // In the tooltip rather than on the chip: three service types would double
+    // a chip's width, and this is a detail you go looking for once the brand
+    // and size have told you which model you are looking at.
+    model.serviceTypes.length ? model.serviceTypes.join(", ") : null,
   ].filter(Boolean);
 
   const body = (
