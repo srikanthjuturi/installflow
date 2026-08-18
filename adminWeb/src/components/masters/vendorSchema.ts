@@ -50,6 +50,19 @@ export const CHANNEL_HINT: Record<IntakeChannel, string> = {
   Manual: "Ops key each ticket in by hand.",
 };
 
+/**
+ * Last-resort availability, used ONLY when `GET /vendors/channels` fails.
+ *
+ * Mirrors AVAILABLE_INTAKE_CHANNELS in `app/core/intake.py`. Deliberately not
+ * consulted on the happy path — the server is the authority, so enabling API
+ * there needs no change here. This exists so a dropped request degrades to a
+ * usable form instead of one where every box is disabled.
+ *
+ * It errs safe in the only direction that matters: it can offer fewer channels
+ * than the server allows, never more, and the server refuses the difference.
+ */
+export const LOCAL_AVAILABLE: readonly IntakeChannel[] = ["Excel", "Manual"];
+
 /** Which of our own screens serves each channel. Null where nobody's does. */
 export const CHANNEL_SCREEN: Record<IntakeChannel, string | null> = {
   API: null,

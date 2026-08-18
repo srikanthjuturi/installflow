@@ -570,7 +570,13 @@ async def update_model(
         name = body.name.strip()
         await _assert_model_name_free(db, row.subcategory_id, name, exclude_id=model_id)
         row.name = name
-    if body.vendorId is not None:
+    # Only when the brand actually CHANGES. The console resends the model's
+    # existing vendorId on every save, so validating unconditionally made a
+    # model uneditable the moment its brand was paused — you could not even fix
+    # a typo in the name. That also contradicted what the vendor screen
+    # promises: "models already carrying the brand keep it". Moving to a paused
+    # vendor is still refused, which is the rule that was actually wanted.
+    if body.vendorId is not None and body.vendorId != row.vendor_id:
         await _validate_vendor(db, principal.company_id, body.vendorId)
         row.vendor_id = body.vendorId
     if body.serviceTypes is not None:

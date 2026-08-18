@@ -48,6 +48,8 @@ router = APIRouter(prefix="/vendors", tags=["vendors"])
 Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("vendors.view"))]
 CanEdit = Annotated[Principal, Depends(require_feature("vendors.edit"))]
+#: The brand picker on the product model form — see `list_vendor_options`.
+CanPickBrand = Annotated[Principal, Depends(require_feature("masters.view"))]
 NationalHeadUp = Depends(require_min_rank(NATIONAL_HEAD))
 
 
@@ -58,8 +60,13 @@ async def list_vendors(
     db: Db,
     principal: CanView,
     params: Annotated[ListParams, Depends(list_params)],
-    status: Annotated[str | None, Query(pattern="^(active|paused)$")] = None,
-    channel: Annotated[str | None, Query(pattern="^(API|Excel|Manual)$")] = None,
+    # Case-insensitive on purpose. These arrive from a shareable query string,
+    # and an older bookmark carrying ?status=Active used to 422 the entire list
+    # — a whole screen of "Something went wrong" over the case of one letter.
+    status: Annotated[str | None, Query(pattern="(?i)^(active|paused)$")] = None,
+    channel: Annotated[
+        str | None, Query(pattern="(?i)^(api|excel|manual)$")
+    ] = None,
 ) -> PaginatedEnvelope[VendorOut]:
     rows, total = await service.list_vendors(
         db, principal, params, status_filter=status, channel=channel
@@ -83,14 +90,22 @@ async def list_intake_channels(
     return envelope(service.list_channels())
 
 
-@router.get(
-    "/options",
-    response_model=ApiEnvelope[list[VendorOptionOut]],
-    dependencies=[NationalHeadUp],
-)
+@router.get("/options", response_model=ApiEnvelope[list[VendorOptionOut]])
 async def list_vendor_options(
-    db: Db, principal: CanView
+    db: Db, principal: CanPickBrand
 ) -> ApiEnvelope[list[VendorOptionOut]]:
+    """Brand names for the product model form.
+
+    Gated on `masters.view` and NOT on `vendors.view` or the National Head
+    floor, unlike every other route here — its only consumer is the product
+    master, and gating it more tightly than the screen that needs it would
+    dead-end model editing with "Couldn't load brands" for anyone holding
+    `masters.edit` without `vendors.view`.
+
+    No leak either way: this returns id and name only, and `vendorName` is
+    already on every model in the catalogue tree that `masters.view` returns.
+    The statutory identity, contact and address stay National-Head-only.
+    """
     return envelope(await service.list_options(db, principal))
 
 

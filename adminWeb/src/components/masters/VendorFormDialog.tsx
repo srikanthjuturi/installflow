@@ -40,6 +40,7 @@ import {
   CHANNEL_HINT,
   CHANNEL_SCREEN,
   INTAKE_CHANNELS,
+  LOCAL_AVAILABLE,
   statusOf,
   vendorSchema,
   type VendorFormValues,
@@ -142,16 +143,28 @@ function IntakeChannelField({
   onChange: (next: IntakeChannel[]) => void;
   error?: string;
 }) {
-  const { data, isPending } = useIntakeChannels();
+  const { data, isPending, isError } = useIntakeChannels();
 
-  // Until the catalogue lands, render the three we know with the approved copy
-  // and nothing enabled — the list never flashes empty or unlabelled.
+  /*
+   * Three states, and they must not be conflated.
+   *
+   * Loading  — render the three we know, disabled, so the list never flashes
+   *            empty or unlabelled while the request is in flight.
+   * Loaded   — the server is the authority.
+   * FAILED   — fall back to LOCAL_AVAILABLE rather than leaving everything
+   *            disabled. Treating a failed fetch as "nothing is available" put
+   *            "Coming soon" on Excel and Manual and made the whole form
+   *            unsubmittable, and `staleTime: Infinity` meant it never quietly
+   *            recovered. The fallback errs safe: it can only ever offer FEWER
+   *            channels than the server would, never more, and the server
+   *            refuses anything it disagrees with regardless.
+   */
   const options: IntakeChannelOption[] =
     data ??
     INTAKE_CHANNELS.map((value) => ({
       value,
       description: CHANNEL_HINT[value],
-      available: false,
+      available: isError ? LOCAL_AVAILABLE.includes(value) : false,
       unavailableReason: null,
     }));
 
