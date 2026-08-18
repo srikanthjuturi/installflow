@@ -169,6 +169,9 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_product_models_subcategory_id", "subcategory_id"),
         Index("ix_product_models_company_id", "company_id"),
         Index("ix_product_models_vendor_id", "vendor_id"),
+        # What a ticket's composite FK points at. Added when tickets landed —
+        # until then nothing hung off a model, so there was nothing to point.
+        UniqueConstraint("company_id", "id", name="uq_product_models_company_id_id"),
         ForeignKeyConstraint(
             ["company_id", "subcategory_id"],
             ["product_subcategories.company_id", "product_subcategories.id"],

@@ -14,6 +14,7 @@ from app.models.technician import (
     TechnicianSubcategory,
 )
 from app.models.territory import MembershipPincode, MembershipRegion, Region
+from app.models.ticket import Ticket
 from app.models.token import RefreshToken
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -38,6 +39,7 @@ __all__ = [
     "TechnicianPincode",
     "TechnicianProfile",
     "TechnicianSubcategory",
+    "Ticket",
     "User",
     "Vendor",
 ]

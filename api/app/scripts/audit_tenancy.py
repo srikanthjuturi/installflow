@@ -64,6 +64,10 @@ TENANT_LINKS = [
     ("technician_subcategories", "subcategory_id", "product_subcategories"),
     ("technician_pincodes", "technician_id", "technician_profiles"),
     ("technician_profiles", "membership_id", "memberships"),
+    ("tickets", "vendor_id", "vendors"),
+    ("tickets", "subcategory_id", "product_subcategories"),
+    ("tickets", "model_id", "product_models"),
+    ("tickets", "technician_id", "technician_profiles"),
 ]
 
 

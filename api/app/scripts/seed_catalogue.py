@@ -23,6 +23,7 @@ regions).
 import asyncio
 import sys
 import warnings
+from datetime import datetime, timedelta, timezone
 from itertools import cycle
 
 if sys.platform == "win32":
@@ -39,6 +40,7 @@ from app.models.product import (  # noqa: E402
     ProductModel,
     ProductSubcategory,
 )
+from app.models.ticket import Ticket  # noqa: E402
 from app.models.vendor import Vendor  # noqa: E402
 
 # (name, gst_number, cin, contact_person, phone, address, city, state, pincode,
@@ -418,6 +420,140 @@ async def seed() -> None:
                 )
             else:
                 print(f"{company.name}: catalogue already complete — nothing to add")
+
+            await _seed_tickets(session, company)
+
+
+# (customer, phone, address, city, state, pincode, subcategory, service_type,
+#  description, serial, level_hours, slot_in_hours, status)
+#
+# `slot_in_hours` is relative to seeding time: None leaves the ticket without a
+# slot, and a value LARGER than the service level produces a ticket that is
+# already breaching — which is the state the list is sorted to surface, so the
+# screen needs at least one.
+Seeded = tuple[
+    str, str, str, str, str, str, str, str, str | None, str | None, int, int | None, str
+]
+TICKETS: list[Seeded] = [
+    (
+        "Anil Deshmukh", "+919822041120", "B-1204, Oberoi Springs, Andheri West",
+        "Pune", "Maharashtra", "411014", "Television", "Installation + Demo",
+        None, "VDC43UHD-1180", 24, 8, "In Progress",
+    ),
+    (
+        "Rajesh Nair", "+919876533110", "A-702, Raheja Heights, Baner Road",
+        "Pimpri", "Maharashtra", "411018", "Washing Machine", "Installation + Demo",
+        None, None, 24, 30, "Escalated",          # slot beyond the window: breach
+    ),
+    (
+        "Sameer Bhosale", "+919011224455", "Flat 9, Sai Residency, NIBM Road",
+        "Hadapsar", "Maharashtra", "411028", "Air Conditioner", "Service",
+        "Cooling has dropped since the last service and the outdoor unit rattles.",
+        None, 12, 6, "Assigned",
+    ),
+    (
+        "Meera Kulkarni", "+919960771234", "12, Sunrise Society, Karve Nagar",
+        "Kothrud", "Maharashtra", "411038", "Refrigerator", "Tech Visit",
+        "Freezer compartment is icing over within a day of defrosting.",
+        None, 36, None, "Slot Pending",           # no slot: burns the window
+    ),
+    (
+        "Farhan Qureshi", "+919820998877", "301, Lake View, Wakad Road",
+        "Wakad", "Maharashtra", "411057", "Microwave", "Installation + Demo",
+        None, None, 48, 20, "New",
+    ),
+    (
+        "Divya Menon", "+919833445566", "7, Green Acres, Aundh",
+        "Aundh", "Maharashtra", "411007", "Water Purifier", "Service",
+        "Filter change due and the tap is dripping continuously.",
+        "VDC-RO8L-4471", 24, 14, "Closed",
+    ),
+]
+
+
+async def _seed_tickets(session, company) -> None:
+    """A spread of tickets so the list, its filters and the urgency sort mean
+    something the first time somebody opens the screen.
+
+    Skipped entirely for a company that already has any — these are a starting
+    point, not a correction to real intake.
+    """
+    existing = await session.scalar(
+        select(func.count(Ticket.id)).where(Ticket.company_id == company.id)
+    )
+    if existing:
+        print(f"{company.name}: {existing} tickets already — skipped")
+        return
+
+    models = list(
+        await session.scalars(
+            select(ProductModel)
+            .where(
+                ProductModel.company_id == company.id,
+                ProductModel.deleted_at.is_(None),
+            )
+            .order_by(ProductModel.sort_order)
+        )
+    )
+    if not models:
+        print(f"{company.name}: no product models yet — no tickets seeded")
+        return
+
+    subs = {
+        s.id: s
+        for s in await session.scalars(
+            select(ProductSubcategory).where(
+                ProductSubcategory.company_id == company.id,
+                ProductSubcategory.deleted_at.is_(None),
+            )
+        )
+    }
+    now = datetime.now(timezone.utc)
+    made = 0
+
+    for index, row in enumerate(TICKETS):
+        (
+            customer, phone, address, city, state, pincode, sub_name,
+            service_type, description, serial, level, slot_in, status,
+        ) = row
+
+        model = next(
+            (m for m in models if subs.get(m.subcategory_id, None)
+             and subs[m.subcategory_id].name == sub_name),
+            None,
+        )
+        if model is None:
+            continue
+
+        slot_start = now + timedelta(hours=slot_in) if slot_in is not None else None
+        session.add(
+            Ticket(
+                company_id=company.id,
+                code=f"INST-{240912 + index}",
+                vendor_id=model.vendor_id,
+                subcategory_id=model.subcategory_id,
+                model_id=model.id,
+                service_type=service_type,
+                description=description,
+                serial_number=serial,
+                customer_name=customer,
+                customer_phone=phone,
+                address=address,
+                city=city,
+                state=state,
+                pincode=pincode,
+                expected_date=(now + timedelta(days=1)).date(),
+                service_level_hours=level,
+                slot_start=slot_start,
+                slot_end=slot_start + timedelta(hours=2) if slot_start else None,
+                sla_due_at=now + timedelta(hours=level),
+                status=status,
+            )
+        )
+        made += 1
+
+    await session.commit()
+    print(f"{company.name}: seeded {made} tickets")
 
 
 if __name__ == "__main__":
