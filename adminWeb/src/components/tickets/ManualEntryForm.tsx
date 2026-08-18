@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { Controller, useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Info } from "lucide-react";
@@ -57,7 +58,6 @@ export function ManualEntryForm({
   onCancel,
   isSubmitting,
 }: ManualEntryFormProps) {
-  const { data: tree } = useCategoryTree();
   const { data: vendors } = useVendorOptions();
 
   const {
@@ -91,10 +91,26 @@ export function ManualEntryForm({
   // Models belong to a subcategory, so the second select depends on the first.
   // useWatch subscribes to just this field — watch() re-renders on every
   // keystroke anywhere in the form and isn't memoization-safe.
+  const vendorId = useWatch({ control, name: "vendorId" });
   const subcategoryId = useWatch({ control, name: "subcategoryId" });
   const modelId = useWatch({ control, name: "modelId" });
   const serviceType = useWatch({ control, name: "serviceType" });
   const slotStart = useWatch({ control, name: "slotStart" });
+
+  /* The whole picker is a cascade, and the vendor is the top of it: a ticket is
+     raised against a specific brand's product, so the categories on offer are
+     the ones that vendor actually makes something in. Narrowing on the server
+     rather than filtering here means the empty case is a fact the API states,
+     not something the form has to infer from an empty array. */
+  const { data: tree, isPending: treePending } = useCategoryTree(
+    false,
+    vendorId
+  );
+  const vendorName = vendors?.find((v) => v.id === vendorId)?.name ?? "";
+  // A vendor with nothing to install is a gap in the master, not a dead end for
+  // the person keying in a ticket — so it is named, with somewhere to go.
+  const vendorHasNothing =
+    Boolean(vendorId) && !treePending && (tree ?? []).length === 0;
 
   /* The master is three levels deep but the approved form has one Category
      field, so the parent becomes the dropdown's group heading rather than a
@@ -188,12 +204,28 @@ export function ManualEntryForm({
                 ]}
                 control={control}
                 error={err("vendorId")}
+                onChanged={() => {
+                  // Everything below hangs off the vendor, and none of it
+                  // survives a change of brand.
+                  setValue("subcategoryId", "", { shouldValidate: false });
+                  setValue("modelId", "", { shouldValidate: false });
+                  setValue("serviceType", "Installation + Demo", {
+                    shouldValidate: false,
+                  });
+                }}
               />
               <SelectField
                 name="subcategoryId"
                 label="Category"
-                placeholder="Select category"
+                placeholder={
+                  !vendorId
+                    ? "Pick a vendor first"
+                    : vendorHasNothing
+                      ? `${vendorName} has no product models yet`
+                      : "Select category"
+                }
                 groups={categoryGroups}
+                disabled={!vendorId || vendorHasNothing}
                 control={control}
                 error={err("subcategoryId")}
                 onChanged={() => {
@@ -264,6 +296,31 @@ export function ManualEntryForm({
               catches. Leave it blank if you do not have it.
             </FieldDescription>
           </FieldSet>
+
+          {/* A dead end with a way out of it: an empty dropdown reads as broken,
+              this reads as a task and links to where it is done.
+
+              Card level, NOT inside the FieldSet above. A bare <p> among Fields
+              is caught by the field CSS — `*:w-full` and the grid's stretch
+              between them collapsed the whole select row to zero height, which
+              looked exactly like the four dropdowns had vanished. The info
+              banner at the foot of this form sits here for the same reason. */}
+          {vendorHasNothing ? (
+            <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+              <Info className="mt-px size-4 shrink-0" aria-hidden />
+              <span>
+                {vendorName} has no product models yet, so there is nothing to
+                raise a ticket against.{" "}
+                <Link
+                  to="/categories"
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Add one in Product Master
+                </Link>
+                , or pick a different vendor.
+              </span>
+            </p>
+          ) : null}
 
           <FieldSet>
             <FieldLegend className="text-sm font-semibold">

@@ -212,7 +212,11 @@ async def subcategory_ids_for_company(
 
 
 async def get_tree(
-    db: AsyncSession, principal: Principal, *, include_inactive: bool = False
+    db: AsyncSession,
+    principal: Principal,
+    *,
+    include_inactive: bool = False,
+    vendor_id: uuid.UUID | None = None,
 ) -> list[ProductCategoryOut]:
     """The whole catalogue in one response.
 
@@ -220,6 +224,15 @@ async def get_tree(
     catalogue is small (tens of rows), and it feeds the technician form, ticket
     intake and the mobile coverage screen, where a second round trip on a field
     connection costs more than the join would have.
+
+    `vendor_id` narrows it to ONE BRAND'S catalogue: only that vendor's models,
+    and only the subcategories and categories left holding any. A ticket is
+    raised against a specific vendor's product, so intake picks the vendor first
+    and everything below it follows.
+
+    Technician certification deliberately does NOT pass this — a technician is
+    skilled at Televisions whoever made them, and scoping that by brand would
+    mean re-certifying everybody each time a vendor is onboarded.
     """
     company_id = principal.company_id
 
@@ -239,6 +252,8 @@ async def get_tree(
         cat_stmt = cat_stmt.where(ProductCategory.is_active.is_(True))
         sub_stmt = sub_stmt.where(ProductSubcategory.is_active.is_(True))
         model_stmt = model_stmt.where(ProductModel.is_active.is_(True))
+    if vendor_id is not None:
+        model_stmt = model_stmt.where(ProductModel.vendor_id == vendor_id)
 
     categories = list(
         await db.scalars(cat_stmt.order_by(ProductCategory.sort_order, ProductCategory.name))
@@ -283,6 +298,12 @@ async def get_tree(
 
     subs_by_cat: dict[uuid.UUID, list[ProductSubcategoryOut]] = {}
     for s in subcategories:
+        # Filtering to one vendor prunes upward: a subcategory holding none of
+        # that brand's models is not a choice, and offering it would dead-end
+        # the picker below it. Unfiltered, every subcategory stays — an empty
+        # one is a real part of the master that somebody still has to fill.
+        if vendor_id is not None and not models_by_sub.get(s.id):
+            continue
         subs_by_cat.setdefault(s.category_id, []).append(
             ProductSubcategoryOut(
                 id=s.id,
@@ -309,6 +330,8 @@ async def get_tree(
             subcategories=subs_by_cat.get(c.id, []),
         )
         for c in categories
+        # Same pruning one level up.
+        if vendor_id is None or subs_by_cat.get(c.id)
     ]
 
 

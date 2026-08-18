@@ -49,8 +49,17 @@ async def get_categories(
     db: Db,
     principal: CanView,
     includeInactive: Annotated[bool, Query()] = False,
+    vendorId: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ApiEnvelope[list[ProductCategoryOut]]:
-    data = await service.get_tree(db, principal, include_inactive=includeInactive)
+    """The catalogue, whole or narrowed to one brand.
+
+    `vendorId` returns only that vendor's models, and only the subcategories and
+    categories left holding any — ticket intake picks a vendor first, and the
+    pickers under it must not offer a path that dead-ends.
+    """
+    data = await service.get_tree(
+        db, principal, include_inactive=includeInactive, vendor_id=vendorId
+    )
     return envelope(data)
 
 
