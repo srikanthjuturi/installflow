@@ -140,6 +140,26 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str, list[str]]] = [
 # rows, once in the name and once in `capacity`. That duplication is the point
 # of the column: a model added from now on splits them properly, and these can
 # be tidied without touching anything that references them by id.
+# What a technician can be sent to do, keyed by SUBCATEGORY rather than by
+# model: every television behaves the same way here, and repeating the list on
+# all five of them would be five chances to disagree. A model added by hand can
+# still differ — this only seeds the sensible starting point.
+#
+# Deliberately a mix of one, two and three, so the checkbox group and its
+# "Select all" are exercised the moment anyone opens the screen.
+SERVICE_TYPES_BY_SUBCATEGORY: dict[str, list[str]] = {
+    "Television": ["Installation + Demo", "Tech Visit"],
+    # Split ACs are installed, demonstrated, and then serviced every season.
+    "Air Conditioner": ["Installation + Demo", "Tech Visit", "Service"],
+    "Washing Machine": ["Installation + Demo", "Service"],
+    "Refrigerator": ["Installation + Demo", "Tech Visit"],
+    # Sits on a counter and plugs in; there is nothing to service.
+    "Microwave": ["Installation + Demo"],
+    # The filters are the whole product — servicing is most of its life.
+    "Water Purifier": ["Installation + Demo", "Service"],
+}
+DEFAULT_SERVICE_TYPES = ["Installation + Demo"]
+
 Models = list[tuple[str, str | None, int | None]]
 CATALOGUE: list[tuple[str, str, list[tuple[str, str, Models]]]] = [
     (
@@ -374,6 +394,14 @@ async def seed() -> None:
                                 subcategory_id=subcategory.id,
                                 vendor_id=brand,
                                 name=name,
+                                # A copy per model — the literal is shared, and
+                                # handing the same list object to a JSONB column
+                                # twice is a bug waiting to happen.
+                                service_types=list(
+                                    SERVICE_TYPES_BY_SUBCATEGORY.get(
+                                        sub_name, DEFAULT_SERVICE_TYPES
+                                    )
+                                ),
                                 capacity=capacity,
                                 warranty_months=warranty,
                                 sort_order=m_order,

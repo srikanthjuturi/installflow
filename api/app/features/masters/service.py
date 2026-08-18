@@ -269,6 +269,7 @@ async def get_tree(
                 vendorId=m.vendor_id,
                 vendorName=vendor_names.get(m.vendor_id, ""),
                 name=m.name,
+                serviceTypes=list(m.service_types or []),
                 capacity=m.capacity,
                 warrantyMonths=m.warranty_months,
                 imageUrls=list(m.image_urls or []),
@@ -543,6 +544,7 @@ async def create_model(
             subcategory_id=subcategory_id,
             vendor_id=body.vendorId,
             name=name,
+            service_types=list(body.serviceTypes),
             capacity=(body.capacity or "").strip() or None,
             warranty_months=body.warrantyMonths,
             image_urls=list(body.imageUrls),
@@ -571,6 +573,9 @@ async def update_model(
     if body.vendorId is not None:
         await _validate_vendor(db, principal.company_id, body.vendorId)
         row.vendor_id = body.vendorId
+    if body.serviceTypes is not None:
+        # A new list, not a mutation: SQLAlchemy does not track JSONB in place.
+        row.service_types = list(body.serviceTypes)
     # These three can be CLEARED, so they test presence in the payload rather
     # than "is not None" — an explicit null has to mean "remove it", which the
     # other fields' test would read as "leave it alone".

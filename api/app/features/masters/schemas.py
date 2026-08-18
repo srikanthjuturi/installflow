@@ -19,6 +19,7 @@ from pydantic import AfterValidator, BaseModel, Field
 from app.core.icons import PRODUCT_ICON_KEYS
 from app.core.images import check_image_url
 from app.core.schemas import AppModel
+from app.core.service_types import DEFAULT_SERVICE_TYPES, SERVICE_TYPES
 
 #: Photos per model. Enough for the front, the label and the box; low enough
 #: that the gallery still fits a phone screen and a list response stays small.
@@ -43,8 +44,28 @@ def _check_image_urls(values: list[str]) -> list[str]:
     return [check_image_url(url) for url in urls]
 
 
+def _check_service_types(values: list[str]) -> list[str]:
+    """Clean and bound what a technician can be sent to do with this model.
+
+    Rebuilt in catalogue order rather than the order they arrived, so two models
+    with the same three types read identically everywhere they are listed.
+    """
+    picked = {v.strip() for v in values if v and v.strip()}
+    if not picked:
+        raise ValueError("Pick at least one service type")
+
+    unknown = sorted(picked - set(SERVICE_TYPES))
+    if unknown:
+        raise ValueError(
+            f"Unknown service type: {', '.join(unknown)}. "
+            f"Choose from {', '.join(SERVICE_TYPES)}."
+        )
+    return [s for s in SERVICE_TYPES if s in picked]
+
+
 IconKey = Annotated[str, Field(max_length=32), AfterValidator(_check_icon)]
 ImageUrls = Annotated[list[str], AfterValidator(_check_image_urls)]
+ServiceTypes = Annotated[list[str], AfterValidator(_check_service_types)]
 
 Name64 = Annotated[str, Field(min_length=2, max_length=64)]
 Name120 = Annotated[str, Field(min_length=1, max_length=120)]
@@ -98,6 +119,11 @@ class ModelCreateRequest(BaseModel):
     #: The vendor whose brand this model carries. Validated against the caller's
     #: own company in the service — an id in a body is an assertion, not a fact.
     vendorId: uuid.UUID
+    #: What a technician can be sent to do with it. Defaults to installation and
+    #: demo, which is the work this product was built around.
+    serviceTypes: ServiceTypes = Field(
+        default_factory=lambda: list(DEFAULT_SERVICE_TYPES)
+    )
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
     imageUrls: ImageUrls = Field(default_factory=list)
@@ -109,6 +135,9 @@ class ModelUpdateRequest(BaseModel):
     #: Re-branding is allowed; clearing the brand is not, so this is optional
     #: rather than clearable.
     vendorId: uuid.UUID | None = None
+    #: Sent whole — omitting it leaves the list alone, and an empty list is
+    #: refused rather than clearing it. A model does nothing is not a model.
+    serviceTypes: ServiceTypes | None = None
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
     #: Sent whole, never patched entry by entry — an empty list clears the
@@ -129,6 +158,9 @@ class ProductModelOut(AppModel):
     vendorId: uuid.UUID
     vendorName: str
     name: str
+    #: What a technician can be sent to do with it, in catalogue order. This is
+    #: what ticket intake will offer once the jobs slice reads it.
+    serviceTypes: list[str]
     capacity: str | None
     warrantyMonths: int | None
     #: Ordered; the first is the thumbnail. Empty when no photo was uploaded.
