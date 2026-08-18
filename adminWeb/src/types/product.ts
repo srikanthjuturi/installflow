@@ -15,6 +15,10 @@ import type { IconKey } from "@/components/masters/icons";
 export interface ProductModel {
   id: string;
   subcategoryId: string;
+  /** The brand — a vendor of this company. Mandatory. */
+  vendorId: string;
+  /** Resolved by the API, so no list fetches the vendor list to draw a row. */
+  vendorName: string;
   name: string;
   /**
    * Size or rating — "43 inch", "7 kg", "340 L".
@@ -92,6 +96,7 @@ export interface UpdateSubcategoryInput {
 export interface CreateModelInput {
   subcategoryId: string;
   name: string;
+  vendorId: string;
   capacity?: string | null;
   warrantyMonths?: number | null;
   imageUrls?: string[];
@@ -101,6 +106,8 @@ export interface CreateModelInput {
 export interface UpdateModelInput {
   id: string;
   name?: string;
+  /** Re-branding is allowed; clearing the brand is not. */
+  vendorId?: string;
   capacity?: string | null;
   warrantyMonths?: number | null;
   /** Sent whole — an empty array clears the gallery. */

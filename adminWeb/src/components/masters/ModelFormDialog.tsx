@@ -26,9 +26,20 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCreateModel, useUpdateModel } from "@/hooks/useProductMaster";
+import { useVendorOptions } from "@/hooks/useVendors";
+import type { VendorOption } from "@/types/vendor";
 import type {
   ProductCategory,
   ProductModel,
@@ -96,6 +107,7 @@ function ModelForm({
     resolver: zodResolver(modelSchema),
     defaultValues: {
       name: model?.name ?? "",
+      vendorId: model?.vendorId ?? "",
       capacity: model?.capacity ?? "",
       warrantyMonths:
         model?.warrantyMonths === null || model?.warrantyMonths === undefined
@@ -140,6 +152,7 @@ function ModelForm({
   function submit(values: ModelFormValues) {
     const body = {
       name: values.name,
+      vendorId: values.vendorId,
       // An empty box means "not recorded", which the API stores as null —
       // never an empty string, so "unknown" and "blank" cannot diverge.
       capacity: values.capacity.trim() || null,
@@ -198,6 +211,35 @@ function ModelForm({
               {errors.name.message}
             </FieldDescription>
           ) : null}
+        </Field>
+
+        <Field data-invalid={errors.vendorId ? true : undefined}>
+          <FieldLabel htmlFor="model-vendor">Brand</FieldLabel>
+          <Controller
+            name="vendorId"
+            control={control}
+            render={({ field }) => (
+              <BrandSelect
+                value={field.value}
+                onChange={field.onChange}
+                invalid={errors.vendorId !== undefined}
+              />
+            )}
+          />
+          {errors.vendorId ? (
+            <FieldDescription
+              id="model-vendor-error"
+              role="alert"
+              className="text-danger"
+            >
+              {errors.vendorId.message}
+            </FieldDescription>
+          ) : (
+            <FieldDescription id="model-vendor-hint">
+              The vendor who makes it. Required — a model with no maker names
+              nothing a technician can be sent to install.
+            </FieldDescription>
+          )}
         </Field>
 
         {/* Both optional, and side by side because they are read together —
@@ -392,5 +434,73 @@ function ModelForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/**
+ * The brand picker, driven by the active vendors.
+ *
+ * Its empty state matters more than usual: a brand is required, so a company
+ * with no vendors yet cannot add a model at all. Saying that — and where to go
+ * — beats an empty menu that reads as a broken control.
+ */
+function BrandSelect({
+  value,
+  onChange,
+  invalid,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+}) {
+  const { data, isPending, isError } = useVendorOptions();
+  const vendors: VendorOption[] = data ?? [];
+  const disabled = isPending || isError || vendors.length === 0;
+
+  // Hard rule 10 — a single-option dropdown fills itself. Held off while the
+  // list is still loading, or one arriving option would look like "the only one".
+  useAutoSelectSingle(
+    vendors.map((v) => v.id),
+    value,
+    onChange,
+    !disabled
+  );
+
+  const selected = vendors.find((v) => v.id === value);
+
+  const placeholder = isPending
+    ? "Loading brands…"
+    : isError
+      ? "Couldn't load brands"
+      : vendors.length === 0
+        ? "No vendors yet — add one first"
+        : "Select a brand";
+
+  return (
+    <Select
+      value={value}
+      onValueChange={(v) => onChange(v ?? "")}
+      disabled={disabled}
+    >
+      <SelectTrigger
+        id="model-vendor"
+        className="w-full"
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={invalid ? "model-vendor-error" : "model-vendor-hint"}
+      >
+        <SelectValue placeholder={placeholder}>
+          {() => selected?.name ?? placeholder}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {vendors.map((v) => (
+            <SelectItem key={v.id} value={v.id}>
+              {v.name}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }

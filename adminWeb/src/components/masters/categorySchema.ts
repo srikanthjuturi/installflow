@@ -36,8 +36,14 @@ export const MAX_MODEL_IMAGES = 5;
  */
 export const modelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
+  /** The brand. Required — a model with no maker names nothing a technician
+   *  can be sent to install, and a brand backfilled later is one nobody
+   *  remembers. `min(1)` rather than `.uuid()`: the control stores "" when
+   *  empty, and "Select a brand" is the message that belongs on an empty
+   *  dropdown, not "invalid uuid". */
+  vendorId: z.string().min(1, "Select a brand"),
   /** Everything below is optional — a model is worth recording as soon as it
-   *  has a name, and ops fill the rest in as they learn it. */
+   *  has a name and a brand, and ops fill the rest in as they learn it. */
   capacity: z.string().trim().max(64, "Keep it short, e.g. 43 inch or 7 kg"),
   warrantyMonths: z
     .string()
