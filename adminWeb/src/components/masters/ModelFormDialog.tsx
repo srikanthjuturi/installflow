@@ -24,6 +24,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
+  FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -69,7 +70,10 @@ export function ModelFormDialog({
 }: ModelFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      {/* Wider than it was: the photo strip is five 64px tiles plus an Add
+          tile, which wrapped to a second row at the old 32rem and made a
+          half-filled gallery look broken. */}
+      <DialogContent className="sm:max-w-2xl">
         <ModelForm
           subcategory={subcategory}
           model={model}
@@ -192,59 +196,67 @@ function ModelForm({
       {/* `-mr-4 pr-4` cancels the dialog's own padding on this edge only, so
           the scrollbar rides the popup wall instead of floating in a gutter,
           while the fields keep their inset. */}
-      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
-        <Field data-invalid={errors.name ? true : undefined}>
-          <FieldLabel htmlFor="model-name">Model name</FieldLabel>
-          <Input
-            id="model-name"
-            placeholder={'e.g. 43" 4K UHD'}
-            aria-invalid={errors.name ? true : undefined}
-            aria-describedby={errors.name ? "model-name-error" : undefined}
-            {...register("name")}
-          />
-          {errors.name ? (
-            <FieldDescription
-              id="model-name-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.name.message}
-            </FieldDescription>
-          ) : null}
-        </Field>
+      <FieldGroup className="scroll-slim -mr-6 max-h-[62vh] gap-5 overflow-y-auto pr-6">
+        {/* Name and brand together: they are the two required fields and the
+            pair that identifies the unit — "Samsung 43-inch" is one thought,
+            and splitting them across two rows hides that the brand is not
+            optional detail like the two below. */}
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field data-invalid={errors.name ? true : undefined}>
+            <FieldLabel htmlFor="model-name">Model name</FieldLabel>
+            <Input
+              id="model-name"
+              placeholder={'e.g. 43" 4K UHD'}
+              autoComplete="off"
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "model-name-error" : undefined}
+              {...register("name")}
+            />
+            {errors.name ? (
+              <FieldDescription
+                id="model-name-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.name.message}
+              </FieldDescription>
+            ) : null}
+          </Field>
 
-        <Field data-invalid={errors.vendorId ? true : undefined}>
-          <FieldLabel htmlFor="model-vendor">Brand</FieldLabel>
-          <Controller
-            name="vendorId"
-            control={control}
-            render={({ field }) => (
-              <BrandSelect
-                value={field.value}
-                onChange={field.onChange}
-                invalid={errors.vendorId !== undefined}
-              />
+          <Field data-invalid={errors.vendorId ? true : undefined}>
+            <FieldLabel htmlFor="model-vendor">Brand</FieldLabel>
+            <Controller
+              name="vendorId"
+              control={control}
+              render={({ field }) => (
+                <BrandSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  invalid={errors.vendorId !== undefined}
+                />
+              )}
+            />
+            {errors.vendorId ? (
+              <FieldDescription
+                id="model-vendor-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.vendorId.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-vendor-hint">
+                The vendor who makes it.
+              </FieldDescription>
             )}
-          />
-          {errors.vendorId ? (
-            <FieldDescription
-              id="model-vendor-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.vendorId.message}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="model-vendor-hint">
-              The vendor who makes it. Required — a model with no maker names
-              nothing a technician can be sent to install.
-            </FieldDescription>
-          )}
-        </Field>
+          </Field>
+        </div>
+
+        <FieldSeparator />
 
         {/* Both optional, and side by side because they are read together —
             "43 inch, 24 months" is one thought about the unit. */}
-        <FieldGroup className="grid gap-4 sm:grid-cols-2">
+        <FieldGroup className="grid gap-5 sm:grid-cols-2">
           <Field data-invalid={errors.capacity ? true : undefined}>
             <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
             <Input
@@ -300,6 +312,8 @@ function ModelForm({
             )}
           </Field>
         </FieldGroup>
+
+        <FieldSeparator />
 
         <Field data-invalid={errors.imageUrls ? true : undefined}>
           <FieldLabel htmlFor="model-image">
@@ -408,6 +422,8 @@ function ModelForm({
           saveLabel="Add photo"
           onSave={handleCropped}
         />
+
+        <FieldSeparator />
 
         <Controller
           name="status"
