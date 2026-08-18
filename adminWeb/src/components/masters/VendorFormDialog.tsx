@@ -1,6 +1,7 @@
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -23,10 +24,26 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
-import { useCreateVendor, useUpdateVendor } from "@/hooks/useVendors";
-import type { Vendor } from "@/types/vendor";
+import {
+  useCreateVendor,
+  useIntakeChannels,
+  useUpdateVendor,
+} from "@/hooks/useVendors";
+import { cn } from "@/lib/utils";
+import type {
+  IntakeChannel,
+  IntakeChannelOption,
+  Vendor,
+} from "@/types/vendor";
 import { StatusField } from "./StatusField";
-import { statusOf, vendorSchema, type VendorFormValues } from "./vendorSchema";
+import {
+  CHANNEL_HINT,
+  CHANNEL_SCREEN,
+  INTAKE_CHANNELS,
+  statusOf,
+  vendorSchema,
+  type VendorFormValues,
+} from "./vendorSchema";
 
 interface VendorFormDialogProps {
   open: boolean;
@@ -102,6 +119,131 @@ function OptionalTag() {
   );
 }
 
+/**
+ * How this vendor's tickets reach us — §4's three channels, several at once.
+ *
+ * A checkbox group rather than a select, for three reasons a `<Select>` cannot
+ * cover: a vendor may use more than one channel, each option needs its own line
+ * of explanation, and one of them has to be shown as unavailable WITH a reason.
+ *
+ * The unavailable option stays visible and greyed rather than hidden. The
+ * requirement document promises three channels; a missing one reads as a bug,
+ * where a disabled one with a reason reads as a roadmap.
+ *
+ * Availability comes from the server, never from a constant here, so the day
+ * API intake ships this file does not change.
+ */
+function IntakeChannelField({
+  value,
+  onChange,
+  error,
+}: {
+  value: IntakeChannel[];
+  onChange: (next: IntakeChannel[]) => void;
+  error?: string;
+}) {
+  const { data, isPending } = useIntakeChannels();
+
+  // Until the catalogue lands, render the three we know with the approved copy
+  // and nothing enabled — the list never flashes empty or unlabelled.
+  const options: IntakeChannelOption[] =
+    data ??
+    INTAKE_CHANNELS.map((value) => ({
+      value,
+      description: CHANNEL_HINT[value],
+      available: false,
+      unavailableReason: null,
+    }));
+
+  function toggle(channel: IntakeChannel, checked: boolean) {
+    // Rebuilt from INTAKE_CHANNELS rather than appended, so the stored order is
+    // always catalogue order however the boxes were clicked.
+    const next = new Set(value);
+    if (checked) next.add(channel);
+    else next.delete(channel);
+    onChange(INTAKE_CHANNELS.filter((c) => next.has(c)));
+  }
+
+  return (
+    <FieldSet
+      className="gap-4"
+      data-invalid={error ? true : undefined}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? "vendor-intake-error" : "vendor-intake-hint"}
+    >
+      <div className="grid gap-0.5">
+        <FieldLegend variant="label" className="mb-0 text-ink">
+          Ticket intake
+        </FieldLegend>
+        <FieldDescription id="vendor-intake-hint" className="mt-0">
+          How this vendor&apos;s tickets reach you. Pick every way that applies.
+        </FieldDescription>
+      </div>
+
+      <div className="grid gap-2">
+        {options.map((option) => {
+          const checked = value.includes(option.value);
+          const disabled = isPending || !option.available;
+          const screen = CHANNEL_SCREEN[option.value];
+          return (
+            <label
+              key={option.value}
+              aria-disabled={disabled || undefined}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                disabled
+                  ? "cursor-not-allowed border-line bg-surface-2 opacity-70"
+                  : checked
+                    ? "border-brand-500 bg-brand-100/40"
+                    : "border-line hover:border-brand-400"
+              )}
+            >
+              <Checkbox
+                className="mt-0.5"
+                checked={checked}
+                disabled={disabled}
+                onCheckedChange={(next) => toggle(option.value, next === true)}
+              />
+              <span className="grid gap-0.5">
+                <span className="flex flex-wrap items-center gap-2 text-[13px] font-medium">
+                  {option.value}
+                  {/* Never colour alone — the word "Coming soon" carries it. */}
+                  {!option.available && !isPending ? (
+                    <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[10px] font-semibold text-warn">
+                      Coming soon
+                    </span>
+                  ) : null}
+                  {screen && option.available ? (
+                    <span className="text-[11px] font-normal text-ink-3">
+                      via {screen}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="text-xs text-ink-2">{option.description}</span>
+                {option.unavailableReason ? (
+                  <span className="text-xs text-ink-3">
+                    {option.unavailableReason}
+                  </span>
+                ) : null}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+
+      {error ? (
+        <FieldDescription
+          id="vendor-intake-error"
+          role="alert"
+          className="text-danger"
+        >
+          {error}
+        </FieldDescription>
+      ) : null}
+    </FieldSet>
+  );
+}
+
 function VendorForm({
   vendor,
   onDone,
@@ -131,6 +273,9 @@ function VendorForm({
       city: vendor?.city ?? "",
       state: vendor?.state ?? "",
       pincode: vendor?.pincode ?? "",
+      // Manual by default: the one channel that is always true, since somebody
+      // can always type a ticket in.
+      intakeChannels: vendor?.intakeChannels ?? ["Manual"],
       status: statusOf(vendor?.isActive ?? true),
     },
   });
@@ -148,12 +293,15 @@ function VendorForm({
       city: values.city,
       state: values.state,
       pincode: values.pincode,
+      intakeChannels: values.intakeChannels,
       isActive: values.status === "Active",
     };
     const done = (saved: Vendor) => {
       toast.add({
         title: `${saved.name} ${isEdit ? "updated" : "added"}`,
-        description: `${saved.city} · ${saved.isActive ? "Active" : "Paused"}.`,
+        description: `Intake ${saved.intakeChannels.join(" + ")} · ${
+          saved.isActive ? "Active" : "Paused"
+        }.`,
       });
       onDone();
     };
@@ -197,6 +345,20 @@ function VendorForm({
             <ErrorText id="vendor-name-error" message={errors.name?.message} />
           </Field>
         </Section>
+
+        <FieldSeparator />
+
+        <Controller
+          name="intakeChannels"
+          control={control}
+          render={({ field }) => (
+            <IntakeChannelField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.intakeChannels?.message}
+            />
+          )}
+        />
 
         <FieldSeparator />
 

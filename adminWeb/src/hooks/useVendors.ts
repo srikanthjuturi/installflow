@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   createVendor,
   deleteVendor,
+  listIntakeChannels,
   listVendorOptions,
   listVendors,
   updateVendor,
@@ -13,6 +14,7 @@ export const vendorKeys = {
   all: ["vendors"] as const,
   list: (params: ListParams) => ["vendors", "list", params] as const,
   options: () => ["vendors", "options"] as const,
+  channels: () => ["vendors", "channels"] as const,
 };
 
 /**
@@ -40,6 +42,21 @@ export function useVendorOptions() {
     queryKey: vendorKeys.options(),
     queryFn: listVendorOptions,
     staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * The intake-channel catalogue.
+ *
+ * Cached for the session — it is code on the server, not data, and only changes
+ * when the API push endpoint ships and "API" becomes selectable. `staleTime:
+ * Infinity` rather than an hour: nothing a user does can move it.
+ */
+export function useIntakeChannels() {
+  return useQuery({
+    queryKey: vendorKeys.channels(),
+    queryFn: listIntakeChannels,
+    staleTime: Infinity,
   });
 }
 

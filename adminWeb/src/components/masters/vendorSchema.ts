@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { IntakeChannel } from "@/types/vendor";
 
 /**
  * Mirrors the Pydantic types in `api/app/core/statutory.py`. Keeping the
@@ -21,6 +22,40 @@ const CIN_RE = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/;
 const PINCODE_RE = /^[0-9]{6}$/;
 /** 10 digits, optionally with a +91 or 0 in front. The API stores E.164. */
 const PHONE_RE = /^(?:\+?91|0)?[6-9][0-9]{9}$/;
+
+/**
+ * §4 — there are exactly three intake channels, and only one of them is an
+ * integration. Most vendors have no CRM, so Excel and Manual are primary paths
+ * rather than fallbacks. Mirrors INTAKE_CHANNELS in `app/core/intake.py`.
+ *
+ * `satisfies` keeps this honest if the `IntakeChannel` union ever changes.
+ */
+export const INTAKE_CHANNELS = [
+  "API",
+  "Excel",
+  "Manual",
+] as const satisfies readonly IntakeChannel[];
+
+/**
+ * One line per channel, shown under the option so the choice is not a guess.
+ * Approved prototype copy — do not reword.
+ *
+ * The server sends these too, on `GET /vendors/channels`, and that is the
+ * authority. This is the fallback the form renders while that request is in
+ * flight, so the checkbox list never appears momentarily unlabelled.
+ */
+export const CHANNEL_HINT: Record<IntakeChannel, string> = {
+  API: "Tickets are pushed from the vendor's own system.",
+  Excel: "Ops upload the vendor's spreadsheet.",
+  Manual: "Ops key each ticket in by hand.",
+};
+
+/** Which of our own screens serves each channel. Null where nobody's does. */
+export const CHANNEL_SCREEN: Record<IntakeChannel, string | null> = {
+  API: null,
+  Excel: "Bulk Upload",
+  Manual: "Manual Entry",
+};
 
 export const VENDOR_STATUSES = ["Active", "Paused"] as const;
 export type VendorStatus = (typeof VENDOR_STATUSES)[number];
@@ -57,6 +92,14 @@ export const vendorSchema = z.object({
     .string()
     .transform(squash)
     .pipe(z.string().regex(PINCODE_RE, "Pincodes are 6 digits")),
+  /**
+   * At least one. Which channels may actually be TICKED is the server's call,
+   * fetched from `/vendors/channels` — not encoded here, so that enabling API
+   * needs no frontend change at all.
+   */
+  intakeChannels: z
+    .array(z.enum(INTAKE_CHANNELS))
+    .min(1, "Pick at least one way tickets arrive"),
   status: z.enum(VENDOR_STATUSES),
 });
 

@@ -8,6 +8,7 @@
 
 import type {
   CreateVendorInput,
+  IntakeChannelOption,
   UpdateVendorInput,
   Vendor,
   VendorOption,
@@ -27,6 +28,17 @@ export function listVendors(params: ListParams = {}): Promise<Page<Vendor>> {
  */
 export function listVendorOptions(): Promise<VendorOption[]> {
   return apiGet<VendorOption[]>("/vendors/options");
+}
+
+/**
+ * The three intake channels, and which of them can be picked today.
+ *
+ * Fetched rather than hard-coded so the "coming soon" reason lives in one place
+ * and the form can never offer a channel the API would refuse — the same
+ * reasoning as the icon catalogue on the product master.
+ */
+export function listIntakeChannels(): Promise<IntakeChannelOption[]> {
+  return apiGet<IntakeChannelOption[]>("/vendors/channels");
 }
 
 export function getVendor(id: string): Promise<Vendor> {
