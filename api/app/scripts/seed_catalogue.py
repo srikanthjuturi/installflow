@@ -1,19 +1,29 @@
-"""Idempotent product-catalogue seed.
+"""Idempotent vendor and product-catalogue seed.
 
     python -m app.scripts.seed_catalogue
 
-Gives every company that has no categories yet the starter catalogue: the two
+Gives every company its starter vendors and its starter catalogue: the two
 groupings the ops team asked for, the six product types both apps already
-hardcode, and their models.
+hardcode, and their models, each branded with one of the seeded vendors.
 
-This is a script rather than a migration because the catalogue is tenant data —
-migrations seed global reference data only (roles, features, regions). A company
-that has edited its catalogue is skipped entirely, so this is safe to re-run.
+Idempotent LEVEL BY LEVEL, not all-or-nothing. Anything already present under
+its parent — matched by name, case-insensitively — is left exactly as it is, and
+only what is missing gets added. That is what lets this repair the state the
+`vendor_id` migration leaves behind, where the categories and subcategories
+survive but every model was deleted for want of a brand.
+
+A soft-deleted row counts as present. Somebody removing a starter category meant
+it, and a seeder that puts it back on every run is a seeder people stop running.
+
+This is a script rather than a migration because both vendors and the catalogue
+are tenant data — migrations seed global reference data only (roles, features,
+regions).
 """
 
 import asyncio
 import sys
 import warnings
+from itertools import cycle
 
 if sys.platform == "win32":
     with warnings.catch_warnings():
@@ -29,6 +39,81 @@ from app.models.product import (  # noqa: E402
     ProductModel,
     ProductSubcategory,
 )
+from app.models.vendor import Vendor  # noqa: E402
+
+# (name, gst_number, cin, contact_person, phone, address, city, state, pincode)
+#
+# Placeholder statutory numbers, but FORMAT-VALID ones: the seed writes through
+# the ORM and so bypasses the Pydantic types, and a row that cannot survive its
+# own edit form is a trap for whoever opens it first.
+VENDORS: list[tuple[str, str, str, str, str, str, str, str, str]] = [
+    (
+        "Videocon Industries",
+        "27AAACV1234A1Z5",
+        "L32100MH1985PLC123456",
+        "Rakesh Mehta",
+        "+919820011001",
+        "Videocon House, 14th Floor, Chakala, Andheri East",
+        "Mumbai",
+        "Maharashtra",
+        "400099",
+    ),
+    (
+        "Samsung India Electronics",
+        "09AAACS2345B1Z6",
+        "U32201UP1995PTC123457",
+        "Priya Nair",
+        "+919820011002",
+        "6th Floor, DLF Centre, Sector 62",
+        "Noida",
+        "Uttar Pradesh",
+        "201301",
+    ),
+    (
+        "LG Electronics India",
+        "07AAACL3456C1Z7",
+        "U32107DL1997PTC123458",
+        "Arun Sharma",
+        "+919820011003",
+        "Plot 51, Surajpur Kasna Road, Udyog Vihar",
+        "New Delhi",
+        "Delhi",
+        "110044",
+    ),
+    (
+        "Whirlpool of India",
+        "27AAACW4567D1Z8",
+        "L29191MH1960PLC123459",
+        "Sneha Kulkarni",
+        "+919820011004",
+        "Plot 40, Sector 44, Whitefield Industrial Area",
+        "Pune",
+        "Maharashtra",
+        "411014",
+    ),
+    (
+        "Voltas Limited",
+        "27AAACT5678E1Z9",
+        "L29308MH1954PLC123460",
+        "Imran Qureshi",
+        "+919820011005",
+        "Voltas House A, Dr Babasaheb Ambedkar Road, Chinchpokli",
+        "Mumbai",
+        "Maharashtra",
+        "400033",
+    ),
+    (
+        "Godrej Appliances",
+        "27AAACG6789F1Z1",
+        "U28100MH1988PTC123461",
+        "Deepa Iyer",
+        "+919820011006",
+        "Pirojshanagar, Eastern Express Highway, Vikhroli",
+        "Mumbai",
+        "Maharashtra",
+        "400079",
+    ),
+]
 
 # (category, icon, [(subcategory, icon, [(model, capacity, warranty_months)])])
 #
@@ -111,6 +196,71 @@ CATALOGUE: list[tuple[str, str, list[tuple[str, str, Models]]]] = [
 ]
 
 
+async def _find(session, model, company_id, name_column, name: str, *extra):
+    """The row of `model` with this name, INCLUDING soft-deleted ones.
+
+    Soft-deleted rows count as "exists" on purpose. Somebody removing a starter
+    category meant it, and a seeder that puts it back every time it runs is a
+    seeder people stop running.
+    """
+    return await session.scalar(
+        select(model).where(
+            model.company_id == company_id,
+            func.lower(name_column) == name.lower(),
+            *extra,
+        )
+    )
+
+
+async def _seed_vendors(session, company) -> list:
+    """Ensure this company has vendors; return their ids in name order.
+
+    Guarded independently of the catalogue: vendors arrived later than the
+    product master, so a company that already has an edited catalogue still
+    needs its brands. Returns the existing ids untouched when there are any.
+    """
+    existing = list(
+        await session.scalars(
+            select(Vendor.id)
+            .where(Vendor.company_id == company.id, Vendor.deleted_at.is_(None))
+            .order_by(Vendor.name)
+        )
+    )
+    if existing:
+        print(f"{company.name}: {len(existing)} vendors already — skipped")
+        return existing
+
+    for name, gst, cin, contact, phone, address, city, state, pincode in VENDORS:
+        session.add(
+            Vendor(
+                company_id=company.id,
+                name=name,
+                gst_number=gst,
+                cin=cin,
+                contact_person=contact,
+                phone=phone,
+                address=address,
+                city=city,
+                state=state,
+                pincode=pincode,
+                is_active=True,
+            )
+        )
+    # Committed here, not left pending: a company whose catalogue already exists
+    # takes the `continue` below and never reaches the catalogue commit, so a
+    # bare flush would lose its vendors.
+    await session.commit()
+    print(f"{company.name}: seeded {len(VENDORS)} vendors")
+
+    return list(
+        await session.scalars(
+            select(Vendor.id)
+            .where(Vendor.company_id == company.id, Vendor.deleted_at.is_(None))
+            .order_by(Vendor.name)
+        )
+    )
+
+
 async def seed() -> None:
     async with AsyncSessionLocal() as session:
         companies = list(
@@ -123,46 +273,79 @@ async def seed() -> None:
             return
 
         for company in companies:
-            existing = await session.scalar(
-                select(func.count(ProductCategory.id)).where(
-                    ProductCategory.company_id == company.id,
-                    ProductCategory.deleted_at.is_(None),
-                )
-            )
-            if existing:
-                print(f"{company.name}: {existing} categories already — skipped")
-                continue
+            vendor_ids = await _seed_vendors(session, company)
+
+            # Round-robin rather than random: "any brand" was the instruction,
+            # but a seed that differs between two developers' databases for no
+            # reason is a bad trade for the word "random".
+            brands = cycle(vendor_ids)
+            added = {"categories": 0, "subcategories": 0, "models": 0}
 
             for c_order, (cat_name, cat_icon, subs) in enumerate(CATALOGUE, start=1):
-                category = ProductCategory(
-                    company_id=company.id,
-                    name=cat_name,
-                    icon_key=cat_icon,
-                    sort_order=c_order,
-                    is_active=True,
+                category = await _find(
+                    session, ProductCategory, company.id, ProductCategory.name, cat_name
                 )
-                session.add(category)
-                await session.flush()
-
-                for s_order, (sub_name, sub_icon, models) in enumerate(subs, start=1):
-                    subcategory = ProductSubcategory(
+                if category is None:
+                    category = ProductCategory(
                         company_id=company.id,
-                        category_id=category.id,
-                        name=sub_name,
-                        icon_key=sub_icon,
-                        sort_order=s_order,
+                        name=cat_name,
+                        icon_key=cat_icon,
+                        sort_order=c_order,
                         is_active=True,
                     )
-                    session.add(subcategory)
+                    session.add(category)
                     await session.flush()
+                    added["categories"] += 1
+                elif category.deleted_at is not None:
+                    continue  # removed on purpose; do not resurrect it
+
+                for s_order, (sub_name, sub_icon, models) in enumerate(subs, start=1):
+                    subcategory = await _find(
+                        session,
+                        ProductSubcategory,
+                        company.id,
+                        ProductSubcategory.name,
+                        sub_name,
+                        ProductSubcategory.category_id == category.id,
+                    )
+                    if subcategory is None:
+                        subcategory = ProductSubcategory(
+                            company_id=company.id,
+                            category_id=category.id,
+                            name=sub_name,
+                            icon_key=sub_icon,
+                            sort_order=s_order,
+                            is_active=True,
+                        )
+                        session.add(subcategory)
+                        await session.flush()
+                        added["subcategories"] += 1
+                    elif subcategory.deleted_at is not None:
+                        continue
 
                     for m_order, (name, capacity, warranty) in enumerate(
                         models, start=1
                     ):
+                        # Drawn BEFORE the existence check, so a model gets the
+                        # same brand whether it is created on this run or was
+                        # created on a previous one. Skipping the draw would make
+                        # the assignment depend on what already existed.
+                        brand = next(brands)
+                        found = await _find(
+                            session,
+                            ProductModel,
+                            company.id,
+                            ProductModel.name,
+                            name,
+                            ProductModel.subcategory_id == subcategory.id,
+                        )
+                        if found is not None:
+                            continue
                         session.add(
                             ProductModel(
                                 company_id=company.id,
                                 subcategory_id=subcategory.id,
+                                vendor_id=brand,
                                 name=name,
                                 capacity=capacity,
                                 warranty_months=warranty,
@@ -170,10 +353,16 @@ async def seed() -> None:
                                 is_active=True,
                             )
                         )
+                        added["models"] += 1
 
             await session.commit()
-            subs_count = sum(len(s) for _, _, s in CATALOGUE)
-            print(f"{company.name}: seeded {len(CATALOGUE)} categories, {subs_count} subcategories")
+            if any(added.values()):
+                print(
+                    f"{company.name}: seeded {added['categories']} categories, "
+                    f"{added['subcategories']} subcategories, {added['models']} models"
+                )
+            else:
+                print(f"{company.name}: catalogue already complete — nothing to add")
 
 
 if __name__ == "__main__":

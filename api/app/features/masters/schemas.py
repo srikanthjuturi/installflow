@@ -87,13 +87,17 @@ WarrantyMonths = Annotated[int | None, Field(default=None, ge=0, le=240)]
 
 
 class ModelCreateRequest(BaseModel):
-    """Only the name is required.
+    """The name and the brand are required; the rest ops fill in as they learn it.
 
-    A model is worth recording as soon as it has one; ops fill the rest in as
-    they learn it, and a half-known model still lets a ticket reference it.
+    A half-known model still lets a ticket reference it — but not a brandless
+    one. "43-inch LED" without a maker names nothing a technician can be sent to
+    install, and a brand backfilled later is a brand nobody remembers.
     """
 
     name: Name120
+    #: The vendor whose brand this model carries. Validated against the caller's
+    #: own company in the service — an id in a body is an assertion, not a fact.
+    vendorId: uuid.UUID
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
     imageUrls: ImageUrls = Field(default_factory=list)
@@ -102,6 +106,9 @@ class ModelCreateRequest(BaseModel):
 
 class ModelUpdateRequest(BaseModel):
     name: Name120 | None = None
+    #: Re-branding is allowed; clearing the brand is not, so this is optional
+    #: rather than clearable.
+    vendorId: uuid.UUID | None = None
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
     #: Sent whole, never patched entry by entry — an empty list clears the
@@ -117,6 +124,10 @@ class ModelUpdateRequest(BaseModel):
 class ProductModelOut(AppModel):
     id: uuid.UUID
     subcategoryId: uuid.UUID
+    #: The brand. `vendorName` is resolved here so no client fetches the vendor
+    #: list just to render a row.
+    vendorId: uuid.UUID
+    vendorName: str
     name: str
     capacity: str | None
     warrantyMonths: int | None
