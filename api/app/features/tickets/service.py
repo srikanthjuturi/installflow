@@ -15,6 +15,7 @@ a Tech Visit against a microwave that only supports installation.
 """
 
 import datetime
+import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
@@ -22,22 +23,28 @@ from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.deps import Principal
 from app.core.schemas import ListParams
 from app.core.scope import ALL_INDIA_ROLES, own_scope
 from app.core.service_types import SERVICE_TYPES
 from app.core.tickets import (
     SLA_WARN_AT,
+    SLOT_LEAD_MINUTES,
+    SLOT_TIMEZONE_OFFSET_MINUTES,
+    SLOT_WINDOWS,
     TERMINAL_STATUSES,
     TICKET_STATUSES,
 )
 from app.db.repository import paginate
+from app.integrations import whatsapp
 from app.features.tickets.schemas import (
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
     TimelineEventOut,
 )
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD
@@ -117,6 +124,53 @@ def _sla_order_case():
         ),
         else_=2,
     )
+
+
+# ── the windows a customer may pick from ─────────────────────────────────────
+
+IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
+
+
+def offered_slots(
+    row: Ticket, *, now: datetime.datetime | None = None
+) -> list[tuple[datetime.datetime, datetime.datetime]]:
+    """Every window this ticket could still be served in, soonest first.
+
+    Bounded at both ends, and both bounds matter:
+
+      * not sooner than SLOT_LEAD_MINUTES from now — nobody can be dispatched to
+        an address in ten minutes;
+      * not later than `sla_due_at` — the service level says the slot must START
+        within N hours of the ticket being raised, so a window past that is one
+        the company has already promised not to offer.
+
+    Because the list is generated from the window rather than filtered
+    afterwards, a customer CANNOT pick a slot that breaches. That is the point:
+    the constraint lives where the choice is made, not in a validator that has
+    to say no to something already chosen.
+
+    Empty is a real answer — a 12-hour ticket raised at 22:00 has nothing left
+    to offer, and the page says so rather than showing an empty list.
+    """
+    now = now or _now()
+    earliest = now + datetime.timedelta(minutes=SLOT_LEAD_MINUTES)
+    latest = row.sla_due_at
+
+    out: list[tuple[datetime.datetime, datetime.datetime]] = []
+    # Walk local days, because the windows are local working hours. Three is
+    # enough for the longest service level (48h) plus the day it spills into.
+    start_day = earliest.astimezone(IST).date()
+    for offset in range(4):
+        day = start_day + datetime.timedelta(days=offset)
+        for from_hour, to_hour in SLOT_WINDOWS:
+            begins = datetime.datetime.combine(
+                day, datetime.time(from_hour, tzinfo=IST)
+            )
+            ends = datetime.datetime.combine(day, datetime.time(to_hour, tzinfo=IST))
+            if begins < earliest or begins > latest:
+                continue
+            out.append((begins, ends))
+    return out
 
 
 # ── visibility ────────────────────────────────────────────────────────────────
@@ -352,6 +406,17 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 technicianName=tech_names.get(t.technician_id)
                 if t.technician_id
                 else None,
+                slotRequestStatus=t.slot_request_status,
+                slotRequestError=t.slot_request_error,
+                slotConfirmedAt=t.slot_confirmed_at,
+                # Only while it is still the customer's to pick. Once used the
+                # token is spent, and a link that does nothing is worse than
+                # none at all.
+                slotLink=(
+                    slot_link(t.slot_token)
+                    if t.slot_token and t.slot_confirmed_at is None
+                    else None
+                ),
                 createdAt=t.created_at,
             )
         )
@@ -491,6 +556,136 @@ def _timeline(row: Ticket) -> list[TimelineEventOut]:
     return events
 
 
+# ── the customer's slot confirmation ─────────────────────────────────────────
+
+
+def slot_link(token: str) -> str:
+    return f"{settings.SLOT_LINK_BASE.rstrip('/')}/{token}"
+
+
+def when_label(start: datetime.datetime, end: datetime.datetime) -> str:
+    """`Thu 21 Aug, 10:00–12:00`, in the customer's own timezone."""
+    local_start = start.astimezone(IST)
+    local_end = end.astimezone(IST)
+    return (
+        f"{local_start.strftime('%a %d %b')}, "
+        f"{local_start.strftime('%H:%M')}–{local_end.strftime('%H:%M')}"
+    )
+
+
+async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
+    # Resolved from the row rather than a constant: one WhatsApp number sends
+    # for every tenant on this platform.
+    return (
+        await db.scalar(select(Company.name).where(Company.id == company_id))
+    ) or "Videocon Service"
+
+
+async def _send_slot_request(db: AsyncSession, row: Ticket) -> None:
+    """Ask the customer to pick a time. Records the outcome, never raises.
+
+    A refusal is not an error for the caller: the ticket exists and the link is
+    still valid, so ops can copy it out of the console or read the options down
+    the phone. Raising here would lose a row over a message.
+    """
+    model_name = await db.scalar(
+        select(ProductModel.name).where(ProductModel.id == row.model_id)
+    )
+    result = await whatsapp.send_slot_request(
+        row.customer_phone,
+        slot_link(row.slot_token or ""),
+        await _company_name(db, row.company_id),
+        model_name or "product",
+    )
+    if result.ok:
+        # Meta ACCEPTED it. Not the same as delivered — without a webhook an
+        # asynchronous drop (131047) is invisible.
+        row.slot_request_status = "sent"
+        row.slot_request_error = None
+    else:
+        row.slot_request_status = "failed"
+        row.slot_request_error = (result.error or "")[:255]
+
+
+async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> None:
+    """The receipt. Sent on BOTH routes — ops-entered and customer-picked —
+    because from the customer's side they are the same event, and only one of
+    them otherwise leaves them anything in writing. Never raises."""
+    if row.slot_start is None or row.slot_end is None:
+        return
+    model_name = await db.scalar(
+        select(ProductModel.name).where(ProductModel.id == row.model_id)
+    )
+    await whatsapp.send_slot_confirmed(
+        row.customer_phone,
+        await _company_name(db, row.company_id),
+        model_name or "your product",
+        when_label(row.slot_start, row.slot_end),
+    )
+
+
+async def load_by_token(db: AsyncSession, token: str) -> Ticket:
+    """Resolve a slot token. No company scope — the token IS the identity.
+
+    Deliberately the only place in the codebase that reads a ticket without a
+    principal. It is safe because the token is 256 bits, single-use, and the
+    endpoints above it never reveal anything beyond the one appointment it
+    names.
+    """
+    row = await db.scalar(
+        select(Ticket).where(
+            Ticket.slot_token == token, Ticket.deleted_at.is_(None)
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="This link is not valid",
+        )
+    return row
+
+
+async def confirm_slot(
+    db: AsyncSession, token: str, start: datetime.datetime
+) -> Ticket:
+    """Lock the slot the customer picked, and let technicians see the ticket.
+
+    The chosen start must be one of the windows still on offer, recomputed here
+    rather than trusted from the request — the page was rendered at some point
+    in the past, and a window that was open then may have passed since.
+    """
+    row = await load_by_token(db, token)
+
+    if row.slot_confirmed_at is not None:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This time has already been confirmed",
+        )
+    if row.status in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This visit is no longer open",
+        )
+
+    match = next((s for s in offered_slots(row) if s[0] == start), None)
+    if match is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="That time is no longer available — please pick another",
+        )
+
+    row.slot_start, row.slot_end = match
+    row.slot_confirmed_at = _now()
+    # Slot Pending was the only thing holding it back. It is now a real
+    # appointment, and eligible technicians can see it.
+    row.status = "New"
+    await db.commit()
+    await db.refresh(row)
+
+    await _send_slot_confirmed(db, row)
+    return row
+
+
 # ── write ─────────────────────────────────────────────────────────────────────
 
 
@@ -523,9 +718,24 @@ async def create_ticket(
         # A slot means the customer has agreed a time, so the ticket is ready
         # for technicians to see. Without one nobody is told it exists yet.
         status="New" if body.slotStart else "Slot Pending",
+        # Only a ticket that still has to ask carries a token. 256 bits, the
+        # same as a technician invite, because it is the same kind of secret:
+        # a URL somebody is trusted to hold.
+        slot_token=None if body.slotStart else secrets.token_urlsafe(32),
+        slot_request_status="not_needed" if body.slotStart else "pending",
         created_by=principal.user_id,
     )
     db.add(row)
     await db.commit()
     await db.refresh(row)
+
+    # Both branches tell the customer something, and neither can fail the
+    # request: the ticket is saved before either is attempted, and a refusal is
+    # recorded rather than raised.
+    if row.slot_start is not None:
+        await _send_slot_confirmed(db, row)
+    else:
+        await _send_slot_request(db, row)
+        await db.commit()
+
     return (await _hydrate(db, [row]))[0]

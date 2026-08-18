@@ -62,3 +62,27 @@ SLA_WARN_AT = 0.25
 #: Ordering for the list's default sort. The whole point of the screen is
 #: triage, so the ones already late come first.
 SLA_STATE_ORDER = ("breach", "warn", "ok", "done")
+
+
+# ── the windows a customer may pick from ─────────────────────────────────────
+
+#: Two-hour windows, in local working hours. Offered as whole blocks rather than
+#: a free time picker because a technician's day is a round of appointments, not
+#: a diary — "15:00 to 17:00" is a promise that can be kept, "14:37" is not.
+SLOT_WINDOWS = (
+    (9, 11),
+    (11, 13),
+    (13, 15),
+    (15, 17),
+    (17, 19),
+)
+
+#: How long before a window opens it stops being offerable. Nobody can be sent
+#: to an address in ten minutes, and offering a slot that cannot be served is
+#: how a ticket breaches on the system's own suggestion.
+SLOT_LEAD_MINUTES = 90
+
+#: Local time for the offered windows. India is the whole market (see
+#: `app/core/phone.py` for the same assumption), and a customer picking "3 PM"
+#: means 3 PM where they live, not UTC.
+SLOT_TIMEZONE_OFFSET_MINUTES = 330  # IST, UTC+05:30

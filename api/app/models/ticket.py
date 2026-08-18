@@ -28,6 +28,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -99,6 +100,32 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         DateTime(timezone=True), nullable=False
     )
 
+    # ── the customer's slot confirmation ───────────────────────────────────
+    #: 256 bits, in the WhatsApp link the customer taps to pick a time.
+    #:
+    #: Stored in clear, deliberately and for the same reasons as the technician
+    #: invite token: the console shows a copyable link when WhatsApp refuses,
+    #: and a resend has to send the SAME one. Neither is possible against a
+    #: hash. Single use and an expiry that tracks the SLA window are the
+    #: mitigations, and what it protects is a two-hour appointment rather than
+    #: an account.
+    #:
+    #: Null when ops entered the slot themselves — nothing to ask.
+    slot_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: When the customer picked. Null while it is still their turn, and what
+    #: makes the token single-use.
+    slot_confirmed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: Delivery of the slot REQUEST: pending | sent | failed | not_needed.
+    #: A refusal is recorded, never raised — the ticket exists either way, and
+    #: ops can resend or read the slot out over the phone.
+    slot_request_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'not_needed'")
+    )
+    #: Meta's own words when it refused. Shown to ops verbatim.
+    slot_request_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # ── where it has got to ────────────────────────────────────────────────
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     #: Set on first-accept. Composite FK; RESTRICT, so a technician who has held
@@ -107,6 +134,10 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
 
     __table_args__ = (
         UniqueConstraint("company_id", "code", name="uq_tickets_company_code"),
+        # Global, not per company: the token IS the URL, and it is resolved
+        # before any company is known. Partial on NOT NULL in the migration, so
+        # the many tickets ops slotted themselves do not collide on null.
+        UniqueConstraint("slot_token", name="uq_tickets_slot_token"),
         Index("ix_tickets_company_status", "company_id", "status"),
         # The routing probe: "which tickets are in this pincode" is asked by
         # every area manager on every page load.

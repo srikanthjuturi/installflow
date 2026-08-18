@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     # through a UTILITY template.
     WHATSAPP_OTP_TEMPLATE_NAME: str = ""
     WHATSAPP_OTP_TEMPLATE_LANG: str = "en_US"
+    # The two customer-facing templates (UTILITY, like the invite): "pick a
+    # slot" carries the link, "slot confirmed" is the receipt. Left empty they
+    # fall back to free-form text, which only reaches someone who messaged this
+    # number in the last 24 hours — fine against your own phone in dev, useless
+    # for a real customer.
+    WHATSAPP_SLOT_TEMPLATE_NAME: str = ""
+    WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME: str = ""
+    WHATSAPP_SLOT_TEMPLATE_LANG: str = "en_US"
     # Comma-separated E.164 numbers. When set, ONLY these receive a real send;
     # anything else is refused before it reaches Meta.
     #
@@ -99,6 +107,12 @@ class Settings(BaseSettings):
     # (ios.associatedDomains + android.intentFilters) with a web fallback —
     # e.g. INVITE_LINK_BASE=https://install.videocon.app/invite
     INVITE_LINK_BASE: str = "videocontech://invite"
+    # ─── Customer slot confirmation ────────────────────────────────────────
+    # Where the "pick a time" link points. Unlike the invite this is a WEB page
+    # and always has been — a customer has no app to open — so the default is a
+    # real http URL and works as soon as the API is reachable. Point it at the
+    # public origin in production.
+    SLOT_LINK_BASE: str = "http://localhost:8000/slot"
     # Where the landing page sends someone who does not have the app yet.
     TECHNICIAN_APP_LINK: str = "https://install.videocon.app/technician"
     INVITE_EXPIRY_DAYS: int = 14

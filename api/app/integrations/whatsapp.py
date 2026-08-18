@@ -139,6 +139,64 @@ def build_otp_payload(phone: str, code: str) -> dict:
     )
 
 
+def build_slot_request_payload(
+    phone: str, link: str, company: str, product: str
+) -> dict:
+    """"Pick a time for your installation" — with the link that does it.
+
+    Same shape as the invite: company as a parameter because one WABA sends for
+    every tenant, and the link in the BODY rather than a URL button so the
+    domain can change without another Meta review.
+
+    The product is named because a customer may have more than one thing on
+    order, and "pick a slot" without saying for what is a message people ignore.
+    """
+    if settings.WHATSAPP_SLOT_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_SLOT_TEMPLATE_NAME,
+            settings.WHATSAPP_SLOT_TEMPLATE_LANG,
+            [company, product, link],
+        )
+    # Development only — see build_invite_payload for why a template is what
+    # makes this actually arrive.
+    return _text_payload(
+        phone,
+        (
+            f"{company}: your {product} visit is ready to be scheduled.\n\n"
+            f"Pick a time that suits you:\n{link}\n\n"
+            "The sooner you choose, the sooner we can assign a technician."
+        ),
+        preview_url=True,
+    )
+
+
+def build_slot_confirmed_payload(
+    phone: str, company: str, product: str, when: str
+) -> dict:
+    """"Your slot is confirmed" — the receipt, sent on both routes.
+
+    Sent whether ops agreed the time on a call or the customer picked it
+    themselves, because from the customer's side those are the same event and
+    only one of them otherwise leaves them with anything in writing.
+    """
+    if settings.WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME,
+            settings.WHATSAPP_SLOT_TEMPLATE_LANG,
+            [company, product, when],
+        )
+    return _text_payload(
+        phone,
+        (
+            f"{company}: your {product} visit is confirmed for {when}.\n\n"
+            "Our technician will call before arriving. To change the time, "
+            "reply to this message or call us."
+        ),
+    )
+
+
 #: Meta failure codes worth translating, because each one has a different fix
 #: and the raw text names none of them. Anything absent falls through to Meta's
 #: own message rather than being flattened into "something went wrong".
@@ -236,3 +294,23 @@ async def send_invite(phone: str, link: str, company: str) -> SendResult:
 async def send_otp(phone: str, code: str) -> SendResult:
     """Send one verification code. Never raises, and never logs the code."""
     return await _send(build_otp_payload(phone, code), what="otp")
+
+
+async def send_slot_request(
+    phone: str, link: str, company: str, product: str
+) -> SendResult:
+    """Ask the customer to pick a time. Never raises for a delivery failure."""
+    return await _send(
+        build_slot_request_payload(phone, link, company, product),
+        what="slot request",
+    )
+
+
+async def send_slot_confirmed(
+    phone: str, company: str, product: str, when: str
+) -> SendResult:
+    """Tell the customer their time is booked. Never raises."""
+    return await _send(
+        build_slot_confirmed_payload(phone, company, product, when),
+        what="slot confirmation",
+    )

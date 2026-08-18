@@ -97,6 +97,22 @@ export interface Ticket {
   technicianId: string | null;
   technicianName: string | null;
 
+  /** Delivery of the "pick a time" message. `not_needed` when ops set the slot. */
+  slotRequestStatus: "not_needed" | "pending" | "sent" | "failed";
+  /** WhatsApp's own words when it refused, so ops can act rather than guess. */
+  slotRequestError: string | null;
+  /**
+   * When the CUSTOMER picked. Null when ops entered the slot themselves —
+   * which is how the console tells "they chose this" from "we did".
+   */
+  slotConfirmedAt: string | null;
+  /**
+   * The scheduling link, so ops can copy it out when WhatsApp refuses and read
+   * it down the phone. Present only while the slot is still the customer's to
+   * pick; it disappears the moment it is used.
+   */
+  slotLink: string | null;
+
   createdAt: string;
 }
 

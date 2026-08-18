@@ -131,6 +131,18 @@ class TicketOut(AppModel):
     technicianId: uuid.UUID | None
     technicianName: str | None
 
+    #: not_needed (ops set the slot) | pending | sent | failed.
+    slotRequestStatus: str
+    #: Meta's own words when it refused, so ops can act rather than guess.
+    slotRequestError: str | None
+    #: When the CUSTOMER picked. Null when ops entered the slot themselves —
+    #: which is how the console tells "they chose this" from "we did".
+    slotConfirmedAt: datetime.datetime | None
+    #: The scheduling link, so ops can copy it out when WhatsApp refuses and
+    #: read it down the phone. Present only while the slot is still theirs to
+    #: pick; it disappears the moment it is used.
+    slotLink: str | None
+
     createdAt: datetime.datetime
 
 
