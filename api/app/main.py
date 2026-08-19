@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.api.router import api_router
 from app.features.onboarding.landing import router as invite_landing_router
+from app.features.tickets.slot_page import router as slot_page_router
 from app.features.onboarding.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
@@ -87,6 +88,12 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 # NOT under /api/v1 — this is the page a technician's browser lands on when
 # they tap the invite link, so the URL has to stay short and human.
 app.include_router(invite_landing_router)
+
+# Also outside /api/v1: the page a CUSTOMER lands on to pick their appointment
+# time. Same reasoning as the invite link — it arrives over WhatsApp and gets
+# tapped on a phone, so the URL stays short. It is the one unauthenticated
+# write in the app; see the module docstring for what makes that safe.
+app.include_router(slot_page_router)
 
 # Also outside /api/v1, and the path is fixed by Android — it fetches exactly
 # https://<host>/.well-known/assetlinks.json and nothing else.

@@ -66,13 +66,13 @@ export default function TicketDetailPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2.5">
                       <h2 className="font-mono text-base font-semibold">
-                        {ticket.id}
+                        {ticket.code}
                       </h2>
                       <StatusBadge status={ticket.status} />
-                      <SlaBadge state={ticket.sla} />
+                      <SlaBadge state={ticket.slaState} />
                     </div>
                     <p className="mt-1.5 text-[13px] text-ink-2">
-                      {ticket.product} · {ticket.slaType} SLA
+                      {ticket.modelName} · {ticket.serviceType} · {ticket.serviceLevelHours}h
                     </p>
                   </div>
 
@@ -80,11 +80,11 @@ export default function TicketDetailPage() {
                     <LinkButton
                       variant="outline"
                       className="hover:border-danger hover:text-danger"
-                      to={`/tickets/${ticket.id}/force-close`}
+                      to={`/tickets/${ticket.code}/force-close`}
                     >
                       Force close
                     </LinkButton>
-                    <LinkButton to={`/escalations/${ticket.id}/assign`}>
+                    <LinkButton to={`/escalations/${ticket.code}/assign`}>
                       Re-assign
                     </LinkButton>
                   </div>

@@ -4,7 +4,8 @@ FastAPI + PostgreSQL behind the ops console (`adminWeb/`) and the technician app
 (`mobileapp/`). Read the root `AGENTS.md` first for the business flow and the domain facts.
 
 Live today: auth (password + technician OTP), companies, users & roles, territory, the product
-master, and technician onboarding in both modes. Still to come: jobs, the pool, proof capture,
+master, technician onboarding in both modes, and tickets (manual entry, the list, and the
+customer's own slot confirmation). Still to come: bulk upload, jobs, the pool, proof capture,
 escalations, the ledger.
 
 ---
@@ -93,24 +94,97 @@ python -m alembic downgrade <previous>
 python -m alembic upgrade head      # the one people skip
 ```
 
+**Audit columns go LAST.** `id`, `created_at`, `updated_at`, `created_by`, `updated_by`,
+`deleted_at` sit at the end of every table, after the columns that say what the row *is*. You do
+not have to remember this: the mixins in `app/db/mixins.py` use `declared_attr`, so they are
+constructed after the model's own columns and sort behind them, and autogenerate follows the
+models. Do not convert them back to plain `mapped_column` — that silently puts six columns of
+bookkeeping in front of every table again.
+
+**The schema is ONE migration.** Twenty-two were squashed into `9237a7143f8b_initial_schema.py`
+when the audit columns were reordered — Postgres has no `ALTER TABLE … REORDER`, so the tables had
+to be rebuilt, and history for a product that has not shipped was not worth keeping. Everything
+since is a normal incremental migration on top.
+
+**Constraints belong on the MODEL.** All seventeen CHECKs are declared in `__table_args__`, not
+added by `op.create_check_constraint` in a migration, so the model is the whole truth about the
+table and autogenerate can see it. Name them WITHOUT the `ck_<table>_` prefix — the naming
+convention adds it, and passing it too produced `ck_tickets_ck_tickets_status`.
+
+**A UNIQUE on a soft-deleted table is PARTIAL on `deleted_at IS NULL`.** Otherwise a hidden row
+keeps its name forever: `uq_memberships_user_company` was total, so removing a technician from a
+company — which soft-deletes the membership — made re-adding that person a permanent 409, caused
+by a row invisible on every screen. Same for `uq_users_email_lower`. Fixed in `4c8f1b7d2e93`.
+
+Two deliberate exceptions, both of which must stay TOTAL:
+
+- `uq_tickets_company_code` — a ticket number is quoted in email and read out on the phone, so
+  reuse is worse than a blocked insert.
+- every `uq_<table>_company_id_id` — a partial index **cannot be a foreign key target**, and
+  these are what all thirteen composite tenancy FKs point at.
+
+**Every foreign key has a covering index.** Postgres does not create one for you, and the cost
+shows up twice: a lookup by the child scans, and so does every DELETE of a parent, because the
+database must prove no child still references it. `tickets(company_id, vendor_id)` was unindexed,
+so deleting one vendor read every ticket in the database. `4c8f1b7d2e93` added the 26 that were
+missing, including on fixed platform catalogues where the index buys nothing measurable — the rule
+is worth more with no list of exceptions to argue about. A composite FK needs the columns **in
+order**: an index on `company_id` alone does not serve `(company_id, vendor_id)`.
+
+To find regressions, look for FK columns that are not a prefix of any index:
+
+```sql
+SELECT c.conrelid::regclass, c.conname FROM pg_constraint c
+WHERE c.contype = 'f' AND NOT EXISTS (
+  SELECT 1 FROM pg_index i WHERE i.indrelid = c.conrelid
+    AND (i.indkey::int2[])[0:array_length(c.conkey,1)-1] = c.conkey);
+```
+
+The reverse also applies: **do not add an index a unique constraint already covers.**
+`company_sequences` briefly had `ix_company_sequences_company_id` next to
+`uq_company_sequence (company_id, name)`, which is the same prefix — pure write cost. The query
+above counts a prefix as covered, so it will not ask you for one.
+
+### 7. Never ship a table nothing writes to.
+
+`audit_logs` shipped in the initial schema with a model, indexes, a `company_id` and an exemption
+in `audit_tenancy` — and not one line of code ever constructed a row. It was dropped in
+`7b1e4a9c05d2` with 0 rows in every environment. An audit log that is silently empty is worse than
+no audit log, because eventually somebody trusts it.
+
+Same rule for columns. `technician_profiles.jobs_completed` and `jobs_cancelled` were
+`NOT NULL DEFAULT 0` while nothing measured them, so every profile asserted a completed-job count
+of exactly zero that had never been counted. They are nullable now: **null means "not measured",
+which is a different claim from 0**, and both clients render it as `—`. This is the same rule as
+"do not fake a number that has a real source", applied to the case where the source does not exist
+yet.
+
+When a table is genuinely needed before its writer lands, write the writer in the same change.
+`ticket_events` declares only the four `kind` values the code writes TODAY; assignment and release
+join the CHECK in the migration that adds the accept flow, not before.
+
 Three things the autogenerated diff gets wrong every time:
 
-- It wants to DROP `uq_companies_gst_lower`, `uq_companies_slug_lower` and `uq_users_email_lower`.
-  Alembic does not recognise hand-written `LOWER()` functional indexes and mistakes them for
-  stale. **Delete those drops.**
+- It wants to DROP the hand-written functional and partial indexes — `uq_companies_gst_lower`,
+  `uq_users_email_lower`, `uq_memberships_user_company`, the `lower(name)` ones on the product
+  master and vendors, `uq_tickets_slot_token`, the live-invite index. SQLAlchemy cannot express
+  `lower(x)` or a `WHERE` clause in an `Index()`, so Alembic cannot see them and mistakes them for
+  stale. **Delete those drops.** Recent Alembic sometimes emits a drop *and* an identical create —
+  that is the same false positive wearing a different hat, and both halves go. They are created by
+  `op.execute`, at the bottom of the initial migration or in `4c8f1b7d2e93`.
 - Postgres caps identifiers at **63 characters** and SQLAlchemy silently rewrites longer ones with
   a hash suffix. When dropping an existing constraint, resolve its real name from `pg_constraint`
   rather than spelling it out.
 - A parameter reused in a SELECT list and a WHERE needs `CAST(:param AS varchar)` on **both**
   sides, or Postgres raises `AmbiguousParameter`.
 
-### 7. Money is integer paise. Phones are E.164.
+### 8. Money is integer paise. Phones are E.164.
 
 Never a float, never a locale-formatted string in the database. `app/core/phone.py` normalises
 every technician phone on the way in — it is their identity, and the partial unique index on
 `users.phone` depends on one shape.
 
-### 8. Sessions run with `autoflush=False`.
+### 9. Sessions run with `autoflush=False`.
 
 If you `session.add(...)` and then read those rows back before committing, **flush first**. This
 already caused one real bug: a technician self-registered with three pincodes and landed on Home
@@ -124,12 +198,12 @@ showing none, because the response was built from a query that could not see the
 app/
   api/router.py          the ONLY place slice routers are imported
   core/                  config, database, deps (Principal + guards), errors, features,
-                         icons, phone, schemas (the envelope), scope, security
+                         icons, phone, schemas (the envelope), scope, security, sequences
   db/                    base_class (naming convention), mixins, repository (territory_scope)
   features/<slice>/      router.py · schemas.py · service.py — nothing else
   integrations/          whatsapp.py, otp_channel.py — outbound, and never raise on failure
   models/                one module per area; every model reachable from __init__
-  scripts/               bootstrap, seed_catalogue, audit_tenancy
+  scripts/               bootstrap, seed_demo, seed_catalogue, audit_tenancy
 alembic/versions/        hand-written, with a prose docstring saying WHY
 ```
 
@@ -139,7 +213,8 @@ alembic/versions/        hand-written, with a prose docstring saying WHY
 python run.py                              # uvicorn on :8000
 python -m alembic upgrade head
 python -m app.scripts.bootstrap            # the platform superadmin
-python -m app.scripts.seed_catalogue       # starter product master, per company
+python -m app.scripts.seed_demo            # companies, users, technicians, catalogue, tickets
+python -m app.scripts.seed_catalogue       # just the catalogue, if the rest already exists
 python -m app.scripts.audit_tenancy        # after any schema change
 ```
 

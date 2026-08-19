@@ -64,8 +64,12 @@ export interface Technician {
   /** Jobs in flight today. Always 0 until the jobs slice exists. */
   bwUsed: number;
   rating: number | null;
-  jobsCompleted: number;
-  jobsCancelled: number;
+  /**
+   * All three are null until the jobs slice measures them. Null means "not
+   * measured", which is not the same claim as 0 — render it as an em dash.
+   */
+  jobsCompleted: number | null;
+  jobsCancelled: number | null;
   onTimePct: number | null;
 
   onboarding: TechnicianOnboarding;

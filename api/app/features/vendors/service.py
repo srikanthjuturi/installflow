@@ -193,14 +193,27 @@ async def list_vendors(
         Vendor.deleted_at.is_(None),
     )
     stmt = _apply_search(stmt, params.search)
-    if status_filter == "active":
+
+    # Both filters arrive from a shareable query string and are matched
+    # case-insensitively, so an older bookmark cannot 422 the whole list.
+    status_key = (status_filter or "").strip().lower()
+    if status_key == "active":
         stmt = stmt.where(Vendor.is_active.is_(True))
-    elif status_filter == "paused":
+    elif status_key == "paused":
         stmt = stmt.where(Vendor.is_active.is_(False))
+
     if channel:
-        # JSONB containment, so the GIN index on intake_channels does the work
-        # rather than a scan that unpacks every row's array.
-        stmt = stmt.where(Vendor.intake_channels.contains([channel]))
+        # Canonicalised to the stored spelling first — JSONB containment is
+        # exact, so "excel" would silently match nothing at all.
+        wanted = next(
+            (c for c in INTAKE_CHANNELS if c.lower() == channel.strip().lower()),
+            None,
+        )
+        if wanted is None:
+            return [], 0
+        # Containment, so the GIN index does the work rather than a scan that
+        # unpacks every row's array.
+        stmt = stmt.where(Vendor.intake_channels.contains([wanted]))
 
     column = SORTABLE.get(params.sortBy or "name", Vendor.name)
     stmt = stmt.order_by(column.desc() if params.sortDir == "desc" else column.asc())

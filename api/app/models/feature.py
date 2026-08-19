@@ -43,6 +43,12 @@ class Feature(Base, IdMixin, AuditMixin):
         Boolean, nullable=False, server_default=text("true")
     )
 
+    # A fixed 24-row catalogue, so this index buys nothing measurable. It is
+    # here so the rule stays "every foreign key has a covering index" with no
+    # list of exceptions to argue about — that is cheaper to keep than a
+    # judgement call re-made per table.
+    __table_args__ = (Index("ix_features_parent_key", "parent_key"),)
+
 
 class RoleFeatureDefault(Base, IdMixin, AuditMixin):
     """Shipped baseline: which features a role gets by default (global)."""
@@ -59,6 +65,9 @@ class RoleFeatureDefault(Base, IdMixin, AuditMixin):
 
     __table_args__ = (
         UniqueConstraint("role", "feature_id", name="uq_role_feature_default"),
+        # The unique above leads with `role`, so it covers that FK already; this
+        # is the other one.
+        Index("ix_role_feature_defaults_feature_id", "feature_id"),
     )
 
 
@@ -83,4 +92,8 @@ class CompanyRoleFeature(Base, IdMixin, AuditMixin):
             "company_id", "role", "feature_id", name="uq_company_role_feature"
         ),
         Index("ix_company_role_features_company_role", "company_id", "role"),
+        # The unique above leads with company_id, so it covers neither of these
+        # FKs on its own.
+        Index("ix_company_role_features_feature_id", "feature_id"),
+        Index("ix_company_role_features_role", "role"),
     )

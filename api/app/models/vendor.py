@@ -22,6 +22,7 @@ import uuid
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     ForeignKey,
     Index,
     String,
@@ -89,6 +90,12 @@ class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "jsonb_typeof(intake_channels) = 'array' "
+            "AND jsonb_array_length(intake_channels) >= 1 "
+            "AND intake_channels <@ '[\"API\", \"Excel\", \"Manual\"]'::jsonb",
+            name="intake_channels",
+        ),
         Index("ix_vendors_company_id", "company_id"),
         # What product_models' composite FK points at, so a model physically
         # cannot be branded with another company's vendor.

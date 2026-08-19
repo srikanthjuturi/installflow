@@ -52,7 +52,6 @@ GLOBAL_TABLES: dict[str, str] = {
     "membership_regions": "scoped through membership_id, which is company-scoped",
     "refresh_tokens": "belongs to a user, not a company; the token's claim carries the company",
     "otp_codes": "issued before a company is selected - auth precedes tenancy",
-    "audit_logs": "has company_id, but nullable: platform-level events have no company",
 }
 
 #: (child, column, parent) links that must be composite.
@@ -64,6 +63,11 @@ TENANT_LINKS = [
     ("technician_subcategories", "subcategory_id", "product_subcategories"),
     ("technician_pincodes", "technician_id", "technician_profiles"),
     ("technician_profiles", "membership_id", "memberships"),
+    ("tickets", "vendor_id", "vendors"),
+    ("tickets", "subcategory_id", "product_subcategories"),
+    ("tickets", "model_id", "product_models"),
+    ("tickets", "technician_id", "technician_profiles"),
+    ("ticket_events", "ticket_id", "tickets"),
 ]
 
 

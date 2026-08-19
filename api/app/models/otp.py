@@ -73,7 +73,11 @@ class OtpCode(Base, IdMixin, AuditMixin):
         Index("ix_otp_codes_phone_created", "phone", "created_at"),
         Index("ix_otp_codes_purpose_phone", "purpose", "phone"),
         Index("ix_otp_codes_ip_created", "request_ip", "created_at"),
+        # The two FKs. An OTP row outlives the sign-in attempt, so both parents
+        # can be deleted while codes still point at them.
+        Index("ix_otp_codes_user_id", "user_id"),
+        Index("ix_otp_codes_invite_id", "invite_id"),
         CheckConstraint(
-            "purpose IN ('login','invite')", name="ck_otp_codes_purpose"
+            "purpose IN ('login','invite')", name="purpose"
         ),
     )

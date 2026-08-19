@@ -13,16 +13,16 @@ export default function ManualEntryPage() {
     <>
       <PageMeta
         title="Manual ticket entry"
-        description="Create a single installation or demo ticket."
+        description="Create a single ticket — installation, tech visit or service."
       />
 
       <header className="mb-4.5">
         <h2 className="text-base font-semibold">
-          New installation / demo ticket
+          New ticket
         </h2>
         <p className="mt-1 text-[13px] text-ink-2">
-          All fields are required regardless of intake channel. The customer
-          picks a slot after validation.
+          The same fields every intake channel needs. Enter a slot if you have
+          already agreed one on the call, or leave it for the customer to pick.
         </p>
       </header>
 
@@ -43,8 +43,14 @@ export default function ManualEntryPage() {
           create.mutate(values, {
             onSuccess: (ticket) => {
               toast.add({
-                title: `${ticket.id} created`,
-                description: "Slot request sent to the customer.",
+                title: `${ticket.code} created`,
+                // Says what actually happened. The old copy promised a slot
+                // request had been sent, which was true of neither branch:
+                // with a slot there is nothing to request, and without one
+                // the WhatsApp is still a later slice.
+                description: ticket.slotStart
+                  ? "Slot locked — eligible technicians can see it now."
+                  : "Waiting for the customer to confirm a slot.",
               });
               navigate("/tickets");
             },

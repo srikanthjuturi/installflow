@@ -17,12 +17,22 @@ import type {
 } from "@/types/product";
 import { apiDelete, apiGet, apiPost, apiPut } from "./http";
 
+/**
+ * The catalogue, whole or narrowed to one brand.
+ *
+ * `vendorId` returns only that vendor's models and only the levels above them
+ * that still hold any — ticket intake picks the vendor first, so its category
+ * and model pickers must not offer a path that dead-ends.
+ */
 export function listCategoryTree(
-  includeInactive = false
+  includeInactive = false,
+  vendorId?: string
 ): Promise<ProductCategory[]> {
-  return apiGet<ProductCategory[]>(
-    `/masters/categories${includeInactive ? "?includeInactive=true" : ""}`
-  );
+  const query = new URLSearchParams();
+  if (includeInactive) query.set("includeInactive", "true");
+  if (vendorId) query.set("vendorId", vendorId);
+  const qs = query.toString();
+  return apiGet<ProductCategory[]>(`/masters/categories${qs ? `?${qs}` : ""}`);
 }
 
 /* -------------------------------------------------------------- categories */

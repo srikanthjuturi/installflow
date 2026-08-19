@@ -17,8 +17,8 @@ import { flattenSubcategories } from "@/types/product";
 export const productKeys = {
   all: ["product-master"] as const,
   /** Prefix — one invalidation refreshes the tree and every derived list. */
-  tree: (includeInactive: boolean) =>
-    ["product-master", "tree", includeInactive] as const,
+  tree: (includeInactive: boolean, vendorId?: string) =>
+    ["product-master", "tree", includeInactive, vendorId ?? null] as const,
 };
 
 /**
@@ -28,11 +28,15 @@ export const productKeys = {
  * form and ticket intake, so it is fetched once and cached long — a product
  * master changes a few times a year, not a few times a minute.
  */
-export function useCategoryTree(includeInactive = false) {
+export function useCategoryTree(includeInactive = false, vendorId?: string) {
   return useQuery({
-    queryKey: productKeys.tree(includeInactive),
-    queryFn: () => listCategoryTree(includeInactive),
+    queryKey: productKeys.tree(includeInactive, vendorId),
+    queryFn: () => listCategoryTree(includeInactive, vendorId),
     staleTime: 60 * 60 * 1000,
+    // Nothing to ask for until a vendor is chosen, when one is being asked for.
+    // Fetching the whole catalogue first and discarding it would flash the wrong
+    // options into a dropdown somebody may already be opening.
+    enabled: vendorId !== "",
   });
 }
 

@@ -113,8 +113,10 @@ class TechnicianOut(AppModel):
     #: derived from open assignments, not stored.
     bwUsed: int = 0
     rating: float | None
-    jobsCompleted: int
-    jobsCancelled: int
+    #: All three NULL until the jobs slice measures them. Null means "not
+    #: measured", which is why it is not 0 — see the model's note.
+    jobsCompleted: int | None
+    jobsCancelled: int | None
     onTimePct: int | None
 
     onboarding: OnboardingOut
@@ -174,5 +176,5 @@ class TechnicianSessionOut(AppModel):
     #: rating means no closed jobs yet — the app renders a dash, because 0
     #: would read as the worst possible score.
     rating: float | None
-    jobsCompleted: int
+    jobsCompleted: int | None
     onTimePct: int | None

@@ -1,16 +1,26 @@
-import type { TicketDetail } from "@/services/tickets";
+import { EMPTY, formatDate, formatDateTime, formatSlot } from "@/utils/datetime";
+import type { TicketDetail } from "@/types/ticket";
 
-/** The eight facts that define the ticket, in the prototype's order. */
+/**
+ * The facts that define the ticket — the prototype's eight, plus the four
+ * intake now collects: what kind of job it is, the customer's problem, the
+ * serial to check against, and an address to actually arrive at.
+ */
 export function FactGrid({ ticket }: { ticket: TicketDetail }) {
   const facts: Array<[string, string]> = [
-    ["Vendor", ticket.vendor],
-    ["Category", ticket.category],
-    ["Product model", ticket.product],
-    ["SLA type", ticket.slaType],
+    ["Vendor", ticket.vendorName],
+    ["Category", ticket.subcategoryName],
+    ["Product model", ticket.modelName],
+    ["Service type", ticket.serviceType],
+    ["Service level", `${ticket.serviceLevelHours}h`],
+    // Only ever present for Tech Visit and Service.
+    ["Problem", ticket.description ?? EMPTY],
+    ["Expected serial", ticket.serialNumber ?? EMPTY],
+    ["Address", `${ticket.address}, ${ticket.city}, ${ticket.state}`],
     ["Pincode", ticket.pincode],
-    ["Expected date", ticket.expected],
-    ["Created", ticket.created],
-    ["Confirmed slot", ticket.slot],
+    ["Expected date", formatDate(ticket.expectedDate)],
+    ["Created", formatDateTime(ticket.createdAt)],
+    ["Confirmed slot", formatSlot(ticket.slotStart, ticket.slotEnd)],
   ];
 
   return (

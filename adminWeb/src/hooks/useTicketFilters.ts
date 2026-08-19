@@ -68,7 +68,17 @@ export function useTicketFilters() {
 
   // Stable identity keeps the query key from thrashing on every render.
   const params = useMemo<ListParams>(
-    () => ({ page, limit, search, sortBy, sortDir, filters: { status } }),
+    // "All" is a control value, not a status — omitted so it never reaches the
+    // API as a filter, and so an unfiltered list has one cache key rather than
+    // two. The API tolerates it anyway; this keeps the request honest.
+    () => ({
+      page,
+      limit,
+      search,
+      sortBy,
+      sortDir,
+      ...(status === ALL ? {} : { filters: { status } }),
+    }),
     [page, limit, search, sortBy, sortDir, status]
   );
 

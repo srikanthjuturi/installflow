@@ -105,7 +105,7 @@ export function TechStats({ tech }: { tech: Technician }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <StatTile label="Jobs done">
-        <span className="tabular-nums">{tech.jobsCompleted}</span>
+        <span className="tabular-nums">{tech.jobsCompleted ?? "—"}</span>
       </StatTile>
 
       <StatTile label="Bandwidth">
@@ -122,7 +122,11 @@ export function TechStats({ tech }: { tech: Technician }) {
       </StatTile>
 
       <StatTile label="Cancels">
-        <CancelCount cancels={tech.jobsCancelled} />
+        {tech.jobsCancelled === null ? (
+          <span className="tabular-nums">—</span>
+        ) : (
+          <CancelCount cancels={tech.jobsCancelled} />
+        )}
       </StatTile>
 
       <StatTile label="On time">

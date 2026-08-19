@@ -38,8 +38,15 @@ class Membership(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "company_id", name="uq_memberships_user_company"),
+        # NB: one membership per (user, company) is a PARTIAL unique index on
+        # `deleted_at IS NULL`, created in the migration — `Index()` cannot
+        # express a WHERE clause. It was a plain UniqueConstraint until it was
+        # noticed that removing someone from a company soft-deletes the
+        # membership, so re-adding that same person hit a 409 with no visible
+        # cause: the offending row is hidden from every screen.
+        #
         # Target for the composite same-company FK (Postgres needs this unique).
+        # This one stays TOTAL — a partial index cannot be a foreign key target.
         UniqueConstraint("company_id", "id", name="uq_memberships_company_id_id"),
         ForeignKeyConstraint(
             ["company_id", "manager_id"],
@@ -48,4 +55,7 @@ class Membership(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         ),
         Index("ix_memberships_company_id", "company_id"),
         Index("ix_memberships_company_created", "company_id", "created_at"),
+        # Covers the self-referential FK, so deleting a manager does not scan
+        # the table to prove nobody still reports to them.
+        Index("ix_memberships_company_manager", "company_id", "manager_id"),
     )

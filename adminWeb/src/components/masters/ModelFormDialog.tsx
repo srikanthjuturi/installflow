@@ -243,6 +243,11 @@ function ModelForm({
                   value={field.value}
                   onChange={field.onChange}
                   invalid={errors.vendorId !== undefined}
+                  current={
+                    model
+                      ? { id: model.vendorId, name: model.vendorName }
+                      : undefined
+                  }
                 />
               )}
             />
@@ -596,13 +601,27 @@ function BrandSelect({
   value,
   onChange,
   invalid,
+  current,
 }: {
   value: string;
   onChange: (v: string) => void;
   invalid?: boolean;
+  /**
+   * The brand this model already carries, if any. `/vendors/options` returns
+   * only ACTIVE vendors, so without this a model branded with a paused vendor
+   * would render as "Select a brand" — indistinguishable from a new model that
+   * has none, and one careless save away from being silently re-branded.
+   */
+  current?: VendorOption;
 }) {
   const { data, isPending, isError } = useVendorOptions();
-  const vendors: VendorOption[] = data ?? [];
+  const active: VendorOption[] = data ?? [];
+  // Kept selectable so re-saving the model does not force a brand change; the
+  // API accepts the unchanged id even when the vendor is paused.
+  const vendors =
+    current && !active.some((v) => v.id === current.id)
+      ? [current, ...active]
+      : active;
   const disabled = isPending || isError || vendors.length === 0;
 
   // Hard rule 10 — a single-option dropdown fills itself. Held off while the

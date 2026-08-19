@@ -23,6 +23,7 @@ import uuid
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     ForeignKeyConstraint,
     ForeignKey,
     Index,
@@ -94,6 +95,11 @@ class ProductSubcategory(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     __table_args__ = (
         Index("ix_product_subcategories_category_id", "category_id"),
         Index("ix_product_subcategories_company_id", "company_id"),
+        # Covers the composite FK below — a category delete would otherwise scan
+        # every subcategory in the database, not just this company's.
+        Index(
+            "ix_product_subcategories_company_category", "company_id", "category_id"
+        ),
         UniqueConstraint(
             "company_id", "id", name="uq_product_subcategories_company_id_id"
         ),
@@ -166,9 +172,27 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "warranty_months IS NULL OR (warranty_months >= 0 AND warranty_months <= 240)",
+            name="warranty_months",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(service_types) = 'array' "
+            "AND jsonb_array_length(service_types) >= 1 "
+            "AND service_types <@ "
+            "'[\"Installation + Demo\", \"Tech Visit\", \"Service\"]'::jsonb",
+            name="service_types",
+        ),
         Index("ix_product_models_subcategory_id", "subcategory_id"),
         Index("ix_product_models_company_id", "company_id"),
         Index("ix_product_models_vendor_id", "vendor_id"),
+        # One per composite FK below. The single-column pair above serve
+        # cross-company lookups; these serve the FK checks, which match on both.
+        Index("ix_product_models_company_subcategory", "company_id", "subcategory_id"),
+        Index("ix_product_models_company_vendor", "company_id", "vendor_id"),
+        # What a ticket's composite FK points at. Added when tickets landed —
+        # until then nothing hung off a model, so there was nothing to point.
+        UniqueConstraint("company_id", "id", name="uq_product_models_company_id_id"),
         ForeignKeyConstraint(
             ["company_id", "subcategory_id"],
             ["product_subcategories.company_id", "product_subcategories.id"],

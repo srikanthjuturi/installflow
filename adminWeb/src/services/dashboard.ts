@@ -1,5 +1,5 @@
-import { mockPage, mockResponse } from "./client";
-import { TICKETS } from "./mocks/tickets";
+import { mockResponse } from "./client";
+import { listTickets } from "./tickets";
 import type { DashboardSummary, Ticket } from "@/types";
 
 const SUMMARY: DashboardSummary = {
@@ -93,7 +93,15 @@ const RECENT_LIMIT = 6;
  * so this hands back rows rather than a `Page` nobody would page through.
  */
 export function getRecentTickets(): Promise<Ticket[]> {
-  return mockPage(() => TICKETS, { page: 1, limit: RECENT_LIMIT }).then(
-    (result) => result.rows
-  );
+  // The one part of this screen that is real. Sorted by creation rather than
+  // the list's SLA urgency, because "recent" is the promise the card makes.
+  //
+  // NB the KPI tiles above it are still the hardcoded SUMMARY below, so they
+  // will visibly disagree with these rows until they are wired too.
+  return listTickets({
+    page: 1,
+    limit: RECENT_LIMIT,
+    sortBy: "createdAt",
+    sortDir: "desc",
+  }).then((result) => result.rows);
 }

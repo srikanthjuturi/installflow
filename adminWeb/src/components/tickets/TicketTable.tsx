@@ -6,6 +6,7 @@ import {
 } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import type { ListParams, PaginationMeta } from "@/types/api";
+import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
 import type { SlaState, Ticket } from "@/types";
 
 import { STATUS_CHIPS } from "./statusChips";
@@ -53,20 +54,20 @@ export function TicketTable({
     {
       id: "ticket",
       header: "Ticket",
-      sortValue: (t) => t.id,
+      sortValue: (t) => t.code,
       cell: (t) => (
         <>
-          {/* The row is clickable, but the id stays a real link so it
+          {/* The row is clickable, but the code stays a real link so it
               is reachable by keyboard and opens in a new tab. */}
           <a
             href={`/tickets/${t.id}`}
             onClick={(e) => e.stopPropagation()}
             className="font-mono text-xs font-semibold text-brand-400"
           >
-            {t.id}
+            {t.code}
           </a>
           <div className="mt-0.5 text-xs text-ink-3">
-            {t.vendor} · {t.created}
+            {t.vendorName} · {formatDateTime(t.createdAt)}
           </div>
         </>
       ),
@@ -74,42 +75,54 @@ export function TicketTable({
     {
       id: "customer",
       header: "Customer",
-      sortValue: (t) => t.customer,
+      sortValue: (t) => t.customerName,
       cell: (t) => (
         <>
-          <div className="font-medium">{t.customer}</div>
-          <div className="text-xs text-ink-3">{t.mobile}</div>
+          <div className="font-medium">{t.customerName}</div>
+          <div className="text-xs text-ink-3">{t.customerPhone}</div>
         </>
       ),
     },
     {
       id: "category",
       header: "Category / Model",
-      sortValue: (t) => t.category,
+      sortValue: (t) => t.subcategoryName,
       cell: (t) => (
         <>
-          <div>{t.category}</div>
+          <div>{t.subcategoryName}</div>
           <div className="max-w-50 truncate text-xs text-ink-3">
-            {t.product}
+            {t.modelName}
           </div>
         </>
       ),
     },
-    { id: "sla", header: "SLA", cell: (t) => t.slaType },
+    {
+      id: "serviceType",
+      header: "Service type",
+      cell: (t) => t.serviceType,
+    },
+    // "24h" from the number. The hours are what is stored; the suffix is how
+    // the prototype writes it.
+    { id: "sla", header: "SLA", cell: (t) => `${t.serviceLevelHours}h` },
     {
       id: "slot",
       header: "Slot",
-      sortValue: (t) => t.slot,
+      sortValue: (t) => t.slotStart ?? "",
       cell: (t) => (
         <>
-          <div>{t.slot}</div>
+          <div>{formatSlot(t.slotStart, t.slotEnd)}</div>
           <div className="text-xs text-ink-3">
             {t.city} · {t.pincode}
           </div>
         </>
       ),
     },
-    { id: "tech", header: "Technician", cell: (t) => t.tech },
+    // Null until a technician accepts — first-accept-wins.
+    {
+      id: "tech",
+      header: "Technician",
+      cell: (t) => t.technicianName ?? EMPTY,
+    },
     {
       id: "status",
       header: "Status",
@@ -122,8 +135,8 @@ export function TicketTable({
       // The server sorts this column on the urgency rank behind the word, so
       // the default order is triage order rather than alphabetical. The rank
       // stays here to mark the column sortable and to show the active arrow.
-      sortValue: (t) => SLA_RANK[t.sla],
-      cell: (t) => <SlaBadge state={t.sla} />,
+      sortValue: (t) => SLA_RANK[t.slaState],
+      cell: (t) => <SlaBadge state={t.slaState} />,
     },
   ];
 
