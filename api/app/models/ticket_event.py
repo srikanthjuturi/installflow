@@ -25,6 +25,9 @@ The event's `created_at` IS when it happened — there is no later moment at whi
 a past event could be inserted. A second timestamp would be two fields that must
 agree and eventually would not.
 
+It is not what the trail is SORTED by, though. See `seq`: a timestamp cannot
+order two events written in the same transaction, because they share one.
+
 Nothing here is ever updated or deleted, so `updated_at` / `updated_by` sit
 unused. They are inherited anyway rather than hand-declared, because a table
 that is *almost* like every other table but not quite is the kind of exception
@@ -34,9 +37,11 @@ people trip over later.
 import uuid
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
+    Identity,
     Index,
     String,
     Text,
@@ -74,6 +79,18 @@ class TicketEvent(Base, IdMixin, AuditMixin):
     #: ticket has nothing left to describe.
     ticket_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
 
+    #: Insertion order, and the ONLY thing the timeline sorts by.
+    #:
+    #: `created_at` cannot do it. Postgres `now()` is the transaction's start
+    #: time, not the statement's, so two events written in one transaction —
+    #: which is exactly what creating a ticket with a slot does — carry the
+    #: identical timestamp. Sorting then fell through to `id`, a random UUID,
+    #: and the trail showed "Slot confirmed" above "Ticket created".
+    #:
+    #: An identity column is monotonic per table and assigned at INSERT, so the
+    #: order is the order things happened, permanently.
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False)
+
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     #: Both null unless the event moved the ticket. `from_status` is null on the
     #: first event, because there was no previous state.
@@ -97,8 +114,9 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "actor_kind IN ('staff', 'technician', 'customer', 'system')",
             name="actor_kind",
         ),
-        # The timeline query: one ticket's events, oldest first.
-        Index("ix_ticket_events_company_ticket", "company_id", "ticket_id"),
+        # The timeline query: one ticket's events, oldest first. `seq` is in
+        # the index so the sort comes off it rather than being done in memory.
+        Index("ix_ticket_events_company_ticket", "company_id", "ticket_id", "seq"),
         Index("ix_ticket_events_company_created", "company_id", "created_at"),
         ForeignKeyConstraint(
             ["company_id", "ticket_id"],

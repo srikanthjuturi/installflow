@@ -558,7 +558,9 @@ async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
             TicketEvent.company_id == row.company_id,
             TicketEvent.ticket_id == row.id,
         )
-        .order_by(TicketEvent.created_at, TicketEvent.id)
+        # `seq`, never `created_at` — see the column's note: events written in
+        # one transaction share a timestamp.
+        .order_by(TicketEvent.seq)
     )
     return [
         TimelineEventOut(
