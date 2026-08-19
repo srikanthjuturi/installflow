@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field
 
 from app.core.intake import (
     AVAILABLE_INTAKE_CHANNELS,
@@ -78,6 +78,12 @@ class VendorCreateRequest(BaseModel):
     )
     isActive: bool = True
 
+    #: The vendor's login. REQUIRED, because only a vendor can raise a ticket —
+    #: a vendor without an account would be a brand nobody could ever raise one
+    #: against, which is a dead end rather than a choice.
+    loginEmail: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
 
 class VendorUpdateRequest(BaseModel):
     """Omit a field to leave it alone.
@@ -100,6 +106,14 @@ class VendorUpdateRequest(BaseModel):
     #: channels alone, and an empty list is refused rather than clearing them.
     intakeChannels: IntakeChannels | None = None
     isActive: bool | None = None
+    #: Reissue the vendor's password. Omit to leave it alone — this is the only
+    #: way back in for a vendor who has forgotten theirs, since changing a
+    #: password otherwise requires knowing the current one.
+    #:
+    #: The login EMAIL is deliberately not editable: it is the identity the
+    #: account is looked up by, and moving it would silently strand the vendor
+    #: on credentials nobody has recorded.
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class VendorOut(AppModel):
@@ -118,11 +132,12 @@ class VendorOut(AppModel):
     #: How many live product models carry this vendor as their brand. A real
     #: COUNT — it is what the delete confirmation quotes back at the user.
     modelCount: int
-    #: Tickets received from this vendor. Always 0 until the jobs slice exists —
-    #: not a placeholder but the true figure, since nothing can receive a ticket
-    #: yet. Becomes a real COUNT the day it can, exactly as `technicianCount`
-    #: did on a subcategory.
+    #: Live tickets raised by this vendor. A real COUNT since vendors started
+    #: raising their own — it was hard-coded 0 while nothing could receive one.
     ticketCount: int = 0
+    #: The address this vendor signs in with. Null only for a vendor created
+    #: before logins existed, which is nothing outside a half-migrated database.
+    loginEmail: str | None = None
     createdAt: datetime
 
 

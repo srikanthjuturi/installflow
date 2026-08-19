@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.deps import Principal
 from app.core.features import effective_features
 from app.core.scope import own_scope, scope_label
+from app.core.sessions import revoke_refresh_tokens
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -224,14 +225,13 @@ async def refresh_tokens(session: AsyncSession, raw_token: str) -> RefreshRespon
 async def logout(
     session: AsyncSession, user_id: uuid.UUID, raw_token: str | None
 ) -> None:
-    now = datetime.now(timezone.utc)
-    stmt = select(RefreshToken).where(
-        RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None)
-    )
-    if raw_token:
-        stmt = stmt.where(RefreshToken.token_hash == hash_token(raw_token))
-    for row in (await session.scalars(stmt)).all():
-        row.revoked_at = now
+    """One device, or all of them when no token is given.
+
+    The revocation itself lives in `app.core.sessions` — a password change and a
+    vendor password reset need exactly the same thing, and hard rule 4 forbids
+    them importing it from this slice.
+    """
+    await revoke_refresh_tokens(session, user_id, raw_token=raw_token)
     await session.commit()
 
 

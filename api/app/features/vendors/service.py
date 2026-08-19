@@ -35,7 +35,13 @@ from app.features.vendors.schemas import (
     VendorOut,
     VendorUpdateRequest,
 )
+from app.core.security import hash_password
+from app.core.sessions import revoke_refresh_tokens
+from app.models.membership import Membership
 from app.models.product import ProductModel
+from app.models.role import ROLE_LABELS, VENDOR, VENDOR_ROLES
+from app.models.ticket import Ticket
+from app.models.user import User
 from app.models.vendor import Vendor
 
 SORTABLE = {
@@ -97,6 +103,50 @@ async def _assert_name_free(
         raise _conflict(f"A vendor called {name} already exists")
 
 
+async def _resolve_login_identity(
+    db: AsyncSession, company_id: uuid.UUID, email: str
+) -> User | None:
+    """The user this email may become a vendor login for, or None if it is new.
+
+    Three outcomes, and the two refusals must not read alike — an operator who
+    hits the first should stop and use a different address, while the second is
+    just a duplicate they can see on screen.
+
+    * **Held by staff or a technician** → refused, permanently. `users.role` is
+      immutable and no endpoint changes it, so this address can never become a
+      vendor login. Say so, rather than leaving them to retry.
+    * **Already a vendor login in THIS company** → refused as a duplicate. One
+      membership per (user, company), so it could not be two vendors here.
+    * **Already a vendor login in ANOTHER company** → reused. One person, one
+      identity, a membership per company — which is exactly why `vendor_id`
+      lives on the membership and not on the user.
+    """
+    existing = await db.scalar(
+        select(User).where(
+            func.lower(User.email) == email.lower(), User.deleted_at.is_(None)
+        )
+    )
+    if existing is None:
+        return None
+
+    if existing.role not in VENDOR_ROLES:
+        raise _conflict(
+            f"{email} already signs in as {ROLE_LABELS.get(existing.role, existing.role)}. "
+            "An account cannot be both — use a different address for the vendor."
+        )
+
+    clash = await db.scalar(
+        select(Membership.id).where(
+            Membership.user_id == existing.id,
+            Membership.company_id == company_id,
+            Membership.deleted_at.is_(None),
+        )
+    )
+    if clash is not None:
+        raise _conflict(f"{email} is already the login for another vendor here")
+    return existing
+
+
 async def _assert_gst_free(
     db: AsyncSession,
     company_id: uuid.UUID,
@@ -136,7 +186,58 @@ async def _model_counts(
     return {vendor_id: count for vendor_id, count in rows}
 
 
-def _to_out(row: Vendor, model_count: int) -> VendorOut:
+async def _ticket_counts(
+    db: AsyncSession, company_id: uuid.UUID, vendor_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Live tickets per vendor — one grouped query, never N+1.
+
+    This read `0` in code until vendors could raise their own, with a comment
+    saying it would become a real count the day one could. That day is now.
+    """
+    if not vendor_ids:
+        return {}
+    rows = await db.execute(
+        select(Ticket.vendor_id, func.count(Ticket.id))
+        .where(
+            Ticket.company_id == company_id,
+            Ticket.vendor_id.in_(vendor_ids),
+            Ticket.deleted_at.is_(None),
+        )
+        .group_by(Ticket.vendor_id)
+    )
+    return {vendor_id: count for vendor_id, count in rows}
+
+
+async def _login_emails(
+    db: AsyncSession, company_id: uuid.UUID, vendor_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """The address each vendor signs in with, from its `vendor` membership.
+
+    Sub-users are excluded by role: a vendor has exactly one account that IS the
+    vendor, and any number that merely belong to it.
+    """
+    if not vendor_ids:
+        return {}
+    rows = await db.execute(
+        select(Membership.vendor_id, User.email)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            Membership.company_id == company_id,
+            Membership.vendor_id.in_(vendor_ids),
+            Membership.deleted_at.is_(None),
+            User.role == VENDOR,
+            User.deleted_at.is_(None),
+        )
+    )
+    return {vendor_id: email for vendor_id, email in rows if email}
+
+
+def _to_out(
+    row: Vendor,
+    model_count: int,
+    ticket_count: int = 0,
+    login_email: str | None = None,
+) -> VendorOut:
     return VendorOut(
         id=row.id,
         name=row.name,
@@ -151,15 +252,28 @@ def _to_out(row: Vendor, model_count: int) -> VendorOut:
         intakeChannels=list(row.intake_channels or []),
         isActive=row.is_active,
         modelCount=model_count,
-        # 0 until the jobs slice exists — see VendorOut.ticketCount.
-        ticketCount=0,
+        ticketCount=ticket_count,
+        loginEmail=login_email,
         createdAt=row.created_at,
     )
 
 
-async def _one(db: AsyncSession, row: Vendor) -> VendorOut:
-    counts = await _model_counts(db, [row.id])
-    return _to_out(row, counts.get(row.id, 0))
+async def _hydrate(
+    db: AsyncSession, company_id: uuid.UUID, rows: list[Vendor]
+) -> list[VendorOut]:
+    """Resolve the three derived figures for a page — three queries, not 3N."""
+    ids = [r.id for r in rows]
+    models = await _model_counts(db, ids)
+    tickets = await _ticket_counts(db, company_id, ids)
+    logins = await _login_emails(db, company_id, ids)
+    return [
+        _to_out(r, models.get(r.id, 0), tickets.get(r.id, 0), logins.get(r.id))
+        for r in rows
+    ]
+
+
+async def _one(db: AsyncSession, company_id: uuid.UUID, row: Vendor) -> VendorOut:
+    return (await _hydrate(db, company_id, [row]))[0]
 
 
 # ── read ──────────────────────────────────────────────────────────────────────
@@ -219,14 +333,15 @@ async def list_vendors(
     stmt = stmt.order_by(column.desc() if params.sortDir == "desc" else column.asc())
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
-    counts = await _model_counts(db, [r.id for r in rows])
-    return [_to_out(r, counts.get(r.id, 0)) for r in rows], total
+    return await _hydrate(db, principal.company_id, rows), total
 
 
 async def get_vendor(
     db: AsyncSession, principal: Principal, vendor_id: uuid.UUID
 ) -> VendorOut:
-    return await _one(db, await _load(db, principal.company_id, vendor_id))
+    return await _one(
+        db, principal.company_id, await _load(db, principal.company_id, vendor_id)
+    )
 
 
 def list_channels() -> list[IntakeChannelOut]:
@@ -277,17 +392,28 @@ async def list_options(
 async def create_vendor(
     db: AsyncSession, principal: Principal, body: VendorCreateRequest
 ) -> VendorOut:
+    """The vendor record and the account that signs in as it, in ONE transaction.
+
+    Both or neither. A vendor with no login is a brand nobody can raise a ticket
+    against, and a login with no vendor is an account that authenticates and
+    then has nothing to act for — so a half-written pair is worse than a refusal.
+
+    Every uniqueness check runs BEFORE the first insert, so the caller gets one
+    clear 409 naming what clashed rather than a rollback out of the database.
+    """
     company_id = principal.company_id
     name = body.name.strip()
     await _assert_name_free(db, company_id, name)
     await _assert_gst_free(db, company_id, body.gstNumber)
+    identity = await _resolve_login_identity(db, company_id, str(body.loginEmail))
 
+    contact = body.contactPerson.strip()
     row = Vendor(
         company_id=company_id,
         name=name,
         gst_number=body.gstNumber,
         cin=body.cin,
-        contact_person=body.contactPerson.strip(),
+        contact_person=contact,
         phone=body.phone,
         address=body.address,
         city=body.city,
@@ -298,9 +424,69 @@ async def create_vendor(
         created_by=principal.user_id,
     )
     db.add(row)
+    # autoflush is OFF (hard rule 9) and the membership needs the vendor's id.
+    await db.flush()
+
+    if identity is None:
+        # The account describes the same human as the record: the contact
+        # person's name, the vendor's phone. Two rows that would otherwise drift
+        # apart the first time one of them is corrected.
+        identity = User(
+            email=str(body.loginEmail),
+            password_hash=hash_password(body.password),
+            full_name=contact,
+            phone=body.phone,
+            role=VENDOR,
+            is_active=True,
+            created_by=principal.user_id,
+        )
+        db.add(identity)
+        await db.flush()
+
+    db.add(
+        Membership(
+            user_id=identity.id,
+            company_id=company_id,
+            vendor_id=row.id,
+            is_active=True,
+            created_by=principal.user_id,
+        )
+    )
     await db.commit()
     await db.refresh(row)
-    return await _one(db, row)
+    return await _one(db, company_id, row)
+
+
+async def _reset_login_password(
+    db: AsyncSession, principal: Principal, row: Vendor, password: str
+) -> None:
+    """Reissue the vendor's password, and kill the sessions it replaces.
+
+    This is the only way back in for a vendor who has forgotten theirs, because
+    `/auth/change-password` needs the current one and there is no email channel
+    to send a reset link through.
+
+    Every outstanding refresh token is revoked, for the same reason a password
+    change revokes them: whoever prompted the reset may be exactly who should
+    stop having access.
+    """
+    account = await db.scalar(
+        select(User)
+        .join(Membership, Membership.user_id == User.id)
+        .where(
+            Membership.company_id == row.company_id,
+            Membership.vendor_id == row.id,
+            Membership.deleted_at.is_(None),
+            User.role == VENDOR,
+            User.deleted_at.is_(None),
+        )
+    )
+    if account is None:
+        raise _conflict(f"{row.name} has no login to reset")
+
+    account.password_hash = hash_password(password)
+    account.updated_by = principal.user_id
+    await revoke_refresh_tokens(db, account.id)
 
 
 async def update_vendor(
@@ -340,10 +526,12 @@ async def update_vendor(
         row.intake_channels = list(body.intakeChannels)
     if body.isActive is not None:
         row.is_active = body.isActive
+    if body.password is not None:
+        await _reset_login_password(db, principal, row, body.password)
     row.updated_by = principal.user_id
 
     await db.commit()
-    return await _one(db, row)
+    return await _one(db, principal.company_id, row)
 
 
 async def delete_vendor(
@@ -358,7 +546,32 @@ async def delete_vendor(
             f"{'' if branded == 1 else 's'}. Reassign them first."
         )
 
-    row.deleted_at = _now()
+    now = _now()
+    row.deleted_at = now
     row.is_active = False
     row.updated_by = principal.user_id
+
+    # Close the accounts with it. Without this the vendor and its sub-users keep
+    # authenticating against a vendor that no longer exists, and the first thing
+    # they try refuses with "Unknown or inactive vendor" — incomprehensible to
+    # someone who IS that vendor.
+    #
+    # The memberships are soft-deleted rather than the users: an identity may
+    # belong to a vendor in another company, and it authored ticket history here
+    # that must keep its author.
+    accounts = (
+        await db.scalars(
+            select(Membership).where(
+                Membership.company_id == row.company_id,
+                Membership.vendor_id == row.id,
+                Membership.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    for membership in accounts:
+        membership.is_active = False
+        membership.deleted_at = now
+        membership.updated_by = principal.user_id
+        await revoke_refresh_tokens(db, membership.user_id)
+
     await db.commit()
