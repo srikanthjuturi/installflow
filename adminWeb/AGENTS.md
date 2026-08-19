@@ -149,7 +149,9 @@ adminWeb/
     components/
       dashboard/          KpiRow · SlaBar · FunnelStrip · AttentionCards · RecentTickets
       tickets/            TicketTable · TicketFilters · StatusBadge · SlaBadge · TimelineEvent
-                          FactGrid · ProofGrid · ManualEntryForm · UploadDropzone · ValidationTable
+                          FactGrid · ProofGrid · ManualEntryForm
+      vendor/             VendorShell · PortalNav · portalNav.ts · AddVendorUserDialog
+                          — the vendor PORTAL, a third shell. See below.
       escalations/        EscalationCard · BonusPicker · EligibleTechTable
       ai-review/          AiQueueTable · ConfidenceMeter · SerialCompare · ProofLightbox
       technicians/        TechTable · BandwidthBar · TechProfileHeader · JobHistoryTable
@@ -256,6 +258,28 @@ mode outright because technicians work outdoors; a desk console has no such cons
 ---
 
 ## Hard rules
+
+### 0a. Three surfaces, and a vendor must never reach the ops one.
+
+`routes.tsx` has three top-level branches, each with its own shell: `/companies` (superadmin),
+`/portal/*` (vendor), and everything else (staff). `landingPath()` in `store/session.ts` is the ONE
+place they are ranked; the two guards, the login redirect and the catch-all all read it, because
+five call sites deciding independently is how they stop agreeing.
+
+**The portal is a top-level branch, not routes under `AppShell`, and that is a security decision.**
+`useFeatureAccess().has(undefined)` returns **true**, so eight ops paths are ungated — `/`, the
+three escalation routes, the two AI-review ones, `/notifications` and `/account`. Nested, each
+would be a per-screen decision to get right; bounced in `RequireAuth` before `AppShell` mounts, a
+vendor never reaches the guard that would have to decide. Escalations, AI Review and Notifications
+are still MOCKED, so the alternative is an outside party reading fabricated internal data.
+
+`RequirePortalFeature` therefore runs the **opposite polarity** to `RequireFeature`: an unrecognised
+path is DENIED, and the two genuinely open paths are an explicit allow-list in `portalNav.ts`.
+`PortalNavItem.feature` is required rather than optional for the same reason.
+
+**Deleting a route does not close a path.** `/tickets/new` still matched `tickets/:id` with
+`id="new"` and rendered the detail screen 422-ing on a ticket called "new". Dead paths get an
+explicit redirect.
 
 ### 0. Multi-tenant. The active company is the session's, and never the client's to choose.
 

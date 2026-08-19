@@ -217,6 +217,15 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 
 ## Domain facts that are easy to get wrong
 
+- **Only a VENDOR raises a ticket.** Vendors are outside parties with their own login and their own
+  restricted portal; company staff — admin, national head, regional head, area manager — see and
+  work tickets but can no longer create them. A vendor sees every ticket its people raised; a
+  vendor's sub-user sees only the ones they raised themselves.
+- A vendor's **login is created with the vendor**, on the Vendors screen, by a National Head or
+  above. It is required: only a vendor raises tickets, so a vendor without an account is a brand
+  nobody could ever raise a ticket against.
+- A vendor's **`intake_channels` decide which entry screens its portal offers.** Manual today;
+  Excel appears when the bulk importer exists; API is somebody else's application calling ours.
 - The **customer confirms the slot before any technician sees the job**. A technician accepts a
   fixed time — they never propose one.
 - Assignment is **first-accept-wins**. Losing the race is a normal outcome, not an error.
@@ -232,6 +241,10 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **`expected_date` and the confirmed slot are allowed to differ**, and the gap between them is
   worth reporting on. Expected date is what ops were asked for; the slot is what the customer
   chose from the windows the service level permits. They are two facts, not one fact stored twice.
+- The **expected serial is mandatory** on every ticket and every service type. It was optional
+  while ops typed tickets and often did not have it; the vendor holds the invoice, so it is
+  knowable at intake — and AI verification always has something to compare the photographed serial
+  against. Not unique: a service call on a unit installed earlier repeats it.
 - Proof is **four** artifacts: barcode, serial, product photos, geo-tagged live photos.
   Gallery uploads are never accepted.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review ·
