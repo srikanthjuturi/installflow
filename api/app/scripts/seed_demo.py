@@ -29,7 +29,7 @@ if sys.platform == "win32":
         warnings.simplefilter("ignore", DeprecationWarning)
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from sqlalchemy import func, select  # noqa: E402
+from sqlalchemy import func, select, text  # noqa: E402
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
@@ -275,6 +275,51 @@ async def _seed_technicians(session, index: int, spec) -> None:
     print(f"{name}: {made} technicians with certifications and coverage")
 
 
+async def _portal_logins(slug: str) -> list[str]:
+    """The vendor account with the most tickets, and its sub-user."""
+    async with AsyncSessionLocal() as session:
+        row = (
+            await session.execute(
+                text(
+                    """
+                    SELECT v.id,
+                           count(*) FILTER (WHERE u.role = 'vendor')      AS by_owner,
+                           count(*) FILTER (WHERE u.role = 'vendor_user') AS by_user
+                    FROM tickets t
+                    JOIN vendors v   ON v.id = t.vendor_id
+                    JOIN companies c ON c.id = t.company_id
+                    LEFT JOIN users u ON u.id = t.created_by
+                    WHERE c.slug = :slug
+                    GROUP BY v.id
+                    ORDER BY by_user DESC, by_owner DESC
+                    LIMIT 1
+                    """
+                ),
+                {"slug": slug},
+            )
+        ).first()
+        if row is None:
+            return ["    vendor: (no vendor has tickets)"]
+        accounts = (
+            await session.execute(
+                text(
+                    """
+                    SELECT u.role, u.email
+                    FROM memberships m JOIN users u ON u.id = m.user_id
+                    WHERE m.vendor_id = :v AND m.deleted_at IS NULL
+                    ORDER BY u.role
+                    """
+                ),
+                {"v": row[0]},
+            )
+        ).all()
+        counts = {"vendor": row[1] + row[2], "vendor_user": row[2]}
+        return [
+            f"    {role:<12} {email}  ({counts.get(role, 0)} tickets)"
+            for role, email in accounts
+        ]
+
+
 async def seed() -> None:
     async with AsyncSessionLocal() as session:
         for i, spec in enumerate(COMPANIES):
@@ -295,7 +340,16 @@ async def seed() -> None:
     print()
     print("Sign in with any of these — password for all of them: " + PASSWORD)
     for _name, slug, *_ in COMPANIES:
-        print(f"  {slug}:  " + "  ".join(f"{l}@{slug}.example.com" for _r, l, _n in STAFF))
+        print(f"  {slug}")
+        print("    staff:  " + "  ".join(f"{l}@{slug}.example.com" for _r, l, _n in STAFF))
+        # One vendor per company is enough to show the shape; the rest follow
+        # the same pattern, and only a vendor can raise a ticket now.
+        # Named from the DATA, not guessed: which vendor ends up with seeded
+        # tickets depends on which brand happens to own the matching model, and
+        # printing a vendor whose list is empty makes the portal look broken to
+        # whoever tries it first.
+        for line in await _portal_logins(slug):
+            print(line)
 
 
 if __name__ == "__main__":

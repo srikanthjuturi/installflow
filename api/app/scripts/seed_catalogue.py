@@ -21,7 +21,9 @@ regions).
 """
 
 import asyncio
+import re
 import sys
+import uuid
 import warnings
 from datetime import datetime, timedelta, timezone
 from itertools import cycle
@@ -34,7 +36,12 @@ if sys.platform == "win32":
 from sqlalchemy import func, select  # noqa: E402
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.core.sequences import allocate  # noqa: E402
 from app.models import Company  # noqa: E402
+from app.models.membership import Membership  # noqa: E402
+from app.models.role import VENDOR, VENDOR_USER  # noqa: E402
+from app.models.user import User  # noqa: E402
 from app.models.product import (  # noqa: E402
     ProductCategory,
     ProductModel,
@@ -42,6 +49,11 @@ from app.models.product import (  # noqa: E402
 )
 from app.models.ticket import Ticket  # noqa: E402
 from app.models.vendor import Vendor  # noqa: E402
+
+#: Same password as every other seeded account — see `seed_demo.PASSWORD`.
+#: Not imported from there: that module imports THIS one, and the reverse would
+#: be a cycle.
+PASSWORD = "Test@123"
 
 # (name, gst_number, cin, contact_person, phone, address, city, state, pincode,
 #  intake_channels)
@@ -53,8 +65,13 @@ from app.models.vendor import Vendor  # noqa: E402
 # The channel mix is deliberate. None is "API", even for the vendors the
 # prototype showed as API integrations — that channel is not selectable yet
 # (app/core/intake.py), and seeding a value the edit form would refuse to save
-# back is exactly the trap described above. Two vendors carry BOTH channels, so
-# the multi-select is exercised the moment anyone opens the screen.
+# back is exactly the trap described above.
+#
+# EVERY vendor carries "Manual", because a vendor's channels decide which entry
+# screens its portal offers and Manual is the only one that has a screen today.
+# An Excel-only vendor would sign in with no way to raise anything at all. Some
+# carry both, so the multi-select is still exercised the moment anyone opens the
+# screen.
 VENDORS: list[tuple[str, str, str, str, str, str, str, str, str, list[str]]] = [
     (
         "Videocon Industries",
@@ -78,7 +95,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str, list[str]]] = [
         "Noida",
         "Uttar Pradesh",
         "201301",
-        ["Excel"],
+        ["Excel", "Manual"],
     ),
     (
         "LG Electronics India",
@@ -90,7 +107,7 @@ VENDORS: list[tuple[str, str, str, str, str, str, str, str, str, list[str]]] = [
         "New Delhi",
         "Delhi",
         "110044",
-        ["Excel"],
+        ["Excel", "Manual"],
     ),
     (
         "Whirlpool of India",
@@ -247,6 +264,73 @@ async def _find(session, model, company_id, name_column, name: str, *extra):
     )
 
 
+def _vendor_slug(name: str) -> str:
+    """`Samsung India Electronics` → `samsung`. The first word is enough to tell
+    six seeded brands apart, and short enough to type at a sign-in box."""
+    return re.sub(r"[^a-z0-9]", "", name.split()[0].lower())
+
+
+async def _seed_vendor_logins(session, company) -> None:
+    """An account per vendor, plus one sub-user, so the portal is testable.
+
+    A vendor without a login cannot raise a ticket, and only a vendor raises
+    tickets now — so seeding brands without accounts would leave a company that
+    looks complete and can take no work at all.
+
+    The sub-user matters as much as the owner: the split between "sees every
+    ticket its people raised" and "sees only its own" is invisible until two
+    accounts exist under one vendor.
+    """
+    vendors = list(
+        await session.scalars(
+            select(Vendor).where(
+                Vendor.company_id == company.id, Vendor.deleted_at.is_(None)
+            )
+        )
+    )
+    made = 0
+    for vendor in vendors:
+        slug = _vendor_slug(vendor.name)
+        # The COMPANY slug is in the domain, because `users.email` is global
+        # while vendors are per-company — and all three seeded companies carry
+        # the same six brands. Without it the first company to seed claims
+        # `vendor@samsung.example.com` and the other two silently get no logins
+        # at all, which is exactly what happened the first time this ran.
+        domain = f"{slug}.{company.slug}.example.com"
+        for email, name, role in (
+            (f"vendor@{domain}", vendor.contact_person, VENDOR),
+            (f"user@{domain}", f"{slug.title()} Desk", VENDOR_USER),
+        ):
+            if await session.scalar(
+                select(User.id).where(func.lower(User.email) == email)
+            ):
+                continue
+            user = User(
+                email=email,
+                password_hash=hash_password(PASSWORD),
+                full_name=name,
+                phone=vendor.phone,
+                role=role,
+                is_active=True,
+            )
+            session.add(user)
+            # autoflush is OFF (hard rule 9) and the membership needs the id.
+            await session.flush()
+            session.add(
+                Membership(
+                    user_id=user.id,
+                    company_id=company.id,
+                    vendor_id=vendor.id,
+                    is_active=True,
+                )
+            )
+            made += 1
+
+    await session.commit()
+    if made:
+        print(f"{company.name}: {made} vendor logins (password {PASSWORD})")
+
+
 async def _seed_vendors(session, company) -> list:
     """Ensure this company has vendors; return their ids in name order.
 
@@ -299,6 +383,7 @@ async def _seed_vendors(session, company) -> list:
     # takes the `continue` below and never reaches the catalogue commit, so a
     # bare flush would lose its vendors.
     await session.commit()
+    await _seed_vendor_logins(session, company)
     print(f"{company.name}: seeded {len(VENDORS)} vendors")
 
     return list(
@@ -443,24 +528,24 @@ TICKETS: list[Seeded] = [
     (
         "Rajesh Nair", "+919876533110", "A-702, Raheja Heights, Baner Road",
         "Pimpri", "Maharashtra", "411018", "Washing Machine", "Installation + Demo",
-        None, None, 24, 30, "Escalated",          # slot beyond the window: breach
+        None, "VDC-WM7K-2204", 24, 30, "Escalated",  # slot beyond the window: breach
     ),
     (
         "Sameer Bhosale", "+919011224455", "Flat 9, Sai Residency, NIBM Road",
         "Hadapsar", "Maharashtra", "411028", "Air Conditioner", "Service",
         "Cooling has dropped since the last service and the outdoor unit rattles.",
-        None, 12, 6, "Assigned",
+        "VDC-AC15T-8830", 12, 6, "Assigned",
     ),
     (
         "Meera Kulkarni", "+919960771234", "12, Sunrise Society, Karve Nagar",
         "Kothrud", "Maharashtra", "411038", "Refrigerator", "Tech Visit",
         "Freezer compartment is icing over within a day of defrosting.",
-        None, 36, None, "Slot Pending",           # no slot: burns the window
+        "VDC-RF260-5517", 36, None, "Slot Pending",  # no slot: burns the window
     ),
     (
         "Farhan Qureshi", "+919820998877", "301, Lake View, Wakad Road",
         "Wakad", "Maharashtra", "411057", "Microwave", "Installation + Demo",
-        None, None, 48, 20, "New",
+        None, "VDC-MW23L-6642", 48, 20, "New",
     ),
     (
         "Divya Menon", "+919833445566", "7, Green Acres, Aundh",
@@ -508,6 +593,31 @@ async def _seed_tickets(session, company) -> None:
             )
         )
     }
+    # Who raised each one. A seeded ticket with no author is a ticket no vendor
+    # can see, because a vendor's list is "my brand" and a sub-user's is "raised
+    # by me" — and there is no way to backfill an author nobody recorded.
+    #
+    # Both accounts per vendor are kept, and tickets alternate between them, so
+    # the difference between "the vendor sees everything its people raised" and
+    # "a sub-user sees only its own" is visible in the seed rather than
+    # something you have to construct by hand before you can check it.
+    raisers: dict[uuid.UUID, dict[str, uuid.UUID]] = {}
+    for vendor_id, user_id, role in await session.execute(
+        select(Membership.vendor_id, Membership.user_id, User.role)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            Membership.company_id == company.id,
+            Membership.vendor_id.is_not(None),
+            Membership.deleted_at.is_(None),
+        )
+    ):
+        raisers.setdefault(vendor_id, {})[role] = user_id
+
+    # Through the counter, never `240912 + index`. Writing codes directly leaves
+    # `company_sequences` at zero, so the first REAL ticket is handed a code the
+    # seed already used and the insert 409s — six times over.
+    codes = await allocate(session, company.id, "ticket", len(TICKETS))
+
     now = datetime.now(timezone.utc)
     made = 0
 
@@ -529,7 +639,7 @@ async def _seed_tickets(session, company) -> None:
         session.add(
             Ticket(
                 company_id=company.id,
-                code=f"INST-{240912 + index}",
+                code=codes[index],
                 vendor_id=model.vendor_id,
                 subcategory_id=model.subcategory_id,
                 model_id=model.id,
@@ -548,6 +658,12 @@ async def _seed_tickets(session, company) -> None:
                 slot_end=slot_start + timedelta(hours=2) if slot_start else None,
                 sla_due_at=now + timedelta(hours=level),
                 status=status,
+                source="Manual",
+                created_by=(
+                    raisers.get(model.vendor_id, {}).get(
+                        VENDOR_USER if index % 2 else VENDOR
+                    )
+                ),
             )
         )
         made += 1

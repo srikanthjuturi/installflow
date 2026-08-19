@@ -64,11 +64,18 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: The EXPECTED serial — off the invoice or delivery note, entered at
     #: intake. Not the one the technician photographs on site: that is read by
     #: the AI at proof time, and a mismatch between the two is the whole point.
-    #: Nullable because ops often will not have it, and blocking a ticket over a
-    #: number nobody can see yet helps no one. Absent simply means the AI
-    #: compares the product model only, which is what the requirement document
-    #: describes anyway.
-    serial_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #:
+    #: REQUIRED. It was nullable while ops raised tickets, because they often
+    #: did not have it and blocking a ticket over a number nobody could see
+    #: helped no one. That reason expired when the VENDOR became the one raising
+    #: them: the vendor holds the invoice, so it is knowable at intake — and the
+    #: AI check now always has something to compare the photographed serial
+    #: against, which is the entire point of capturing it.
+    #:
+    #: NOT unique. A service call on a unit installed earlier legitimately
+    #: repeats the serial, and uniqueness would refuse the second ticket on the
+    #: same appliance.
+    serial_number: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # ── who, and where ─────────────────────────────────────────────────────
     customer_name: Mapped[str] = mapped_column(String(255), nullable=False)
