@@ -202,6 +202,19 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <DashboardPage /> },
               { path: "tickets", element: <TicketListPage /> },
+              // Explicit redirects, not just deleted routes: `/tickets/new`
+              // otherwise MATCHES `tickets/:id` with id="new", so an old
+              // bookmark renders the detail screen for a ticket called "new"
+              // and 422s. A static segment outranks a dynamic one, so these
+              // win wherever they are declared.
+              {
+                path: "tickets/new",
+                element: <Navigate to="/tickets" replace />,
+              },
+              {
+                path: "tickets/import",
+                element: <Navigate to="/tickets" replace />,
+              },
               { path: "tickets/:id", element: <TicketDetailPage /> },
               { path: "tickets/:id/force-close", element: <ForceClosePage /> },
               { path: "escalations", element: <EscalationQueuePage /> },

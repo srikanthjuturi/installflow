@@ -48,9 +48,16 @@ export function VendorShell() {
               {/* Both lines are facts from the server — the vendor's own name
                   and the company it supplies — so the shell says who you are
                   without inventing a strapline. */}
-              <p className="text-sm font-semibold text-ink">
-                {me?.vendor?.name ?? <Skeleton className="h-4 w-28" />}
-              </p>
+              {/* The skeleton is a sibling, not a child: `Skeleton` renders a
+                  <div>, and a <div> inside a <p> is invalid HTML that React
+                  reports as a hydration error. */}
+              {me?.vendor?.name ? (
+                <p className="text-sm font-semibold text-ink">
+                  {me.vendor.name}
+                </p>
+              ) : (
+                <Skeleton className="h-4 w-28" />
+              )}
               <p className="text-[11px] font-medium text-ink-3">
                 {me?.activeCompany?.name ?? ""}
               </p>

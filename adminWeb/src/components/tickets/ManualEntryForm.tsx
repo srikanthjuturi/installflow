@@ -289,7 +289,7 @@ export function ManualEntryForm({
             <FieldDescription>
               The serial you EXPECT to find, off the invoice — the technician
               photographs the real one on site, and a mismatch is what AI review
-              catches. Leave it blank if you do not have it.
+              catches.
             </FieldDescription>
           </FieldSet>
 
