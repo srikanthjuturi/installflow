@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Barcode, Camera, Hash, MapPin } from "lucide-react";
-import { LinkButton } from "@/components/shared/LinkButton";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -133,7 +132,18 @@ function SlotRequest({ ticket }: { ticket: TicketDetail }) {
   );
 }
 
-export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
+export function TechnicianPanel({
+  ticket,
+  action,
+}: {
+  ticket: TicketDetail;
+  /**
+   * What to offer when nobody is assigned. A slot, not a boolean, for the same
+   * reason `TicketDetailPage.actions` is one: the portal passes `null` and
+   * never has to know that an ops assign route exists.
+   */
+  action?: React.ReactNode;
+}) {
   // A real null now, not the "—" sentinel the mock used to mean "nobody".
   const assigned = ticket.technicianName !== null;
 
@@ -162,13 +172,7 @@ export function TechnicianPanel({ ticket }: { ticket: TicketDetail }) {
         ) : (
           <div className="flex flex-col items-start gap-3">
             <p className="text-[13px] text-ink-2">No technician assigned yet</p>
-            <LinkButton
-              variant="outline"
-              size="sm"
-              to={`/escalations/${ticket.id}/assign`}
-            >
-              Assign manually
-            </LinkButton>
+            {action}
           </div>
         )}
       </CardContent>

@@ -40,6 +40,11 @@ export default function TicketDetailPage({
   const { id = "" } = useParams();
   const { data: ticket, isLoading, isError, error, refetch } = useTicket(id);
 
+  // The one switch between the two surfaces: a caller that named its actions
+  // is the portal. Every ops-only control reads this, so a new one cannot be
+  // added on the ops side and quietly appear on the vendor's.
+  const isOps = actions === undefined;
+
   return (
     <>
       <PageMeta
@@ -94,7 +99,7 @@ export default function TicketDetailPage({
                     </p>
                   </div>
 
-                  {actions === undefined ? (
+                  {isOps ? (
                     <div className="flex flex-wrap gap-2.5">
                       <LinkButton
                         variant="outline"
@@ -121,7 +126,24 @@ export default function TicketDetailPage({
 
           <div className="flex flex-col gap-3.5">
             <CustomerPanel ticket={ticket} />
-            <TechnicianPanel ticket={ticket} />
+            <TechnicianPanel
+              ticket={ticket}
+              // Assignment is an ops job. On the portal this was a button that
+              // linked straight into `/escalations/:id/assign`, which
+              // `RequirePortalFeature` denies — a control that could only ever
+              // bounce the vendor who pressed it.
+              action={
+                isOps ? (
+                  <LinkButton
+                    variant="outline"
+                    size="sm"
+                    to={`/escalations/${ticket.id}/assign`}
+                  >
+                    Assign manually
+                  </LinkButton>
+                ) : null
+              }
+            />
             <ProofPanel hasProof={PROOF_STATUSES.has(ticket.status)} />
           </div>
         </div>
