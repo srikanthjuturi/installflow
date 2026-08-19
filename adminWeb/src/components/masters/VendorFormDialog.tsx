@@ -17,9 +17,9 @@ import {
   FieldGroup,
   FieldLabel,
   FieldLegend,
-  FieldSeparator,
   FieldSet,
 } from "@/components/ui/field";
+import { FormSection } from "@/components/shared/FormSection";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
@@ -100,18 +100,12 @@ function Section({
   hint?: string;
   children: React.ReactNode;
 }) {
+  // A thin alias for the shared component: this file names its sections in six
+  // places and `Section` reads better beside them than the fully qualified one.
   return (
-    <FieldSet className="gap-5">
-      <div className="grid gap-0.5">
-        <FieldLegend variant="label" className="mb-0 text-ink">
-          {legend}
-        </FieldLegend>
-        {hint ? (
-          <FieldDescription className="mt-0">{hint}</FieldDescription>
-        ) : null}
-      </div>
+    <FormSection legend={legend} hint={hint}>
       {children}
-    </FieldSet>
+    </FormSection>
   );
 }
 
@@ -380,8 +374,6 @@ function VendorForm({
           </Field>
         </Section>
 
-        <FieldSeparator />
-
         <Controller
           name="intakeChannels"
           control={control}
@@ -393,8 +385,6 @@ function VendorForm({
             />
           )}
         />
-
-        <FieldSeparator />
 
         <Section
           legend="Statutory identity"
@@ -453,65 +443,6 @@ function VendorForm({
           </div>
         </Section>
 
-        <FieldSeparator />
-
-        <Section legend="Portal access">
-          <Field data-invalid={errors.loginEmail ? true : undefined}>
-            <FieldLabel htmlFor="vendor-login">Login email</FieldLabel>
-            <Input
-              id="vendor-login"
-              type="email"
-              autoComplete="off"
-              placeholder="ops@vendor.com"
-              // Read-only on edit: this is the identity the account is looked
-              // up by, and moving it would strand the vendor on credentials
-              // nobody recorded. The server does not accept a change either.
-              readOnly={isEdit}
-              disabled={isEdit}
-              aria-invalid={errors.loginEmail ? true : undefined}
-              aria-describedby={
-                errors.loginEmail ? "vendor-login-error" : "vendor-login-hint"
-              }
-              {...register("loginEmail")}
-            />
-            <FieldDescription id="vendor-login-hint">
-              {isEdit
-                ? "The address this vendor signs in with."
-                : "They sign in with this and raise their own tickets."}
-            </FieldDescription>
-            <ErrorText
-              id="vendor-login-error"
-              message={errors.loginEmail?.message}
-            />
-          </Field>
-
-          <Field data-invalid={errors.password ? true : undefined}>
-            <FieldLabel htmlFor="vendor-password">
-              {isEdit ? "New password" : "Temporary password"}
-            </FieldLabel>
-            <PasswordInput
-              id="vendor-password"
-              autoComplete="new-password"
-              aria-invalid={errors.password ? true : undefined}
-              aria-describedby={
-                errors.password ? "vendor-password-error" : "vendor-password-hint"
-              }
-              {...register("password")}
-            />
-            <FieldDescription id="vendor-password-hint">
-              {isEdit
-                ? "Leave blank to keep the current one. Setting a new password signs the vendor out everywhere."
-                : "At least 8 characters. Share it so they can sign in."}
-            </FieldDescription>
-            <ErrorText
-              id="vendor-password-error"
-              message={errors.password?.message}
-            />
-          </Field>
-        </Section>
-
-        <FieldSeparator />
-
         <Section
           legend="Contact"
           hint="Who ops call about a delivery, a part or a warranty claim."
@@ -557,65 +488,6 @@ function VendorForm({
             </Field>
           </div>
         </Section>
-
-        <FieldSeparator />
-
-        <Section legend="Portal access">
-          <Field data-invalid={errors.loginEmail ? true : undefined}>
-            <FieldLabel htmlFor="vendor-login">Login email</FieldLabel>
-            <Input
-              id="vendor-login"
-              type="email"
-              autoComplete="off"
-              placeholder="ops@vendor.com"
-              // Read-only on edit: this is the identity the account is looked
-              // up by, and moving it would strand the vendor on credentials
-              // nobody recorded. The server does not accept a change either.
-              readOnly={isEdit}
-              disabled={isEdit}
-              aria-invalid={errors.loginEmail ? true : undefined}
-              aria-describedby={
-                errors.loginEmail ? "vendor-login-error" : "vendor-login-hint"
-              }
-              {...register("loginEmail")}
-            />
-            <FieldDescription id="vendor-login-hint">
-              {isEdit
-                ? "The address this vendor signs in with."
-                : "They sign in with this and raise their own tickets."}
-            </FieldDescription>
-            <ErrorText
-              id="vendor-login-error"
-              message={errors.loginEmail?.message}
-            />
-          </Field>
-
-          <Field data-invalid={errors.password ? true : undefined}>
-            <FieldLabel htmlFor="vendor-password">
-              {isEdit ? "New password" : "Temporary password"}
-            </FieldLabel>
-            <PasswordInput
-              id="vendor-password"
-              autoComplete="new-password"
-              aria-invalid={errors.password ? true : undefined}
-              aria-describedby={
-                errors.password ? "vendor-password-error" : "vendor-password-hint"
-              }
-              {...register("password")}
-            />
-            <FieldDescription id="vendor-password-hint">
-              {isEdit
-                ? "Leave blank to keep the current one. Setting a new password signs the vendor out everywhere."
-                : "At least 8 characters. Share it so they can sign in."}
-            </FieldDescription>
-            <ErrorText
-              id="vendor-password-error"
-              message={errors.password?.message}
-            />
-          </Field>
-        </Section>
-
-        <FieldSeparator />
 
         <Section legend="Registered address">
           <Field data-invalid={errors.address ? true : undefined}>
@@ -691,8 +563,6 @@ function VendorForm({
           </div>
         </Section>
 
-        <FieldSeparator />
-
         <Section legend="Portal access">
           <Field data-invalid={errors.loginEmail ? true : undefined}>
             <FieldLabel htmlFor="vendor-login">Login email</FieldLabel>
@@ -747,8 +617,6 @@ function VendorForm({
             />
           </Field>
         </Section>
-
-        <FieldSeparator />
 
         <Controller
           name="status"

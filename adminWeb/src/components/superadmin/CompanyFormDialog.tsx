@@ -14,9 +14,8 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
+import { FormSection } from "@/components/shared/FormSection";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
@@ -43,7 +42,7 @@ export function CompanyFormDialog({
 }: CompanyFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-4xl">
         {/* Remounts on open so the form is always clean; the key also covers
             reopening on a different row. */}
         <CompanyForm
@@ -55,6 +54,15 @@ export function CompanyFormDialog({
     </Dialog>
   );
 }
+
+/**
+ * The field grid every section uses.
+ *
+ * One column on a phone, two on a tablet, three from `lg` up — a static string,
+ * because an interpolated `grid-cols-${n}` is never generated and the row would
+ * silently collapse to one column.
+ */
+const COLS = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
 function CompanyForm({
   company,
@@ -105,6 +113,9 @@ function CompanyForm({
       placeholder?: string;
       autoComplete?: string;
       password?: boolean;
+      /** Column span inside the three-column grid — for the one or two fields
+       *  that genuinely need the room, like a street address. */
+      className?: string;
     }
   ) => {
     const message = errors[name]?.message;
@@ -114,7 +125,7 @@ function CompanyForm({
         ? `${name}-hint`
         : undefined;
     return (
-      <Field data-invalid={message ? true : undefined}>
+      <Field data-invalid={message ? true : undefined} className={opts?.className}>
         <FieldLabel htmlFor={name}>{label}</FieldLabel>
         {opts?.password ? (
           <PasswordInput
@@ -209,92 +220,75 @@ function CompanyForm({
         </DialogDescription>
       </DialogHeader>
 
-      <FieldSet>
-        <FieldLegend variant="label" className="text-sm font-semibold">
-          Company
-        </FieldLegend>
-        <FieldGroup className="gap-4">
+      <FormSection legend="Company">
+        <FieldGroup className={COLS}>
           {renderField("name", "Company name", {
             placeholder: "Acme Installations Pvt Ltd",
             autoComplete: "organization",
           })}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {renderField("email", "Contact / admin email", {
-              type: "email",
-              placeholder: "admin@acme.com",
-              autoComplete: "email",
-              hint: isEdit ? undefined : "Becomes the admin's login email.",
-            })}
-            {renderField("phone", "Phone", {
-              placeholder: "+91 90000 00000",
-              autoComplete: "tel",
-            })}
-          </div>
+          {renderField("email", "Contact / admin email", {
+            type: "email",
+            placeholder: "admin@acme.com",
+            autoComplete: "email",
+            hint: isEdit ? undefined : "Becomes the admin's login email.",
+          })}
+          {renderField("phone", "Phone", {
+            placeholder: "+91 90000 00000",
+            autoComplete: "tel",
+          })}
         </FieldGroup>
-      </FieldSet>
+      </FormSection>
 
       {isEdit ? null : (
-        <FieldSet>
-          <FieldLegend variant="label" className="text-sm font-semibold">
-            Admin login
-          </FieldLegend>
-          <FieldGroup className="gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              {renderField("adminName", "Admin name", {
-                placeholder: "Full name",
-                autoComplete: "name",
-              })}
-              {renderField("password", "Temporary password", {
-                password: true,
-                placeholder: "At least 8 characters",
-                autoComplete: "new-password",
-              })}
-            </div>
+        <FormSection legend="Admin login">
+          <FieldGroup className={COLS}>
+            {renderField("adminName", "Admin name", {
+              placeholder: "Full name",
+              autoComplete: "name",
+            })}
+            {renderField("password", "Temporary password", {
+              password: true,
+              placeholder: "At least 8 characters",
+              autoComplete: "new-password",
+            })}
           </FieldGroup>
-        </FieldSet>
+        </FormSection>
       )}
 
-      <FieldSet>
-        <FieldLegend variant="label" className="text-sm font-semibold">
-          Statutory identity
-        </FieldLegend>
-        <FieldGroup className="gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {renderField("gstNumber", "GSTIN", {
-              placeholder: "29ABCDE1234F1Z5",
-              hint: "15-character GST number.",
-            })}
-            {renderField("pan", "PAN", { placeholder: "ABCDE1234F" })}
-          </div>
+      <FormSection legend="Statutory identity">
+        <FieldGroup className={COLS}>
+          {renderField("gstNumber", "GSTIN", {
+            placeholder: "29ABCDE1234F1Z5",
+            hint: "15-character GST number.",
+          })}
+          {renderField("pan", "PAN", { placeholder: "ABCDE1234F" })}
           {renderField("gstCompanyStatus", "GST company status", {
             placeholder: "Active",
           })}
         </FieldGroup>
-      </FieldSet>
+      </FormSection>
 
-      <FieldSet>
-        <FieldLegend variant="label" className="text-sm font-semibold">
-          Registered address
-        </FieldLegend>
-        <FieldGroup className="gap-4">
+      <FormSection legend="Registered address">
+        <FieldGroup className={COLS}>
+          {/* The street line gets two of the three columns: it is the longest
+              value on the form and the one most likely to be truncated. */}
           {renderField("addressLine1", "Address line 1", {
             placeholder: "Building, street",
             autoComplete: "address-line1",
+            className: "sm:col-span-2",
           })}
           {renderField("addressLine2", "Address line 2", {
             placeholder: "Area, landmark (optional)",
             autoComplete: "address-line2",
           })}
-          <div className="grid gap-4 sm:grid-cols-3">
-            {renderField("city", "City", { autoComplete: "address-level2" })}
-            {renderField("state", "State", { autoComplete: "address-level1" })}
-            {renderField("pincode", "PIN code", {
-              placeholder: "560001",
-              autoComplete: "postal-code",
-            })}
-          </div>
+          {renderField("city", "City", { autoComplete: "address-level2" })}
+          {renderField("state", "State", { autoComplete: "address-level1" })}
+          {renderField("pincode", "PIN code", {
+            placeholder: "560001",
+            autoComplete: "postal-code",
+          })}
         </FieldGroup>
-      </FieldSet>
+      </FormSection>
 
       {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>

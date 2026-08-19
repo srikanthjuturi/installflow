@@ -1,3 +1,4 @@
+import { FormSection } from "@/components/shared/FormSection";
 import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,9 +26,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
   FieldSeparator,
-  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -517,27 +516,23 @@ function ServiceTypeField({
   }
 
   return (
-    <FieldSet
+    <FormSection
       className="gap-3"
       data-invalid={error ? true : undefined}
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? "model-service-error" : "model-service-hint"}
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <div className="grid gap-0.5">
-          <FieldLegend variant="label" className="mb-0 text-ink">
-            Service types
-          </FieldLegend>
-          <FieldDescription id="model-service-hint" className="mt-0">
-            What a technician can be sent to do with this model.{" "}
-            <span className="tabular-nums">
-              {value.length} of {SERVICE_TYPES.length} selected
-            </span>
-            .
-          </FieldDescription>
-        </div>
-
-        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-ink-2">
+      legend="Service types"
+      hint={
+        <FieldDescription id="model-service-hint" className="mt-0">
+          What a technician can be sent to do with this model.{" "}
+          <span className="tabular-nums">
+            {value.length} of {SERVICE_TYPES.length} selected
+          </span>
+          .
+        </FieldDescription>
+      }
+      action={
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium text-ink-2">
           <Checkbox
             checked={allSelected}
             onCheckedChange={(next) =>
@@ -546,7 +541,8 @@ function ServiceTypeField({
           />
           Select all
         </label>
-      </div>
+      }
+    >
 
       <div className="grid gap-2">
         {SERVICE_TYPES.map((type) => {
@@ -586,7 +582,7 @@ function ServiceTypeField({
           {error}
         </FieldDescription>
       ) : null}
-    </FieldSet>
+    </FormSection>
   );
 }
 

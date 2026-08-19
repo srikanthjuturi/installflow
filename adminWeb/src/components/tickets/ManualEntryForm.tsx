@@ -1,3 +1,4 @@
+import { FormSection } from "@/components/shared/FormSection";
 import { Link } from "react-router";
 import { Controller, useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,8 +10,6 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -195,10 +194,7 @@ export function ManualEntryForm({
     <form onSubmit={handleSubmit(submit)} noValidate>
       <Card>
         <CardContent className="flex flex-col gap-6">
-          <FieldSet>
-            <FieldLegend className="text-sm font-semibold">
-              Vendor &amp; product
-            </FieldLegend>
+          <FormSection legend={<>Vendor &amp; product</>}>
             <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {/* Read-only rather than a one-option select: there is nothing
                   to choose, and a disabled dropdown invites a click that does
@@ -291,7 +287,7 @@ export function ManualEntryForm({
               photographs the real one on site, and a mismatch is what AI review
               catches.
             </FieldDescription>
-          </FieldSet>
+          </FormSection>
 
           {/* A dead end with a way out of it: an empty dropdown reads as broken,
               this reads as a task and links to where it is done.
@@ -318,10 +314,7 @@ export function ManualEntryForm({
             </p>
           ) : null}
 
-          <FieldSet>
-            <FieldLegend className="text-sm font-semibold">
-              Customer
-            </FieldLegend>
+          <FormSection legend="Customer">
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <TextField
                 name="customerName"
@@ -390,12 +383,9 @@ export function ManualEntryForm({
                 error={err("expectedDate")}
               />
             </FieldGroup>
-          </FieldSet>
+          </FormSection>
 
-          <FieldSet>
-            <FieldLegend className="text-sm font-semibold">
-              Service level
-            </FieldLegend>
+          <FormSection legend="Service level">
             <Controller
               name="serviceLevelHours"
               control={control}
@@ -429,12 +419,9 @@ export function ManualEntryForm({
                 </RadioGroup>
               )}
             />
-          </FieldSet>
+          </FormSection>
 
-          <FieldSet>
-            <FieldLegend className="text-sm font-semibold">
-              Slot (optional)
-            </FieldLegend>
+          <FormSection legend="Slot (optional)">
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <TextField
                 name="slotStart"
@@ -455,7 +442,7 @@ export function ManualEntryForm({
               Fill this in if you already agreed a time on the call. Leave it
               blank and the customer is asked to pick one.
             </FieldDescription>
-          </FieldSet>
+          </FormSection>
 
           {/* The single most misunderstood rule in the flow, stated on the
               screen where someone could get it wrong — and now stated to match

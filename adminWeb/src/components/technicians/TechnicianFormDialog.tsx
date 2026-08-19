@@ -1,3 +1,4 @@
+import { FormSection } from "@/components/shared/FormSection";
 import { useEffect } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -128,8 +129,7 @@ export function TechnicianFormDialog({
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <div className="grid gap-6 md:grid-cols-2">
             {/* ── identity ────────────────────────────────────────────── */}
-            <FieldSet>
-              <FieldLegend variant="label">Identity</FieldLegend>
+            <FormSection legend="Identity">
               <FieldGroup className="gap-4">
                 <Field orientation="horizontal">
                   <Controller
@@ -292,11 +292,10 @@ export function TechnicianFormDialog({
                   )}
                 </Field>
               </FieldGroup>
-            </FieldSet>
+            </FormSection>
 
             {/* ── coverage ────────────────────────────────────────────── */}
-            <FieldSet>
-              <FieldLegend variant="label">Coverage</FieldLegend>
+            <FormSection legend="Coverage">
               <FieldGroup className="gap-4">
                 {/* A multi-choice set is checkboxes in a fieldset — the group
                     is named by its legend and described by the error.
@@ -428,7 +427,7 @@ export function TechnicianFormDialog({
                   )}
                 </Field>
               </FieldGroup>
-            </FieldSet>
+            </FormSection>
           </div>
 
           <DialogFooter className="mt-5">
