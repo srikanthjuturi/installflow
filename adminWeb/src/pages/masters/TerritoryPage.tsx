@@ -27,7 +27,17 @@ export default function TerritoryPage() {
         <p className="text-[13px] text-ink-2">
           Region → Regional Head → Area Manager → serviced pincodes
         </p>
-        <LinkButton to="/settings/users" variant="outline">
+        {/* `outline` is built for a CARD or a dialog: its fill is
+            `bg-background`, which on a page is the page's own colour, and its
+            border sits at 1.11:1 against it — a control with no visible
+            boundary. White plus a brand border takes that to 7.72:1 and reads
+            as the secondary action it is, without promoting a navigation link
+            to a primary button. */}
+        <LinkButton
+          to="/settings/users"
+          variant="outline"
+          className="border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
+        >
           Assign in Users &amp; roles
         </LinkButton>
       </div>

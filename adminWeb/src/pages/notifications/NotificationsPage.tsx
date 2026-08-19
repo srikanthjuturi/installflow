@@ -39,6 +39,9 @@ export default function NotificationsPage() {
         </div>
         <Button
           variant="outline"
+          // Same reason as TerritoryPage: `outline` on a page background has
+          // no visible boundary — see the note there.
+          className="border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
           disabled={unread === 0 || markAll.isPending}
           onClick={() => markAll.mutate()}
         >
