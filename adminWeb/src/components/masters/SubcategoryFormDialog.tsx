@@ -49,7 +49,7 @@ export function SubcategoryFormDialog({
 }: SubcategoryFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-xl">
         <SubcategoryForm
           category={category}
           subcategory={subcategory}
@@ -124,7 +124,7 @@ function SubcategoryForm({
         </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
+      <FieldGroup className="gap-4">
         <Field data-invalid={errors.name ? true : undefined}>
           <FieldLabel htmlFor="subcategory-name">Subcategory name</FieldLabel>
           <Input

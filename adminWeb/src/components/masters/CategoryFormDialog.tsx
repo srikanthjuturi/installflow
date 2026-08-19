@@ -46,7 +46,7 @@ export function CategoryFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Wider than the other two: the icon grid needs the room to lay out in
           a few rows rather than a dozen. */}
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-xl">
         {/* The popup unmounts on close, so the form is fresh on every open and
             an edit never opens holding the previous row's values. */}
         <CategoryForm category={category} onDone={() => onOpenChange(false)} />
@@ -111,7 +111,7 @@ function CategoryForm({
         </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup className="scroll-slim -mr-4 max-h-[60vh] gap-4 overflow-y-auto pr-4">
+      <FieldGroup className="gap-4">
         <Field data-invalid={errors.name ? true : undefined}>
           <FieldLabel htmlFor="category-name">Category name</FieldLabel>
           <Input

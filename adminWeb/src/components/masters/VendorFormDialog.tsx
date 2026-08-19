@@ -16,8 +16,6 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field";
 import { FormSection } from "@/components/shared/FormSection";
 import { Input } from "@/components/ui/input";
@@ -62,10 +60,15 @@ export function VendorFormDialog({
 }: VendorFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* The widest dialog in the console, and it earns it: ten fields, four of
-          which are long identifiers nobody can proof-read in a 32rem column.
-          A GSTIN and a CIN each want their own full-width line at this size. */}
-      <DialogContent className="sm:max-w-3xl">
+      {/* Laid out like the superadmin company dialog, and sized like it: three
+          columns need the room, and two of these fields are long identifiers
+          nobody can proof-read in a narrow box.
+
+          The popup itself scrolls, as that dialog does, so the scrollbar sits
+          on the popup wall. Scrolling an inner FieldGroup instead needed a
+          negative margin to escape the dialog's padding, and any drift between
+          the two left the bar floating in a gutter. */}
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-4xl">
         {/* The popup unmounts on close, so the form is fresh on every open and
             an edit never opens holding the previous row's values. */}
         <VendorForm vendor={vendor} onDone={() => onOpenChange(false)} />
@@ -74,40 +77,13 @@ export function VendorFormDialog({
   );
 }
 
-/** One field, one id — spelled out so the error and hint ids never drift. */
-function ErrorText({ id, message }: { id: string; message?: string }) {
-  if (!message) return null;
-  return (
-    <FieldDescription id={id} role="alert" className="text-danger">
-      {message}
-    </FieldDescription>
-  );
-}
-
 /**
- * A titled group of fields.
- *
- * A real `fieldset`/`legend`, not a styled div, so a screen reader announces
- * "Statutory identity, group" as it enters and the four sections are navigable
- * rather than one flat run of ten inputs.
+ * The field grid every section uses — the same one the company dialog lays out
+ * with. One column on a phone, two on a tablet, three from `lg` up, written as
+ * a static string: an interpolated `grid-cols-${n}` is never generated and the
+ * row would silently collapse to one column.
  */
-function Section({
-  legend,
-  hint,
-  children,
-}: {
-  legend: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  // A thin alias for the shared component: this file names its sections in six
-  // places and `Section` reads better beside them than the fully qualified one.
-  return (
-    <FormSection legend={legend} hint={hint}>
-      {children}
-    </FormSection>
-  );
-}
+const COLS = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
 /** Says "optional" once, in the label, rather than in prose under every box. */
 function OptionalTag() {
@@ -174,22 +150,21 @@ function IntakeChannelField({
   }
 
   return (
-    <FieldSet
-      className="gap-4"
+    // A `FormSection` like every other group, so the heading, the rule and the
+    // hint match — the three cards then sit in the same three columns the
+    // fields above and below them use.
+    <FormSection
+      legend="Ticket intake"
+      hint={
+        <FieldDescription id="vendor-intake-hint" className="mt-0">
+          How this vendor&apos;s tickets reach you. Pick every way that applies.
+        </FieldDescription>
+      }
       data-invalid={error ? true : undefined}
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? "vendor-intake-error" : "vendor-intake-hint"}
     >
-      <div className="grid gap-0.5">
-        <FieldLegend variant="label" className="mb-0 text-ink">
-          Ticket intake
-        </FieldLegend>
-        <FieldDescription id="vendor-intake-hint" className="mt-0">
-          How this vendor&apos;s tickets reach you. Pick every way that applies.
-        </FieldDescription>
-      </div>
-
-      <div className="grid gap-2">
+      <div className={COLS}>
         {options.map((option) => {
           const checked = value.includes(option.value);
           const disabled = isPending || !option.available;
@@ -199,7 +174,7 @@ function IntakeChannelField({
               key={option.value}
               aria-disabled={disabled || undefined}
               className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+                "flex h-full cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
                 disabled
                   ? "cursor-not-allowed border-line bg-surface-2 opacity-70"
                   : checked
@@ -249,7 +224,7 @@ function IntakeChannelField({
           {error}
         </FieldDescription>
       ) : null}
-    </FieldSet>
+    </FormSection>
   );
 }
 
@@ -292,6 +267,103 @@ function VendorForm({
       status: statusOf(vendor?.isActive ?? true),
     },
   });
+
+  /**
+   * One field, one id — so the label, the hint and the error can never point at
+   * different things. `autoComplete` is off unless a caller says otherwise:
+   * nothing here belongs to the operator, so the browser offering THEIR company
+   * and phone would be filling the wrong company's record.
+   */
+  const renderField = (
+    name: keyof VendorFormValues,
+    label: React.ReactNode,
+    opts?: {
+      hint?: string;
+      type?: string;
+      placeholder?: string;
+      inputMode?: "tel" | "numeric";
+      maxLength?: number;
+      password?: boolean;
+      textarea?: boolean;
+      rows?: number;
+      /** Shown but not editable — an identity the account is looked up by. */
+      readOnly?: boolean;
+      /** A statutory identifier: mono and wide-tracked, so a transposed
+       *  character is visible rather than lost in a run of caps. */
+      mono?: boolean;
+      tabular?: boolean;
+      /** Column span inside the three-column grid — for the one field that
+       *  genuinely needs the room, like a street address. */
+      className?: string;
+    }
+  ) => {
+    const id = `vendor-${name}`;
+    const message = errors[name]?.message;
+    const describedBy = message
+      ? `${id}-error`
+      : opts?.hint
+        ? `${id}-hint`
+        : undefined;
+    return (
+      <Field
+        data-invalid={message ? true : undefined}
+        className={opts?.className}
+      >
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {opts?.textarea ? (
+          <Textarea
+            id={id}
+            rows={opts.rows ?? 2}
+            className="resize-y"
+            placeholder={opts.placeholder}
+            aria-invalid={message ? true : undefined}
+            aria-describedby={describedBy}
+            {...register(name)}
+          />
+        ) : opts?.password ? (
+          <PasswordInput
+            id={id}
+            autoComplete="new-password"
+            aria-invalid={message ? true : undefined}
+            aria-describedby={describedBy}
+            {...register(name)}
+          />
+        ) : (
+          <Input
+            id={id}
+            type={opts?.type}
+            inputMode={opts?.inputMode}
+            maxLength={opts?.maxLength}
+            readOnly={opts?.readOnly}
+            disabled={opts?.readOnly}
+            autoComplete="off"
+            autoCapitalize={opts?.mono ? "characters" : undefined}
+            spellCheck={opts?.mono ? false : undefined}
+            className={cn(
+              opts?.mono && "font-mono tracking-wide uppercase",
+              opts?.tabular && "tabular-nums"
+            )}
+            placeholder={opts?.placeholder}
+            aria-invalid={message ? true : undefined}
+            aria-describedby={describedBy}
+            {...register(name)}
+          />
+        )}
+        {opts?.hint && !message ? (
+          <FieldDescription id={`${id}-hint`}>{opts.hint}</FieldDescription>
+        ) : null}
+        {message ? (
+          <FieldDescription
+            id={`${id}-error`}
+            role="alert"
+            className="text-danger"
+          >
+            {message}
+          </FieldDescription>
+        ) : null}
+      </Field>
+    );
+  };
 
   function submit(values: VendorFormValues) {
     const body = {
@@ -339,7 +411,7 @@ function VendorForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
+    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
       <DialogHeader>
         <DialogTitle>{isEdit ? "Edit vendor" : "Add vendor"}</DialogTitle>
         <DialogDescription>
@@ -348,290 +420,122 @@ function VendorForm({
         </DialogDescription>
       </DialogHeader>
 
-      {/* `-mr-6 pr-6` cancels the dialog's own padding on this edge only, so the
-          scrollbar rides the popup wall instead of floating in a gutter, while
-          the fields keep their inset. */}
-      <FieldGroup className="scroll-slim -mr-6 max-h-[62vh] gap-6 overflow-y-auto pr-6">
-        {/* Four sections rather than ten loose fields. Ten in a row is a wall
-            somebody scrolls past; grouped, each is answered from one place —
-            the letterhead, the GST certificate, a phone, an envelope. */}
-        <Section legend="Company">
-          <Field data-invalid={errors.name ? true : undefined}>
-            <FieldLabel htmlFor="vendor-name">Company name</FieldLabel>
-            <Input
-              id="vendor-name"
-              placeholder="e.g. Videocon Industries"
-              aria-invalid={errors.name ? true : undefined}
-              aria-describedby={
-                errors.name ? "vendor-name-error" : "vendor-name-hint"
-              }
-              {...register("name")}
-            />
-            <FieldDescription id="vendor-name-hint">
-              This is the brand shown on every product model you attribute to it.
-            </FieldDescription>
-            <ErrorText id="vendor-name-error" message={errors.name?.message} />
-          </Field>
-        </Section>
+      {/* Five sections rather than twelve loose fields. Each is answered from
+          one place — the letterhead, the GST certificate, a phone, an envelope
+          — and each row of three is one of those places. */}
+      <FormSection legend="Company">
+        <FieldGroup className={COLS}>
+          {renderField("name", "Company name", {
+            placeholder: "e.g. Videocon Industries",
+            hint: "This is the brand shown on every product model you attribute to it.",
+          })}
+          {renderField("contactPerson", "Contact person", {
+            placeholder: "e.g. Rakesh Mehta",
+            hint: "Who ops call about a delivery, a part or a warranty claim.",
+          })}
+          {renderField("phone", "Mobile number", {
+            type: "tel",
+            inputMode: "tel",
+            tabular: true,
+            placeholder: "98200 11001",
+            hint: "10 digits. Spaces and a +91 are fine.",
+          })}
+        </FieldGroup>
+      </FormSection>
 
-        <Controller
-          name="intakeChannels"
-          control={control}
-          render={({ field }) => (
-            <IntakeChannelField
-              value={field.value}
-              onChange={field.onChange}
-              error={errors.intakeChannels?.message}
-            />
+      <Controller
+        name="intakeChannels"
+        control={control}
+        render={({ field }) => (
+          <IntakeChannelField
+            value={field.value}
+            onChange={field.onChange}
+            error={errors.intakeChannels?.message}
+          />
+        )}
+      />
+
+      <FormSection
+        legend="Statutory identity"
+        hint="As printed on the GST certificate. Both are stored in upper case."
+      >
+        <FieldGroup className={COLS}>
+          {renderField("gstNumber", "GSTIN", {
+            mono: true,
+            maxLength: 15,
+            placeholder: "27AAACV1234A1Z5",
+          })}
+          {renderField(
+            "cin",
+            <>
+              CIN <OptionalTag />
+            </>,
+            {
+              mono: true,
+              maxLength: 21,
+              placeholder: "L32100MH1985PLC123456",
+              hint: "Only an MCA-registered company has one.",
+            }
           )}
-        />
+        </FieldGroup>
+      </FormSection>
 
-        <Section
-          legend="Statutory identity"
-          hint="As printed on the GST certificate. Both are stored in upper case."
-        >
-          {/* Side by side: at this dialog width each column still holds all 21
-              characters of a CIN without scrolling, and stacking them pushed
-              the address below the fold. `font-mono` and wide tracking so a
-              transposed digit is visible rather than lost in a run of caps. */}
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field data-invalid={errors.gstNumber ? true : undefined}>
-              <FieldLabel htmlFor="vendor-gst">GSTIN</FieldLabel>
-              <Input
-                id="vendor-gst"
-                className="font-mono tracking-wide uppercase"
-                placeholder="27AAACV1234A1Z5"
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={15}
-                aria-invalid={errors.gstNumber ? true : undefined}
-                aria-describedby={
-                  errors.gstNumber ? "vendor-gst-error" : undefined
-                }
-                {...register("gstNumber")}
-              />
-              <ErrorText
-                id="vendor-gst-error"
-                message={errors.gstNumber?.message}
-              />
-            </Field>
+      <FormSection legend="Registered address">
+        <FieldGroup className={COLS}>
+          {/* The street line takes the whole row: it is the longest value on
+              the form, and the only one where a line break carries meaning. */}
+          {renderField("address", "Building, street and area", {
+            textarea: true,
+            placeholder: "Videocon House, 14th Floor\nChakala, Andheri East",
+            hint: "Paste it straight off the letterhead — line breaks are kept.",
+            className: "sm:col-span-2 lg:col-span-3",
+          })}
+          {renderField("city", "City", { placeholder: "Mumbai" })}
+          {renderField("state", "State", { placeholder: "Maharashtra" })}
+          {renderField("pincode", "Pincode", {
+            inputMode: "numeric",
+            tabular: true,
+            maxLength: 6,
+            placeholder: "400099",
+          })}
+        </FieldGroup>
+      </FormSection>
 
-            <Field data-invalid={errors.cin ? true : undefined}>
-              <FieldLabel htmlFor="vendor-cin">
-                CIN <OptionalTag />
-              </FieldLabel>
-              <Input
-                id="vendor-cin"
-                className="font-mono tracking-wide uppercase"
-                placeholder="L32100MH1985PLC123456"
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={21}
-                aria-invalid={errors.cin ? true : undefined}
-                aria-describedby={
-                  errors.cin ? "vendor-cin-error" : "vendor-cin-hint"
-                }
-                {...register("cin")}
-              />
-              <FieldDescription id="vendor-cin-hint">
-                Only an MCA-registered company has one.
-              </FieldDescription>
-              <ErrorText id="vendor-cin-error" message={errors.cin?.message} />
-            </Field>
-          </div>
-        </Section>
+      <FormSection legend="Portal access">
+        <FieldGroup className={COLS}>
+          {renderField("loginEmail", "Login email", {
+            type: "email",
+            placeholder: "ops@vendor.com",
+            // Read-only on edit: this is the identity the account is looked up
+            // by, and moving it would strand the vendor on credentials nobody
+            // recorded. The server does not accept a change either.
+            readOnly: isEdit,
+            hint: isEdit
+              ? "The address this vendor signs in with."
+              : "They sign in with this and raise their own tickets.",
+          })}
+          {renderField("password", isEdit ? "New password" : "Temporary password", {
+            password: true,
+            hint: isEdit
+              ? "Leave blank to keep the current one. Setting a new password signs the vendor out everywhere."
+              : "At least 8 characters. Share it so they can sign in.",
+          })}
+        </FieldGroup>
+      </FormSection>
 
-        <Section
-          legend="Contact"
-          hint="Who ops call about a delivery, a part or a warranty claim."
-        >
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field data-invalid={errors.contactPerson ? true : undefined}>
-              <FieldLabel htmlFor="vendor-contact">Contact person</FieldLabel>
-              <Input
-                id="vendor-contact"
-                placeholder="e.g. Rakesh Mehta"
-                autoComplete="off"
-                aria-invalid={errors.contactPerson ? true : undefined}
-                aria-describedby={
-                  errors.contactPerson ? "vendor-contact-error" : undefined
-                }
-                {...register("contactPerson")}
-              />
-              <ErrorText
-                id="vendor-contact-error"
-                message={errors.contactPerson?.message}
-              />
-            </Field>
-
-            <Field data-invalid={errors.phone ? true : undefined}>
-              <FieldLabel htmlFor="vendor-phone">Mobile number</FieldLabel>
-              <Input
-                id="vendor-phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="off"
-                className="tabular-nums"
-                placeholder="98200 11001"
-                aria-invalid={errors.phone ? true : undefined}
-                aria-describedby={
-                  errors.phone ? "vendor-phone-error" : "vendor-phone-hint"
-                }
-                {...register("phone")}
-              />
-              <FieldDescription id="vendor-phone-hint">
-                10 digits. Spaces and a +91 are fine.
-              </FieldDescription>
-              <ErrorText id="vendor-phone-error" message={errors.phone?.message} />
-            </Field>
-          </div>
-        </Section>
-
-        <Section legend="Registered address">
-          <Field data-invalid={errors.address ? true : undefined}>
-            <FieldLabel htmlFor="vendor-address">
-              Building, street and area
-            </FieldLabel>
-            <Textarea
-              id="vendor-address"
-              rows={3}
-              className="resize-y"
-              placeholder={"Videocon House, 14th Floor\nChakala, Andheri East"}
-              aria-invalid={errors.address ? true : undefined}
-              aria-describedby={
-                errors.address ? "vendor-address-error" : "vendor-address-hint"
-              }
-              {...register("address")}
-            />
-            <FieldDescription id="vendor-address-hint">
-              Paste it straight off the letterhead — line breaks are kept.
-            </FieldDescription>
-            <ErrorText id="vendor-address-error" message={errors.address?.message} />
-          </Field>
-
-          {/* City and state take the room; the pincode is six digits and does
-              not need a third of the row. */}
-          <div className="grid gap-5 sm:grid-cols-[1fr_1fr_9rem]">
-            <Field data-invalid={errors.city ? true : undefined}>
-              <FieldLabel htmlFor="vendor-city">City</FieldLabel>
-              <Input
-                id="vendor-city"
-                placeholder="Mumbai"
-                autoComplete="off"
-                aria-invalid={errors.city ? true : undefined}
-                aria-describedby={errors.city ? "vendor-city-error" : undefined}
-                {...register("city")}
-              />
-              <ErrorText id="vendor-city-error" message={errors.city?.message} />
-            </Field>
-
-            <Field data-invalid={errors.state ? true : undefined}>
-              <FieldLabel htmlFor="vendor-state">State</FieldLabel>
-              <Input
-                id="vendor-state"
-                placeholder="Maharashtra"
-                autoComplete="off"
-                aria-invalid={errors.state ? true : undefined}
-                aria-describedby={errors.state ? "vendor-state-error" : undefined}
-                {...register("state")}
-              />
-              <ErrorText id="vendor-state-error" message={errors.state?.message} />
-            </Field>
-
-            <Field data-invalid={errors.pincode ? true : undefined}>
-              <FieldLabel htmlFor="vendor-pincode">Pincode</FieldLabel>
-              <Input
-                id="vendor-pincode"
-                inputMode="numeric"
-                autoComplete="off"
-                className="tabular-nums"
-                placeholder="400099"
-                maxLength={6}
-                aria-invalid={errors.pincode ? true : undefined}
-                aria-describedby={
-                  errors.pincode ? "vendor-pincode-error" : undefined
-                }
-                {...register("pincode")}
-              />
-              <ErrorText
-                id="vendor-pincode-error"
-                message={errors.pincode?.message}
-              />
-            </Field>
-          </div>
-        </Section>
-
-        <Section legend="Portal access">
-          <Field data-invalid={errors.loginEmail ? true : undefined}>
-            <FieldLabel htmlFor="vendor-login">Login email</FieldLabel>
-            <Input
-              id="vendor-login"
-              type="email"
-              autoComplete="off"
-              placeholder="ops@vendor.com"
-              // Read-only on edit: this is the identity the account is looked
-              // up by, and moving it would strand the vendor on credentials
-              // nobody recorded. The server does not accept a change either.
-              readOnly={isEdit}
-              disabled={isEdit}
-              aria-invalid={errors.loginEmail ? true : undefined}
-              aria-describedby={
-                errors.loginEmail ? "vendor-login-error" : "vendor-login-hint"
-              }
-              {...register("loginEmail")}
-            />
-            <FieldDescription id="vendor-login-hint">
-              {isEdit
-                ? "The address this vendor signs in with."
-                : "They sign in with this and raise their own tickets."}
-            </FieldDescription>
-            <ErrorText
-              id="vendor-login-error"
-              message={errors.loginEmail?.message}
-            />
-          </Field>
-
-          <Field data-invalid={errors.password ? true : undefined}>
-            <FieldLabel htmlFor="vendor-password">
-              {isEdit ? "New password" : "Temporary password"}
-            </FieldLabel>
-            <PasswordInput
-              id="vendor-password"
-              autoComplete="new-password"
-              aria-invalid={errors.password ? true : undefined}
-              aria-describedby={
-                errors.password ? "vendor-password-error" : "vendor-password-hint"
-              }
-              {...register("password")}
-            />
-            <FieldDescription id="vendor-password-hint">
-              {isEdit
-                ? "Leave blank to keep the current one. Setting a new password signs the vendor out everywhere."
-                : "At least 8 characters. Share it so they can sign in."}
-            </FieldDescription>
-            <ErrorText
-              id="vendor-password-error"
-              message={errors.password?.message}
-            />
-          </Field>
-        </Section>
-
-        <Controller
-          name="status"
-          control={control}
-          render={({ field }) => (
-            <StatusField
-              value={field.value}
-              onChange={field.onChange}
-              description="Paused vendors stay out of the brand picker. Models already carrying the brand keep it."
-              error={errors.status?.message}
-              errorId="vendor-status-error"
-            />
-          )}
-        />
-      </FieldGroup>
+      <Controller
+        name="status"
+        control={control}
+        render={({ field }) => (
+          <StatusField
+            value={field.value}
+            onChange={field.onChange}
+            description="Paused vendors stay out of the brand picker. Models already carrying the brand keep it."
+            error={errors.status?.message}
+            errorId="vendor-status-error"
+          />
+        )}
+      />
 
       {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>

@@ -66,7 +66,12 @@ export default function TechnicianListPage() {
               regionId: values.regionId,
               subcategoryIds: values.subcategoryIds,
               pincodes: values.pincodes,
-              dailyJobCap: Number(values.bwTotal),
+              // Omitted rather than sent as 0 when the manager did not pick
+              // one: the server's default is the answer, and 0 is outside the
+              // 1–12 the API accepts.
+              ...(values.bwTotal
+                ? { dailyJobCap: Number(values.bwTotal) }
+                : {}),
               profileImageUrl: values.photo ?? null,
             },
             {

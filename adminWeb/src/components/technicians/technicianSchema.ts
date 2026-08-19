@@ -2,8 +2,12 @@ import { z } from "zod";
 
 /**
  * A technician is offered a job on three things at once: the subcategory, the
- * pincode and free bandwidth. All three are therefore required at onboarding —
- * a technician missing any one of them is never notified about anything.
+ * pincode and free bandwidth. The first two are required at onboarding — a
+ * technician with neither a category nor a pincode is never notified about
+ * anything, and nothing can supply them on their behalf.
+ *
+ * The cap is the exception: it has a server-side default, so leaving it unset
+ * still produces a technician who can be offered work. See DEFAULT_JOB_CAP.
  *
  * Certification is at the SUBCATEGORY level (Television, Air Conditioner), not
  * the parent category (Electric) — a TV specialist should not be offered air
@@ -21,6 +25,13 @@ export function parsePincodes(value: string): string[] {
 export const BANDWIDTH_OPTIONS = Array.from({ length: 12 }, (_, i) =>
   String(i + 1)
 );
+
+/**
+ * What the API applies when `dailyJobCap` is omitted — `TechnicianCreateRequest`
+ * in `api/app/features/technicians/schemas.py`. Stated once here so the hint
+ * that promises it and the value that arrives cannot drift apart.
+ */
+export const DEFAULT_JOB_CAP = 5;
 
 export const technicianSchema = z.object({
   name: z.string().trim().min(2, "Technician name is required"),
@@ -41,7 +52,12 @@ export const technicianSchema = z.object({
       (v) => v.every((p) => PINCODE_RE.test(p)),
       "Every pincode must be 6 digits"
     ),
-  bwTotal: z.string().min(1, "Select a daily job cap"),
+  /**
+   * Blank means "let the server decide", which is what the invite path has
+   * always done — it has no cap field at all. Requiring a choice here made the
+   * console stricter than both the API and its own sibling form.
+   */
+  bwTotal: z.string(),
   /** Optional profile photo — the URL the crop was uploaded to, never inline
    *  image data, which the API refuses. */
   photo: z

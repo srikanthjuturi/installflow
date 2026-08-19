@@ -40,6 +40,7 @@ import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import { useCategoryTree } from "@/hooks/useProductMaster";
 import {
   BANDWIDTH_OPTIONS,
+  DEFAULT_JOB_CAP,
   PINCODE_RE,
   technicianSchema,
   type TechnicianFormValues,
@@ -244,7 +245,12 @@ export function TechnicianFormDialog({
                 </Field>
 
                 <Field data-invalid={err("bwTotal") ? true : undefined}>
-                  <FieldLabel htmlFor="tech-bandwidth">Daily job cap</FieldLabel>
+                  <FieldLabel htmlFor="tech-bandwidth">
+                    Daily job cap
+                    <span className="ml-1 text-[11px] font-normal text-ink-3">
+                      optional
+                    </span>
+                  </FieldLabel>
                   <Controller
                     name="bwTotal"
                     control={control}
@@ -287,7 +293,8 @@ export function TechnicianFormDialog({
                     </FieldDescription>
                   ) : (
                     <FieldDescription id="tech-bandwidth-hint">
-                      Jobs per day, 1 to 12.
+                      Jobs per day, 1 to 12. Left blank, it is{" "}
+                      {DEFAULT_JOB_CAP}.
                     </FieldDescription>
                   )}
                 </Field>

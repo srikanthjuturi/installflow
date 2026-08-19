@@ -78,7 +78,7 @@ export function ModelFormDialog({
       {/* Wider than it was: the photo strip is five 64px tiles plus an Add
           tile, which wrapped to a second row at the old 32rem and made a
           half-filled gallery look broken. */}
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
         <ModelForm
           subcategory={subcategory}
           model={model}
@@ -202,10 +202,7 @@ function ModelForm({
         </DialogDescription>
       </DialogHeader>
 
-      {/* `-mr-4 pr-4` cancels the dialog's own padding on this edge only, so
-          the scrollbar rides the popup wall instead of floating in a gutter,
-          while the fields keep their inset. */}
-      <FieldGroup className="scroll-slim -mr-6 max-h-[62vh] gap-5 overflow-y-auto pr-6">
+      <FieldGroup className="gap-5">
         {/* Name and brand together: they are the two required fields and the
             pair that identifies the unit — "Samsung 43-inch" is one thought,
             and splitting them across two rows hides that the brand is not

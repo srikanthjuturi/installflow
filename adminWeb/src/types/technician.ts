@@ -116,7 +116,8 @@ export interface CreateTechnicianInput {
   regionId?: string | null;
   subcategoryIds: string[];
   pincodes: string[];
-  dailyJobCap: number;
+  /** Omit to take the API's own default, exactly as an invite does. */
+  dailyJobCap?: number;
 }
 
 export interface UpdateTechnicianInput {
