@@ -8,7 +8,8 @@ rather than data rules — they can be decided from the request alone:
   * a slot is both ends or neither.
 
 The rule that CANNOT live here is "the service type must be one this model
-supports" — that needs the model row, so it is in the service.
+supports" — that needs the model row, so it is in the service. Neither can
+"the model is one of the caller's own", for the same reason.
 """
 
 import datetime
@@ -29,18 +30,24 @@ from app.core.tickets import (
 
 ServiceLevelHours = Annotated[int, Field(description="12, 24, 36 or 48")]
 Name255 = Annotated[str, Field(min_length=2, max_length=255)]
-SerialNumber = Annotated[str | None, Field(default=None, max_length=64)]
+#: MANDATORY since vendors raise their own tickets. It was optional while ops
+#: typed them and often did not have it — but the vendor holds the invoice and
+#: the delivery note, so it is knowable at intake now, and the AI proof check
+#: always has an expected serial to compare the photographed one against.
+SerialNumber = Annotated[str, Field(min_length=1, max_length=64)]
 #: Long enough to be a sentence about the fault, not "broken".
 Description = Annotated[str | None, Field(default=None, max_length=2000)]
 
 
 class TicketCreateRequest(BaseModel):
-    vendorId: uuid.UUID
+    #: NB there is no `vendorId`. The vendor comes from the caller's own account
+    #: — a vendor does not choose which vendor it is, and a field that could
+    #: name one would be the whole tenancy boundary sitting in a request body.
     subcategoryId: uuid.UUID
     modelId: uuid.UUID
     serviceType: str
     description: Description = None
-    serialNumber: SerialNumber = None
+    serialNumber: SerialNumber
 
     customerName: Name255
     customerPhone: Phone

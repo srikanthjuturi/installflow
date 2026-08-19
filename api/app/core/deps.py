@@ -205,6 +205,36 @@ def require_min_rank(role_key: str):
     return _guard
 
 
+def require_vendor_principal(principal: CompanyPrincipal) -> Principal:
+    """The caller acts FOR a vendor. Not a feature, and not a rank floor.
+
+    Not a feature, because `require_feature` reads the effective set, and any
+    company admin can hand a key back through Feature Access — "only a vendor
+    raises a ticket" would then last exactly until somebody opened that screen.
+
+    Not `require_min_rank` either, because a vendor sits BELOW every staff role.
+    A floor of `vendor` would admit everyone above it, which is the whole of the
+    company. Rank cannot express "this role and no other".
+
+    Use it alongside `require_feature`, never instead: the console still reads
+    the feature key to decide what to render.
+    """
+    if principal.role not in VENDOR_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a vendor can raise a ticket",
+        )
+    if principal.vendor_id is None:
+        # A portal account whose membership names no vendor. Both creation paths
+        # set it, so this is a corrupt row rather than a permission question —
+        # and it must not be read as "no vendor, therefore unrestricted".
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is not linked to a vendor",
+        )
+    return principal
+
+
 def ensure_below_rank(principal: Principal, target_role: str) -> None:
     """Raise 403 unless `target_role` sits strictly below the principal's role."""
     target_rank = ROLE_RANKS.get(target_role)

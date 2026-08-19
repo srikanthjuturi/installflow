@@ -71,8 +71,10 @@ EVENT_KINDS = (
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
 #: timed-out slot request. `customer` has no account, which is exactly why
-#: `created_by` cannot answer this on its own.
-ACTOR_KINDS = ("staff", "technician", "customer", "system")
+#: `created_by` cannot answer this on its own; `vendor` is outside the company
+#: entirely, and its label is the vendor's name rather than the person's, so a
+#: sub-user leaving does not erase who the ticket is owed to.
+ACTOR_KINDS = ("staff", "technician", "customer", "vendor", "system")
 
 
 class TicketEvent(Base, IdMixin, AuditMixin):
@@ -117,7 +119,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             name="kind",
         ),
         CheckConstraint(
-            "actor_kind IN ('staff', 'technician', 'customer', 'system')",
+            "actor_kind IN ('staff', 'technician', 'customer', 'vendor', "
+            "'system')",
             name="actor_kind",
         ),
         # The timeline query: one ticket's events, oldest first. `seq` is in

@@ -48,7 +48,7 @@ from app.features.tickets.schemas import (
 from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
-from app.models.role import AREA_MANAGER, REGIONAL_HEAD
+from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
 from app.models.technician import TechnicianProfile
 from app.models.territory import MembershipPincode
 from app.models.ticket import Ticket
@@ -232,6 +232,37 @@ def _apply_visibility(stmt: Select, pincodes: list[str] | None) -> Select:
     return stmt.where(Ticket.pincode.in_(pincodes))
 
 
+async def scoped(db: AsyncSession, stmt: Select, principal: Principal) -> Select:
+    """Narrow a ticket query to what this caller may see.
+
+    Two entirely different rules, because staff and vendors look at the work
+    from opposite ends:
+
+    * **Staff** see by GEOGRAPHY — their territory's pincodes, or everything for
+      an all-India role.
+    * **A vendor** sees by OWNERSHIP — the tickets raised against it, whoever in
+      the vendor typed them. A **vendor user** sees only the ones they raised
+      themselves.
+
+    Always in addition to the `company_id` filter the caller has already
+    applied, never instead of it. And always applied to fetch-by-id too, so a
+    guessed id from another vendor reads 404 rather than a 403 that would
+    confirm the ticket exists.
+    """
+    if principal.is_vendor:
+        if principal.vendor_id is None:
+            # A portal role whose membership names no vendor. Should not exist —
+            # both creation paths set it — so this is a corrupt row, not a
+            # permission question. Show nothing rather than everything.
+            return stmt.where(sql_false())
+        stmt = stmt.where(Ticket.vendor_id == principal.vendor_id)
+        if principal.role == VENDOR_USER:
+            stmt = stmt.where(Ticket.created_by == principal.user_id)
+        return stmt
+
+    return _apply_visibility(stmt, await _visible_pincodes(db, principal))
+
+
 # ── loaders and validation ────────────────────────────────────────────────────
 
 
@@ -243,7 +274,7 @@ async def _load(
         Ticket.company_id == principal.company_id,
         Ticket.deleted_at.is_(None),
     )
-    stmt = _apply_visibility(stmt, await _visible_pincodes(db, principal))
+    stmt = await scoped(db, stmt, principal)
     row = await db.scalar(stmt)
     if row is None:
         # Applied to fetch-by-id too, so guessing an id outside your territory
@@ -257,16 +288,24 @@ async def _resolve_product(
 ) -> tuple[Vendor, ProductSubcategory, ProductModel]:
     company_id = principal.company_id
 
+    # The caller's OWN vendor, from the principal — never from the body. A
+    # vendor does not choose which vendor it is, and a request that could name
+    # one would let vendor A write a ticket into vendor B's book.
     vendor = await db.scalar(
         select(Vendor).where(
-            Vendor.id == body.vendorId,
+            Vendor.id == principal.vendor_id,
             Vendor.company_id == company_id,
             Vendor.is_active.is_(True),
             Vendor.deleted_at.is_(None),
         )
     )
     if vendor is None:
-        raise _bad_request("Unknown or inactive vendor")
+        # Removed or paused out from under a live session. Say which, because
+        # "unknown vendor" is incomprehensible to someone who IS that vendor.
+        raise _bad_request(
+            "Your vendor account is paused. Ask the team who set it up to "
+            "reactivate it before raising tickets."
+        )
 
     subcategory = await db.scalar(
         select(ProductSubcategory).where(
@@ -297,6 +336,15 @@ async def _resolve_product(
         raise _bad_request(
             f"{model.name} is not a {subcategory.name} — pick a model from the "
             "chosen category"
+        )
+
+    # And the model has to be the caller's OWN brand. The composite FK cannot
+    # say this — it constrains `(company_id, vendor_id)`, not `(vendor, model)`
+    # — so without this check a vendor could enumerate a competitor's models
+    # through the category tree and raise tickets branded to them.
+    if model.vendor_id != vendor.id:
+        raise _bad_request(
+            f"{model.name} is not one of your models — pick one of your own"
         )
 
     supported = list(model.service_types or [])
@@ -485,7 +533,7 @@ async def list_tickets(
         Ticket.company_id == principal.company_id,
         Ticket.deleted_at.is_(None),
     )
-    stmt = _apply_visibility(stmt, await _visible_pincodes(db, principal))
+    stmt = await scoped(db, stmt, principal)
     stmt = _apply_search(stmt, params.search)
 
     wanted = _canonical(status_filter, TICKET_STATUSES)
@@ -816,6 +864,9 @@ async def create_ticket(
         slot_request_status="not_needed" if body.slotStart else "pending",
         # Only value written today; see the column's note on why it is recorded
         # from the start rather than added when bulk upload lands.
+        # Manual Entry is the only channel that exists; the importer will write
+        # 'Excel' from its own path. Recorded rather than assumed, which is the
+        # column's whole reason for existing.
         source="Manual",
         created_by=principal.user_id,
     )
@@ -823,12 +874,15 @@ async def create_ticket(
     # autoflush is OFF (hard rule 8) and the event needs the ticket's id.
     await db.flush()
 
-    actor = principal.user.full_name or "Manual entry"
+    # The vendor's own name, not the person's: a sub-user leaves, the ticket
+    # stays, and "who raised this" should still answer with the party that is
+    # accountable for it. `created_by` keeps the individual.
+    actor = vendor.name
     db.add(
         record_event(
             row,
             "created",
-            actor_kind="staff",
+            actor_kind="vendor",
             actor_label=actor,
             note=(
                 f"{row.service_type} · {row.service_level_hours}h service level · "
@@ -846,7 +900,7 @@ async def create_ticket(
             record_event(
                 row,
                 "slot_confirmed",
-                actor_kind="staff",
+                actor_kind="vendor",
                 actor_label=actor,
                 note=when_label(row.slot_start, row.slot_end),
                 to_status=row.status,

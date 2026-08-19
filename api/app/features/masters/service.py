@@ -233,6 +233,9 @@ async def get_tree(
     Technician certification deliberately does NOT pass this — a technician is
     skilled at Televisions whoever made them, and scoping that by brand would
     mean re-certifying everybody each time a vendor is onboarded.
+
+    For a VENDOR caller the parameter is ignored and their own id substituted:
+    see below.
     """
     company_id = principal.company_id
 
@@ -252,6 +255,12 @@ async def get_tree(
         cat_stmt = cat_stmt.where(ProductCategory.is_active.is_(True))
         sub_stmt = sub_stmt.where(ProductSubcategory.is_active.is_(True))
         model_stmt = model_stmt.where(ProductModel.is_active.is_(True))
+    # A vendor sees ITS OWN catalogue and no other, whatever it asked for. The
+    # parameter is a convenience for staff picking a brand; for a vendor it
+    # would be the tenancy boundary sitting in a query string — drop it and a
+    # vendor could enumerate every competitor's models in the company.
+    if principal.is_vendor:
+        vendor_id = principal.vendor_id
     if vendor_id is not None:
         model_stmt = model_stmt.where(ProductModel.vendor_id == vendor_id)
 

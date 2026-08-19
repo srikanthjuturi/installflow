@@ -373,16 +373,20 @@ async def list_options(
     Paused and removed vendors are excluded: this drives a picker for NEW
     attributions, and a paused vendor is precisely one you should stop
     attributing to. Models already branded with it keep their brand.
+
+    A VENDOR caller gets only itself. This endpoint is gated on `masters.view`
+    rather than `vendors.view` — deliberately, so the product-model form is not
+    dead-ended — and a vendor holds that key for its intake form. Without this
+    narrowing that key would hand it the company's entire competitor list.
     """
-    rows = await db.scalars(
-        select(Vendor)
-        .where(
-            Vendor.company_id == principal.company_id,
-            Vendor.deleted_at.is_(None),
-            Vendor.is_active.is_(True),
-        )
-        .order_by(Vendor.name)
+    stmt = select(Vendor).where(
+        Vendor.company_id == principal.company_id,
+        Vendor.deleted_at.is_(None),
+        Vendor.is_active.is_(True),
     )
+    if principal.is_vendor:
+        stmt = stmt.where(Vendor.id == principal.vendor_id)
+    rows = await db.scalars(stmt.order_by(Vendor.name))
     return [VendorOptionOut(id=r.id, name=r.name) for r in rows]
 
 

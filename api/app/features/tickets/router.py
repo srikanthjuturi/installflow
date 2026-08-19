@@ -1,13 +1,20 @@
-"""Ticket endpoints — manual intake and the list.
+"""Ticket endpoints — intake and the list.
 
-Gated on the existing `jobs.view` / `jobs.create` keys, which reach down to Area
-Manager by design (`514f0c48297c`: "Extends ticket intake — Manual Entry and
-Bulk Upload — down the management chain"). No rank floor: unlike the vendor
-master, keying a ticket in is the daily work of the people closest to it.
+**Only a vendor raises a ticket.** `jobs.create` is held by the two portal roles
+and nobody else, and `POST` carries `require_vendor_principal` ON TOP of the
+feature. The guard is not belt-and-braces: a feature grant is deliberately
+overridable per company through Feature Access, so without it "vendor-only"
+would last exactly until a company admin flipped one row. A rank floor cannot
+express it either — a vendor sits BELOW every staff role, so a floor of `vendor`
+would admit the entire company.
 
-What each role SEES is narrowed instead, by territory — an Area Manager's list
-holds only the pincodes they cover. That runs in the service, on the list and on
-fetch-by-id alike, so a guessed id from another area reads as 404.
+Staff keep `jobs.view`. They work tickets; they no longer raise them.
+
+What each role SEES is narrowed in the service, and the two rules are different
+in kind: staff see by GEOGRAPHY (their territory's pincodes), a vendor sees by
+OWNERSHIP (tickets against its own brand), and a vendor USER sees only the ones
+they raised themselves. Applied on the list and on fetch-by-id alike, so a
+guessed id reads as 404 rather than a 403 that would confirm it exists.
 
 Filters are matched case-insensitively and an unknown value yields an empty page
 rather than a 422 — the lesson from the vendor list, where a stale bookmark
@@ -21,7 +28,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import Principal, require_feature
+from app.core.deps import Principal, require_feature, require_vendor_principal
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -42,6 +49,7 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("jobs.view"))]
 CanCreate = Annotated[Principal, Depends(require_feature("jobs.create"))]
+IsVendor = Depends(require_vendor_principal)
 
 
 @router.get("", response_model=PaginatedEnvelope[TicketOut])
@@ -77,7 +85,12 @@ async def get_ticket(
     return envelope(await service.get_ticket(db, principal, ticket_id))
 
 
-@router.post("", response_model=ApiEnvelope[TicketOut], status_code=201)
+@router.post(
+    "",
+    response_model=ApiEnvelope[TicketOut],
+    status_code=201,
+    dependencies=[IsVendor],
+)
 async def create_ticket(
     body: TicketCreateRequest, db: Db, principal: CanCreate
 ) -> ApiEnvelope[TicketOut]:
