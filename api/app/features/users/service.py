@@ -34,6 +34,7 @@ from app.features.users.schemas import (
 )
 from app.models.membership import Membership
 from app.models.role import (
+    VENDOR_ROLES,
     AREA_MANAGER,
     NATIONAL_HEAD,
     REGIONAL_HEAD,
@@ -267,9 +268,13 @@ async def list_users(
         .where(
             Membership.company_id == principal.company_id,
             Membership.deleted_at.is_(None),
-            # Users and Technicians are disjoint screens. A technician also has
-            # no email, so they would sort and search as a row of blanks here.
-            User.role != TECHNICIAN,
+            # Users, Technicians and Vendors are disjoint screens. A technician
+            # also has no email, so they would sort and search as a row of
+            # blanks here; a vendor account has no territory, so its scope
+            # column would be a dash — and, worse, `ensure_below_rank` would let
+            # any admin suspend or remove a vendor's login from a screen that
+            # never explains what it is.
+            User.role.not_in([TECHNICIAN, *VENDOR_ROLES]),
         )
     )
     # A regional head's list simply never contains another region's people.
@@ -312,6 +317,19 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Onboard technicians from the Technicians screen",
+        )
+    # Same reasoning, different screen: a vendor account needs a `vendor_id` on
+    # its membership, which this endpoint has no way to supply. One made here
+    # would authenticate, hold `jobs.create`, and have no vendor to raise a
+    # ticket against.
+    #
+    # And the rank check below would NOT catch it — a vendor ranks 6, below
+    # every staff role, so an Area Manager "outranks" one and would sail past.
+    # Rank cannot express "not this family of roles".
+    if body.role in VENDOR_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vendor accounts are created with the vendor, on the Vendors screen",
         )
     ensure_below_rank(principal, body.role)
 

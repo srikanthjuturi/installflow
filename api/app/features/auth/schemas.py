@@ -122,6 +122,28 @@ class RegionOut(AppModel):
     name: str
 
 
+class MeVendorOut(AppModel):
+    """The vendor a portal account acts for.
+
+    This — not `GET /vendors/options` — is where the portal's fixed brand comes
+    from. That endpoint is gated on `masters.view` and, for a staff caller,
+    lists every brand in the company; a vendor should not have to ask a
+    company-wide question to learn its own name.
+    """
+
+    id: uuid.UUID
+    name: str
+    #: Which entry screens the portal offers this vendor.
+    intakeChannels: list[str]
+
+
+class ChangePasswordRequest(BaseModel):
+    currentPassword: str = Field(min_length=1, max_length=128)
+    #: Same floor as every other password in the system, so the two rules cannot
+    #: drift into disagreeing about what is acceptable.
+    newPassword: str = Field(min_length=8, max_length=128)
+
+
 class MeResponse(AppModel):
     user: UserOut
     activeCompany: CompanyOut | None
@@ -132,3 +154,5 @@ class MeResponse(AppModel):
     regions: list[RegionOut]
     pincodes: list[str]
     scopeLabel: str
+    #: Set for the two portal roles, null for everyone else.
+    vendor: MeVendorOut | None = None

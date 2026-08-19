@@ -16,6 +16,7 @@ from app.features.tickets.router import router as tickets_router
 from app.features.territory.router import router as territory_router
 from app.features.uploads.router import router as uploads_router
 from app.features.users.router import router as users_router
+from app.features.vendor_users.router import router as vendor_users_router
 from app.features.vendors.router import router as vendors_router
 
 api_router = APIRouter()
@@ -25,6 +26,9 @@ api_router.include_router(users_router)
 api_router.include_router(rbac_router)
 api_router.include_router(territory_router)
 api_router.include_router(vendors_router)
+# Before /vendors is irrelevant — different prefix — but grouped with it so the
+# vendor surface reads as one thing.
+api_router.include_router(vendor_users_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)

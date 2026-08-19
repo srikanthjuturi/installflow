@@ -16,20 +16,23 @@ from app.core.security import (
     create_access_token,
     generate_refresh_token,
     hash_token,
+    hash_password,
     verify_password,
 )
 from app.features.auth.schemas import (
     CompanyOut,
     LoginResponse,
-    MembershipOut,
     MeResponse,
     MeUpdateRequest,
+    MeVendorOut,
+    MembershipOut,
     RefreshResponse,
     RegionOut,
     SwitchCompanyResponse,
     UserOut,
 )
 from app.models.company import Company
+from app.models.vendor import Vendor
 from app.models.membership import Membership
 from app.models.role import ROLE_LABELS, SUPERADMIN
 from app.models.token import RefreshToken
@@ -266,6 +269,22 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
     _own_id, scope = await own_scope(
         session, user_id=principal.user_id, company_id=principal.company_id
     )
+    vendor: MeVendorOut | None = None
+    if principal.vendor_id is not None:
+        row = await session.scalar(
+            select(Vendor).where(
+                Vendor.id == principal.vendor_id,
+                Vendor.company_id == principal.company_id,
+                Vendor.deleted_at.is_(None),
+            )
+        )
+        if row is not None:
+            vendor = MeVendorOut(
+                id=row.id,
+                name=row.name,
+                intakeChannels=list(row.intake_channels or []),
+            )
+
     return MeResponse(
         user=_user_out(user),
         activeCompany=_company_out(active_company) if active_company else None,
@@ -275,4 +294,61 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
         regions=[RegionOut(id=r.id, code=r.code, name=r.name) for r in scope.regions],
         pincodes=list(scope.pincodes),
         scopeLabel=scope_label(principal.role, scope),
+        vendor=vendor,
+    )
+
+
+async def change_password(
+    session: AsyncSession, principal: Principal, current: str, new: str
+) -> LoginResponse:
+    """Set a new password, and end every OTHER session.
+
+    Deliberately 400 on a wrong current password, never 401. The console's
+    transport treats a 401 as an expired access token: it would burn a refresh
+    and replay the request with the same wrong password, so the user would see
+    one failure for two attempts.
+
+    Every outstanding refresh token is revoked and a fresh pair issued, so the
+    caller stays signed in HERE and is signed out everywhere else — which is the
+    point of changing a password when you suspect somebody else has it. The
+    30-minute access-token window is the one thing this cannot close.
+    """
+    user = principal.user
+    if user.password_hash is None:
+        # A technician: their phone is the credential and there is nothing to
+        # change. Saying so beats "incorrect password" for a password they have
+        # never had.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account signs in with a one-time code, not a password",
+        )
+    if not verify_password(current, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if current == new:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The new password is the same as the current one",
+        )
+
+    user.password_hash = hash_password(new)
+    user.updated_by = user.id
+    await revoke_refresh_tokens(session, user.id)
+
+    memberships = await _active_memberships(session, user)
+    access = create_access_token(
+        user.id,
+        company_id=str(principal.company_id) if principal.company_id else None,
+    )
+    refresh = await _issue_refresh_token(session, user)
+    await session.commit()
+
+    return LoginResponse(
+        user=_user_out(user),
+        memberships=[_membership_out(user, m, c) for m, c in memberships],
+        activeCompanyId=principal.company_id,
+        accessToken=access,
+        refreshToken=refresh,
     )

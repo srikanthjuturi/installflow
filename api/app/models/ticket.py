@@ -211,6 +211,11 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_tickets_company_subcategory", "company_id", "subcategory_id"),
         Index("ix_tickets_company_model", "company_id", "model_id"),
         Index("ix_tickets_company_technician", "company_id", "technician_id"),
+        # A vendor USER's list is "my vendor, and raised by me". `created_by`
+        # comes from ActorMixin as a plain UUID with no foreign key, so the
+        # FK-coverage query that catches this class of miss would never ask for
+        # it — and without it every page of that list is a sequential scan.
+        Index("ix_tickets_created_by", "created_by"),
         # RESTRICT on all three masters: a vendor, subcategory or model a ticket
         # names must not be able to disappear from under it. The services
         # already refuse to delete one that is referenced; this is the backstop.

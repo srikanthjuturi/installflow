@@ -10,6 +10,7 @@ from app.core.deps import CurrentPrincipal
 from app.core.schemas import ApiEnvelope, envelope
 from app.features.auth import otp_service, service
 from app.features.auth.schemas import (
+    ChangePasswordRequest,
     LoginRequest,
     LoginResponse,
     LogoutRequest,
@@ -92,3 +93,19 @@ async def update_me(
     """
     data = await service.update_me(db, principal, body)
     return envelope(data, message="Profile updated")
+
+@router.post("/change-password", response_model=ApiEnvelope[LoginResponse])
+async def change_password(
+    body: ChangePasswordRequest, db: Db, principal: CurrentPrincipal
+) -> ApiEnvelope[LoginResponse]:
+    """Set a new password. No feature key — anyone may change their own.
+
+    Answers with a fresh token pair, because every OTHER session is revoked:
+    the caller stays signed in here and is signed out everywhere else. A wrong
+    current password is a 400, never a 401 — see the service for why that
+    distinction is load-bearing for the console.
+    """
+    result = await service.change_password(
+        db, principal, body.currentPassword, body.newPassword
+    )
+    return envelope(result, message="Password changed")
