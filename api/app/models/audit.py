@@ -29,6 +29,14 @@ class AuditLog(Base, IdMixin):
     entity_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     entity_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: Declared here rather than inherited: an append-only log has no
+    #: `updated_at`, `created_by` or `updated_by` to come with it.
+    #:
+    #: It lands second-to-last, ahead of the inherited `id`, because a class's
+    #: own columns are collected before a mixin's `declared_attr`. Both are
+    #: still at the END of the table, which is the rule; this is the one table
+    #: where the two are the other way round, and it is not worth contorting the
+    #: model to swap them.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

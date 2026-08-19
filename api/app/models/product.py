@@ -23,6 +23,7 @@ import uuid
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     ForeignKeyConstraint,
     ForeignKey,
     Index,
@@ -166,6 +167,17 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "warranty_months IS NULL OR (warranty_months >= 0 AND warranty_months <= 240)",
+            name="warranty_months",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(service_types) = 'array' "
+            "AND jsonb_array_length(service_types) >= 1 "
+            "AND service_types <@ "
+            "'[\"Installation + Demo\", \"Tech Visit\", \"Service\"]'::jsonb",
+            name="service_types",
+        ),
         Index("ix_product_models_subcategory_id", "subcategory_id"),
         Index("ix_product_models_company_id", "company_id"),
         Index("ix_product_models_vendor_id", "vendor_id"),

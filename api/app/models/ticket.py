@@ -18,6 +18,7 @@ import datetime
 import uuid
 
 from sqlalchemy import (
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -133,11 +134,35 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     technician_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     __table_args__ = (
+        # Declared on the MODEL, not only in a migration, so the model is the
+        # whole truth about the table and `--autogenerate` can see them.
+        CheckConstraint(
+            "service_level_hours IN (12, 24, 36, 48)", name="service_level_hours"
+        ),
+        CheckConstraint(
+            "service_type IN ('Installation + Demo', 'Tech Visit', 'Service')",
+            name="service_type",
+        ),
+        CheckConstraint(
+            "status IN ('New', 'Slot Pending', 'Assigned', 'In Progress', "
+            "'AI Review', 'Escalated', 'Closed', 'Force-Closed', 'Cancelled')",
+            name="status",
+        ),
+        CheckConstraint(
+            "slot_request_status IN ('not_needed', 'pending', 'sent', 'failed')",
+            name="slot_request_status",
+        ),
+        # Half a slot is not a time.
+        CheckConstraint(
+            "(slot_start IS NULL) = (slot_end IS NULL) "
+            "AND (slot_end IS NULL OR slot_end > slot_start)",
+            name="slot_both_or_neither",
+        ),
         UniqueConstraint("company_id", "code", name="uq_tickets_company_code"),
-        # Global, not per company: the token IS the URL, and it is resolved
-        # before any company is known. Partial on NOT NULL in the migration, so
-        # the many tickets ops slotted themselves do not collide on null.
-        UniqueConstraint("slot_token", name="uq_tickets_slot_token"),
+        # NB `slot_token` has no UniqueConstraint here. It is unique globally —
+        # the token IS the URL and is resolved before any company is known — but
+        # as a PARTIAL index on `slot_token IS NOT NULL`, written by hand in the
+        # migration. Declaring it here as well would collide on the name.
         Index("ix_tickets_company_status", "company_id", "status"),
         # The routing probe: "which tickets are in this pincode" is asked by
         # every area manager on every page load.

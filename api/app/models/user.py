@@ -16,8 +16,16 @@ from app.db.mixins import AuditMixin, IdMixin, SoftDeleteMixin
 class User(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     __tablename__ = "users"
 
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Both NULLABLE, because a technician has neither: their phone is the
+    #: credential and they sign in with an OTP. Console users have both.
+    #:
+    #: The model said `nullable=False` until the schema was squashed, while a
+    #: later migration had quietly made the columns nullable — so the models and
+    #: the database disagreed, and only the migration was right. Anything
+    #: generated from the models would have made technicians impossible to
+    #: create.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 

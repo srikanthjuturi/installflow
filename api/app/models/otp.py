@@ -74,6 +74,6 @@ class OtpCode(Base, IdMixin, AuditMixin):
         Index("ix_otp_codes_purpose_phone", "purpose", "phone"),
         Index("ix_otp_codes_ip_created", "request_ip", "created_at"),
         CheckConstraint(
-            "purpose IN ('login','invite')", name="ck_otp_codes_purpose"
+            "purpose IN ('login','invite')", name="purpose"
         ),
     )

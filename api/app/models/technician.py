@@ -212,19 +212,19 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Index("ix_technician_profiles_appointed_by", "appointed_by_user_id"),
         CheckConstraint(
             "daily_job_cap BETWEEN 1 AND 12",
-            name="ck_technician_profiles_daily_job_cap",
+            name="daily_job_cap",
         ),
         CheckConstraint(
             "onboarding_mode IN ('invite','direct')",
-            name="ck_technician_profiles_onboarding_mode",
+            name="onboarding_mode",
         ),
         CheckConstraint(
             "registered_by IN ('self','manager')",
-            name="ck_technician_profiles_registered_by",
+            name="registered_by",
         ),
         CheckConstraint(
             "status IN ('active','inactive','suspended')",
-            name="ck_technician_profiles_status",
+            name="status",
         ),
     )
 
