@@ -104,4 +104,3 @@ export interface User {
 
 /* Territory types moved to `types/territory.ts` when the mapping became real —
    it is now derived from user assignments rather than its own mock records. */
-export * from "./imports";

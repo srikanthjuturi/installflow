@@ -1,8 +1,10 @@
 /**
  * Vendors — the brands the company stocks, and who to call about them.
  *
- * A record, not an account: nobody signs in as a vendor. Every product model
- * points at exactly one, which is how a model gets its brand.
+ * BOTH a record and an account. Every product model points at exactly one,
+ * which is how a model gets its brand; and a vendor signs in to the portal at
+ * `/portal`, where it raises tickets against itself and manages its own users.
+ * `intakeChannels` decides which entry screens it gets.
  *
  * This replaced an earlier mock-only `Vendor` that modelled a ticket-INTAKE
  * source — intake channel, API credentials, lifetime ticket volume, "since"
@@ -40,6 +42,8 @@ export interface Vendor {
   isActive: boolean;
   /** Live product models carrying this brand. A real COUNT, not seed data. */
   modelCount: number;
+  /** The address this vendor signs in with. */
+  loginEmail: string | null;
   /**
    * Tickets received from this vendor. Always 0 until the jobs slice exists —
    * the true figure, since nothing can receive a ticket yet, not a placeholder.
@@ -64,6 +68,10 @@ export interface VendorOption {
 }
 
 export interface CreateVendorInput {
+  /** Required: only a vendor raises a ticket, so one without a login is a
+   *  brand nobody could ever raise a ticket against. */
+  loginEmail: string;
+  password: string;
   name: string;
   gstNumber: string;
   cin?: string | null;
@@ -78,6 +86,8 @@ export interface CreateVendorInput {
 }
 
 export interface UpdateVendorInput {
+  /** Reissue the password. Omit to leave it alone; the email is not editable. */
+  password?: string;
   id: string;
   name?: string;
   gstNumber?: string;

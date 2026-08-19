@@ -4,8 +4,13 @@ import { AppShell } from "@/components/shared/AppShell";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { featureForPath } from "@/components/shared/nav";
 import { SuperadminShell } from "@/components/superadmin/SuperadminShell";
+import { VendorShell } from "@/components/vendor/VendorShell";
+import {
+  PORTAL_UNGATED,
+  featureForPortalPath,
+} from "@/components/vendor/portalNav";
 import { useFeatureAccess } from "@/hooks/useAuth";
-import { useSession } from "@/store/session";
+import { landingPath, useSession } from "@/store/session";
 
 /* Route-based code splitting — each page is its own chunk, resolved behind
    the AppShell's Suspense boundary. */
@@ -13,13 +18,8 @@ const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage"));
 const TicketListPage = lazy(() => import("@/pages/tickets/TicketListPage"));
 const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
-const ManualEntryPage = lazy(() => import("@/pages/tickets/ManualEntryPage"));
-const BulkUploadPage = lazy(() => import("@/pages/tickets/BulkUploadPage"));
 const EscalationQueuePage = lazy(
   () => import("@/pages/escalations/EscalationQueuePage")
-);
-const ValidationResultPage = lazy(
-  () => import("@/pages/tickets/ValidationResultPage")
 );
 const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
@@ -47,14 +47,61 @@ const AiReviewDetailPage = lazy(
   () => import("@/pages/ai-review/AiReviewDetailPage")
 );
 const CompaniesPage = lazy(() => import("@/pages/superadmin/CompaniesPage"));
+const ChangePasswordPage = lazy(
+  () => import("@/pages/account/ChangePasswordPage")
+);
+const VendorTicketsPage = lazy(
+  () => import("@/pages/vendor/VendorTicketsPage")
+);
+const VendorNewTicketPage = lazy(
+  () => import("@/pages/vendor/VendorNewTicketPage")
+);
+const VendorUsersPage = lazy(() => import("@/pages/vendor/VendorUsersPage"));
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
+  const portal = useSession((s) => s.portal);
   if (!signedIn) return <Navigate to="/login" replace />;
   // The superadmin console is a separate surface — keep it out of the ops app.
   if (superadmin) return <Navigate to="/companies" replace />;
+  // And so is the vendor portal. Bouncing HERE, before `AppShell` mounts, is
+  // what keeps a vendor away from the ungated ops screens: `has(undefined)` is
+  // true, so `/`, `/escalations`, `/ai-review`, `/notifications` and `/account`
+  // would all wave one through if they were ever reached. They never are.
+  if (portal) return <Navigate to="/portal" replace />;
   return <Outlet />;
+}
+
+function RequirePortal() {
+  const signedIn = useSession((s) => s.signedIn);
+  const superadmin = useSession((s) => s.superadmin);
+  const portal = useSession((s) => s.portal);
+  if (!signedIn) return <Navigate to="/login" replace />;
+  if (superadmin) return <Navigate to="/companies" replace />;
+  if (!portal) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+/**
+ * The portal's feature guard — the OPPOSITE polarity to `RequireFeature`.
+ *
+ * There, a path the table does not know is ungated and passes. Here it is
+ * denied. `has(undefined)` returns true, so "not in the table" has to mean "no"
+ * or a single missing entry becomes a hole; the handful of genuinely open paths
+ * are named in `PORTAL_UNGATED` instead.
+ */
+function RequirePortalFeature() {
+  const { pathname } = useLocation();
+  const { loading, has } = useFeatureAccess();
+  if (PORTAL_UNGATED.has(pathname)) return <Outlet />;
+  if (loading) return <PageSkeleton />;
+  const feature = featureForPortalPath(pathname);
+  return feature && has(feature) ? (
+    <Outlet />
+  ) : (
+    <Navigate to="/portal/tickets" replace />
+  );
 }
 
 function RequireSuperadmin() {
@@ -86,8 +133,19 @@ function RequireFeature() {
 function RedirectIfSignedIn() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
+  const portal = useSession((s) => s.portal);
   if (!signedIn) return <Outlet />;
-  return <Navigate to={superadmin ? "/companies" : "/"} replace />;
+  return <Navigate to={landingPath({ superadmin, portal })} replace />;
+}
+
+/**
+ * Unknown URL → wherever this session lives. `/` would cost a vendor a visible
+ * double redirect out through the staff guard.
+ */
+function NotFound() {
+  const superadmin = useSession((s) => s.superadmin);
+  const portal = useSession((s) => s.portal);
+  return <Navigate to={landingPath({ superadmin, portal })} replace />;
 }
 
 export const routes: RouteObject[] = [
@@ -105,6 +163,33 @@ export const routes: RouteObject[] = [
     ],
   },
   {
+    element: <RequirePortal />,
+    children: [
+      {
+        element: <VendorShell />,
+        children: [
+          // Outside the feature guard: it only redirects, and putting it inside
+          // would mean naming it in the ungated set for no benefit.
+          { path: "portal", element: <Navigate to="/portal/tickets" replace /> },
+          {
+            element: <RequirePortalFeature />,
+            children: [
+              { path: "portal/tickets", element: <VendorTicketsPage /> },
+              { path: "portal/tickets/new", element: <VendorNewTicketPage /> },
+              {
+                path: "portal/tickets/:id",
+                element: <TicketDetailPage backTo="/portal/tickets" actions={null} />,
+              },
+              { path: "portal/users", element: <VendorUsersPage /> },
+              { path: "portal/account", element: <AccountPage /> },
+              { path: "portal/password", element: <ChangePasswordPage /> },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
     element: <RequireAuth />,
     children: [
       {
@@ -117,12 +202,6 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <DashboardPage /> },
               { path: "tickets", element: <TicketListPage /> },
-              { path: "tickets/new", element: <ManualEntryPage /> },
-              { path: "tickets/import", element: <BulkUploadPage /> },
-              {
-                path: "tickets/import/:batchId",
-                element: <ValidationResultPage />,
-              },
               { path: "tickets/:id", element: <TicketDetailPage /> },
               { path: "tickets/:id/force-close", element: <ForceClosePage /> },
               { path: "escalations", element: <EscalationQueuePage /> },
@@ -140,11 +219,12 @@ export const routes: RouteObject[] = [
               { path: "settings/users", element: <UsersRolesPage /> },
               { path: "notifications", element: <NotificationsPage /> },
               { path: "account", element: <AccountPage /> },
+              { path: "account/password", element: <ChangePasswordPage /> },
             ],
           },
         ],
       },
     ],
   },
-  { path: "*", element: <Navigate to="/" replace /> },
+  { path: "*", element: <NotFound /> },
 ];

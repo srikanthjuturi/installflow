@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   API_ROLE,
+  PORTAL_ROLES,
   type ApiRole,
   type AuthPayload,
   type AuthUser,
@@ -120,6 +121,15 @@ interface SessionState {
    * above so the still-mocked ops-console screens keep compiling untouched.
    */
   superadmin: boolean;
+  /**
+   * This session belongs in the vendor portal, not the ops console.
+   *
+   * A stored flag rather than a role comparison at each call site: five places
+   * have to agree on where a session lives — two route guards, the login
+   * redirect, the catch-all and the shell — and one of them reading
+   * `backendUser?.role` directly is how they stop agreeing.
+   */
+  portal: boolean;
   backendUser: BackendUser | null;
   memberships: BackendMembership[];
   /** The company the token is currently scoped to (the header switcher's value). */
@@ -176,6 +186,7 @@ export const useSession = create<SessionState>()(
       refreshToken: null,
       user: null,
       superadmin: false,
+      portal: false,
       backendUser: null,
       memberships: [],
       activeCompanyId: null,
@@ -211,6 +222,7 @@ export const useSession = create<SessionState>()(
           accessToken,
           refreshToken,
           superadmin: user.isSuperadmin,
+          portal: (PORTAL_ROLES as readonly string[]).includes(user.role),
           backendUser: user,
           memberships,
           activeCompanyId,
@@ -234,6 +246,7 @@ export const useSession = create<SessionState>()(
           refreshToken: null,
           user: null,
           superadmin: false,
+          portal: false,
           backendUser: null,
           memberships: [],
           activeCompanyId: null,
@@ -250,12 +263,14 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: "installflow.session",
-      version: 5,
+      version: 6,
       // Older sessions predate the live backend (or carry a stale view-role
       // from the removed role toggle, lack activeCompanyId, or — before v5 —
-      // hold an access token with no refresh token to renew it). None can be
-      // trusted — keep the workspace preference and re-sign-in against the
-      // backend, which re-derives role and active company from scratch.
+      // hold an access token with no refresh token to renew it). Before v6 they
+      // also predate the vendor portal, so they cannot say which shell they
+      // belong in — and that flag decides routing. None can be trusted — keep
+      // the workspace preference and re-sign-in against the backend, which
+      // re-derives role, active company and surface from scratch.
       migrate: (persisted) =>
         ({
           ...(persisted as Partial<SessionState>),
@@ -264,6 +279,7 @@ export const useSession = create<SessionState>()(
           refreshToken: null,
           user: null,
           superadmin: false,
+          portal: false,
           backendUser: null,
           memberships: [],
           activeCompanyId: null,
@@ -277,6 +293,7 @@ export const useSession = create<SessionState>()(
         refreshToken: s.refreshToken,
         user: s.user,
         superadmin: s.superadmin,
+        portal: s.portal,
         backendUser: s.backendUser,
         memberships: s.memberships,
         activeCompanyId: s.activeCompanyId,
@@ -297,3 +314,19 @@ export const ROLE_LABEL: Record<Role, string> = {
   ASM: "Area Service Manager · Pune",
   "Ops Staff": "Ops Staff · Pune",
 };
+
+/**
+ * Where a session lives.
+ *
+ * The ONE place the three surfaces are ranked, so the two route guards, the
+ * login redirect and the catch-all cannot drift apart. Order matters:
+ * superadmin has no company and therefore no portal, so it is asked first.
+ */
+export function landingPath(s: {
+  superadmin: boolean;
+  portal: boolean;
+}): string {
+  if (s.superadmin) return "/companies";
+  if (s.portal) return "/portal";
+  return "/";
+}

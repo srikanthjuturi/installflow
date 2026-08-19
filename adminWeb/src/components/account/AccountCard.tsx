@@ -1,5 +1,6 @@
-import { Check, LogOut, Trash2 } from "lucide-react";
+import { Check, KeyRound, LogOut, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AvatarPicker } from "@/components/shared/AvatarPicker";
@@ -13,6 +14,9 @@ interface AccountCardProps {
   memberships: BackendMembership[];
   activeCompanyId: string | null;
   onSignOut: () => void;
+  /** Where the change-password screen lives on THIS surface — the ops console
+   *  and the vendor portal mount the same page under different paths. */
+  changePasswordTo: string;
 }
 
 /**
@@ -26,6 +30,7 @@ export function AccountCard({
   memberships,
   activeCompanyId,
   onSignOut,
+  changePasswordTo,
 }: AccountCardProps) {
   const name = user.fullName ?? user.email;
   // Fall back to the sole company if the active id is absent (e.g. an older
@@ -135,10 +140,18 @@ export function AccountCard({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-ink-2">Signs you out of this browser.</p>
-          <Button variant="destructive" onClick={onSignOut}>
-            <LogOut data-icon="inline-start" />
-            Sign out
-          </Button>
+          <div className="flex flex-wrap gap-2.5">
+            {/* A one-off action, not a destination — so it lives beside Sign
+                out rather than in either navigation table. */}
+            <LinkButton variant="outline" to={changePasswordTo}>
+              <KeyRound data-icon="inline-start" />
+              Change password
+            </LinkButton>
+            <Button variant="destructive" onClick={onSignOut}>
+              <LogOut data-icon="inline-start" />
+              Sign out
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

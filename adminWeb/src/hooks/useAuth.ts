@@ -1,12 +1,6 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  login,
-  logout,
-  me,
-  switchCompany,
-  updateMyProfileImage,
-} from "@/services/auth";
+import { changePassword, login, logout, me, switchCompany, updateMyProfileImage } from "@/services/auth";
 import { useSession } from "@/store/session";
 
 /**
@@ -157,4 +151,29 @@ export function useSignOut() {
     signOut();
     queryClient.clear();
   }, [signOut, queryClient]);
+}
+
+/**
+ * Change your own password.
+ *
+ * Stores the returned pair: the backend revokes every other session, so the one
+ * this browser held a moment ago is dead — without `setTokens` the next request
+ * would 401 and sign the user out of the screen they just succeeded on.
+ *
+ * `gcTime: 0` so neither password lingers in the mutation cache, exactly as
+ * `useLogin` does.
+ */
+export function useChangePassword() {
+  const setTokens = useSession((s) => s.setTokens);
+  return useMutation({
+    mutationFn: (vars: { currentPassword: string; newPassword: string }) =>
+      changePassword(vars.currentPassword, vars.newPassword),
+    onSuccess: (payload) =>
+      setTokens({
+        accessToken: payload.accessToken,
+        refreshToken: payload.refreshToken,
+      }),
+    gcTime: 0,
+    meta: { errorTitle: "Couldn't change your password" },
+  });
 }

@@ -7,14 +7,6 @@ interface Meta {
 const STATIC: Record<string, Meta> = {
   "/": { title: "Dashboard", subtitle: "Operations overview" },
   "/tickets": { title: "Tickets", subtitle: "All installation & demo tickets" },
-  "/tickets/new": {
-    title: "Manual ticket entry",
-    subtitle: "Single ticket · ops entry",
-  },
-  "/tickets/import": {
-    title: "Excel bulk upload",
-    subtitle: "Template-based import",
-  },
   "/escalations": {
     title: "Escalation queue",
     subtitle: "Unassigned within 4h of slot",

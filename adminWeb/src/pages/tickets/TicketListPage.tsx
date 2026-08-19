@@ -1,5 +1,3 @@
-import { Plus } from "lucide-react";
-import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { TicketTable } from "@/components/tickets/TicketTable";
 import { useTicketFilters } from "@/hooks/useTicketFilters";
@@ -27,12 +25,7 @@ export default function TicketListPage() {
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}
-        toolbarActions={
-          <LinkButton className="h-10" to="/tickets/new">
-            <Plus data-icon="inline-start" />
-            New ticket
-          </LinkButton>
-        }
+        emptyDescription="Tickets raised by your vendors will appear here."
       />
     </>
   );

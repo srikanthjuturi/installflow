@@ -61,3 +61,24 @@ export function switchCompany(
 ): Promise<SwitchCompanyResponse> {
   return apiPost<SwitchCompanyResponse>("/auth/switch-company", { companyId });
 }
+
+/**
+ * Set a new password for the signed-in user.
+ *
+ * Answers with a fresh token pair, because the backend revokes every OTHER
+ * session: the caller stays signed in here and is signed out everywhere else.
+ * Store both, or this browser is next.
+ *
+ * A wrong current password comes back as a 400, deliberately not a 401 — the
+ * transport reads a 401 as an expired access token and would burn a refresh and
+ * replay with the same wrong password.
+ */
+export function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<LoginResponse> {
+  return apiPost<LoginResponse>("/auth/change-password", {
+    currentPassword,
+    newPassword,
+  });
+}

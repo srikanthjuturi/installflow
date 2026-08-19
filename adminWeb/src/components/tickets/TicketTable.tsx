@@ -20,6 +20,17 @@ const SLA_RANK: Record<SlaState, number> = {
 };
 
 interface TicketTableProps {
+  /**
+   * Where a row leads. The portal mounts this same list under `/portal`, and a
+   * hard-coded `/tickets/` would bounce a vendor out through the staff guard.
+   */
+  basePath?: string;
+  /**
+   * What the empty state says. Supplied by the caller because the two surfaces
+   * are looking at different things — the ops list is every vendor's work, the
+   * portal list is your own — and one sentence cannot be true of both.
+   */
+  emptyDescription?: string;
   /** One server page. The table renders these rows and only these rows. */
   tickets?: Ticket[];
   /** The envelope's pagination block — total, page count, where we are. */
@@ -34,6 +45,8 @@ interface TicketTableProps {
 }
 
 export function TicketTable({
+  basePath = "/tickets",
+  emptyDescription = "Tickets raised by your vendors will appear here.",
   tickets,
   meta,
   params,
@@ -60,7 +73,7 @@ export function TicketTable({
           {/* The row is clickable, but the code stays a real link so it
               is reachable by keyboard and opens in a new tab. */}
           <a
-            href={`/tickets/${t.id}`}
+            href={`${basePath}/${t.id}`}
             onClick={(e) => e.stopPropagation()}
             className="font-mono text-xs font-semibold text-brand-400"
           >
@@ -194,10 +207,10 @@ export function TicketTable({
           </>
         ) : null
       }
-      onRowClick={(t) => navigate(`/tickets/${t.id}`)}
+      onRowClick={(t) => navigate(`${basePath}/${t.id}`)}
       minWidth="57.5rem"
       emptyTitle="No tickets yet"
-      emptyDescription="Intake from API, Excel upload or manual entry will appear here."
+      emptyDescription={emptyDescription}
       filteredEmptyTitle="No tickets match those filters"
       filteredEmptyDescription="Try a different status, or clear the search."
     />

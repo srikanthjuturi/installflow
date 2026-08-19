@@ -1,3 +1,5 @@
+import type { IntakeChannel } from "./vendor";
+
 /**
  * The backend's response envelope.
  *
@@ -99,7 +101,15 @@ export type BackendRole =
   | "national_head"
   | "regional_head"
   | "area_manager"
-  | "technician";
+  | "technician"
+  /** Signs in to the vendor portal. Sees every ticket its own users raised. */
+  | "vendor"
+  /** Created by a vendor. Sees only the tickets it raised itself. */
+  | "vendor_user";
+
+/** The two roles whose home is `/portal`, not the ops console. */
+export const PORTAL_ROLES = ["vendor", "vendor_user"] as const satisfies
+  readonly BackendRole[];
 
 export interface BackendUser {
   id: string;
@@ -170,4 +180,19 @@ export interface MeResponse {
   regions: { id: string; code: string; name: string }[];
   pincodes: string[];
   scopeLabel: string;
+  /**
+   * The vendor a portal account acts for; null for everyone else.
+   *
+   * THIS is where the portal's fixed brand comes from — not
+   * `GET /vendors/options`, which is gated on `masters.view` and for a staff
+   * caller lists every brand in the company.
+   */
+  vendor: MeVendor | null;
+}
+
+export interface MeVendor {
+  id: string;
+  name: string;
+  /** Which entry screens the portal offers — see components/vendor/portalNav.ts. */
+  intakeChannels: IntakeChannel[];
 }

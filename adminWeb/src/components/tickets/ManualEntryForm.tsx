@@ -26,8 +26,8 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCategoryTree } from "@/hooks/useProductMaster";
-import { useVendorOptions } from "@/hooks/useVendors";
 import { cn } from "@/lib/utils";
+import type { VendorOption } from "@/types/vendor";
 import type { CreateTicketInput } from "@/types/ticket";
 import {
   SERVICE_LEVEL_OPTIONS,
@@ -51,14 +51,24 @@ interface ManualEntryFormProps {
   onSubmit: (values: CreateTicketInput) => void;
   onCancel: () => void;
   isSubmitting: boolean;
+  /**
+   * The brand this ticket is raised against, already known.
+   *
+   * REQUIRED, because the only caller is the vendor portal — a vendor does not
+   * choose which vendor it is. Passing it replaces the vendor select with a
+   * read-only field and skips `useVendorOptions()` entirely: that endpoint is
+   * gated on `masters.view` and, for a staff caller, lists every brand in the
+   * company. A vendor must neither need it nor see its result.
+   */
+  vendor: VendorOption;
 }
 
 export function ManualEntryForm({
   onSubmit,
   onCancel,
   isSubmitting,
+  vendor,
 }: ManualEntryFormProps) {
-  const { data: vendors } = useVendorOptions();
 
   const {
     control,
@@ -69,7 +79,7 @@ export function ManualEntryForm({
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
     defaultValues: {
-      vendorId: "",
+      vendorId: vendor.id,
       subcategoryId: "",
       modelId: "",
       serviceType: "Installation + Demo",
@@ -106,7 +116,7 @@ export function ManualEntryForm({
     false,
     vendorId
   );
-  const vendorName = vendors?.find((v) => v.id === vendorId)?.name ?? "";
+  const vendorName = vendor.name;
   // A vendor with nothing to install is a gap in the master, not a dead end for
   // the person keying in a ticket — so it is named, with somewhere to go.
   const vendorHasNothing =
@@ -167,7 +177,7 @@ export function ManualEntryForm({
       // Empty means "not recorded", which the API stores as null — never an
       // empty string, so "unknown" and "blank" cannot diverge.
       description: values.description.trim() || null,
-      serialNumber: values.serialNumber.trim() || null,
+      serialNumber: values.serialNumber.trim(),
       customerName: values.customerName,
       customerPhone: values.customerPhone,
       address: values.address,
@@ -190,30 +200,16 @@ export function ManualEntryForm({
               Vendor &amp; product
             </FieldLegend>
             <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <SelectField
-                name="vendorId"
-                label="Company / vendor"
-                placeholder="Select vendor"
-                groups={[
-                  {
-                    options: (vendors ?? []).map((v) => ({
-                      value: v.id,
-                      label: v.name,
-                    })),
-                  },
-                ]}
-                control={control}
-                error={err("vendorId")}
-                onChanged={() => {
-                  // Everything below hangs off the vendor, and none of it
-                  // survives a change of brand.
-                  setValue("subcategoryId", "", { shouldValidate: false });
-                  setValue("modelId", "", { shouldValidate: false });
-                  setValue("serviceType", "Installation + Demo", {
-                    shouldValidate: false,
-                  });
-                }}
-              />
+              {/* Read-only rather than a one-option select: there is nothing
+                  to choose, and a disabled dropdown invites a click that does
+                  nothing. Same treatment `ScopeField` gives a National Head's
+                  "All India". The value is still submitted and still validated
+                  — and the server independently refuses any vendor that is not
+                  the caller's own. */}
+              <Field>
+                <FieldLabel htmlFor="vendor-name">Company / vendor</FieldLabel>
+                <Input id="vendor-name" value={vendor.name} readOnly disabled />
+              </Field>
               <SelectField
                 name="subcategoryId"
                 label="Category"
@@ -278,7 +274,7 @@ export function ManualEntryForm({
               ) : null}
               <TextField
                 name="serialNumber"
-                label="Serial number (optional)"
+                label="Serial number"
                 placeholder="As printed on the box"
                 className="font-mono"
                 autoComplete="off"

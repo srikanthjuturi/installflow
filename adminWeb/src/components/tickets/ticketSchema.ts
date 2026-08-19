@@ -24,7 +24,10 @@ export const ticketSchema = z
     /** Required for Tech Visit and Service — see the superRefine below. */
     description: z.string().trim().max(2000),
     /** The EXPECTED serial, off the invoice. Optional: ops often won't have it. */
-    serialNumber: z.string().trim().max(64),
+    // Required since vendors raise their own tickets: they hold the invoice,
+    // so it is knowable at intake — and the AI proof check always has an
+    // expected serial to compare the photographed one against.
+    serialNumber: z.string().trim().min(1, "Enter the serial number").max(64),
 
     customerName: z.string().trim().min(2, "Customer name is required"),
     customerPhone: z

@@ -63,11 +63,19 @@ export const CHANNEL_HINT: Record<IntakeChannel, string> = {
  */
 export const LOCAL_AVAILABLE: readonly IntakeChannel[] = ["Excel", "Manual"];
 
-/** Which of our own screens serves each channel. Null where nobody's does. */
+/**
+ * Which screen in the VENDOR PORTAL serves each channel. Null where none does.
+ *
+ * These used to name the ops console's own Manual Entry and Bulk Upload. Both
+ * are gone — only a vendor raises a ticket now — so the two entries that remain
+ * describe what the vendor gets, which is what an operator ticking these boxes
+ * is actually deciding.
+ */
 export const CHANNEL_SCREEN: Record<IntakeChannel, string | null> = {
   API: null,
-  Excel: "Bulk Upload",
-  Manual: "Manual Entry",
+  // The importer has no backend yet, so ticking Excel grants nothing today.
+  Excel: null,
+  Manual: "the vendor portal",
 };
 
 export const VENDOR_STATUSES = ["Active", "Paused"] as const;
@@ -81,6 +89,26 @@ const squash = (v: string) => v.replace(/\s+/g, "");
 
 export const vendorSchema = z.object({
   name: z.string().trim().min(2, "Vendor name is required"),
+  /**
+   * The vendor's login.
+   *
+   * Required when ADDING and read-only when editing — see `addVendorResolver`
+   * and `editVendorResolver` below. The address is the identity the account is
+   * looked up by, so moving it would strand the vendor on credentials nobody
+   * recorded.
+   */
+  loginEmail: z
+    .string()
+    .trim()
+    .min(1, "Enter a login email")
+    .pipe(z.email("Enter a valid email")),
+  /**
+   * Blank on edit means "leave the password alone". On add it is required.
+   * This is the only way back in for a vendor who has forgotten theirs:
+   * changing a password otherwise needs the current one, and there is no email
+   * channel to send a reset link through.
+   */
+  password: z.string(),
   gstNumber: z
     .string()
     .transform(upper)
@@ -117,3 +145,27 @@ export const vendorSchema = z.object({
 });
 
 export type VendorFormValues = z.infer<typeof vendorSchema>;
+
+/**
+ * Adding: both credentials are required, because only a vendor raises a ticket
+ * — one without a login would be a brand nobody could ever raise a ticket
+ * against, which is a silent dead end rather than a visible choice.
+ */
+export const addVendorSchema = vendorSchema.extend({
+  password: z.string().min(8, "At least 8 characters").max(128),
+});
+
+/**
+ * Editing: the email is shown but not submitted, and a blank password leaves
+ * the existing one alone. `superRefine` rather than `.min()`, so that "" is
+ * valid and anything shorter than 8 is not.
+ */
+export const editVendorSchema = vendorSchema.superRefine((v, ctx) => {
+  if (v.password !== "" && v.password.length < 8) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["password"],
+      message: "At least 8 characters",
+    });
+  }
+});

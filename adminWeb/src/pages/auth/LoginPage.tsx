@@ -4,7 +4,7 @@ import { BrandPanel } from "@/components/auth/BrandPanel";
 import { CredentialsStep } from "@/components/auth/CredentialsStep";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { useLogin } from "@/hooks/useAuth";
-import { useSession } from "@/store/session";
+import { landingPath, useSession } from "@/store/session";
 
 /**
  * Single-step sign-in against the live backend. The API is password-only (no
@@ -38,8 +38,8 @@ export default function LoginPage() {
                   password: values.password,
                 });
                 // signInBackend has run; route by role.
-                const superadmin = useSession.getState().superadmin;
-                navigate(superadmin ? "/companies" : "/", { replace: true });
+                const { superadmin, portal } = useSession.getState();
+                navigate(landingPath({ superadmin, portal }), { replace: true });
               }}
             />
           </motion.div>

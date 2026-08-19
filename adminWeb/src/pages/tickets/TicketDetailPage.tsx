@@ -18,7 +18,25 @@ import { useTicket } from "@/hooks/useTickets";
 /** Proof only exists once the job has reached verification or closure. */
 const PROOF_STATUSES = new Set(["AI Review", "Closed", "Force-Closed"]);
 
-export default function TicketDetailPage() {
+/**
+ * One ticket, on two surfaces.
+ *
+ * The ops console and the vendor portal show the same facts; only where "back"
+ * goes and which actions exist differ. `actions` is a slot rather than a
+ * boolean so the portal passes `null` and neither surface has to know what the
+ * other renders.
+ */
+export default function TicketDetailPage({
+  backTo = "/tickets",
+  backLabel = "Back to tickets",
+  actions,
+}: {
+  backTo?: string;
+  backLabel?: string;
+  /** The ops pair by default; `null` in the portal, where a vendor
+   *  force-closing or re-assigning its own ticket makes no sense. */
+  actions?: React.ReactNode;
+} = {}) {
   const { id = "" } = useParams();
   const { data: ticket, isLoading, isError, error, refetch } = useTicket(id);
 
@@ -33,10 +51,10 @@ export default function TicketDetailPage() {
         variant="ghost"
         size="sm"
         className="mb-3.5 -ml-2"
-        to="/tickets"
+        to={backTo}
       >
         <ArrowLeft data-icon="inline-start" />
-        Back to tickets
+        {backLabel}
       </LinkButton>
 
       {isError ? (
@@ -76,18 +94,22 @@ export default function TicketDetailPage() {
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2.5">
-                    <LinkButton
-                      variant="outline"
-                      className="hover:border-danger hover:text-danger"
-                      to={`/tickets/${ticket.code}/force-close`}
-                    >
-                      Force close
-                    </LinkButton>
-                    <LinkButton to={`/escalations/${ticket.code}/assign`}>
-                      Re-assign
-                    </LinkButton>
-                  </div>
+                  {actions === undefined ? (
+                    <div className="flex flex-wrap gap-2.5">
+                      <LinkButton
+                        variant="outline"
+                        className="hover:border-danger hover:text-danger"
+                        to={`/tickets/${ticket.id}/force-close`}
+                      >
+                        Force close
+                      </LinkButton>
+                      <LinkButton to={`/escalations/${ticket.id}/assign`}>
+                        Re-assign
+                      </LinkButton>
+                    </div>
+                  ) : (
+                    actions
+                  )}
                 </div>
 
                 <FactGrid ticket={ticket} />

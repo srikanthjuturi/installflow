@@ -8,6 +8,7 @@ export default function AccountPage() {
   const user = useCurrentUser();
   const memberships = useSession((s) => s.memberships);
   const activeCompanyId = useSession((s) => s.activeCompanyId);
+  const portal = useSession((s) => s.portal);
   const signOut = useSignOut();
 
   return (
@@ -23,6 +24,7 @@ export default function AccountPage() {
           user={user}
           memberships={memberships}
           activeCompanyId={activeCompanyId}
+          changePasswordTo={portal ? "/portal/password" : "/account/password"}
           onSignOut={async () => {
             await signOut();
             window.location.assign("/login");
