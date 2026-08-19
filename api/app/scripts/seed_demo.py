@@ -58,7 +58,10 @@ from app.models.product import ProductSubcategory  # noqa: E402
 #: One password for every seeded account. This is demo data on a disposable
 #: database; generating something unguessable and then not telling anyone just
 #: means nobody can sign in.
-PASSWORD = "Password@123"
+#:
+#: Keep this in step with whatever the live demo accounts are actually set to,
+#: or a reset silently changes the password everybody was using.
+PASSWORD = "Test@123"
 
 # (name, slug, city, state, pincode, gst, pan, region_code, [pincodes])
 #
