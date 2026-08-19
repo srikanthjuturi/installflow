@@ -190,6 +190,12 @@ npm run dev      # vite; the API must be up for anything to load
 `uq_companies_gst_lower`, `uq_companies_slug_lower` and `uq_users_email_lower`: Alembic does not
 recognise hand-written `LOWER()` functional indexes and mistakes them for stale.
 
+Two schema rules that are easy to miss and expensive to retrofit — both spelled out in
+`api/AGENTS.md`: **a UNIQUE on a soft-deleted table is partial on `deleted_at IS NULL`** (or a
+hidden row keeps its name forever, and re-adding a removed technician 409s with nothing on screen
+to explain it), and **every foreign key gets a covering index** (Postgres makes none, so deleting a
+parent scans the whole child table).
+
 ### Testing onboarding without Meta credentials
 
 Leave `WHATSAPP_*` empty. Invites then record a retryable failure with a copyable link, and OTP

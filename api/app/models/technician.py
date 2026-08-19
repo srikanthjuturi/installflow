@@ -130,6 +130,13 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
     __table_args__ = (
         Index("ix_technician_invites_company_status", "company_id", "status"),
         Index("ix_technician_invites_region_id", "region_id"),
+        # The four membership/user FKs. An invite names up to four people — who
+        # sent it, who manages the result, and which membership and user it
+        # became — and none of them could be deleted without a full scan here.
+        Index("ix_technician_invites_invited_by", "invited_by_membership_id"),
+        Index("ix_technician_invites_manager", "manager_membership_id"),
+        Index("ix_technician_invites_registered_membership", "registered_membership_id"),
+        Index("ix_technician_invites_registered_user", "registered_user_id"),
         # NB: the partial UNIQUE on (company_id, phone) for LIVE invites is
         # hand-written in the migration — SQLAlchemy cannot express a WHERE
         # clause in a table constraint.
@@ -210,6 +217,12 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Index("ix_technician_profiles_company_status", "company_id", "status"),
         Index("ix_technician_profiles_region_id", "region_id"),
         Index("ix_technician_profiles_appointed_by", "appointed_by_user_id"),
+        # The remaining FKs. NB `appointed_by_membership_id` is a different
+        # column from `appointed_by_user_id` indexed above — the index that
+        # already existed covered the user, not the membership.
+        Index("ix_technician_profiles_company_membership", "company_id", "membership_id"),
+        Index("ix_technician_profiles_appointed_by_membership", "appointed_by_membership_id"),
+        Index("ix_technician_profiles_invite_id", "invite_id"),
         CheckConstraint(
             "daily_job_cap BETWEEN 1 AND 12",
             name="daily_job_cap",
@@ -252,6 +265,18 @@ class TechnicianSubcategory(Base, IdMixin, AuditMixin):
             "technician_id", "subcategory_id", name="uq_technician_subcategory"
         ),
         Index("ix_technician_subcategories_subcategory_id", "subcategory_id"),
+        # One per composite FK. The RESTRICT below is checked on every attempt
+        # to delete a subcategory, so it wants an index it can actually use.
+        Index(
+            "ix_technician_subcategories_company_technician",
+            "company_id",
+            "technician_id",
+        ),
+        Index(
+            "ix_technician_subcategories_company_subcategory",
+            "company_id",
+            "subcategory_id",
+        ),
         ForeignKeyConstraint(
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],
@@ -294,6 +319,11 @@ class TechnicianPincode(Base, IdMixin, AuditMixin):
     __table_args__ = (
         UniqueConstraint("technician_id", "pincode", name="uq_technician_pincode"),
         Index("ix_technician_pincodes_company_pincode", "company_id", "pincode"),
+        # Covers the composite FK, so removing a technician does not scan every
+        # coverage row in the database to cascade.
+        Index(
+            "ix_technician_pincodes_company_technician", "company_id", "technician_id"
+        ),
         ForeignKeyConstraint(
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],

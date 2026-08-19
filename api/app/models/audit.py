@@ -43,4 +43,7 @@ class AuditLog(Base, IdMixin):
 
     __table_args__ = (
         Index("ix_audit_logs_company_created", "company_id", "created_at"),
+        # Covers the actor FK, and answers "everything this person did" —
+        # which is the question an audit log exists to answer.
+        Index("ix_audit_logs_actor_user_id", "actor_user_id"),
     )

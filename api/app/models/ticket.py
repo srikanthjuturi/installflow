@@ -158,6 +158,9 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             "AND (slot_end IS NULL OR slot_end > slot_start)",
             name="slot_both_or_neither",
         ),
+        # TOTAL on purpose, unlike the other soft-delete uniques: a ticket
+        # number must never be reused, or a deleted ticket and a live one share
+        # an identifier in somebody's email thread.
         UniqueConstraint("company_id", "code", name="uq_tickets_company_code"),
         # NB `slot_token` has no UniqueConstraint here. It is unique globally —
         # the token IS the URL and is resolved before any company is known — but
@@ -169,6 +172,13 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_tickets_company_pincode", "company_id", "pincode"),
         Index("ix_tickets_company_sla_due_at", "company_id", "sla_due_at"),
         Index("ix_tickets_technician_id", "technician_id"),
+        # One per composite FK below. Without these, deleting a vendor — or a
+        # model, or a subcategory — seq-scans every ticket in the database to
+        # prove the RESTRICT holds, and "tickets for this vendor" does the same.
+        Index("ix_tickets_company_vendor", "company_id", "vendor_id"),
+        Index("ix_tickets_company_subcategory", "company_id", "subcategory_id"),
+        Index("ix_tickets_company_model", "company_id", "model_id"),
+        Index("ix_tickets_company_technician", "company_id", "technician_id"),
         # RESTRICT on all three masters: a vendor, subcategory or model a ticket
         # names must not be able to disappear from under it. The services
         # already refuse to delete one that is referenced; this is the backstop.
