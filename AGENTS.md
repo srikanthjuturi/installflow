@@ -179,7 +179,6 @@ cd api
 ./.venv/Scripts/python.exe run.py                       # uvicorn on :8000
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe -m app.scripts.bootstrap      # the superadmin
-./.venv/Scripts/python.exe -m app.scripts.seed_demo      # a complete working environment
 
 cd adminWeb
 npm run dev      # vite; the API must be up for anything to load

@@ -242,7 +242,7 @@ app/
                          holding it could read every manager in the tenant.
   integrations/          whatsapp.py, otp_channel.py — outbound, and never raise on failure
   models/                one module per area; every model reachable from __init__
-  scripts/               bootstrap, seed_demo, seed_catalogue, audit_tenancy
+  scripts/               bootstrap, audit_tenancy
 alembic/versions/        hand-written, with a prose docstring saying WHY
 ```
 
@@ -252,8 +252,6 @@ alembic/versions/        hand-written, with a prose docstring saying WHY
 python run.py                              # uvicorn on :8000
 python -m alembic upgrade head
 python -m app.scripts.bootstrap            # the platform superadmin
-python -m app.scripts.seed_demo            # companies, users, technicians, catalogue, tickets
-python -m app.scripts.seed_catalogue       # just the catalogue, if the rest already exists
 python -m app.scripts.audit_tenancy        # after any schema change
 ```
 
