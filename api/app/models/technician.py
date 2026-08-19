@@ -190,14 +190,20 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Uuid, ForeignKey("technician_invites.id", ondelete="SET NULL"), nullable=True
     )
 
-    # ── stats: defaulted now, maintained by the jobs slice later ─────────────
+    # ── stats: NULL until the jobs slice measures them ───────────────────────
+    #
+    # All four nullable, and null means "not measured yet" — not zero. They
+    # defaulted to 0 until it was noticed that nothing anywhere writes them, so
+    # every technician's profile asserted a completed-job count of exactly zero
+    # that had never been counted. "Do not fake a number that has a real
+    # source" applies hardest when the source does not exist yet: 0 is a claim,
+    # `—` is the truth.
+    #
+    # `rating` and `on_time_pct` were already nullable and already rendered as
+    # `—`; these two now match them.
     rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
-    jobs_completed: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    jobs_cancelled: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    jobs_completed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    jobs_cancelled: Mapped[int | None] = mapped_column(Integer, nullable=True)
     on_time_pct: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
     __table_args__ = (

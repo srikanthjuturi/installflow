@@ -27,6 +27,7 @@ from app.core.config import settings
 from app.core.deps import Principal
 from app.core.schemas import ListParams
 from app.core.scope import ALL_INDIA_ROLES, own_scope
+from app.core.sequences import next_code as allocate_code
 from app.core.service_types import SERVICE_TYPES
 from app.core.tickets import (
     SLA_WARN_AT,
@@ -51,6 +52,7 @@ from app.models.role import AREA_MANAGER, REGIONAL_HEAD
 from app.models.technician import TechnicianProfile
 from app.models.territory import MembershipPincode
 from app.models.ticket import Ticket
+from app.models.ticket_event import TicketEvent
 from app.models.user import User
 from app.models.vendor import Vendor
 
@@ -308,17 +310,20 @@ async def _resolve_product(
 
 
 async def next_code(db: AsyncSession, company_id: uuid.UUID) -> str:
-    """`INST-240912`. The unique on (company_id, code) settles a race as a 409.
+    """`INST-240912`, from the company's counter row.
 
-    Same counter approach as `technicians.next_code`. NB the prefix is `INST-`
-    for every service type, including Tech Visit and Service — that is what the
-    prototype and the mobile app both use, and changing it is a decision about
-    what people read on a phone call, not a technical one.
+    This used to be `240912 + COUNT(*)`, which raced: two creators reading the
+    same count produce the same code and one of them gets a 409. Bulk upload
+    would have made that the normal case rather than the rare one — a batch
+    computes the same COUNT for every row in it, because none are committed yet.
+    See `app.core.sequences`.
+
+    NB the prefix is `INST-` for every service type, including Tech Visit and
+    Service — that is what the prototype and the mobile app both use, and
+    changing it is a decision about what people read on a phone call, not a
+    technical one.
     """
-    used = await db.scalar(
-        select(func.count(Ticket.id)).where(Ticket.company_id == company_id)
-    )
-    return f"INST-{240912 + int(used or 0)}"
+    return await allocate_code(db, company_id, "ticket")
 
 
 # ── hydration ─────────────────────────────────────────────────────────────────
@@ -520,40 +525,82 @@ async def get_ticket(
 ) -> TicketDetailOut:
     row = await _load(db, principal, ticket_id)
     base = (await _hydrate(db, [row]))[0]
-    return TicketDetailOut(**base.model_dump(), timeline=_timeline(row))
+    return TicketDetailOut(
+        **base.model_dump(), timeline=await _timeline(db, row)
+    )
 
 
-def _timeline(row: Ticket) -> list[TimelineEventOut]:
-    """The audit trail, built ONLY from stored facts.
+#: How a stored event kind reads on the timeline. The stored row keeps the fact;
+#: this keeps the wording, so rephrasing a title never means rewriting history.
+_EVENT_TITLES = {
+    "created": "Ticket created",
+    "slot_requested": "Slot request sent",
+    "slot_confirmed": "Slot confirmed & locked",
+    "status_changed": "Status changed",
+}
 
-    Short on purpose. The mock derived seven events from `status` alone —
-    including "Notified 6 eligible technicians" for a ticket nothing had
-    notified — and a fabricated audit trail is worse than a thin one, because
-    people believe it. Events arrive here as the slices that cause them land.
+
+async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
+    """The audit trail, read from `ticket_events` — oldest first.
+
+    It used to be DERIVED from the ticket's current columns, which capped it at
+    two entries and could never say when anything happened: a status column
+    keeps no history. The mock version of the same idea invented "Notified 6
+    eligible technicians" for a ticket nothing had notified, and a fabricated
+    trail is worse than a thin one because people believe it.
+
+    Still only as long as what actually happened. Rows appear as the slices that
+    cause them land.
     """
-    events = [
+    events = await db.scalars(
+        select(TicketEvent)
+        .where(
+            TicketEvent.company_id == row.company_id,
+            TicketEvent.ticket_id == row.id,
+        )
+        .order_by(TicketEvent.created_at, TicketEvent.id)
+    )
+    return [
         TimelineEventOut(
-            at=row.created_at,
-            kind="intake",
-            title="Ticket created",
-            by="Manual entry",
-            note=(
-                f"{row.service_type} · {row.service_level_hours}h service level · "
-                f"{row.city} {row.pincode}"
-            ),
+            at=e.created_at,
+            kind=e.kind,
+            title=_EVENT_TITLES.get(e.kind, e.kind),
+            by=e.actor_label,
+            note=e.note,
         )
+        for e in events
     ]
-    if row.slot_start is not None:
-        events.append(
-            TimelineEventOut(
-                at=row.created_at,
-                kind="lock",
-                title="Slot confirmed & locked",
-                by=row.customer_name,
-                note=row.slot_start.strftime("%d %b %Y, %H:%M"),
-            )
-        )
-    return events
+
+
+def record_event(
+    row: Ticket,
+    kind: str,
+    *,
+    actor_kind: str,
+    actor_label: str | None = None,
+    note: str | None = None,
+    from_status: str | None = None,
+    to_status: str | None = None,
+    by_user: uuid.UUID | None = None,
+) -> TicketEvent:
+    """Build the event for something that just happened to `row`.
+
+    Returns it rather than adding it, so the caller decides which transaction it
+    belongs to — an event must commit with the change it describes, never
+    separately, or a crash between the two leaves a trail that disagrees with
+    the ticket.
+    """
+    return TicketEvent(
+        company_id=row.company_id,
+        ticket_id=row.id,
+        kind=kind,
+        actor_kind=actor_kind,
+        actor_label=actor_label,
+        note=note,
+        from_status=from_status,
+        to_status=to_status,
+        created_by=by_user,
+    )
 
 
 # ── the customer's slot confirmation ─────────────────────────────────────────
@@ -674,11 +721,25 @@ async def confirm_slot(
             detail="That time is no longer available — please pick another",
         )
 
+    was = row.status
     row.slot_start, row.slot_end = match
     row.slot_confirmed_at = _now()
     # Slot Pending was the only thing holding it back. It is now a real
     # appointment, and eligible technicians can see it.
     row.status = "New"
+    # The customer has no user row, which is exactly why the event records an
+    # actor KIND as well as a label — `created_by` cannot answer this one.
+    db.add(
+        record_event(
+            row,
+            "slot_confirmed",
+            actor_kind="customer",
+            actor_label=row.customer_name,
+            note=when_label(*match),
+            from_status=was,
+            to_status=row.status,
+        )
+    )
     await db.commit()
     await db.refresh(row)
 
@@ -723,9 +784,45 @@ async def create_ticket(
         # a URL somebody is trusted to hold.
         slot_token=None if body.slotStart else secrets.token_urlsafe(32),
         slot_request_status="not_needed" if body.slotStart else "pending",
+        # Only value written today; see the column's note on why it is recorded
+        # from the start rather than added when bulk upload lands.
+        source="Manual",
         created_by=principal.user_id,
     )
     db.add(row)
+    # autoflush is OFF (hard rule 8) and the event needs the ticket's id.
+    await db.flush()
+
+    actor = principal.user.full_name or "Manual entry"
+    db.add(
+        record_event(
+            row,
+            "created",
+            actor_kind="staff",
+            actor_label=actor,
+            note=(
+                f"{row.service_type} · {row.service_level_hours}h service level · "
+                f"{row.city} {row.pincode}"
+            ),
+            to_status=row.status,
+            by_user=principal.user_id,
+        )
+    )
+    if row.slot_start is not None:
+        # Ops typed the time in, so there was never anything to ask the
+        # customer. The event still records it: "who agreed this slot" is a
+        # question the cancellation bands will need an answer to.
+        db.add(
+            record_event(
+                row,
+                "slot_confirmed",
+                actor_kind="staff",
+                actor_label=actor,
+                note=when_label(row.slot_start, row.slot_end),
+                to_status=row.status,
+                by_user=principal.user_id,
+            )
+        )
     await db.commit()
     await db.refresh(row)
 
@@ -736,6 +833,21 @@ async def create_ticket(
         await _send_slot_confirmed(db, row)
     else:
         await _send_slot_request(db, row)
+        db.add(
+            record_event(
+                row,
+                "slot_requested",
+                actor_kind="system",
+                actor_label="WhatsApp",
+                # Meta's own words when it refused, so the trail says WHY a
+                # customer never got the link rather than only that one was due.
+                note=(
+                    f"Slot link sent to {row.customer_phone}"
+                    if row.slot_request_status == "sent"
+                    else f"Could not send: {row.slot_request_error or 'unknown error'}"
+                ),
+            )
+        )
         await db.commit()
 
     return (await _hydrate(db, [row]))[0]

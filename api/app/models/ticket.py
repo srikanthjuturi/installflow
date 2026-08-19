@@ -83,7 +83,23 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: visibility, and the geo-check on the proof photo.
     pincode: Mapped[str] = mapped_column(String(6), nullable=False)
 
+    #: Which intake channel produced this ticket: 'Manual', 'Excel' or 'API' —
+    #: the same three words a vendor declares in `intake_channels`.
+    #:
+    #: Only 'Manual' is written today. It is recorded from the start anyway,
+    #: because the alternative is adding the column once bulk upload exists and
+    #: having to guess retrospectively what every earlier row came in through.
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'Manual'")
+    )
+
     # ── when ───────────────────────────────────────────────────────────────
+    #: What ops were asked for — the vendor's or the customer's target day, set
+    #: at intake. NOT a promise, and deliberately NOT constrained to agree with
+    #: `slot_start`: the customer picks from the windows the service level
+    #: allows, and if they choose a different day that is their answer, not a
+    #: contradiction. The gap between the two is a number worth reporting on
+    #: later; collapsing them into one column would destroy it.
     expected_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     #: 12 / 24 / 36 / 48. The slot must START within this long of creation.
     service_level_hours: Mapped[int] = mapped_column(SmallInteger, nullable=False)
@@ -152,6 +168,18 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             "slot_request_status IN ('not_needed', 'pending', 'sent', 'failed')",
             name="slot_request_status",
         ),
+        CheckConstraint("source IN ('API', 'Excel', 'Manual')", name="source"),
+        # The description rule, as a backstop. It is validated in `schemas.py`
+        # too, where it can give a per-field message; this is here so the table
+        # describes itself and so a future importer that bypasses the request
+        # schema cannot write a Service ticket with no fault on it.
+        #
+        # Reads as "exactly one of the two is true", which works only because
+        # `service_type` is already constrained to three values above.
+        CheckConstraint(
+            "(service_type = 'Installation + Demo') = (description IS NULL)",
+            name="description_required",
+        ),
         # Half a slot is not a time.
         CheckConstraint(
             "(slot_start IS NULL) = (slot_end IS NULL) "
@@ -162,6 +190,10 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # number must never be reused, or a deleted ticket and a live one share
         # an identifier in somebody's email thread.
         UniqueConstraint("company_id", "code", name="uq_tickets_company_code"),
+        # What `ticket_events` composite FK points at, so an event physically
+        # cannot be attached to another company's ticket. TOTAL, like every
+        # other FK target — a partial index cannot be one.
+        UniqueConstraint("company_id", "id", name="uq_tickets_company_id_id"),
         # NB `slot_token` has no UniqueConstraint here. It is unique globally —
         # the token IS the URL and is resolved before any company is known — but
         # as a PARTIAL index on `slot_token IS NOT NULL`, written by hand in the

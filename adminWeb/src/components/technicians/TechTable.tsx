@@ -170,7 +170,7 @@ export function TechTable({
       header: "Jobs",
       align: "right",
       cell: (t) =>
-        t.registered ? (
+        t.registered && t.jobsCompleted !== null ? (
           <span className="tabular-nums">{t.jobsCompleted}</span>
         ) : (
           NONE
@@ -181,7 +181,11 @@ export function TechTable({
       header: "Cancels",
       align: "right",
       cell: (t) =>
-        t.registered ? <CancelCount cancels={t.jobsCancelled} /> : NONE,
+        t.registered && t.jobsCancelled !== null ? (
+          <CancelCount cancels={t.jobsCancelled} />
+        ) : (
+          NONE
+        ),
     },
     {
       id: "appointedBy",

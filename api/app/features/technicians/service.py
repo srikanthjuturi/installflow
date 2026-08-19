@@ -27,6 +27,7 @@ from app.core.config import settings
 from app.core.deps import Principal
 from app.core.schemas import ListParams
 from app.core.scope import ALL_INDIA_ROLES, Scope, own_scope
+from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     InviteCreateRequest,
     OnboardingOut,
@@ -640,13 +641,12 @@ async def technician_session(
 
 
 async def next_code(session: AsyncSession, company_id: uuid.UUID) -> str:
-    """`TCH-4021`. The unique on (company_id, code) settles a race as a 409."""
-    used = await session.scalar(
-        select(func.count(TechnicianProfile.id)).where(
-            TechnicianProfile.company_id == company_id
-        )
-    )
-    return f"TCH-{4021 + int(used or 0)}"
+    """`TCH-4021`, from the company's counter row — see `app.core.sequences`.
+
+    Was `4021 + COUNT(*)`, which raced: two managers onboarding at once read the
+    same count, and one got a 409 on a code the other had just taken.
+    """
+    return await allocate_code(session, company_id, "technician")
 
 
 async def validate_subcategories(

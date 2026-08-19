@@ -1,21 +1,23 @@
-import { Bell, Check, Clock, Lock, MessageSquare, Plus } from "lucide-react";
+import { Check, Lock, MessageSquare, Plus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime } from "@/utils/datetime";
 import type { TimelineEvent } from "@/types";
 
-/** Static per-kind classes — an interpolated colour class never compiles. */
+/**
+ * Static per-kind classes — an interpolated colour class never compiles.
+ *
+ * The keys are the event kinds the API actually stores, not the seven the mock
+ * invented. They grow as the slices that write them land.
+ */
 const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> = {
-  intake: { icon: Plus, tint: "bg-status-new-bg text-status-new" },
-  ok: { icon: Check, tint: "bg-ok-bg text-ok" },
-  msg: { icon: MessageSquare, tint: "bg-info-bg text-info" },
-  lock: { icon: Lock, tint: "bg-status-ai-review-bg text-status-ai-review" },
-  bell: { icon: Bell, tint: "bg-warn-bg text-warn" },
-  accept: { icon: Check, tint: "bg-ok-bg text-ok" },
-  progress: {
-    icon: Clock,
-    tint: "bg-status-in-progress-bg text-status-in-progress",
+  created: { icon: Plus, tint: "bg-status-new-bg text-status-new" },
+  slot_requested: { icon: MessageSquare, tint: "bg-info-bg text-info" },
+  slot_confirmed: {
+    icon: Lock,
+    tint: "bg-status-ai-review-bg text-status-ai-review",
   },
+  status_changed: { icon: Check, tint: "bg-ok-bg text-ok" },
 };
 
 /**
@@ -37,7 +39,7 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
       <CardContent>
         <ol className="flex flex-col">
           {events.map((e, i) => {
-            const meta = EVENT[e.kind] ?? EVENT.intake;
+            const meta = EVENT[e.kind] ?? EVENT.created;
             const Icon = meta.icon;
             const isLast = i === events.length - 1;
             return (
@@ -60,9 +62,13 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
                     <span className="text-[13px] font-semibold">{e.title}</span>
                     <span className="text-[11px] text-ink-3">{formatDateTime(e.at)}</span>
                   </div>
-                  <p className="mt-0.5 text-xs text-ink-2">
-                    {e.note} · <span className="text-ink-3">by {e.by}</span>
-                  </p>
+                  {(e.note || e.by) && (
+                    <p className="mt-0.5 text-xs text-ink-2">
+                      {e.note}
+                      {e.note && e.by ? " · " : null}
+                      {e.by && <span className="text-ink-3">by {e.by}</span>}
+                    </p>
+                  )}
                 </div>
               </li>
             );

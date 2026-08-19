@@ -126,10 +126,12 @@ export interface Ticket {
  */
 export interface TimelineEvent {
   at: string;
-  kind: "intake" | "ok" | "msg" | "lock" | "bell" | "accept" | "progress";
+  /** Mirrors EVENT_KINDS in the API's ticket_event model. */
+  kind: "created" | "slot_requested" | "slot_confirmed" | "status_changed";
   title: string;
-  by: string;
-  note: string;
+  /** Both nullable: a system event has no actor, and some have no detail. */
+  by: string | null;
+  note: string | null;
 }
 
 export interface TicketDetail extends Ticket {

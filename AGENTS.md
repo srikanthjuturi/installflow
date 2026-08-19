@@ -224,6 +224,14 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - Cancelling costs money, banded by lateness: **₹80** (>8h) · **₹150** (4–8h) · **₹250** (<4h,
   which also escalates to the Area Service Manager).
 - Bandwidth is a **simple jobs-per-day cap** (1–12), not weighted by job type.
+- **A ticket's history lives in `ticket_events`, not in its `status` column.** Both of the two
+  facts above need a moment, not a state: the cancellation band is measured from the slot, and the
+  cap counts jobs assigned on a DATE. Overwriting `status` keeps neither. Write the event in the
+  same transaction as the change it describes — a trail that can disagree with the ticket is worse
+  than none.
+- **`expected_date` and the confirmed slot are allowed to differ**, and the gap between them is
+  worth reporting on. Expected date is what ops were asked for; the slot is what the customer
+  chose from the windows the service level permits. They are two facts, not one fact stored twice.
 - Proof is **four** artifacts: barcode, serial, product photos, geo-tagged live photos.
   Gallery uploads are never accepted.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review ·

@@ -149,16 +149,20 @@ class TicketOut(AppModel):
 class TimelineEventOut(AppModel):
     """One entry in a ticket's audit trail.
 
-    Built ONLY from facts that are stored. The mock derived a seven-event trail
-    from `status` alone — "Notified 6 eligible technicians" for a ticket nobody
-    had notified — and that is exactly the kind of detail people believe.
+    One row of `ticket_events`, written when the thing happened. It used to be
+    DERIVED from the ticket's current columns, which meant it could never say
+    when anything changed — and the mock version of the same idea derived a
+    seven-event trail from `status` alone, "Notified 6 eligible technicians" for
+    a ticket nobody had notified. That is exactly the kind of detail people
+    believe.
     """
 
     at: datetime.datetime
     kind: str
     title: str
-    by: str
-    note: str
+    #: Null for an event nobody caused — an SLA breach has no actor.
+    by: str | None = None
+    note: str | None = None
 
 
 class TicketDetailOut(TicketOut):
