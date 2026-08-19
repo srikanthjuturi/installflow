@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SERVICE_TYPES } from "@/components/masters/categorySchema";
 import { SERVICE_LEVELS } from "@/types/ticket";
+import { istToday, offeredSlots } from "@/utils/slots";
 
 /**
  * §4's required fields, plus what intake has since learned it needs: a full
@@ -54,7 +55,11 @@ export const ticketSchema = z
       [z.literal(12), z.literal(24), z.literal(36), z.literal(48)],
       { message: "Pick a service level" }
     ),
-    /** Both or neither — a half slot is not a time. `datetime-local` strings. */
+    /**
+     * Both or neither — a half slot is not a time. ISO instants, set as a pair
+     * by the window picker, never typed: a slot has to be one of the windows
+     * the customer could have picked. See `utils/slots.ts`.
+     */
     slotStart: z.string(),
     slotEnd: z.string(),
   })
@@ -78,6 +83,17 @@ export const ticketSchema = z
       });
     }
 
+    // A day that has already gone cannot be served. IST, not the browser's
+    // zone: for five and a half hours every evening the two disagree about
+    // what day it is, and the server judges this in IST.
+    if (v.expectedDate && v.expectedDate < istToday()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["expectedDate"],
+        message: "That date has already passed — pick today or later",
+      });
+    }
+
     if (Boolean(v.slotStart) !== Boolean(v.slotEnd)) {
       ctx.addIssue({
         code: "custom",
@@ -85,12 +101,30 @@ export const ticketSchema = z
         message: "A slot needs both a start and an end",
       });
     }
-    if (v.slotStart && v.slotEnd && v.slotEnd <= v.slotStart) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["slotEnd"],
-        message: "The slot must end after it starts",
-      });
+    /*
+     * The chosen window must still be on offer, re-derived at submit rather
+     * than trusted from when the menu was drawn. A form left open past the
+     * 90-minute lead time is holding a slot that has since expired, and the
+     * server refuses it — better to say so on the field than to round-trip.
+     *
+     * Mirrors `check_slot_bookable`. Membership in the list is the whole rule:
+     * it already carries "in the future", "far enough ahead", "a real working
+     * window" and "inside the service level".
+     */
+    if (v.slotStart && v.slotEnd) {
+      const open = offeredSlots(v.serviceLevelHours);
+      const still = open.some(
+        (s) => s.start === v.slotStart && s.end === v.slotEnd
+      );
+      if (!still) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["slotStart"],
+          message: open.length
+            ? "That window has passed — pick another"
+            : `A ${v.serviceLevelHours}h service level leaves no window today. Choose a longer one, or leave the slot blank.`,
+        });
+      }
     }
   });
 

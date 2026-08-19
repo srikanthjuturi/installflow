@@ -8,6 +8,18 @@
  *
  * `en-IN` throughout, and the dash between slot times is an en dash (–), which
  * is what the approved prototype uses.
+ *
+ * ## Times are 12-hour
+ *
+ * `4:00 PM`, not `16:00` — the house style, taken from the approved prototypes
+ * rather than invented: the technician app's design reads `4:00 PM` and
+ * `7:00 PM`, and its job data reads `2:00–4:00 PM` and `10 AM–12 PM`. Three
+ * details come from those strings and are worth keeping deliberate:
+ *
+ *   * **no leading zero** — `9:00 AM`, never `09:00 AM`;
+ *   * **upper case** — `en-IN` renders `pm`, and every approved string is `PM`;
+ *   * **one meridiem for a range that stays inside it** — `2:00–4:00 PM`, but
+ *     `10:00 AM–12:00 PM` when it crosses noon.
  */
 
 /** Nothing recorded. The em dash the tables already draw for an absent value. */
@@ -22,29 +34,72 @@ export function formatDate(iso: string | null | undefined): string {
   });
 }
 
-/** `4 Aug, 08:12` — a date and a time, for created/updated stamps. */
+/**
+ * Formatters are cached per timezone: constructing an `Intl.DateTimeFormat` is
+ * the expensive part, and a table of fifty rows formats a hundred times.
+ */
+const CLOCKS = new Map<string, Intl.DateTimeFormat>();
+function clockFor(timeZone?: string): Intl.DateTimeFormat {
+  const key = timeZone ?? "";
+  let f = CLOCKS.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      ...(timeZone ? { timeZone } : {}),
+    });
+    CLOCKS.set(key, f);
+  }
+  return f;
+}
+
+/**
+ * `5:02` and `PM` separately, so a range can print one meridiem for both ends.
+ *
+ * `formatToParts` rather than a regex over the formatted string: ICU renders
+ * the day period as `pm`, `PM` or `p.m.` depending on the runtime's data, and
+ * only the parts API says reliably which piece it is.
+ */
+function clock(d: Date, timeZone?: string): { hm: string; meridiem: string } {
+  const parts = clockFor(timeZone).formatToParts(d);
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return {
+    hm: `${get("hour")}:${get("minute")}`,
+    meridiem: get("dayPeriod").replace(/\./g, "").toUpperCase(),
+  };
+}
+
+/** `5:02 PM`. `timeZone` for the slot windows, which are defined in IST. */
+export function formatTimeOfDay(d: Date, timeZone?: string): string {
+  const c = clock(d, timeZone);
+  return `${c.hm} ${c.meridiem}`;
+}
+
+/**
+ * `2:00–4:00 PM`, or `10:00 AM–12:00 PM` when the range crosses noon.
+ *
+ * Both forms are the approved prototype's own — a range that stays inside one
+ * half of the day says it once.
+ */
+export function formatTimeRange(from: Date, to: Date, timeZone?: string): string {
+  const a = clock(from, timeZone);
+  const b = clock(to, timeZone);
+  return a.meridiem === b.meridiem
+    ? `${a.hm}–${b.hm} ${b.meridiem}`
+    : `${a.hm} ${a.meridiem}–${b.hm} ${b.meridiem}`;
+}
+
+/** `4 Aug, 8:12 AM` — a date and a time, for created/updated stamps. */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return EMPTY;
   const d = new Date(iso);
-  return `${d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-  })}, ${d.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })}`;
+  return `${formatDate(iso)}, ${formatTimeOfDay(d)}`;
 }
 
-const time = (d: Date) =>
-  d.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-
 /**
- * `5 Aug, 10:00–12:00`, or the em dash when no slot is agreed yet.
+ * `5 Aug, 10:00 AM–12:00 PM`, or the em dash when no slot is agreed yet.
  *
  * A slot that somehow spans midnight prints both dates rather than pretending
  * it does not — rare, but silently wrong is worse than briefly ugly.
@@ -58,7 +113,7 @@ export function formatSlot(
   const to = new Date(end);
   const sameDay = from.toDateString() === to.toDateString();
   return sameDay
-    ? `${formatDate(start)}, ${time(from)}–${time(to)}`
+    ? `${formatDate(start)}, ${formatTimeRange(from, to)}`
     : `${formatDateTime(start)} – ${formatDateTime(end)}`;
 }
 

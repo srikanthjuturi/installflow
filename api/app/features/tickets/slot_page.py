@@ -149,10 +149,10 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
         # Built by hand rather than with `%-d`, which is a glibc extension and
         # raises on Windows — where this very much does get run.
         day = f"{local.strftime('%A')} {local.day} {local.strftime('%B')}"
-        label = (
-            f"{local.strftime('%H:%M')}&ndash;"
-            f"{end.astimezone(service.IST).strftime('%H:%M')}"
-        )
+        # 12-hour, like every other time the customer is shown. `clock_range`
+        # is the same one the confirmation message and the timeline use, so a
+        # customer cannot be offered `14:00` and then told `2:00 PM`.
+        label = service.clock_range(start, end).replace("–", "&ndash;")
         by_day.setdefault(day, []).append(
             f'<button class="slot" name="start" value="{start.isoformat()}" '
             f"type=\"submit\">{label}</button>"

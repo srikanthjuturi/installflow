@@ -68,13 +68,23 @@ SLA_STATE_ORDER = ("breach", "warn", "ok", "done")
 
 #: Two-hour windows, in local working hours. Offered as whole blocks rather than
 #: a free time picker because a technician's day is a round of appointments, not
-#: a diary — "15:00 to 17:00" is a promise that can be kept, "14:37" is not.
+#: a diary — "3:00 to 5:00 PM" is a promise that can be kept, "2:37" is not.
+#:
+#: The day runs 5 AM to 9 PM. It used to be 9 AM to 7 PM, and that made the
+#: 12-hour service level unusable for most of the afternoon: raised at 5 PM, its
+#: deadline fell at 5 AM, by which time everything the same day was inside the
+#: 90-minute lead and the next morning's 9 AM was already too late. The list
+#: came back empty and the ticket could not be booked at all. Starting at 5 AM
+#: is what makes that deadline reachable.
 SLOT_WINDOWS = (
+    (5, 7),
+    (7, 9),
     (9, 11),
     (11, 13),
     (13, 15),
     (15, 17),
     (17, 19),
+    (19, 21),
 )
 
 #: How long before a window opens it stops being offerable. Nobody can be sent

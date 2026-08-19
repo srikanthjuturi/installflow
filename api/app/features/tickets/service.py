@@ -175,6 +175,45 @@ def offered_slots(
     return out
 
 
+def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
+    """A slot typed at intake must be one the customer could have picked.
+
+    ONE rule rather than four. "In the future", "far enough ahead to dispatch",
+    "a real working window" and "inside the service level" are all already
+    expressed, once, by `offered_slots` — re-stating them here as separate
+    guards would be four chances to drift from the list the customer is shown.
+
+    This closes the hole that let a ticket be born breached: `offered_slots`
+    never offers a window past `sla_due_at`, but nothing stopped a vendor from
+    typing one straight into the create request, and `sla_state` then reported
+    the breach the moment the row existed.
+
+    No-op when there is no slot — that ticket is Slot Pending and the customer
+    picks from this same list.
+    """
+    if row.slot_start is None or row.slot_end is None:
+        return
+
+    available = offered_slots(row, now=now)
+    if not available:
+        raise _bad_request(
+            f"A {row.service_level_hours}h service level leaves no bookable "
+            "window — every one of them is already past the deadline. Choose a "
+            "longer service level, or leave the slot blank and the customer "
+            "will be asked to pick."
+        )
+    if (row.slot_start, row.slot_end) not in available:
+        # The first few, not all twenty: enough to show the shape of what is
+        # allowed without turning a validation message into a timetable.
+        shown = ", ".join(when_label(*s) for s in available[:3])
+        more = "" if len(available) <= 3 else f", and {len(available) - 3} more"
+        raise _bad_request(
+            "That is not a time this ticket can be served in. A slot has to be "
+            f"one of the two-hour windows inside the {row.service_level_hours}h "
+            f"service level — {shown}{more}."
+        )
+
+
 # ── visibility ────────────────────────────────────────────────────────────────
 
 
@@ -661,14 +700,34 @@ def slot_link(token: str) -> str:
     return f"{settings.SLOT_LINK_BASE.rstrip('/')}/{token}"
 
 
+def clock(at: datetime.datetime) -> tuple[str, str]:
+    """`('10:00', 'AM')` in IST — the two halves, so a range can share one.
+
+    `.lstrip("0")` rather than `%-I`, which is a glibc extension and raises on
+    Windows, where this very much does get run. `%I` never yields `"00"`, so
+    stripping cannot empty the string.
+    """
+    local = at.astimezone(IST)
+    return local.strftime("%I:%M").lstrip("0"), local.strftime("%p").upper()
+
+
+def clock_range(start: datetime.datetime, end: datetime.datetime) -> str:
+    """`10:00 AM–12:00 PM`, or `2:00–4:00 PM` when it stays inside one half.
+
+    12-hour throughout, which is the house style taken from the approved
+    prototypes — the technician app reads `4:00 PM` and its job data reads
+    `2:00–4:00 PM`. A range that does not cross noon says the meridiem once.
+    """
+    start_hm, start_ap = clock(start)
+    end_hm, end_ap = clock(end)
+    if start_ap == end_ap:
+        return f"{start_hm}–{end_hm} {end_ap}"
+    return f"{start_hm} {start_ap}–{end_hm} {end_ap}"
+
+
 def when_label(start: datetime.datetime, end: datetime.datetime) -> str:
-    """`Thu 21 Aug, 10:00–12:00`, in the customer's own timezone."""
-    local_start = start.astimezone(IST)
-    local_end = end.astimezone(IST)
-    return (
-        f"{local_start.strftime('%a %d %b')}, "
-        f"{local_start.strftime('%H:%M')}–{local_end.strftime('%H:%M')}"
-    )
+    """`Thu 21 Aug, 10:00 AM–12:00 PM`, in the customer's own timezone."""
+    return f"{start.astimezone(IST).strftime('%a %d %b')}, {clock_range(start, end)}"
 
 
 async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
@@ -834,6 +893,14 @@ async def create_ticket(
     vendor, subcategory, model = await _resolve_product(db, principal, body)
 
     now = _now()
+    # A day that has already gone cannot be served. Judged in IST, not UTC:
+    # for five and a half hours every evening the two disagree about what day
+    # it is, and the vendor typing this is in the former.
+    if body.expectedDate < now.astimezone(IST).date():
+        raise _bad_request(
+            "The expected date has already passed — pick today or later."
+        )
+
     row = Ticket(
         company_id=principal.company_id,
         code=await next_code(db, principal.company_id),
@@ -870,6 +937,10 @@ async def create_ticket(
         source="Manual",
         created_by=principal.user_id,
     )
+    # After the row, because the rule is expressed against `sla_due_at` — which
+    # is only known once the service level and the creation instant are both on
+    # it. Nothing has been added to the session yet, so a refusal writes nothing.
+    check_slot_bookable(row, now=now)
     db.add(row)
     # autoflush is OFF (hard rule 8) and the event needs the ticket's id.
     await db.flush()

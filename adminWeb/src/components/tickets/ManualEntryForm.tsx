@@ -1,5 +1,7 @@
+import { useEffect, useMemo } from "react";
 import { FormSection } from "@/components/shared/FormSection";
 import { Link } from "react-router";
+import type { Control } from "react-hook-form";
 import { Controller, useController, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Info } from "lucide-react";
@@ -26,6 +28,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCategoryTree } from "@/hooks/useProductMaster";
 import { cn } from "@/lib/utils";
+import { istToday, offeredSlots, type OfferedSlot } from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
 import type { CreateTicketInput } from "@/types/ticket";
 import {
@@ -105,6 +108,9 @@ export function ManualEntryForm({
   const modelId = useWatch({ control, name: "modelId" });
   const serviceType = useWatch({ control, name: "serviceType" });
   const slotStart = useWatch({ control, name: "slotStart" });
+  // The windows on offer depend on it, so the picker has to redraw when the
+  // service level changes — a 12h ticket has far fewer than a 48h one.
+  const serviceLevelHours = useWatch({ control, name: "serviceLevelHours" });
 
   /* The whole picker is a cascade, and the vendor is the top of it: a ticket is
      raised against a specific brand's product, so the categories on offer are
@@ -160,13 +166,6 @@ export function ManualEntryForm({
 
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
-  /**
-   * `datetime-local` gives a wall-clock string with no zone; the API stores an
-   * instant. `new Date(...)` reads it in the browser's zone, which is the one
-   * the person typing is in and the one the customer was quoted.
-   */
-  const instant = (local: string) => (local ? new Date(local).toISOString() : null);
-
   function submit(values: TicketFormValues) {
     onSubmit({
       vendorId: values.vendorId,
@@ -185,8 +184,10 @@ export function ManualEntryForm({
       pincode: values.pincode,
       expectedDate: values.expectedDate,
       serviceLevelHours: values.serviceLevelHours,
-      slotStart: instant(values.slotStart),
-      slotEnd: instant(values.slotEnd),
+      // Already ISO instants — the picker stores the window it offered, so
+      // there is no wall-clock string to reinterpret in some other zone.
+      slotStart: values.slotStart || null,
+      slotEnd: values.slotEnd || null,
     });
   }
 
@@ -379,6 +380,10 @@ export function ManualEntryForm({
                 name="expectedDate"
                 label="Expected date"
                 type="date"
+                // The picker itself refuses a past day, so the common mistake
+                // never reaches validation. The schema and the API still check
+                // it — a typed date ignores `min`.
+                min={istToday()}
                 register={register}
                 error={err("expectedDate")}
               />
@@ -422,22 +427,11 @@ export function ManualEntryForm({
           </FormSection>
 
           <FormSection legend="Slot (optional)">
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                name="slotStart"
-                label="Slot starts"
-                type="datetime-local"
-                register={register}
-                error={err("slotStart")}
-              />
-              <TextField
-                name="slotEnd"
-                label="Slot ends"
-                type="datetime-local"
-                register={register}
-                error={err("slotEnd")}
-              />
-            </FieldGroup>
+            <SlotPicker
+              control={control}
+              serviceLevelHours={serviceLevelHours}
+              error={err("slotStart")}
+            />
             <FieldDescription>
               Fill this in if you already agreed a time on the call. Leave it
               blank and the customer is asked to pick one.
@@ -485,6 +479,123 @@ export function ManualEntryForm({
    data-invalid on the Field, aria-invalid on the control, and the message
    in a role="alert" the control points at.
    ---------------------------------------------------------------------- */
+
+/**
+ * The slot, chosen from the windows a customer could have picked.
+ *
+ * A menu rather than two `datetime-local` boxes, and that is the whole fix: the
+ * free inputs accepted any instant at all, so a vendor could type 19:03–21:05
+ * on a 12-hour ticket and the ticket was born Breached, outside working hours,
+ * in a window no technician's day has. The API refuses that now
+ * (`check_slot_bookable`); offering only real windows means nobody has to be
+ * refused to find out.
+ *
+ * Grouped by day, because "which day" and "what time" are how somebody who just
+ * agreed a slot on the phone actually holds it.
+ */
+function SlotPicker({
+  control,
+  serviceLevelHours,
+  error,
+}: {
+  control: Control<TicketFormValues>;
+  serviceLevelHours: number;
+  error?: string;
+}) {
+  const { field: start } = useController({ control, name: "slotStart" });
+  const { field: end } = useController({ control, name: "slotEnd" });
+
+  // Recomputed when the service level changes — shortening it can strand a
+  // window that was on offer a moment ago.
+  const slots = useMemo(
+    () => offeredSlots(serviceLevelHours),
+    [serviceLevelHours]
+  );
+
+  const days = useMemo(() => {
+    const byDay = new Map<string, OfferedSlot[]>();
+    for (const s of slots) {
+      const list = byDay.get(s.day);
+      if (list) list.push(s);
+      else byDay.set(s.day, [s]);
+    }
+    return [...byDay.entries()];
+  }, [slots]);
+
+  const chosen = start.value;
+  const stillOffered = slots.some((s) => s.start === chosen);
+
+  // Dropping to a shorter service level can put the chosen window past the new
+  // deadline. Clearing it is the honest outcome — the alternative is a trigger
+  // rendering blank over a value that is still in the form and would be
+  // refused on submit.
+  useEffect(() => {
+    if (chosen && !stillOffered) {
+      start.onChange("");
+      end.onChange("");
+    }
+  }, [chosen, stillOffered, start, end]);
+
+  const id = "field-slot";
+
+  if (slots.length === 0) {
+    return (
+      <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+        <Info className="mt-px size-4 shrink-0" aria-hidden />
+        <span>
+          A {serviceLevelHours}h service level leaves no bookable window — every
+          one of them is already past the deadline. Choose a longer service
+          level, or leave this blank and the customer will be asked to pick.
+        </span>
+      </p>
+    );
+  }
+
+  return (
+    <Field data-invalid={error ? true : undefined}>
+      <FieldLabel htmlFor={id}>Agreed window</FieldLabel>
+      <Select
+        value={chosen}
+        onValueChange={(next) => {
+          const slot = slots.find((s) => s.start === next);
+          start.onChange(slot?.start ?? "");
+          end.onChange(slot?.end ?? "");
+        }}
+      >
+        <SelectTrigger
+          id={id}
+          className="w-full sm:max-w-100"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+        >
+          <SelectValue placeholder="Leave blank and ask the customer" />
+        </SelectTrigger>
+        <SelectContent>
+          {days.map(([day, windows]) => (
+            <SelectGroup key={day}>
+              <SelectLabel>{day}</SelectLabel>
+              {windows.map((s) => (
+                <SelectItem key={s.start} value={s.start}>
+                  {s.time}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      {error ? (
+        <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+          {error}
+        </FieldDescription>
+      ) : (
+        <FieldDescription>
+          Two-hour windows inside the {serviceLevelHours}h service level. The
+          same ones the customer is offered.
+        </FieldDescription>
+      )}
+    </Field>
+  );
+}
 
 function TextField({
   name,
