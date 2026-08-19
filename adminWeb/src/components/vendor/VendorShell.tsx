@@ -1,130 +1,151 @@
-import { Suspense } from "react";
-import { NavLink, Outlet } from "react-router";
-import { LogOut, Store } from "lucide-react";
+import { Suspense, useEffect } from "react";
+import { Outlet, useLocation } from "react-router";
+import { AnimatePresence, motion } from "framer-motion";
+import { LogOut, Menu } from "lucide-react";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { useFeatureAccess, useMe, useSignOut } from "@/hooks/useAuth";
+import { useMe, useSignOut } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
-import { portalNav } from "./portalNav";
+import { useSession } from "@/store/session";
+import { VendorSidebar } from "./VendorSidebar";
 
 /**
  * The vendor surface — raise a ticket, follow it, manage your own people.
  *
- * Modelled on `SuperadminShell` rather than `AppShell`, and for the same
- * reason: a vendor has no dashboard, no escalation queue, no technicians and no
- * ledger, so a fourteen-item rail would be thirteen dead ends. Four
- * destinations fit a row under the header.
+ * Laid out like `AppShell`: a rail on the left, a drawer below `md`, a sticky
+ * bar across the top. The destinations used to be a row of pills under the
+ * header, which stopped fitting once a vendor with several intake channels had
+ * more than a couple, and read as filter chips rather than navigation.
  *
  * Three things `AppShell` has that are deliberately absent:
  *
  *   * **the company switcher** — a vendor belongs to exactly one company, and
  *     that switcher already degrades to a static chip for a single membership.
- *     Two chips saying the same thing is worse than one.
+ *     The rail's header already names the company.
  *   * **the notification bell** — still backed by a mock. A fabricated number
  *     on an external party's screen is not a placeholder, it is a lie.
  *   * **the search box** — `Topbar`'s input is wired to nothing. A new surface
  *     must not inherit a dead control.
+ *
+ * And one thing it adds: Sign out stays on the bar. The ops console hides it a
+ * click deep on the account page, which is fine for staff who live here all
+ * day; a vendor signs in to raise one ticket and leave.
  */
 export function VendorShell() {
+  const { pathname } = useLocation();
+  const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useSession();
   const { data: me, isPending } = useMe();
-  const { has } = useFeatureAccess();
   const signOut = useSignOut();
 
-  const items = portalNav(me?.vendor?.intakeChannels ?? []).filter((i) =>
-    has(i.feature)
-  );
+  // A route change must never leave the drawer open behind the new page.
+  useEffect(() => setSidebarOpen(false), [pathname, setSidebarOpen]);
+
+  // Escape closes the drawer — keyboard users need a way out.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setSidebarOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarOpen, setSidebarOpen]);
 
   return (
     <div className="min-h-svh bg-background">
-      <header className="sticky top-0 z-40 border-b border-line bg-surface">
-        <div className="flex h-15 items-center justify-between px-4 md:px-5.5">
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-md bg-brand-500 text-surface">
-              <Store className="size-4.5" aria-hidden />
-            </div>
-            <div className="leading-tight">
-              {/* Both lines are facts from the server — the vendor's own name
-                  and the company it supplies — so the shell says who you are
-                  without inventing a strapline. */}
-              {/* The skeleton is a sibling, not a child: `Skeleton` renders a
-                  <div>, and a <div> inside a <p> is invalid HTML that React
-                  reports as a hydration error. */}
-              {me?.vendor?.name ? (
-                <p className="text-sm font-semibold text-ink">
-                  {me.vendor.name}
-                </p>
-              ) : (
-                <Skeleton className="h-4 w-28" />
-              )}
-              <p className="text-[11px] font-medium text-ink-3">
-                {me?.activeCompany?.name ?? ""}
-              </p>
-            </div>
-          </div>
+      {/* Desktop rail */}
+      <div className="fixed inset-y-0 left-0 z-50 hidden md:block">
+        <VendorSidebar collapsed={sidebarCollapsed} />
+      </div>
 
-          <div className="flex items-center gap-3">
-            {me?.user.email ? (
-              <span className="hidden text-xs text-ink-2 sm:inline">
-                {me.user.email}
-              </span>
-            ) : null}
-            <ThemeToggle />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await signOut();
-                // Hard redirect: a fresh document guarantees no in-memory token
-                // or bfcache snapshot survives the sign-out.
-                window.location.assign("/login");
-              }}
+      {/* Mobile drawer */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setSidebarOpen(false)}
+              className="fixed inset-0 z-40 bg-[rgb(20_24_40/0.45)] md:hidden"
+              aria-hidden
+            />
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="fixed inset-y-0 left-0 z-50 md:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Navigation"
             >
-              <LogOut data-icon="inline-start" />
-              Sign out
-            </Button>
+              {/* Never collapsed: the drawer is already an overlay, and an
+                  icon-only overlay would be strictly worse than the full one. */}
+              <VendorSidebar />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <div
+        className={cn(
+          "transition-[margin] duration-200",
+          sidebarCollapsed ? "md:ml-sidebar-collapsed" : "md:ml-sidebar"
+        )}
+      >
+        <header className="sticky top-0 z-30 flex h-topbar items-center gap-3.5 border-b border-line bg-surface px-4 md:px-5.5">
+          <Button
+            variant="outline"
+            size="icon"
+            className="md:hidden"
+            aria-label="Open navigation"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu aria-hidden />
+          </Button>
+
+          {/* Below `md` the rail is hidden, so the bar carries the identity the
+              rail's header shows on a wide screen — not both at once. */}
+          <div className="min-w-0 leading-tight md:hidden">
+            {isPending ? (
+              <Skeleton className="h-4 w-28" />
+            ) : (
+              <p className="truncate text-sm font-semibold text-ink">
+                {me?.vendor?.name ?? ""}
+              </p>
+            )}
+            <p className="truncate text-[11px] font-medium text-ink-3">
+              {me?.activeCompany?.name ?? ""}
+            </p>
           </div>
-        </div>
 
-        <nav
-          aria-label="Portal"
-          className="scroll-slim flex gap-1 overflow-x-auto px-4 pb-2 md:px-5.5"
-        >
-          {isPending
-            ? // Reserve the row's height so the header does not jump once
-              // `/auth/me` lands and the channels are known.
-              [0, 1].map((i) => <Skeleton key={i} className="h-8 w-28" />)
-            : items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === "/portal/tickets"}
-                  // Same active treatment as the DataTable filter pills, which
-                  // is the console's existing answer for a selected control on
-                  // a light surface. Nothing new invented for this shell.
-                  className={({ isActive }) =>
-                    cn(
-                      "flex shrink-0 items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors",
-                      isActive
-                        ? "border-brand-500 bg-brand-500 text-white"
-                        : "border-line bg-surface text-ink-2 hover:border-brand-400 hover:text-ink"
-                    )
-                  }
-                >
-                  <item.icon className="size-4" aria-hidden />
-                  {item.label}
-                </NavLink>
-              ))}
-        </nav>
-      </header>
+          <div className="flex-1" />
 
-      <main className="p-4 md:p-5.5">
-        <Suspense fallback={<PageSkeleton />}>
-          <Outlet />
-        </Suspense>
-      </main>
+          <ThemeToggle />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              await signOut();
+              // Hard redirect: a fresh document guarantees no in-memory token
+              // or bfcache snapshot survives the sign-out.
+              window.location.assign("/login");
+            }}
+          >
+            <LogOut data-icon="inline-start" />
+            Sign out
+          </Button>
+        </header>
+
+        <main className="p-4 md:p-5.5">
+          <Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </Suspense>
+        </main>
+      </div>
     </div>
   );
 }

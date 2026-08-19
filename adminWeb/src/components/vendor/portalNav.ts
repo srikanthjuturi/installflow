@@ -90,11 +90,36 @@ export const PORTAL_UNGATED = new Set([
 
 /** `undefined` means "not a portal screen", which the guard reads as deny. */
 export function featureForPortalPath(pathname: string): string | undefined {
-  const exact = ALL_ITEMS.find((i) => i.to === pathname);
-  if (exact) return exact.feature;
-  return ALL_ITEMS.filter(
-    (i) =>
-      pathname.startsWith(`${i.to}/`) ||
-      i.match?.some((m) => pathname.startsWith(m))
-  ).sort((a, b) => b.to.length - a.to.length)[0]?.feature;
+  return longestMatch(ALL_ITEMS, pathname)?.feature;
+}
+
+/**
+ * Which rail entry is lit, by the same longest-prefix rule the guard uses.
+ *
+ * It has to be longest-prefix and not `NavLink`'s own matching, because two
+ * entries overlap: "My tickets" is `/portal/tickets` and claims the prefix
+ * `/portal/tickets/`, which "Raise a ticket" at `/portal/tickets/new` sits
+ * inside. Plain prefix matching lights both; `end` on My tickets lights
+ * neither on a ticket detail page. Longest wins gets all three right.
+ */
+export function activePortalPath(
+  items: PortalNavItem[],
+  pathname: string
+): string | undefined {
+  return longestMatch(items, pathname)?.to;
+}
+
+function longestMatch(
+  items: PortalNavItem[],
+  pathname: string
+): PortalNavItem | undefined {
+  const exact = items.find((i) => i.to === pathname);
+  if (exact) return exact;
+  return items
+    .filter(
+      (i) =>
+        pathname.startsWith(`${i.to}/`) ||
+        i.match?.some((m) => pathname.startsWith(m))
+    )
+    .sort((a, b) => b.to.length - a.to.length)[0];
 }
