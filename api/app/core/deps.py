@@ -20,7 +20,7 @@ from app.core.database import get_db
 from app.core.features import effective_features
 from app.core.security import decode_token
 from app.models.membership import Membership
-from app.models.role import ROLE_LABELS, ROLE_RANKS, SUPERADMIN
+from app.models.role import ROLE_LABELS, ROLE_RANKS, SUPERADMIN, VENDOR_ROLES
 from app.models.user import User
 
 _bearer = HTTPBearer(auto_error=False)
@@ -33,10 +33,28 @@ class Principal:
     rank: int
     is_superadmin: bool
     company_id: uuid.UUID | None  # active tenant; None for superadmin
+    #: The vendor this caller acts FOR, or None for staff and technicians.
+    #:
+    #: Read from the membership row this module already loads to prove the
+    #: caller still belongs to the company — so it costs no extra query. It is
+    #: deliberately NOT a token claim: a vendor removed or paused mid-session
+    #: would keep a stale one for the life of the access token, and every other
+    #: authorization fact here is re-read per request for the same reason.
+    vendor_id: uuid.UUID | None = None
 
     @property
     def user_id(self) -> uuid.UUID:
         return self.user.id
+
+    @property
+    def is_vendor(self) -> bool:
+        """Acts for a vendor — the two portal roles.
+
+        Tests role membership, never rank. A vendor ranks below every staff
+        role, which correctly stops a vendor managing staff but does NOT stop an
+        Area Manager managing a vendor; only the role answers that.
+        """
+        return self.role in VENDOR_ROLES
 
 
 def _unauthorized(detail: str = "Not authenticated") -> HTTPException:
@@ -77,6 +95,7 @@ async def get_current_principal(
         )
 
     company_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = None
     raw_company = payload.get("company_id")
     if raw_company:
         try:
@@ -96,6 +115,9 @@ async def get_current_principal(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No active membership in the selected company",
             )
+        # The membership was loaded to prove the caller belongs here; keep the
+        # one field the portal needs rather than querying for it again.
+        vendor_id = membership.vendor_id
 
     return Principal(
         user=user,
@@ -103,6 +125,7 @@ async def get_current_principal(
         rank=rank,
         is_superadmin=False,
         company_id=company_id,
+        vendor_id=vendor_id,
     )
 
 

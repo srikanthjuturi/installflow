@@ -68,6 +68,11 @@ TENANT_LINKS = [
     ("tickets", "model_id", "product_models"),
     ("tickets", "technician_id", "technician_profiles"),
     ("ticket_events", "ticket_id", "tickets"),
+    # A vendor's login. NB this proves the LINK is tenant-safe — a membership
+    # cannot name another company's vendor. It says nothing about whether one
+    # vendor can read another's tickets INSIDE a company; that is an application
+    # invariant this script has no way to see. See api/AGENTS.md.
+    ("memberships", "vendor_id", "vendors"),
 ]
 
 
