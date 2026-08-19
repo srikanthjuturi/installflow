@@ -17,6 +17,7 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
     icon: Lock,
     tint: "bg-status-ai-review-bg text-status-ai-review",
   },
+  confirmation_sent: { icon: MessageSquare, tint: "bg-info-bg text-info" },
   status_changed: { icon: Check, tint: "bg-ok-bg text-ok" },
 };
 

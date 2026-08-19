@@ -127,7 +127,12 @@ export interface Ticket {
 export interface TimelineEvent {
   at: string;
   /** Mirrors EVENT_KINDS in the API's ticket_event model. */
-  kind: "created" | "slot_requested" | "slot_confirmed" | "status_changed";
+  kind:
+    | "created"
+    | "slot_requested"
+    | "slot_confirmed"
+    | "confirmation_sent"
+    | "status_changed";
   title: string;
   /** Both nullable: a system event has no actor, and some have no detail. */
   by: string | null;

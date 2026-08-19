@@ -536,6 +536,7 @@ _EVENT_TITLES = {
     "created": "Ticket created",
     "slot_requested": "Slot request sent",
     "slot_confirmed": "Slot confirmed & locked",
+    "confirmation_sent": "Confirmation sent",
     "status_changed": "Status changed",
 }
 
@@ -656,20 +657,44 @@ async def _send_slot_request(db: AsyncSession, row: Ticket) -> None:
         row.slot_request_error = (result.error or "")[:255]
 
 
-async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> None:
+async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> TicketEvent | None:
     """The receipt. Sent on BOTH routes — ops-entered and customer-picked —
     because from the customer's side they are the same event, and only one of
-    them otherwise leaves them anything in writing. Never raises."""
+    them otherwise leaves them anything in writing. Never raises.
+
+    Returns the event recording the OUTCOME, for the caller to add.
+
+    It used to return nothing and discard the result. So when a customer did not
+    get their confirmation there was no record anywhere that we had even tried,
+    let alone what Meta said — the ticket showed a booked slot and total silence
+    about the message. `slot_request_status` does not cover this: that column is
+    about the request to PICK a time, and reads `not_needed` on exactly the
+    route that sends this one.
+    """
     if row.slot_start is None or row.slot_end is None:
-        return
+        return None
     model_name = await db.scalar(
         select(ProductModel.name).where(ProductModel.id == row.model_id)
     )
-    await whatsapp.send_slot_confirmed(
+    result = await whatsapp.send_slot_confirmed(
         row.customer_phone,
         await _company_name(db, row.company_id),
         model_name or "your product",
         when_label(row.slot_start, row.slot_end),
+    )
+    return record_event(
+        row,
+        "confirmation_sent",
+        actor_kind="system",
+        actor_label="WhatsApp",
+        # Meta's own words when it refused. "Accepted" is not "delivered" —
+        # without a webhook an asynchronous drop stays invisible either way,
+        # but a synchronous refusal no longer does.
+        note=(
+            f"Confirmation sent to {row.customer_phone}"
+            if result.ok
+            else f"Could not send: {result.error or 'unknown error'}"
+        ),
     )
 
 
@@ -745,7 +770,10 @@ async def confirm_slot(
     await db.commit()
     await db.refresh(row)
 
-    await _send_slot_confirmed(db, row)
+    sent = await _send_slot_confirmed(db, row)
+    if sent is not None:
+        db.add(sent)
+        await db.commit()
     return row
 
 
@@ -832,7 +860,10 @@ async def create_ticket(
     # request: the ticket is saved before either is attempted, and a refusal is
     # recorded rather than raised.
     if row.slot_start is not None:
-        await _send_slot_confirmed(db, row)
+        sent = await _send_slot_confirmed(db, row)
+        if sent is not None:
+            db.add(sent)
+            await db.commit()
     else:
         await _send_slot_request(db, row)
         db.add(

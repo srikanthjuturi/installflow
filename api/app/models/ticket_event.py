@@ -52,14 +52,20 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base_class import Base
 from app.db.mixins import AuditMixin, IdMixin
 
-#: What kind of thing happened. Deliberately only the four the code writes
-#: TODAY. Assignment and release belong here too, and will be added by the
-#: migration that adds the accept flow — declaring the vocabulary ahead of the
-#: rows is how `audit_logs` ended up a table nothing ever wrote to.
+#: What kind of thing happened. Deliberately only what the code writes TODAY.
+#: Assignment and release belong here too, and will be added by the migration
+#: that adds the accept flow — declaring the vocabulary ahead of the rows is how
+#: `audit_logs` ended up a table nothing ever wrote to.
 EVENT_KINDS = (
     "created",
     "slot_requested",
     "slot_confirmed",
+    #: The receipt we send the customer once a time is locked. Separate from
+    #: `slot_confirmed`, which is the booking itself: the appointment can be
+    #: real while the message about it never arrived, and that difference is
+    #: exactly what somebody asking "why did my customer not hear from us"
+    #: needs to see.
+    "confirmation_sent",
     "status_changed",
 )
 
@@ -107,7 +113,7 @@ class TicketEvent(Base, IdMixin, AuditMixin):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('created', 'slot_requested', 'slot_confirmed', "
-            "'status_changed')",
+            "'confirmation_sent', 'status_changed')",
             name="kind",
         ),
         CheckConstraint(
