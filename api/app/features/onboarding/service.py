@@ -112,9 +112,17 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
 
     # The catalogue, read with the inviting company's scope rather than a
     # caller's — there is no caller here.
+    #
+    # Every attribute `get_tree` touches has to be present: this is a duck-typed
+    # stand-in, so anything the real Principal grows and this does not is an
+    # AttributeError at runtime rather than a type error at build time. It is
+    # never a vendor — a vendor does not invite technicians — but saying so
+    # explicitly is what keeps the catalogue unfiltered here.
     class _AnonPrincipal:
         company_id = invite.company_id
         user_id = None
+        is_vendor = False
+        vendor_id = None
 
     categories = await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]
     allowed = await tech_service._inviter_pincode_limit(session, invite)
