@@ -108,7 +108,7 @@ export default function TicketDetailPage({
                       >
                         Force close
                       </LinkButton>
-                      <LinkButton to={`/escalations/${ticket.id}/assign`}>
+                      <LinkButton to={`/tickets/${ticket.id}/assign`}>
                         Re-assign
                       </LinkButton>
                     </div>
@@ -128,16 +128,22 @@ export default function TicketDetailPage({
             <CustomerPanel ticket={ticket} />
             <TechnicianPanel
               ticket={ticket}
-              // Assignment is an ops job. On the portal this was a button that
-              // linked straight into `/escalations/:id/assign`, which
+              // Assignment is an ops job. On the portal this was a button
+              // that linked into the ops assignment screen, which
               // `RequirePortalFeature` denies — a control that could only ever
               // bounce the vendor who pressed it.
+              //
+              // It points at `/tickets/:id/assign`, not the escalation
+              // queue's `/escalations/:id/assign`: that screen looks its
+              // subject up in the escalation MOCK, whose three rows are keyed
+              // by ticket CODE, so a real ticket's UUID could only ever come
+              // back as "Escalation <uuid> not found".
               action={
                 isOps ? (
                   <LinkButton
                     variant="outline"
                     size="sm"
-                    to={`/escalations/${ticket.id}/assign`}
+                    to={`/tickets/${ticket.id}/assign`}
                   >
                     Assign manually
                   </LinkButton>

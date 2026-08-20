@@ -5,12 +5,14 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  assignTechnician,
   createTicket,
   forceCloseTicket,
   getTicket,
   listTickets,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
+import { technicianKeys } from "./useTechnicians";
 import type { ListParams } from "@/types/api";
 
 /**
@@ -67,6 +69,26 @@ export function useForceCloseTicket() {
     mutationFn: forceCloseTicket,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
+  });
+}
+
+/**
+ * Manual assignment — the ops fallback when first-accept-wins found nobody.
+ *
+ * Invalidates the technician prefix too: who is assigned to what is half of
+ * "who has bandwidth left", so leaving that list alone would show the manager
+ * a shortlist that still counts the person they just picked as free.
+ */
+export function useAssignTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't assign the technician" },
+    mutationFn: assignTechnician,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: technicianKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });

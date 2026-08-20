@@ -67,3 +67,39 @@ export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
     )
   );
 }
+
+export interface AssignTechnicianInput {
+  id: string;
+  technicianId: string;
+  /** For the toast and, later, the event's actor label. */
+  technicianName: string;
+}
+
+/**
+ * NOT IMPLEMENTED — deliberately, and loudly, for the same reason as
+ * `forceCloseTicket`.
+ *
+ * This used to be the ESCALATION mock's `assignTechnician`, which held three
+ * hardcoded rows keyed by ticket code. A real ticket's UUID was never one of
+ * them, so pressing "Assign manually" on a ticket died as "Escalation <uuid>
+ * not found" — an error about a thing the reader had not mentioned.
+ *
+ * Doing it for real is `POST /tickets/{id}/assign`: move the ticket to
+ * Assigned, write the `assigned` event the daily cap is counted from, and
+ * refuse a technician who does not cover the pincode or is already at cap.
+ * `tickets.technician_id` and the `Assigned` status already exist;
+ * `ticket_events.kind` has no `assigned` yet, so it needs a migration. Until
+ * that lands this fails where it can be seen — an assignment that appeared to
+ * work and moved nothing is the worse outcome.
+ */
+export function assignTechnician(input: AssignTechnicianInput): Promise<Ticket> {
+  void input;
+  return Promise.reject(
+    new ApiError(
+      "Assigning a technician isn't wired up yet — this ticket and the " +
+        "shortlist beside it are real, but assignment still needs its own " +
+        "slice. Nothing has been changed.",
+      501
+    )
+  );
+}

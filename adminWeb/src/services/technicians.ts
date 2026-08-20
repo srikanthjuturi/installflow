@@ -95,3 +95,38 @@ export function listEligibleTechnicians(
     )
   );
 }
+
+/* ------------------------------------------------- one ticket's shortlist */
+
+/**
+ * Who could take THIS ticket. Live, unlike `listEligibleTechnicians` above.
+ *
+ * The server already filters on both halves of the question — `GET
+ * /technicians` takes `subcategoryId` and `pincode` — so this is the real
+ * shortlist rather than the escalation mock's invented one: registered, active,
+ * certified for the ticket's subcategory, covering its pincode, and inside the
+ * reader's own territory, because the list is scoped there already.
+ *
+ * It deliberately does NOT answer "has bandwidth left today". That counts open
+ * assignments, and there are none to count until the jobs slice exists — which
+ * is why the screen shows the daily CAP, which is real, and claims nothing
+ * about today's load, which is not.
+ *
+ * One page of 100, the API's ceiling, and unpaginated on screen: this is the
+ * shortlist for one subcategory in one pincode, read while a manager decides.
+ * A candidate on page 2 is a candidate nobody considers.
+ */
+export function listCandidateTechnicians(input: {
+  subcategoryId: string;
+  pincode: string;
+}): Promise<Technician[]> {
+  return apiGetPage<TechnicianRow>("/technicians", {
+    limit: 100,
+    filters: {
+      view: "registered",
+      status: "active",
+      subcategoryId: input.subcategoryId,
+      pincode: input.pincode,
+    },
+  }).then(({ rows }) => rows.filter((row): row is Technician => row.registered));
+}

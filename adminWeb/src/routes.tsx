@@ -22,6 +22,9 @@ const EscalationQueuePage = lazy(
   () => import("@/pages/escalations/EscalationQueuePage")
 );
 const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
+const AssignTechnicianPage = lazy(
+  () => import("@/pages/tickets/AssignTechnicianPage")
+);
 const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
 const ManualAssignPage = lazy(
   () => import("@/pages/escalations/ManualAssignPage")
@@ -217,6 +220,12 @@ export const routes: RouteObject[] = [
               },
               { path: "tickets/:id", element: <TicketDetailPage /> },
               { path: "tickets/:id/force-close", element: <ForceClosePage /> },
+              // Ticket-scoped, unlike `escalations/:id/assign` below: that one
+              // is still the mock queue's, and its ids are ticket CODES.
+              {
+                path: "tickets/:id/assign",
+                element: <AssignTechnicianPage />,
+              },
               { path: "escalations", element: <EscalationQueuePage /> },
               { path: "escalations/:id/bonus", element: <BonusSetupPage /> },
               { path: "escalations/:id/assign", element: <ManualAssignPage /> },

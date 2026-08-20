@@ -54,6 +54,12 @@ Two seams to know about:
 - `listEligibleTechnicians` is deliberately still mocked even though technicians are live: it
   answers "who has bandwidth left for this ticket", which needs open assignments and therefore
   the jobs slice. The old flat technician shape survives as `EligibleTechnician` for it alone.
+  Its live sibling, `listCandidateTechnicians`, answers the part that IS knowable — active,
+  certified for the ticket's subcategory, covering its pincode — because `GET /technicians`
+  already filters on both. It shows the daily CAP and says nothing about today's load.
+- **Assignment has no endpoint.** `assignTechnician` in `services/tickets.ts` rejects with a 501
+  the way `forceCloseTicket` does. `tickets.technician_id` and the `Assigned` status exist;
+  `ticket_events.kind` has no `assigned` yet, so the real thing needs a migration.
 
 **Do not fake a number that has a real source.** A null rating renders `—`, not `0`; the
 technician job-history table renders empty rather than inventing rows.
@@ -333,9 +339,10 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets/import` | `BulkUploadPage` | dropzone, 8 required columns, max 5,000 rows |
 | `/tickets/import/:batchId` | `ValidationResultPage` | per-row pass/reject **with reason**; rejects never block the file |
 | `/tickets/:id/force-close` | `ForceClosePage` | reason + notes + **mandatory attachments** |
+| `/tickets/:id/assign` | `AssignTechnicianPage` | real ticket + a LIVE shortlist (`subcategoryId` + `pincode`, server-filtered). Assignment itself is a 501 until the jobs slice lands |
 | `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot; time-to-slot + bonus pool |
 | `/escalations/:id/bonus` | `BonusSetupPage` | ₹200/400/600/800 from the pool; slot stays locked |
-| `/escalations/:id/assign` | `ManualAssignPage` | eligible by category + pincode + free bandwidth |
+| `/escalations/:id/assign` | `ManualAssignPage` | the MOCK queue's copy — its `:id` is a ticket CODE, not a UUID. The ticket screens use `/tickets/:id/assign`; the two converge when escalations bind |
 | `/ai-review` | `AiQueuePage` | below-threshold or unreadable |
 | `/ai-review/:id` | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake |
 | `/technicians` | `TechnicianListPage` | |

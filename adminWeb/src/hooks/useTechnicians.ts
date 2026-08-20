@@ -10,6 +10,7 @@ import {
   deleteTechnician,
   getTechnician,
   inviteTechnician,
+  listCandidateTechnicians,
   listEligibleTechnicians,
   listTechnicians,
   resendInvite,
@@ -23,6 +24,8 @@ export const technicianKeys = {
   list: (params: ListParams) => ["technicians", "list", params] as const,
   eligible: (category?: string) =>
     ["technicians", "eligible", category ?? "any"] as const,
+  candidates: (subcategoryId: string, pincode: string) =>
+    ["technicians", "candidates", subcategoryId, pincode] as const,
   detail: (id: string) => ["technicians", "detail", id] as const,
 };
 
@@ -86,5 +89,29 @@ export function useEligibleTechnicians(category?: string) {
   return useQuery({
     queryKey: technicianKeys.eligible(category),
     queryFn: () => listEligibleTechnicians(category),
+  });
+}
+
+/**
+ * The shortlist for one ticket — real technicians, filtered by the server.
+ *
+ * Disabled until both halves are known: a query missing the subcategory or the
+ * pincode would ask for "every technician", and a manager reading a shortlist
+ * has no way to tell that from "everyone here is eligible".
+ */
+export function useCandidateTechnicians(
+  subcategoryId: string | undefined,
+  pincode: string | undefined
+) {
+  return useQuery({
+    queryKey: technicianKeys.candidates(subcategoryId ?? "", pincode ?? ""),
+    queryFn: () =>
+      // Never runs unguarded — `enabled` below is the real check; the
+      // fallbacks only satisfy the types.
+      listCandidateTechnicians({
+        subcategoryId: subcategoryId ?? "",
+        pincode: pincode ?? "",
+      }),
+    enabled: Boolean(subcategoryId && pincode),
   });
 }

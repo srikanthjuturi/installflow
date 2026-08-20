@@ -47,6 +47,10 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
     { title: "Force closure", subtitle: "Justification required" },
   ],
   [
+    /^\/tickets\/[^/]+\/assign$/,
+    { title: "Manual assignment", subtitle: "Assign a technician" },
+  ],
+  [
     /^\/tickets\/[^/]+$/,
     { title: "Ticket detail", subtitle: "Timeline & audit trail" },
   ],
