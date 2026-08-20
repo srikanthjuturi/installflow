@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useMe } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
+import { PORTAL_ROLES } from "@/types/api";
 import type { ListParams } from "@/types/api";
 import type {
   CreateUserInput,
@@ -94,15 +95,32 @@ export function useAssignableRegions(): {
  * backend enforces the same rule; this only keeps the UI from offering choices
  * that would be rejected. Returns [] until the catalog loads.
  *
- * Technician is excluded on purpose: technicians are onboarded from the
- * Technicians tab, not the Users & Roles screen, so it is never offered here.
+ * Three roles are withheld on purpose, all for one reason: this endpoint cannot
+ * create the record each of them needs, so offering them would be offering a
+ * choice the server refuses.
+ *
+ *   * **technician** — needs a profile, certifications and coverage. Onboarded
+ *     from the Technicians tab.
+ *   * **vendor / vendor_user** — need a `vendor_id` on the membership. A vendor
+ *     login is created WITH the vendor on the Vendors screen, and a vendor's
+ *     own people from the portal. One made here would authenticate, hold
+ *     `jobs.create`, and have no vendor to raise a ticket against.
+ *
+ * The rank filter cannot express any of this: a vendor ranks 6, BELOW every
+ * staff role, so an Area Manager "outranks" one and both would sail straight
+ * through. `create_user` in the API refuses all three by name for exactly that
+ * reason; this list keeps the dropdown honest about it.
  */
+const NOT_INVITABLE_HERE: readonly string[] = ["technician", ...PORTAL_ROLES];
+
 export function useAssignableRoles(): RoleOption[] {
   const { data: roles } = useRoles();
   const myRole = useSession((s) => s.backendUser?.role);
   if (!roles || !myRole) return [];
   const myRank = roles.find((r) => r.key === myRole)?.rank ?? -Infinity;
-  return roles.filter((r) => r.rank > myRank && r.key !== "technician");
+  return roles.filter(
+    (r) => r.rank > myRank && !NOT_INVITABLE_HERE.includes(r.key)
+  );
 }
 
 /** The signed-in user's rank (from the role catalog), or -Infinity if unknown. */
