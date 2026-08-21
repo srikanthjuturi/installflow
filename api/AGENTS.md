@@ -4,9 +4,10 @@ FastAPI + PostgreSQL behind the ops console (`adminWeb/`) and the technician app
 (`mobileapp/`). Read the root `AGENTS.md` first for the business flow and the domain facts.
 
 Live today: auth (password + technician OTP + change-password), companies, users & roles,
-territory, the product master, technician onboarding in both modes, **vendor accounts and their
-sub-users**, and tickets (vendor intake, the list, and the customer's own slot confirmation).
-Still to come: bulk upload, jobs, the pool, proof capture, escalations, the ledger.
+territory, **the geography master and its spreadsheet importer**, the product master, technician
+onboarding in both modes, **vendor accounts and their sub-users**, and tickets (vendor intake,
+the list, and the customer's own slot confirmation).
+Still to come: jobs, the pool, proof capture, escalations, the ledger.
 
 ---
 
@@ -54,9 +55,10 @@ python -m app.scripts.audit_tenancy    # exit 1 if isolation is broken
 It checks all three of the above and reports rows that already disagree with their parent. It
 found a real gap the day it was written.
 
-Two things that are NOT tenant data, so they have no `company_id`: `regions` (geography — the
-same five for every company) and the `roles` / `features` catalogues (global, with per-company
-overrides in `company_role_features`). `users` is global too, because one person may work for
+Two families that are NOT tenant data, so they have no `company_id`: the geography master
+(`regions`, `states`, `districts`, `pincodes`, `pincode_districts` — India is the same shape for
+every company) and the `roles` / `features` catalogues (global, with per-company overrides in
+`company_role_features`). `users` is global too, because one person may work for
 several companies — the `memberships` row is the tenant link.
 
 ### 2. RBAC is enforced here, never in the UI.
@@ -65,11 +67,23 @@ Hiding a button is presentation. Every endpoint carries `require_feature("...")`
 scoping (`_visible_technicians`, `territory_scope`) narrows what a Regional Head or Area Manager
 can even see. Assume every client is hostile and every id is guessed.
 
-### 3. An area manager may only act inside their own pincodes.
+### 3. An area manager may only act inside their own states.
 
-Their territory IS a pincode list. `check_pincodes_in_own_area` refuses anything outside it with a
-403 that **names the offending pincodes** — a bare "forbidden" makes the manager guess. It runs on
-create, on update, and on the coverage a technician they invited picks for themselves.
+His territory is a set of STATES (`membership_states`, unique on `(company_id, state_id)` — a
+state belongs to one manager), and he covers **every pincode inside them**, resolved from the
+`pincodes` master. `check_pincodes_in_own_area` refuses anything outside with a 403 that **names
+the offending pincodes** — a bare "forbidden" makes the manager guess. It runs on create, on
+update, and on the coverage a technician they invited picks for themselves.
+
+**Never materialise that coverage.** Uttar Pradesh alone holds 1,667 codes and `load_scopes` runs
+on every page of the user list, so `Scope` carries states and never pincodes. Everything that has
+to test a pincode against a territory uses the subqueries in `app/core/scope.py`
+(`pincodes_in_states`, `pincodes_in_regions`) and lets Postgres do the filtering.
+
+His REGION is derived from his states and written to `membership_regions` in the same
+transaction, so every region-based query keeps working without learning about states. A client
+that sends both a region and states for an area manager is refused — that is two answers to one
+question.
 
 ### 4. Slices never import each other.
 

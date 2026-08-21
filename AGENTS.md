@@ -253,7 +253,13 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **Customer name, phone and address stay masked until the technician accepts.**
 - Cancelling costs money, banded by lateness: **₹80** (>8h) · **₹150** (4–8h) · **₹250** (<4h,
   which also escalates to the Area Service Manager).
-- Bandwidth is a **simple jobs-per-day cap** (1–12), not weighted by job type.
+- Bandwidth is a **simple jobs-per-day cap**, not weighted by job type — and it is **optional**.
+  `daily_job_cap` is nullable and **NULL means no limit**, which is what every new technician has:
+  neither the console's Add screen nor the joining flow asks for one, because a number invented
+  before anybody has worked a day is a number nobody has a basis for. The technician sets their own
+  in the app (Profile → Availability & bandwidth) and a manager can change it afterwards. There is
+  no upper bound; the floor is 1, because a cap of 0 means "never offer me work", which is what
+  going offline says.
 - **A ticket's history lives in `ticket_events`, not in its `status` column.** Both of the two
   facts above need a moment, not a state: the cancellation band is measured from the slot, and the
   cap counts jobs assigned on a DATE. Overwriting `status` keeps neither. Write the event in the
@@ -282,12 +288,23 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **Invite**: a manager supplies only a phone number; the technician self-registers their name,
   photo, subcategories and coverage from the deep link. Nothing is written until they prove the
   phone by OTP, and then it all commits in one transaction.
-- An **Area Manager may only assign pincodes from their own territory** — enforced on create, on
+- **Geography is a loaded master, not free text.** `regions → states → districts → pincodes`,
+  global (no `company_id` — India is the same for every company), imported from a spreadsheet by
+  a superadmin on **Super Admin → Geography**. 36 states, 754 districts, 19,490 pincodes.
+  A pincode↔district link is many-to-many because 1,258 real pincodes span up to four districts.
+- **A Regional Head covers regions; an Area Manager covers STATES.** Nobody assigns their own
+  territory — a senior does it in Users & roles. The RH picks regions and the states under them
+  are shown read-only (he is responsible for all of them). The AM picks states, and his region is
+  **derived** from them, never sent by the client.
+- An Area Manager **covers every pincode inside his states** — that coverage is resolved from the
+  master at query time and never stored or materialised. One state can hold nearly 2,000 codes,
+  so anything asking "is this pincode his?" does it as a subquery (`pincodes_in_states`).
+- An **Area Manager may only assign pincodes inside his own states** — enforced on create, on
   update, and on the coverage a technician they invited picks for themselves. The refusal names
   the offending pincodes.
-- **Technicians share pincodes**; area managers do not. `membership_pincodes` is unique on
-  `(company_id, pincode)`; `technician_pincodes` is deliberately not. Two technicians on the same
-  street is the normal case, which is why they are separate tables.
+- **Technicians share pincodes; area managers do not share states.** `membership_states` is unique
+  on `(company_id, state_id)`; `technician_pincodes` is deliberately not unique. Two technicians on
+  the same street is the normal case, which is why they are separate tables.
 - A technician certifies on a **subcategory** (Television), not a category (Electric). The
   product master is category → subcategory → model, company-scoped, with an icon on the first two
   levels and **up to five photo URLs** on the model — ordered, the first being the thumbnail every

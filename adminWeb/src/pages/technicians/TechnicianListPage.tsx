@@ -66,19 +66,17 @@ export default function TechnicianListPage() {
               regionId: values.regionId,
               subcategoryIds: values.subcategoryIds,
               pincodes: values.pincodes,
-              // Omitted rather than sent as 0 when the manager did not pick
-              // one: the server's default is the answer, and 0 is outside the
-              // 1–12 the API accepts.
-              ...(values.bwTotal
-                ? { dailyJobCap: Number(values.bwTotal) }
-                : {}),
+              // No dailyJobCap: a new technician starts uncapped and sets
+              // their own in the app.
               profileImageUrl: values.photo ?? null,
             },
             {
               onSuccess: (technician) => {
                 toast.add({
                   title: `${technician.name} added`,
-                  description: `${technician.code} · ${technician.dailyJobCap} jobs/day.`,
+                  description: technician.dailyJobCap
+                    ? `${technician.code} · ${technician.dailyJobCap} jobs/day.`
+                    : `${technician.code} · no daily limit yet.`,
                 });
                 setFormOpen(false);
               },
@@ -96,6 +94,7 @@ export default function TechnicianListPage() {
             {
               phone: toE164(values.phone),
               regionId: values.regionId || null,
+              pincodes: values.pincodes,
             },
             {
               onSuccess: (created) => {

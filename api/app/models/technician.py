@@ -94,10 +94,9 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
     manager_membership_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
     )
-    #: Pre-set by the manager, applied at registration.
-    daily_job_cap: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, server_default=text("5")
-    )
+    #: An optional cap the manager pre-set, applied at registration. NULL means
+    #: no limit, which is what an invite carries unless somebody chose one.
+    daily_job_cap: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     #: Opaque, single-use, 14 days. Stored in clear (unlike a refresh token)
@@ -128,6 +127,10 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
     )
 
     __table_args__ = (
+        # Target for the composite FK on `technician_invite_pincodes`.
+        UniqueConstraint(
+            "company_id", "id", name="uq_technician_invites_company_id_id"
+        ),
         Index("ix_technician_invites_company_status", "company_id", "status"),
         Index("ix_technician_invites_region_id", "region_id"),
         # The four membership/user FKs. An invite names up to four people — who
@@ -140,6 +143,41 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
         # NB: the partial UNIQUE on (company_id, phone) for LIVE invites is
         # hand-written in the migration — SQLAlchemy cannot express a WHERE
         # clause in a table constraint.
+    )
+
+
+class TechnicianInvitePincode(Base, IdMixin, AuditMixin):
+    """The coverage a manager assigned when sending the invite.
+
+    Coverage is decided by the manager, not by the person joining: they know
+    the area and the workload, and a technician picking their own from a phone
+    could claim a district nobody meant to give them. The app shows this list
+    and does not offer to change it.
+
+    Copied onto `technician_pincodes` at registration, so the profile keeps its
+    own coverage and a later edit to one does not silently rewrite history on
+    the other.
+    """
+
+    __tablename__ = "technician_invite_pincodes"
+
+    invite_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    pincode: Mapped[str] = mapped_column(String(6), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("invite_id", "pincode", name="uq_invite_pincode"),
+        # Composite, so a row can never name one company's invite while
+        # claiming another's company_id.
+        ForeignKeyConstraint(
+            ["company_id", "invite_id"],
+            ["technician_invites.company_id", "technician_invites.id"],
+            name="fk_invite_pincodes_company_invite",
+            ondelete="CASCADE",
+        ),
+        Index("ix_technician_invite_pincodes_invite", "invite_id"),
     )
 
 
@@ -164,9 +202,11 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Uuid, ForeignKey("regions.id", ondelete="RESTRICT"), nullable=False
     )
 
-    daily_job_cap: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, server_default=text("5")
-    )
+    #: Jobs per day this technician will accept. **NULL means no limit** — a
+    #: different claim from any number, and the default for somebody nobody has
+    #: capped. The technician sets their own in the app; a manager may change
+    #: it afterwards.
+    daily_job_cap: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'active'")
     )
@@ -229,8 +269,12 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Index("ix_technician_profiles_company_membership", "company_id", "membership_id"),
         Index("ix_technician_profiles_appointed_by_membership", "appointed_by_membership_id"),
         Index("ix_technician_profiles_invite_id", "invite_id"),
+        # No ceiling: twelve was a guess, and a technician may take as many
+        # jobs a day as they are willing to. A floor still applies, because a
+        # cap of zero means "never offer this person work" — which is what
+        # `status` says, and should not be reachable by typing a number.
         CheckConstraint(
-            "daily_job_cap BETWEEN 1 AND 12",
+            "daily_job_cap IS NULL OR daily_job_cap >= 1",
             name="daily_job_cap",
         ),
         CheckConstraint(

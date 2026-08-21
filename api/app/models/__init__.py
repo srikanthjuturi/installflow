@@ -9,11 +9,20 @@ from app.models.role import Role
 from app.models.sequence import CompanySequence
 from app.models.technician import (
     TechnicianInvite,
+    TechnicianInvitePincode,
     TechnicianPincode,
     TechnicianProfile,
     TechnicianSubcategory,
 )
-from app.models.territory import MembershipPincode, MembershipRegion, Region
+from app.models.territory import (
+    District,
+    MembershipRegion,
+    MembershipState,
+    Pincode,
+    PincodeDistrict,
+    Region,
+    State,
+)
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
 from app.models.token import RefreshToken
@@ -24,19 +33,24 @@ __all__ = [
     "Company",
     "CompanyRoleFeature",
     "CompanySequence",
+    "District",
     "Feature",
     "Membership",
-    "MembershipPincode",
     "MembershipRegion",
+    "MembershipState",
     "OtpCode",
+    "Pincode",
+    "PincodeDistrict",
     "ProductCategory",
     "ProductModel",
     "ProductSubcategory",
     "RefreshToken",
     "Region",
     "Role",
+    "State",
     "RoleFeatureDefault",
     "TechnicianInvite",
+    "TechnicianInvitePincode",
     "TechnicianPincode",
     "TechnicianProfile",
     "TechnicianSubcategory",

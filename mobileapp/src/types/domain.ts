@@ -53,7 +53,8 @@ export interface TechnicianSession {
   onboardedBy: string;
   subcategories: SubcategoryRef[];
   pincodes: string[];
-  dailyJobCap: number;
+  /** Null means no limit — the default until they set one. */
+  dailyJobCap: number | null;
   status: 'active' | 'inactive' | 'suspended';
   /** Null until they have closed a job — a dash, not a zero. */
   rating: number | null;

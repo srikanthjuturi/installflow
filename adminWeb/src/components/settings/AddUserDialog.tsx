@@ -27,14 +27,23 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { FormSection } from "@/components/shared/FormSection";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useAssignableRoles, useCreateUser } from "@/hooks/useCompanyUsers";
 import { ScopeField } from "./ScopeField";
 import {
   createUserResolver,
   EMPTY_INVITE,
+  roleHasTerritory,
   type CreateUserValues,
 } from "./companyUserSchema";
+
+/**
+ * The field grid every section uses. Two columns from `sm` up, written as a
+ * static string — an interpolated `grid-cols-${n}` is never generated and the
+ * row would silently collapse to one column.
+ */
+const COLS = "grid gap-4 sm:grid-cols-2";
 
 export function AddUserDialog({
   open,
@@ -45,7 +54,13 @@ export function AddUserDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      {/* Sized and sectioned like the vendor and company dialogs. Two columns
+          rather than three: this form has six fields, and a third column would
+          leave a ragged empty cell in every row.
+
+          The popup itself scrolls, as those dialogs do, so the scrollbar sits
+          on the popup wall rather than in a gutter inside it. */}
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
         <AddUserForm onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -75,7 +90,7 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
   // field; a stale pick must not survive a role change (cleared on select).
   const role = useWatch({ control, name: "role" });
   const regionIds = useWatch({ control, name: "regionIds" });
-  const pincodes = useWatch({ control, name: "pincodes" });
+  const stateIds = useWatch({ control, name: "stateIds" });
 
   // One assignable role (e.g. an RSH who can only appoint an ASM) fills itself.
   useAutoSelectSingle(
@@ -93,7 +108,7 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
         phone: values.phone.trim() || null,
         password: values.password,
         regionIds: values.regionIds,
-        pincodes: values.pincodes,
+        stateIds: values.stateIds,
       },
       {
         onSuccess: (u) => {
@@ -117,41 +132,67 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
         </DialogDescription>
       </DialogHeader>
 
-      <FieldGroup className="gap-4">
-        <Field data-invalid={err("fullName") ? true : undefined}>
-          <FieldLabel htmlFor="fullName">Full name</FieldLabel>
-          <Input
-            id="fullName"
-            placeholder="Full name"
-            autoComplete="name"
-            aria-invalid={err("fullName") ? true : undefined}
-            {...register("fullName")}
-          />
-          {err("fullName") ? (
-            <FieldDescription role="alert" className="text-danger">
-              {err("fullName")}
-            </FieldDescription>
-          ) : null}
-        </Field>
+      <FormSection legend="Person">
+        <FieldGroup className={COLS}>
+          {/* Spans the row so Email and Phone pair up beneath it — three fields
+              in two columns otherwise leaves a ragged empty cell. */}
+          <Field
+            className="sm:col-span-2"
+            data-invalid={err("fullName") ? true : undefined}
+          >
+            <FieldLabel htmlFor="fullName">Full name</FieldLabel>
+            <Input
+              id="fullName"
+              placeholder="Full name"
+              autoComplete="name"
+              aria-invalid={err("fullName") ? true : undefined}
+              {...register("fullName")}
+            />
+            {err("fullName") ? (
+              <FieldDescription role="alert" className="text-danger">
+                {err("fullName")}
+              </FieldDescription>
+            ) : null}
+          </Field>
 
-        <Field data-invalid={err("email") ? true : undefined}>
-          <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input
-            id="email"
-            type="email"
-            placeholder="user@company.com"
-            autoComplete="email"
-            aria-invalid={err("email") ? true : undefined}
-            {...register("email")}
-          />
-          {err("email") ? (
-            <FieldDescription role="alert" className="text-danger">
-              {err("email")}
-            </FieldDescription>
-          ) : null}
-        </Field>
+          <Field data-invalid={err("email") ? true : undefined}>
+            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <Input
+              id="email"
+              type="email"
+              placeholder="user@company.com"
+              autoComplete="email"
+              aria-invalid={err("email") ? true : undefined}
+              {...register("email")}
+            />
+            {err("email") ? (
+              <FieldDescription role="alert" className="text-danger">
+                {err("email")}
+              </FieldDescription>
+            ) : null}
+          </Field>
 
-        <Field data-invalid={err("role") ? true : undefined}>
+          <Field data-invalid={err("phone") ? true : undefined}>
+            <FieldLabel htmlFor="phone">Phone</FieldLabel>
+            <Input
+              id="phone"
+              placeholder="+91 90000 00000"
+              autoComplete="tel"
+              aria-invalid={err("phone") ? true : undefined}
+              {...register("phone")}
+            />
+            {err("phone") ? (
+              <FieldDescription role="alert" className="text-danger">
+                {err("phone")}
+              </FieldDescription>
+            ) : null}
+          </Field>
+        </FieldGroup>
+      </FormSection>
+
+      <FormSection legend="Access">
+        <FieldGroup className={COLS}>
+          <Field data-invalid={err("role") ? true : undefined}>
           <FieldLabel htmlFor="role">Role</FieldLabel>
           <Controller
             name="role"
@@ -164,8 +205,8 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
                   // A region picked for one role means nothing for another —
                   // and neither does the error it left behind.
                   setValue("regionIds", [], { shouldValidate: false });
-                  setValue("pincodes", [], { shouldValidate: false });
-                  clearErrors(["regionIds", "pincodes"]);
+                  setValue("stateIds", [], { shouldValidate: false });
+                  clearErrors(["regionIds", "stateIds"]);
                 }}
               >
                 <SelectTrigger
@@ -197,43 +238,12 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
               </Select>
             )}
           />
-          <FieldDescription>
-            Only roles below your own are listed.
-          </FieldDescription>
-          {err("role") ? (
-            <FieldDescription role="alert" className="text-danger">
-              {err("role")}
+            <FieldDescription>
+              Only roles below your own are listed.
             </FieldDescription>
-          ) : null}
-        </Field>
-
-        <ScopeField
-          role={role}
-          regionIds={regionIds}
-          pincodes={pincodes}
-          onRegionIds={(next) =>
-            setValue("regionIds", next, { shouldValidate: true })
-          }
-          onPincodes={(next) =>
-            setValue("pincodes", next, { shouldValidate: true })
-          }
-          regionError={err("regionIds")}
-          pincodeError={err("pincodes")}
-        />
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field data-invalid={err("phone") ? true : undefined}>
-            <FieldLabel htmlFor="phone">Phone</FieldLabel>
-            <Input
-              id="phone"
-              placeholder="+91 90000 00000"
-              autoComplete="tel"
-              aria-invalid={err("phone") ? true : undefined}
-              {...register("phone")}
-            />
-            {err("phone") ? (
+            {err("role") ? (
               <FieldDescription role="alert" className="text-danger">
-                {err("phone")}
+                {err("role")}
               </FieldDescription>
             ) : null}
           </Field>
@@ -253,8 +263,31 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
               </FieldDescription>
             ) : null}
           </Field>
-        </div>
-      </FieldGroup>
+        </FieldGroup>
+      </FormSection>
+
+      {/* Only when the role actually has one — a Territory heading over an
+          empty box reads as a field that failed to load. Full width rather
+          than two columns: a regional head's states run to thirteen chips. */}
+      {roleHasTerritory(role) ? (
+        <FormSection legend="Territory">
+          <FieldGroup className="grid gap-4">
+            <ScopeField
+              role={role}
+              regionIds={regionIds}
+              stateIds={stateIds}
+              onRegionIds={(next) =>
+                setValue("regionIds", next, { shouldValidate: true })
+              }
+              onStateIds={(next) =>
+                setValue("stateIds", next, { shouldValidate: true })
+              }
+              regionError={err("regionIds")}
+              stateError={err("stateIds")}
+            />
+          </FieldGroup>
+        </FormSection>
+      ) : null}
 
       {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>

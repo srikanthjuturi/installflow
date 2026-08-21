@@ -21,12 +21,20 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, func, literal, or_, select, union_all
+from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import Principal
 from app.core.schemas import ListParams
-from app.core.scope import ALL_INDIA_ROLES, Scope, own_scope
+from app.core.scope import (
+    ALL_INDIA_ROLES,
+    Scope,
+    load_scope,
+    own_scope,
+    pincodes_in_regions,
+    pincodes_in_states,
+)
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     InviteCreateRequest,
@@ -56,11 +64,12 @@ from app.models.technician import (
     REGISTERED,
     SENT,
     TechnicianInvite,
+    TechnicianInvitePincode,
     TechnicianPincode,
     TechnicianProfile,
     TechnicianSubcategory,
 )
-from app.models.territory import MembershipPincode, MembershipRegion, Region
+from app.models.territory import MembershipRegion, Pincode, Region
 from app.models.user import User
 
 
@@ -114,15 +123,48 @@ async def resolve_region(
     return region
 
 
+async def check_pincodes_exist(
+    session: AsyncSession, region_id: uuid.UUID, pincodes: list[str]
+) -> None:
+    """Every pincode must be real, and inside the region being assigned.
+
+    The geography master makes this answerable for the first time: before it
+    existed a manager could type any six digits and nobody found out until a
+    job was raised somewhere nobody covered.
+    """
+    if not pincodes:
+        return
+    wanted = sorted(set(pincodes))
+    inside = set(
+        (
+            await session.scalars(
+                pincodes_in_regions([region_id]).where(Pincode.code.in_(wanted))
+            )
+        ).all()
+    )
+    outside = [code for code in wanted if code not in inside]
+    if outside:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Not in this region: {', '.join(outside)}. "
+                "Pick pincodes from the region you selected."
+            ),
+        )
+
+
 async def check_pincodes_in_own_area(
     session: AsyncSession, principal: Principal, pincodes: list[str]
 ) -> None:
     """An area manager may only assign pincodes from their own territory.
 
-    Their territory IS a pincode list, so a technician they onboard who serves
-    outside it is by definition somebody else's to manage. Everyone above them
-    is unrestricted — there is no pincode→region master to check a regional
-    head against.
+    Their territory is a set of STATES, and they cover every pincode inside
+    them — so a technician they onboard who serves outside those states is by
+    definition somebody else's to manage.
+
+    Checked as one bounded query over the codes actually submitted, never by
+    loading the states' full pincode list: Uttar Pradesh alone holds 1,667, and
+    the question is only ever "are these few inside?".
 
     The refusal names the offending codes so the console can say which ones,
     rather than making the manager guess.
@@ -133,7 +175,20 @@ async def check_pincodes_in_own_area(
     _own_id, own = await own_scope(
         session, user_id=principal.user_id, company_id=principal.company_id
     )
-    outside = sorted(set(pincodes) - set(own.pincodes))
+    wanted = sorted(set(pincodes))
+    if not own.state_ids:
+        # Covers no states, so covers nothing. Fail closed rather than allowing
+        # everything through an empty-set subtraction.
+        inside: set[str] = set()
+    else:
+        inside = set(
+            (
+                await session.scalars(
+                    pincodes_in_states(own.state_ids).where(Pincode.code.in_(wanted))
+                )
+            ).all()
+        )
+    outside = [code for code in wanted if code not in inside]
     if outside:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -144,31 +199,40 @@ async def check_pincodes_in_own_area(
         )
 
 
-async def _inviter_pincode_limit(
-    session: AsyncSession, invite: TechnicianInvite
-) -> list[str] | None:
-    """The pincodes a self-registering technician may claim, or None for no limit.
-
-    An invite sent by an area manager carries their restriction forward: the
-    technician picks their own coverage in the app, and it has to land inside
-    the area of whoever appointed them.
-    """
-    if invite.invited_by_membership_id is None:
-        return None
-    row = await session.execute(
-        select(User.role)
-        .join(Membership, Membership.user_id == User.id)
-        .where(Membership.id == invite.invited_by_membership_id)
+async def invite_pincodes(
+    session: AsyncSession, invite_id: uuid.UUID
+) -> list[str]:
+    """The coverage a manager assigned when sending this invite."""
+    rows = await session.scalars(
+        select(TechnicianInvitePincode.pincode)
+        .where(TechnicianInvitePincode.invite_id == invite_id)
+        .order_by(TechnicianInvitePincode.pincode)
     )
-    role = row.scalar_one_or_none()
-    if role != AREA_MANAGER:
-        return None
-    pins = await session.scalars(
-        select(MembershipPincode.pincode).where(
-            MembershipPincode.membership_id == invite.invited_by_membership_id
+    return list(rows)
+
+
+async def set_invite_pincodes(
+    session: AsyncSession,
+    *,
+    invite: TechnicianInvite,
+    pincodes: list[str],
+    actor_id: uuid.UUID,
+) -> None:
+    """Replace an invite's coverage. Caller has already validated it."""
+    await session.execute(
+        delete(TechnicianInvitePincode).where(
+            TechnicianInvitePincode.invite_id == invite.id
         )
     )
-    return list(pins)
+    for code in dict.fromkeys(pincodes):
+        session.add(
+            TechnicianInvitePincode(
+                invite_id=invite.id,
+                company_id=invite.company_id,
+                pincode=code,
+                created_by=actor_id,
+            )
+        )
 
 
 # ── visibility ────────────────────────────────────────────────────────────────
@@ -177,8 +241,9 @@ async def _inviter_pincode_limit(
 def _visible_technicians(stmt, principal: Principal, own_id, own: Scope):
     """What this role sees in the technician list.
 
-    Not `territory_scope`: its area-manager branch filters through
-    `membership_pincodes`, which technician coverage deliberately does not use.
+    Not `territory_scope`: that helper filters a MEMBERSHIP query, and a
+    technician's coverage lives in `technician_pincodes` — a separate table with
+    the opposite rule (many technicians share one pincode).
     """
     if principal.role in ALL_INDIA_ROLES:
         return stmt
@@ -187,12 +252,18 @@ def _visible_technicians(stmt, principal: Principal, own_id, own: Scope):
 
     if own.region_ids:
         if principal.role == AREA_MANAGER:
-            # Their own reports, anyone covering a pincode they own, and anyone
-            # they appointed — an ASM must not lose a technician because the
-            # technician's coverage later drifted.
+            # Their own reports, anyone covering a pincode inside their states,
+            # and anyone they appointed — an ASM must not lose a technician
+            # because the technician's coverage later drifted.
+            #
+            # The pincode test is a subquery against the master, not a list: an
+            # area manager's states can hold thousands of codes and this runs on
+            # every page of the technician list.
             covers = select(TechnicianPincode.technician_id).where(
                 TechnicianPincode.technician_id == TechnicianProfile.id,
-                TechnicianPincode.pincode.in_(own.pincodes or [""]),
+                TechnicianPincode.pincode.in_(pincodes_in_states(own.state_ids))
+                if own.state_ids
+                else sql_false(),
             )
             return stmt.where(
                 or_(
@@ -352,6 +423,14 @@ async def _invites_out(
             select(Region).where(Region.id.in_([i.region_id for i in invites]))
         )
     }
+    # One query for every invite's coverage, never one per row.
+    coverage: dict[uuid.UUID, list[str]] = {i.id: [] for i in invites}
+    for invite_id, code in await session.execute(
+        select(TechnicianInvitePincode.invite_id, TechnicianInvitePincode.pincode)
+        .where(TechnicianInvitePincode.invite_id.in_([i.id for i in invites]))
+        .order_by(TechnicianInvitePincode.pincode)
+    ):
+        coverage[invite_id].append(code)
     return [
         TechnicianInviteOut(
             id=i.id,
@@ -372,6 +451,7 @@ async def _invites_out(
             inviteLink=invite_link(i.token),
             failureReason=i.wa_error,
             dailyJobCap=i.daily_job_cap,
+            pincodes=coverage[i.id],
             sentAt=i.sent_at,
             registeredAt=i.registered_at,
             expiresAt=i.expires_at,
@@ -842,6 +922,7 @@ async def create_technician(
     session: AsyncSession, principal: Principal, body: TechnicianCreateRequest
 ) -> TechnicianOut:
     region = await resolve_region(session, principal, body.regionId)
+    await check_pincodes_exist(session, region.id, body.pincodes)
     await check_pincodes_in_own_area(session, principal, body.pincodes)
     subcategory_ids = await validate_subcategories(
         session, principal.company_id, body.subcategoryIds
@@ -936,6 +1017,11 @@ async def update_technician(
             actor_id=principal.user_id,
         )
     if body.pincodes is not None:
+        # Against the region this technician ENDS UP in — the one just set if
+        # the caller changed it, otherwise the one they already had. Reading
+        # `region` here unconditionally was an UnboundLocalError on every
+        # coverage-only edit.
+        await check_pincodes_exist(session, profile.region_id, body.pincodes)
         await check_pincodes_in_own_area(session, principal, body.pincodes)
         if not body.pincodes:
             raise HTTPException(
@@ -966,7 +1052,10 @@ async def update_technician(
         user.full_name = body.fullName
     if "profileImageUrl" in body.model_fields_set:
         user.profile_image_url = body.profileImageUrl
-    if body.dailyJobCap is not None:
+    # `model_fields_set`, not `is not None`: null is a real value here — it
+    # means NO LIMIT — so testing for None would make the cap one-way, settable
+    # but never clearable. Same reasoning as `profileImageUrl` above.
+    if "dailyJobCap" in body.model_fields_set:
         profile.daily_job_cap = body.dailyJobCap
     if body.status is not None:
         profile.status = body.status
@@ -1033,6 +1122,11 @@ async def create_invite(
     session: AsyncSession, principal: Principal, body: InviteCreateRequest
 ) -> TechnicianInviteOut:
     region = await resolve_region(session, principal, body.regionId)
+    # Validated before anything is written, so a bad pincode never leaves a
+    # half-sent invite behind. Both checks: real and in the chosen region, and
+    # inside the sender's own states when an area manager is sending.
+    await check_pincodes_exist(session, region.id, body.pincodes)
+    await check_pincodes_in_own_area(session, principal, body.pincodes)
 
     existing_tech = await session.scalar(
         select(User.id).where(
@@ -1078,7 +1172,11 @@ async def create_invite(
         created_by=principal.user_id,
     )
     session.add(invite)
-    await session.flush()
+    await session.flush()  # invite.id, needed by the coverage rows
+
+    await set_invite_pincodes(
+        session, invite=invite, pincodes=body.pincodes, actor_id=principal.user_id
+    )
 
     await _send_and_record(session, invite)
     await session.commit()

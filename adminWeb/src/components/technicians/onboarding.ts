@@ -90,10 +90,20 @@ export const inviteSchema = z.object({
       (v) => isE164(toE164(v)),
       "Enter a valid mobile number with country code"
     ),
-  /** Blank is allowed when the inviter holds exactly one region. */
-  regionId: z.string(),
+  /** Filled in automatically when the inviter holds exactly one region. */
+  regionId: z.string().min(1, "Select a region"),
+  /**
+   * Coverage is the MANAGER's to decide, so it is required here and the app
+   * only displays it. An invite with no pincodes produces a technician nobody
+   * can offer a job to, and nothing on their phone would let them fix it.
+   */
+  pincodes: z.array(z.string()).min(1, "Add at least one pincode"),
 });
 
 export type InviteFormValues = z.infer<typeof inviteSchema>;
 
-export const EMPTY_INVITE: InviteFormValues = { phone: "", regionId: "" };
+export const EMPTY_INVITE: InviteFormValues = {
+  phone: "",
+  regionId: "",
+  pincodes: [],
+};

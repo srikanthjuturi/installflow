@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.scope import ALL_INDIA_ROLES, Scope
 from app.models.membership import Membership
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD
-from app.models.territory import MembershipPincode, MembershipRegion
+from app.models.territory import MembershipRegion, MembershipState
 
 T = TypeVar("T")
 
@@ -39,7 +39,7 @@ def territory_scope(
 
     - all-India roles (admin, national head) see the whole company;
     - a regional head sees memberships in one of their regions;
-    - an area manager sees memberships sharing one of their pincodes.
+    - an area manager sees memberships sharing one of their states.
 
     Everyone always sees their own row, so a manager never loses themselves from
     their own list. Applied to reads AND to fetch-by-id, so guessing another
@@ -62,15 +62,15 @@ def territory_scope(
         return stmt.where(or_(mine, Membership.id.in_(in_my_regions)))
 
     if role == AREA_MANAGER:
-        pincodes = own_scope.pincodes
-        if not pincodes:
+        state_ids = own_scope.state_ids
+        if not state_ids:
             return stmt.where(mine)
-        in_my_pincodes = (
-            select(MembershipPincode.membership_id)
-            .where(MembershipPincode.pincode.in_(pincodes))
+        in_my_states = (
+            select(MembershipState.membership_id)
+            .where(MembershipState.state_id.in_(state_ids))
             .scalar_subquery()
         )
-        return stmt.where(or_(mine, Membership.id.in_(in_my_pincodes)))
+        return stmt.where(or_(mine, Membership.id.in_(in_my_states)))
 
     # Any other role (e.g. technician) sees only themselves.
     return stmt.where(mine)

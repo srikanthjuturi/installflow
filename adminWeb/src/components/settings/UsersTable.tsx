@@ -114,10 +114,15 @@ export function UsersTable({
       cell: (u) => (
         <div className="leading-tight">
           <p className="text-[13px] text-ink">{u.scopeLabel}</p>
-          {u.pincodes.length ? (
-            <p className="font-mono text-[11px] text-ink-3">
-              {u.pincodes.slice(0, 3).join(", ")}
-              {u.pincodes.length > 3 ? ` +${u.pincodes.length - 3}` : ""}
+          {/* `scopeLabel` counts the states; this names the first few, the
+              way it used to name the first few pincodes. */}
+          {u.states.length ? (
+            <p className="text-[11px] text-ink-3">
+              {u.states
+                .slice(0, 3)
+                .map((s) => s.name)
+                .join(", ")}
+              {u.states.length > 3 ? ` +${u.states.length - 3}` : ""}
             </p>
           ) : null}
         </div>

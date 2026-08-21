@@ -14,7 +14,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.schemas import ApiEnvelope, envelope
+from app.core.schemas import (
+    ApiEnvelope,
+    ListParams,
+    PaginatedEnvelope,
+    envelope,
+    list_params,
+    paginated,
+)
 from app.features.auth.schemas import LoginResponse, OtpRequestResponse
 from app.features.onboarding import service
 from app.features.onboarding.schemas import (

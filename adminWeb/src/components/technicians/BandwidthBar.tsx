@@ -17,9 +17,13 @@ import type { TechnicianStatus } from "@/types/technician";
 /* ---------------------------------------------------------------- bandwidth */
 
 /**
- * Bandwidth is a plain jobs-per-day cap — used out of total, never weighted
- * by job type. The bar is a redundant encoding: the `3/5` beside it is the
- * real answer, so the bar itself is hidden from assistive tech.
+ * Bandwidth is a plain jobs-per-day cap — used out of total, never weighted by
+ * job type. The bar is a redundant encoding: the `3/5` beside it is the real
+ * answer, so the bar itself is hidden from assistive tech.
+ *
+ * **A null total means no limit**, which is the default for a technician nobody
+ * has capped. There is no proportion to draw then, so the bar is omitted and
+ * the count reads "3 today" rather than inventing a denominator.
  */
 const FILL: Record<"idle" | "ok" | "near", string> = {
   idle: "bg-ink-3",
@@ -35,15 +39,32 @@ export function BandwidthBar({
   trackClassName,
 }: {
   used: number;
-  total: number;
+  /** Null = no limit. */
+  total: number | null;
   showValue?: boolean;
   className?: string;
   trackClassName?: string;
 }) {
-  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  const pct =
+    total && total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
   // >79% is the prototype's "nearly full" threshold; an unused technician
   // reads as neutral rather than healthy.
   const fill = used === 0 ? "idle" : pct > 79 ? "near" : "ok";
+
+  if (total == null) {
+    return (
+      <div className={cn("flex items-center gap-2", className)}>
+        {showValue ? (
+          <span className="text-xs text-ink-2 tabular-nums">
+            {used} today
+            <span className="ml-1 text-ink-3">· no limit</span>
+          </span>
+        ) : (
+          <span className="text-xs text-ink-3">No limit</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={cn("flex items-center gap-2", className)}>

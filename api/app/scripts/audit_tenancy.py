@@ -49,6 +49,10 @@ GLOBAL_TABLES: dict[str, str] = {
     "features": "global feature catalogue",
     "role_feature_defaults": "per-role defaults; company_role_features carries the override",
     "regions": "geography - the same five regions for every company",
+    "states": "geography - the same India for every company",
+    "districts": "geography - the same India for every company",
+    "pincodes": "geography - the same India for every company",
+    "pincode_districts": "geography - joins two global tables",
     "membership_regions": "scoped through membership_id, which is company-scoped",
     "refresh_tokens": "belongs to a user, not a company; the token's claim carries the company",
     "otp_codes": "issued before a company is selected - auth precedes tenancy",
@@ -62,7 +66,12 @@ TENANT_LINKS = [
     ("technician_subcategories", "technician_id", "technician_profiles"),
     ("technician_subcategories", "subcategory_id", "product_subcategories"),
     ("technician_pincodes", "technician_id", "technician_profiles"),
+    ("technician_invite_pincodes", "invite_id", "technician_invites"),
     ("technician_profiles", "membership_id", "memberships"),
+    # An area manager's states. `membership_pincodes`, which this replaces,
+    # had a plain FK here and so could name company A while pointing at a
+    # membership in company B; the replacement does not.
+    ("membership_states", "membership_id", "memberships"),
     ("tickets", "vendor_id", "vendors"),
     ("tickets", "subcategory_id", "product_subcategories"),
     ("tickets", "model_id", "product_models"),

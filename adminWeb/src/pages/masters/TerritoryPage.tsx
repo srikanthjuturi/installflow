@@ -10,7 +10,7 @@ import { useTerritory } from "@/hooks/useTerritory";
 
 /**
  * Read-only. The mapping is made by giving a user a region (Regional Head) or a
- * region plus pincodes (Area Manager) on Users & roles — so this page shows the
+ * states (Area Manager) on Users & roles — so this page shows the
  * result rather than offering a second, competing way to record it.
  */
 export default function TerritoryPage() {
@@ -20,12 +20,12 @@ export default function TerritoryPage() {
     <>
       <PageMeta
         title="Territory mapping"
-        description="Region, Regional Head, Area Manager and the pincodes each services."
+        description="Region, Regional Head, Area Manager and the states each covers."
       />
 
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
         <p className="text-[13px] text-ink-2">
-          Region → Regional Head → Area Manager → serviced pincodes
+          Region → Regional Head → Area Manager → covered states
         </p>
         {/* `outline` is built for a CARD or a dialog: its fill is
             `bg-background`, which on a page is the page's own colour, and its
@@ -56,7 +56,7 @@ export default function TerritoryPage() {
         <EmptyState
           icon={Map}
           title="No territory mapped"
-          description="Give a Regional Head their regions and an Area Manager their pincodes before tickets in those pincodes can be notified."
+          description="Give a Regional Head their regions and an Area Manager their states before tickets in those areas can be notified."
         />
       ) : (
         <TerritoryTree regions={data} />

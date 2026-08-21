@@ -122,6 +122,14 @@ class RegionOut(AppModel):
     name: str
 
 
+class MeStateOut(AppModel):
+    """A state the caller covers. Area managers only — everyone else is empty."""
+
+    id: uuid.UUID
+    name: str
+    regionId: uuid.UUID
+
+
 class MeVendorOut(AppModel):
     """The vendor a portal account acts for.
 
@@ -151,8 +159,12 @@ class MeResponse(AppModel):
     features: list[str]
     memberships: list[MembershipOut]
     # The caller's OWN territory — what they cover, and what they may hand out.
+    #
+    # An area manager's states, not his pincodes: he covers every code inside
+    # them, which is thousands, and the console searches `/geo/pincodes` when it
+    # needs them rather than being handed the list on every page load.
     regions: list[RegionOut]
-    pincodes: list[str]
+    states: list[MeStateOut]
     scopeLabel: str
     #: Set for the two portal roles, null for everyone else.
     vendor: MeVendorOut | None = None

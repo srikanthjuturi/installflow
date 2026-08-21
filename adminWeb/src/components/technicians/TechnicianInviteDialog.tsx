@@ -18,17 +18,8 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { useAssignableRegions } from "@/hooks/useCompanyUsers";
-import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
+import { CoverageFields } from "./CoverageFields";
 import { EMPTY_INVITE, inviteSchema, type InviteFormValues } from "./onboarding";
 
 interface TechnicianInviteDialogProps {
@@ -50,7 +41,6 @@ export function TechnicianInviteDialog({
   onSubmit,
   isSubmitting,
 }: TechnicianInviteDialogProps) {
-  const { regions, isLoading: loadingRegions } = useAssignableRegions();
 
   const {
     control,
@@ -71,13 +61,14 @@ export function TechnicianInviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Invite technician</DialogTitle>
             <DialogDescription>
               A WhatsApp invite goes to this number with a link to the technician
-              app. They fill in their own name, photo, categories and areas.
+              app. They fill in their own name, photo and categories — you set
+              where they work.
             </DialogDescription>
           </DialogHeader>
 
@@ -111,28 +102,31 @@ export function TechnicianInviteDialog({
               )}
             </Field>
 
-            {/* A manager who holds one region has nothing to choose between,
-                and the server fills it in from their own scope anyway. */}
-            {regions.length > 1 ? (
-              <Field>
-                <FieldLabel htmlFor="invite-region">Region</FieldLabel>
+            {/* Coverage is assigned here, not by the technician: the manager
+                knows the area and the workload, and somebody joining on a phone
+                could otherwise claim a district nobody meant to give them. The
+                app shows this list and does not offer to change it. */}
+            <Controller
+              name="regionId"
+              control={control}
+              render={({ field: region }) => (
                 <Controller
-                  name="regionId"
+                  name="pincodes"
                   control={control}
-                  render={({ field }) => (
-                    <RegionSelect
-                      value={field.value}
-                      onChange={field.onChange}
-                      regions={regions}
-                      disabled={loadingRegions}
+                  render={({ field: pins }) => (
+                    <CoverageFields
+                      regionId={region.value}
+                      pincodes={pins.value}
+                      onRegionId={region.onChange}
+                      onPincodes={pins.onChange}
+                      regionError={errors.regionId?.message}
+                      pincodeError={errors.pincodes?.message}
+                      className="grid gap-4"
                     />
                   )}
                 />
-                <FieldDescription>
-                  Where this technician will work.
-                </FieldDescription>
-              </Field>
-            ) : null}
+              )}
+            />
           </FieldGroup>
 
           {/* The failure is reported in the toaster (App.tsx), not here. */}
@@ -148,48 +142,5 @@ export function TechnicianInviteDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function RegionSelect({
-  value,
-  onChange,
-  regions,
-  disabled,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  regions: { id: string; name: string }[];
-  disabled?: boolean;
-}) {
-  useAutoSelectSingle(
-    regions.map((r) => r.id),
-    value,
-    onChange,
-    !disabled
-  );
-  const selected = regions.find((r) => r.id === value);
-
-  return (
-    <Select
-      value={value}
-      onValueChange={(v) => onChange(v ?? "")}
-      disabled={disabled}
-    >
-      <SelectTrigger id="invite-region" className="w-full">
-        <SelectValue placeholder="Select a region">
-          {() => selected?.name ?? "Select a region"}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {regions.map((r) => (
-            <SelectItem key={r.id} value={r.id}>
-              {r.name}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
   );
 }
