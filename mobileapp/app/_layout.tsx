@@ -144,6 +144,10 @@ export default function RootLayout() {
               name="crop-photo"
               options={{ presentation: 'fullScreenModal' }}
             />
+            <Stack.Screen
+              name="view-photo"
+              options={{ presentation: 'fullScreenModal' }}
+            />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>

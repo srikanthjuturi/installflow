@@ -53,6 +53,7 @@ export function ProfileScreen() {
   const { data: me, isError, error, isFetching, refetch } = useMe();
 
   const signOut = useSession((s) => s.signOut);
+  const avatarUri = useProfileStore((s) => s.avatarUri);
   const clearAvatar = useProfileStore((s) => s.clearAvatar);
   const [pushEnabled, setPushEnabled] = useState(true);
 
@@ -108,14 +109,23 @@ export function ProfileScreen() {
             </View>
           ) : (
             <>
+              {/* The photo opens the VIEWER; the camera badge opens the
+                  change-photo sheet. With no photo there is nothing to look
+                  at, so the tap goes straight to the sheet. */}
               <Pressable
-                onPress={() => router.push('/avatar-options')}
+                onPress={() => router.push(avatarUri ? '/view-photo' : '/avatar-options')}
                 accessibilityRole="button"
-                accessibilityLabel="Change profile picture"
+                accessibilityLabel={avatarUri ? 'View profile picture' : 'Add profile picture'}
               >
                 {({ pressed }) => (
                   <View style={{ opacity: pressed ? 0.8 : 1 }}>
-                    <Avatar name={me.name} size={74} radius={22} editable />
+                    <Avatar
+                      name={me.name}
+                      size={74}
+                      radius={22}
+                      editable
+                      onBadgePress={() => router.push('/avatar-options')}
+                    />
                   </View>
                 )}
               </Pressable>

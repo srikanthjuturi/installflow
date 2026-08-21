@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
-import { Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { useProfileStore } from '@/store/profile.store';
@@ -18,6 +19,15 @@ export interface AvatarProps {
   uri?: string | null;
   /** Camera badge — only on the editable avatar. */
   editable?: boolean;
+  /**
+   * Makes the camera badge its OWN tap target.
+   *
+   * Profile wraps the avatar in a press that opens the photo viewer, so the
+   * badge needs to be separately pressable or there is no way left to reach
+   * the change-photo sheet. The badge geometry is computed here, so the hit
+   * area has to be built here too rather than guessed by the caller.
+   */
+  onBadgePress?: () => void;
   /** Ring colour for that badge; should match whatever the avatar sits on. */
   badgeRing?: string;
 }
@@ -45,6 +55,7 @@ export function Avatar({
   uri,
   editable = false,
   badgeRing = color.chrome,
+  onBadgePress,
 }: AvatarProps) {
   const stored = useProfileStore((s) => s.avatarUri);
   const photo = uri === undefined ? stored : uri;
@@ -86,29 +97,52 @@ export function Avatar({
       {editable ? (
         // Ringed in the surrounding colour so it reads as a cutout rather than
         // a sticker — same treatment as Home's unread dot.
-        <View
-          style={{
-            position: 'absolute',
-            right: -4,
-            bottom: -4,
-            width: badgeSize,
-            height: badgeSize,
-            borderRadius: badgeSize / 2,
-            backgroundColor: color.surfaceRaised,
-            borderWidth: 3,
-            borderColor: badgeRing,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon
-            name="camera"
-            size={Math.round(badgeSize * 0.5)}
-            color={color.textPrimary}
-            strokeWidth={2}
-          />
-        </View>
+        <BadgeHost onPress={onBadgePress}>
+          <View
+            style={{
+              width: badgeSize,
+              height: badgeSize,
+              borderRadius: badgeSize / 2,
+              backgroundColor: color.surfaceRaised,
+              borderWidth: 3,
+              borderColor: badgeRing,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon
+              name="camera"
+              size={Math.round(badgeSize * 0.5)}
+              color={color.textPrimary}
+              strokeWidth={2}
+            />
+          </View>
+        </BadgeHost>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * Pins the badge to the avatar's bottom-right corner, pressable or not.
+ *
+ * A plain View when nobody wants the tap, so avatars that merely LOOK editable
+ * do not swallow touches meant for whatever wraps them.
+ */
+function BadgeHost({ onPress, children }: { onPress?: () => void; children: ReactNode }) {
+  const pin = { position: 'absolute', right: -4, bottom: -4 } as const;
+
+  if (!onPress) return <View style={pin}>{children}</View>;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      style={pin}
+      accessibilityRole="button"
+      accessibilityLabel="Change profile picture"
+    >
+      {({ pressed }) => <View style={{ opacity: pressed ? 0.7 : 1 }}>{children}</View>}
+    </Pressable>
   );
 }

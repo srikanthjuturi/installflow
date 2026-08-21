@@ -4,7 +4,6 @@ import { Pressable, Text, View } from 'react-native';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { Button, Sheet } from '@/components/ui';
 import { useAvatarPicker } from '@/features/profile/hooks/useAvatarPicker';
-import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -12,14 +11,16 @@ import { palette } from '@/theme/tokens';
  * Photo source picker.
  *
  * A sheet rather than a native action sheet so it matches the accept-slot
- * sheet — same grabber, same corners — and so "Remove photo" can carry the
- * destructive tint, which platform action sheets style inconsistently.
+ * sheet — same grabber, same corners — and so the rows carry the app's own
+ * type and icons, which platform action sheets style inconsistently.
+ *
+ * Removing the photo is NOT here. It sits on the photo viewer, next to the
+ * picture it removes — and it has to reach the server, which this sheet never
+ * did. See PhotoViewerScreen.
  */
 export function AvatarOptionsSheet() {
   const router = useRouter();
   const { fromCamera, fromLibrary, busy } = useAvatarPicker();
-  const avatarUri = useProfileStore((s) => s.avatarUri);
-  const clearAvatar = useProfileStore((s) => s.clearAvatar);
 
   const dismiss = () => router.back();
 
@@ -51,7 +52,7 @@ export function AvatarOptionsSheet() {
           backgroundColor: color.surfaceSunkenAlt,
           borderRadius: 14,
           overflow: 'hidden',
-          marginBottom: avatarUri ? 12 : 20,
+          marginBottom: 20,
         }}
       >
         <OptionRow
@@ -68,19 +69,6 @@ export function AvatarOptionsSheet() {
           disabled={busy}
         />
       </View>
-
-      {avatarUri ? (
-        <View style={{ marginBottom: 20 }}>
-          <Button
-            label="Remove photo"
-            variant="dangerGhost"
-            onPress={() => {
-              clearAvatar();
-              dismiss();
-            }}
-          />
-        </View>
-      ) : null}
 
       <Button label="Cancel" variant="ghost" onPress={dismiss} disabled={busy} />
     </Sheet>
