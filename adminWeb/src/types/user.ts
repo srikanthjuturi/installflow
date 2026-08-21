@@ -10,6 +10,14 @@ export interface Region {
   name: string;
 }
 
+/** A state a member covers. Area managers only. */
+export interface MemberState {
+  id: string;
+  name: string;
+  regionId: string;
+  regionName: string;
+}
+
 export interface CompanyUser {
   membershipId: string;
   userId: string;
@@ -21,10 +29,13 @@ export interface CompanyUser {
   profileImageUrl: string | null;
   isActive: boolean;
   managerId: string | null;
-  /** Territory: regions for a regional head, one region + pincodes for an AM. */
+  /** Territory: regions for a regional head, states for an area manager. An
+   *  AM's regions are derived from his states and returned here too. */
   regions: Region[];
-  pincodes: string[];
-  /** Ready-made summary: "All India" / "North, West" / "North · 3 pincodes". */
+  /** An area manager's states. He covers every pincode inside them, which is
+   *  thousands — that list is never sent, it is searched via `/geo/pincodes`. */
+  states: MemberState[];
+  /** Ready-made summary: "All India" / "North, West" / "South · Telangana". */
   scopeLabel: string;
   createdAt: string;
 }
@@ -38,9 +49,10 @@ export interface CreateUserInput {
   /** Temporary password for a brand-new identity (ignored if the email exists). */
   password?: string | null;
   managerId?: string | null;
-  /** Territory — required for a regional head (regions) and an area manager. */
+  /** Territory. A regional head sends `regionIds`; an area manager sends
+   *  `stateIds` ONLY — his region is derived from them server-side. */
   regionIds?: string[];
-  pincodes?: string[];
+  stateIds?: string[];
 }
 
 /** Body for `PUT /users/{membershipId}`. Role is never changed here. */
@@ -51,7 +63,7 @@ export interface UpdateUserInput {
   managerId?: string | null;
   /** Omit to leave the territory alone; send a list to replace it. */
   regionIds?: string[];
-  pincodes?: string[];
+  stateIds?: string[];
 }
 
 /** A role from `GET /roles` — the rank drives "who can assign whom". */

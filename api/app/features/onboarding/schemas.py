@@ -25,14 +25,16 @@ class InviteResolveOut(AppModel):
     regionName: str
     invitedByName: str | None
     expiresAt: datetime
-    dailyJobCap: int
+    regionId: uuid.UUID
+    #: What the manager pre-set, if anything. Null means no limit — the app
+    #: does not ask for one while joining, so this is usually null.
+    dailyJobCap: int | None
     #: The catalogue, bundled so the coverage screen needs one call rather than
     #: two on a field connection.
     categories: list[ProductCategoryOut]
-    #: When an area manager sent the invite, the only pincodes this technician
-    #: may claim. Null means unrestricted. Sent so the app can offer a picker
-    #: instead of letting them type something that will be refused.
-    allowedPincodes: list[str] | None
+    #: The coverage the manager assigned. The app SHOWS this and does not
+    #: offer to change it — see `TechnicianInvitePincode`.
+    pincodes: list[str] = Field(default_factory=list)
 
 
 class OtpVerifyInviteRequest(BaseModel):
@@ -54,6 +56,10 @@ class SelfRegisterRequest(BaseModel):
     fullName: str = Field(min_length=2, max_length=255)
     profileImageUrl: ImageUrl = None
     subcategoryIds: list[uuid.UUID] = Field(min_length=1)
-    pincodes: list[Pincode] = Field(min_length=1, max_length=50)
-    #: Falls back to whatever the manager pre-set on the invite.
-    dailyJobCap: int | None = Field(default=None, ge=1, le=12)
+    # No `pincodes`: coverage comes from the invite, decided by the manager.
+    #: **Not collected while joining.** Registering is about who you are and
+    #: where you work; a technician sets their own cap afterwards, in the app's
+    #: Availability screen. Kept accepted (and unbounded above) so a client that
+    #: does offer it is not refused, and null keeps whatever the invite held.
+    dailyJobCap: int | None = Field(default=None, ge=1)
+

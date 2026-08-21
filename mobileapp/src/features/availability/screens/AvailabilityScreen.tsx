@@ -5,7 +5,7 @@ import { Icon } from '@/components/icons/Icon';
 import { TitleBar } from '@/components/layout';
 import { Switch } from '@/components/ui';
 import {
-  BANDWIDTH_MAX,
+  BANDWIDTH_DEFAULT,
   BANDWIDTH_MIN,
   useAvailabilityStore,
   useBandwidthPerDay,
@@ -30,14 +30,24 @@ const DAYS: { key: WeekdayKey; label: string; hours: string }[] = [
  * Bandwidth is a plain jobs-per-day cap, not weighted by job type or duration.
  * The requirements doc left that open (Q3); the prototype settles it, and a
  * count is the only version a technician can reason about in the field.
+ *
+ * **A new technician arrives with no limit.** Neither the ops console's Add
+ * screen nor the joining flow asks for one any more — a number invented before
+ * anybody has worked a day is a number nobody has a basis for.
+ *
+ * WARNING: what this screen changes does NOT reach the server yet. It writes to
+ * Zustand only, so the value resets on relaunch. The update endpoint is gated
+ * on technicians.edit, which a technician does not hold, and there is no
+ * self-service endpoint — the same gap as the missing technician-edit screen
+ * noted in adminWeb/AGENTS.md.
  */
 export function AvailabilityScreen() {
   const { days, timeOff, toggleDay, setBandwidth, setTimeOff } = useAvailabilityStore();
 
   // Their own edit if they made one, otherwise the cap their manager set.
-  // Null means the profile has not loaded yet — a dash, never a guess, because
-  // this number tells a technician how much work they will be offered.
+  // Null means NO LIMIT, which is the default for a new technician.
   const bandwidthPerDay = useBandwidthPerDay();
+  const limited = bandwidthPerDay !== null;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -133,9 +143,38 @@ export function AvailabilityScreen() {
               marginBottom: 14,
             }}
           >
-            Maximum installs you&apos;ll take per day. New offers stop once you hit this cap.
+            {limited
+              ? "Maximum installs you'll take per day. New offers stop once you hit this cap."
+              : "You'll be offered as many installs a day as come up. Set a cap if you'd rather not."}
           </Text>
 
+          <Pressable
+            onPress={() => setBandwidth(limited ? null : BANDWIDTH_DEFAULT)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: limited }}
+            accessibilityLabel="Limit jobs per day"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: limited ? 18 : 0,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: 'Roboto_500Medium',
+                fontSize: 14,
+                color: color.textPrimary,
+              }}
+            >
+              Limit jobs per day
+            </Text>
+            <Switch value={limited} onValueChange={() =>
+              setBandwidth(limited ? null : BANDWIDTH_DEFAULT)
+            } />
+          </Pressable>
+
+          {limited ? (
           <View
             style={{
               flexDirection: 'row',
@@ -174,13 +213,15 @@ export function AvailabilityScreen() {
               </Text>
             </View>
 
+            {/* No ceiling — a technician may take as many as they will. */}
             <StepperButton
               glyph="+"
               onPress={() => bandwidthPerDay && setBandwidth(bandwidthPerDay + 1)}
-              disabled={bandwidthPerDay === null || bandwidthPerDay >= BANDWIDTH_MAX}
+              disabled={bandwidthPerDay === null}
               label="Increase bandwidth"
             />
           </View>
+          ) : null}
         </View>
 
         <Pressable

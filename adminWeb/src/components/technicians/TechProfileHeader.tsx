@@ -109,8 +109,11 @@ export function TechStats({ tech }: { tech: Technician }) {
       </StatTile>
 
       <StatTile label="Bandwidth">
+        {/* No cap set is not "0 of null" — say what it is. */}
         <span className="tabular-nums">
-          {tech.bwUsed}/{tech.dailyJobCap}
+          {tech.dailyJobCap === null
+            ? `${tech.bwUsed} today`
+            : `${tech.bwUsed}/${tech.dailyJobCap}`}
         </span>
         <BandwidthBar
           used={tech.bwUsed}

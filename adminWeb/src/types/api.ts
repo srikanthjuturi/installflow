@@ -178,7 +178,15 @@ export interface MeResponse {
   memberships: BackendMembership[];
   /** The caller's OWN territory — what they cover, and what they may hand out. */
   regions: { id: string; code: string; name: string }[];
-  pincodes: string[];
+  /**
+   * An area manager's states; empty for everyone else.
+   *
+   * There is deliberately no `pincodes` here any more. An area manager covers
+   * every pincode inside his states — thousands of them — so a screen that
+   * needs one searches `GET /geo/pincodes` instead of being handed the list on
+   * every page load.
+   */
+  states: { id: string; name: string; regionId: string }[];
   scopeLabel: string;
   /**
    * The vendor a portal account acts for; null for everyone else.

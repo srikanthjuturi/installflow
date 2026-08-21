@@ -27,15 +27,19 @@ export interface InviteDetails {
   regionName: string;
   invitedByName: string | null;
   expiresAt: string;
-  dailyJobCap: number;
+  /** What the manager pre-set, if anything. Null means no limit — and it
+   *  usually is null, because the Add and Invite screens no longer ask. */
+  dailyJobCap: number | null;
   /** Bundled so the coverage screen needs one call, not two, on a field connection. */
   categories: InviteCategory[];
   /**
-   * When an area manager sent the invite, the only pincodes this technician may
-   * claim. Null means unrestricted — so the screen offers free entry instead of
-   * a picker.
+   * The service areas the manager assigned when sending the invite.
+   *
+   * Shown, never edited. Coverage is the manager's decision — they know
+   * the area and the workload — so there is no picker here and nothing
+   * for a technician to get wrong on a phone.
    */
-  allowedPincodes: string[] | null;
+  pincodes: string[];
 }
 
 export interface RegistrationToken {
@@ -48,7 +52,6 @@ export interface SelfRegisterBody {
   profileImageUrl?: string | null;
   subcategoryIds: string[];
   pincodes: string[];
-  dailyJobCap?: number | null;
 }
 
 export function resolveInvite(token: string): Promise<InviteDetails> {

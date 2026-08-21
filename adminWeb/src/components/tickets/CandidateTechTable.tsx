@@ -89,10 +89,13 @@ export function CandidateTechTable({
     {
       id: "cap",
       header: "Daily cap",
-      sortValue: (t) => t.dailyJobCap,
+      // Uncapped sorts last: it is the largest capacity, not the smallest.
+      sortValue: (t) => t.dailyJobCap ?? Number.MAX_SAFE_INTEGER,
       cellClassName: "tabular-nums",
       cell: (t) => (
-        <span className="text-xs text-ink-2">{t.dailyJobCap} jobs/day</span>
+        <span className="text-xs text-ink-2">
+          {t.dailyJobCap === null ? "No limit" : `${t.dailyJobCap} jobs/day`}
+        </span>
       ),
     },
     {

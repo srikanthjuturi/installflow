@@ -30,7 +30,7 @@ export function TerritoryTree({ regions }: { regions: TerritoryRegion[] }) {
   );
 }
 
-/** "1 pincode" / "3 pincodes" — the count is the point, so it reads correctly. */
+/** "1 state" / "3 states" — the count is the point, so it reads correctly. */
 function count(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -52,7 +52,7 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
         <span className="ml-auto text-xs text-ink-3">
           {count(regionalHeads.length, "Regional Head")} ·{" "}
           {count(areaManagers.length, "Area Manager")} ·{" "}
-          {count(region.pincodeCount, "pincode")}
+          {count(region.stateCount, "state")}
         </span>
       </div>
 
@@ -77,7 +77,7 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
           ))}
           {areaManagers.map((asm) => (
             <li key={asm.membershipId}>
-              <PersonRow person={asm} role="Area Manager" pincodes={asm.pincodes} />
+              <PersonRow person={asm} role="Area Manager" states={asm.states} />
             </li>
           ))}
           {regionalHeads.length === 0 ? (
@@ -92,25 +92,46 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
           ) : null}
         </ul>
       )}
+
+      {/* The gap, named. A count of covered states tells nobody what to do
+          next; the states nobody covers is the work. */}
+      {region.unassignedStates.length ? (
+        <div className="border-t border-line-2 px-4.5 py-3">
+          <p className="text-[11px] font-medium text-warn">
+            {count(region.unassignedStates.length, "state has", "states have")} no
+            Area Manager
+          </p>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5">
+            {region.unassignedStates.map((state) => (
+              <li
+                key={state}
+                className="rounded-sm bg-warn-bg px-2 py-0.75 text-[11px] font-medium text-warn"
+              >
+                {state}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </Card>
   );
 }
 
 /**
- * One person in the region. An area manager owns a pincode range, and that
- * range is one of the three things technician notification matches on (category
- * + pincode + free bandwidth), so the chips are the mapping itself, not
- * decoration. A regional head owns the region rather than any pincode, so it
- * has none — the row says who, the chips say where.
+ * One person in the region. An area manager owns states, and every pincode
+ * inside them is what technician notification matches on (category + pincode +
+ * free bandwidth), so the chips are the mapping itself, not decoration. A
+ * regional head owns the whole region, so he has none — the row says who, the
+ * chips say where.
  */
 function PersonRow({
   person,
   role,
-  pincodes,
+  states,
 }: {
   person: TerritoryPerson;
   role: string;
-  pincodes?: string[];
+  states?: string[];
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md px-3 py-2.75 transition-colors hover:bg-surface-2">
@@ -118,7 +139,7 @@ function PersonRow({
         className={cn(
           "grid size-7.5 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
           // The head of a region reads as the senior row at a glance.
-          pincodes
+          states
             ? "bg-status-assigned-bg text-brand-400"
             : "bg-brand-500 text-white"
         )}
@@ -133,17 +154,17 @@ function PersonRow({
           {person.isActive ? "" : " · Suspended"}
         </p>
       </div>
-      {pincodes ? (
+      {states ? (
         <ul
           className="flex flex-1 flex-wrap gap-1.5"
-          aria-label={`Pincodes serviced by ${person.name}`}
+          aria-label={`States covered by ${person.name}`}
         >
-          {pincodes.map((pincode) => (
+          {states.map((state) => (
             <li
-              key={pincode}
-              className="rounded-sm bg-surface-3 px-2 py-0.75 font-mono text-[11px] font-medium text-ink-2"
+              key={state}
+              className="rounded-sm bg-surface-3 px-2 py-0.75 text-[11px] font-medium text-ink-2"
             >
-              {pincode}
+              {state}
             </li>
           ))}
         </ul>

@@ -60,7 +60,8 @@ export interface Technician {
   subcategories: SubcategoryRef[];
   pincodes: string[];
 
-  dailyJobCap: number;
+  /** Null = no limit. */
+  dailyJobCap: number | null;
   /** Jobs in flight today. Always 0 until the jobs slice exists. */
   bwUsed: number;
   rating: number | null;
@@ -90,7 +91,8 @@ export interface TechnicianInvite {
   inviteLink: string;
   /** Why WhatsApp refused, when it did. */
   failureReason: string | null;
-  dailyJobCap: number;
+  /** Null = no limit. */
+  dailyJobCap: number | null;
   sentAt: string | null;
   registeredAt: string | null;
   expiresAt: string;
@@ -132,6 +134,8 @@ export interface UpdateTechnicianInput {
 }
 
 export interface InviteTechnicianInput {
+  /** The coverage the manager assigns. Required — the app only displays it. */
+  pincodes: string[];
   phone: string;
   regionId?: string | null;
   dailyJobCap?: number;

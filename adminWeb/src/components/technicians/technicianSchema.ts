@@ -6,8 +6,10 @@ import { z } from "zod";
  * technician with neither a category nor a pincode is never notified about
  * anything, and nothing can supply them on their behalf.
  *
- * The cap is the exception: it has a server-side default, so leaving it unset
- * still produces a technician who can be offered work. See DEFAULT_JOB_CAP.
+ * The daily job cap is NOT asked for here. A number invented at intake is one
+ * nobody has a basis for yet, so a new technician starts with no limit and sets
+ * their own in the app (Profile -> Availability & bandwidth); a manager can
+ * change it afterwards. "No limit" is null, not a number.
  *
  * Certification is at the SUBCATEGORY level (Television, Air Conditioner), not
  * the parent category (Electric) — a TV specialist should not be offered air
@@ -20,18 +22,6 @@ export const PINCODE_RE = /^\d{6}$/;
 export function parsePincodes(value: string): string[] {
   return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
 }
-
-/** Plain jobs-per-day cap. Not weighted by job type — that stays an open decision. */
-export const BANDWIDTH_OPTIONS = Array.from({ length: 12 }, (_, i) =>
-  String(i + 1)
-);
-
-/**
- * What the API applies when `dailyJobCap` is omitted — `TechnicianCreateRequest`
- * in `api/app/features/technicians/schemas.py`. Stated once here so the hint
- * that promises it and the value that arrives cannot drift apart.
- */
-export const DEFAULT_JOB_CAP = 5;
 
 export const technicianSchema = z.object({
   name: z.string().trim().min(2, "Technician name is required"),
@@ -52,12 +42,6 @@ export const technicianSchema = z.object({
       (v) => v.every((p) => PINCODE_RE.test(p)),
       "Every pincode must be 6 digits"
     ),
-  /**
-   * Blank means "let the server decide", which is what the invite path has
-   * always done — it has no cap field at all. Requiring a choice here made the
-   * console stricter than both the API and its own sibling form.
-   */
-  bwTotal: z.string(),
   /** Optional profile photo — the URL the crop was uploaded to, never inline
    *  image data, which the API refuses. */
   photo: z

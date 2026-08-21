@@ -16,46 +16,67 @@ interface AvailabilityState {
   online: boolean;
   days: Record<WeekdayKey, boolean>;
   /**
-   * Null until the technician changes it, and then it is THEIR edit.
+   * The technician's OWN edit of the daily cap. Three states, and all three
+   * are different claims:
    *
-   * The daily cap is not ours to invent — it is set by whoever onboarded them
-   * and arrives on the profile as `dailyJobCap`. Seeding this from mock data
-   * showed every technician the same made-up number and told them they would
-   * be offered more work than their manager allows. Read it with
+   *   `undefined` — not edited; whatever their manager set still applies
+   *   `null`      — edited to NO LIMIT
+   *   a number    — edited to that cap
+   *
+   * The daily cap is not ours to invent. Seeding it from mock data once showed
+   * every technician the same made-up number and told them they would be
+   * offered more work than their manager allows. Read it with
    * `useBandwidthPerDay()`, which falls back to the real value.
    */
-  bandwidthPerDay: number | null;
+  bandwidthPerDay: number | null | undefined;
   timeOff: boolean;
 
   setOnline: (next: boolean) => void;
   toggleDay: (day: WeekdayKey) => void;
-  setBandwidth: (next: number) => void;
+  /** `null` means no limit. */
+  setBandwidth: (next: number | null) => void;
   setTimeOff: (next: boolean) => void;
 }
 
-/** Prototype caps the daily job count at 1–12. */
+/**
+ * A cap of zero would mean "never offer me work", which is what going offline
+ * says — so one is the floor. There is deliberately **no ceiling**: a
+ * technician may take as many jobs a day as they are willing to, and the old
+ * limit of twelve was a guess nobody could defend.
+ */
 export const BANDWIDTH_MIN = 1;
-export const BANDWIDTH_MAX = 12;
+
+/** Where the stepper starts when somebody turns a limit on. */
+export const BANDWIDTH_DEFAULT = 5;
 
 export const useAvailabilityStore = create<AvailabilityState>((set) => ({
   online: true,
   days: { ...seed.days },
-  bandwidthPerDay: null,
+  bandwidthPerDay: undefined,
   timeOff: seed.timeOff,
 
   setOnline: (online) => set({ online }),
   toggleDay: (day) => set((s) => ({ days: { ...s.days, [day]: !s.days[day] } })),
   setBandwidth: (next) =>
-    set({ bandwidthPerDay: Math.min(BANDWIDTH_MAX, Math.max(BANDWIDTH_MIN, next)) }),
+    set({
+      bandwidthPerDay: next === null ? null : Math.max(BANDWIDTH_MIN, next),
+    }),
   setTimeOff: (timeOff) => set({ timeOff }),
 }));
 
 /**
  * The cap to show: the technician's own edit if they made one, otherwise the
- * cap their manager set. Never a seeded constant.
+ * cap their manager set, otherwise none. Never a seeded constant.
+ *
+ * `null` means NO LIMIT — which is what a newly onboarded technician has,
+ * because neither the Add screen nor the joining flow asks for a cap any more.
  */
 export function useBandwidthPerDay(): number | null {
   const edited = useAvailabilityStore((s) => s.bandwidthPerDay);
   const assigned = useSession((s) => s.technician?.dailyJobCap);
-  return edited ?? assigned ?? null;
+  // `undefined` means "not edited" and falls through; `null` is a real answer
+  // and must NOT, or turning the limit off would silently restore the
+  // manager's number.
+  if (edited !== undefined) return edited;
+  return assigned ?? null;
 }

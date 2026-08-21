@@ -19,16 +19,21 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from collections import defaultdict
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import jwt
 
 from app.core.config import settings
+from app.core.schemas import ListParams
 from app.core.security import _create_token, decode_token
 from app.features.auth.otp_service import consume_code, issue_code, sign_in
 from app.features.auth.schemas import LoginResponse, OtpRequestResponse
 from app.features.masters.service import get_tree
+from app.models.role import AREA_MANAGER
+from app.models.membership import Membership
 from app.features.onboarding.schemas import (
     InviteResolveOut,
     RegistrationTokenOut,
@@ -125,7 +130,15 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
         vendor_id = None
 
     categories = await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]
-    allowed = await tech_service._inviter_pincode_limit(session, invite)
+    assigned = await tech_service.invite_pincodes(session, invite.id)
+    if not assigned:
+        # Invites created before coverage moved onto them carry none, and a
+        # technician registered from one would be offered no job ever, with
+        # nothing on their phone explaining why. Refuse, and name the fix.
+        raise _conflict(
+            "This invite has no service areas yet — ask your manager to send a "
+            "new one"
+        )
 
     return InviteResolveOut(
         phone=invite.phone,
@@ -133,9 +146,10 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
         regionName=region.name if region else "—",
         invitedByName=inviter.full_name if inviter else None,
         expiresAt=invite.expires_at,
+        regionId=invite.region_id,
         dailyJobCap=invite.daily_job_cap,
         categories=categories,
-        allowedPincodes=allowed,
+        pincodes=assigned,
     )
 
 
@@ -225,19 +239,11 @@ async def register(
         session, invite.company_id, body.subcategoryIds
     )
 
-    # The inviting manager's restriction follows the link: an area manager's
-    # invitee cannot claim coverage outside that manager's area.
-    allowed = await tech_service._inviter_pincode_limit(session, invite)
-    if allowed is not None:
-        outside = sorted(set(body.pincodes) - set(allowed))
-        if outside:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Outside your manager's area: "
-                    f"{', '.join(outside)}. Pick from the areas they cover."
-                ),
-            )
+    # Coverage comes from the INVITE, decided by the manager who sent it. There
+    # is no pincode field in the request any more, so nothing a client sends can
+    # widen it — which is what the old "is this inside your manager's area?"
+    # check existed to police.
+    assigned = await tech_service.invite_pincodes(session, invite.id)
 
     actor = invite.invited_by_user_id
 
@@ -288,8 +294,10 @@ async def register(
     await tech_service.set_certifications(
         session, profile=profile, subcategory_ids=subcategory_ids, actor_id=actor
     )
+    # Copied, not joined: the invite records what was offered and stays as it
+    # was; the profile owns what this technician actually covers.
     await tech_service.set_coverage(
-        session, profile=profile, pincodes=body.pincodes, actor_id=actor
+        session, profile=profile, pincodes=assigned, actor_id=actor
     )
 
     invite.status = REGISTERED
@@ -300,3 +308,4 @@ async def register(
 
     # sign_in commits, so the whole registration lands in one transaction.
     return await sign_in(session, user)
+

@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from app.features.auth.router import router as auth_router
 from app.features.companies.router import router as companies_router
+from app.features.geo.router import router as geo_router
 from app.features.masters.router import router as masters_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
@@ -25,6 +26,9 @@ api_router.include_router(companies_router)
 api_router.include_router(users_router)
 api_router.include_router(rbac_router)
 api_router.include_router(territory_router)
+# The geography master behind territory: what India is, rather than who covers
+# which part of it.
+api_router.include_router(geo_router)
 api_router.include_router(vendors_router)
 # Before /vendors is irrelevant — different prefix — but grouped with it so the
 # vendor surface reads as one thing.

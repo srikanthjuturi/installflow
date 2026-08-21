@@ -42,7 +42,8 @@ prefilled (`ravi.sharma@installflow.in` / `demopass`); any 6 digits pass OTP.
 ## Phase: partly bound
 
 `services/http.ts` is the real transport. Live: auth, companies, **users & roles**, territory,
-the **product master** (`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
+**the geography master** (`/geo/*`, including the Excel importer), the **product master**
+(`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
 
 Still mock, in `src/services/mocks/` behind TanStack Query hooks: tickets, escalations, the
 ledger, AI review, dashboard, vendors, imports and notifications — so binding each stays a
@@ -57,6 +58,14 @@ Two seams to know about:
   Its live sibling, `listCandidateTechnicians`, answers the part that IS knowable — active,
   certified for the ticket's subcategory, covering its pincode — because `GET /technicians`
   already filters on both. It shows the daily CAP and says nothing about today's load.
+- **A technician cannot be EDITED from the console.** `PUT /technicians/{id}` is live and takes
+  everything — name, phone, photo, region, manager, subcategories, pincodes, `dailyJobCap`,
+  status — and `useUpdateTechnician` wraps it, but nothing renders it. `TechTable`'s only row
+  actions are Copy link and Resend, both gated on an UNregistered invite, so a registered
+  technician has no actions at all. Consequence worth knowing: coverage is assigned on the invite
+  form and there is currently no screen where a manager can correct it afterwards; the daily job
+  cap can only be set by the technician, in the app. Building it is mostly assembly now —
+  `technicians/CoverageFields` and the sectioned Add dialog are both reusable.
 - **Assignment has no endpoint.** `assignTechnician` in `services/tickets.ts` rejects with a 501
   the way `forceCloseTicket` does. `tickets.technician_id` and the `Assigned` status exist;
   `ticket_events.kind` has no `assigned` yet, so the real thing needs a migration.
@@ -348,7 +357,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/technicians` | `TechnicianListPage` | |
 | `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history |
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |
-| `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → pincodes |
+| `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named |
+| `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet |
 | `/settings/rules` · `/settings/users` | settings | |
 
 **Domain types are discriminated unions.** `TicketStatus` = `New | Slot Pending | Assigned |
@@ -586,8 +596,10 @@ Blocking or near-blocking. Do not silently pick a side.
    different band boundaries — the technician's cancel screen and the ASM's ledger would show
    different money for the same event. **Needs a ruling before either side binds to an API.**
 2. **Bandwidth model contradicts itself.** Rules Config says "Weighted by job type";
-   `mobileapp/AGENTS.md` says a simple 1–12/day cap; the requirement doc leaves it open — and this
+   `mobileapp/AGENTS.md` said a simple 1–12/day cap; the requirement doc leaves it open — and this
    prototype's own technician records use plain counts (`bwUsed 3 / bwTotal 5`).
+   **Partly settled:** it is a plain count, it is optional (null = no limit, rendered "No limit"),
+   and it has no ceiling. Whether it should ever be WEIGHTED by job type is still open.
 3. **RBAC scoping is undesigned.** Territory defines Region → RSH → ASM → pincodes, but no screen
    shows what an NH sees that an ASM doesn't.
 4. **Dark palette is unapproved** (see Theme).

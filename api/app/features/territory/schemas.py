@@ -1,4 +1,4 @@
-"""Territory view: region → regional heads → area managers → pincodes."""
+"""Territory view: region → regional heads → area managers → states."""
 
 import uuid
 
@@ -16,7 +16,9 @@ class TerritoryPerson(AppModel):
 
 
 class TerritoryAreaManager(TerritoryPerson):
-    pincodes: list[str]
+    #: The states this manager covers. He covers every pincode inside them, but
+    #: that is derived from the master and far too long to list here.
+    states: list[str]
 
 
 class TerritoryRegion(AppModel):
@@ -25,4 +27,7 @@ class TerritoryRegion(AppModel):
     name: str
     regionalHeads: list[TerritoryPerson]
     areaManagers: list[TerritoryAreaManager]
-    pincodeCount: int
+    #: States in this region that no area manager covers yet — the gap somebody
+    #: has to fill, which is more useful than a total nobody can act on.
+    unassignedStates: list[str]
+    stateCount: int

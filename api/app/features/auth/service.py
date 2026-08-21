@@ -23,6 +23,7 @@ from app.features.auth.schemas import (
     CompanyOut,
     LoginResponse,
     MeResponse,
+    MeStateOut,
     MeUpdateRequest,
     MeVendorOut,
     MembershipOut,
@@ -292,7 +293,9 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
         features=features,
         memberships=[_membership_out(user, m, c) for m, c in memberships],
         regions=[RegionOut(id=r.id, code=r.code, name=r.name) for r in scope.regions],
-        pincodes=list(scope.pincodes),
+        states=[
+            MeStateOut(id=s.id, name=s.name, regionId=s.region_id) for s in scope.states
+        ],
         scopeLabel=scope_label(principal.role, scope),
         vendor=vendor,
     )

@@ -50,6 +50,7 @@ const AiReviewDetailPage = lazy(
   () => import("@/pages/ai-review/AiReviewDetailPage")
 );
 const CompaniesPage = lazy(() => import("@/pages/superadmin/CompaniesPage"));
+const GeographyPage = lazy(() => import("@/pages/superadmin/GeographyPage"));
 const ChangePasswordPage = lazy(
   () => import("@/pages/account/ChangePasswordPage")
 );
@@ -161,7 +162,13 @@ export const routes: RouteObject[] = [
     children: [
       {
         element: <SuperadminShell />,
-        children: [{ path: "companies", element: <CompaniesPage /> }],
+        children: [
+          { path: "companies", element: <CompaniesPage /> },
+          // The geography every company shares — a platform record, not a
+          // tenant one, which is why it lives on this surface and not under
+          // Master Data in the ops app.
+          { path: "geography", element: <GeographyPage /> },
+        ],
       },
     ],
   },

@@ -10,20 +10,36 @@ import { zodResolver } from "@hookform/resolvers/zod";
  * the edit schema omits them.
  *
  * Territory rules mirror the server exactly: a regional head covers one or more
- * regions, an area manager exactly one region plus its pincodes, and everyone
- * else carries none (a national head is all-India).
+ * REGIONS and every state inside them comes with it; an area manager covers one
+ * or more STATES, and his region is derived from them rather than chosen; and
+ * everyone else carries none (a national head is all-India).
  */
 
 export const REGIONAL_HEAD = "regional_head";
 export const AREA_MANAGER = "area_manager";
 
+/** Still used by the technician form, which DOES take individual pincodes. */
 export const PINCODE_RE = /^[0-9]{6}$/;
+
+/**
+ * Does this role carry a territory at all?
+ *
+ * Mirrors what `ScopeField` renders — a national head shows "All India", the
+ * two territory roles show a picker, and everyone else shows nothing. The forms
+ * use it to decide whether the Territory section belongs on the page at all: a
+ * section heading over an empty box reads as a field that failed to load.
+ */
+export function roleHasTerritory(role: string): boolean {
+  return (
+    role === "national_head" || role === REGIONAL_HEAD || role === AREA_MANAGER
+  );
+}
 
 /** Shared by both forms so the two can't drift apart. */
 function checkScope(
   role: string,
   regionIds: string[],
-  pincodes: string[],
+  stateIds: string[],
   ctx: z.RefinementCtx
 ) {
   if (role === REGIONAL_HEAD) {
@@ -37,18 +53,13 @@ function checkScope(
     return;
   }
   if (role === AREA_MANAGER) {
-    if (regionIds.length !== 1) {
+    // No region check: an area manager sends states only, and the server
+    // derives his region from them.
+    if (stateIds.length === 0) {
       ctx.addIssue({
         code: "custom",
-        path: ["regionIds"],
-        message: "Select one region",
-      });
-    }
-    if (pincodes.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["pincodes"],
-        message: "Add at least one pincode",
+        path: ["stateIds"],
+        message: "Select at least one state",
       });
     }
   }
@@ -69,9 +80,9 @@ export function createUserSchema(assignableKeys: string[]) {
         .refine((v) => assignableKeys.includes(v), "Select a role"),
       password: z.string().min(8, "At least 8 characters").max(128),
       regionIds: z.array(z.string()),
-      pincodes: z.array(z.string()),
+      stateIds: z.array(z.string()),
     })
-    .superRefine((v, ctx) => checkScope(v.role, v.regionIds, v.pincodes, ctx));
+    .superRefine((v, ctx) => checkScope(v.role, v.regionIds, v.stateIds, ctx));
 }
 
 export type CreateUserValues = z.infer<ReturnType<typeof createUserSchema>>;
@@ -86,7 +97,7 @@ export const EMPTY_INVITE: CreateUserValues = {
   role: "",
   password: "",
   regionIds: [],
-  pincodes: [],
+  stateIds: [],
 };
 
 /** Role is fixed on edit, so it is closed over rather than validated. */
@@ -97,9 +108,9 @@ export function editUserSchema(role: string) {
       phone: z.string().trim().max(32),
       isActive: z.boolean(),
       regionIds: z.array(z.string()),
-      pincodes: z.array(z.string()),
+      stateIds: z.array(z.string()),
     })
-    .superRefine((v, ctx) => checkScope(role, v.regionIds, v.pincodes, ctx));
+    .superRefine((v, ctx) => checkScope(role, v.regionIds, v.stateIds, ctx));
 }
 
 export type EditUserValues = z.infer<ReturnType<typeof editUserSchema>>;

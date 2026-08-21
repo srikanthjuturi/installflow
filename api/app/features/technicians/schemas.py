@@ -18,7 +18,11 @@ from app.core.phone import Phone
 from app.core.schemas import AppModel
 
 Pincode = Annotated[str, Field(pattern=r"^[0-9]{6}$")]
-DailyJobCap = Annotated[int, Field(ge=1, le=12)]
+#: Jobs per day. No ceiling — a technician may take as many as they will — and
+#: `None` everywhere means NO LIMIT, which is a different claim from any number.
+#: The floor stays: a cap of 0 means "never offer this person work", which is
+#: what `status` is for.
+DailyJobCap = Annotated[int, Field(ge=1)]
 
 OnboardingMode = Literal["invite", "direct"]
 RegisteredBy = Literal["self", "manager"]
@@ -41,7 +45,10 @@ class TechnicianCreateRequest(BaseModel):
     managerId: uuid.UUID | None = None
     subcategoryIds: list[uuid.UUID] = Field(min_length=1)
     pincodes: list[Pincode] = Field(min_length=1, max_length=50)
-    dailyJobCap: DailyJobCap = 5
+    #: Optional, and normally absent: the Add screen does not ask for it. A cap
+    #: invented at intake is a number nobody has a basis for yet — the
+    #: technician sets their own in the app, and a manager can change it later.
+    dailyJobCap: DailyJobCap | None = None
 
 
 class TechnicianUpdateRequest(BaseModel):
@@ -63,7 +70,12 @@ class InviteCreateRequest(BaseModel):
     phone: Phone
     regionId: uuid.UUID | None = None
     managerId: uuid.UUID | None = None
-    dailyJobCap: DailyJobCap = 5
+    #: The coverage the manager assigns. Required: an invite without pincodes
+    #: produces a technician nobody can offer a job to, and the app does not
+    #: let them fix it — coverage is the manager's to decide.
+    pincodes: list[Pincode] = Field(min_length=1, max_length=50)
+    #: See `TechnicianCreateRequest.dailyJobCap` — normally absent.
+    dailyJobCap: DailyJobCap | None = None
 
 
 # ── responses ─────────────────────────────────────────────────────────────────
@@ -108,7 +120,8 @@ class TechnicianOut(AppModel):
     subcategories: list[SubcategoryRef]
     pincodes: list[str]
 
-    dailyJobCap: int
+    #: Null means no limit, and both clients render it as "Unlimited".
+    dailyJobCap: int | None
     #: Jobs in flight today. Always 0 until the jobs slice exists — it is
     #: derived from open assignments, not stored.
     bwUsed: int = 0
@@ -137,7 +150,9 @@ class TechnicianInviteOut(AppModel):
     inviteLink: str
     #: Why WhatsApp refused, when it did.
     failureReason: str | None
-    dailyJobCap: int
+    dailyJobCap: int | None
+    #: The coverage assigned when the invite was sent.
+    pincodes: list[str] = Field(default_factory=list)
     sentAt: datetime | None
     registeredAt: datetime | None
     expiresAt: datetime
@@ -170,7 +185,7 @@ class TechnicianSessionOut(AppModel):
     onboardedBy: str
     subcategories: list[SubcategoryRef]
     pincodes: list[str]
-    dailyJobCap: int
+    dailyJobCap: int | None
     status: TechnicianStatus
     #: The three figures the Profile tab shows in its chrome header. Null
     #: rating means no closed jobs yet — the app renders a dash, because 0
