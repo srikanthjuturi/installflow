@@ -128,7 +128,17 @@ export default function RootLayout() {
                 photo before they have a session. */}
             <Stack.Screen
               name="avatar-options"
-              options={{ presentation: 'transparentModal', animation: 'fade' }}
+              options={{
+                presentation: 'transparentModal',
+                animation: 'fade',
+                // `screenOptions.contentStyle` above paints an OPAQUE surface on
+                // EVERY route. `transparentModal` only makes the native container
+                // transparent — that background is still drawn on top of it, so
+                // Profile vanished behind a flat slab and the sheet's scrim dimmed
+                // surface colour instead of the screen. Transparent here is what
+                // lets the scrim dim what is actually behind it.
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
             />
             <Stack.Screen
               name="crop-photo"
