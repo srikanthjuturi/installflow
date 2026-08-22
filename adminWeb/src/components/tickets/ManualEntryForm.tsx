@@ -1,4 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AddressFields,
+  type AddressStatus,
+  type AddressValue,
+} from "@/components/shared/AddressFields";
 import { FormSection } from "@/components/shared/FormSection";
 import { Link } from "react-router";
 import type { Control } from "react-hook-form";
@@ -112,6 +117,35 @@ export function ManualEntryForm({
   // service level changes — a 12h ticket has far fewer than a 48h one.
   const serviceLevelHours = useWatch({ control, name: "serviceLevelHours" });
 
+  /* The address is one control over four form fields, so it is watched and
+     written rather than registered. `AddressFields` owns the Google lookup and
+     the check against the geography master; the form owns the values. */
+  const address = useWatch({ control, name: "address" });
+  const city = useWatch({ control, name: "city" });
+  const state = useWatch({ control, name: "state" });
+  const pincode = useWatch({ control, name: "pincode" });
+  const addressValue = useMemo<AddressValue>(
+    () => ({ address, addressLine2: "", city, state, pincode }),
+    [address, city, state, pincode]
+  );
+  const setAddress = useCallback(
+    (next: AddressValue) => {
+      setValue("address", next.address, { shouldDirty: true });
+      setValue("city", next.city, { shouldDirty: true });
+      setValue("state", next.state, { shouldDirty: true });
+      setValue("pincode", next.pincode, { shouldDirty: true });
+    },
+    [setValue]
+  );
+  /* A pincode the geography master does not hold is refused here, not by the
+     schema: `zodResolver` clears a manually-set error on the next validation
+     pass, so `setError` would not survive the submit it is meant to stop.
+     This one matters more than the other two forms — the ticket's pincode is
+     what technician eligibility and area-manager visibility both route on. */
+  const [addressStatus, setAddressStatus] = useState<AddressStatus>("idle");
+  const addressBlocked =
+    addressStatus === "unknown" || addressStatus === "checking";
+
   /* The whole picker is a cascade, and the vendor is the top of it: a ticket is
      raised against a specific brand's product, so the categories on offer are
      the ones that vendor actually makes something in. Narrowing on the server
@@ -167,6 +201,9 @@ export function ManualEntryForm({
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
   function submit(values: TicketFormValues) {
+    // The button is disabled in this state, but a form can still be submitted
+    // by keyboard while a check is in flight.
+    if (addressBlocked) return;
     onSubmit({
       vendorId: values.vendorId,
       subcategoryId: values.subcategoryId,
@@ -338,44 +375,30 @@ export function ManualEntryForm({
 
             {/* The address is new. Without it the technician has a pincode and
                 a name, which is enough to be dispatched and not enough to
-                arrive. */}
-            <FieldGroup className="grid gap-4">
-              <TextField
-                name="address"
-                label="Address"
-                placeholder="Flat / building, street, area"
-                autoComplete="address-line1"
-                register={register}
-                error={err("address")}
-              />
-            </FieldGroup>
-
-            <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <TextField
-                name="city"
-                label="City"
-                placeholder="Pune"
-                autoComplete="address-level2"
-                register={register}
-                error={err("city")}
-              />
-              <TextField
-                name="state"
-                label="State"
-                placeholder="Maharashtra"
-                autoComplete="address-level1"
-                register={register}
-                error={err("state")}
-              />
-              <TextField
-                name="pincode"
-                label="Pincode"
-                placeholder="6-digit"
-                inputMode="numeric"
-                maxLength={6}
-                register={register}
-                error={err("pincode")}
-              />
+                arrive. Expected date rides along in the same four-across row it
+                has always been in — the grid is the caller's to set. */}
+            <AddressFields
+              idPrefix="ticket"
+              value={addressValue}
+              onChange={setAddress}
+              onStatusChange={setAddressStatus}
+              grid="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+              addressClassName="sm:col-span-2 xl:col-span-4"
+              /* No pincode placeholder: it is a search over the geography
+                 master now, and `AddressFields` prompts for that better than
+                 "6-digit" would. */
+              placeholders={{
+                address: "Flat / building, street, area",
+                city: "Pune",
+                state: "Maharashtra",
+              }}
+              errors={{
+                address: err("address"),
+                city: err("city"),
+                state: err("state"),
+                pincode: err("pincode"),
+              }}
+            >
               <TextField
                 name="expectedDate"
                 label="Expected date"
@@ -387,7 +410,7 @@ export function ManualEntryForm({
                 register={register}
                 error={err("expectedDate")}
               />
-            </FieldGroup>
+            </AddressFields>
           </FormSection>
 
           <FormSection legend="Service level">
@@ -463,7 +486,7 @@ export function ManualEntryForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting || addressBlocked}>
           {isSubmitting && <Spinner data-icon="inline-start" />}
           {/* Follows the slot, like the banner above: with a time already
               agreed there is no request to send. */}

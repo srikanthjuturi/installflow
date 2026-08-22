@@ -4,7 +4,10 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    /* An explicit list means nothing else in @types is picked up implicitly, so
+       google.maps has to be named here for `google.maps.importLibrary` and the
+       `places` types in `lib/googleMaps.ts` to resolve. */
+    "types": ["vite/client", "google.maps"],
     "skipLibCheck": true,
 
     /* Bundler mode */
