@@ -341,7 +341,17 @@ export function MultiSelect({
                     <Combobox.Item
                       key={item.value}
                       value={item.value}
-                      className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                      // hover AND data-highlighted, matching `select.tsx`.
+                      // With `data-highlighted` alone a mouse user got no
+                      // feedback at all — measured: the background stayed
+                      // transparent under the pointer. Base UI drives that
+                      // attribute from pointer MOVEMENT, so it also misses a
+                      // stationary cursor, which this list hits often: the
+                      // popup opens under a resting pointer and the options
+                      // re-render beneath it on every search and page fetch.
+                      // `data-highlighted` is kept, not replaced — it is what
+                      // arrow-key navigation still uses.
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors outline-none select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground"
                     >
                       <Combobox.ItemIndicator>
                         <Check className="size-3.5" aria-hidden />

@@ -383,7 +383,7 @@ function ModelChip({
           <button
             type="button"
             title={title}
-            className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2 py-1.25 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-1 focus-visible:ring-3 focus-visible:ring-brand-500/40"
+            className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2 py-1.25 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-2 focus-visible:ring-3 focus-visible:ring-brand-500/40"
           />
         }
       >
