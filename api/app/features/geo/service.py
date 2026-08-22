@@ -21,8 +21,15 @@ from sqlalchemy import bindparam, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.schemas import ListParams
-from app.features.geo.pincode_overrides import RECOVERED, STATE_OVERRIDES
+from app.features.geo.pincode_overrides import (
+    DISTRICT_OVERRIDES,
+    DISTRICT_RECOVERED,
+    MISSING_PINCODES,
+    RECOVERED,
+    STATE_OVERRIDES,
+)
 from app.features.geo.schemas import (
+    DistrictOut,
     ImportCounts,
     ImportOverride,
     ImportReject,
@@ -102,19 +109,42 @@ def title_case(raw: str) -> str:
 
 
 async def list_regions(session: AsyncSession) -> list[RegionOut]:
-    """Every region, active or not, with its state count.
+    """Every region, active or not, with what sits under it.
 
     Includes regions with ZERO states on purpose: a region nobody can usefully
     be assigned to is exactly what the Geography screen has to surface.
+
+    All three counts are computed here rather than summed in the browser — the
+    console would otherwise add up 36 state rows to draw five tiles, and would
+    get the pincode figure wrong the moment a state is filtered out.
     """
-    counts = (
+    states = (
         select(State.region_id, func.count().label("n"))
         .group_by(State.region_id)
         .subquery()
     )
+    districts = (
+        select(State.region_id, func.count(District.id).label("n"))
+        .join(District, District.state_id == State.id)
+        .group_by(State.region_id)
+        .subquery()
+    )
+    pincodes = (
+        select(State.region_id, func.count(Pincode.code).label("n"))
+        .join(Pincode, Pincode.state_id == State.id)
+        .group_by(State.region_id)
+        .subquery()
+    )
     rows = await session.execute(
-        select(Region, func.coalesce(counts.c.n, 0))
-        .outerjoin(counts, counts.c.region_id == Region.id)
+        select(
+            Region,
+            func.coalesce(states.c.n, 0),
+            func.coalesce(districts.c.n, 0),
+            func.coalesce(pincodes.c.n, 0),
+        )
+        .outerjoin(states, states.c.region_id == Region.id)
+        .outerjoin(districts, districts.c.region_id == Region.id)
+        .outerjoin(pincodes, pincodes.c.region_id == Region.id)
         .order_by(Region.sort_order)
     )
     return [
@@ -123,9 +153,58 @@ async def list_regions(session: AsyncSession) -> list[RegionOut]:
             code=region.code,
             name=region.name,
             isActive=region.is_active,
-            stateCount=int(count),
+            stateCount=int(scount),
+            districtCount=int(dcount),
+            pincodeCount=int(pcount),
         )
-        for region, count in rows
+        for region, scount, dcount, pcount in rows
+    ]
+
+
+async def list_districts(
+    session: AsyncSession,
+    *,
+    state_id: uuid.UUID | None = None,
+    region_id: uuid.UUID | None = None,
+) -> list[DistrictOut]:
+    """Districts with their pincode counts. Unpaged — 754 in all, 75 at most
+    in one state (Uttar Pradesh).
+
+    Counted through `pincode_districts`, because a pincode has no district
+    column: 1,209 of them span two to four districts and are counted in each.
+    So these numbers deliberately do NOT sum to the state's pincode count, and
+    nothing may present them as if they did.
+    """
+    counts = (
+        select(PincodeDistrict.district_id, func.count().label("n"))
+        .group_by(PincodeDistrict.district_id)
+        .subquery()
+    )
+    stmt = (
+        select(District, State, Region, func.coalesce(counts.c.n, 0))
+        .join(State, State.id == District.state_id)
+        .join(Region, Region.id == State.region_id)
+        .outerjoin(counts, counts.c.district_id == District.id)
+    )
+    if state_id is not None:
+        stmt = stmt.where(District.state_id == state_id)
+    if region_id is not None:
+        stmt = stmt.where(State.region_id == region_id)
+
+    rows = await session.execute(
+        stmt.order_by(Region.sort_order, State.name, District.name)
+    )
+    return [
+        DistrictOut(
+            id=district.id,
+            name=district.name,
+            stateId=state.id,
+            stateName=state.name,
+            regionId=region.id,
+            regionName=region.name,
+            pincodeCount=int(count),
+        )
+        for district, state, region, count in rows
     ]
 
 
@@ -173,6 +252,8 @@ async def list_pincodes(
     *,
     state_id: uuid.UUID | None = None,
     region_id: uuid.UUID | None = None,
+    district_id: uuid.UUID | None = None,
+    no_district: bool = False,
 ) -> tuple[list[PincodeOut], int]:
     """Paginated pincodes. This is what a coverage picker searches."""
     stmt = (
@@ -184,6 +265,28 @@ async def list_pincodes(
         stmt = stmt.where(Pincode.state_id == state_id)
     if region_id is not None:
         stmt = stmt.where(State.region_id == region_id)
+    if district_id is not None:
+        # EXISTS rather than a join: the composite primary key means a join on
+        # one district could not duplicate a row today, but a semi-join cannot
+        # start duplicating them later either, and `total` below counts this
+        # same statement.
+        stmt = stmt.where(
+            select(PincodeDistrict.pincode_code)
+            .where(
+                PincodeDistrict.pincode_code == Pincode.code,
+                PincodeDistrict.district_id == district_id,
+            )
+            .exists()
+        )
+    if no_district:
+        # Four real pincodes have no district link at all. Without a way to ask
+        # for them they are unreachable from a district drill-down — visible in
+        # the state's total and in none of its districts, which reads as a bug.
+        stmt = stmt.where(
+            ~select(PincodeDistrict.pincode_code)
+            .where(PincodeDistrict.pincode_code == Pincode.code)
+            .exists()
+        )
     if params.search:
         term = f"%{params.search.lower()}%"
         # District too, not just code and state: the picker labels each row
@@ -464,6 +567,26 @@ def resolve_states(parsed: _Parsed) -> tuple[dict[str, str], list[ImportOverride
             )
         )
 
+    # Pincodes India Post has and this file does not mention AT ALL. Not a bad
+    # row — no row. Added because they are live delivery offices, so somebody
+    # really does receive post there and would otherwise be told we do not
+    # service their address. Their district links are added in
+    # `import_geography`, where the district rows are in scope.
+    for code, (state, _districts, reason) in MISSING_PINCODES.items():
+        if code in chosen:
+            continue  # a fresher sheet already carries it; nothing to add
+        actual = next(
+            (s for s in parsed.state_region if s.lower() == state.lower()), None
+        )
+        if actual is None:
+            continue  # its state is not in this file, so it cannot be placed
+        chosen[code] = actual
+        overrides.append(
+            ImportOverride(
+                pincode=code, state=title_case(actual), reason=reason, outcome="applied"
+            )
+        )
+
     # Pincodes the source could not resolve AND that appear nowhere else. Named
     # one by one: "715 rows skipped" does not tell anybody which addresses just
     # became unservable.
@@ -653,16 +776,75 @@ async def import_geography(
     if not dry_run and (pincodes.created or pincodes.moved):
         await session.flush()
 
+    # Researched district links, for the handful of codes whose every row says
+    # NA in the district column too. Without these they sit in the master under
+    # a state with no district beneath them -- correct, but invisible to
+    # anything walking state -> district -> pincode.
+    #
+    # Computed OUTSIDE the dry-run guard on purpose. A preview that hides a
+    # change it is about to make is worse than no preview, and this slice's
+    # whole promise is that a correction can never diverge from the file
+    # silently. Only the WRITING below is skipped on a dry run.
+    recovered_links: set[tuple[str, uuid.UUID]] = set()
+
+    #: (pincode, district name, why) the override maps want linked.
+    researched: list[tuple[str, str, str]] = (
+        [
+            (code, district, reason)
+            for code, (district, reason) in DISTRICT_RECOVERED.items()
+        ]
+        + [
+            (code, district, "Added with the pincode.")
+            for code, (_state, districts, _why) in MISSING_PINCODES.items()
+            for district in districts
+        ]
+        + [
+            (code, district, reason)
+            for code, (districts, reason) in DISTRICT_OVERRIDES.items()
+            for district in districts
+        ]
+    )
+
+    for code, district_name, reason in researched:
+        state_name = chosen.get(code)
+        if state_name is None:
+            continue  # not in this upload at all
+        state = state_rows.get(state_name.lower())
+        district = (
+            existing.districts.get((state.id, district_name.lower()))
+            if state is not None
+            else None
+        )
+        if district is None:
+            continue  # that district is not in this file; nothing to link to
+        recovered_links.add((code, district.id))
+        overrides.append(
+            ImportOverride(
+                pincode=code,
+                state=title_case(state_name),
+                reason=f"{reason} Linked to {title_case(district_name)}.",
+                outcome=(
+                    "agreed" if (code, district.id) in existing.links else "applied"
+                ),
+            )
+        )
+
     # Pincode -> district links. The file is authoritative for the pincodes it
     # names, so their links are replaced; pincodes it does not name are left
     # alone entirely.
     if not dry_run:
-        wanted: set[tuple[str, uuid.UUID]] = set()
+        wanted: set[tuple[str, uuid.UUID]] = set(recovered_links)
         for code, state_name in chosen.items():
+            # An overridden pincode takes its districts from the override ALONE.
+            # Merging the sheet's in would leave the wrong district linked
+            # beside the right one, which is the failure this map exists to fix.
+            if code in DISTRICT_OVERRIDES:
+                continue
             for name in parsed.pin_districts.get(code, ()):
                 district = district_rows.get((state_name.lower(), name.lower()))
                 if district is not None:
                     wanted.add((code, district.id))
+
         touched = set(chosen)
         stale = {
             link for link in existing.links if link[0] in touched and link not in wanted

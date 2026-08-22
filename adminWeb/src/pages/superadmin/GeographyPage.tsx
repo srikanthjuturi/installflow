@@ -1,43 +1,98 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Globe2, Upload } from "lucide-react";
+import { useSearchParams } from "react-router";
+import { Globe2, Search, Upload, X } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
+import { GeoDetailPanel, NO_DISTRICT } from "@/components/superadmin/GeoDetailPanel";
 import { GeoImportDialog } from "@/components/superadmin/GeoImportDialog";
+import { IndiaMap } from "@/components/superadmin/IndiaMap";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useGeoRegions, useStates } from "@/hooks/useGeo";
-import type { GeoState } from "@/types/geo";
+import { useDistricts, useGeoRegions, useStates } from "@/hooks/useGeo";
+import type { PincodeFilters } from "@/services/geo";
 
 /**
- * The geography master — region → state → district → pincode, for every
- * company at once. Read-only apart from the import: this is reference data, and
+ * The geography master — region → state → district → pincode, for every company
+ * at once. Read-only apart from the import: this is reference data, and
  * hand-editing one state out of 36 while a spreadsheet is the source of truth
  * would be a second, competing way to record the same thing.
+ *
+ * A composer only; every piece of markup lives in `components/superadmin/`.
+ *
+ * The drill-down lives in the QUERY STRING rather than in component state, so a
+ * view of one district is a link somebody can send.
  */
 export default function GeographyPage() {
+  const [params, setParams] = useSearchParams();
+  const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState("");
+
   const states = useStates();
   // `/geo/regions`, not the company-side `/regions` — that one is guarded by
   // CompanyPrincipal and 403s for a superadmin, which left this page stuck on
   // its skeleton.
   const regions = useGeoRegions();
-  const [importing, setImporting] = useState(false);
 
-  const groups = useMemo(() => {
-    if (!regions.data) return [];
-    const byRegion = new Map<string, GeoState[]>();
-    for (const state of states.data ?? []) {
-      const list = byRegion.get(state.regionId);
-      if (list) list.push(state);
-      else byRegion.set(state.regionId, [state]);
-    }
-    // Driven by the region catalog, not by the states — a region with nothing
-    // in it is exactly what this page needs to show.
-    return regions.data.map((region) => ({
-      region,
-      states: byRegion.get(region.id) ?? [],
-    }));
-  }, [regions.data, states.data]);
+  const regionId = params.get("region") ?? undefined;
+  const stateId = params.get("state") ?? undefined;
+  const districtId = params.get("district") ?? undefined;
 
+  const region = regions.data?.find((r) => r.id === regionId);
+  const state = states.data?.find((s) => s.id === stateId);
+  // Only fetched once a state is chosen — the district catalogue is 754 rows
+  // and the top two levels have no use for it.
+  const districts = useDistricts({ stateId }, Boolean(stateId));
+  const district = districts.data?.find((d) => d.id === districtId);
+
+  /** Replace, not push: drilling is browsing, and twelve clicks should not be
+   *  twelve presses of Back to leave the page. */
+  const go = (next: { region?: string; state?: string; district?: string }) => {
+    const query = new URLSearchParams();
+    if (next.region) query.set("region", next.region);
+    if (next.state) query.set("state", next.state);
+    if (next.district) query.set("district", next.district);
+    setParams(query, { replace: true });
+    setSearch("");
+  };
+
+  /** What the pincode reads are scoped to at this level. */
+  const filters: PincodeFilters = useMemo(() => {
+    if (districtId === NO_DISTRICT) return { stateId, noDistrict: true };
+    if (districtId) return { districtId };
+    if (stateId) return { stateId };
+    if (regionId) return { regionId };
+    return {};
+  }, [regionId, stateId, districtId]);
+
+  const scopeLabel =
+    districtId === NO_DISTRICT
+      ? "no district"
+      : (district?.name ?? state?.name ?? region?.name ?? "India");
+
+  const crumbs = [
+    { label: "India", onClick: () => go({}) },
+    ...(region ? [{ label: region.name, onClick: () => go({ region: region.id }) }] : []),
+    ...(state
+      ? [
+          {
+            label: state.name,
+            onClick: () => go({ region: state.regionId, state: state.id }),
+          },
+        ]
+      : []),
+    ...(districtId
+      ? [
+          {
+            label: districtId === NO_DISTRICT ? "No district" : (district?.name ?? "…"),
+            onClick: undefined,
+          },
+        ]
+      : []),
+  ];
+
+  const isPending = states.isPending || regions.isPending;
+  const isError = states.isError || regions.isError;
   const empty = !states.isPending && (states.data?.length ?? 0) === 0;
 
   return (
@@ -61,7 +116,7 @@ export default function GeographyPage() {
         </Button>
       </div>
 
-      {states.isError || regions.isError ? (
+      {isError ? (
         <ErrorState
           title="Couldn't load geography"
           error={states.error ?? regions.error}
@@ -70,7 +125,7 @@ export default function GeographyPage() {
             regions.refetch();
           }}
         />
-      ) : states.isPending || regions.isPending ? (
+      ) : isPending ? (
         <GeographySkeleton />
       ) : empty ? (
         <EmptyState
@@ -86,75 +141,76 @@ export default function GeographyPage() {
         />
       ) : (
         <div className="grid gap-3.5">
-          {groups.map(({ region, states: rows }) => (
-            <section
-              key={region.id}
-              className="rounded-lg border border-line bg-surface"
-            >
-              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-                <h2 className="text-[15px] font-semibold text-ink">
-                  {region.name}
-                </h2>
-                <p className="text-[12px] text-ink-3">
-                  {rows.length} state{rows.length === 1 ? "" : "s"} ·{" "}
-                  {sum(rows, "districtCount").toLocaleString()} districts ·{" "}
-                  {sum(rows, "pincodeCount").toLocaleString()} pincodes
-                </p>
-              </header>
+          <StatTiles regions={regions.data} states={states.data} />
 
-              {rows.length === 0 ? (
-                // Not hidden and not an error — a region nobody can usefully be
-                // assigned to is information.
-                <p className="flex items-center gap-2 px-4 py-3 text-[13px] text-warn">
-                  <AlertTriangle className="size-4 shrink-0" aria-hidden />
-                  No states. An area manager cannot be assigned here, and a
-                  regional head given this region would cover nothing.
-                </p>
-              ) : (
-                <div className="scroll-slim overflow-x-auto">
-                  <table className="w-full text-[13px]">
-                    <caption className="sr-only">
-                      States in {region.name}
-                    </caption>
-                    <thead className="text-ink-3">
-                      <tr className="border-b border-line-2">
-                        <th scope="col" className="px-4 py-2 text-left font-medium">
-                          State
-                        </th>
-                        <th scope="col" className="px-4 py-2 text-right font-medium">
-                          Districts
-                        </th>
-                        <th scope="col" className="px-4 py-2 text-right font-medium">
-                          Pincodes
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((state) => (
-                        <tr
-                          key={state.id}
-                          className="border-b border-line-2 last:border-0"
-                        >
-                          <th
-                            scope="row"
-                            className="px-4 py-2 text-left font-normal text-ink"
-                          >
-                            {state.name}
-                          </th>
-                          <td className="px-4 py-2 text-right tabular-nums text-ink-2">
-                            {state.districtCount.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums text-ink-2">
-                            {state.pincodeCount.toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Breadcrumb crumbs={crumbs} />
+            <div className="relative ms-auto w-full sm:w-72">
+              <Search
+                className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-3"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search pincodes in ${scopeLabel}`}
+                aria-label={`Search pincodes in ${scopeLabel}`}
+                className="ps-8.5"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="absolute end-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-3 transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
               )}
-            </section>
-          ))}
+            </div>
+          </div>
+
+          {/* Side by side once there is room for both. The map is ~510px at its
+              widest, so anything narrower than xl would squeeze the detail list
+              into a column too thin to read — below that they stack. The map
+              sticks so it stays on screen while a long district list scrolls.
+
+              The alternative — a viewport-tall page with the detail column
+              scrolling inside itself — was tried and reverted: it puts a second
+              scrollbar down the middle of the layout, and one page scrollbar
+              reads far better than a card that scrolls in place. */}
+          <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
+            <div className="xl:sticky xl:top-[calc(var(--spacing-topbar)+0.875rem)]">
+              <IndiaMap
+                regions={regions.data}
+                states={states.data}
+                selectedRegionId={regionId}
+                selectedStateId={stateId}
+                onSelectState={(s) => go({ region: s.regionId, state: s.id })}
+                // `null` clears back to the whole country — the legend doubles
+                // as the region filter, so it has to be able to switch off.
+                onSelectRegion={(id) => go(id ? { region: id } : {})}
+              />
+            </div>
+
+            <GeoDetailPanel
+              selection={{ regionId, stateId, districtId }}
+              regions={regions.data}
+              states={states.data}
+              search={search}
+              scopeLabel={scopeLabel}
+              filters={filters}
+              onSelectRegion={(id) => go({ region: id })}
+              onSelectState={(id) => {
+                const next = states.data.find((s) => s.id === id);
+                go({ region: next?.regionId, state: id });
+              }}
+              onSelectDistrict={(id) =>
+                go({ region: state?.regionId, state: stateId, district: id })
+              }
+            />
+          </div>
         </div>
       )}
 
@@ -163,27 +219,95 @@ export default function GeographyPage() {
   );
 }
 
-function sum(rows: GeoState[], key: "districtCount" | "pincodeCount"): number {
-  return rows.reduce((total, row) => total + row[key], 0);
+/* ── pieces ───────────────────────────────────────────────────────────────── */
+
+function Breadcrumb({
+  crumbs,
+}: {
+  crumbs: { label: string; onClick?: () => void }[];
+}) {
+  return (
+    <nav aria-label="Breadcrumb">
+      <ol className="flex flex-wrap items-center gap-1 text-[13px]">
+        {crumbs.map((crumb, i) => {
+          const last = i === crumbs.length - 1;
+          return (
+            <li key={crumb.label + i} className="flex items-center gap-1">
+              {i > 0 && (
+                <span className="text-ink-3" aria-hidden>
+                  /
+                </span>
+              )}
+              {last || !crumb.onClick ? (
+                <span className="font-semibold text-ink" aria-current="page">
+                  {crumb.label}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={crumb.onClick}
+                  className="rounded text-ink-2 transition-colors hover:text-ink hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  {crumb.label}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
 }
 
-/** Matches the real shape — three region cards, so nothing jumps on load. */
+/**
+ * The four totals. Regions and states are counted from the catalogue; districts
+ * and pincodes are SUMMED OVER REGIONS, which is safe — a region's counts come
+ * from the server and no pincode belongs to two regions. Summing the districts
+ * of one state would not be safe, and the detail panel says why.
+ */
+function StatTiles({
+  regions,
+  states,
+}: {
+  regions: { districtCount: number; pincodeCount: number }[];
+  states: unknown[];
+}) {
+  const districts = regions.reduce((n, r) => n + r.districtCount, 0);
+  const pincodes = regions.reduce((n, r) => n + r.pincodeCount, 0);
+  const tiles = [
+    { label: "Regions", value: regions.length },
+    { label: "States", value: states.length },
+    { label: "Districts", value: districts },
+    { label: "Pincodes", value: pincodes },
+  ];
+  return (
+    <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {tiles.map((tile) => (
+        <div
+          key={tile.label}
+          className="rounded-lg border border-line bg-surface px-3.5 py-3"
+        >
+          <dt className="text-[12px] text-ink-2">{tile.label}</dt>
+          <dd className="text-[22px] leading-tight font-semibold tabular-nums text-ink">
+            {tile.value.toLocaleString()}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Matches the real shape — tiles, map, panel — so nothing jumps on load. */
 function GeographySkeleton() {
   return (
     <div className="grid gap-3.5">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <section key={i} className="rounded-lg border border-line bg-surface">
-          <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-40" />
-          </header>
-          <div className="grid gap-2 px-4 py-3">
-            {Array.from({ length: 4 }).map((__, r) => (
-              <Skeleton key={r} className="h-4" style={{ width: `${70 - r * 8}%` }} />
-            ))}
-          </div>
-        </section>
-      ))}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[70px] rounded-lg" />
+        ))}
+      </div>
+      <Skeleton className="h-[420px] rounded-lg" />
+      <Skeleton className="h-64 rounded-lg" />
     </div>
   );
 }

@@ -29,7 +29,13 @@ from app.core.schemas import (
     paginated,
 )
 from app.features.geo import service
-from app.features.geo.schemas import ImportReport, PincodeOut, RegionOut, StateOut
+from app.features.geo.schemas import (
+    DistrictOut,
+    ImportReport,
+    PincodeOut,
+    RegionOut,
+    StateOut,
+)
 from app.features.geo.service import MAX_UPLOAD_BYTES
 
 router = APIRouter(prefix="/geo", tags=["geo"])
@@ -61,6 +67,23 @@ async def list_states(
     return envelope(await service.list_states(db))
 
 
+@router.get("/districts", response_model=ApiEnvelope[list[DistrictOut]])
+async def list_districts(
+    principal: CurrentPrincipal,
+    db: Db,
+    stateId: Annotated[uuid.UUID | None, Query()] = None,
+    regionId: Annotated[uuid.UUID | None, Query()] = None,
+) -> ApiEnvelope[list[DistrictOut]]:
+    """Districts with their pincode counts. Unpaged — 754 in all, 75 at most in
+    one state.
+
+    Their counts do not sum to the state's pincode count; see `DistrictOut`.
+    """
+    return envelope(
+        await service.list_districts(db, state_id=stateId, region_id=regionId)
+    )
+
+
 @router.get("/pincodes", response_model=PaginatedEnvelope[PincodeOut])
 async def list_pincodes(
     principal: CurrentPrincipal,
@@ -68,9 +91,18 @@ async def list_pincodes(
     params: Annotated[ListParams, Depends(list_params)],
     stateId: Annotated[uuid.UUID | None, Query()] = None,
     regionId: Annotated[uuid.UUID | None, Query()] = None,
+    districtId: Annotated[uuid.UUID | None, Query()] = None,
+    #: The pincodes in no district at all — four of them, and otherwise
+    #: unreachable from a district drill-down.
+    noDistrict: Annotated[bool, Query()] = False,
 ) -> PaginatedEnvelope[PincodeOut]:
     rows, total = await service.list_pincodes(
-        db, params, state_id=stateId, region_id=regionId
+        db,
+        params,
+        state_id=stateId,
+        region_id=regionId,
+        district_id=districtId,
+        no_district=noDistrict,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 

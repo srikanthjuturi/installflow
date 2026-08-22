@@ -7,9 +7,12 @@ import {
 } from "@tanstack/react-query";
 import {
   importGeography,
+  listDistricts,
   listGeoRegions,
   listPincodes,
   listStates,
+  lookupPincode,
+  type PincodeFilters,
 } from "@/services/geo";
 import type { ListParams } from "@/types/api";
 import type { GeoState } from "@/types/geo";
@@ -18,8 +21,10 @@ export const geoKeys = {
   all: ["geo"] as const,
   regions: () => ["geo", "regions"] as const,
   states: () => ["geo", "states"] as const,
+  districts: (filters: object) => ["geo", "districts", filters] as const,
   pincodes: (params: ListParams, filters: object) =>
     ["geo", "pincodes", params, filters] as const,
+  pincode: (code: string) => ["geo", "pincode", code] as const,
 };
 
 /**
@@ -83,9 +88,28 @@ export function useStatesByRegion(regionIds: string[]): {
   return { groups, total, isLoading: false, isError: false };
 }
 
+/**
+ * The districts of one state (or one region), with their pincode counts.
+ *
+ * Same session-long cache as the other geo reads — it changes only when a
+ * superadmin re-imports. `enabled` is how the drill-down avoids asking for
+ * all 754 before a state is chosen.
+ */
+export function useDistricts(
+  filters: { stateId?: string; regionId?: string } = {},
+  enabled = true
+) {
+  return useQuery({
+    queryKey: geoKeys.districts(filters),
+    queryFn: () => listDistricts(filters),
+    staleTime: 60 * 60_000,
+    enabled,
+  });
+}
+
 export function usePincodes(
   params: ListParams,
-  filters: { stateId?: string; regionId?: string } = {},
+  filters: PincodeFilters = {},
   enabled = true
 ) {
   return useQuery({
@@ -93,6 +117,43 @@ export function usePincodes(
     queryFn: () => listPincodes(params, filters),
     placeholderData: keepPreviousData,
     enabled,
+  });
+}
+
+/** Six digits — the only shape worth asking the server about. */
+const PINCODE_RE = /^\d{6}$/;
+
+/**
+ * Is this pincode in the geography master, and what is it?
+ *
+ * The one query behind "we don't service that pincode". Three outcomes, and
+ * they are NOT two:
+ *
+ *  - `data` is a `GeoPincode` — real, and it carries the authoritative state,
+ *    region and districts to fill in;
+ *  - `data` is `null` — a real answer: the master does not hold this code;
+ *  - `isError` — we could not ask. That must never render as "no service": a
+ *    dropped request is our problem, not the customer's address.
+ *
+ * Cached for the session like the other geo reference reads. A pincode's
+ * existence only changes when a superadmin re-imports the master, so asking
+ * twice for the same six digits is waste — and forms re-check the same code on
+ * every keystroke in the fields around it.
+ */
+export function usePincodeLookup(code: string) {
+  const clean = code.trim();
+  return useQuery({
+    queryKey: geoKeys.pincode(clean),
+    queryFn: () => lookupPincode(clean),
+    enabled: PINCODE_RE.test(clean),
+    staleTime: 60 * 60_000,
+    // The global handler still toasts a genuine failure (hard rule 9), but the
+    // field shows its own "couldn't check" note, so the title has to say which
+    // request died rather than falling back to a bare status label.
+    meta: { errorTitle: "Couldn't check that pincode" },
+    // One retry, not three: this runs while somebody is typing, and a slow
+    // triple-retry leaves the submit button disabled long after they stopped.
+    retry: 1,
   });
 }
 
@@ -109,7 +170,7 @@ const PINCODE_PAGE = 25;
  */
 export function useInfinitePincodes(
   search: string,
-  filters: { stateId?: string; regionId?: string } = {},
+  filters: PincodeFilters = {},
   enabled = true
 ) {
   const query = useInfiniteQuery({

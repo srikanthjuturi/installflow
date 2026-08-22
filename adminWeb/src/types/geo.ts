@@ -12,6 +12,10 @@ export interface GeoRegion {
   /** May be 0 — a region nothing sits in is what the Geography screen exists
    *  to surface, so it is never filtered out. */
   stateCount: number;
+  /** Counted on the server, down the whole tree. Not summed from `GeoState`:
+   *  a client-side sum is wrong the moment a state list is filtered. */
+  districtCount: number;
+  pincodeCount: number;
 }
 
 export interface GeoState {
@@ -24,13 +28,30 @@ export interface GeoState {
   pincodeCount: number;
 }
 
+export interface GeoDistrict {
+  id: string;
+  name: string;
+  stateId: string;
+  stateName: string;
+  regionId: string;
+  regionName: string;
+  /**
+   * Counted through the pincode↔district join, so the districts of one state
+   * SUM TO MORE than that state's `pincodeCount` — 1,209 pincodes span two to
+   * four districts and are counted in each. Kerala is 1,428 pincodes and 1,450
+   * across its districts. Never render that sum as a total.
+   */
+  pincodeCount: number;
+}
+
 export interface GeoPincode {
   code: string;
   stateId: string;
   stateName: string;
   regionId: string;
   regionName: string;
-  /** Usually one, but 1,258 real pincodes span up to four districts. */
+  /** Usually one, but 1,209 real pincodes span up to four districts — and four
+   *  (222101, 390008, 605012, 804454) belong to none, so this can be empty. */
   districts: string[];
 }
 

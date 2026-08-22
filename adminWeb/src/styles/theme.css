@@ -69,7 +69,7 @@
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
+  --color-chart-empty: var(--chart-empty);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -222,11 +222,41 @@
      clearly against a white surface — faint hairlines made controls hard to see. */
   --input: #cbd2dc;
   --ring: var(--brand-color-400);
-  --chart-1: var(--brand-color-500);
-  --chart-2: var(--info);
-  --chart-3: var(--ok);
-  --chart-4: var(--warn);
-  --chart-5: var(--danger);
+  /* The categorical series palette — identity, not magnitude and not state.
+     Four fixed hues, assigned in order and NEVER cycled; a fifth series folds
+     into "Other" rather than inventing a colour.
+
+     Written out as hex on purpose. These were `brand-500 / info / ok / warn /
+     danger`, which fails three of the five palette checks — the steps sit
+     outside the lightness band, the adjacent CVD separation is ΔE 4.8 for a
+     protan reader, and the normal-vision floor is 14.7, meaning full-colour
+     readers cannot reliably tell one pair apart either. Worse, it reused the
+     status colours: a series tinted "danger red" for being fourth in a list is
+     a lie the reader has already been taught to believe. Nothing referenced
+     these, so re-stepping them broke no screen.
+
+     This set passes every check on the light surface AND on the dark one
+     (#171a23). The one WARN is all-pairs magenta<->teal at ΔE 7.6 for a deutan
+     reader, which is legal ONLY with secondary encoding — so anything using
+     more than two of these at once must also carry a direct label, a gap or a
+     texture. The India map satisfies this with a legend that names every region
+     and its count, plus a per-state tooltip and accessible name; the panel
+     beside it repeats every figure as text. Re-run the validator before
+     changing a value.
+
+     WHITE TEXT ON THESE FILLS IS LARGE-TEXT ONLY. Contrast against #ffffff is
+     5.47 / 4.06 / 3.78 / 5.79 — the teal and the orange clear WCAG's 3:1 large
+     threshold but not the 4.5:1 small one, so any label placed ON a filled mark
+     must be >=18.66px BOLD. Darkening those two to fix it was tried and is
+     worse: it drops all-pairs deutan separation from 7.6 to 5.9, turning the
+     WARN into a hard FAIL. */
+  --chart-1: #4a5fd0;
+  --chart-2: #0d8f6f;
+  --chart-3: #c96a12;
+  --chart-4: #a8398c;
+  /* Not a fifth hue: the "no data" step. A category with nothing in it must
+     read as absent, not as another series. */
+  --chart-empty: var(--surface-3);
   --sidebar: var(--brand-color-500);
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #ffffff;

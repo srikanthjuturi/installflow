@@ -260,6 +260,70 @@ a console is a work surface, so a wide monitor should buy more table, not more m
 one place we deliberately depart from it.) Constrain reading width only where a long paragraph
 would otherwise stretch — a form column, a justification note — never a table or a card grid.
 
+### Chart / categorical colour
+
+`--chart-1…4` is the **categorical series palette** — identity, never magnitude and never state.
+Assign the hues in fixed order and never cycle them; a fifth series folds into "Other" rather
+than inventing a colour. `--chart-empty` is the "no data" step, not a fifth hue.
+
+They were `brand-500 / info / ok / warn / danger` and had **zero call sites**, which was lucky:
+that set fails three of the five palette checks, and it reused the status colours, so a series
+would have been tinted "danger red" purely for being fourth in a list. The current values are
+validated — run the `dataviz` skill's `validate_palette.js` before changing one, on the light
+surface *and* on the dark `#171a23`, and don't eyeball ΔE.
+
+Two constraints the validator output imposes, both recorded in full in `theme.css`:
+
+- **All-pairs colourblind separation is ΔE 7.6** (magenta↔teal, deutan). That is legal ONLY with
+  a secondary encoding, so anything using three or more of these at once must also carry a direct
+  label, a gap or a texture. Colour alone is never the encoding.
+- **White text on these fills is LARGE-TEXT only** (contrast 5.47 / 4.06 / 3.78 / 5.79). A label
+  on a filled mark must be ≥18.66px **bold**. Darkening the two low ones to fix it was tried and
+  is worse — it turns the ΔE 7.6 WARN into a hard FAIL at 5.9.
+
+### The India map
+
+`components/superadmin/IndiaMap.tsx` draws real state boundaries, tinted by region.
+
+**The whole country stays in frame at every level.** Picking a region marks its states where they
+sit; picking a state marks that one. Nothing zooms. A zoom was built first and removed: it threw
+away the one thing a map is for — showing you *where* something is — and it left the cursor
+hovering a neighbour once the animation settled, which is how "Delhi · 22 districts · 318
+pincodes" (Haryana's numbers) reached the header. The marked set gets a dotted `--ink` outline
+and a drop shadow; everything else drops to 12% fill opacity.
+
+Four things about the outlines are load-bearing:
+
+- **The outlines are generated, not hand-held.** `scripts/gen-india-paths.mjs` extracts them from
+  the `@react-map/india` devDependency into `indiaPaths.ts`. Re-run the script; never patch a
+  coordinate. That source was chosen over `@svg-maps/india` because it is post-2019 and carries
+  **Ladakh** as its own outline — the alternative folds Ladakh into J&K and would leave a real
+  state with real pincodes undrawable.
+- **It must depict India's full claimed territory.** J&K and Ladakh extend through
+  Gilgit-Baltistan and Aksai Chin. Publishing a map of India whose boundaries do not conform to
+  the Survey of India is an offence under the Criminal Law Amendment Act 1961, so a dataset that
+  draws the Line of Control instead is not a candidate however good its licence.
+- **A state can own more than one outline.** Our master merged Dadra and Nagar Haveli with Daman
+  and Diu; the map still has them as two landmasses either side of Gujarat.
+- **Outlines are matched to states by NAME**, so a renamed state stops being drawable. It is
+  never dropped silently — the map names it underneath with the reason.
+
+The legend sits **above** the map because it is the region filter, not a footnote — clicking a
+region marks its states, clicking it again clears back to the whole country. A state wins over its
+region when both are in the URL: drilling into Kerala sets `region=South&state=Kerala`, and
+lighting up all seven southern states there would answer a question nobody asked.
+
+The map card is `xl:sticky`, so it holds still while a long district list scrolls beside it —
+verified pinning at 74px through 75 Uttar Pradesh districts.
+
+**There are no district boundaries, deliberately.** The only district geometry on npm
+(`@marun8.k/react-india-drilldown-map`) has transliteration-corrupted names — `>Nj>W` for Anjaw,
+and in Karnataka two different districts are both called `"H"`, so Hassan and Haveri cannot be
+told apart. Matching what is recoverable binds 93.5% of our districts with no false bindings, but
+that leaves Karnataka at 20 of 31 and a map that looks complete while missing a third of a state.
+Districts stay a complete, correct list beside the map until a licensed district boundary set
+exists.
+
 ### Dark mode
 
 Implement the toggle (`ThemeToggle` + `ThemeContext`, `class` strategy, persisted, honouring
@@ -358,7 +422,7 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history |
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |
 | `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named |
-| `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet |
+| `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet; drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link |
 | `/settings/rules` · `/settings/users` | settings | |
 
 **Domain types are discriminated unions.** `TicketStatus` = `New | Slot Pending | Assigned |

@@ -9,6 +9,7 @@
 import { apiGet, apiGetPage, apiUpload } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type {
+  GeoDistrict,
   GeoPincode,
   GeoRegion,
   GeoState,
@@ -47,12 +48,62 @@ export function listStates(): Promise<GeoState[]> {
  */
 export function listPincodes(
   params: ListParams = {},
-  filters: { stateId?: string; regionId?: string } = {}
+  filters: PincodeFilters = {}
 ): Promise<Page<GeoPincode>> {
   const merged: Record<string, string> = { ...params.filters };
   if (filters.stateId) merged.stateId = filters.stateId;
   if (filters.regionId) merged.regionId = filters.regionId;
+  if (filters.districtId) merged.districtId = filters.districtId;
+  // Only ever sent when true — `noDistrict=false` is the default and adding it
+  // to the key would split the cache for no reason.
+  if (filters.noDistrict) merged.noDistrict = "true";
   return apiGetPage<GeoPincode>("/geo/pincodes", { ...params, filters: merged });
+}
+
+export interface PincodeFilters {
+  stateId?: string;
+  regionId?: string;
+  districtId?: string;
+  /**
+   * The pincodes in no district at all — four of them nationally. Without this
+   * they are unreachable by drilling down: present in the state's total and in
+   * none of its districts, which reads as a counting bug.
+   */
+  noDistrict?: boolean;
+}
+
+/**
+ * Districts, with their pincode counts. Unpaged: 754 in all and at most 75 in
+ * one state, so a page control would be furniture.
+ *
+ * Their counts do not sum to the state's — see `GeoDistrict.pincodeCount`.
+ */
+export function listDistricts(
+  filters: { stateId?: string; regionId?: string } = {}
+): Promise<GeoDistrict[]> {
+  const query = new URLSearchParams();
+  if (filters.stateId) query.set("stateId", filters.stateId);
+  if (filters.regionId) query.set("regionId", filters.regionId);
+  const qs = query.toString();
+  return apiGet<GeoDistrict[]>(`/geo/districts${qs ? `?${qs}` : ""}`);
+}
+
+/**
+ * One pincode, or null if the master does not hold it.
+ *
+ * There is no `GET /geo/pincodes/{code}`, and `search` is a PREFIX match on the
+ * code — which for a full six digits is already exact, since every code is
+ * exactly six characters. But `search` also matches state and district names,
+ * so the returned code is compared rather than trusted: a `totalRecords > 0`
+ * test would call a typo serviceable the moment it happened to spell a place.
+ *
+ * Null is a real answer ("we don't cover that"), which is why it is returned
+ * rather than thrown. A thrown error means we could not ASK, and the two must
+ * not be conflated — see `usePincodeLookup`.
+ */
+export async function lookupPincode(code: string): Promise<GeoPincode | null> {
+  const page = await listPincodes({ search: code, limit: 1 });
+  return page.rows[0]?.code === code ? page.rows[0] : null;
 }
 
 /**

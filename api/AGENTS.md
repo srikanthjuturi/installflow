@@ -61,6 +61,27 @@ every company) and the `roles` / `features` catalogues (global, with per-company
 `company_role_features`). `users` is global too, because one person may work for
 several companies — the `memberships` row is the tenant link.
 
+#### Three counting facts about the geography master
+
+They are load-bearing: every one of them makes an obvious-looking sum wrong, and the console
+states each out loud rather than hiding it.
+
+- **District pincode counts do not sum to the state's total.** They are counted through
+  `pincode_districts`, and **1,209** of the 19,490 pincodes sit in two to four districts, so each
+  is counted once per district. Kerala is 1,428 pincodes and 1,450 across its districts. Never
+  present that sum as a total. (Comments saying 1,258 were stale by 49 and have been corrected.)
+- **Four pincodes are in no district at all** — `222101`, `390008`, `605012`, `804454`. Anything
+  that walks state → district → pincode drops them silently. `GET /geo/pincodes?noDistrict=true`
+  is how you reach them, and it exists for exactly that reason.
+- **Five district names belong to two states each** (Aurangabad, Balrampur, Bilaspur, Hamirpur,
+  Pratapgarh). Filter by **id**, never by name — and anything listing pincodes above state level
+  has to show the state, or the two Bilaspurs are indistinguishable.
+
+**Every `/geo` read carries `CurrentPrincipal`, never `require_feature`.** `require_feature` is
+built on `CompanyPrincipal`, which refuses a superadmin outright — a feature key here would lock
+the superadmin out of the very screen that maintains this data. Only the importer and the
+template are `require_superadmin`.
+
 ### 2. RBAC is enforced here, never in the UI.
 
 Hiding a button is presentation. Every endpoint carries `require_feature("...")`, and territory

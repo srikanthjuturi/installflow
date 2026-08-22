@@ -9,7 +9,7 @@ It is loaded once by a superadmin from a spreadsheet; see `features/geo/`.
     District    one state each. Names REPEAT across states, so a district is
                 identified by (state, name) and never by name alone.
     Pincode     one state each. Keyed by the 6-digit code itself, not a UUID.
-    PincodeDistrict   many-to-many: 1,258 real pincodes span up to 4 districts,
+    PincodeDistrict   many-to-many: 1,209 real pincodes span up to 4 districts,
                 so a `district_id` column on `pincodes` would have to lie.
 
 A member's territory is expressed by the join tables:
@@ -150,10 +150,17 @@ class Pincode(Base, AuditMixin):
 class PincodeDistrict(Base, AuditMixin):
     """Which districts a pincode falls in. Many-to-many, because it is.
 
-    1,258 of the 19,490 real pincodes span more than one district and one spans
-    four (505415: Peddapalli, Karimnagar and Jagitial). Storing a single
-    `district_id` on `pincodes` would have to pick one and quietly discard the
-    rest, so this is a join table rather than a column.
+    Of the 19,490 real pincodes: 18,277 sit in one district, 1,142 in two, 58 in
+    three and 9 in four -- so 1,209 span more than one. The widest are 192124
+    (Anantnag, Kulgam, Pulwama, Shopian) and 853204 (Bhagalpur, Katihar,
+    Madhepura, Purnia). Storing a single `district_id` on `pincodes` would have
+    to pick one and quietly discard the rest, so this is a join table rather
+    than a column.
+
+    Four pincodes have no row here at all -- 222101, 390008, 605012 and 804454.
+    They are real and they have a state; the source simply never named a
+    district for them. Anything that walks state -> district -> pincode has to
+    account for them or they silently disappear.
     """
 
     __tablename__ = "pincode_districts"
