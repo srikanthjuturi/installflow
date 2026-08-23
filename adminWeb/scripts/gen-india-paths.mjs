@@ -1,5 +1,5 @@
 /**
- * Generate `src/components/superadmin/indiaPaths.ts` from `@react-map/india`.
+ * Generate `src/components/geo/indiaPaths.ts` from `@react-map/india`.
  *
  *     node scripts/gen-india-paths.mjs
  *
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SOURCE = resolve(here, "../node_modules/@react-map/india/dist/index.mjs");
-const TARGET = resolve(here, "../src/components/superadmin/indiaPaths.ts");
+const TARGET = resolve(here, "../src/components/geo/indiaPaths.ts");
 
 /** Walks the M/L/h/l/v/z subset this data uses. Relative commands are real —
  *  a naive coordinate scan reports a bounding box that is wrong by tens of

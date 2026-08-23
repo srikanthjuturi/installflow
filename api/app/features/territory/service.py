@@ -18,6 +18,7 @@ from app.features.territory.schemas import (
     TerritoryAreaManager,
     TerritoryPerson,
     TerritoryRegion,
+    TerritoryState,
 )
 from app.models.membership import Membership
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD
@@ -89,6 +90,23 @@ async def get_territory(
         ).all()
     )
 
+    # state_id -> the area manager covering it. Built from the memberships this
+    # caller can SEE, so a regional head is told "covered" for a state held by a
+    # manager outside their regions without being shown who — `taken` already
+    # knows it is not free.
+    covering: dict[uuid.UUID, TerritoryPerson] = {}
+    for membership, user in rows:
+        if user.role != AREA_MANAGER:
+            continue
+        person = TerritoryPerson(
+            membershipId=membership.id,
+            name=user.full_name or user.email,
+            email=user.email,
+            isActive=membership.is_active,
+        )
+        for state in scopes[membership.id].states:
+            covering[state.id] = person
+
     out: list[TerritoryRegion] = []
     for region in regions:
         heads: list[TerritoryPerson] = []
@@ -131,6 +149,27 @@ async def get_territory(
                 areaManagers=managers,
                 unassignedStates=[s.name for s in in_region if s.id not in taken],
                 stateCount=len(in_region),
+                states=[
+                    TerritoryState(
+                        id=s.id,
+                        name=s.name,
+                        # `taken` is company-wide; `covering` is only what this
+                        # caller may see. A state can therefore be covered with
+                        # no name attached, which is the honest answer rather
+                        # than reporting it free.
+                        isCovered=s.id in taken,
+                        coveredBy=covering.get(s.id),
+                        # All-India covers everything; a regional head is
+                        # responsible for every state in their regions; an area
+                        # manager only for the states actually assigned to him.
+                        isMine=(
+                            principal.role in ALL_INDIA_ROLES
+                            or s.id in own.state_ids
+                            or (not own.state_ids and region.id in own.region_ids)
+                        ),
+                    )
+                    for s in in_region
+                ],
             )
         )
     return out

@@ -5,12 +5,16 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { GeoDetailPanel, NO_DISTRICT } from "@/components/superadmin/GeoDetailPanel";
 import { GeoImportDialog } from "@/components/superadmin/GeoImportDialog";
-import { IndiaMap } from "@/components/superadmin/IndiaMap";
+import { IndiaMap, type StateMark } from "@/components/geo/IndiaMap";
+import { plural } from "@/lib/plural";
+import { RegionLegend } from "@/components/geo/RegionLegend";
+import { toneFor } from "@/components/geo/regionTone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDistricts, useGeoRegions, useStates } from "@/hooks/useGeo";
 import type { PincodeFilters } from "@/services/geo";
+import type { GeoState } from "@/types/geo";
 
 /**
  * The geography master — region → state → district → pincode, for every company
@@ -90,6 +94,32 @@ export default function GeographyPage() {
         ]
       : []),
   ];
+
+  const regionCodeById = useMemo(
+    () => new Map((regions.data ?? []).map((r) => [r.id, r.code])),
+    [regions.data]
+  );
+
+  /**
+   * Geography colours by REGION — identity, not magnitude and not status.
+   *
+   * A selected state wins over its region because both live in the URL at once:
+   * drilling into Kerala sets `region=South&state=Kerala`, and lighting up all
+   * seven southern states there would answer a question nobody asked.
+   */
+  const markFor = (s: GeoState): StateMark => {
+    const chosen = stateId ? s.id === stateId : regionId ? s.regionId === regionId : null;
+    const dimmed = chosen === false;
+    return {
+      fill: toneFor(regionCodeById.get(s.regionId) ?? "").mapFill,
+      active: !dimmed,
+      // Only outline the chosen set when there IS one — at country level
+      // outlining all 36 would be noise, not emphasis.
+      marked: chosen === true,
+      interactive: true,
+      detail: `${s.regionName} · ${plural(s.districtCount, "district")} · ${plural(s.pincodeCount, "pincode")}`,
+    };
+  };
 
   const isPending = states.isPending || regions.isPending;
   const isError = states.isError || regions.isError;
@@ -183,14 +213,21 @@ export default function GeographyPage() {
           <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
             <div className="xl:sticky xl:top-[calc(var(--spacing-topbar)+0.875rem)]">
               <IndiaMap
-                regions={regions.data}
                 states={states.data}
-                selectedRegionId={regionId}
+                heading={state?.name ?? region?.name ?? "India"}
+                placeholder="Pick a region or a state"
                 selectedStateId={stateId}
+                markFor={markFor}
+                legend={
+                  <RegionLegend
+                    regions={regions.data}
+                    selectedRegionId={regionId}
+                    // `null` clears back to the whole country — the legend
+                    // doubles as the region filter, so it has to switch off.
+                    onSelect={(id) => go(id ? { region: id } : {})}
+                  />
+                }
                 onSelectState={(s) => go({ region: s.regionId, state: s.id })}
-                // `null` clears back to the whole country — the legend doubles
-                // as the region filter, so it has to be able to switch off.
-                onSelectRegion={(id) => go(id ? { region: id } : {})}
               />
             </div>
 

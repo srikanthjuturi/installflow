@@ -1,13 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, Minus, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { GeoRegion, GeoState } from "@/types/geo";
+import type { GeoState } from "@/types/geo";
 import { INDIA_EXTENT, INDIA_PATHS, INDIA_VIEWBOX } from "./indiaPaths";
-import { toneFor } from "./regionTone";
 
 /**
- * India, drawn from real boundaries and tinted by the region that covers each
- * state.
+ * India, drawn from real boundaries. What a colour MEANS is the caller's: it
+ * supplies a mark per state (see `StateMark`).
  *
  * The whole country stays in frame at every level — picking a state highlights
  * it where it sits rather than zooming to it. A zoom looked impressive and read
@@ -158,22 +157,52 @@ function outlineKeys(stateName: string): string[] {
   return single ? [single] : [];
 }
 
+/**
+ * How one state should be drawn. The MAP owns geometry and interaction; what a
+ * colour means is the page's business, so it arrives through here.
+ *
+ * Geography colours by region (identity). Territory colours by coverage
+ * (status). Neither meaning belongs inside a component that knows about
+ * outlines and pinch gestures.
+ */
+export interface StateMark {
+  /** A whole Tailwind fill class, e.g. `fill-chart-1`. Never interpolated —
+   *  a class Tailwind did not see in the source is never generated. */
+  fill: string;
+  /** Full opacity, or dimmed back as context. */
+  active: boolean;
+  /** Dotted outline and a drop shadow: this is one of the chosen set. */
+  marked: boolean;
+  /** Clickable and focusable. A state outside the caller's territory is drawn
+   *  but inert — the country still looks like the country. */
+  interactive: boolean;
+  /** One line for the readout, the tooltip and the accessible name. */
+  detail: string;
+}
+
 interface Props {
-  regions: GeoRegion[];
   states: GeoState[];
-  selectedRegionId?: string;
+  /** Called for every state, every render. Keep it cheap. */
+  markFor: (state: GeoState) => StateMark;
+  /** Shown top-left — usually the selected thing, or the country. */
+  heading: string;
+  /** Shown top-right when nothing is selected or hovered. */
+  placeholder: string;
+  /** Rendered above the map. Colour is never the only encoding, so this is
+   *  required rather than optional. */
+  legend: React.ReactNode;
   selectedStateId?: string;
   onSelectState: (state: GeoState) => void;
-  onSelectRegion: (regionId: string | null) => void;
 }
 
 export function IndiaMap({
-  regions,
   states,
-  selectedRegionId,
+  markFor,
+  heading,
+  placeholder,
+  legend,
   selectedStateId,
   onSelectState,
-  onSelectRegion,
 }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [zoom, setZoom] = useState(MIN_ZOOM);
@@ -196,11 +225,6 @@ export function IndiaMap({
    *  map that was between the fingers and has to stay there. */
   const pinch = useRef<{ gap: number; zoom: number; anchor: Pt } | null>(null);
   const moved = useRef(false);
-
-  const regionById = useMemo(
-    () => new Map(regions.map((r) => [r.id, r])),
-    [regions]
-  );
 
   const applyZoom = (next: number) => {
     const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
@@ -242,36 +266,12 @@ export function IndiaMap({
     return { drawn, unplaced };
   }, [states]);
 
-  /**
-   * Which states are the subject right now — `null` means "all of them", which
-   * is not the same as "none": at country level nothing should be dimmed.
-   *
-   * A state wins over its region because both live in the URL at once. Drilling
-   * into Kerala sets `region=South&state=Kerala`, and highlighting all seven
-   * southern states at that point would answer a question nobody asked.
-   */
-  const active = useMemo(() => {
-    if (selectedStateId) return new Set([selectedStateId]);
-    if (selectedRegionId) {
-      return new Set(
-        states.filter((s) => s.regionId === selectedRegionId).map((s) => s.id)
-      );
-    }
-    return null;
-  }, [selectedStateId, selectedRegionId, states]);
-
-  const selectedState = drawn.find(
-    (d) => d.state.id === selectedStateId
-  )?.state;
-  const selectedRegion = selectedRegionId
-    ? regionById.get(selectedRegionId)
-    : undefined;
-
-  // The header reports what is SELECTED, falling back to what is hovered. Hover
-  // used to win outright, which printed a neighbour's counts beside the chosen
-  // state's name as though they were one fact.
+  // The header reports what is SELECTED, falling back to what is hovered.
+  // Hover used to win outright, which printed a neighbour's counts beside the
+  // chosen state's name as though they were one fact.
+  const selectedState = drawn.find((d) => d.state.id === selectedStateId)?.state;
   const hoveredState = drawn.find((d) => d.state.id === hovered)?.state;
-  const readout = selectedState ?? (!active ? hoveredState : undefined);
+  const readout = selectedState ?? hoveredState;
 
   return (
     <section
@@ -280,7 +280,7 @@ export function IndiaMap({
     >
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-line px-4 py-2.5">
         <h2 id="map-heading" className="text-[15px] font-semibold text-ink">
-          {selectedState?.name ?? selectedRegion?.name ?? "India"}
+          {heading}
         </h2>
         <p
           className="min-h-4 text-[12px] text-ink-2"
@@ -288,76 +288,17 @@ export function IndiaMap({
           aria-atomic="true"
         >
           {readout ? (
-            <>
-              <span className="font-medium text-ink">{readout.regionName}</span>
-              <span className="text-ink-3"> · </span>
-              {plural(readout.districtCount, "district")} ·{" "}
-              {plural(readout.pincodeCount, "pincode")}
-            </>
-          ) : selectedRegion ? (
-            <>
-              <span className="font-medium text-ink">
-                {plural(selectedRegion.stateCount, "state")}
-              </span>
-              <span className="text-ink-3"> · </span>
-              {selectedRegion.pincodeCount.toLocaleString()} pincodes
-            </>
+            markFor(readout).detail
           ) : (
-            <span className="text-ink-3">Pick a region or a state</span>
+            <span className="text-ink-3">{placeholder}</span>
           )}
         </p>
       </header>
 
-      {/* The legend sits ABOVE the map: it is the region filter, not a footnote,
-          and a control you act on belongs before the thing it acts on. Colour is
-          never the only encoding — every entry carries its name and its count,
-          and the panel beside the map repeats all of it as text. */}
-      <ul className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2.5">
-        {regions.map((region) => {
-          const isActive = region.id === selectedRegionId;
-          const empty = region.stateCount === 0;
-          return (
-            <li key={region.id}>
-              <button
-                type="button"
-                // Clicking the region already showing clears it, so the map is
-                // reachable back to whole-India without hunting for a crumb.
-                onClick={() => onSelectRegion(isActive ? null : region.id)}
-                disabled={empty}
-                aria-pressed={isActive}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors",
-                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                  empty && "cursor-default opacity-60",
-                  isActive
-                    ? "border-ink/25 bg-surface-3"
-                    : "border-transparent hover:bg-surface-2"
-                )}
-              >
-                <span
-                  className={cn(
-                    "size-2.5 shrink-0 rounded-[3px]",
-                    toneFor(region.code).swatch,
-                    empty && "ring-1 ring-line ring-inset"
-                  )}
-                  aria-hidden
-                />
-                <span
-                  className={cn(
-                    "text-ink",
-                    isActive ? "font-semibold" : "font-medium"
-                  )}
-                >
-                  {region.name}
-                </span>
-                <span className="text-ink-3 tabular-nums">
-                  {empty ? "empty" : region.stateCount}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {/* Above the map, not below it: a key you read to understand the thing,
+          or a filter you act with, both belong before it. Required, not
+          optional — colour is never the only encoding. */}
+      <div className="border-b border-line px-3 py-2.5">{legend}</div>
 
       <div className="relative px-3 pt-3 pb-2">
         <svg
@@ -499,12 +440,8 @@ export function IndiaMap({
             className="motion-reduce:transition-none"
           >
             {drawn.map(({ state, keys }) => {
-              const region = regionById.get(state.regionId);
-              const tone = toneFor(region?.code ?? "");
-              const isActive = !active || active.has(state.id);
-              // Only mark the chosen set when there IS one — at country level
-              // outlining all 36 would be noise, not emphasis.
-              const marked = Boolean(active) && isActive;
+              const mark = markFor(state);
+              const { active: isActive, marked } = mark;
               return (
                 <g
                   key={state.id}
@@ -512,6 +449,7 @@ export function IndiaMap({
                     // A drag that happens to end over a state is not a click on
                     // it — without this, panning always reselects something.
                     if (moved.current) return;
+                    if (!mark.interactive) return;
                     onSelectState(state);
                   }}
                   onMouseEnter={() => setHovered(state.id)}
@@ -521,28 +459,34 @@ export function IndiaMap({
                   onFocus={() => setHovered(state.id)}
                   onBlur={() => setHovered((h) => (h === state.id ? null : h))}
                   onKeyDown={(e) => {
+                    if (!mark.interactive) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       onSelectState(state);
                     }
                   }}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={state.id === selectedStateId}
-                  aria-label={`${state.name}, ${state.regionName} region, ${plural(state.districtCount, "district")}, ${plural(state.pincodeCount, "pincode")}`}
-                  className="group cursor-pointer outline-none"
+                  role={mark.interactive ? "button" : "img"}
+                  // An inert state leaves the tab order entirely. Tabbing onto
+                  // something that cannot be actioned is worse than skipping it.
+                  tabIndex={mark.interactive ? 0 : -1}
+                  aria-pressed={mark.interactive ? state.id === selectedStateId : undefined}
+                  aria-label={`${state.name}. ${mark.detail}`}
+                  className={cn(
+                    "group outline-none",
+                    mark.interactive ? "cursor-pointer" : "cursor-default"
+                  )}
                   filter={marked ? `url(#${LIFT})` : undefined}
                 >
-                  <title>{`${state.name} — ${state.pincodeCount.toLocaleString()} pincodes`}</title>
+                  <title>{`${state.name} — ${mark.detail}`}</title>
                   {keys.map((k) => (
                     <path
                       key={k}
                       d={INDIA_PATHS[k]}
                       className={cn(
-                        tone.mapFill,
+                        mark.fill,
                         "transition-[fill-opacity,stroke] duration-200 motion-reduce:transition-none",
                         marked ? "stroke-ink" : "stroke-surface",
-                        isActive && "group-hover:[fill-opacity:0.78]",
+                        mark.interactive && "group-hover:[fill-opacity:0.78]",
                         "group-focus-visible:stroke-ink group-focus-visible:stroke-[3]"
                       )}
                       // Attributes, not utilities: Tailwind has no fill-opacity or
@@ -650,10 +594,4 @@ function ZoomButton({
       {children}
     </button>
   );
-}
-
-/** Chandigarh has ONE district, and "1 districts" is what a screen reader
- *  would otherwise read out. */
-function plural(n: number, noun: string): string {
-  return `${n.toLocaleString()} ${noun}${n === 1 ? "" : "s"}`;
 }

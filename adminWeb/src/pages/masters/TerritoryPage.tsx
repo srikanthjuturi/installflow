@@ -1,20 +1,121 @@
-import { Map } from "lucide-react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router";
+// Aliased: a bare `Map` import shadows the global Map constructor, and
+// `new Map<string, T>()` below then fails to typecheck.
+import { Map as MapIcon } from "lucide-react";
+import { TerritoryTree, TerritoryTreeSkeleton } from "@/components/masters/TerritoryTree";
+import { CoverageLegend } from "@/components/masters/CoverageLegend";
+import { TerritoryStatePanel } from "@/components/masters/TerritoryStatePanel";
+import { IndiaMap, type StateMark } from "@/components/geo/IndiaMap";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
-import {
-  TerritoryTree,
-  TerritoryTreeSkeleton,
-} from "@/components/masters/TerritoryTree";
-import { LinkButton } from "@/components/shared/LinkButton";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useStates } from "@/hooks/useGeo";
 import { useTerritory } from "@/hooks/useTerritory";
+import { plural } from "@/lib/plural";
+import type { GeoState } from "@/types/geo";
+import type { TerritoryState } from "@/types/territory";
 
 /**
- * Read-only. The mapping is made by giving a user a region (Regional Head) or a
- * states (Area Manager) on Users & roles — so this page shows the
- * result rather than offering a second, competing way to record it.
+ * Territory mapping — who covers what, drawn on the map.
+ *
+ * **Read-only, on purpose.** The mapping is made by giving a user regions
+ * (Regional Head) or states (Area Manager) on Users & roles, so this page shows
+ * the result and links there rather than becoming a second place that records
+ * the same thing.
+ *
+ * Two data sources, joined by state id:
+ *
+ *   * `/territory` — SCOPED. An all-India role gets every region; a regional
+ *     head only their own; an area manager only the regions their states sit
+ *     in. So this decides what is visible at all.
+ *   * `/geo/states` — the master, all 36. Unscoped because geography is not
+ *     tenant data, and the map needs every outline or India stops looking like
+ *     India.
+ *
+ * A state the territory payload does not mention is therefore OUTSIDE the
+ * caller's territory. It is still drawn — greyed and inert — because a map
+ * missing a third of the country reads as broken, and "not yours" is
+ * information rather than an absence.
  */
 export default function TerritoryPage() {
-  const { data, isLoading, isError, error, refetch } = useTerritory();
+  const [params, setParams] = useSearchParams();
+  const stateId = params.get("state") ?? undefined;
+
+  const territory = useTerritory();
+  const geo = useStates();
+
+  /** state id -> its coverage, for every state this caller may see. */
+  const coverage = useMemo(() => {
+    const out = new Map<string, TerritoryState>();
+    for (const region of territory.data ?? []) {
+      for (const state of region.states) out.set(state.id, state);
+    }
+    return out;
+  }, [territory.data]);
+
+  const counts = useMemo(() => {
+    let covered = 0;
+    let unassigned = 0;
+    for (const state of coverage.values()) {
+      if (state.isCovered) covered += 1;
+      else unassigned += 1;
+    }
+    return {
+      covered,
+      unassigned,
+      outside: Math.max(0, (geo.data?.length ?? 0) - coverage.size),
+    };
+  }, [coverage, geo.data]);
+
+  // An all-India role owns everything they can see, so outlining all 36 says
+  // nothing. Only mark "mine" when it actually distinguishes something — an
+  // area manager among their colleagues' states.
+  const minePartial = useMemo(() => {
+    const values = [...coverage.values()];
+    return values.length > 0 && values.some((s) => !s.isMine);
+  }, [coverage]);
+
+  const markFor = (state: GeoState): StateMark => {
+    const own = coverage.get(state.id);
+
+    if (!own) {
+      return {
+        fill: "fill-chart-empty",
+        // Drawn at FULL opacity even though it is not yours. `active: false`
+        // renders at 12%, and 12% of an already-pale grey left the northern
+        // half of the country invisible — which defeats the reason for drawing
+        // it. Full opacity on a neutral reads as "context", and `interactive:
+        // false` is what actually makes it inert.
+        active: true,
+        marked: false,
+        interactive: false,
+        detail: "Outside your territory",
+      };
+    }
+
+    const who = own.coveredBy?.name;
+    const detail = own.isCovered
+      ? // Covered with no name attached is a real state of affairs, not a bug:
+        // a regional head is told a state is taken without being shown a
+        // manager from a region they do not cover.
+        `${state.regionName} · covered${who ? ` by ${who}` : ""} · ${plural(state.pincodeCount, "pincode")}`
+      : `${state.regionName} · no area manager · ${plural(state.pincodeCount, "pincode")}`;
+
+    return {
+      fill: own.isCovered ? "fill-ok" : "fill-warn",
+      active: true,
+      marked: stateId ? state.id === stateId : minePartial && own.isMine,
+      interactive: true,
+      detail,
+    };
+  };
+
+  const selected = stateId ? geo.data?.find((s) => s.id === stateId) : undefined;
+
+  const isPending = territory.isPending || geo.isPending;
+  const isError = territory.isError || geo.isError;
 
   return (
     <>
@@ -45,22 +146,65 @@ export default function TerritoryPage() {
       {isError ? (
         <ErrorState
           title="Couldn't load territory mapping"
-          error={error}
-          onRetry={() => refetch()}
+          error={territory.error ?? geo.error}
+          onRetry={() => {
+            territory.refetch();
+            geo.refetch();
+          }}
         />
-      ) : isLoading ? (
-        <TerritoryTreeSkeleton />
-      ) : !data || data.length === 0 ? (
+      ) : isPending ? (
+        <TerritorySkeleton />
+      ) : !territory.data || territory.data.length === 0 ? (
         // Not a benign empty: an unmapped pincode has no area manager, so no
         // technician is eligible and nothing gets notified.
         <EmptyState
-          icon={Map}
+          icon={MapIcon}
           title="No territory mapped"
           description="Give a Regional Head their regions and an Area Manager their states before tickets in those areas can be notified."
         />
       ) : (
-        <TerritoryTree regions={data} />
+        <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
+          <div className="xl:sticky xl:top-[calc(var(--spacing-topbar)+0.875rem)]">
+            <IndiaMap
+              states={geo.data}
+              heading={selected?.name ?? "Your territory"}
+              placeholder={
+                counts.unassigned > 0
+                  ? `${plural(counts.unassigned, "state")} with no area manager`
+                  : "Every state you cover has a manager"
+              }
+              selectedStateId={stateId}
+              markFor={markFor}
+              legend={<CoverageLegend counts={counts} />}
+              onSelectState={(s) =>
+                setParams(
+                  s.id === stateId ? {} : { state: s.id },
+                  { replace: true }
+                )
+              }
+            />
+          </div>
+
+          {selected ? (
+            <TerritoryStatePanel
+              state={selected}
+              coverage={coverage.get(selected.id)}
+              onClear={() => setParams({}, { replace: true })}
+            />
+          ) : (
+            <TerritoryTree regions={territory.data} />
+          )}
+        </div>
       )}
     </>
+  );
+}
+
+function TerritorySkeleton() {
+  return (
+    <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,540px)_minmax(0,1fr)]">
+      <Skeleton className="h-[560px] rounded-lg" />
+      <TerritoryTreeSkeleton />
+    </div>
   );
 }

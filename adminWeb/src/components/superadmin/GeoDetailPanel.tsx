@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { PincodeFilters } from "@/services/geo";
 import type { GeoRegion, GeoState } from "@/types/geo";
 import { PincodeChips } from "./PincodeChips";
-import { isNeutral, toneFor } from "./regionTone";
+import { isNeutral, toneFor } from "@/components/geo/regionTone";
 
 /** Where the drill-down currently is. `district: "none"` is the pincodes that
  *  belong to no district — see `NO_DISTRICT`. */

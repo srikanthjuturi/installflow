@@ -283,19 +283,34 @@ Two constraints the validator output imposes, both recorded in full in `theme.cs
 
 ### The India map
 
-`components/superadmin/IndiaMap.tsx` draws real state boundaries, tinted by region.
+`components/geo/IndiaMap.tsx` draws real state boundaries. It lives in `geo/`, not under
+`superadmin/`, because **two pages use it and they are on different surfaces**: Geography is
+superadmin-only, Territory is a company page behind `require_feature("territory.view")` — which
+403s a superadmin. Moving it also split it into its own chunk, so the two pages share one 79 KB
+copy of the outlines instead of bundling them twice.
+
+**The map owns geometry and interaction; the page owns meaning.** It takes a `markFor(state)`
+returning a `StateMark` — fill class, active, marked, interactive, detail — plus a `legend` slot.
+Geography colours by REGION (identity, `--chart-1..4`); Territory colours by COVERAGE (status,
+`ok`/`warn`), which is the one legitimate use of the reserved status colours. Neither meaning
+belongs inside a component that knows about pinch gestures.
 
 **The whole country stays in frame at every level.** Picking a region marks its states where they
-sit; picking a state marks that one. Nothing zooms. A zoom was built first and removed: it threw
-away the one thing a map is for — showing you *where* something is — and it left the cursor
-hovering a neighbour once the animation settled, which is how "Delhi · 22 districts · 318
-pincodes" (Haryana's numbers) reached the header. The marked set gets a dotted `--ink` outline
-and a drop shadow; everything else drops to 12% fill opacity.
+sit; picking a state marks that one. Nothing zooms on selection. An automatic zoom was built first
+and removed: it threw away the one thing a map is for — showing you *where* something is — and it
+left the cursor hovering a neighbour once the animation settled, which is how "Delhi · 22 districts
+· 318 pincodes" (Haryana's numbers) reached the header. Zoom and pan are asked for, by button or
+by pinch.
+
+On Territory the same rule governs scope: a state outside the caller's territory is still DRAWN,
+in neutral at full opacity, but `interactive: false` so it is inert and out of the tab order. It
+was tried at 12% opacity first and the northern half of the country vanished, which defeats the
+reason for drawing it.
 
 Four things about the outlines are load-bearing:
 
-- **The outlines are generated, not hand-held.** `scripts/gen-india-paths.mjs` extracts them from
-  the `@react-map/india` devDependency into `indiaPaths.ts`. Re-run the script; never patch a
+- **They are generated, not hand-held.** `scripts/gen-india-paths.mjs` extracts them from the
+  `@react-map/india` devDependency into `geo/indiaPaths.ts`. Re-run the script; never patch a
   coordinate. That source was chosen over `@svg-maps/india` because it is post-2019 and carries
   **Ladakh** as its own outline — the alternative folds Ladakh into J&K and would leave a real
   state with real pincodes undrawable.
@@ -304,17 +319,10 @@ Four things about the outlines are load-bearing:
   the Survey of India is an offence under the Criminal Law Amendment Act 1961, so a dataset that
   draws the Line of Control instead is not a candidate however good its licence.
 - **A state can own more than one outline.** Our master merged Dadra and Nagar Haveli with Daman
-  and Diu; the map still has them as two landmasses either side of Gujarat.
-- **Outlines are matched to states by NAME**, so a renamed state stops being drawable. It is
-  never dropped silently — the map names it underneath with the reason.
-
-The legend sits **above** the map because it is the region filter, not a footnote — clicking a
-region marks its states, clicking it again clears back to the whole country. A state wins over its
-region when both are in the URL: drilling into Kerala sets `region=South&state=Kerala`, and
-lighting up all seven southern states there would answer a question nobody asked.
-
-The map card is `xl:sticky`, so it holds still while a long district list scrolls beside it —
-verified pinning at 74px through 75 Uttar Pradesh districts.
+  and Diu; the map still has them as two landmasses either side of Gujarat. That is why 36 states
+  render 37 paths.
+- **Outlines are matched to states by NAME**, so a renamed state stops being drawable. It is never
+  dropped silently — the map names it underneath with the reason.
 
 **There are no district boundaries, deliberately.** The only district geometry on npm
 (`@marun8.k/react-india-drilldown-map`) has transliteration-corrupted names — `>Nj>W` for Anjaw,

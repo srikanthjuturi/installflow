@@ -18,6 +18,23 @@ export interface TerritoryAreaManager extends TerritoryPerson {
   states: string[];
 }
 
+export interface TerritoryState {
+  id: string;
+  name: string;
+  /**
+   * Is it covered AT ALL? Company-wide truth, and the field to colour by.
+   * Deliberately separate from `coveredBy`: a regional head can see a state is
+   * taken without being shown the manager, and painting it "free" because the
+   * name is hidden would send them to assign something that then 409s.
+   */
+  isCovered: boolean;
+  /** WHO covers it, when the caller may know. Null does NOT mean uncovered. */
+  coveredBy: TerritoryPerson | null;
+  /** In the CALLER's own scope. An area manager sees their whole region, so
+   *  the map has to tell "mine" from "my colleague's" without guessing. */
+  isMine: boolean;
+}
+
 export interface TerritoryRegion {
   id: string;
   code: string;
@@ -28,4 +45,6 @@ export interface TerritoryRegion {
    *  more useful than a total nobody can act on. */
   unassignedStates: string[];
   stateCount: number;
+  /** Every state in this region with its coverage — what the map draws. */
+  states: TerritoryState[];
 }
