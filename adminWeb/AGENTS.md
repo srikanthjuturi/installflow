@@ -622,6 +622,52 @@ The technician app runs the same flow with its own chrome: tap the avatar →
 camera-or-library sheet → `CropScreen` → upload. Drag-and-drop has no meaning
 there; everything else matches.
 
+## Address entry — one control, everywhere
+
+Every postal address goes through
+[`shared/AddressFields`](src/components/shared/AddressFields.tsx). Do not build a
+fourth set of loose text boxes; three forms had already done that separately and
+none of them checked the pincode against anything.
+
+Five fields, and the order is deliberate: **Address → Pincode → City → State**.
+The pincode DECIDES the last two, so asking for a city first and overwriting it a
+moment later is the wrong order to put a person through.
+
+1. **Search fills the fields.** Google Places, restricted to India, via
+   [`useAddressAutocomplete`](src/components/shared/useAddressAutocomplete.ts).
+   Picking a result writes the street line, city, state and pincode at once.
+2. **The pincode is PICKED from the geography master, never typed free.** It is a
+   combobox over `GET /geo/pincodes`, searchable by code, district or state —
+   the same rule `technicians/CoverageFields` follows. Typing all six digits of a
+   real code selects it without a click, because the digits ARE the answer.
+3. **Whatever the pincode, it is checked.** `usePincodeLookup` answers three
+   ways, and they are not two: a row (fine), `null` (**we do not service it —
+   block submit**), or `isError` (*we could not ask* — never block; a dropped
+   request is our problem, not the customer's address).
+4. **Manual entry always works.** No key, no network, no matching result — every
+   path ends at the same editable fields.
+
+**The caller gates its own submit.** `zodResolver` wipes a manually-set RHF error
+on the next validation pass, so `setError` will not hold. Take `onStatusChange`,
+keep it in state, and disable the button on `"unknown"` and `"checking"`. Guard
+`onSubmit` too — a form still submits on Enter.
+
+Two things worth knowing before changing any of it:
+
+- **Google has no pincode for a road or a neighbourhood** — an area that size
+  spans several. Those picks seed the pincode search with the place name instead,
+  so the dropdown already holds that city's codes and a lone match fills itself
+  (hard rule 10). The remaining fix is the **Geocoding API**, which is NOT enabled
+  on our key; the comment in `useAddressAutocomplete.ts` records what happened
+  when it was tried, and it is worse than it sounds.
+- **`POST /tickets` still accepts any six digits.** This rule is enforced by the
+  UI alone, so the Excel importer and the vendor API intake channel can both
+  still create a ticket nobody can be dispatched to.
+
+The key is `VITE_GOOGLE_MAPS_API_KEY` in `adminWeb/.env` (gitignored). Any
+`VITE_*` value is inlined into the bundle, so it is public by design and only
+safe while it stays **HTTP-referrer restricted** in Google Cloud.
+
 ## Images
 
 Placeholders only, in `public/images/placeholders/` — `hero-placeholder.webp`,

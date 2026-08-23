@@ -290,7 +290,7 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   phone by OTP, and then it all commits in one transaction.
 - **Geography is a loaded master, not free text.** `regions → states → districts → pincodes`,
   global (no `company_id` — India is the same for every company), imported from a spreadsheet by
-  a superadmin on **Super Admin → Geography**. 36 states, 754 districts, 19,490 pincodes.
+  a superadmin on **Super Admin → Geography**. 36 states, 754 districts, 19,496 pincodes.
   A pincode↔district link is many-to-many because 1,258 real pincodes span up to four districts.
 - **A Regional Head covers regions; an Area Manager covers STATES.** Nobody assigns their own
   territory — a senior does it in Users & roles. The RH picks regions and the states under them

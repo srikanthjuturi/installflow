@@ -67,7 +67,7 @@ They are load-bearing: every one of them makes an obvious-looking sum wrong, and
 states each out loud rather than hiding it.
 
 - **District pincode counts do not sum to the state's total.** They are counted through
-  `pincode_districts`, and **1,209** of the 19,490 pincodes sit in two to four districts, so each
+  `pincode_districts`, and **1,209** of the 19,496 pincodes sit in two to four districts, so each
   is counted once per district. Kerala is 1,428 pincodes and 1,450 across its districts. Never
   present that sum as a total. (Comments saying 1,258 were stale by 49 and have been corrected.)
 - **Four pincodes are in no district at all** — `222101`, `390008`, `605012`, `804454`. Anything
