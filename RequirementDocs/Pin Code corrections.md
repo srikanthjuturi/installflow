@@ -1,32 +1,50 @@
 # Pin Code corrections
 
-What was changed when `Reliance Green Tech Pin Code.xlsx` was loaded into the geography master,
-and why. Nothing in the spreadsheet itself was edited — the file remains the source, and every
-correction lives in code where the importer reports it.
+What was corrected in `Reliance Green Tech Pin Code.xlsx`, and why.
 
-Source of truth: **India Post**, via `https://api.postalpincode.in/pincode/<code>` and office-name
-lookups.
+> **The spreadsheet is the single source of truth, and it has been corrected in place.**
+>
+> There are **no overrides in the code**. An earlier version carried researched corrections in
+> `pincode_overrides.py`, and they were removed: an override outranks the file, so fixing the file
+> stopped fixing the master, and you could not tell from the sheet what the master would hold.
+>
+> **To change or add a pincode: edit the sheet and upload it. That is the whole procedure.**
+
+Source of truth for every correction: **India Post**, via `https://api.postalpincode.in/pincode/<code>`
+and office-name lookups.
 
 | Round | Date | What was done |
 |---|---|---|
-| 1 | 2026-08-21 | 52 two-state conflicts and 100 stateless codes checked. 6 states corrected, 4 recovered, 96 left out |
-| 2 | 2026-08-22 | The 4 recovered codes had **no district**; all 4 fixed. The 96 re-checked and **identified**. A coverage audit against India Post added **6 missing pincodes** and corrected **1 wrong district** |
+| 1 | 2026-08-21 | 52 two-state conflicts and 100 stateless codes checked |
+| 2 | 2026-08-22 | Missing districts found; the 96 unplaceable codes identified; a coverage audit against India Post |
+| 3 | 2026-08-23 | **All findings written INTO the sheet. Overrides deleted from the code.** |
 
 > **Round 1 got one thing wrong.** It recorded the 96 leftover codes as "not pincodes — India Post
 > does not recognise them". They *are* real pincodes. Section 4 says what they actually are.
+
+The original file is in git and this is reversible:
+
+```bash
+git show a2d8f65:"RequirementDocs/Reliance Green Tech Pin Code.xlsx" > original.xlsx
+```
+
+`RequirementDocs/apply-pincode-corrections.py` is the script that made every edit — it is
+declarative, so it doubles as the machine-readable list of what changed. Re-runnable against a
+fresh vendor export.
 
 **`Pin Code corrections.xlsx` beside this file carries the same record with the working shown** —
 eight sheets, and it is the one to open if you want to check a decision rather than read about it:
 
 | Sheet | What is in it |
 |---|---|
-| Read me | Why the source sheet is never edited, and where corrections live instead |
-| Summary | Counts before and after, and what was deliberately *not* changed |
+| Read me | How corrections work now, and how to make one |
+| Summary | Counts before and after |
 | **Corrections** | All 21 changes, one row each: what the sheet said, what India Post said, before → after, and why |
-| **Evidence — source sheet** | Every one of the 43 vendor rows behind those changes, with its row number |
-| **Evidence — India Post** | Every one of the 77 post offices, with branch type — this is what breaks the ties |
+| **Sheet edits** | The 55 spreadsheet rows that were actually rewritten or added |
+| **Evidence — source sheet** | The vendor rows behind those changes, with row numbers |
+| **Evidence — India Post** | Every post office, with branch type — this is what breaks the ties |
+| Coverage audit | What was checked against India Post, and what is still open |
 | Unplaceable codes | All 96, with what each turned out to be |
-| **Coverage audit** | What was checked against India Post, what it found, and what is still open |
 | Verification | The checks run afterwards, and their results |
 
 ---
@@ -137,8 +155,8 @@ All four districts **already existed** in the master, so this added four links a
 | `605012` | Puducherry | **Pondicherry** | Pondicherry |
 | `804454` | Bihar | **Patna** | Patna |
 
-Applied with `python -m app.scripts.link_recovered_districts --apply`, which is idempotent, and
-carried by `DISTRICT_RECOVERED` so a re-import produces the same result.
+These were applied by code at the time. **They are now written into the sheet** — see section 5 —
+so a plain re-upload produces the same result with no code involved.
 
 **Pincodes with no district: 4 → 0.**
 
@@ -191,11 +209,83 @@ the master — not because they are fake.
 781041  794116  795160  800033  800036  805142
 ```
 
-If you do want them in the master, they can be added with a **state** (the hub's city gives it)
-but never a district, because India Post does not record one. Say the word and it is a one-line
-change to `pincode_overrides.py`.
+If you do want them in the master, give them a **state** in the sheet (the hub's city gives it)
+and upload. Leave the district blank — India Post does not record one — and they will land as
+pincodes with no district, which `?noDistrict=true` can list.
 
 ---
+
+## 5. What was written into the sheet  *(round 3)*
+
+Everything above used to be applied by code at import time. It is now **in the file**.
+`apply-pincode-corrections.py` made these edits and nothing else: **48 rows rewritten, 7 added**,
+165,627 → 165,634 rows.
+
+### Filled in — the vendor's lookup had failed  (13 rows)
+
+Region, state and district all read `#N/A / NA / NA`.
+
+| Pincode | Rows | Now reads |
+|---|---|---|
+| `222101` | 6 | `North / UTTAR PRADESH / JAUNPUR` |
+| `390008` | 1 | `West / GUJARAT / VADODARA` |
+| `605012` | 1 | `South / PUDUCHERRY / PONDICHERRY` |
+| `804454` | 2 | `East / BIHAR / PATNA` |
+| `494446` | 3 | `West / CHHATTISGARH / BIJAPUR` |
+
+### Corrected — the district was wrong  (18 rows)
+
+| Pincode | Was | Now |
+|---|---|---|
+| `494446` | `West / CHHATTISGARH / RAIPUR` ×18 | `West / CHHATTISGARH / BIJAPUR` |
+
+All nine India Post offices for `494446` — Bhopalpatnam S.O and its branches — are in Bijapur,
+about 300 km from Raipur.
+
+### Made consistent — the pincode straddles a border  (17 rows)
+
+The master stores **one state per pincode**, so a split vote has to resolve to one answer. Rather
+than leave the file tied and let code break the tie, the minority rows now agree with the
+administrative answer:
+
+| Pincode | Rows changed | From | To |
+|---|---|---|---|
+| `605014` | 2 | `TAMIL NADU / VILLUPURAM` | `PUDUCHERRY / PONDICHERRY` |
+| `605106` | 5 | `TAMIL NADU / VILLUPURAM`, `TAMIL NADU / CUDDALORE` | `PUDUCHERRY / PONDICHERRY` |
+| `605107` | 4 | `PUDUCHERRY / PONDICHERRY` | `TAMIL NADU / VILLUPURAM` |
+| `607403` | 2 | `PUDUCHERRY / PONDICHERRY` | `TAMIL NADU / CUDDALORE` |
+| `781029` | 1 | `MEGHALAYA / RI BHOI` | `ASSAM / KAMRUP METRO` |
+| `781131` | 3 | `MEGHALAYA / RI BHOI` | `ASSAM / KAMRUP` |
+
+Ri Bhoi keeps its other 6 pincodes, so no district was orphaned.
+
+### Added — India Post has them, the export never did  (7 rows)
+
+| Pincode | Row added |
+|---|---|
+| `335705` | `West / RAJASTHAN / GANGANAGAR` |
+| `364485` | `West / GUJARAT / RAJKOT` |
+| `393155` | `West / GUJARAT / NARMADA` **and** `West / GUJARAT / BHARUCH` |
+| `396424` | `West / GUJARAT / NAVSARI` |
+| `396440` | `West / GUJARAT / NAVSARI` |
+| `845102` | `East / BIHAR / PASHCHIM CHAMPARAN` |
+
+`393155` gets two rows because it genuinely spans two districts.
+
+### Proof the sheet alone is now enough
+
+Re-importing the corrected file with **every override deleted from the code**:
+
+```
+rows read 165,634   skipped 702   rejected 96
+regions   c0 u4     states c0 u36     districts c0 u754
+pincodes  c0 u19496 m0          <- nothing created, nothing moved
+overrides reported: 0
+district links created: 0   deleted: 0
+```
+
+Zero changes of any kind: the file on its own reproduces the master exactly. `skipped` fell from
+715 to 702 — precisely the 13 `#N/A` rows that were filled in.
 
 ## 6. Coverage audit — is anything missing?  *(round 2)*
 
@@ -294,13 +384,27 @@ Super Admin → Geography screen if it is not part of the structure, or add its 
 
 ---
 
-## Where these corrections live in the code
+## How to change a pincode now
 
-`api/app/features/geo/pincode_overrides.py` — the 6 corrections and 4 recoveries above, each with
-its justification. The importer applies them on top of the file and **reports which ones fired**,
-so they can never diverge from the source silently. If a corrected spreadsheet is uploaded later,
-they become no-ops and the import report says so.
+Edit `Reliance Green Tech Pin Code.xlsx` and upload it on **Super Admin → Geography**. Nothing
+else. The importer reads only that file.
 
-For any pincode still listed under two states that is *not* in that file, the importer takes the
-majority of rows and, where the count is exactly tied, rejects the pincode and names it rather
-than guessing.
+| You want to | Do this |
+|---|---|
+| **Add** a pincode | Add a row: `Region`, `State`, `District`, `Pin Code`. One row per district if it spans several |
+| **Move** a pincode to another state | Change the state on **all** its rows — majority of rows wins |
+| **Change** its district | Change the district on its rows. Links are replaced, not merged |
+| **Correct** a district name | Change it everywhere it appears; the district is keyed by `(state, name)` |
+
+Three importer rules worth knowing:
+
+- **Additive.** It creates and updates what the file names and never deletes what the file omits,
+  so a partial sheet — one state, say — is safe to upload on its own.
+- **Majority wins, ties are refused.** A pincode listed under two states takes whichever has more
+  rows. An exact tie is rejected **by name** rather than guessed at, and the import report says so.
+- **`#N/A` rows are dropped, not imported.** A region or state of `#N/A`/`NA` means the vendor's
+  own lookup failed. Those rows are skipped, and a pincode that appears on nothing else is
+  reported by name.
+
+Every upload gives a **dry-run preview first** — counts, re-parented rows and every rejection with
+its reason — before anything is written.

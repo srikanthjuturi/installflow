@@ -3,7 +3,14 @@
 The importer is additive. It creates and updates what the file names and never
 deletes what the file omits — a partial upload must not silently unmap half of
 India. Everything it decides that a human might disagree with is reported:
-re-parented rows, applied overrides, and every rejected row with its reason.
+re-parented rows and every rejected row, with its reason.
+
+**The spreadsheet is the only source.** There are no hard-coded corrections. An
+earlier version carried researched overrides for a dozen pincodes, and they had
+to go: an override outranks the file, so fixing the file stopped fixing the
+master, and nobody could tell from the sheet what the master would end up
+holding. Corrections are made in the sheet and re-uploaded —
+`RequirementDocs/apply-pincode-corrections.py` records the ones already applied.
 
 Parsing is streamed (`read_only=True`), because the real file is 165,627 rows —
 one per post office, roughly 8.5 rows per pincode.
@@ -21,13 +28,6 @@ from sqlalchemy import bindparam, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.schemas import ListParams
-from app.features.geo.pincode_overrides import (
-    DISTRICT_OVERRIDES,
-    DISTRICT_RECOVERED,
-    MISSING_PINCODES,
-    RECOVERED,
-    STATE_OVERRIDES,
-)
 from app.features.geo.schemas import (
     DistrictOut,
     ImportCounts,
@@ -485,11 +485,16 @@ def parse(data: bytes, filename: str) -> _Parsed:
 
 
 def resolve_states(parsed: _Parsed) -> tuple[dict[str, str], list[ImportOverride]]:
-    """Decide the one state each pincode belongs to.
+    """Decide the one state each pincode belongs to. Majority of rows wins.
 
-    Majority of rows wins. An exact tie is rejected by name rather than guessed
-    at. Researched overrides are applied on top and reported either way — see
-    `pincode_overrides`.
+    An exact tie is REJECTED by name rather than guessed at. There is nothing
+    else: the spreadsheet is the only source, and a hard-coded correction that
+    silently outranked it would mean fixing the file no longer fixed the master.
+    Anything wrong is fixed in the sheet and re-uploaded.
+
+    `overrides` is always empty now. It stays in the signature because the
+    report carries the field and both clients read it, and because a future
+    correction mechanism would report through it.
     """
     chosen: dict[str, str] = {}
     overrides: list[ImportOverride] = []
@@ -497,95 +502,21 @@ def resolve_states(parsed: _Parsed) -> tuple[dict[str, str], list[ImportOverride
     for code, votes in parsed.pin_states.items():
         ranked = votes.most_common()
         if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
-            if code not in STATE_OVERRIDES:
-                parsed.rejects.append(
-                    ImportReject(
-                        pincode=code,
-                        reason=(
-                            "Listed under "
-                            + " and ".join(
-                                f"{title_case(s)} ({n} row{'' if n == 1 else 's'})"
-                                for s, n in ranked
-                            )
-                            + " with no majority — decide which and re-upload"
-                        ),
-                    )
-                )
-                continue
-        chosen[code] = ranked[0][0]
-
-    for code, (state, reason) in STATE_OVERRIDES.items():
-        if code not in parsed.pin_states:
-            continue  # not in this file at all; nothing to correct
-        # Match against the file's own spelling so the override survives a
-        # re-export that changes case.
-        actual = next(
-            (s for s in parsed.pin_states[code] if s.lower() == state.lower()), None
-        )
-        # The corrected-to state is not in this upload at all — a partial sheet,
-        # which the importer supports. Correcting to a state we are not creating
-        # would leave `chosen` pointing at a row that never gets written, and the
-        # write phase would KeyError on it.
-        if actual is None:
             parsed.rejects.append(
                 ImportReject(
                     pincode=code,
                     reason=(
-                        f"Belongs in {title_case(state)}, which is not in this "
-                        "file — upload that state's rows too"
+                        "Listed under "
+                        + " and ".join(
+                            f"{title_case(s)} ({n} row{'' if n == 1 else 's'})"
+                            for s, n in ranked
+                        )
+                        + " with no majority — decide which and re-upload"
                     ),
                 )
             )
-            chosen.pop(code, None)
             continue
-        agreed = chosen.get(code, "").lower() == state.lower()
-        chosen[code] = actual
-        overrides.append(
-            ImportOverride(
-                pincode=code,
-                state=title_case(actual),
-                reason=reason,
-                outcome="agreed" if agreed else "applied",
-            )
-        )
-
-    for code, (state, reason) in RECOVERED.items():
-        if code in chosen:
-            continue  # the file already places it; nothing to recover
-        # Case-INSENSITIVE, like the overrides above: a re-export that title-
-        # cases its states would otherwise silently drop all four of these with
-        # no reject to explain it.
-        actual = next(
-            (s for s in parsed.state_region if s.lower() == state.lower()), None
-        )
-        if actual is None:
-            continue  # its state is not in this file, so it cannot be placed
-        chosen[code] = actual
-        overrides.append(
-            ImportOverride(
-                pincode=code, state=title_case(actual), reason=reason, outcome="applied"
-            )
-        )
-
-    # Pincodes India Post has and this file does not mention AT ALL. Not a bad
-    # row — no row. Added because they are live delivery offices, so somebody
-    # really does receive post there and would otherwise be told we do not
-    # service their address. Their district links are added in
-    # `import_geography`, where the district rows are in scope.
-    for code, (state, _districts, reason) in MISSING_PINCODES.items():
-        if code in chosen:
-            continue  # a fresher sheet already carries it; nothing to add
-        actual = next(
-            (s for s in parsed.state_region if s.lower() == state.lower()), None
-        )
-        if actual is None:
-            continue  # its state is not in this file, so it cannot be placed
-        chosen[code] = actual
-        overrides.append(
-            ImportOverride(
-                pincode=code, state=title_case(actual), reason=reason, outcome="applied"
-            )
-        )
+        chosen[code] = ranked[0][0]
 
     # Pincodes the source could not resolve AND that appear nowhere else. Named
     # one by one: "715 rows skipped" does not tell anybody which addresses just
@@ -776,70 +707,12 @@ async def import_geography(
     if not dry_run and (pincodes.created or pincodes.moved):
         await session.flush()
 
-    # Researched district links, for the handful of codes whose every row says
-    # NA in the district column too. Without these they sit in the master under
-    # a state with no district beneath them -- correct, but invisible to
-    # anything walking state -> district -> pincode.
-    #
-    # Computed OUTSIDE the dry-run guard on purpose. A preview that hides a
-    # change it is about to make is worse than no preview, and this slice's
-    # whole promise is that a correction can never diverge from the file
-    # silently. Only the WRITING below is skipped on a dry run.
-    recovered_links: set[tuple[str, uuid.UUID]] = set()
-
-    #: (pincode, district name, why) the override maps want linked.
-    researched: list[tuple[str, str, str]] = (
-        [
-            (code, district, reason)
-            for code, (district, reason) in DISTRICT_RECOVERED.items()
-        ]
-        + [
-            (code, district, "Added with the pincode.")
-            for code, (_state, districts, _why) in MISSING_PINCODES.items()
-            for district in districts
-        ]
-        + [
-            (code, district, reason)
-            for code, (districts, reason) in DISTRICT_OVERRIDES.items()
-            for district in districts
-        ]
-    )
-
-    for code, district_name, reason in researched:
-        state_name = chosen.get(code)
-        if state_name is None:
-            continue  # not in this upload at all
-        state = state_rows.get(state_name.lower())
-        district = (
-            existing.districts.get((state.id, district_name.lower()))
-            if state is not None
-            else None
-        )
-        if district is None:
-            continue  # that district is not in this file; nothing to link to
-        recovered_links.add((code, district.id))
-        overrides.append(
-            ImportOverride(
-                pincode=code,
-                state=title_case(state_name),
-                reason=f"{reason} Linked to {title_case(district_name)}.",
-                outcome=(
-                    "agreed" if (code, district.id) in existing.links else "applied"
-                ),
-            )
-        )
-
     # Pincode -> district links. The file is authoritative for the pincodes it
     # names, so their links are replaced; pincodes it does not name are left
     # alone entirely.
     if not dry_run:
-        wanted: set[tuple[str, uuid.UUID]] = set(recovered_links)
+        wanted: set[tuple[str, uuid.UUID]] = set()
         for code, state_name in chosen.items():
-            # An overridden pincode takes its districts from the override ALONE.
-            # Merging the sheet's in would leave the wrong district linked
-            # beside the right one, which is the failure this map exists to fix.
-            if code in DISTRICT_OVERRIDES:
-                continue
             for name in parsed.pin_districts.get(code, ()):
                 district = district_rows.get((state_name.lower(), name.lower()))
                 if district is not None:

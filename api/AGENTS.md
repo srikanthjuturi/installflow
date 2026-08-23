@@ -61,6 +61,22 @@ every company) and the `roles` / `features` catalogues (global, with per-company
 `company_role_features`). `users` is global too, because one person may work for
 several companies — the `memberships` row is the tenant link.
 
+#### The spreadsheet is the only source. There are no overrides.
+
+`RequirementDocs/Reliance Green Tech Pin Code.xlsx` is what the importer reads, and nothing
+else outranks it. An earlier version carried researched corrections in a `pincode_overrides`
+module; they were deleted because an override outranks the file — so fixing the file stopped
+fixing the master, and you could not tell from the sheet what the master would end up holding.
+
+**To change or add a pincode: edit the sheet and upload it.** Corrections already applied are in
+`RequirementDocs/apply-pincode-corrections.py` (declarative, re-runnable on a fresh vendor
+export) and explained in `Pin Code corrections.md`.
+
+Three importer rules that make that safe: it is **additive** (creates and updates what the file
+names, never deletes what it omits, so a one-state sheet is fine on its own); a **tie is refused
+by name** rather than guessed at; and **`#N/A` rows are dropped**, with any pincode that appears
+on nothing else reported individually.
+
 #### Three counting facts about the geography master
 
 They are load-bearing: every one of them makes an obvious-looking sum wrong, and the console
@@ -69,10 +85,11 @@ states each out loud rather than hiding it.
 - **District pincode counts do not sum to the state's total.** They are counted through
   `pincode_districts`, and **1,209** of the 19,496 pincodes sit in two to four districts, so each
   is counted once per district. Kerala is 1,428 pincodes and 1,450 across its districts. Never
-  present that sum as a total. (Comments saying 1,258 were stale by 49 and have been corrected.)
-- **Four pincodes are in no district at all** — `222101`, `390008`, `605012`, `804454`. Anything
-  that walks state → district → pincode drops them silently. `GET /geo/pincodes?noDistrict=true`
-  is how you reach them, and it exists for exactly that reason.
+  present that sum as a total.
+- **Some pincodes may sit in no district at all.** None do today — the four that did were fixed
+  in the sheet — but the sheet can always carry a blank district again, and anything that walks
+  state → district → pincode drops them silently. `GET /geo/pincodes?noDistrict=true` is how you
+  reach them, and it exists for exactly that reason.
 - **Five district names belong to two states each** (Aurangabad, Balrampur, Bilaspur, Hamirpur,
   Pratapgarh). Filter by **id**, never by name — and anything listing pincodes above state level
   has to show the state, or the two Bilaspurs are indistinguishable.
