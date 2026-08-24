@@ -58,7 +58,7 @@ export function JobCard({ job, onPress, variant = 'mine' }: JobCardProps) {
         )}
 
         <Text style={{ fontFamily: 'Roboto_500Medium', fontSize: 11, color: color.textMuted }}>
-          {job.id}
+          {job.code ?? job.id}
         </Text>
       </View>
 

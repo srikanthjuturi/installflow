@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { TitleBar } from '@/components/layout';
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
+import { palette } from '@/theme/tokens';
 
 /**
  * Screen 4 — Open job pool.
@@ -20,7 +21,7 @@ import { color } from '@/theme/semantic';
  */
 export function PoolScreen() {
   const router = useRouter();
-  const { data, isPending, isError, refetch } = usePool();
+  const { data, isPending, isError, isRefetching, refetch } = usePool();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -30,6 +31,18 @@ export function PoolScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
+        // The list polls itself, but a technician who has just been told about
+        // a job on the phone will pull anyway — and being unable to is what
+        // makes an app feel stuck. `isPending` is excluded so the skeleton and
+        // the spinner never both run.
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching && !isPending}
+            onRefresh={() => void refetch()}
+            tintColor={palette.primary[500]}
+            colors={[palette.primary[500]]}
+          />
+        }
       >
         <Text
           style={{

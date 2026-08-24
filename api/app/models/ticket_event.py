@@ -53,9 +53,9 @@ from app.db.base_class import Base
 from app.db.mixins import AuditMixin, IdMixin
 
 #: What kind of thing happened. Deliberately only what the code writes TODAY.
-#: Assignment and release belong here too, and will be added by the migration
-#: that adds the accept flow — declaring the vocabulary ahead of the rows is how
-#: `audit_logs` ended up a table nothing ever wrote to.
+#: Release belongs here too and will be added by the migration that adds the
+#: cancel flow — declaring the vocabulary ahead of the rows is how `audit_logs`
+#: ended up a table nothing ever wrote to.
 EVENT_KINDS = (
     "created",
     "slot_requested",
@@ -67,6 +67,10 @@ EVENT_KINDS = (
     #: needs to see.
     "confirmation_sent",
     "status_changed",
+    #: A technician took the job out of the pool. The row the daily job cap is
+    #: counted from — "jobs assigned to this technician on this DATE" is a
+    #: question `tickets.status` cannot answer, because it keeps no history.
+    "assigned",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -115,7 +119,7 @@ class TicketEvent(Base, IdMixin, AuditMixin):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('created', 'slot_requested', 'slot_confirmed', "
-            "'confirmation_sent', 'status_changed')",
+            "'confirmation_sent', 'status_changed', 'assigned')",
             name="kind",
         ),
         CheckConstraint(

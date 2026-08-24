@@ -8,11 +8,12 @@ import {
   useFonts,
 } from '@expo-google-fonts/roboto';
 import { RobotoMono_400Regular, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -36,9 +37,14 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 /**
- * Jobs and earnings are still mock; auth and onboarding are real. `retry: false`
+ * The pool, auth and onboarding are real; the rest is still mock. `retry: false`
  * stays because a field technician on a bad connection is better served by an
  * immediate error they can act on than by three silent retries.
+ *
+ * `refetchOnWindowFocus` stays OFF as the default and is turned on per query —
+ * today only by `usePool`. Most of what this app reads does not change while
+ * somebody is looking at it, and refetching all of it on every app switch would
+ * spend a field technician's data for nothing.
  */
 function createQueryClient() {
   return new QueryClient({
@@ -52,9 +58,38 @@ function createQueryClient() {
   });
 }
 
+/**
+ * Teach TanStack Query what "focused" means on a phone.
+ *
+ * React Native has no window, so `refetchOnWindowFocus` is inert until
+ * something drives `focusManager` — without this it is a prop that reads as
+ * working and does nothing. `AppState` is that something: coming back from the
+ * lock screen or the app switcher marks every query stale and refetches it.
+ *
+ * This is what makes "no refresh needed" true in the case that matters most.
+ * A technician who pockets their phone for ten minutes and reopens it wants the
+ * pool as it is NOW, not as it was, and not in twenty seconds' time when the
+ * next poll lands.
+ */
+function useAppStateFocus() {
+  useEffect(() => {
+    const onChange = (state: AppStateStatus) => {
+      // `inactive` is the iOS half-state during an app switch or an incoming
+      // call. Treated as still focused: it is not backgrounded, and flipping
+      // focus off and on again would fire a refetch every time the app switcher
+      // is opened.
+      focusManager.setFocused(state !== 'background');
+    };
+    const subscription = AppState.addEventListener('change', onChange);
+    return () => subscription.remove();
+  }, []);
+}
+
 export default function RootLayout() {
   const [queryClient] = useState(createQueryClient);
   const hydrated = useSession((s) => s.hydrated);
+
+  useAppStateFocus();
 
   const [fontsLoaded, fontError] = useFonts({
     Roboto_400Regular,

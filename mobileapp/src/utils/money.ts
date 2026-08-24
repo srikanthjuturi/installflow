@@ -6,8 +6,15 @@
 
 const RUPEE = '₹';
 
-/** 42000 → "₹420" · 42050 → "₹420.50" */
-export function formatPaise(paise: number): string {
+/**
+ * 42000 → "₹420" · 42050 → "₹420.50" · null → "—"
+ *
+ * Null is "not known", and it renders as a dash rather than ₹0 for the reason
+ * the technician's null rating does: zero is a claim, and here it would be a
+ * claim that the job pays nothing. Nothing stores a payout yet.
+ */
+export function formatPaise(paise: number | null | undefined): string {
+  if (paise === null || paise === undefined) return '—';
   const abs = Math.abs(paise);
   const rupees = Math.floor(abs / 100);
   const remainder = abs % 100;
