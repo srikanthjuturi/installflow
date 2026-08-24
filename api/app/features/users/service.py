@@ -55,7 +55,36 @@ def _region_name(scope: Scope, region_id: uuid.UUID) -> str:
     return next((r.name for r in scope.regions if r.id == region_id), "")
 
 
-def _user_out(membership: Membership, user: User, scope: Scope) -> UserOut:
+async def _appointed_by(
+    session: AsyncSession, memberships: list[Membership]
+) -> dict[uuid.UUID, str]:
+    """Map membership id → the name of the manager who appointed them.
+
+    `created_by` is the appointing manager, never "who typed it", and it is
+    nullable — a system-seeded row has none. Batched into one query rather than
+    joined so the single-row paths can share it without a second join shape,
+    and so a page of twenty costs one lookup instead of twenty.
+    """
+    ids = {m.created_by for m in memberships if m.created_by is not None}
+    if not ids:
+        return {}
+    rows = await session.execute(
+        select(User.id, User.full_name).where(User.id.in_(ids))
+    )
+    names = {uid: name for uid, name in rows if name}
+    return {
+        m.id: names[m.created_by]
+        for m in memberships
+        if m.created_by is not None and m.created_by in names
+    }
+
+
+def _user_out(
+    membership: Membership,
+    user: User,
+    scope: Scope,
+    appointed_by: str | None = None,
+) -> UserOut:
     return UserOut(
         membershipId=membership.id,
         userId=user.id,
@@ -67,6 +96,8 @@ def _user_out(membership: Membership, user: User, scope: Scope) -> UserOut:
         profileImageUrl=user.profile_image_url,
         isActive=membership.is_active,
         managerId=membership.manager_id,
+        appointedById=membership.created_by,
+        appointedBy=appointed_by,
         regions=[
             RegionOut(id=r.id, code=r.code, name=r.name) for r in scope.regions
         ],
@@ -358,7 +389,10 @@ async def list_users(
         await session.execute(stmt.limit(params.limit).offset((params.page - 1) * params.limit))
     ).all()
     scopes = await load_scopes(session, [m.id for m, _u in rows])
-    return [_user_out(m, u, scopes[m.id]) for m, u in rows], int(total or 0)
+    appointed = await _appointed_by(session, [m for m, _u in rows])
+    return [
+        _user_out(m, u, scopes[m.id], appointed.get(m.id)) for m, u in rows
+    ], int(total or 0)
 
 
 async def create_user(
@@ -476,7 +510,8 @@ async def create_user(
     await session.refresh(membership)
     await session.refresh(user)
     scope = await load_scope(session, membership.id)
-    return _user_out(membership, user, scope)
+    appointed = await _appointed_by(session, [membership])
+    return _user_out(membership, user, scope, appointed.get(membership.id))
 
 
 async def get_user(
@@ -484,7 +519,8 @@ async def get_user(
 ) -> UserOut:
     membership, user = await _load_membership(session, principal, membership_id)
     scope = await load_scope(session, membership.id)
-    return _user_out(membership, user, scope)
+    appointed = await _appointed_by(session, [membership])
+    return _user_out(membership, user, scope, appointed.get(membership.id))
 
 
 async def update_user(
@@ -559,7 +595,8 @@ async def update_user(
     await session.refresh(membership)
     await session.refresh(user)
     scope = await load_scope(session, membership.id)
-    return _user_out(membership, user, scope)
+    appointed = await _appointed_by(session, [membership])
+    return _user_out(membership, user, scope, appointed.get(membership.id))
 
 
 async def delete_user(

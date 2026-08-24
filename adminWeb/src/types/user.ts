@@ -29,6 +29,11 @@ export interface CompanyUser {
   profileImageUrl: string | null;
   isActive: boolean;
   managerId: string | null;
+  /** Who appointed this member — `memberships.created_by`. NOT `managerId`,
+   *  which is the reporting line and may point elsewhere. Null on a
+   *  system-seeded row. */
+  appointedById: string | null;
+  appointedBy: string | null;
   /** Territory: regions for a regional head, states for an area manager. An
    *  AM's regions are derived from his states and returned here too. */
   regions: Region[];

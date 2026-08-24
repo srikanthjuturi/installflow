@@ -142,6 +142,22 @@ export function UsersTable({
         ),
     },
     {
+      id: "appointedBy",
+      header: "Appointed by",
+      // The manager who appointed them (`created_by`), not who they report to.
+      // Nullable — a system-seeded row has nobody, and reads as a dash the same
+      // way an absent phone does.
+      cell: (u) =>
+        u.appointedBy ? (
+          <span className="text-[13px] text-ink-2">{u.appointedBy}</span>
+        ) : (
+          <span className="text-xs text-ink-3">
+            <span aria-hidden>—</span>
+            <span className="sr-only">Not recorded</span>
+          </span>
+        ),
+    },
+    {
       id: "status",
       header: "Status",
       cell: (u) => (
