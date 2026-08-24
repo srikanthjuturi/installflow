@@ -10,8 +10,13 @@ __pycache__/
 .venv/
 venv/
 
-# Environment / secrets
+# Environment / secrets — every variant except the checked-in template.
+# A pattern, not literal names: `.env` alone did not cover a dated backup
+# like `.env.bak.20260824`, which holds a live password and would have been
+# committed by `git add .`.
 .env
+.env.*
+!.env.example
 
 # OS / editor
 .DS_Store
@@ -20,4 +25,3 @@ venv/
 
 # Azure publish profile — contains a deployment password
 *.PublishSettings
-.env.production
