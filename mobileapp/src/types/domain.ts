@@ -6,7 +6,8 @@
  */
 
 export type JobStatus = 'pool' | 'upcoming' | 'inprogress' | 'completed' | 'cancelled';
-export type SlaType = '24h' | '48h';
+/** The four service levels the API offers. The prototype only ever drew two. */
+export type SlaType = '12h' | '24h' | '36h' | '48h';
 export type ProofKind = 'barcode' | 'serial' | 'photos' | 'live';
 export type VerificationOutcome = 'match' | 'mismatch' | 'unreadable';
 
@@ -63,8 +64,23 @@ export interface TechnicianSession {
 }
 
 export interface Job {
+  /**
+   * The ticket's UUID — a route param and an API path segment, never rendered.
+   * Mock jobs still use their human code here; both are opaque to routing.
+   */
   id: string;
-  category: ProductCategory;
+  /**
+   * `INST-240912`. What the cards actually print and what ops quote on the
+   * phone. Optional because the mock dataset predates it and uses `id` for
+   * both; read it as `job.code ?? job.id`.
+   */
+  code?: string;
+  /**
+   * The subcategory's name, as the server spells it — Television, Air
+   * Conditioner. A plain string rather than `ProductCategory` since the jobs
+   * slice bound: the catalogue is company-scoped data, not a fixed six.
+   */
+  category: string;
   model: string;
   area: string;
   pincode: string;
@@ -72,10 +88,26 @@ export interface Job {
   slot: string;
   /** Compact form for dense list rows, e.g. '2–4 PM'. */
   slotShort: string;
+  /**
+   * `12h` / `24h` / `36h` / `48h`. Widened from the two the prototype drew:
+   * the server offers four service levels and rendering a 36-hour ticket as
+   * one of the other two would be wrong on screen.
+   */
   sla: SlaType;
-  distanceLabel: string;
-  /** Integer paise. Never a float — format at the edge. */
-  payoutPaise: number;
+  /**
+   * How far the job is. **Optional, and absent on every real job today** —
+   * nothing stores a customer's coordinates, so there is nothing to measure
+   * from. The card omits the segment rather than printing a guess.
+   */
+  distanceLabel?: string;
+  /**
+   * Integer paise. Never a float — format at the edge.
+   *
+   * **Null on every real job today.** There is no payout column on `tickets`;
+   * what a job pays belongs to the ledger, which does not exist yet. Renders
+   * as "—", never ₹0 — a zero is a claim about money nobody has made.
+   */
+  payoutPaise: number | null;
   status: JobStatus;
   /**
    * Hours until the committed slot; negative means past. Single source for

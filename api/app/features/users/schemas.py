@@ -65,6 +65,12 @@ class UserOut(AppModel):
     profileImageUrl: str | None
     isActive: bool
     managerId: uuid.UUID | None
+    #: Who APPOINTED this user — `memberships.created_by`, the manager who
+    #: was acting when the row was written. NOT `managerId`: that is the
+    #: reporting line and is allowed to point somewhere else entirely.
+    #: Null on a system-seeded row, which the table renders as a dash.
+    appointedById: uuid.UUID | None
+    appointedBy: str | None
     regions: list[RegionOut]
     #: An area manager's states. His pincode coverage is every code inside
     #: them, derived from the master — it is deliberately NOT returned here,

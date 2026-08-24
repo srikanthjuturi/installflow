@@ -7,7 +7,11 @@ Live today: auth (password + technician OTP + change-password), companies, users
 territory, **the geography master and its spreadsheet importer**, the product master, technician
 onboarding in both modes, **vendor accounts and their sub-users**, and tickets (vendor intake,
 the list, and the customer's own slot confirmation).
-Still to come: jobs, the pool, proof capture, escalations, the ledger.
+The **job pool** is real too: a confirmed ticket (`status = 'New'`) is offered through
+`/jobs/pool` to the technicians whose `technician_pincodes` and `technician_subcategories`
+match it, and taken by a guarded UPDATE whose rowcount settles first-accept-wins.
+Still to come: my-jobs and job detail, proof capture, escalations, the ledger — and the daily
+job cap, which counts `assigned` events per IST date and now has rows to count.
 
 ---
 

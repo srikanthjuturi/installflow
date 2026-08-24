@@ -1,11 +1,11 @@
-import { jobs } from '@/mocks/db';
-import { delay } from '@/mocks/delay';
+import { toAcceptedJob, type JobDto } from '@/features/jobs/api/jobs';
+import { ApiError, authedRequest } from '@/lib/api';
 import type { Job } from '@/types/domain';
 
 /**
  * Losing the race is a normal outcome, not a failure — assignment is
  * first-accept-wins (doc §6). Typed so the UI can tell "someone beat me to it"
- * apart from a genuine error; at binding time this maps to HTTP 409.
+ * apart from a genuine error; on the wire that difference is HTTP 409.
  */
 export class JobTakenError extends Error {
   readonly code = 'JOB_ALREADY_TAKEN';
@@ -21,27 +21,17 @@ export function isJobTaken(error: unknown): error is JobTakenError {
 }
 
 /**
- * Jobs another technician already claimed. Deterministic rather than random so
- * the "job taken" screen is demonstrable on demand without a coin flip
- * derailing a live demo.
- */
-const CLAIMED_BY_OTHERS = new Set(['INST-4861']);
-
-/**
- * UI phase: mutates the in-memory dataset.
- * Binding phase: `POST /jobs/:id/accept` — 200 returns the unlocked job, 409
- * means it's gone. Nothing above this function changes.
+ * `POST /jobs/:id/accept` — 200 returns the unlocked job, 409 means it is gone.
+ *
+ * The server settles the race in the WHERE clause of a single UPDATE, so a 409
+ * here is authoritative: somebody else's row went in first. Nothing above this
+ * function changed when it stopped being mock.
  */
 export async function acceptJob(id: string): Promise<Job> {
-  await delay(`accept:${id}`, 400, 800);
-
-  const job = jobs.find((j) => j.id === id);
-  if (!job) throw new Error(`Job ${id} not found`);
-
-  if (CLAIMED_BY_OTHERS.has(id) || job.status !== 'pool') {
-    throw new JobTakenError(id);
+  try {
+    return toAcceptedJob(await authedRequest<JobDto>(`/jobs/${id}/accept`, { method: 'POST' }));
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) throw new JobTakenError(id);
+    throw error;
   }
-
-  job.status = 'upcoming';
-  return job;
 }

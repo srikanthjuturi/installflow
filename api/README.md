@@ -105,5 +105,10 @@ Register every new model in `app/db/base.py` so autogenerate can see it.
 
 ## Database
 
-Azure PostgreSQL 16, database `videocondb`, SSL required (`sslmode=require`). Connection
+Azure PostgreSQL 18, database `RelianceDB`, SSL required (`sslmode=require`). Connection
 parameters live in `.env`.
+
+The database name is **mixed case**, so it is quoted everywhere it appears in SQL
+(`CREATE DATABASE "RelianceDB"`); an unquoted `RelianceDB` folds to `reliancedb` and does not
+exist. A connection string passes the name through verbatim, so `POSTGRES_DB=RelianceDB` is
+correct as written.

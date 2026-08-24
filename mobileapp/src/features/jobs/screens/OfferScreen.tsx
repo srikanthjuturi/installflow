@@ -209,7 +209,13 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
               <MaskedRow label="Customer" value={job.maskedCustomer} masked first />
               <MaskedRow label="Phone" value="+91 •••••  •••••" masked />
               <MaskedRow label="Area" value={`${job.area} · ${job.pincode}`} />
-              <MaskedRow label="Distance" value={job.distanceLabel} />
+              {/* Dropped entirely when there is nothing to measure — nothing
+                  stores the customer's coordinates, so a real job has no
+                  distance. An empty row reads as a missing value; no row reads
+                  as a fact we do not carry. */}
+              {job.distanceLabel ? (
+                <MaskedRow label="Distance" value={job.distanceLabel} />
+              ) : null}
             </View>
           </>
         )}

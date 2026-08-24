@@ -60,7 +60,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
                 color: color.textMuted,
               }}
             >
-              {job.id}
+              {job.code ?? job.id}
             </Text>
           </View>
 
@@ -92,7 +92,10 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
                 color: color.textLabel,
               }}
             >
-              {job.area} · {job.pincode} · {job.distanceLabel}
+              {/* Distance is appended only when there is one. Nothing stores
+                  the customer's coordinates, so a real job has none, and a
+                  trailing " · " with nothing after it reads as a bug. */}
+              {[job.area, job.pincode, job.distanceLabel].filter(Boolean).join(' · ')}
             </Text>
           </View>
 

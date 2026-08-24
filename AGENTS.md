@@ -20,10 +20,11 @@ skill in `mobileapp/.claude/skills/`.
 
 ## Phase: partly bound
 
-The API is real for **auth, companies, users, territory, the product master and technician
-onboarding**. Everything else — jobs, the pool, earnings, escalations, the ledger, AI review,
-proof capture — is still typed mock data behind a TanStack Query hook, so binding each remaining
-slice stays a one-line change and we keep loading / empty / error states today.
+The API is real for **auth, companies, users, territory, the product master, technician
+onboarding, ticket intake and the job pool**. Everything else — my jobs, earnings, escalations,
+the ledger, AI review, proof capture — is still typed mock data behind a TanStack Query hook, so
+binding each remaining slice stays a one-line change and we keep loading / empty / error states
+today.
 
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.

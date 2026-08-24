@@ -20,7 +20,14 @@ from app.core.database import get_db
 from app.core.features import effective_features
 from app.core.security import decode_token
 from app.models.membership import Membership
-from app.models.role import ROLE_LABELS, ROLE_RANKS, SUPERADMIN, VENDOR_ROLES
+from app.models.role import (
+    ROLE_LABELS,
+    ROLE_RANKS,
+    SUPERADMIN,
+    TECHNICIAN,
+    VENDOR_ROLES,
+)
+from app.models.technician import TechnicianProfile
 from app.models.user import User
 
 _bearer = HTTPBearer(auto_error=False)
@@ -233,6 +240,54 @@ def require_vendor_principal(principal: CompanyPrincipal) -> Principal:
             detail="This account is not linked to a vendor",
         )
     return principal
+
+
+async def require_technician_principal(
+    principal: CompanyPrincipal,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> tuple[Principal, TechnicianProfile]:
+    """The caller IS a technician, and here is their profile row.
+
+    Every technician-facing endpoint needs the same two things and neither is on
+    the token: `Principal` carries a user id, while `technician_pincodes`,
+    `technician_subcategories` and `tickets.technician_id` all key on
+    `technician_profiles.id`. Resolving that join per route is three chances to
+    forget `Membership.deleted_at IS NULL` and hand a removed technician a live
+    session.
+
+    Not `require_feature`, for the reason `require_vendor_principal` gives: the
+    effective set is overridable per company through Feature Access, so "is a
+    technician" would last until somebody opened that screen. Use it ALONGSIDE
+    a feature key, never instead — hard rule 2 still wants one on every route.
+
+    Not `require_min_rank` either. Technician is the LOWEST rank, so a floor
+    there admits the entire company.
+    """
+    if principal.role != TECHNICIAN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not a technician account"
+        )
+    profile = await db.scalar(
+        select(TechnicianProfile)
+        .join(Membership, Membership.id == TechnicianProfile.membership_id)
+        .where(
+            Membership.user_id == principal.user_id,
+            TechnicianProfile.company_id == principal.company_id,
+            Membership.deleted_at.is_(None),
+        )
+    )
+    if profile is None:
+        # A technician-role account with no profile in this company. Not a
+        # permission question — there is nothing here to permit.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Technician profile not found"
+        )
+    return principal, profile
+
+
+TechnicianPrincipal = Annotated[
+    tuple[Principal, TechnicianProfile], Depends(require_technician_principal)
+]
 
 
 def ensure_below_rank(principal: Principal, target_role: str) -> None:

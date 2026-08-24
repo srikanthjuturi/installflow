@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from app.features.auth.router import router as auth_router
 from app.features.companies.router import router as companies_router
 from app.features.geo.router import router as geo_router
+from app.features.jobs.router import router as jobs_router
 from app.features.masters.router import router as masters_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
@@ -36,5 +37,8 @@ api_router.include_router(vendor_users_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)
+# The same rows as /tickets, seen from the field: scoped by a technician's own
+# coverage rather than by territory, and masked until they accept.
+api_router.include_router(jobs_router)
 api_router.include_router(onboarding_router)
 api_router.include_router(uploads_router)

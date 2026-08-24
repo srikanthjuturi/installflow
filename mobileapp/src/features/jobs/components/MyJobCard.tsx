@@ -79,7 +79,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
                 color: color.textMuted,
               }}
             >
-              {job.id}
+              {job.code ?? job.id}
             </Text>
           </View>
 
