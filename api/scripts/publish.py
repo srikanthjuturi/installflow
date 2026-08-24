@@ -112,6 +112,16 @@ def guard_production_config() -> None:
         problems.append("OTP_PEPPER must be set — the server refuses to boot without it")
     if SITE not in values.get("INVITE_LINK_BASE", ""):
         problems.append("INVITE_LINK_BASE does not point at this site")
+    # The same check, and it exists because the invite one did not cover it:
+    # `SLOT_LINK_BASE` was simply absent from .env.production, so it fell back
+    # to its `http://localhost:8000/slot` default and every customer got a link
+    # WhatsApp would not even make tappable. An unset key has to fail here for
+    # the same reason a wrong one does — the symptom is identical.
+    if SITE not in values.get("SLOT_LINK_BASE", ""):
+        problems.append(
+            "SLOT_LINK_BASE does not point at this site — the customer's "
+            "'pick a time' link must be a public https URL"
+        )
     if problems:
         fail("; ".join(problems))
     print("  config guards passed")
