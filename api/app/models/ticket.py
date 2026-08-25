@@ -5,7 +5,7 @@ with the customer, offered to eligible technicians, accepted, done, proved, and
 closed.
 
 Everything it points at is stored by ID, never by name. The mock stored
-`vendor: "Videocon"` and `product: '43" 4K UHD'` as strings, which meant
+`vendor: "Reliance GreenTech"` and `product: '43" 4K UHD'` as strings, which meant
 renaming anything in the product master silently orphaned every ticket that had
 referenced it. The API resolves names on read instead.
 

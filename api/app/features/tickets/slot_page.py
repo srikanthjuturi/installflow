@@ -91,7 +91,7 @@ def _page(title: str, body: str) -> HTMLResponse:
 <title>{html.escape(title)}</title>
 <style>{_STYLE}</style>
 </head>
-<body><div class="card"><div class="mark">V</div>{body}</div></body>
+<body><div class="card"><div class="mark">RG</div>{body}</div></body>
 </html>"""
     )
 

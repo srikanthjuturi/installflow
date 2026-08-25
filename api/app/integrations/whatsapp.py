@@ -133,7 +133,7 @@ def build_otp_payload(phone: str, code: str) -> dict:
     return _text_payload(
         phone,
         (
-            f"{code} is your Videocon Service verification code.\n\n"
+            f"{code} is your Reliance GreenTech Service verification code.\n\n"
             "It expires in 5 minutes. Do not share it with anyone."
         ),
     )

@@ -64,7 +64,7 @@ export async function getVerification(
       id: verificationId,
       status: 'mismatch',
       confidence: 61,
-      serialRead: 'VCN-400097-2210',
+      serialRead: 'RGT-400097-2210',
       modelMatched: model,
     };
   }
@@ -73,7 +73,7 @@ export async function getVerification(
     id: verificationId,
     status: 'match',
     confidence: 98,
-    serialRead: 'VCN-400067-8841',
+    serialRead: 'RGT-400067-8841',
     modelMatched: model,
   };
 }

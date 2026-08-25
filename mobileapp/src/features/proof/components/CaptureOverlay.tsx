@@ -182,7 +182,7 @@ function SerialFrame() {
             marginTop: 4,
           }}
         >
-          VCN-•••••-••••
+          RGT-•••••-••••
         </Text>
       </View>
     </View>

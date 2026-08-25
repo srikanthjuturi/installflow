@@ -28,11 +28,11 @@ export const CATEGORIES: ProductCategory[] = [
 ];
 
 export const technician: Technician = {
-  id: 'VCN-TECH-2231',
+  id: 'RGT-TECH-2231',
   name: 'Rohit Kadam',
   phone: '+91 98765 43210',
   region: 'Mumbai — Suburban',
-  onboardedBy: 'Videocon · West Zone',
+  onboardedBy: 'Reliance GreenTech · West Zone',
   rating: 4.8,
   jobsDone: 312,
   onTimePct: 96,
@@ -64,7 +64,7 @@ export const transactions: Transaction[] = [
   {
     id: 'TXN-9001',
     kind: 'install',
-    title: 'Install · Videocon 55" QLED',
+    title: 'Install · Reliance GreenTech 55" QLED',
     subtitle: 'Today · INST-4788',
     amountPaise: 46000,
   },
@@ -78,7 +78,7 @@ export const transactions: Transaction[] = [
   {
     id: 'TXN-9003',
     kind: 'install',
-    title: 'Install · Videocon 7kg WM',
+    title: 'Install · Reliance GreenTech 7kg WM',
     subtitle: 'Yesterday · INST-4771',
     amountPaise: 52000,
   },
@@ -92,14 +92,14 @@ export const transactions: Transaction[] = [
   {
     id: 'TXN-9005',
     kind: 'install',
-    title: 'Install · Videocon 43" LED',
+    title: 'Install · Reliance GreenTech 43" LED',
     subtitle: 'Mon · INST-4752',
     amountPaise: 42000,
   },
   {
     id: 'TXN-9006',
     kind: 'install',
-    title: 'Install · Videocon 32" HD',
+    title: 'Install · Reliance GreenTech 32" HD',
     subtitle: 'Mon · INST-4740',
     amountPaise: 38000,
   },

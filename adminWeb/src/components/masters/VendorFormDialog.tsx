@@ -426,7 +426,7 @@ function VendorForm({
       <FormSection legend="Company">
         <FieldGroup className={COLS}>
           {renderField("name", "Company name", {
-            placeholder: "e.g. Videocon Industries",
+            placeholder: "e.g. Reliance GreenTech Industries",
             hint: "This is the brand shown on every product model you attribute to it.",
           })}
           {renderField("contactPerson", "Contact person", {
@@ -486,7 +486,7 @@ function VendorForm({
               the form, and the only one where a line break carries meaning. */}
           {renderField("address", "Building, street and area", {
             textarea: true,
-            placeholder: "Videocon House, 14th Floor\nChakala, Andheri East",
+            placeholder: "Reliance GreenTech House, 14th Floor\nChakala, Andheri East",
             hint: "Paste it straight off the letterhead — line breaks are kept.",
             className: "sm:col-span-2 lg:col-span-3",
           })}

@@ -740,7 +740,7 @@ async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
     # for every tenant on this platform.
     return (
         await db.scalar(select(Company.name).where(Company.id == company_id))
-    ) or "Videocon Service"
+    ) or "Reliance GreenTech Service"
 
 
 async def _send_slot_request(db: AsyncSession, row: Ticket) -> None:

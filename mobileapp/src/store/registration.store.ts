@@ -85,7 +85,7 @@ export const useRegistration = create<RegistrationState>()(
       clear: () => set({ draft: null }),
     }),
     {
-      name: 'videocon.registration',
+      name: 'reliancegreentech.registration',
       version: 1,
       storage: createJSONStorage(() => secureStorage),
     },

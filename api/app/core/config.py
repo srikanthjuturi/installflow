@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     SQL_ECHO: bool = False
-    PROJECT_NAME: str = "Videocon Installation API"
+    PROJECT_NAME: str = "Reliance GreenTech Installation API"
     API_V1_PREFIX: str = "/api/v1"
 
     # ─── CORS ──────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ─── Superadmin bootstrap (used by app.scripts.bootstrap) ──────────────
-    SUPERADMIN_EMAIL: str = "superadmin@videocon.com"
+    SUPERADMIN_EMAIL: str = "superadmin@reliancegreentech.com"
     SUPERADMIN_PASSWORD: str = "ChangeMe_Superadmin@123"
     SUPERADMIN_NAME: str = "Super Admin"
 
@@ -96,17 +96,17 @@ class Settings(BaseSettings):
     # Where uploaded images live. Empty disables uploads with a clear message
     # rather than a 500 — the same shape as the WhatsApp integration.
     AZURE_STORAGE_CONNECTION_STRING: str = ""
-    AZURE_BLOB_CONTAINER: str = "installflow-media"
+    AZURE_BLOB_CONTAINER: str = "reliancegreentech-media"
 
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:
     # it opens the app directly from `npx uri-scheme open` and needs no domain.
     #
-    # It cannot ship: WhatsApp only auto-links http(s), so a `videocontech://`
+    # It cannot ship: WhatsApp only auto-links http(s), so a `reliancegreentech://`
     # link arrives as dead text. Production needs an https universal/app link
     # (ios.associatedDomains + android.intentFilters) with a web fallback —
-    # e.g. INVITE_LINK_BASE=https://install.videocon.app/invite
-    INVITE_LINK_BASE: str = "videocontech://invite"
+    # e.g. INVITE_LINK_BASE=https://install.reliancegreentech.in/invite
+    INVITE_LINK_BASE: str = "reliancegreentech://invite"
     # ─── Customer slot confirmation ────────────────────────────────────────
     # Where the "pick a time" link points. Unlike the invite this is a WEB page
     # and always has been — a customer has no app to open — so the default is a
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # public origin in production.
     SLOT_LINK_BASE: str = "http://localhost:8000/slot"
     # Where the landing page sends someone who does not have the app yet.
-    TECHNICIAN_APP_LINK: str = "https://install.videocon.app/technician"
+    TECHNICIAN_APP_LINK: str = "https://install.reliancegreentech.in/technician"
     INVITE_EXPIRY_DAYS: int = 14
 
     # ─── Android App Links ─────────────────────────────────────────────────
@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     # for as long as the same keystore signs the app. A Play Store release
     # signed by Google App Signing has a DIFFERENT fingerprint, and both must be
     # listed here or links break for exactly one of the two install sources.
-    ANDROID_PACKAGE: str = "net.deccansoft.videocontechnician"
+    ANDROID_PACKAGE: str = "com.reliancegreentech.technician"
     ANDROID_CERT_FINGERPRINTS: str = ""
 
     # ─── OTP ───────────────────────────────────────────────────────────────

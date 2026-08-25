@@ -14,7 +14,7 @@ interface PageMetaProps {
  */
 export function PageMeta({ title, description }: PageMetaProps) {
   useEffect(() => {
-    document.title = `InstallFlow · ${title}`;
+    document.title = `Reliance GreenTech · ${title}`;
 
     const set = (name: string, content: string) => {
       let el = document.head.querySelector<HTMLMetaElement>(

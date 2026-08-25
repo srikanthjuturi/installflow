@@ -1,4 +1,4 @@
-# Videocon Installation API
+# Reliance GreenTech Installation API
 
 FastAPI + PostgreSQL behind the ops console (`adminWeb/`) and the technician app
 (`mobileapp/`). Read the root `AGENTS.md` first for the business flow and the domain facts.
@@ -347,10 +347,10 @@ Leave `WHATSAPP_*` empty. Invites then record a retryable failure with a copyabl
 codes come back in the response as `devCode` and to the server log. Startup **refuses to boot** in
 production with `OTP_DEV_ECHO` on or `OTP_PEPPER` empty.
 
-`INVITE_LINK_BASE` defaults to `videocontech://invite`, which opens straight into Expo Go:
+`INVITE_LINK_BASE` defaults to `reliancegreentech://invite`, which opens straight into Expo Go:
 
 ```bash
-npx uri-scheme open "videocontech://invite/<token>" --android
+npx uri-scheme open "reliancegreentech://invite/<token>" --android
 ```
 
 That default cannot ship — WhatsApp only auto-links `http(s)`, so a custom-scheme link arrives as

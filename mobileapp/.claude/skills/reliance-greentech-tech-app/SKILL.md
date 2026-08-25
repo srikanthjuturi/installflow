@@ -1,7 +1,7 @@
 ---
-name: videocon-tech-app
+name: reliance-greentech-tech-app
 description: >
-  Screen-by-screen spec, design tokens, component patterns and domain model for the Videocon
+  Screen-by-screen spec, design tokens, component patterns and domain model for the Reliance GreenTech
   Technician Field App (Expo SDK 54 + Expo Router + NativeWind). Holds the approved copy,
   layout and interaction detail for all 18 screens, extracted from the client-approved
   prototype at mobileapp/appdesign/Technician Field App.html, plus the penalty bands, proof-capture
@@ -13,7 +13,7 @@ description: >
   penalty bands", "add a status badge".
 ---
 
-# Videocon Technician Field App — screen & design spec
+# Reliance GreenTech Technician Field App — screen & design spec
 
 Everything here is extracted from the **client-approved prototype**,
 `mobileapp/appdesign/Technician Field App.html`. Treat its copy and layout as fixed. The
@@ -93,7 +93,7 @@ cold open, signed out   ->  /(auth)/login          NOT /invite
 **Direct** — a manager created the whole record. Phone + OTP, then Home. `technicianProfile`
 being non-null on the login response IS that signal; there is no second call.
 
-**Invite** — reachable ONLY from the deep link `videocontech://invite/<token>`:
+**Invite** — reachable ONLY from the deep link `reliancegreentech://invite/<token>`:
 `R1 -> R1b -> R2 -> register/verify -> Home`. Nothing is written until the last screen; the
 draft lives in `store/registration.store.ts` (persisted, so backgrounding the app mid-flow does
 not lose it) and the whole registration commits in one call.
@@ -269,7 +269,7 @@ type SlaType = '24h' | '48h';
 interface Job {
   id: string;              // 'INST-4821'
   category: string;        // 'Television'
-  model: string;           // 'Videocon 43" Smart LED'
+  model: string;           // 'Reliance GreenTech 43" Smart LED'
   area: string;            // 'Kandivali West'
   pincode: string;         // '400067'
   slot: string;            // 'Today · 2:00–4:00 PM'

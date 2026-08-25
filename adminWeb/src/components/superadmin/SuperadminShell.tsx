@@ -111,7 +111,7 @@ export function SuperadminShell() {
               rail's header shows on a wide screen — not both at once. */}
           <div className="min-w-0 leading-tight md:hidden">
             <p className="truncate text-sm font-semibold text-ink">
-              Videocon Platform
+              Reliance GreenTech Platform
             </p>
             <p className="truncate text-[11px] font-medium text-ink-3">
               Super Admin console

@@ -1,8 +1,8 @@
 """The web page an invite link lands on.
 
 `INVITE_LINK_BASE` has to be an https URL, because WhatsApp only turns http(s)
-into something tappable — a `videocontech://` link arrives as dead text nobody
-can act on. But an https link opens a browser, not the app.
+into something tappable — a `reliancegreentech://` link arrives as dead text
+nobody can act on. But an https link opens a browser, not the app.
 
 This is the bridge: a page that opens the app if it is installed, and explains
 what to do if it is not. It is also the exact place an Apple/Android universal
@@ -20,13 +20,22 @@ from app.core.config import settings
 
 router = APIRouter(tags=["onboarding"])
 
+#: The app's custom URL scheme — deliberately NOT read from `INVITE_LINK_BASE`.
+#:
+#: In production that setting is the https URL of THIS page, so deriving the
+#: deep link from it would point the button back here in a loop. The two are
+#: different facts: one is where WhatsApp sends the technician, the other is how
+#: this page hands them to the app. Must match `scheme` in
+#: mobileapp/app.config.ts — nothing checks that at runtime.
+APP_SCHEME = "reliancegreentech"
+
 _PAGE = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Your Videocon technician invite</title>
+<title>Your Reliance GreenTech technician invite</title>
 <style>
   :root {{ color-scheme: light; }}
   * {{ box-sizing: border-box; }}
@@ -59,9 +68,9 @@ _PAGE = """<!doctype html>
 </head>
 <body>
   <div class="card">
-    <div class="mark">V</div>
+    <div class="mark">RG</div>
     <h1>Your invite is ready</h1>
-    <p>Open it in the Videocon Technician app to set up your account.</p>
+    <p>Open it in the Reliance GreenTech Technician app to set up your account.</p>
     <a class="cta" href="{deep_link}">Open the app</a>
     <a class="store" href="{app_link}">I don&rsquo;t have the app yet</a>
     <p class="note">
@@ -88,11 +97,12 @@ async def invite_landing(token: str) -> HTMLResponse:
     used. Answering that here would let anyone probe tokens by loading a URL.
     """
     safe = "".join(c for c in token if c.isalnum() or c in "-_")
-    deep_link = f"videocontech://invite/{safe}"
+    deep_link = f"{APP_SCHEME}://invite/{safe}"
     return HTMLResponse(
         _PAGE.format(
             deep_link=deep_link,
             deep_link_js=f'"{deep_link}"',
-            app_link=settings.TECHNICIAN_APP_LINK or "https://install.videocon.app/technician",
+            app_link=settings.TECHNICIAN_APP_LINK
+            or "https://install.reliancegreentech.in/technician",
         )
     )

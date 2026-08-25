@@ -71,7 +71,7 @@ log = logging.getLogger(__name__)
 #: One channel for the whole app. Filtering happens in the subscriber, not by
 #: multiplying channels: a channel per company would mean re-issuing LISTEN
 #: whenever a company is created, and there is no volume here that justifies it.
-CHANNEL = "installflow_events"
+CHANNEL = "reliancegreentech_events"
 
 #: How long a subscriber's mailbox may grow before we start dropping.
 #:

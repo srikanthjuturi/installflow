@@ -28,10 +28,10 @@ function inviteHost(): string | undefined {
 const INVITE_HOST = inviteHost();
 
 const config: ExpoConfig = {
-  name: 'Videocon Technician',
-  slug: 'videocon-technician',
+  name: 'Reliance GreenTech Technician',
+  slug: 'reliance-greentech-technician',
   owner: 'srikanth24',
-  scheme: 'videocontech', // invite deep links: videocontech://invite/<token>
+  scheme: 'reliancegreentech', // invite deep links: reliancegreentech://invite/<token>
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light', // no dark mode in v1 — outdoor legibility
@@ -44,10 +44,10 @@ const config: ExpoConfig = {
   },
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'net.deccansoft.videocontechnician',
+    bundleIdentifier: 'com.reliancegreentech.technician',
   },
   android: {
-    package: 'net.deccansoft.videocontechnician',
+    package: 'com.reliancegreentech.technician',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: INK,
@@ -94,7 +94,8 @@ const config: ExpoConfig = {
       'expo-camera',
       {
         // Proof capture — doc §8. Gallery uploads are never accepted.
-        cameraPermission: 'Videocon Technician needs the camera to capture installation proof.',
+        cameraPermission:
+          'Reliance GreenTech Technician needs the camera to capture installation proof.',
         recordAudioAndroid: false,
       },
     ],
@@ -102,8 +103,9 @@ const config: ExpoConfig = {
       'expo-image-picker',
       {
         photosPermission:
-          'Videocon Technician needs your photos so you can set a profile picture.',
-        cameraPermission: 'Videocon Technician needs the camera to take your profile picture.',
+          'Reliance GreenTech Technician needs your photos so you can set a profile picture.',
+        cameraPermission:
+          'Reliance GreenTech Technician needs the camera to take your profile picture.',
       },
     ],
     [

@@ -181,7 +181,7 @@ class TechnicianSessionOut(AppModel):
     phone: str
     profileImageUrl: str | None
     regionName: str
-    #: Display-only, e.g. "Videocon · West Zone" — who onboarded them.
+    #: Display-only, e.g. "Reliance GreenTech · West Zone" — who onboarded them.
     onboardedBy: str
     subcategories: list[SubcategoryRef]
     pincodes: list[str]

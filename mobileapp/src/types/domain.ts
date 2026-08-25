@@ -50,7 +50,7 @@ export interface TechnicianSession {
   phone: string;
   profileImageUrl: string | null;
   regionName: string;
-  /** Display-only, e.g. "Priya Deshmukh · Videocon Service". */
+  /** Display-only, e.g. "Priya Deshmukh · Reliance GreenTech Service". */
   onboardedBy: string;
   subcategories: SubcategoryRef[];
   pincodes: string[];

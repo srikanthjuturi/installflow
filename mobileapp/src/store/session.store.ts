@@ -56,7 +56,7 @@ export const useSession = create<SessionState>()(
       setTokens: ({ accessToken, refreshToken }) => set({ accessToken, refreshToken }),
     }),
     {
-      name: 'videocon.session',
+      name: 'reliancegreentech.session',
       version: 1,
       storage: createJSONStorage(() => secureStorage),
       // `hydrated` is derived, not stored — persisting it would boot the app

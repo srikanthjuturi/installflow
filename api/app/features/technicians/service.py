@@ -735,7 +735,7 @@ async def technician_session(
         await _appointers(session, [profile.appointed_by_user_id])
     ).get(profile.appointed_by_user_id)
 
-    onboarded_by = company.name if company else "Videocon Service"
+    onboarded_by = company.name if company else "Reliance GreenTech Service"
     if appointer and appointer.full_name:
         onboarded_by = f"{appointer.full_name} · {onboarded_by}"
 
@@ -1144,7 +1144,7 @@ async def _send_and_record(session: AsyncSession, invite: TechnicianInvite) -> N
     )
 
     result = await whatsapp.send_invite(
-        invite.phone, invite_link(invite.token), company_name or "Videocon Service"
+        invite.phone, invite_link(invite.token), company_name or "Reliance GreenTech Service"
     )
     invite.send_attempts = (invite.send_attempts or 0) + 1
     if result.ok:
