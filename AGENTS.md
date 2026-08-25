@@ -232,6 +232,13 @@ page and the app resolves it against the shared Azure database.
 INVITE_LINK_BASE=https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/invite
 ```
 
+**That `installflowapi` hostname keeps its pre-rebrand name on purpose — do not "fix" it.** The
+product is Reliance GreenTech everywhere a person can see it, but an Azure App Service cannot be
+renamed, and this host is baked into `scripts/publish.py`, both clients' `.env`, and the Android
+App Link intent filter compiled into installed builds. Renaming it means a new resource, a
+redeploy, a fresh mobile build, and every invite link already sitting in somebody's WhatsApp goes
+dead. The name is infrastructure, not branding; nobody outside the team reads it.
+
 ## Commit rhythm
 
 **One commit per completed screen.** Run `npm run lint && npm run typecheck` first.

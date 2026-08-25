@@ -96,7 +96,11 @@ class Settings(BaseSettings):
     # Where uploaded images live. Empty disables uploads with a clear message
     # rather than a 500 — the same shape as the WhatsApp integration.
     AZURE_STORAGE_CONNECTION_STRING: str = ""
-    AZURE_BLOB_CONTAINER: str = "reliancegreentech-media"
+    # Keeps its pre-rebrand name on purpose, like the App Service host — a
+    # container cannot be renamed, every already-uploaded image is addressed by
+    # a URL containing it, and nobody outside the team ever reads it. This is
+    # infrastructure, not branding.
+    AZURE_BLOB_CONTAINER: str = "installflow-media"
 
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:
