@@ -5,15 +5,21 @@ import { useSession } from '@/store/session.store';
 import type { WeekdayKey } from '@/types/domain';
 
 /**
- * Client state only — the online toggle and the availability form.
+ * Client state only — what is left of the availability form.
  *
- * These live in Zustand rather than TanStack Query because the technician
- * flips them optimistically and expects the switch to move instantly; a
- * server round-trip in between would feel broken in poor coverage. Jobs,
- * profile and earnings stay in Query where they belong.
+ * The online toggle used to live here and no longer does. It is the
+ * technician's own decision and the server has to know it, which makes it
+ * server state and sends it to Query under hard rule 3 — see
+ * `useAcceptingWork` in features/availability. It stayed here far too long,
+ * and the cost was a switch that forgot itself on every restart while nothing
+ * outside the phone ever learned what it had been set to.
+ *
+ * What remains is genuinely local: the weekday grid, the technician's own edit
+ * of the daily cap, and the time-off flag. All three are still mock, and all
+ * three are flipped optimistically — a server round trip in the middle of a
+ * switch feels broken on the connection a field technician actually has.
  */
 interface AvailabilityState {
-  online: boolean;
   days: Record<WeekdayKey, boolean>;
   /**
    * The technician's OWN edit of the daily cap. Three states, and all three
@@ -31,7 +37,6 @@ interface AvailabilityState {
   bandwidthPerDay: number | null | undefined;
   timeOff: boolean;
 
-  setOnline: (next: boolean) => void;
   toggleDay: (day: WeekdayKey) => void;
   /** `null` means no limit. */
   setBandwidth: (next: number | null) => void;
@@ -50,12 +55,10 @@ export const BANDWIDTH_MIN = 1;
 export const BANDWIDTH_DEFAULT = 5;
 
 export const useAvailabilityStore = create<AvailabilityState>((set) => ({
-  online: true,
   days: { ...seed.days },
   bandwidthPerDay: undefined,
   timeOff: seed.timeOff,
 
-  setOnline: (online) => set({ online }),
   toggleDay: (day) => set((s) => ({ days: { ...s.days, [day]: !s.days[day] } })),
   setBandwidth: (next) =>
     set({

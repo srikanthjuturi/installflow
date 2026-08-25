@@ -193,3 +193,31 @@ class TechnicianSessionOut(AppModel):
     rating: float | None
     jobsCompleted: int | None
     onTimePct: int | None
+    #: The technician's own availability decision — the Home screen's toggle.
+    #: Sent so the app can render the switch from the SERVER's answer rather
+    #: than from a local default, which is what made it reset to "online" on
+    #: every restart.
+    acceptingWork: bool
+
+
+class AvailabilityRequest(AppModel):
+    """The technician turning their own availability on or off.
+
+    One field on purpose. `last_seen_at` is NOT settable: reachability is
+    observed from the live socket, never asserted by a client — see
+    `app.core.presence`.
+    """
+
+    acceptingWork: bool
+
+
+class AvailabilityOut(AppModel):
+    """What the toggle gets back.
+
+    `online` is returned as well as the intent because they are different
+    questions and the app should never compute the AND itself — the staleness
+    window lives on the server, and a second copy of it would drift.
+    """
+
+    acceptingWork: bool
+    online: bool

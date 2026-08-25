@@ -24,6 +24,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
@@ -209,6 +210,35 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     daily_job_cap: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'active'")
+    )
+
+    # ── availability: two facts, deliberately not one ─────────────────────────
+    #
+    # "Is this technician online" is a question with two independent halves, and
+    # collapsing them into one boolean is what makes availability data rot:
+    #
+    #   accepting_work  what the technician CHOSE. Survives a restart, a dead
+    #                   battery and a new phone, because it is a decision, not
+    #                   a symptom. Only they change it.
+    #   last_seen_at    whether a device is actually REACHABLE. Stamped by the
+    #                   live pool socket and by nothing else.
+    #
+    # Online is the AND of the two, and it is derived at read time rather than
+    # stored (`app.core.presence.is_online`). A stored flag is the thing that
+    # goes wrong: a phone that dies mid-shift can never write "offline", so the
+    # row claims the technician is available until somebody notices in person.
+    # A timestamp cannot lie that way — it just stops moving, and every reader
+    # can see that it has.
+    #
+    # Defaults to True: it is what the app has always done, and a technician
+    # who has just onboarded wants work. Going offline is the deliberate act.
+    accepting_work: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    #: NULL means never connected — a technician who has not opened the app
+    #: since this shipped. Distinct from "connected long ago", which is a time.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # ── the tracking the ops console has to be able to query ─────────────────
