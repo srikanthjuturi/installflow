@@ -148,8 +148,25 @@ class Settings(BaseSettings):
     # for as long as the same keystore signs the app. A Play Store release
     # signed by Google App Signing has a DIFFERENT fingerprint, and both must be
     # listed here or links break for exactly one of the two install sources.
+    #: Comma-separated, and more than one is the POINT.
+    #:
+    #: A package rename cannot be atomic: the API is redeployed in a second, and
+    #: the phones running the old package are updated whenever their owners get
+    #: round to it. Serving only the new name breaks App Links for everyone still
+    #: on the old build — silently, because a failed verification looks exactly
+    #: like a link that opens a browser.
+    #:
+    #: So list BOTH across a rename and drop the old one once nobody is on it.
     ANDROID_PACKAGE: str = "com.reliancegreentech.technician"
     ANDROID_CERT_FINGERPRINTS: str = ""
+
+    #: The app's custom URL scheme, used by the invite landing page's button.
+    #:
+    #: Same migration problem as ANDROID_PACKAGE, without the same escape hatch:
+    #: a link can only have ONE scheme, so this must name the scheme the app
+    #: people ACTUALLY HAVE INSTALLED responds to — which during a rename is the
+    #: old one. Move it only once the new build is on the devices that matter.
+    APP_SCHEME: str = "reliancegreentech"
 
     # ─── OTP ───────────────────────────────────────────────────────────────
     # MUST match what the WhatsApp template tells the technician. The approved

@@ -37,16 +37,22 @@ async def assetlinks() -> JSONResponse:
         for f in settings.ANDROID_CERT_FINGERPRINTS.split(",")
         if f.strip()
     ]
+    packages = [p.strip() for p in settings.ANDROID_PACKAGE.split(",") if p.strip()]
+    # One statement per package. Android reads the whole array and is satisfied
+    # by ANY entry that matches the app being installed, which is what lets an
+    # old and a new package name both verify while a rename rolls out — see
+    # ANDROID_PACKAGE in app/core/config.py.
     return JSONResponse(
         [
             {
                 "relation": ["delegate_permission/common.handle_all_urls"],
                 "target": {
                     "namespace": "android_app",
-                    "package_name": settings.ANDROID_PACKAGE,
+                    "package_name": package,
                     "sha256_cert_fingerprints": fingerprints,
                 },
             }
+            for package in packages
         ],
         media_type="application/json",
     )
