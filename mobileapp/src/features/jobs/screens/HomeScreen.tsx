@@ -1,16 +1,19 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { Avatar } from '@/components/ui';
+import {
+  useAcceptingWork,
+  useSetAcceptingWork,
+} from '@/features/availability/hooks/useAvailability';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { useGreeting } from '@/features/jobs/hooks/useGreeting';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { useMe } from '@/features/profile/hooks/useMe';
-import { useAvailabilityStore } from '@/store/availability.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -34,8 +37,8 @@ export function HomeScreen() {
   const { data: me } = useMe();
   const greeting = useGreeting();
 
-  const online = useAvailabilityStore((s) => s.online);
-  const setOnline = useAvailabilityStore((s) => s.setOnline);
+  const online = useAcceptingWork();
+  const { mutate: setOnline, isPending: savingOnline } = useSetAcceptingWork();
 
   const { data: pool, isRefetching: poolRefetching, refetch: refetchPool } = usePool();
   const { data: today, isPending, isError, refetch } = useTodayJobs();
@@ -45,7 +48,7 @@ export function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -168,8 +171,11 @@ export function HomeScreen() {
 
           <Pressable
             onPress={() => setOnline(!online)}
+            // Two rapid taps would be two PATCHes racing, and whichever
+            // answered last would win regardless of which was tapped last.
+            disabled={savingOnline}
             accessibilityRole="switch"
-            accessibilityState={{ checked: online }}
+            accessibilityState={{ checked: online, disabled: savingOnline }}
             accessibilityLabel="Receive job offers"
           >
             <View
@@ -204,6 +210,10 @@ export function HomeScreen() {
                 />
               </View>
 
+              {/* `flex: 1` lets both lines wrap beside the fixed-width switch
+                  rather than pushing it off the row. Neither string is capped:
+                  this is the status of the technician's whole working day and
+                  must stay readable at any accessible text size. */}
               <View style={{ flex: 1 }}>
                 <Text
                   style={{ fontFamily: 'Roboto_700Bold', fontSize: 14, color: color.textInverse }}

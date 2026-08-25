@@ -61,6 +61,18 @@ export interface TechnicianSession {
   rating: number | null;
   jobsCompleted: number;
   onTimePct: number | null;
+  /**
+   * Whether this technician currently wants work — the Home screen's toggle.
+   *
+   * The SERVER's answer, not a local default. It used to be neither: the switch
+   * lived only in memory, so it silently returned to "online" on every app
+   * restart and nothing outside this phone ever knew about it.
+   *
+   * Note this is intent alone. Whether they are actually *reachable* is
+   * observed from the live pool socket and derived server-side; the app never
+   * computes that AND itself.
+   */
+  acceptingWork: boolean;
 }
 
 export interface Job {
@@ -82,6 +94,13 @@ export interface Job {
    */
   category: string;
   model: string;
+  /**
+   * `Installation + Demo` · `Tech Visit` · `Service`.
+   *
+   * What the technician is actually going to do, which is not always an
+   * install — the detail screen used to print "Install & demo" regardless.
+   */
+  serviceType: string;
   area: string;
   pincode: string;
   /** Human label for the customer-confirmed slot, e.g. 'Today · 2:00–4:00 PM'. */

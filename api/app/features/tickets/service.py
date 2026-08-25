@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import Principal
+from app.core.realtime import publish_pool_changed
 from app.core.schemas import ListParams
 from app.core.scope import (
     ALL_INDIA_ROLES,
@@ -878,6 +879,15 @@ async def confirm_slot(
             to_status=row.status,
         )
     )
+    # Eligible technicians are now allowed to see this. The notify joins
+    # THIS transaction, so it reaches their phones only if the ticket is
+    # really saved, and it reaches every worker rather than only this one.
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        subcategory_id=row.subcategory_id,
+    )
     await db.commit()
     await db.refresh(row)
 
@@ -981,6 +991,15 @@ async def create_ticket(
                 to_status=row.status,
                 by_user=principal.user_id,
             )
+        )
+        # A ticket raised WITH a time is already in the pool, so it rings now.
+        # One without is 'Slot Pending' and nobody may see it yet — its ring
+        # comes later, from `confirm_slot`.
+        await publish_pool_changed(
+            db,
+            company_id=row.company_id,
+            pincode=row.pincode,
+            subcategory_id=row.subcategory_id,
         )
     await db.commit()
     await db.refresh(row)

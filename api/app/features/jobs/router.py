@@ -86,6 +86,71 @@ async def get_offer(
     )
 
 
+# ── the technician's own jobs ────────────────────────────────────────────────
+#
+# These three are declared BEFORE `/{ticket_id}`. Starlette matches in
+# declaration order, so a `/{ticket_id}` sitting above them would swallow
+# `/jobs/mine` as a ticket id and answer 422 on a valid request.
+
+#: The three My-jobs segments, mapped onto the ticket vocabulary.
+#:
+#: `Assigned` is the only status anything writes today, so Upcoming is the only
+#: segment that can be non-empty. In progress and Completed return honest empty
+#: lists rather than invented rows — the slices that write those statuses do not
+#: exist yet, and a seeded row claiming otherwise is what this work removes.
+SEGMENTS: dict[str, tuple[str, ...]] = {
+    "upcoming": ("Assigned",),
+    "inprogress": ("In Progress", "AI Review", "Escalated"),
+    "completed": ("Closed", "Force-Closed"),
+}
+
+
+@router.get(
+    "/mine",
+    response_model=PaginatedEnvelope[JobOut],
+    dependencies=[CanSeePool],
+)
+async def list_my_jobs(
+    db: Db,
+    me: TechnicianPrincipal,
+    params: Annotated[ListParams, Depends(list_params)],
+    status: str = "all",
+) -> PaginatedEnvelope[JobOut]:
+    """This technician's own jobs, unmasked, newest slot first.
+
+    Unknown segment names are a client bug, not a filter — answering with the
+    unfiltered list would quietly show a technician their completed jobs under
+    "Upcoming", so an unrecognised value returns nothing instead.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    statuses = None if status == "all" else SEGMENTS.get(status, ())
+    rows, total = await service.list_mine(
+        db,
+        params,
+        company_id=principal.company_id,
+        technician_id=profile.id,
+        statuses=statuses,
+    )
+    return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.get("/today", response_model=ApiEnvelope[list[JobOut]], dependencies=[CanSeePool])
+async def list_today(db: Db, me: TechnicianPrincipal) -> ApiEnvelope[list[JobOut]]:
+    """Home's "Today's jobs" — this technician's slots falling today.
+
+    Not paginated: a day's work is a handful of jobs, bounded by the daily cap,
+    and Home shows all of them.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.list_today(
+            db, company_id=principal.company_id, technician_id=profile.id
+        )
+    )
+
+
 @router.post(
     "/{ticket_id}/accept",
     response_model=ApiEnvelope[JobOut],
@@ -105,3 +170,24 @@ async def accept_job(
         db, ticket_id, company_id=principal.company_id, profile=profile
     )
     return envelope(job, message="Job accepted")
+
+
+@router.get(
+    "/{ticket_id}",
+    response_model=ApiEnvelope[JobOut],
+    dependencies=[CanSeePool],
+)
+async def get_job(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[JobOut]:
+    """One of this technician's own jobs. 404 unless it is theirs.
+
+    Declared last, so `/mine` and `/today` are matched as literals first.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.get_job(
+            db, ticket_id, company_id=principal.company_id, technician_id=profile.id
+        )
+    )

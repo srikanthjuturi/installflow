@@ -1,5 +1,4 @@
-import { jobs } from '@/mocks/db';
-import { delay } from '@/mocks/delay';
+import { getJob } from '@/features/jobs/api/jobs';
 import type { CancellationReason, PenaltyBand } from '@/types/domain';
 
 /**
@@ -8,15 +7,16 @@ import type { CancellationReason, PenaltyBand } from '@/types/domain';
  *
  * Deliberately a separate call from `cancelJob`: the technician must see the
  * cost BEFORE confirming, and the band depends on how close to the slot the
- * cancellation actually lands — which is server time, not device time. A phone
- * with a wrong clock must never be able to talk itself into a cheaper penalty.
+ * cancellation actually lands.
+ *
+ * ⚠ Still computed on the DEVICE, which is the wrong place. `hoursToSlot` is
+ * derived from the phone's clock, so a wrong clock talks itself into a cheaper
+ * penalty. It reads the real job now rather than a mock row, so the SLOT is
+ * true — but the band must move server-side with the rest of the cancel slice,
+ * and until it does the entry point to this screen stays hidden on Job detail.
  */
 export async function getCancellationPreview(id: string): Promise<PenaltyBand> {
-  await delay(`cancel-preview:${id}`, 200, 500);
-
-  const job = jobs.find((j) => j.id === id);
-  if (!job) throw new Error(`Job ${id} not found`);
-
+  const job = await getJob(id);
   return resolveBand(job.hoursToSlot);
 }
 
@@ -38,19 +38,23 @@ export interface CancelResult {
   penalty: PenaltyBand;
 }
 
-/** Binding phase: `POST /jobs/:id/cancel` with `{ reasonCode }`. */
+/**
+ * Not implemented, and deliberately loud about it.
+ *
+ * There is no `POST /jobs/:id/cancel`. The previous version mutated a seeded
+ * array — it returned a penalty, flipped a mock row back to `pool`, and looked
+ * exactly like a working cancellation while the real ticket stayed assigned.
+ * That is the worst possible failure for this particular action: a technician
+ * would believe they were released from a customer commitment they still hold.
+ *
+ * Throwing means the screen shows its error state instead. The Job detail entry
+ * point is hidden until the slice is real, so this should be unreachable.
+ */
 export async function cancelJob(
   id: string,
   reason: CancellationReason,
 ): Promise<CancelResult> {
-  await delay(`cancel:${id}`, 400, 800);
-
-  const job = jobs.find((j) => j.id === id);
-  if (!job) throw new Error(`Job ${id} not found`);
-
+  void id;
   void reason;
-  const penalty = resolveBand(job.hoursToSlot);
-  job.status = 'pool';
-
-  return { penalty };
+  throw new Error('Cancelling a job is not available yet.');
 }

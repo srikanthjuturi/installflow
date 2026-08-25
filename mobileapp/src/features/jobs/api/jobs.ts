@@ -1,20 +1,21 @@
 import { authedRequest } from '@/lib/api';
-import { jobs } from '@/mocks/db';
-import { delay } from '@/mocks/delay';
 import type { Job, JobStatus, SlaType } from '@/types/domain';
 
 /**
- * Job reads.
+ * Job reads — all real.
  *
- * The pool is REAL — `GET /jobs/pool` and `GET /jobs/pool/:id`. The rest are
- * still seams over mock data:
- *   listMine   → GET /jobs/mine?status=
- *   getJob     → GET /jobs/:id           (unlocked)
+ *   listPool   → GET /jobs/pool          (masked)
+ *   getOffer   → GET /jobs/pool/:id      (masked)
+ *   listMine   → GET /jobs/mine?status=  (unlocked, this technician's own)
+ *   getJob     → GET /jobs/:id           (unlocked, 404 unless theirs)
+ *   listToday  → GET /jobs/today         (unlocked, slots falling today)
  *
- * There is no `mask()` here any more. Masking is the server's job: the pool
- * endpoint returns a shape that has no `address` or `phone` FIELD at all, and a
+ * There is no `mask()` here. Masking is the server's job: the pool endpoint
+ * returns a shape that has no `address` or `phone` FIELD at all, and a
  * client-side mask over data the server already sent is a rendering choice a
- * network tab undoes, not a boundary.
+ * network tab undoes, not a boundary. The unlocked endpoints apply the same
+ * rule from the other side — `technician_id` is in their WHERE clause, so a
+ * job that is not yours 404s rather than arriving and being hidden.
  */
 
 /** What `GET /jobs/pool` returns per row. Mirrors `JobOfferOut` in the API. */
@@ -35,11 +36,44 @@ interface JobOfferDto {
   payoutPaise: number | null;
 }
 
-/** `JobOut`: the offer plus the three fields that unlock on accept. */
+/** `JobOut`: the offer plus everything that unlocks once the job is ours. */
 export interface JobDto extends JobOfferDto {
   customerName: string;
   customerPhone: string;
   address: string;
+  state: string;
+  /** The ticket's own word — `Assigned`, `In Progress`, `Closed`… */
+  status: string;
+  description: string | null;
+  serialNumber: string;
+}
+
+/**
+ * The server's status vocabulary → the app's.
+ *
+ * Two different alphabets on purpose. The API speaks the ticket's language,
+ * which ops and the console share and which has nine words; the app has five
+ * and only cares which SCREEN a job belongs on. Mapping here, once, is what
+ * keeps every card and badge from having to know that `AI Review` and
+ * `Escalated` both mean "still being worked".
+ *
+ * Anything unrecognised falls to `upcoming` rather than throwing: a status
+ * added server-side should put the job somewhere sensible, not blank the list.
+ */
+const STATUS_MAP: Record<string, JobStatus> = {
+  New: 'pool',
+  'Slot Pending': 'pool',
+  Assigned: 'upcoming',
+  'In Progress': 'inprogress',
+  'AI Review': 'inprogress',
+  Escalated: 'inprogress',
+  Closed: 'completed',
+  'Force-Closed': 'completed',
+  Cancelled: 'cancelled',
+};
+
+function toJobStatus(status: string): JobStatus {
+  return STATUS_MAP[status] ?? 'upcoming';
 }
 
 /**
@@ -103,6 +137,7 @@ function toJob(dto: JobOfferDto): Job {
     code: dto.code,
     category: dto.subcategoryName,
     model: dto.modelName,
+    serviceType: dto.serviceType,
     area: dto.city,
     pincode: dto.pincode,
     slot: slotLabel(dto.slotStart, dto.slotEnd),
@@ -117,11 +152,15 @@ function toJob(dto: JobOfferDto): Job {
   };
 }
 
-/** The same, once the job is ours and the three fields have unlocked. */
+/** The same, once the job is ours and the masked fields have unlocked. */
 export function toAcceptedJob(dto: JobDto): Job {
   return {
     ...toJob(dto),
-    status: 'upcoming',
+    // The server's word, not an assumption. `toJob` hardcodes 'pool' because
+    // everything in the pool is by definition unclaimed; an accepted job may be
+    // at any stage, and guessing 'upcoming' here is what would put a completed
+    // job back on Home.
+    status: toJobStatus(dto.status),
     customer: dto.customerName,
     phone: dto.customerPhone,
     address: dto.address,
@@ -138,25 +177,24 @@ export async function getOffer(id: string): Promise<Job> {
 }
 
 export async function listMine(status: JobStatus | 'all'): Promise<Job[]> {
-  await delay(`jobs:mine:${status}`);
-  const mine = jobs.filter((j) => j.status !== 'pool');
-  return status === 'all' ? mine : mine.filter((j) => j.status === status);
+  const rows = await authedRequest<JobDto[]>(
+    `/jobs/mine?status=${status}&limit=${POOL_LIMIT}`,
+  );
+  return rows.map(toAcceptedJob);
 }
 
 export async function getJob(id: string): Promise<Job> {
-  await delay(`jobs:${id}`);
-  const job = jobs.find((j) => j.id === id);
-  if (!job) throw new Error(`Job ${id} not found`);
-  return job;
+  return toAcceptedJob(await authedRequest<JobDto>(`/jobs/${id}`));
 }
 
-/** Jobs committed for today — drives the Home list. */
+/**
+ * Jobs committed for today — drives the Home list.
+ *
+ * "Today" is decided by the SERVER, in the company's operating timezone. The
+ * mock version filtered on `hoursToSlot < 12`, which is a different question
+ * and gave a different answer either side of midnight.
+ */
 export async function listToday(): Promise<Job[]> {
-  await delay('jobs:today');
-  return jobs.filter(
-    (j) =>
-      (j.status === 'upcoming' || j.status === 'inprogress') &&
-      j.hoursToSlot >= 0 &&
-      j.hoursToSlot < 12,
-  );
+  const rows = await authedRequest<JobDto[]>('/jobs/today');
+  return rows.map(toAcceptedJob);
 }

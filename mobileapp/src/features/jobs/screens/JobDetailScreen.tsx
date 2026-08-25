@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
+import { ScreenStatusBar } from '@/components/layout';
 import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
@@ -46,7 +46,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <View
         style={{
@@ -82,7 +82,13 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
             Job details
           </Text>
 
+          {/* `code`, never `id`. This is the screen a technician is looking at
+              when they phone the ASM about a job, and INST-240912 is what ops
+              can search for — the UUID is a route param and means nothing to
+              anybody. The fallback covers mock rows that predate `code`. */}
           <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
             style={{
               marginLeft: 'auto',
               fontFamily: 'RobotoMono_400Regular',
@@ -90,7 +96,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
               color: color.textOnChromeFaint,
             }}
           >
-            {job?.id ?? ''}
+            {job?.code ?? ''}
           </Text>
         </View>
 
@@ -175,7 +181,12 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     color: color.textLabel,
                   }}
                 >
-                  {job.address}, {job.area} — {job.pincode}
+                  {/* Filtered, not interpolated bare: `address` is optional on
+                      `Job`, and `{job.address}, ...` rendered the literal
+                      "undefined, Kandivali West — 400067" whenever it was
+                      absent. The navigate handler above already guarded; this
+                      did not. */}
+                  {[job.address, job.area].filter(Boolean).join(', ')} — {job.pincode}
                 </Text>
               </View>
 
@@ -235,7 +246,10 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                       marginTop: 3,
                     }}
                   >
-                    {job.category} · Install &amp; demo
+                    {/* The real service type, not a hardcoded one. "Tech Visit"
+                        and "Service" are equally valid and read very
+                        differently to a technician deciding what to bring. */}
+                    {job.category} · {job.serviceType}
                   </Text>
                 </View>
               </View>
@@ -246,21 +260,19 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
               <StatTile label="Payout" value={formatPaise(job.payoutPaise)} />
             </View>
 
+            {/* "Cancel this job" is deliberately absent, not hidden.
+                `getCancellationPreview` still looks the job up in `mocks/db`
+                and throws on a real ticket id, so the button would take a
+                technician who wants out of a job to an error screen. Rendering
+                it with `display: 'none'` would leave it in the tree and
+                reachable by a screen reader; it returns when the cancel slice
+                is real, alongside the penalty bands it needs. */}
             {!done ? (
-              <>
-                <Button
-                  label="Start job & capture proof"
-                  leadingIcon="play"
-                  onPress={() => router.push(`/job/${jobId}/proof/capture`)}
-                />
-                <View style={{ marginTop: 12 }}>
-                  <Button
-                    label="Cancel this job"
-                    variant="dangerGhost"
-                    onPress={() => router.push(`/job/${jobId}/cancel`)}
-                  />
-                </View>
-              </>
+              <Button
+                label="Start job & capture proof"
+                leadingIcon="play"
+                onPress={() => router.push(`/job/${jobId}/proof/capture`)}
+              />
             ) : null}
           </>
         )}

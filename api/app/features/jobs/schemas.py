@@ -52,11 +52,28 @@ class JobOfferOut(AppModel):
 class JobOut(JobOfferOut):
     """The same job once it is THIS technician's. The masked fields, unmasked.
 
-    Returned only by accept, and only to the technician the guarded UPDATE just
-    named — so there is no path by which these three reach anyone who has not
-    committed to the slot.
+    Returned by accept, by `GET /jobs/{id}` and by the my-jobs list — in every
+    case only to the technician the ticket is actually assigned to, which the
+    query enforces rather than the schema. There is no path by which the three
+    unmasked fields reach anyone who has not committed to the slot.
     """
 
     customerName: str
     customerPhone: str
     address: str
+    #: The full street line needs its state as well as its city — a technician
+    #: navigating there is given the address as the customer wrote it.
+    state: str
+
+    #: The ticket's own status word (`Assigned`, `In Progress`, `Closed`…), not
+    #: a client-side guess. The pool could omit it because everything in the
+    #: pool is `New` by definition; an accepted job cannot, because "am I due to
+    #: do this or have I done it" is the whole question My jobs asks.
+    status: str
+    #: Why the customer called. Null for `Installation + Demo`, required for
+    #: `Tech Visit` and `Service` — see the CHECK on `tickets.description`.
+    description: str | None
+    #: The serial the vendor holds on the invoice, which the technician
+    #: photographs and AI verification compares against. Mandatory at intake, so
+    #: never null in practice.
+    serialNumber: str

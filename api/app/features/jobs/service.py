@@ -30,7 +30,9 @@ from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.realtime import publish_pool_changed
 from app.core.schemas import ListParams
+from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES, TERMINAL_STATUSES
 from app.db.repository import paginate
 from app.features.jobs.schemas import JobOfferOut, JobOut
 from app.models.membership import Membership
@@ -169,6 +171,133 @@ def _offer_out(
     )
 
 
+def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
+    """The offer, plus everything that unlocks once the job is this technician's.
+
+    One builder for all three callers — accept, the detail read and the list —
+    because "what does an assigned technician get to see" is a privacy rule, and
+    three copies of it would eventually be two rules.
+    """
+    return JobOut(
+        **offer.model_dump(),
+        customerName=t.customer_name,
+        customerPhone=t.customer_phone,
+        address=t.address,
+        state=t.state,
+        status=t.status,
+        description=t.description,
+        serialNumber=t.serial_number,
+    )
+
+
+def mine_query(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> Select:
+    """Every ticket assigned to THIS technician, soonest slot first.
+
+    A second query rather than a parameter on `pool_query`, because that one is
+    hard-wired to the opposite case — `status == 'New' AND technician_id IS
+    NULL` is what "in the pool" means, and bending it to also express "mine"
+    would leave one predicate serving two contradictory questions.
+
+    No status filter here: the caller narrows it. Unfiltered, this is the
+    technician's whole history with the company, which is what a "Completed"
+    tab eventually reads.
+
+    Ordered by slot rather than by creation — a technician's list is a day plan,
+    and the only useful order for a day plan is the order they will drive it.
+    `ix_tickets_company_technician` already exists on `tickets` and serves the
+    lookup; the sort is over one technician's own rows, which is small.
+    """
+    return (
+        select(Ticket)
+        .where(
+            Ticket.company_id == company_id,
+            Ticket.technician_id == technician_id,
+            Ticket.deleted_at.is_(None),
+        )
+        .order_by(Ticket.slot_start.asc(), Ticket.code.asc())
+    )
+
+
+async def list_mine(
+    db: AsyncSession,
+    params: ListParams,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    statuses: tuple[str, ...] | None = None,
+) -> tuple[list[JobOut], int]:
+    """The My jobs list, narrowed to one segment's statuses."""
+    stmt = mine_query(company_id=company_id, technician_id=technician_id)
+    if statuses:
+        stmt = stmt.where(Ticket.status.in_(statuses))
+    rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
+    tickets = list(rows)
+    offers = await _hydrate(db, tickets)
+    return [_job_out(o, t) for o, t in zip(offers, tickets)], total
+
+
+async def get_job(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> JobOut:
+    """One of this technician's own jobs, unmasked — or 404.
+
+    The 404 is the privacy boundary, not a convenience. `technician_id` is in
+    the WHERE clause, so a technician who guesses another's ticket id gets the
+    same answer as one who invents a UUID: the row is not theirs, and they
+    cannot learn that it exists. 403 would confirm it does.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    return _job_out((await _hydrate(db, [row]))[0], row)
+
+
+async def list_today(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> list[JobOut]:
+    """What Home shows: this technician's jobs whose slot falls today.
+
+    "Today" is measured in the company's operating timezone, not the server's.
+    `SLOT_TIMEZONE_OFFSET_MINUTES` is the same constant the slot windows are
+    offered in, so a job at 9pm IST belongs to the day the customer thinks it
+    does rather than to whatever date it is in UTC.
+
+    Terminal statuses are excluded — a job cancelled this morning is not
+    something to drive to, and a closed one is already done. Home is a list of
+    work still ahead.
+    """
+    offset = datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES)
+    local_now = _now() + offset
+    start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Back to UTC for the comparison, because that is what the column stores.
+    start = start_local - offset
+    end = start + datetime.timedelta(days=1)
+
+    rows = await db.scalars(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.slot_start >= start,
+            Ticket.slot_start < end,
+            Ticket.status.not_in(TERMINAL_STATUSES),
+        )
+    )
+    tickets = list(rows)
+    offers = await _hydrate(db, tickets)
+    return [_job_out(o, t) for o, t in zip(offers, tickets)]
+
+
 async def list_pool(
     db: AsyncSession,
     params: ListParams,
@@ -272,17 +401,24 @@ async def accept(
             to_status="Assigned",
         )
     )
+    # This job has just LEFT the pool, and every other eligible technician is
+    # still being shown it. The same doorbell that announces a new job announces
+    # one that is gone — first-accept-wins is only fair if losing is visible
+    # promptly, rather than on whenever their next poll happens to land.
+    #
+    # In the same transaction as the assignment, so a rolled-back accept never
+    # tells anybody the job disappeared.
+    await publish_pool_changed(
+        db,
+        company_id=company_id,
+        pincode=offered.pincode,
+        subcategory_id=offered.subcategory_id,
+    )
     await db.commit()
 
     row = await db.scalar(
         select(Ticket).where(Ticket.id == ticket_id, Ticket.company_id == company_id)
     )
     assert row is not None
-    offer = (await _hydrate(db, [row]))[0]
-    # Now it is theirs, so the three masked fields are theirs to see.
-    return JobOut(
-        **offer.model_dump(),
-        customerName=row.customer_name,
-        customerPhone=row.customer_phone,
-        address=row.address,
-    )
+    # Now it is theirs, so the masked fields are theirs to see.
+    return _job_out((await _hydrate(db, [row]))[0], row)
