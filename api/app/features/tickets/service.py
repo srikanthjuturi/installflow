@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import Principal
-from app.core.realtime import publish_pool_changed
+from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.schemas import ListParams
 from app.core.scope import (
     ALL_INDIA_ROLES,
@@ -46,11 +46,12 @@ from app.core.tickets import (
     TICKET_STATUSES,
 )
 from app.db.repository import paginate
-from app.integrations import whatsapp
+from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
+    TicketProofOut,
     TimelineEventOut,
 )
 from app.models.company import Company
@@ -58,7 +59,7 @@ from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
 from app.models.technician import TechnicianProfile
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -888,6 +889,7 @@ async def confirm_slot(
         pincode=row.pincode,
         subcategory_id=row.subcategory_id,
     )
+    await publish_ticket_changed(db, row)
     await db.commit()
     await db.refresh(row)
 
@@ -1001,6 +1003,8 @@ async def create_ticket(
             pincode=row.pincode,
             subcategory_id=row.subcategory_id,
         )
+    # A new ticket is movement the console should see appear.
+    await publish_ticket_changed(db, row)
     await db.commit()
     await db.refresh(row)
 
@@ -1032,3 +1036,45 @@ async def create_ticket(
         await db.commit()
 
     return (await _hydrate(db, [row]))[0]
+
+
+async def list_proof(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
+) -> list[TicketProofOut]:
+    """The proof captured on one ticket, for whoever is entitled to see it.
+
+    Entitlement is `_load`'s, unchanged and not re-stated here — which is the
+    point. Staff see it if the ticket is in their territory, a vendor if the
+    ticket is theirs, a vendor user only if they raised it, and a technician not
+    at all through this route (they have `/jobs/{id}/proof` for their own work).
+    One rule, one place; a second copy would be the one that drifts.
+
+    404 rather than an empty list when the ticket is not visible, because an
+    empty list is an answer and "this ticket exists but is not yours" is not one
+    we want to give.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    rows = await db.scalars(
+        select(TicketProof)
+        .where(
+            TicketProof.company_id == row.company_id,
+            TicketProof.ticket_id == row.id,
+        )
+        .order_by(TicketProof.captured_at.asc(), TicketProof.ordinal.asc())
+    )
+    # Same belt-and-braces as the jobs slice: signing is the step that hands the
+    # bytes over, so a name outside this company's prefix is never signed.
+    prefix = f"proof/{row.company_id}/"
+    return [
+        TicketProofOut(
+            kind=p.kind,
+            ordinal=p.ordinal,
+            capturedAt=p.captured_at,
+            url=blob.signed_url(p.blob_name) if p.blob_name.startswith(prefix) else None,
+            latitude=p.latitude,
+            longitude=p.longitude,
+            accuracyM=p.accuracy_m,
+        )
+        for p in rows
+    ]

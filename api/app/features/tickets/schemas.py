@@ -174,3 +174,26 @@ class TimelineEventOut(AppModel):
 
 class TicketDetailOut(TicketOut):
     timeline: list[TimelineEventOut] = []
+
+
+class TicketProofOut(AppModel):
+    """One proof image, as ops and the vendor see it.
+
+    Deliberately its own model rather than the jobs slice's `ProofImageOut`:
+    slices never import each other, and the two audiences are not the same. A
+    technician looks at their own captures; ops and the vendor are looking at
+    somebody else's work, usually because a customer said it was not done.
+    """
+
+    kind: str
+    ordinal: int
+    capturedAt: datetime.datetime
+    #: Signed and short-lived, minted per read. Null when blob storage is
+    #: unconfigured, or when a row's name does not belong to this company —
+    #: the record still exists, the picture is simply not served.
+    url: str | None
+    #: Where the phone was for the live shot; null on the other three, and null
+    #: on a live shot where location was denied or never fixed.
+    latitude: float | None
+    longitude: float | None
+    accuracyM: float | None

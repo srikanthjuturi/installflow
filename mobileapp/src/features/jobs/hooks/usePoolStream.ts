@@ -18,11 +18,16 @@ import { getAccessToken, useSession } from '@/store/session.store';
  *
  * ## What arrives
  *
- * `{"type":"pool.changed"}` and nothing else. The server deliberately sends no
- * job data (see `app/core/realtime.py`), so the only thing to do with it is
- * invalidate the pool query and let the normal authenticated fetch bring the
- * list back — masked, tenant-scoped, exactly as it always was. This hook adds
- * a transport, not a second source of truth.
+ * Two frames, and neither carries any job data (see `app/core/realtime.py`):
+ *
+ *   `pool.changed`  something you might be able to take has changed. Broadcast
+ *                   to everyone whose coverage matches.
+ *   `job.changed`   one of YOUR jobs moved, with its id. Addressed — the server
+ *                   sends it to one technician.
+ *
+ * Both are answered the same way: invalidate and let the normal authenticated
+ * fetch bring it back — masked, tenant-scoped, exactly as it always was. This
+ * hook adds a transport, not a second source of truth.
  *
  * ## Why the poll survives
  *
@@ -137,6 +142,19 @@ export function usePoolStream(): void {
           case 'pool.changed':
             void queryClient.invalidateQueries({ queryKey: qk.pool() });
             break;
+          case 'job.changed': {
+            // One of THIS technician's own jobs moved — almost always the
+            // customer answering the confirmation link. They may still be
+            // outside the house, and if the answer was "not done" that is
+            // exactly when they need to know.
+            const jobId = (frame as { jobId?: string }).jobId;
+            if (jobId) void queryClient.invalidateQueries({ queryKey: qk.job(jobId) });
+            void queryClient.invalidateQueries({ queryKey: ['jobs', 'mine'] });
+            void queryClient.invalidateQueries({
+              queryKey: [...qk.myJobs('all'), 'today'],
+            });
+            break;
+          }
           // 'ping' needs no reply. It exists so a dead connection fails
           // instead of looking idle; receiving it is already proof of life.
         }

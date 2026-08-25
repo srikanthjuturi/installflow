@@ -24,17 +24,32 @@ either lives in `app.core.tickets` already or is small enough to state here.
 """
 
 import datetime
+import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.realtime import publish_pool_changed
+from app.core.config import settings
+from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.schemas import ListParams
-from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES, TERMINAL_STATUSES
+from app.core.tickets import (
+    MAX_PRODUCT_PHOTOS,
+    MIN_PRODUCT_PHOTOS,
+    PROOF_KINDS,
+    SLOT_TIMEZONE_OFFSET_MINUTES,
+    TERMINAL_STATUSES,
+)
 from app.db.repository import paginate
-from app.features.jobs.schemas import JobOfferOut, JobOut
+from app.features.jobs.schemas import (
+    JobOfferOut,
+    JobOut,
+    ProofArtifactIn,
+    ProofImageOut,
+)
+from app.integrations import blob, whatsapp
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductSubcategory
 from app.models.technician import (
@@ -42,7 +57,7 @@ from app.models.technician import (
     TechnicianPincode,
     TechnicianSubcategory,
 )
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 
@@ -187,6 +202,7 @@ def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
         status=t.status,
         description=t.description,
         serialNumber=t.serial_number,
+        feedbackRequestStatus=t.feedback_request_status,
     )
 
 
@@ -414,6 +430,7 @@ async def accept(
         pincode=offered.pincode,
         subcategory_id=offered.subcategory_id,
     )
+    await publish_ticket_changed(db, offered)
     await db.commit()
 
     row = await db.scalar(
@@ -422,3 +439,372 @@ async def accept(
     assert row is not None
     # Now it is theirs, so the masked fields are theirs to see.
     return _job_out((await _hydrate(db, [row]))[0], row)
+
+
+# ── doing the job ────────────────────────────────────────────────────────────
+#
+# Two transitions, and both are settled in a WHERE clause rather than by reading
+# the row and then writing it. The pattern is `accept`'s, for the same reason:
+# a guarded UPDATE cannot race, and `rowcount == 0` tells you precisely that
+# somebody else moved the ticket first.
+#
+# Deliberately NOT the pattern in `tickets.confirm_slot`, which reads then
+# writes with no lock and can let two simultaneous requests both through.
+
+
+def _event(
+    row: Ticket,
+    kind: str,
+    *,
+    actor_kind: str,
+    actor_label: str | None = None,
+    note: str | None = None,
+    from_status: str | None = None,
+    to_status: str | None = None,
+) -> TicketEvent:
+    """This slice's own event builder.
+
+    `record_event` lives in the tickets slice and slices never import each other
+    (hard rule 4), so `accept` already constructs its `TicketEvent` inline. This
+    is that, named, now that four more transitions need it.
+    """
+    return TicketEvent(
+        company_id=row.company_id,
+        ticket_id=row.id,
+        kind=kind,
+        actor_kind=actor_kind,
+        actor_label=actor_label,
+        note=note,
+        from_status=from_status,
+        to_status=to_status,
+    )
+
+
+async def _technician_name(db: AsyncSession, profile: TechnicianProfile) -> str:
+    name = await db.scalar(
+        select(User.full_name)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.id == profile.membership_id)
+    )
+    return name or profile.code
+
+
+async def submit_proof(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+    artifacts: list[ProofArtifactIn],
+) -> JobOut:
+    """Record the four artifacts and start the job.
+
+    The completeness rule is enforced HERE and not on the phone. A client can be
+    old, patched, or simply wrong, and "did this technician actually photograph
+    the serial" is exactly the kind of claim that must not be decided by the
+    thing making the claim.
+
+    Proof and status commit together. Work that started with no evidence, and
+    evidence for work that never started, are both states this refuses to leave
+    behind.
+    """
+    _check_proof_complete(artifacts)
+    _check_blobs_are_ours(artifacts, company_id=company_id)
+
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=profile.id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == company_id,
+            Ticket.technician_id == profile.id,
+            # Only from Assigned. A second submission on a job already in
+            # progress is a duplicate tap, not a new start.
+            Ticket.status == "Assigned",
+        )
+        .values(status="In Progress")
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"This job is {row.status.lower()} — proof can only be submitted once, when starting.",
+        )
+
+    for artifact in artifacts:
+        db.add(
+            TicketProof(
+                company_id=company_id,
+                ticket_id=ticket_id,
+                kind=artifact.kind,
+                ordinal=artifact.ordinal,
+                blob_name=artifact.blobName,
+                captured_at=artifact.capturedAt,
+                latitude=artifact.latitude,
+                longitude=artifact.longitude,
+                accuracy_m=artifact.accuracyM,
+            )
+        )
+
+    located = sum(1 for a in artifacts if a.latitude is not None)
+    db.add(
+        _event(
+            row,
+            "started",
+            actor_kind="technician",
+            actor_label=await _technician_name(db, profile),
+            note=(
+                f"{len(artifacts)} proof images captured"
+                + ("" if located else " — no location on the live photo")
+            ),
+            from_status="Assigned",
+            to_status="In Progress",
+        )
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+    return await get_job(
+        db, ticket_id, company_id=company_id, technician_id=profile.id
+    )
+
+
+def _check_blobs_are_ours(
+    artifacts: list[ProofArtifactIn], *, company_id: uuid.UUID
+) -> None:
+    """Every blob name must sit under THIS company's proof prefix.
+
+    Without this the endpoint is a cross-tenant read. `POST /uploads?kind=proof`
+    names a blob `proof/{company_id}/{uuid}.jpg`, but nothing stopped a client
+    from submitting a name it did not get back from that call — and
+    `list_proof` signs whatever name the row holds. A technician who guessed or
+    observed another company's blob name could have had a working link to
+    photographs of the inside of somebody else's customer's home.
+    """
+    prefix = f"proof/{company_id}/"
+    for a in artifacts:
+        name = a.blobName
+        # `..` cannot climb out of a blob container, but a name that tries is a
+        # client doing something it has no reason to do.
+        if not name.startswith(prefix) or ".." in name:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Proof images must be uploaded through this API first",
+            )
+
+
+def _check_proof_complete(artifacts: list[ProofArtifactIn]) -> None:
+    """All four kinds present, and product photos within 1–4."""
+    by_kind: dict[str, int] = {}
+    for a in artifacts:
+        by_kind[a.kind] = by_kind.get(a.kind, 0) + 1
+
+    missing = [k for k in PROOF_KINDS if k not in by_kind]
+    if missing:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"Proof is incomplete — missing {', '.join(missing)}",
+        )
+    for single in ("barcode", "serial", "live"):
+        if by_kind[single] != 1:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Expected exactly one {single} image",
+            )
+    if not MIN_PRODUCT_PHOTOS <= by_kind["photos"] <= MAX_PRODUCT_PHOTOS:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Between {MIN_PRODUCT_PHOTOS} and {MAX_PRODUCT_PHOTOS} product "
+                "photos are required"
+            ),
+        )
+
+
+async def complete(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+) -> JobOut:
+    """The technician says the work is done, and we go and ask the customer.
+
+    This does NOT close the ticket. In this product the customer closes a job —
+    the technician's word starts a question, and `Awaiting Customer` is the
+    state of having asked. That gap is the whole feature: before it, nothing but
+    the technician's own say-so recorded that the work happened.
+
+    The WhatsApp send happens AFTER the commit, exactly as `create_ticket` does.
+    A ticket that reached the customer's phone but was never saved is
+    unrecoverable; a saved ticket whose message failed is a resend.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=profile.id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    token = secrets.token_urlsafe(32)
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == company_id,
+            Ticket.technician_id == profile.id,
+            Ticket.status == "In Progress",
+        )
+        .values(
+            status="Awaiting Customer",
+            feedback_token=token,
+            feedback_request_status="pending",
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                "Capture and submit proof before completing this job."
+                if row.status == "Assigned"
+                else f"This job is already {row.status.lower()}."
+            ),
+        )
+
+    technician = await _technician_name(db, profile)
+    db.add(
+        _event(
+            row,
+            "completed",
+            actor_kind="technician",
+            actor_label=technician,
+            note="Work finished — waiting for the customer to confirm",
+            from_status="In Progress",
+            to_status="Awaiting Customer",
+        )
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+
+    # Durable first, message second.
+    await _send_feedback_request(db, ticket_id, company_id=company_id, token=token,
+                                 technician=technician)
+
+    return await get_job(
+        db, ticket_id, company_id=company_id, technician_id=profile.id
+    )
+
+
+async def _send_feedback_request(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    token: str,
+    technician: str,
+) -> None:
+    """Ask the customer to confirm. Records the outcome, never raises.
+
+    A refusal from Meta must not undo a completed job. The status stays
+    `Awaiting Customer` either way and the failure is written where somebody can
+    act on it — the same trade `_send_slot_request` makes in the tickets slice.
+    """
+    row = await db.scalar(
+        select(Ticket).where(Ticket.id == ticket_id, Ticket.company_id == company_id)
+    )
+    if row is None:  # pragma: no cover — it was there a moment ago
+        return
+
+    product = await db.scalar(
+        select(ProductModel.name).where(ProductModel.id == row.model_id)
+    )
+    company = await db.scalar(select(Company.name).where(Company.id == company_id))
+    link = f"{settings.FEEDBACK_LINK_BASE.rstrip('/')}/{token}"
+
+    result = await whatsapp.send_feedback_request(
+        row.customer_phone,
+        link,
+        company or "Installation Service",
+        product or "your product",
+        technician,
+    )
+    row.feedback_request_status = "sent" if result.ok else "failed"
+    row.feedback_request_error = None if result.ok else (result.error or "")[:255]
+    db.add(
+        _event(
+            row,
+            "feedback_requested",
+            actor_kind="system",
+            actor_label="WhatsApp",
+            note=(
+                f"Confirmation link sent to {row.customer_phone}"
+                if result.ok
+                else f"Could not send: {result.error or 'unknown error'}"
+            ),
+        )
+    )
+    await db.commit()
+
+
+async def list_proof(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> list[ProofImageOut]:
+    """One job's proof, each image behind a freshly signed link.
+
+    The 404 is the boundary: `mine_query` puts `technician_id` in the WHERE
+    clause, so a technician cannot read another's proof — which, given these are
+    photographs of the inside of somebody's home, is the access rule that
+    matters most in this slice.
+    """
+    owns = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if owns is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    rows = await db.scalars(
+        select(TicketProof)
+        .where(
+            TicketProof.company_id == company_id,
+            TicketProof.ticket_id == ticket_id,
+        )
+        .order_by(TicketProof.captured_at.asc(), TicketProof.ordinal.asc())
+    )
+    # Belt and braces. `submit_proof` already refuses a name outside this
+    # company's prefix, so a row that fails this check should not exist — but
+    # signing is the step that would actually hand the bytes over, and it costs
+    # one string comparison to make that impossible rather than merely unlikely.
+    prefix = f"proof/{company_id}/"
+    return [
+        ProofImageOut(
+            kind=p.kind,
+            ordinal=p.ordinal,
+            capturedAt=p.captured_at,
+            url=(
+                blob.signed_url(p.blob_name)
+                if p.blob_name.startswith(prefix)
+                else None
+            ),
+            latitude=p.latitude,
+            longitude=p.longitude,
+        )
+        for p in rows
+    ]

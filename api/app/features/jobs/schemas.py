@@ -17,6 +17,9 @@ guarantee than a string the server chose to obscure.
 
 import datetime
 import uuid
+from typing import Literal
+
+from pydantic import Field
 
 from app.core.schemas import AppModel
 
@@ -77,3 +80,64 @@ class JobOut(JobOfferOut):
     #: photographs and AI verification compares against. Mandatory at intake, so
     #: never null in practice.
     serialNumber: str
+
+    #: Whether the customer's confirmation link actually went: not_needed |
+    #: pending | sent | failed.
+    #:
+    #: The app needs this to avoid telling a technician "the customer has been
+    #: sent a link" when Meta refused it. The technician is still standing in
+    #: the customer's house at that moment and can say it in person — but only
+    #: if the screen tells them the truth.
+    feedbackRequestStatus: str
+
+
+class ProofArtifactIn(AppModel):
+    """One captured image, as the app reports it after uploading.
+
+    `blobName`, not a URL: proof lives in a private container and is read
+    through short-lived signed links, so there is no stable URL to send. The
+    client gets this name back from `POST /uploads?kind=proof`.
+
+    `capturedAt` is the PHONE's clock at the shutter, not the server's receive
+    time. A technician can be offline for an hour between capturing and
+    uploading, and when the photo was taken is the fact that matters.
+    """
+
+    kind: Literal["barcode", "serial", "photos", "live"]
+    blobName: str = Field(min_length=1, max_length=255)
+    capturedAt: datetime.datetime
+    #: 1 for the three single-shot kinds; 1–4 for product photos, in order.
+    ordinal: int = Field(default=1, ge=1, le=4)
+
+    #: Where the phone was. Sent only for `live` — that shot is the one claiming
+    #: attendance. Null is accepted and recorded rather than refused: a denied
+    #: permission or a lost fix is a fact about the proof, and blocking the
+    #: upload over it would strand a technician who has finished the work.
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    accuracyM: float | None = Field(default=None, ge=0)
+
+
+class ProofSubmitRequest(AppModel):
+    """Every artifact for one job, submitted in a single call.
+
+    All four kinds together rather than one call per image, because they land in
+    the same transaction as the status change — a half-submitted proof set is a
+    state this is designed never to reach.
+    """
+
+    artifacts: list[ProofArtifactIn] = Field(min_length=1, max_length=7)
+
+
+class ProofImageOut(AppModel):
+    """One stored artifact, with a link that expires."""
+
+    kind: str
+    ordinal: int
+    capturedAt: datetime.datetime
+    #: A signed URL valid for a few minutes, minted per read. Null when blob
+    #: storage is unconfigured — the record still exists, the picture just
+    #: cannot be shown right now.
+    url: str | None
+    latitude: float | None
+    longitude: float | None

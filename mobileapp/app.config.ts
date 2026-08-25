@@ -115,6 +115,18 @@ const config: ExpoConfig = {
       },
     ],
     [
+      'expo-location',
+      {
+        // FOREGROUND only — one reading at the shutter of the live site photo,
+        // which is what evidences that the technician was actually there.
+        // Background location is never requested: it needs a development build,
+        // and following somebody around is not what this is for.
+        locationWhenInUsePermission:
+          'Reliance GreenTech Technician records where the live site photo was taken, to confirm the visit.',
+        isAndroidBackgroundLocationEnabled: false,
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         image: './assets/splash-icon.png',

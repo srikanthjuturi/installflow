@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.api.router import api_router
 from app.features.onboarding.landing import router as invite_landing_router
+from app.features.tickets.feedback_page import router as feedback_page_router
 from app.features.tickets.slot_page import router as slot_page_router
 from app.features.onboarding.well_known import router as well_known_router
 from app.core.config import settings
@@ -100,6 +101,12 @@ app.include_router(invite_landing_router)
 # tapped on a phone, so the URL stays short. It is the one unauthenticated
 # write in the app; see the module docstring for what makes that safe.
 app.include_router(slot_page_router)
+
+# The second unauthenticated customer page, and the one that CLOSES a job: the
+# technician says the work is done, this is where the customer agrees. Outside
+# /api/v1 for the same reason as the slot page — it arrives over WhatsApp and
+# gets tapped on a phone.
+app.include_router(feedback_page_router)
 
 # Also outside /api/v1, and the path is fixed by Android — it fetches exactly
 # https://<host>/.well-known/assetlinks.json and nothing else.

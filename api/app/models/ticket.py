@@ -21,6 +21,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -150,6 +151,35 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: Meta's own words when it refused. Shown to ops verbatim.
     slot_request_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # ── closing it: the CUSTOMER's word, not the technician's ──────────────
+    #
+    # A technician saying "done" is a claim. These columns hold the only thing
+    # that settles it. Deliberately parallel to the slot_* set above, because it
+    # is the same mechanism pointed at a different question — one link, one
+    # customer, one answer.
+    #
+    #: Minted when the technician marks the work complete. Null until then, and
+    #: never nulled afterwards: `customer_confirmed_at` is what makes it
+    #: single-use, exactly as `slot_confirmed_at` does for the slot token.
+    feedback_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Delivery of the feedback request: pending | sent | failed | not_needed.
+    feedback_request_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'not_needed'")
+    )
+    feedback_request_error: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    #: 1–5. Null means they have not answered, which is a different claim from a
+    #: bad score — the same reason `technician_profiles.rating` is nullable.
+    customer_rating: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    #: Their own words, optional. Kept even when they say the job was NOT done —
+    #: especially then, since that is the version somebody will argue about.
+    customer_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: When they answered, either way. Burns the token.
+    customer_confirmed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # ── where it has got to ────────────────────────────────────────────────
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     #: Set on first-accept. Composite FK; RESTRICT, so a technician who has held
@@ -168,8 +198,17 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         ),
         CheckConstraint(
             "status IN ('New', 'Slot Pending', 'Assigned', 'In Progress', "
-            "'AI Review', 'Escalated', 'Closed', 'Force-Closed', 'Cancelled')",
+            "'Awaiting Customer', 'AI Review', 'Escalated', 'Closed', "
+            "'Force-Closed', 'Cancelled')",
             name="status",
+        ),
+        CheckConstraint(
+            "customer_rating IS NULL OR customer_rating BETWEEN 1 AND 5",
+            name="customer_rating",
+        ),
+        CheckConstraint(
+            "feedback_request_status IN ('not_needed', 'pending', 'sent', 'failed')",
+            name="feedback_request_status",
         ),
         CheckConstraint(
             "slot_request_status IN ('not_needed', 'pending', 'sent', 'failed')",
@@ -249,5 +288,76 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ["technician_profiles.company_id", "technician_profiles.id"],
             name="fk_tickets_company_technician",
             ondelete="RESTRICT",
+        ),
+    )
+
+
+class TicketProof(Base, IdMixin, AuditMixin):
+    """One artifact a technician captured on site.
+
+    A row per photo rather than four columns on `tickets`, because `photos` is
+    one to four shots and the other three are one each — a column set would
+    either cap product photos at one or invent `photo_1_url` through
+    `photo_4_url`, and both are the shape that has to be undone later.
+
+    No `SoftDeleteMixin`. Proof is evidence: a retake is a NEW row with a higher
+    `ordinal`, and the superseded one stays. What the technician photographed
+    first is exactly what somebody disputing the job will want to see.
+
+    **`blob_name`, not a URL.** These images live in a PRIVATE container and are
+    served through short-lived signed links, so a stored URL would embed a token
+    that expires — the row would rot while the image was still there. The name
+    is stable; the link is minted per read (`app/integrations/blob.py`).
+    """
+
+    __tablename__ = "ticket_proofs"
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Composite FK in __table_args__ — one company's proof must never be able
+    #: to attach to another company's ticket.
+    ticket_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: Position within its kind. Always 1 for the three single-shot kinds; 1..4
+    #: for `photos`, in the order they were taken.
+    ordinal: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    blob_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The phone's clock at the shutter. Not the server's: the gap between them
+    #: is itself worth seeing, and a technician offline for an hour still has a
+    #: true capture time.
+    captured_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    #: Where the phone was. Set on the `live` capture and null everywhere else —
+    #: the geo-tag is what evidences attendance, and only that shot claims it.
+    #: Null on a live shot means the technician denied or lost location, which
+    #: is a fact worth keeping rather than a reason to refuse the upload.
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Metres. A fix accurate to 2km is not the same evidence as one to 5m.
+    accuracy_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('barcode', 'serial', 'photos', 'live')", name="kind"
+        ),
+        CheckConstraint("ordinal BETWEEN 1 AND 4", name="ordinal"),
+        # The only query this table serves: one ticket's proof, in capture
+        # order. Also the covering index the composite FK needs — Postgres
+        # creates none, and without it deleting a ticket scans the whole table.
+        Index(
+            "ix_ticket_proofs_company_ticket",
+            "company_id",
+            "ticket_id",
+            "captured_at",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "ticket_id"],
+            ["tickets.company_id", "tickets.id"],
+            name="fk_ticket_proofs_company_ticket",
+            ondelete="CASCADE",
         ),
     )

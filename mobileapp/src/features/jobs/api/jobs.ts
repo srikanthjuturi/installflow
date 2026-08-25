@@ -46,6 +46,8 @@ export interface JobDto extends JobOfferDto {
   status: string;
   description: string | null;
   serialNumber: string;
+  /** not_needed | pending | sent | failed */
+  feedbackRequestStatus: string;
 }
 
 /**
@@ -65,6 +67,7 @@ const STATUS_MAP: Record<string, JobStatus> = {
   'Slot Pending': 'pool',
   Assigned: 'upcoming',
   'In Progress': 'inprogress',
+  'Awaiting Customer': 'inprogress',
   'AI Review': 'inprogress',
   Escalated: 'inprogress',
   Closed: 'completed',
@@ -161,6 +164,8 @@ export function toAcceptedJob(dto: JobDto): Job {
     // at any stage, and guessing 'upcoming' here is what would put a completed
     // job back on Home.
     status: toJobStatus(dto.status),
+    serverStatus: dto.status,
+    feedbackRequestStatus: dto.feedbackRequestStatus,
     customer: dto.customerName,
     phone: dto.customerPhone,
     address: dto.address,

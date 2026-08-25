@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     WHATSAPP_SLOT_TEMPLATE_NAME: str = ""
     WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME: str = ""
     WHATSAPP_SLOT_TEMPLATE_LANG: str = "en_US"
+    # "Your installation is complete — please confirm and rate it." UTILITY,
+    # like the other customer-facing ones. Its own lang setting rather than
+    # sharing the slot one, because this template can be approved in a
+    # different set of languages from the scheduling pair.
+    WHATSAPP_FEEDBACK_TEMPLATE_NAME: str = ""
+    WHATSAPP_FEEDBACK_TEMPLATE_LANG: str = "en_US"
     # Comma-separated E.164 numbers. When set, ONLY these receive a real send;
     # anything else is refused before it reaches Meta.
     #
@@ -101,6 +107,11 @@ class Settings(BaseSettings):
     # a URL containing it, and nobody outside the team ever reads it. This is
     # infrastructure, not branding.
     AZURE_BLOB_CONTAINER: str = "installflow-media"
+    # Proof photos live apart from everything else, in a container with NO
+    # public access. They show the inside of a customer's home and the serial
+    # off their appliance, so a permanent unauthenticated URL is the wrong
+    # storage — reads are short-lived SAS links minted per request.
+    AZURE_PROOF_CONTAINER: str = "installflow-proof"
 
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:
@@ -117,6 +128,11 @@ class Settings(BaseSettings):
     # real http URL and works as soon as the API is reachable. Point it at the
     # public origin in production.
     SLOT_LINK_BASE: str = "http://localhost:8000/slot"
+    # ─── Customer job confirmation ─────────────────────────────────────────
+    # Where the "was your installation completed?" link points. Same shape and
+    # same reasoning as SLOT_LINK_BASE: a customer has no app, so this is a web
+    # page and the default is a real http URL.
+    FEEDBACK_LINK_BASE: str = "http://localhost:8000/feedback"
     # Where the landing page sends someone who does not have the app yet.
     TECHNICIAN_APP_LINK: str = "https://install.reliancegreentech.in/technician"
     INVITE_EXPIRY_DAYS: int = 14

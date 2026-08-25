@@ -197,6 +197,48 @@ def build_slot_confirmed_payload(
     )
 
 
+def build_feedback_payload(
+    phone: str, link: str, company: str, product: str, technician: str
+) -> dict:
+    """"Your installation is complete — please confirm it." With the link.
+
+    The one message in this app that asks the customer to CLOSE something
+    rather than to schedule it. It names the technician because the customer
+    met them an hour ago, and "was this done properly" is a question about a
+    person, not about a company.
+
+    Same construction as the other three: company as a parameter because one
+    WABA sends for every tenant, and the link in the BODY rather than a URL
+    button so the domain can move without another Meta review.
+
+    Template to register (UTILITY, four body parameters):
+
+        {{1}}: your {{2}} installation is complete.
+        {{3}} has finished the work. Please confirm and rate your
+        experience: {{4}}
+        This helps us make sure every job is done properly.
+    """
+    if settings.WHATSAPP_FEEDBACK_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_FEEDBACK_TEMPLATE_NAME,
+            settings.WHATSAPP_FEEDBACK_TEMPLATE_LANG,
+            [company, product, technician, link],
+        )
+    # Development only — see build_invite_payload for why a template is what
+    # makes this actually arrive.
+    return _text_payload(
+        phone,
+        (
+            f"{company}: your {product} installation is complete.\n\n"
+            f"{technician} has finished the work. Please confirm it was done "
+            f"and rate your experience:\n{link}\n\n"
+            "This helps us make sure every job is done properly."
+        ),
+        preview_url=True,
+    )
+
+
 #: Meta failure codes worth translating, because each one has a different fix
 #: and the raw text names none of them. Anything absent falls through to Meta's
 #: own message rather than being flattened into "something went wrong".
@@ -313,4 +355,19 @@ async def send_slot_confirmed(
     return await _send(
         build_slot_confirmed_payload(phone, company, product, when),
         what="slot confirmation",
+    )
+
+
+async def send_feedback_request(
+    phone: str, link: str, company: str, product: str, technician: str
+) -> SendResult:
+    """Ask the customer to confirm the job is done. Never raises.
+
+    A refusal is not an error for the caller: the work happened and the ticket
+    records it, so ops can resend or read the link down the phone. Losing the
+    completion over a message would be the worse failure by far.
+    """
+    return await _send(
+        build_feedback_payload(phone, link, company, product, technician),
+        what="feedback request",
     )

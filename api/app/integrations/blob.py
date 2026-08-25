@@ -12,13 +12,14 @@ the phone called the photo.
 
 from __future__ import annotations
 
+import datetime
 import logging
 import mimetypes
 import uuid
 from dataclasses import dataclass
 
 from azure.core.exceptions import AzureError
-from azure.storage.blob import ContentSettings
+from azure.storage.blob import BlobSasPermissions, ContentSettings, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient
 
 from app.core.config import settings
@@ -106,6 +107,104 @@ async def upload_image(
     except AzureError as exc:
         logger.warning("Blob upload failed: %s", exc)
         return UploadResult.failure(f"Could not store the file: {exc}")
+
+
+async def upload_private(
+    data: bytes, content_type: str, *, prefix: str, company_id: str
+) -> UploadResult:
+    """Store one image in the PRIVATE container and return its blob NAME.
+
+    Proof photos are the case the public container's docstring anticipated: they
+    show the inside of a customer's home and a serial number off their appliance,
+    and a URL that works forever for anyone holding it is the wrong storage for
+    that. This container has no public access at all; reads go through
+    `signed_url` and expire.
+
+    Returns the NAME, not a URL, in `UploadResult.url` — the caller persists it,
+    and a link is minted per read. Persisting a URL would embed a SAS token that
+    expires, so the row would rot while the image was still perfectly there.
+    """
+    if not is_configured():
+        return UploadResult.failure("File storage is not configured on this server")
+
+    extension = ALLOWED_CONTENT_TYPES.get(content_type)
+    if extension is None:
+        allowed = ", ".join(sorted(ALLOWED_CONTENT_TYPES))
+        return UploadResult.failure(f"Only images are accepted ({allowed})")
+    if not data:
+        return UploadResult.failure("The file is empty")
+    if len(data) > MAX_UPLOAD_BYTES:
+        mb = MAX_UPLOAD_BYTES // (1024 * 1024)
+        return UploadResult.failure(f"Images must be under {mb} MB")
+
+    name = f"{prefix}/{company_id}/{uuid.uuid4().hex}{extension}"
+
+    try:
+        async with _client() as service:
+            container = service.get_container_client(settings.AZURE_PROOF_CONTAINER)
+            blob = container.get_blob_client(name)
+            await blob.upload_blob(
+                data,
+                overwrite=False,
+                content_settings=ContentSettings(content_type=content_type),
+            )
+            return UploadResult(ok=True, url=name)
+    except AzureError as exc:
+        logger.warning("Private blob upload failed: %s", exc)
+        return UploadResult.failure(f"Could not store the file: {exc}")
+
+
+def signed_url(blob_name: str, *, minutes: int = 15) -> str | None:
+    """A time-limited read link for one private blob. None if unconfigured.
+
+    Fifteen minutes: long enough to open a ticket and look at four photos,
+    short enough that a link pasted into a chat is dead by the time anyone else
+    opens it.
+
+    Generated from the account key rather than a user delegation key, because
+    the connection string is what this deployment has — there is no managed
+    identity on the App Service. Worth revisiting if one ever appears.
+    """
+    if not is_configured():
+        return None
+    try:
+        service = BlobServiceClient.from_connection_string(
+            settings.AZURE_STORAGE_CONNECTION_STRING
+        )
+        token = generate_blob_sas(
+            account_name=service.account_name,
+            container_name=settings.AZURE_PROOF_CONTAINER,
+            blob_name=blob_name,
+            account_key=service.credential.account_key,
+            permission=BlobSasPermissions(read=True),
+            expiry=datetime.datetime.now(datetime.timezone.utc)
+            + datetime.timedelta(minutes=minutes),
+        )
+    except Exception as exc:  # noqa: BLE001 — a missing image must not 500 a page
+        logger.warning("Could not sign %s: %s", blob_name, exc)
+        return None
+
+    return (
+        f"{service.primary_endpoint.rstrip('/')}/"
+        f"{settings.AZURE_PROOF_CONTAINER}/{blob_name}?{token}"
+    )
+
+
+async def ensure_proof_container() -> str:
+    """Create the private proof container if missing.
+
+    No `public_access` argument at all — the default is private, and stating it
+    by omission is the whole difference between this and `ensure_container`.
+    """
+    async with _client() as service:
+        container = service.get_container_client(settings.AZURE_PROOF_CONTAINER)
+        try:
+            await container.create_container()
+            return "created"
+        except AzureError as exc:
+            if "ContainerAlreadyExists" in str(exc):
+                return "already exists"
+            raise
 
 
 async def ensure_container() -> str:

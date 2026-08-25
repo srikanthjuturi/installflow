@@ -1,15 +1,20 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button } from '@/components/ui';
-import { useJob } from '@/features/jobs/hooks/useJobs';
+import { useRetryFailedUploads, useSubmitProof } from '@/features/proof/hooks/useProof';
 import { STEP_CONFIG } from '@/features/proof/machine';
-import { useCaptureStore, type CapturedShot } from '@/store/capture.store';
+import {
+  allShots,
+  isProofUploaded,
+  useCaptureStore,
+  type CapturedShot,
+} from '@/store/capture.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { ProofKind } from '@/types/domain';
@@ -35,9 +40,17 @@ const TILE_ICON: Record<ProofKind, IconName> = {
 export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data: job } = useJob(jobId);
 
   const { barcode, serial, photos, live, setStep, clearStep } = useCaptureStore();
+  const ready = useCaptureStore(isProofUploaded);
+  const uploading = useCaptureStore((s) =>
+    allShots(s).some(({ shot }) => shot.upload === 'uploading' || shot.upload === 'pending'),
+  );
+  const anyFailed = useCaptureStore((s) =>
+    allShots(s).some(({ shot }) => shot.upload === 'failed'),
+  );
+  const retryFailed = useRetryFailedUploads();
+  const submit = useSubmitProof(jobId);
 
   const retake = (step: ProofKind) => {
     clearStep(step);
@@ -49,6 +62,9 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   // a timestamp, and the AI run only starts after this screen submits. So these
   // say what is true (an artifact was captured); the decoded barcode and the
   // serial appear on the result screen, which has them.
+  // Each row reports what is actually true of its own artifact: captured or
+  // not, uploaded or not, geo-tagged or not. Every one of these used to be a
+  // fixed string with a green tick beside it regardless of state.
   const tiles: { step: ProofKind; meta: string; shot: CapturedShot | null }[] = [
     { step: 'barcode', meta: 'Barcode · captured', shot: barcode },
     { step: 'serial', meta: 'Serial · captured', shot: serial },
@@ -57,7 +73,13 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
       meta: `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`,
       shot: photos[0] ?? null,
     },
-    { step: 'live', meta: `Geo-tagged · ${job?.pincode ?? ''}`, shot: live },
+    {
+      step: 'live',
+      meta: live?.coords
+        ? `Geo-tagged · ${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}`
+        : 'Live photo · no location recorded',
+      shot: live,
+    },
   ];
 
   return (
@@ -149,19 +171,33 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                 </View>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                  {/* Green tick per row: four separate things must be present,
-                      and a glance down this column is how you confirm that. */}
+                  {/* The tick means UPLOADED, not merely captured — a photo
+                      still on the phone is not proof of anything. It used to
+                      render green unconditionally, on every row, always. */}
                   <View
                     style={{
                       width: 24,
                       height: 24,
                       borderRadius: 12,
-                      backgroundColor: color.online,
+                      backgroundColor:
+                        shot?.upload === 'done'
+                          ? color.online
+                          : shot?.upload === 'failed'
+                            ? color.debit
+                            : color.borderStrong,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Icon name="check" size={14} color={color.textInverse} />
+                    {shot?.upload === 'uploading' || shot?.upload === 'pending' ? (
+                      <ActivityIndicator size="small" color={color.textInverse} />
+                    ) : (
+                      <Icon
+                        name={shot?.upload === 'failed' ? 'warn' : 'check'}
+                        size={14}
+                        color={color.textInverse}
+                      />
+                    )}
                   </View>
 
                   <Text
@@ -199,7 +235,13 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
               color: color.credit,
             }}
           >
-            All photos geo-tagged &amp; matched to pincode {job?.pincode ?? ''}.
+            {/* Says what happened, not what we wish had. This line used to
+                claim every photo was geo-tagged and matched to the pincode
+                while nothing read the GPS at all. */}
+            {live?.coords
+              ? `Live photo geo-tagged at ${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}` +
+                (live.coords.accuracy ? ` (±${Math.round(live.coords.accuracy)}m)` : '')
+              : 'No location was recorded with the live photo.'}
           </Text>
         </View>
       </ScrollView>
@@ -214,11 +256,48 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
           paddingBottom: insets.bottom + 16,
         }}
       >
-        <Button
-          label="Submit for AI verification"
-          trailingIcon="arrowRight"
-          onPress={() => router.replace(`/job/${jobId}/proof/verifying`)}
-        />
+        {anyFailed ? (
+          <Button
+            label="Retry failed uploads"
+            variant="secondary"
+            leadingIcon="warn"
+            onPress={retryFailed}
+          />
+        ) : (
+          <Button
+            label="Submit & start job"
+            trailingIcon="arrowRight"
+            loading={submit.isPending}
+            // Gated on UPLOADED, not captured. The call sends blob names, so a
+            // shot still in flight has nothing to send — enabling this early
+            // would earn a 400 that looks like the app's fault.
+            disabled={!ready || uploading}
+            disabledHint={
+              uploading
+                ? 'Waiting for photos to upload…'
+                : 'Capture all four before submitting'
+            }
+            onPress={() =>
+              submit.mutate(undefined, {
+                onSuccess: () => router.replace(`/job/${jobId}`),
+              })
+            }
+          />
+        )}
+
+        {submit.isError ? (
+          <Text
+            style={{
+              fontFamily: 'Roboto_400Regular',
+              fontSize: 12,
+              color: color.debit,
+              textAlign: 'center',
+              marginTop: 8,
+            }}
+          >
+            {submit.error instanceof Error ? submit.error.message : "Couldn't submit"}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

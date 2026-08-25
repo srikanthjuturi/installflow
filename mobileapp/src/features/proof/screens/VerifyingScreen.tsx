@@ -20,6 +20,18 @@ export interface VerifyingScreenProps {
 }
 
 /**
+ * ⚠ NOT IN THE FLOW. Kept, not wired.
+ *
+ * AI verification ships later. Review now submits straight to
+ * `POST /jobs/:id/proof`, which starts the job, and Job detail then
+ * offers "Complete the job". Nothing routes here.
+ *
+ * Left in place deliberately: the screens match the approved prototype
+ * and the copy is signed off, so deleting them would mean rebuilding
+ * them from the bundle when the AI check lands. `api/verification.ts`
+ * behind them is still mock and must be bound before either is used.
+ */
+/**
  * Submits the captures, then polls until the AI run resolves.
  *
  * Its own screen rather than a spinner over Review, because the wait is

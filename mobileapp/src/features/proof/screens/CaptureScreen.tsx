@@ -1,6 +1,7 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,7 +11,8 @@ import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { CaptureOverlay } from '@/features/proof/components/CaptureOverlay';
 import { MAX_PHOTOS, MIN_PHOTOS, STEP_CONFIG, nextStep, stepLabel } from '@/features/proof/machine';
-import { useCaptureStore } from '@/store/capture.store';
+import { useUploadShot } from '@/features/proof/hooks/useProof';
+import { newShot, useCaptureStore, type Coords } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
 
 export interface CaptureScreenProps {
@@ -34,18 +36,61 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 
   const { step, photos, start, setStep, capture } = useCaptureStore();
   const sessionJobId = useCaptureStore((s) => s.jobId);
+  const upload = useUploadShot();
+
+  // Where the phone is, for the live shot. `null` is a real answer — permission
+  // denied, or no fix — and it is recorded rather than blocking the capture: a
+  // technician who has finished the work must not be stranded by a GPS.
+  const [coords, setCoords] = useState<Coords | null>(null);
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     if (sessionJobId !== jobId) start(jobId);
   }, [jobId, sessionJobId, start]);
 
+  // Acquire only on the step that claims it. Asking on `barcode` would put a
+  // permission dialog in front of a technician three steps before it matters.
+  useEffect(() => {
+    if (step !== 'live' || coords || locating) return;
+    let cancelled = false;
+
+    void (async () => {
+      setLocating(true);
+      try {
+        const { granted } = await Location.requestForegroundPermissionsAsync();
+        if (!granted || cancelled) return;
+        const fix = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (cancelled) return;
+        setCoords({
+          latitude: fix.coords.latitude,
+          longitude: fix.coords.longitude,
+          accuracy: fix.coords.accuracy ?? null,
+        });
+      } catch {
+        // Location services off, or no fix indoors. Recorded as absent.
+      } finally {
+        if (!cancelled) setLocating(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, coords, locating]);
+
   const config = STEP_CONFIG[step];
 
-  const onShutter = async () => {
+  const onShutter = useCallback(async () => {
     const photo = await cameraRef.current?.takePictureAsync({ quality: 0.7 });
     if (!photo) return;
 
-    capture(step, { uri: photo.uri, capturedAt: Date.now() });
+    const shot = newShot(photo.uri, step === 'live' ? coords : undefined);
+    capture(step, shot);
+    // Straight to blob storage, without awaiting. The shutter must not wait on
+    // a round trip, and the review screen shows how each one got on.
+    upload(shot);
 
     // Photos accumulate and advance manually; every other step is one-and-done.
     if (step === 'photos') return;
@@ -53,7 +98,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
     const next = nextStep(step);
     if (next) setStep(next);
     else router.replace(`/job/${jobId}/proof/review`);
-  };
+  }, [capture, coords, jobId, router, setStep, step, upload]);
 
   if (!permission) {
     return <View style={{ flex: 1, backgroundColor: color.cameraBg }} />;
@@ -156,7 +201,12 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 
       <View style={{ flex: 1, overflow: 'hidden' }}>
         <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
-          <CaptureOverlay step={step} pincode={job?.pincode ?? ''} photoCount={photos.length} />
+          <CaptureOverlay
+            step={step}
+            pincode={job?.pincode ?? ''}
+            photoCount={photos.length}
+            geo={coords ? 'locked' : locating ? 'acquiring' : 'unavailable'}
+          />
 
           {/* Hint sits INSIDE the viewfinder, over the feed — the technician is
               looking at the frame, not at the chrome below it. */}

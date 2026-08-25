@@ -120,6 +120,157 @@ class PoolChanged:
             return None
 
 
+@dataclass(frozen=True, slots=True)
+class JobChanged:
+    """Something happened to ONE technician's job, and they should see it now.
+
+    Addressed rather than broadcast. `PoolChanged` says "something you might be
+    able to take has changed" and every eligible technician filters it against
+    their own coverage; this says "your job moved", and only one person is meant
+    to receive it.
+
+    Carries no detail beyond the id — same doorbell rule as everything else on
+    this channel. The client re-reads `GET /jobs/{id}`, which already enforces
+    that the job is theirs.
+    """
+
+    company_id: uuid.UUID
+    technician_id: uuid.UUID
+    ticket_id: uuid.UUID
+
+    def as_payload(self) -> str:
+        return json.dumps(
+            {
+                "kind": "job.changed",
+                "company_id": str(self.company_id),
+                "technician_id": str(self.technician_id),
+                "ticket_id": str(self.ticket_id),
+            },
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def from_payload(raw: dict[str, Any]) -> "JobChanged | None":
+        if raw.get("kind") != "job.changed":
+            return None
+        try:
+            return JobChanged(
+                company_id=uuid.UUID(str(raw["company_id"])),
+                technician_id=uuid.UUID(str(raw["technician_id"])),
+                ticket_id=uuid.UUID(str(raw["ticket_id"])),
+            )
+        except (KeyError, ValueError, TypeError):
+            log.warning("realtime: discarding malformed payload %r", raw)
+            return None
+
+
+@dataclass(frozen=True, slots=True)
+class TicketChanged:
+    """A ticket moved, for the CONSOLE and the vendor portal.
+
+    Carries the three facts the console's visibility rule is written in terms
+    of, and nothing else:
+
+      pincode     staff see by territory
+      vendor_id   a vendor sees the tickets raised against it
+      created_by  a vendor USER sees only the ones they raised themselves
+
+    Deliberately no status, no customer, no code. The subscriber decides
+    whether this viewer may know the ticket changed, and then the viewer
+    re-reads through `GET /tickets`, which applies the same rule properly in
+    SQL. Sending the status would mean this file had a second, weaker copy of a
+    visibility rule — which is how the wrong person eventually learns something.
+    """
+
+    company_id: uuid.UUID
+    ticket_id: uuid.UUID
+    pincode: str
+    vendor_id: uuid.UUID
+    created_by: uuid.UUID | None
+
+    def as_payload(self) -> str:
+        return json.dumps(
+            {
+                "kind": "ticket.changed",
+                "company_id": str(self.company_id),
+                "ticket_id": str(self.ticket_id),
+                "pincode": self.pincode,
+                "vendor_id": str(self.vendor_id),
+                "created_by": str(self.created_by) if self.created_by else None,
+            },
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def from_payload(raw: dict[str, Any]) -> "TicketChanged | None":
+        if raw.get("kind") != "ticket.changed":
+            return None
+        try:
+            raised_by = raw.get("created_by")
+            return TicketChanged(
+                company_id=uuid.UUID(str(raw["company_id"])),
+                ticket_id=uuid.UUID(str(raw["ticket_id"])),
+                pincode=str(raw["pincode"]),
+                vendor_id=uuid.UUID(str(raw["vendor_id"])),
+                created_by=uuid.UUID(str(raised_by)) if raised_by else None,
+            )
+        except (KeyError, ValueError, TypeError):
+            log.warning("realtime: discarding malformed payload %r", raw)
+            return None
+
+
+#: Everything that travels on the channel.
+Event = PoolChanged | JobChanged | TicketChanged
+
+
+async def publish_ticket_changed(db: AsyncSession, row: Any) -> None:
+    """Announce that one ticket moved. Takes the Ticket row itself.
+
+    Called from every transition — created, slot confirmed, assigned, started,
+    completed, closed, escalated — so the console and the vendor portal stop
+    needing a refresh to see the operation move.
+
+    Typed loosely on purpose: `app.core` must not import a model from a slice's
+    world to state a signature, and every caller already holds the row.
+    """
+    await db.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {
+            "channel": CHANNEL,
+            "payload": TicketChanged(
+                company_id=row.company_id,
+                ticket_id=row.id,
+                pincode=row.pincode,
+                vendor_id=row.vendor_id,
+                created_by=row.created_by,
+            ).as_payload(),
+        },
+    )
+
+
+async def publish_job_changed(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    ticket_id: uuid.UUID,
+) -> None:
+    """Tell one technician their job moved, when this transaction commits.
+
+    The case this was built for: the customer answers the confirmation link and
+    the job closes — or comes back escalated. The technician may well still be
+    outside the house. Waiting up to two minutes for a poll to notice is the
+    difference between "the app told me" and "I found out later".
+    """
+    event = JobChanged(
+        company_id=company_id, technician_id=technician_id, ticket_id=ticket_id
+    )
+    await db.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {"channel": CHANNEL, "payload": event.as_payload()},
+    )
+
+
 async def publish_pool_changed(
     db: AsyncSession, *, company_id: uuid.UUID, pincode: str, subcategory_id: uuid.UUID
 ) -> None:
@@ -164,7 +315,7 @@ class Broker:
     """
 
     def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue[PoolChanged]] = set()
+        self._subscribers: set[asyncio.Queue[Event]] = set()
         self._task: asyncio.Task[None] | None = None
         self._up = asyncio.Event()
 
@@ -228,7 +379,11 @@ class Broker:
             return
         if not isinstance(raw, dict):
             return
-        event = PoolChanged.from_payload(raw)
+        event: Event | None = (
+            PoolChanged.from_payload(raw)
+            or JobChanged.from_payload(raw)
+            or TicketChanged.from_payload(raw)
+        )
         if event is None:
             return
         for mailbox in self._subscribers:
@@ -241,9 +396,9 @@ class Broker:
 
     # ── subscription ─────────────────────────────────────────────────────────
     @contextlib.asynccontextmanager
-    async def subscribe(self) -> AsyncIterator[asyncio.Queue[PoolChanged]]:
+    async def subscribe(self) -> AsyncIterator[asyncio.Queue[Event]]:
         """A mailbox for one connected client, removed however the caller exits."""
-        mailbox: asyncio.Queue[PoolChanged] = asyncio.Queue(maxsize=_MAILBOX_MAX)
+        mailbox: asyncio.Queue[Event] = asyncio.Queue(maxsize=_MAILBOX_MAX)
         self._subscribers.add(mailbox)
         try:
             yield mailbox

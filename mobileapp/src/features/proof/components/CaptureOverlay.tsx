@@ -15,6 +15,14 @@ export interface CaptureOverlayProps {
   step: ProofKind;
   pincode: string;
   photoCount: number;
+  /**
+   * The real state of the location fix, for the live step.
+   *
+   * This badge used to read "Location locked" unconditionally while nothing
+   * ever read the GPS — a claim the app could not support, and a worthless one
+   * if a visit were ever disputed. It now says which of the three is true.
+   */
+  geo?: 'acquiring' | 'locked' | 'unavailable';
 }
 
 /** Framing guides drawn over the live camera. Prototype insets everything 11%. */
@@ -24,6 +32,7 @@ export function CaptureOverlay({
   step,
   pincode,
   photoCount,
+  geo = 'acquiring',
 }: CaptureOverlayProps) {
   return (
     <View style={{ flex: 1 }} pointerEvents="none">
@@ -32,7 +41,7 @@ export function CaptureOverlay({
       {step === "barcode" ? <ScanLine /> : null}
       {step === "serial" ? <SerialFrame /> : null}
       {step === "photos" ? <ThirdsGrid count={photoCount} /> : null}
-      {step === "live" ? <GeoLock pincode={pincode} /> : null}
+      {step === "live" ? <GeoLock pincode={pincode} geo={geo} /> : null}
     </View>
   );
 }
@@ -255,13 +264,25 @@ function ThirdsGrid({ count }: { count: number }) {
 }
 
 /**
- * Crosshair plus a GREEN lock badge near the top.
+ * Crosshair plus a lock badge near the top.
  *
- * Green because this confirms a check has passed — the device knows where it
- * is and the pincode matches. Amber would read as a caution, which inverts the
- * meaning of the one artifact that proves the technician was actually on site.
+ * Green because this confirms a check has passed — the device has a real fix,
+ * which is recorded with the photo. Amber would read as a caution, which
+ * inverts the meaning of the one artifact that evidences attendance.
+ *
+ * It states the ticket's pincode beside the lock, and does NOT claim the
+ * coordinates were matched against it: nothing compares them yet. Saying
+ * "locked · 400067" is true — we have a fix, and this is the job's area — where
+ * "matched" would be the assertion this badge spent its first life making
+ * falsely.
  */
-function GeoLock({ pincode }: { pincode: string }) {
+function GeoLock({
+  pincode,
+  geo,
+}: {
+  pincode: string;
+  geo: NonNullable<CaptureOverlayProps['geo']>;
+}) {
   return (
     <>
       <View
@@ -351,7 +372,11 @@ function GeoLock({ pincode }: { pincode: string }) {
               color: color.textInverse,
             }}
           >
-            Location locked · {pincode}
+            {geo === "locked"
+              ? `Location locked · ${pincode}`
+              : geo === "acquiring"
+                ? "Finding your location…"
+                : "Location unavailable"}
           </Text>
         </View>
       </View>

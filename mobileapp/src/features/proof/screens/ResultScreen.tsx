@@ -18,7 +18,19 @@ import type { VerificationOutcome } from '@/types/domain';
 export interface ResultScreenProps {
   jobId: string;
   status: VerificationOutcome;
-  /** Which run produced this outcome — carries the serial and confidence. */
+  /**
+ * ⚠ NOT IN THE FLOW. Kept, not wired.
+ *
+ * AI verification ships later. Review now submits straight to
+ * `POST /jobs/:id/proof`, which starts the job, and Job detail then
+ * offers "Complete the job". Nothing routes here.
+ *
+ * Left in place deliberately: the screens match the approved prototype
+ * and the copy is signed off, so deleting them would mean rebuilding
+ * them from the bundle when the AI check lands. `api/verification.ts`
+ * behind them is still mock and must be bound before either is used.
+ */
+/** Which run produced this outcome — carries the serial and confidence. */
   verificationId?: string;
 }
 

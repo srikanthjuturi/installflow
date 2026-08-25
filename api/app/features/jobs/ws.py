@@ -51,7 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import presence
 from app.core.database import AsyncSessionLocal
-from app.core.realtime import PoolChanged, broker
+from app.core.realtime import JobChanged, PoolChanged, broker
 from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import TECHNICIAN
@@ -285,6 +285,17 @@ async def pool_stream(ws: WebSocket) -> None:
 
                 if event.company_id != company_id:
                     continue
+
+                # Addressed to one technician — no coverage test, because this
+                # is not an offer. It is their own job moving under them,
+                # usually because the customer has just answered.
+                if isinstance(event, JobChanged):
+                    if event.technician_id == technician_id:
+                        await ws.send_json(
+                            {"type": "job.changed", "jobId": str(event.ticket_id)}
+                        )
+                    continue
+
                 if coverage.stale:
                     # Refreshed only when there is an event to judge, so an idle
                     # socket costs nothing. A failure here is not fatal: fall
