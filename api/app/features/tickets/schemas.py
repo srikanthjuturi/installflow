@@ -197,3 +197,6 @@ class TicketProofOut(AppModel):
     latitude: float | None
     longitude: float | None
     accuracyM: float | None
+    #: What the phone reverse-geocoded its position to. Compare it with the
+    #: ticket's own pincode when a customer disputes that anybody attended.
+    devicePincode: str | None

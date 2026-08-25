@@ -521,6 +521,8 @@ async def submit_proof(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
+    _check_live_was_taken_at_the_job(artifacts, ticket=row)
+
     result = await db.execute(
         update(Ticket)
         .where(
@@ -551,6 +553,7 @@ async def submit_proof(
                 latitude=artifact.latitude,
                 longitude=artifact.longitude,
                 accuracy_m=artifact.accuracyM,
+                device_pincode=artifact.devicePincode,
             )
         )
 
@@ -574,6 +577,52 @@ async def submit_proof(
     return await get_job(
         db, ticket_id, company_id=company_id, technician_id=profile.id
     )
+
+
+def _check_live_was_taken_at_the_job(
+    artifacts: list[ProofArtifactIn], *, ticket: Ticket
+) -> None:
+    """The live photo must have been taken where the job is.
+
+    The app already refuses the shutter on a mismatch, but a client-side rule is
+    a rendering choice — this is the one that holds. Two conditions, and they
+    are not the same condition:
+
+      * the live shot must carry COORDINATES. Without this the block is
+        decorative: turning location off would be the way round it.
+      * if it also carries a postal code, that code must match the ticket's.
+
+    A null postal code with good coordinates is ACCEPTED. Reverse geocoding
+    needs map data the phone may not have, and refusing it would strand a
+    technician standing at the right door with a working GPS. The coordinates
+    are stored either way, so the position is auditable even where the label is
+    missing.
+
+    This cannot be a complete guarantee, and it is worth being honest about why:
+    nothing in this database maps a coordinate to a pincode, so the server
+    cannot independently verify the label the phone attached. It enforces "if
+    you tell me where you were, it must be here" — the coordinates remain the
+    evidence for anything argued afterwards.
+    """
+    live = [a for a in artifacts if a.kind == "live"]
+    for shot in live:
+        if shot.latitude is None or shot.longitude is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "The live site photo must carry a location — it is what "
+                    "evidences the visit. Turn location on and retake it."
+                ),
+            )
+        if shot.devicePincode and shot.devicePincode != ticket.pincode:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"The live photo was taken at {shot.devicePincode}, but this "
+                    f"job is at {ticket.pincode}. It must be captured at the "
+                    "customer's address."
+                ),
+            )
 
 
 def _check_blobs_are_ours(
@@ -805,6 +854,7 @@ async def list_proof(
             ),
             latitude=p.latitude,
             longitude=p.longitude,
+            devicePincode=p.device_pincode,
         )
         for p in rows
     ]

@@ -32,6 +32,7 @@ interface ArtifactBody {
   latitude?: number;
   longitude?: number;
   accuracyM?: number;
+  devicePincode?: string;
 }
 
 function toArtifact(kind: ProofKind, shot: CapturedShot, ordinal: number): ArtifactBody {
@@ -48,6 +49,10 @@ function toArtifact(kind: ProofKind, shot: CapturedShot, ordinal: number): Artif
     body.latitude = shot.coords.latitude;
     body.longitude = shot.coords.longitude;
     if (shot.coords.accuracy !== null) body.accuracyM = shot.coords.accuracy;
+    // The server re-checks this against the ticket's pincode and refuses a
+    // mismatch. Sending it is not a formality — it is what makes the block on
+    // the shutter more than a rendering choice.
+    if (shot.coords.pincode) body.devicePincode = shot.coords.pincode;
   }
   return body;
 }

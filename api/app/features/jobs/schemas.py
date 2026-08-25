@@ -116,6 +116,12 @@ class ProofArtifactIn(AppModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     accuracyM: float | None = Field(default=None, ge=0)
+    #: The postal code the phone reverse-geocoded from those coordinates. The
+    #: server refuses a `live` artifact whose code disagrees with the ticket's.
+    #: Null is accepted — geocoding can fail while the fix is good — but the
+    #: coordinates are then mandatory, so a live photo can never carry no
+    #: location at all.
+    devicePincode: str | None = Field(default=None, max_length=6)
 
 
 class ProofSubmitRequest(AppModel):
@@ -135,6 +141,8 @@ class ProofImageOut(AppModel):
     kind: str
     ordinal: int
     capturedAt: datetime.datetime
+    #: What the phone said its postal code was, for comparison with the job's.
+    devicePincode: str | None
     #: A signed URL valid for a few minutes, minted per read. Null when blob
     #: storage is unconfigured — the record still exists, the picture just
     #: cannot be shown right now.

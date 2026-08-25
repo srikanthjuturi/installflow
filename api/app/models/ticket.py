@@ -339,6 +339,19 @@ class TicketProof(Base, IdMixin, AuditMixin):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     #: Metres. A fix accurate to 2km is not the same evidence as one to 5m.
     accuracy_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: The postal code the DEVICE was in, reverse-geocoded on the phone from the
+    #: coordinates beside it.
+    #:
+    #: Stored because it is what the rule is enforced on — a live photo whose
+    #: device pincode disagrees with the ticket's is refused — and because
+    #: recomputing it later would need a geocoding service this deployment does
+    #: not have. The COORDINATES remain the evidence; this is a claim the client
+    #: made about them, kept so the two can be compared afterwards.
+    #:
+    #: Null when reverse geocoding failed while the fix itself was good. That is
+    #: accepted: refusing it would strand a technician standing at the right
+    #: door with a working GPS and no map data.
+    device_pincode: Mapped[str | None] = mapped_column(String(6), nullable=True)
 
     __table_args__ = (
         CheckConstraint(

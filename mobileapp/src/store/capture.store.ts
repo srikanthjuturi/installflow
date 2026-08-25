@@ -21,6 +21,19 @@ export interface Coords {
   longitude: number;
   /** Metres. A fix good to 2km is not the evidence a fix good to 5m is. */
   accuracy: number | null;
+  /**
+   * The postal code the DEVICE is actually standing in, reverse-geocoded from
+   * the fix above.
+   *
+   * Emphatically not the ticket's pincode. The badge used to print the job's
+   * pincode beside the words "Location locked", which reads as a confirmation
+   * that the technician is at the address — a claim nothing was making. This is
+   * the phone's own answer, and where the two disagree that is worth seeing.
+   *
+   * Null when reverse geocoding is unavailable or returns nothing; the
+   * coordinates remain the exact record either way.
+   */
+  pincode?: string | null;
 }
 
 export type UploadState = 'pending' | 'uploading' | 'done' | 'failed';

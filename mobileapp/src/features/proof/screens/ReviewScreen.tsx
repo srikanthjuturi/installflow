@@ -76,7 +76,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
     {
       step: 'live',
       meta: live?.coords
-        ? `Geo-tagged · ${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}`
+        ? `Geo-tagged · ${live.coords.pincode ?? `${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}`}`
         : 'Live photo · no location recorded',
       shot: live,
     },
@@ -238,8 +238,13 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
             {/* Says what happened, not what we wish had. This line used to
                 claim every photo was geo-tagged and matched to the pincode
                 while nothing read the GPS at all. */}
+            {/* The DEVICE's position, exactly as captured — never the ticket's
+                pincode, which is where the job is rather than where the phone
+                was. Coordinates are the record; the postal code is only a
+                readable name for them. */}
             {live?.coords
-              ? `Live photo geo-tagged at ${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}` +
+              ? `Live photo taken at ${live.coords.latitude.toFixed(5)}, ${live.coords.longitude.toFixed(5)}` +
+                (live.coords.pincode ? ` — ${live.coords.pincode}` : '') +
                 (live.coords.accuracy ? ` (±${Math.round(live.coords.accuracy)}m)` : '')
               : 'No location was recorded with the live photo.'}
           </Text>

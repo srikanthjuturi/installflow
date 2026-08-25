@@ -1075,6 +1075,7 @@ async def list_proof(
             latitude=p.latitude,
             longitude=p.longitude,
             accuracyM=p.accuracy_m,
+            devicePincode=p.device_pincode,
         )
         for p in rows
     ]
