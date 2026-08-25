@@ -61,11 +61,12 @@ export function useSubmitProof(jobId: string) {
 
   return useMutation({
     mutationFn: () => {
-      const shots = allShots(useCaptureStore.getState()) as {
-        kind: ProofKind;
-        shot: CapturedShot;
-      }[];
-      return submitProof(jobId, shots);
+      const state = useCaptureStore.getState();
+      const shots = allShots(state) as { kind: ProofKind; shot: CapturedShot }[];
+      return submitProof(jobId, shots, {
+        value: state.serialValue,
+        source: state.serialSource,
+      });
     },
     onSuccess: (job) => {
       queryClient.setQueryData(qk.job(jobId), job);

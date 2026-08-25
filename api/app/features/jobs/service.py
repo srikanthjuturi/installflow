@@ -186,6 +186,19 @@ def _offer_out(
     )
 
 
+def serial_mismatch(t: Ticket) -> bool:
+    """Did the unit on site carry a different serial from the order?
+
+    Compared case-insensitively and ignoring surrounding whitespace, because a
+    scanner and a keyboard disagree about both and neither difference means a
+    different appliance. Null observed serial is not a mismatch — it means
+    nobody has looked yet.
+    """
+    if not t.observed_serial or not t.serial_number:
+        return False
+    return t.observed_serial.strip().upper() != t.serial_number.strip().upper()
+
+
 def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
     """The offer, plus everything that unlocks once the job is this technician's.
 
@@ -203,6 +216,9 @@ def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
         description=t.description,
         serialNumber=t.serial_number,
         feedbackRequestStatus=t.feedback_request_status,
+        observedSerial=t.observed_serial,
+        observedSerialSource=t.observed_serial_source,
+        serialMismatch=serial_mismatch(t),
     )
 
 
@@ -496,6 +512,8 @@ async def submit_proof(
     company_id: uuid.UUID,
     profile: TechnicianProfile,
     artifacts: list[ProofArtifactIn],
+    observed_serial: str | None = None,
+    observed_serial_source: str | None = None,
 ) -> JobOut:
     """Record the four artifacts and start the job.
 
@@ -508,7 +526,11 @@ async def submit_proof(
     evidence for work that never started, are both states this refuses to leave
     behind.
     """
-    _check_proof_complete(artifacts)
+    _check_proof_complete(
+        artifacts,
+        observed_serial=observed_serial,
+        observed_serial_source=observed_serial_source,
+    )
     _check_blobs_are_ours(artifacts, company_id=company_id)
 
     row = await db.scalar(
@@ -557,6 +579,10 @@ async def submit_proof(
             )
         )
 
+    if observed_serial:
+        row.observed_serial = observed_serial.strip()
+        row.observed_serial_source = observed_serial_source or "manual"
+
     located = sum(1 for a in artifacts if a.latitude is not None)
     db.add(
         _event(
@@ -572,6 +598,26 @@ async def submit_proof(
             to_status="In Progress",
         )
     )
+
+    # Recorded, not enforced. The technician has already done the physical work
+    # and the likeliest cause is a slip at intake — so this goes in the trail
+    # and in front of a manager, rather than stopping somebody standing in a
+    # customer's house over a number they cannot correct.
+    if serial_mismatch(row):
+        db.add(
+            _event(
+                row,
+                "serial_mismatch",
+                actor_kind="technician",
+                actor_label=await _technician_name(db, profile),
+                note=(
+                    f"Read {row.observed_serial} on site "
+                    f"({row.observed_serial_source}); the order says "
+                    f"{row.serial_number}"
+                ),
+            )
+        )
+
     await publish_ticket_changed(db, row)
     await db.commit()
     return await get_job(
@@ -649,20 +695,45 @@ def _check_blobs_are_ours(
             )
 
 
-def _check_proof_complete(artifacts: list[ProofArtifactIn]) -> None:
-    """All four kinds present, and product photos within 1–4."""
+def _check_proof_complete(
+    artifacts: list[ProofArtifactIn],
+    *,
+    observed_serial: str | None,
+    observed_serial_source: str | None,
+) -> None:
+    """What a complete proof set is — and the serial photo is CONDITIONAL.
+
+    The barcode carries the serial. When it scans, the number is already in
+    hand and photographing the label as well is a step that proves nothing new,
+    so it is not required. When it does not scan — a damaged label, glare, or no
+    barcode at all — the technician types the number, and then the photo of the
+    label IS required, because a typed number with nothing behind it is just an
+    assertion.
+
+    A serial is always required by one route or the other. That is the point of
+    the step: nobody leaves site without recording which unit they installed.
+    """
     by_kind: dict[str, int] = {}
     for a in artifacts:
         by_kind[a.kind] = by_kind.get(a.kind, 0) + 1
 
-    missing = [k for k in PROOF_KINDS if k not in by_kind]
+    if not (observed_serial or "").strip():
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="The serial number is required — scan the barcode or enter it by hand",
+        )
+
+    scanned = observed_serial_source == "scanned"
+    required = [k for k in PROOF_KINDS if k != "serial" or not scanned]
+
+    missing = [k for k in required if k not in by_kind]
     if missing:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Proof is incomplete — missing {', '.join(missing)}",
         )
     for single in ("barcode", "serial", "live"):
-        if by_kind[single] != 1:
+        if single in by_kind and by_kind[single] != 1:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=f"Expected exactly one {single} image",

@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,7 +9,8 @@ import { Icon, type IconName } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { useRetryFailedUploads, useSubmitProof } from '@/features/proof/hooks/useProof';
-import { STEP_CONFIG } from '@/features/proof/machine';
+import { ShotPreview } from '@/features/proof/components/ShotPreview';
+import { MAX_PHOTOS, STEP_CONFIG } from '@/features/proof/machine';
 import {
   allShots,
   isProofUploaded,
@@ -41,7 +43,23 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const { barcode, serial, photos, live, setStep, clearStep } = useCaptureStore();
+  const {
+    barcode,
+    serial,
+    photos,
+    live,
+    serialValue,
+    serialSource,
+    setStep,
+    clearStep,
+    removePhoto,
+  } = useCaptureStore();
+  const scanned = serialSource === 'scanned';
+  //: Which shot is open full screen. Tapping a tile opens this; it used to
+  //: delete the capture and reopen the camera on the same tap.
+  const [preview, setPreview] = useState<{ shot: CapturedShot; step: ProofKind } | null>(
+    null,
+  );
   const ready = useCaptureStore(isProofUploaded);
   const uploading = useCaptureStore((s) =>
     allShots(s).some(({ shot }) => shot.upload === 'uploading' || shot.upload === 'pending'),
@@ -53,9 +71,42 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const submit = useSubmitProof(jobId);
 
   const retake = (step: ProofKind) => {
+    setPreview(null);
     clearStep(step);
     setStep(step);
     router.push(`/job/${jobId}/proof/capture`);
+  };
+
+  /** Take MORE product photos without discarding the ones already taken. */
+  const addPhotos = () => {
+    setPreview(null);
+    setStep('photos');
+    router.push(`/job/${jobId}/proof/capture`);
+  };
+
+  /**
+   * What the preview's destructive button does, which differs by kind.
+   *
+   * Removing one product photo is not the same act as retaking the serial —
+   * the first leaves three good shots behind, the second replaces the only one
+   * there is. The button says which it is about to do.
+   */
+  const previewAction = () => {
+    if (!preview) return null;
+    if (preview.step !== 'photos') {
+      return { label: 'Retake this', onPress: () => retake(preview.step) };
+    }
+    if (photos.length > 1) {
+      return {
+        label: 'Remove this photo',
+        onPress: () => {
+          removePhoto(preview.shot.uri);
+          setPreview(null);
+        },
+      };
+    }
+    // The last one. Removing it leaves nothing, so this is a retake.
+    return { label: 'Retake this', onPress: () => retake('photos') };
   };
 
   // Nothing has been read yet at this point — a CapturedShot is a file URI and
@@ -66,11 +117,29 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   // not, uploaded or not, geo-tagged or not. Every one of these used to be a
   // fixed string with a green tick beside it regardless of state.
   const tiles: { step: ProofKind; meta: string; shot: CapturedShot | null }[] = [
-    { step: 'barcode', meta: 'Barcode · captured', shot: barcode },
-    { step: 'serial', meta: 'Serial · captured', shot: serial },
+    {
+      step: 'barcode',
+      meta: scanned ? `Read · ${serialValue}` : 'Captured · did not scan',
+      shot: barcode,
+    },
+    // Present only when the barcode would not scan. With a successful read the
+    // number is already in hand and this row would be a step that proved
+    // something already proved.
+    ...(scanned
+      ? []
+      : [
+          {
+            step: 'serial' as ProofKind,
+            meta: serialValue ? `Entered · ${serialValue}` : 'Serial not entered',
+            shot: serial,
+          },
+        ]),
     {
       step: 'photos',
-      meta: `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`,
+      meta:
+        photos.length === 0
+          ? 'No product photos yet'
+          : `${photos.length} of ${MAX_PHOTOS} · tap one to see it`,
       shot: photos[0] ?? null,
     },
     {
@@ -101,15 +170,20 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
             marginBottom: 14,
           }}
         >
-          Check your four captures before AI verification. Tap any to retake.
+          Tap any capture to see it full screen. Retake anything that isn&apos;t clear — after you submit, a blurry serial costs a second visit.
         </Text>
 
         {tiles.map(({ step, meta, shot }) => (
           <Pressable
             key={step}
-            onPress={() => retake(step)}
+            // Opens the picture. It used to delete it.
+            onPress={() => (shot ? setPreview({ shot, step }) : retake(step))}
             accessibilityRole="button"
-            accessibilityLabel={`Retake ${STEP_CONFIG[step].reviewLabel}`}
+            accessibilityLabel={
+              shot
+                ? `View ${STEP_CONFIG[step].reviewLabel}`
+                : `Capture ${STEP_CONFIG[step].reviewLabel}`
+            }
           >
             {({ pressed }) => (
               <View
@@ -200,16 +274,96 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                     )}
                   </View>
 
-                  <Text
-                    style={{ fontFamily: 'Roboto_700Bold', fontSize: 12, color: color.actionBg }}
+                  {/* The one destructive control on this row, and now the
+                      only one — labelled, separate from the picture, and it
+                      says "Add" where more shots are welcome rather than
+                      "Retake", which would throw away the ones already taken. */}
+                  <Pressable
+                    onPress={() =>
+                      step === 'photos' && photos.length > 0 && photos.length < MAX_PHOTOS
+                        ? addPhotos()
+                        : retake(step)
+                    }
+                    hitSlop={10}
+                    accessibilityRole="button"
                   >
-                    Retake
-                  </Text>
+                    {({ pressed }) => (
+                      <Text
+                        style={{
+                          fontFamily: 'Roboto_700Bold',
+                          fontSize: 12,
+                          color: color.actionBg,
+                          opacity: pressed ? 0.6 : 1,
+                        }}
+                      >
+                        {step === 'photos' && photos.length > 0 && photos.length < MAX_PHOTOS
+                          ? 'Add'
+                          : 'Retake'}
+                      </Text>
+                    )}
+                  </Pressable>
                 </View>
               </View>
             )}
           </Pressable>
         ))}
+
+        {/* Every product photo, not just the first. Shots two to four were
+            captured, uploaded and submitted while being invisible on the one
+            screen whose whole job is checking them. */}
+        {photos.length > 1 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: 8,
+              marginTop: -3,
+              marginBottom: 12,
+              paddingHorizontal: 2,
+            }}
+          >
+            {photos.map((shot, i) => (
+              <Pressable
+                key={shot.uri}
+                onPress={() => setPreview({ shot, step: 'photos' })}
+                accessibilityRole="button"
+                accessibilityLabel={`View product photo ${i + 1} of ${photos.length}`}
+              >
+                {({ pressed }) => (
+                  <View style={{ opacity: pressed ? 0.7 : 1 }}>
+                    <Image
+                      source={{ uri: shot.uri }}
+                      style={{ width: 64, height: 64, borderRadius: 12 }}
+                      contentFit="cover"
+                    />
+                    {shot.upload !== 'done' ? (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          right: 4,
+                          bottom: 4,
+                          width: 16,
+                          height: 16,
+                          borderRadius: 8,
+                          backgroundColor:
+                            shot.upload === 'failed' ? color.debit : color.borderStrong,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {shot.upload === 'failed' ? (
+                          <Icon name="warn" size={10} color={color.textInverse} />
+                        ) : (
+                          <ActivityIndicator size="small" color={color.textInverse} />
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
         <View
           style={{
@@ -250,6 +404,13 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
           </Text>
         </View>
       </ScrollView>
+
+      <ShotPreview
+        shot={preview?.shot ?? null}
+        title={preview ? STEP_CONFIG[preview.step].reviewLabel : ''}
+        action={previewAction()}
+        onClose={() => setPreview(null)}
+      />
 
       <View
         style={{

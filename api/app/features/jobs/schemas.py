@@ -90,6 +90,14 @@ class JobOut(JobOfferOut):
     #: if the screen tells them the truth.
     feedbackRequestStatus: str
 
+    #: What was read on site, and how. Null until proof is submitted.
+    observedSerial: str | None
+    observedSerialSource: str | None
+    #: Derived, never stored: `observed_serial` present and different from
+    #: `serial_number`. A stored copy would go stale the moment somebody
+    #: corrected either one.
+    serialMismatch: bool
+
 
 class ProofArtifactIn(AppModel):
     """One captured image, as the app reports it after uploading.
@@ -133,6 +141,12 @@ class ProofSubmitRequest(AppModel):
     """
 
     artifacts: list[ProofArtifactIn] = Field(min_length=1, max_length=7)
+
+    #: The serial the technician actually found — off the barcode, or typed in
+    #: when it would not scan. Compared with the ticket's expected serial and
+    #: recorded either way; a mismatch is never a refusal.
+    observedSerial: str | None = Field(default=None, max_length=64)
+    observedSerialSource: Literal["scanned", "manual"] | None = None
 
 
 class ProofImageOut(AppModel):

@@ -58,6 +58,17 @@ export interface CapturedShot {
 interface CaptureState {
   jobId: string | null;
   step: ProofKind;
+  /**
+   * The serial found on site, and how.
+   *
+   * `scanned` comes off the barcode and is why the serial step can be skipped
+   * — the number is already in hand, so photographing the label as well proves
+   * nothing new. `manual` is typed by the technician when the barcode would
+   * not read, and then the label photo IS required, because a typed number
+   * with nothing behind it is only an assertion.
+   */
+  serialValue: string | null;
+  serialSource: 'scanned' | 'manual' | null;
   barcode: CapturedShot | null;
   serial: CapturedShot | null;
   photos: CapturedShot[];
@@ -65,9 +76,17 @@ interface CaptureState {
 
   start: (jobId: string) => void;
   setStep: (step: ProofKind) => void;
+  setSerial: (value: string | null, source: 'scanned' | 'manual' | null) => void;
   capture: (step: ProofKind, shot: CapturedShot) => void;
   /** Move one shot along its upload lifecycle, addressed by uri. */
   markUpload: (uri: string, patch: Partial<CapturedShot>) => void;
+  /**
+   * Drop ONE product photo.
+   *
+   * `clearStep('photos')` empties the whole array, which made "retake" on the
+   * photos row destroy all four shots to fix one. This is the surgical version.
+   */
+  removePhoto: (uri: string) => void;
   clearStep: (step: ProofKind) => void;
   reset: () => void;
 }
@@ -75,6 +94,8 @@ interface CaptureState {
 const EMPTY = {
   jobId: null,
   step: 'barcode' as ProofKind,
+  serialValue: null as string | null,
+  serialSource: null as 'scanned' | 'manual' | null,
   barcode: null,
   serial: null,
   photos: [] as CapturedShot[],
@@ -91,6 +112,7 @@ export const useCaptureStore = create<CaptureState>((set) => ({
 
   start: (jobId) => set({ ...EMPTY, jobId }),
   setStep: (step) => set({ step }),
+  setSerial: (serialValue, serialSource) => set({ serialValue, serialSource }),
 
   capture: (step, shot) =>
     set((s) => {
@@ -115,15 +137,30 @@ export const useCaptureStore = create<CaptureState>((set) => ({
       };
     }),
 
+  removePhoto: (uri) => set((s) => ({ photos: s.photos.filter((p) => p.uri !== uri) })),
+
   clearStep: (step) =>
     set(() => (step === 'photos' ? { photos: [] } : ({ [step]: null } as Partial<CaptureState>))),
 
   reset: () => set({ ...EMPTY }),
 }));
 
-/** Every artifact captured. Says nothing about whether they have uploaded. */
+/**
+ * Every artifact this visit needs, captured.
+ *
+ * The serial PHOTO is required only when the barcode did not scan — see
+ * `stepsFor`. A serial VALUE is always required, by one route or the other:
+ * nobody leaves site without recording which unit they installed.
+ */
 export function isProofComplete(s: CaptureState): boolean {
-  return !!s.barcode && !!s.serial && s.photos.length > 0 && !!s.live;
+  const serialPhotoNeeded = s.serialSource !== 'scanned';
+  return (
+    !!s.barcode &&
+    !!s.serialValue &&
+    (!serialPhotoNeeded || !!s.serial) &&
+    s.photos.length > 0 &&
+    !!s.live
+  );
 }
 
 /** Every shot in one flat list, in the order the server expects them. */

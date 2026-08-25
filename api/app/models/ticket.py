@@ -151,6 +151,24 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: Meta's own words when it refused. Shown to ops verbatim.
     slot_request_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    #: What the technician actually READ on site — scanned off the barcode, or
+    #: typed in when it would not scan.
+    #:
+    #: `serial_number` above is the EXPECTED one, off the vendor's invoice. This
+    #: is the observed one, and the gap between them is the whole point of
+    #: capturing it: a mismatch means the wrong unit, a relabelled box, or —
+    #: far more often — a transcription slip at intake.
+    #:
+    #: Null until proof is submitted. Never overwrites `serial_number`: a
+    #: correction is a deliberate act by the vendor or a manager, recorded as a
+    #: ticket event, not something a scan does silently.
+    observed_serial: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: `scanned` | `manual`. A number a machine read and a number a person typed
+    #: are different evidence, and only one of them can contain a typo.
+    observed_serial_source: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+
     # ── closing it: the CUSTOMER's word, not the technician's ──────────────
     #
     # A technician saying "done" is a claim. These columns hold the only thing
@@ -205,6 +223,11 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         CheckConstraint(
             "customer_rating IS NULL OR customer_rating BETWEEN 1 AND 5",
             name="customer_rating",
+        ),
+        CheckConstraint(
+            "observed_serial_source IS NULL OR "
+            "observed_serial_source IN ('scanned', 'manual')",
+            name="observed_serial_source",
         ),
         CheckConstraint(
             "feedback_request_status IN ('not_needed', 'pending', 'sent', 'failed')",

@@ -487,6 +487,16 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 serviceType=t.service_type,
                 description=t.description,
                 serialNumber=t.serial_number,
+                observedSerial=t.observed_serial,
+                observedSerialSource=t.observed_serial_source,
+                # Same rule as the jobs slice, stated once here rather than
+                # imported across the slice boundary (hard rule 4).
+                serialMismatch=bool(
+                    t.observed_serial
+                    and t.serial_number
+                    and t.observed_serial.strip().upper()
+                    != t.serial_number.strip().upper()
+                ),
                 customerName=t.customer_name,
                 customerPhone=t.customer_phone,
                 address=t.address,
@@ -1079,3 +1089,55 @@ async def list_proof(
         )
         for p in rows
     ]
+
+
+async def correct_serial(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    serial_number: str,
+    reason: str | None,
+) -> TicketDetailOut:
+    """Fix the expected serial on a ticket.
+
+    Open to whoever can already see the ticket — which by `_load` means staff in
+    its territory and the vendor that raised it. The vendor is the important
+    one: they hold the invoice, so when the number was mistyped at intake they
+    are the party who can actually say what it should be, and making them phone
+    a manager to correct their own typo is the kind of process that gets worked
+    around instead of followed.
+
+    It does NOT touch `observed_serial`. What the technician read on site is a
+    record of what was on the unit; correcting the order must never quietly
+    rewrite the evidence it disagreed with.
+
+    Recorded as an event carrying BOTH values, because "what did it say before"
+    is the first question anybody auditing a corrected serial will ask.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    was = row.serial_number
+    now = serial_number.strip()
+    if now == was:
+        # Nothing changed. Writing an event saying so would be noise in a trail
+        # whose value is that every row means something.
+        return await get_ticket(db, principal, ticket_id)
+
+    row.serial_number = now
+    db.add(
+        record_event(
+            row,
+            "serial_corrected",
+            actor_kind="vendor" if principal.is_vendor else "staff",
+            actor_label=principal.user.full_name or "—",
+            note=(
+                f"Expected serial corrected from {was} to {now}"
+                + (f" — {reason.strip()}" if reason and reason.strip() else "")
+            ),
+            by_user=principal.user_id,
+        )
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+    return await get_ticket(db, principal, ticket_id)

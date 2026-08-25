@@ -199,6 +199,8 @@ async def submit_proof(
         company_id=principal.company_id,
         profile=profile,
         artifacts=body.artifacts,
+        observed_serial=body.observedSerial,
+        observed_serial_source=body.observedSerialSource,
     )
     return envelope(job, message="Job started")
 

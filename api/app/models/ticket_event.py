@@ -88,6 +88,14 @@ EVENT_KINDS = (
     #: The customer said it was NOT done. The ticket goes back to a manager
     #: rather than to the technician who just said otherwise.
     "reopened",
+    #: The serial read on site did not match the one on the order. Recorded
+    #: rather than enforced: the technician has already done the work, and the
+    #: likeliest cause is a slip at intake rather than the wrong unit.
+    "serial_mismatch",
+    #: Somebody corrected the expected serial — the vendor who holds the
+    #: invoice, or a manager. Carries both values, because "what did it say
+    #: before" is the question anybody auditing this will ask.
+    "serial_corrected",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -138,7 +146,7 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "kind IN ('created', 'slot_requested', 'slot_confirmed', "
             "'confirmation_sent', 'status_changed', 'assigned', 'started', "
             "'feedback_requested', 'completed', 'feedback_received', "
-            "'reopened')",
+            "'reopened', 'serial_mismatch', 'serial_corrected')",
             name="kind",
         ),
         CheckConstraint(

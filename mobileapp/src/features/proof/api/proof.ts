@@ -67,6 +67,7 @@ function toArtifact(kind: ProofKind, shot: CapturedShot, ordinal: number): Artif
 export async function submitProof(
   jobId: string,
   shots: { kind: ProofKind; shot: CapturedShot }[],
+  serial: { value: string | null; source: 'scanned' | 'manual' | null },
 ): Promise<Job> {
   // `ordinal` counts within a kind: 1 for the three single shots, 1..4 for
   // product photos in the order they were taken.
@@ -80,7 +81,13 @@ export async function submitProof(
   return toAcceptedJob(
     await authedRequest<JobDto>(`/jobs/${jobId}/proof`, {
       method: 'POST',
-      body: { artifacts },
+      body: {
+        artifacts,
+        // The server compares this with the ticket's expected serial and
+        // records a mismatch. It never refuses one — see `submit_proof`.
+        observedSerial: serial.value,
+        observedSerialSource: serial.source,
+      },
     }),
   );
 }

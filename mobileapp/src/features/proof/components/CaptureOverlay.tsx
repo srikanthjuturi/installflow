@@ -205,17 +205,7 @@ function SerialFrame() {
         >
           SERIAL NO.
         </Text>
-        <Text
-          style={{
-            fontFamily: "RobotoMono_700Bold",
-            fontSize: 19,
-            letterSpacing: 2.3,
-            color: color.textInverse,
-            marginTop: 4,
-          }}
-        >
-          RGT-•••••-••••
-        </Text>
+
       </View>
     </View>
   );
