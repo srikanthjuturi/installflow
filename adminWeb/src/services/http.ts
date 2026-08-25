@@ -19,7 +19,7 @@ import type {
 import { ApiError, unwrap, unwrapPage } from "./client";
 
 /** Base URL of the API. Override with `VITE_API_BASE_URL` in an `.env`. */
-const BASE_URL = (
+export const BASE_URL = (
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
   "http://localhost:8000/api/v1"
 ).replace(/\/+$/, "");

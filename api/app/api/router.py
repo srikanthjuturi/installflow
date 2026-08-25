@@ -16,6 +16,7 @@ from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
 from app.features.technicians.router import router as technicians_router
 from app.features.tickets.router import router as tickets_router
+from app.features.tickets.ws import router as tickets_stream_router
 from app.features.territory.router import router as territory_router
 from app.features.uploads.router import router as uploads_router
 from app.features.users.router import router as users_router
@@ -38,6 +39,9 @@ api_router.include_router(vendor_users_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)
+# The console's live half: one frame per ticket movement, scoped exactly as the
+# REST reads are — staff by territory, a vendor by ownership.
+api_router.include_router(tickets_stream_router)
 # The same rows as /tickets, seen from the field: scoped by a technician's own
 # coverage rather than by territory, and masked until they accept.
 api_router.include_router(jobs_router)

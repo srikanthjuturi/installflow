@@ -10,6 +10,7 @@ const STATUS_CLASS: Record<TicketStatus, string> = {
   "Slot Pending": "bg-status-slot-pending-bg text-status-slot-pending",
   Assigned: "bg-status-assigned-bg text-status-assigned",
   "In Progress": "bg-status-in-progress-bg text-status-in-progress",
+  "Awaiting Customer": "bg-status-awaiting-customer-bg text-status-awaiting-customer",
   "AI Review": "bg-status-ai-review-bg text-status-ai-review",
   Escalated: "bg-status-escalated-bg text-status-escalated",
   Closed: "bg-status-closed-bg text-status-closed",

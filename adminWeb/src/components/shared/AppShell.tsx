@@ -6,12 +6,19 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PageSkeleton } from "./PageSkeleton";
 import { PAGE_META } from "./routeMeta";
+import { useTicketStream } from "@/hooks/useTicketStream";
 import { useSession } from "@/store/session";
 
 export function AppShell() {
   const { pathname } = useLocation();
   const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useSession();
   const meta = PAGE_META(pathname);
+
+  // One live ticket socket for the whole signed-in session. Here rather than on
+  // the tickets page, because a status change also moves dashboard counts — and
+  // because a socket that reconnected on every navigation would spend its life
+  // reconnecting.
+  useTicketStream();
 
   // A route change must never leave the drawer open behind the new page.
   useEffect(() => setSidebarOpen(false), [pathname, setSidebarOpen]);

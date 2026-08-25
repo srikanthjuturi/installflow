@@ -88,6 +88,8 @@
   --color-status-assigned-bg: var(--status-assigned-bg);
   --color-status-in-progress: var(--status-in-progress);
   --color-status-in-progress-bg: var(--status-in-progress-bg);
+  --color-status-awaiting-customer: var(--status-awaiting-customer);
+  --color-status-awaiting-customer-bg: var(--status-awaiting-customer-bg);
   --color-status-ai-review: var(--status-ai-review);
   --color-status-ai-review-bg: var(--status-ai-review-bg);
   --color-status-escalated: var(--status-escalated);
@@ -181,6 +183,10 @@
   --status-assigned-bg: #e8eefc;
   --status-in-progress: #1c74b8;
   --status-in-progress-bg: #eaf6ff;
+  /* Teal, deliberately between In Progress blue and Closed green: the work is
+     done but the ticket is not, and the chip should read as neither. */
+  --status-awaiting-customer: #0f766e;
+  --status-awaiting-customer-bg: #e6f5f3;
   --status-ai-review: #7a3fc0;
   --status-ai-review-bg: #f3ecfd;
   --status-escalated: var(--danger);

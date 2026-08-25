@@ -1,11 +1,14 @@
 import type { ServiceType } from "./product";
 
-/** Ticket status. Nine values, exactly as the prototype defines them.
+/** Ticket status. Ten values — the prototype's nine plus Awaiting Customer.
  *
  *  Two are worth spelling out, because the names do not carry their meaning:
  *
  *    Slot Pending  raised, but nobody has agreed a time. No technician has been
  *                  told it exists.
+ *    Awaiting Customer  the technician has finished and uploaded proof, and the
+ *                  customer has been sent a link to confirm it. The customer
+ *                  closes a job here, not the technician.
  *    New           the slot is locked and the ticket is in the pool. Eligible
  *                  technicians can see it; none has accepted.
  *
@@ -17,6 +20,7 @@ export const TICKET_STATUSES = [
   "Slot Pending",
   "Assigned",
   "In Progress",
+  "Awaiting Customer",
   "AI Review",
   "Escalated",
   "Closed",
