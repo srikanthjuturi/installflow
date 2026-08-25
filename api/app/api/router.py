@@ -10,6 +10,7 @@ from app.features.auth.router import router as auth_router
 from app.features.companies.router import router as companies_router
 from app.features.geo.router import router as geo_router
 from app.features.jobs.router import router as jobs_router
+from app.features.jobs.ws import router as jobs_stream_router
 from app.features.masters.router import router as masters_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
@@ -40,5 +41,8 @@ api_router.include_router(tickets_router)
 # The same rows as /tickets, seen from the field: scoped by a technician's own
 # coverage rather than by territory, and masked until they accept.
 api_router.include_router(jobs_router)
+# The live half of the same slice: a websocket that tells a technician the
+# pool changed, so the app stops discovering it on a twenty-second timer.
+api_router.include_router(jobs_stream_router)
 api_router.include_router(onboarding_router)
 api_router.include_router(uploads_router)

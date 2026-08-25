@@ -16,6 +16,7 @@ from app.features.onboarding.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.errors import register_exception_handlers
+from app.core.realtime import broker
 
 # psycopg's async driver cannot run on Windows' default ProactorEventLoop.
 # Select the SelectorEventLoop before any loop is created (import time). NB: for
@@ -52,7 +53,12 @@ async def lifespan(app: FastAPI):
     # Verify DB connectivity on startup — fail fast if unreachable.
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
+    # The LISTEN connection behind the technician's live pool. Started after
+    # the connectivity check so a database that is down fails as a startup
+    # error rather than as a listener quietly retrying in the background.
+    await broker.start()
     yield
+    await broker.stop()
     await engine.dispose()
 
 
