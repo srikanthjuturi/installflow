@@ -25,9 +25,13 @@ router = APIRouter(tags=["onboarding"])
 #: In production that setting is the https URL of THIS page, so deriving the
 #: deep link from it would point the button back here in a loop. The two are
 #: different facts: one is where WhatsApp sends the technician, the other is how
-#: this page hands them to the app. Must match `scheme` in
-#: mobileapp/app.config.ts — nothing checks that at runtime.
-APP_SCHEME = "reliancegreentech"
+#: this page hands them to the app.
+#:
+#: It is a SETTING because it has to name the scheme of the build people are
+#: actually carrying, which lags a rename — see APP_SCHEME in app/core/config.py.
+#: Nothing verifies it against `scheme` in mobileapp/app.config.ts at runtime,
+#: so a wrong value fails the only way deep links ever fail: the button does
+#: nothing at all.
 
 _PAGE = """<!doctype html>
 <html lang="en">
@@ -97,7 +101,7 @@ async def invite_landing(token: str) -> HTMLResponse:
     used. Answering that here would let anyone probe tokens by loading a URL.
     """
     safe = "".join(c for c in token if c.isalnum() or c in "-_")
-    deep_link = f"{APP_SCHEME}://invite/{safe}"
+    deep_link = f"{settings.APP_SCHEME}://invite/{safe}"
     return HTMLResponse(
         _PAGE.format(
             deep_link=deep_link,

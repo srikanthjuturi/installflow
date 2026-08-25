@@ -211,12 +211,20 @@ def build_feedback_payload(
     WABA sends for every tenant, and the link in the BODY rather than a URL
     button so the domain can move without another Meta review.
 
-    Template to register (UTILITY, four body parameters):
+    Registered as `job_feedback` (UTILITY, en_US, four body parameters):
 
-        {{1}}: your {{2}} installation is complete.
-        {{3}} has finished the work. Please confirm and rate your
-        experience: {{4}}
+        Your {{2}} installation from {{1}} is complete.
+
+        {{3}} has finished the work. Please confirm it was done and rate
+        your experience:
+        {{4}}
+
         This helps us make sure every job is done properly.
+
+    It opens with "Your", not with {{1}}, because Meta rejects a body that
+    starts or ends with a variable — error subcode 2388299. The parameter
+    NUMBERING is unchanged by that reordering, so the argument list below still
+    reads company, product, technician, link.
     """
     if settings.WHATSAPP_FEEDBACK_TEMPLATE_NAME:
         return _template_payload(
