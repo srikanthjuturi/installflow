@@ -13,6 +13,7 @@ instead: `pincodes_in_states` below is the one place that predicate is written.
 
 import uuid
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.membership import Membership
 from app.models.role import ADMIN, AREA_MANAGER, NATIONAL_HEAD, REGIONAL_HEAD, SUPERADMIN
 from app.models.territory import MembershipRegion, MembershipState, Pincode, Region, State
+
+if TYPE_CHECKING:  # `deps` imports this module, so the real import would cycle.
+    from app.core.deps import Principal
 
 # Roles whose reach is the whole country — they hold no scope rows.
 ALL_INDIA_ROLES = frozenset({SUPERADMIN, ADMIN, NATIONAL_HEAD})
@@ -138,3 +142,41 @@ def scope_label(role: str, scope: Scope) -> str:
         count = len(scope.states)
         return f"{regions} · {count} state{'' if count == 1 else 's'}"
     return "—"
+
+
+async def visible_pincodes(
+    db: AsyncSession, principal: "Principal"
+) -> Select | None | list:
+    """Which pincodes this staff principal may see rows in.
+
+    Returns a SUBQUERY of codes, `None` for "all", or `[]` for "none". A
+    subquery rather than a list because a territory is states now, and one state
+    can hold nearly two thousand pincodes — Postgres does the filtering instead
+    of dragging them through Python.
+
+    Lives in core rather than in a slice because TWO things are scoped this way
+    now: tickets, and the notifications about them. A second copy of a
+    visibility rule is the copy that drifts, and the failure when it does is
+    somebody seeing a row they should not.
+
+    Vendors are NOT handled here. They see by ownership rather than geography,
+    which is a different question with a different answer, and each slice states
+    its own — a ticket's owner is its vendor_id, and a notification may have no
+    owner at all.
+    """
+    if principal.role in ALL_INDIA_ROLES:
+        return None
+
+    membership_id, scope = await own_scope(
+        db, user_id=principal.user_id, company_id=principal.company_id
+    )
+    if membership_id is None:
+        return []
+
+    if principal.role == AREA_MANAGER:
+        return pincodes_in_states(scope.state_ids) if scope.state_ids else []
+    if principal.role == REGIONAL_HEAD:
+        return pincodes_in_regions(scope.region_ids) if scope.region_ids else []
+
+    # Any other role sees nothing rather than everything.
+    return []

@@ -7,6 +7,19 @@ import type { ProofKind } from '@/types/domain';
  */
 export const PROOF_STEPS: ProofKind[] = ['barcode', 'serial', 'photos', 'live'];
 
+/**
+ * The steps actually walked on this visit.
+ *
+ * `serial` is CONDITIONAL. The barcode carries the serial number, so when it
+ * scans there is nothing left for that step to establish — photographing the
+ * label as well would be a step that proves something already proved. It
+ * appears only when the barcode would not read, and then it asks for both the
+ * label and the number typed by hand.
+ */
+export function stepsFor(scanned: boolean): ProofKind[] {
+  return scanned ? PROOF_STEPS.filter((s) => s !== 'serial') : PROOF_STEPS;
+}
+
 export const MAX_PHOTOS = 4;
 export const MIN_PHOTOS = 1;
 
@@ -25,7 +38,9 @@ export const STEP_CONFIG: Record<ProofKind, StepConfig> = {
   },
   serial: {
     title: 'Serial number',
-    hint: 'Fill the box with the serial-number label',
+    // Reached only when the barcode would not scan, so the hint says what to
+    // do about that rather than repeating the step's own title.
+    hint: 'Photograph the serial label, then type the number below',
     reviewLabel: 'Serial number',
   },
   photos: {
@@ -42,15 +57,27 @@ export const STEP_CONFIG: Record<ProofKind, StepConfig> = {
   },
 };
 
-export function stepNumber(step: ProofKind): number {
-  return PROOF_STEPS.indexOf(step) + 1;
+export function stepNumber(step: ProofKind, steps: ProofKind[] = PROOF_STEPS): number {
+  return steps.indexOf(step) + 1;
 }
 
-export function stepLabel(step: ProofKind): string {
-  return `Step ${stepNumber(step)} of ${PROOF_STEPS.length}`;
+export function stepLabel(step: ProofKind, steps: ProofKind[] = PROOF_STEPS): string {
+  return `Step ${stepNumber(step, steps)} of ${steps.length}`;
 }
 
-export function nextStep(step: ProofKind): ProofKind | null {
-  const i = PROOF_STEPS.indexOf(step);
-  return PROOF_STEPS[i + 1] ?? null;
+export function nextStep(
+  step: ProofKind,
+  steps: ProofKind[] = PROOF_STEPS,
+): ProofKind | null {
+  const i = steps.indexOf(step);
+  return steps[i + 1] ?? null;
+}
+
+/** The step before this one, or null when already at the first. */
+export function prevStep(
+  step: ProofKind,
+  steps: ProofKind[] = PROOF_STEPS,
+): ProofKind | null {
+  const i = steps.indexOf(step);
+  return i > 0 ? (steps[i - 1] ?? null) : null;
 }

@@ -1,11 +1,10 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
-import { KeyboardFlow } from '@/components/layout';
+import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
 import { Button, StepDots } from '@/components/ui';
 import { CategoryTile } from '@/features/onboarding/components/CategoryTile';
 import {
@@ -78,7 +77,7 @@ export function CoverageScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surfaceRaised }}>
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
 
       <View
         style={{

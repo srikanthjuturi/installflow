@@ -7,10 +7,14 @@ export interface BrandMarkProps {
 }
 
 /**
- * The dark "V" tile from the prototype's registration and sign-in screens.
+ * The dark "RG" tile from the prototype's registration and sign-in screens.
  *
  * Exact values: 58×58, radius 17, #0e1622, white 22px/900 glyph. Identical on
  * both screens, so it lives here rather than being reproduced twice.
+ *
+ * The same mark is rendered server-side on the two public web pages
+ * (api/app/features/onboarding/landing.py, api/app/features/tickets/slot_page.py)
+ * at the same 22px — keep all three in step.
  */
 export function BrandMark({ size = 58 }: BrandMarkProps) {
   return (
@@ -32,7 +36,7 @@ export function BrandMark({ size = 58 }: BrandMarkProps) {
           color: color.textInverse,
         }}
       >
-        V
+        RG
       </Text>
     </View>
   );

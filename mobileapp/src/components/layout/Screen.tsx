@@ -1,8 +1,8 @@
-import { StatusBar } from 'expo-status-bar';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ScreenStatusBar } from '@/components/layout/ScreenStatusBar';
 import { color } from '@/theme/semantic';
 import { layout } from '@/theme/spacing';
 
@@ -61,7 +61,7 @@ export function Screen({
 
   return (
     <View style={{ flex: 1, backgroundColor: BACKGROUND[variant] }}>
-      <StatusBar style={variant === 'light' ? 'dark' : 'light'} />
+      <ScreenStatusBar style={variant === 'light' ? 'dark' : 'light'} />
       {content}
       {footer ? (
         <View

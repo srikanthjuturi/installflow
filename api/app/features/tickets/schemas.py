@@ -116,6 +116,13 @@ class TicketOut(AppModel):
     serviceType: str
     description: str | None
     serialNumber: str | None
+    #: What the technician actually read on site, and how. Null until proof is
+    #: submitted. `serialNumber` above stays the EXPECTED one.
+    observedSerial: str | None = None
+    observedSerialSource: str | None = None
+    #: Derived on every read from the two above — never stored, because a
+    #: stored copy would be wrong the moment either one was corrected.
+    serialMismatch: bool = False
 
     customerName: str
     customerPhone: str
@@ -174,3 +181,43 @@ class TimelineEventOut(AppModel):
 
 class TicketDetailOut(TicketOut):
     timeline: list[TimelineEventOut] = []
+
+
+class TicketProofOut(AppModel):
+    """One proof image, as ops and the vendor see it.
+
+    Deliberately its own model rather than the jobs slice's `ProofImageOut`:
+    slices never import each other, and the two audiences are not the same. A
+    technician looks at their own captures; ops and the vendor are looking at
+    somebody else's work, usually because a customer said it was not done.
+    """
+
+    kind: str
+    ordinal: int
+    capturedAt: datetime.datetime
+    #: Signed and short-lived, minted per read. Null when blob storage is
+    #: unconfigured, or when a row's name does not belong to this company —
+    #: the record still exists, the picture is simply not served.
+    url: str | None
+    #: Where the phone was for the live shot; null on the other three, and null
+    #: on a live shot where location was denied or never fixed.
+    latitude: float | None
+    longitude: float | None
+    accuracyM: float | None
+    #: What the phone reverse-geocoded its position to. Compare it with the
+    #: ticket's own pincode when a customer disputes that anybody attended.
+    devicePincode: str | None
+
+
+class SerialCorrectionRequest(AppModel):
+    """Correcting the EXPECTED serial — the one taken off the invoice.
+
+    Never the observed one. What the technician read on site is a record of what
+    was there and is not editable by anybody; this fixes the number the order
+    was raised with, which is where the mistake nearly always is.
+    """
+
+    serialNumber: str = Field(min_length=1, max_length=64)
+    #: Optional, and worth asking for: "invoice says 88417" explains a
+    #: correction that a bare value never will.
+    reason: str | None = Field(default=None, max_length=255)

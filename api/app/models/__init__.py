@@ -24,6 +24,7 @@ from app.models.territory import (
     State,
 )
 from app.models.ticket import Ticket
+from app.models.notification import Notification, NotificationRead
 from app.models.ticket_event import TicketEvent
 from app.models.token import RefreshToken
 from app.models.user import User
@@ -55,6 +56,8 @@ __all__ = [
     "TechnicianProfile",
     "TechnicianSubcategory",
     "Ticket",
+    "Notification",
+    "NotificationRead",
     "TicketEvent",
     "User",
     "Vendor",

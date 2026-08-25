@@ -47,9 +47,10 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
       <div
         className={cn(
           "flex h-topbar shrink-0 items-center border-b border-white/10",
-          // Tighter than the vendor rail's px-5/gap-3: "Videocon Platform"
-          // is a fixed string and overflowed 236px by a couple of characters,
-          // truncating to "Videocon Platfo…".
+          // Tighter than the vendor rail's px-5/gap-3: "Reliance GreenTech
+          // Platform" is a fixed string that overflows 236px, and the rebrand
+          // made it 10 characters longer than the name this was first tuned
+          // for — hence the smaller type on the line itself as well.
           collapsed ? "justify-center px-2" : "gap-2.5 px-3.5"
         )}
       >
@@ -60,8 +61,8 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
           // No company line here, unlike the vendor rail: a superadmin belongs
           // to none. The second line names the surface instead.
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-[13px] font-semibold text-white">
-              Videocon Platform
+            <div className="truncate text-[12px] font-semibold text-white">
+              Reliance GreenTech Platform
             </div>
             <div className="truncate text-[11px] font-medium text-white/50">
               Super Admin console

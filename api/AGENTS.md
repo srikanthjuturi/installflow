@@ -1,4 +1,4 @@
-# Videocon Installation API
+# Reliance GreenTech Installation API
 
 FastAPI + PostgreSQL behind the ops console (`adminWeb/`) and the technician app
 (`mobileapp/`). Read the root `AGENTS.md` first for the business flow and the domain facts.
@@ -347,14 +347,38 @@ Leave `WHATSAPP_*` empty. Invites then record a retryable failure with a copyabl
 codes come back in the response as `devCode` and to the server log. Startup **refuses to boot** in
 production with `OTP_DEV_ECHO` on or `OTP_PEPPER` empty.
 
-`INVITE_LINK_BASE` defaults to `videocontech://invite`, which opens straight into Expo Go:
+`INVITE_LINK_BASE` defaults to `reliancegreentech://invite`, which opens straight into Expo Go:
 
 ```bash
-npx uri-scheme open "videocontech://invite/<token>" --android
+npx uri-scheme open "reliancegreentech://invite/<token>" --android
 ```
 
 That default cannot ship — WhatsApp only auto-links `http(s)`, so a custom-scheme link arrives as
 dead text. Production needs an https universal/app link with a web fallback.
+
+### ⚠ Deploy the API BEFORE installing a mobile build that changed its package id
+
+`/.well-known/assetlinks.json` is served from `ANDROID_PACKAGE` and `ANDROID_CERT_FINGERPRINTS`.
+Android fetches it **at install time**, not when a link is tapped, and if it does not name the
+package and signing certificate of the app being installed it simply declines to verify. There is
+no error anywhere: invite links just start opening a browser, and the only way to notice is to
+tap one.
+
+So the order is always **deploy the API first, then build and install the app.** Installing a
+build whose package the live API does not yet vouch for burns the App Link on every device that
+installed it — reinstalling after the deploy is the only way back.
+
+`ANDROID_PACKAGE` is deliberately NOT set in `.env.production`; it falls through to the default in
+`app/core/config.py`, so it moves with the code rather than being a value someone has to remember
+to change in two places. Check what is actually live before a build:
+
+```bash
+curl -s https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/.well-known/assetlinks.json
+```
+
+The fingerprint is tied to the KEYSTORE, not to the package name, so renaming the package alone
+keeps it valid. It changes if EAS mints new credentials — which is what happens if somebody runs
+`eas init` fresh instead of renaming the existing project, so don't.
 
 ### When WhatsApp is configured and sends still fail
 

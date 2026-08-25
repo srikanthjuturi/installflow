@@ -21,7 +21,7 @@ export default function Index() {
    * Only redirect while this really is the screen in front of the technician.
    *
    * `unstable_settings.initialRouteName` in the root layout pins `index` as the
-   * stack's anchor, so opening `videocontech://invite/<token>` mounts this route
+   * stack's anchor, so opening `reliancegreentech://invite/<token>` mounts this route
    * UNDERNEATH the invite screen. `<Redirect>` navigates on mount whether or not
    * it is focused — so without this guard the deep link would land correctly and
    * then be thrown to the login screen a frame later, which reads as a broken

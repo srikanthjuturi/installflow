@@ -67,7 +67,7 @@ export function CredentialsStep({
             id="email"
             type="email"
             autoComplete="email"
-            placeholder="you@installflow.in"
+            placeholder="you@reliancegreentech.in"
             aria-invalid={errors.email ? true : undefined}
             aria-describedby={errors.email ? "email-error" : undefined}
             {...register("email")}

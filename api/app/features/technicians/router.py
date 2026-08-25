@@ -23,6 +23,8 @@ from app.core.schemas import (
 )
 from app.features.technicians import service
 from app.features.technicians.schemas import (
+    AvailabilityOut,
+    AvailabilityRequest,
     InviteCreateRequest,
     TechnicianCreateRequest,
     TechnicianDetailOut,
@@ -52,6 +54,27 @@ async def get_my_technician_profile(
     their own record.
     """
     return envelope(await service.get_me(db, principal))
+
+
+@router.patch("/me/availability", response_model=ApiEnvelope[AvailabilityOut])
+async def set_my_availability(
+    db: Db, principal: CompanyPrincipal, body: AvailabilityRequest
+) -> ApiEnvelope[AvailabilityOut]:
+    """A technician saying whether they want work.
+
+    No feature guard, for the same reason `/me` has none: the seeded technician
+    role does not carry `technicians.edit`, so gating this would 403 every
+    technician against their own availability.
+
+    Only the caller's own row is reachable — the profile is resolved from the
+    principal, and there is no id in the path to guess at.
+    """
+    return envelope(
+        await service.set_availability(
+            db, principal, accepting_work=body.acceptingWork
+        ),
+        message="Availability updated",
+    )
 
 
 @router.post(

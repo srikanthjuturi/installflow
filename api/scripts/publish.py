@@ -122,6 +122,16 @@ def guard_production_config() -> None:
             "SLOT_LINK_BASE does not point at this site — the customer's "
             "'pick a time' link must be a public https URL"
         )
+    # Third of the same kind, and it very nearly shipped unset: the default is
+    # `http://localhost:8000/feedback`, and that URL would have gone out over
+    # WhatsApp to real customers asking them to confirm a job. Every link this
+    # server MINTS and SENDS gets a guard here — the failure is silent
+    # otherwise, because nothing is wrong until somebody taps it.
+    if SITE not in values.get("FEEDBACK_LINK_BASE", ""):
+        problems.append(
+            "FEEDBACK_LINK_BASE does not point at this site — the customer's "
+            "'confirm the job' link must be a public https URL"
+        )
     if problems:
         fail("; ".join(problems))
     print("  config guards passed")

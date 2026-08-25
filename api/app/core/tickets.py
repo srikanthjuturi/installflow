@@ -34,17 +34,33 @@ DEFAULT_SERVICE_LEVEL_HOURS = 24
 #:
 #: There is no state between New and Assigned — Assigned already means somebody
 #: took it.
+#:
+#:   Awaiting Customer  the technician has finished and uploaded proof, and the
+#:                      customer has been sent a link to confirm it. NOT the
+#:                      same as In Progress, where somebody is still working,
+#:                      and not the same as Closed, because in this app the
+#:                      CUSTOMER closes a job, not the technician. A ticket can
+#:                      sit here indefinitely: nothing chases a silent customer
+#:                      yet.
 TICKET_STATUSES = (
     "New",
     "Slot Pending",
     "Assigned",
     "In Progress",
+    "Awaiting Customer",
     "AI Review",
     "Escalated",
     "Closed",
     "Force-Closed",
     "Cancelled",
 )
+
+#: The four artifacts a technician captures on site, in the order the app walks
+#: them. `photos` is the only one that repeats — 1 to 4 shots of the installed
+#: unit; the other three are exactly one each.
+PROOF_KINDS = ("barcode", "serial", "photos", "live")
+MIN_PRODUCT_PHOTOS = 1
+MAX_PRODUCT_PHOTOS = 4
 
 #: The window is over for these — an SLA state of "done", whether or not it was
 #: met, because there is nothing left to be late for.

@@ -1,6 +1,6 @@
-# Videocon Installation API
+# Reliance GreenTech Installation API
 
-FastAPI backend for the Videocon technician field app.
+FastAPI backend for the Reliance GreenTech technician field app.
 
 **Stack:** FastAPI · PostgreSQL · SQLAlchemy 2.0 (async, `psycopg` 3) · Pydantic v2 ·
 Alembic · JWT (PyJWT) · bcrypt

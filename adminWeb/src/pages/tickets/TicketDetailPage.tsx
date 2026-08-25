@@ -7,6 +7,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { ErrorState } from "@/components/shared/states";
 import { FactGrid } from "@/components/tickets/FactGrid";
+import { SerialMismatchBanner } from "@/components/tickets/SerialMismatch";
 import {
   CustomerPanel,
   ProofPanel,
@@ -14,9 +15,6 @@ import {
 } from "@/components/tickets/SidePanels";
 import { Timeline } from "@/components/tickets/Timeline";
 import { useTicket } from "@/hooks/useTickets";
-
-/** Proof only exists once the job has reached verification or closure. */
-const PROOF_STATUSES = new Set(["AI Review", "Closed", "Force-Closed"]);
 
 /**
  * One ticket, on two surfaces.
@@ -118,6 +116,12 @@ export default function TicketDetailPage({
                 </div>
 
                 <FactGrid ticket={ticket} />
+
+                {/* Above the timeline and below the facts: it is about one of
+                    those facts, and it is the reason anybody arriving from the
+                    bell opened this ticket. Both surfaces show it — the vendor
+                    holds the invoice, so it is often theirs to settle. */}
+                <SerialMismatchBanner ticket={ticket} />
               </CardContent>
             </Card>
 
@@ -150,7 +154,7 @@ export default function TicketDetailPage({
                 ) : null
               }
             />
-            <ProofPanel hasProof={PROOF_STATUSES.has(ticket.status)} />
+            <ProofPanel ticket={ticket} />
           </div>
         </div>
       )}

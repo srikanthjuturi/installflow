@@ -35,8 +35,10 @@ from app.core.scope import (
     pincodes_in_regions,
     pincodes_in_states,
 )
+from app.core.presence import is_online
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
+    AvailabilityOut,
     InviteCreateRequest,
     OnboardingOut,
     SubcategoryRef,
@@ -676,6 +678,44 @@ async def get_me(session: AsyncSession, principal: Principal) -> TechnicianSessi
     return await technician_session(session, *tuple(row))
 
 
+async def set_availability(
+    session: AsyncSession, principal: Principal, *, accepting_work: bool
+) -> AvailabilityOut:
+    """The technician turning their own availability on or off.
+
+    Writes ONLY the intent. `last_seen_at` is left alone on purpose: it is
+    observed from the live socket, and letting a request assert it would put
+    the lie back into the data that `app.core.presence` exists to keep out.
+
+    Turning availability off does not close the socket from here. The app drops
+    it the moment the toggle moves — see `usePoolStream` — and presence then
+    ages out on its own. Reaching across to kill a connection would be a second
+    mechanism for something one already handles.
+    """
+    if principal.role != TECHNICIAN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not a technician account"
+        )
+    profile = await session.scalar(
+        select(TechnicianProfile)
+        .join(Membership, Membership.id == TechnicianProfile.membership_id)
+        .where(
+            Membership.user_id == principal.user_id,
+            TechnicianProfile.company_id == principal.company_id,
+            Membership.deleted_at.is_(None),
+        )
+    )
+    if profile is None:
+        raise _not_found("Technician profile")
+
+    profile.accepting_work = accepting_work
+    await session.commit()
+    await session.refresh(profile)
+    return AvailabilityOut(
+        acceptingWork=profile.accepting_work, online=is_online(profile)
+    )
+
+
 async def technician_session(
     session: AsyncSession,
     profile: TechnicianProfile,
@@ -695,7 +735,7 @@ async def technician_session(
         await _appointers(session, [profile.appointed_by_user_id])
     ).get(profile.appointed_by_user_id)
 
-    onboarded_by = company.name if company else "Videocon Service"
+    onboarded_by = company.name if company else "Reliance GreenTech Service"
     if appointer and appointer.full_name:
         onboarded_by = f"{appointer.full_name} · {onboarded_by}"
 
@@ -714,6 +754,7 @@ async def technician_session(
         rating=float(profile.rating) if profile.rating is not None else None,
         jobsCompleted=profile.jobs_completed,
         onTimePct=profile.on_time_pct,
+        acceptingWork=profile.accepting_work,
     )
 
 
@@ -1103,7 +1144,7 @@ async def _send_and_record(session: AsyncSession, invite: TechnicianInvite) -> N
     )
 
     result = await whatsapp.send_invite(
-        invite.phone, invite_link(invite.token), company_name or "Videocon Service"
+        invite.phone, invite_link(invite.token), company_name or "Reliance GreenTech Service"
     )
     invite.send_attempts = (invite.send_attempts or 0) + 1
     if result.ok:

@@ -71,6 +71,31 @@ EVENT_KINDS = (
     #: counted from — "jobs assigned to this technician on this DATE" is a
     #: question `tickets.status` cannot answer, because it keeps no history.
     "assigned",
+    #: Proof landed and the technician is on the job. Written in the same
+    #: transaction as the proof rows: work that started without evidence, or
+    #: evidence for work that never started, are both states this refuses to
+    #: record.
+    "started",
+    #: The technician says the work is done. Deliberately NOT the closure —
+    #: only the customer closes a job here, and the gap between these two is
+    #: the whole point of the feedback link.
+    "feedback_requested",
+    "completed",
+    #: The customer answered. Carries their rating and words, and is written
+    #: whichever way they answered — a refusal is as much a record as an
+    #: approval, and the one more likely to be argued about later.
+    "feedback_received",
+    #: The customer said it was NOT done. The ticket goes back to a manager
+    #: rather than to the technician who just said otherwise.
+    "reopened",
+    #: The serial read on site did not match the one on the order. Recorded
+    #: rather than enforced: the technician has already done the work, and the
+    #: likeliest cause is a slip at intake rather than the wrong unit.
+    "serial_mismatch",
+    #: Somebody corrected the expected serial — the vendor who holds the
+    #: invoice, or a manager. Carries both values, because "what did it say
+    #: before" is the question anybody auditing this will ask.
+    "serial_corrected",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -119,7 +144,9 @@ class TicketEvent(Base, IdMixin, AuditMixin):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('created', 'slot_requested', 'slot_confirmed', "
-            "'confirmation_sent', 'status_changed', 'assigned')",
+            "'confirmation_sent', 'status_changed', 'assigned', 'started', "
+            "'feedback_requested', 'completed', 'feedback_received', "
+            "'reopened', 'serial_mismatch', 'serial_corrected')",
             name="kind",
         ),
         CheckConstraint(

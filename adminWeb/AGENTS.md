@@ -1,6 +1,6 @@
-# InstallFlow · Ops Console (adminWeb)
+# Reliance GreenTech · Ops Console (adminWeb)
 
-The **web admin portal** for the Videocon installation & demo service — the ops/management half
+The **web admin portal** for the Reliance GreenTech installation & demo service — the ops/management half
 of the system whose technician half lives in `mobileapp/`. Ticket intake → customer slot
 confirmation → technician allocation → escalation & bonus → AI proof review → audited closure.
 
@@ -34,10 +34,10 @@ Three rules it establishes:
    top-level `==`/`!=` only. That is *why* the prototype passes pre-computed style strings from
    `renderVals()`. Do not copy that pattern; in React it becomes props and Tailwind classes.
 4. Canvas colours in `support.js` (`#f0eee6`, `#2e2c26`) belong to the design tool's canvas.
-   **They are not part of the InstallFlow palette.**
+   **They are not part of the Reliance GreenTech palette.**
 
 To run the prototype: serve `webdesign/` over HTTP and open `Admin Portal.dc.html`. Login is
-prefilled (`ravi.sharma@installflow.in` / `demopass`); any 6 digits pass OTP.
+prefilled (`ravi.sharma@reliancegreentech.in` / `demopass`); any 6 digits pass OTP.
 
 ## Phase: partly bound
 
@@ -129,7 +129,7 @@ To browse a repo before adding: `npx skills add <repo-url> --list`.
 |---|---|
 | `secure-storage-design-system` | closest match to this build: role-gated admin app, TanStack Query + Zustand + RHF + Zod, RBAC as server-side guards, pagination contract, skeleton-per-screen loading |
 | `dataviz` | **load before writing any chart** — the Dashboard's SLA bar, funnel, KPI tiles and the Ledger charts |
-| `videocon-tech-app` | the technician side. Load it when a rule must match across both apps (penalties, proof, statuses) |
+| `reliance-greentech-tech-app` | the technician side. Load it when a rule must match across both apps (penalties, proof, statuses) |
 | `polished-react-site` | animation/motion patterns only. Its marketing-site conventions do **not** apply to a console |
 
 ### When to reach for which
@@ -551,7 +551,7 @@ verbatim would be wrong, so:
 
 | Requirement | Here |
 |---|---|
-| Unique page titles | ✅ via `PageMeta` — `InstallFlow · Escalation queue`. Drives tab + browser history |
+| Unique page titles | ✅ via `PageMeta` — `Reliance GreenTech · Escalation queue`. Drives tab + browser history |
 | Meta description | ✅ minimal, one per route |
 | `robots` | ✅ **`noindex, nofollow`** on every route |
 | Canonical URLs | ✅ trivial, one canonical per route |

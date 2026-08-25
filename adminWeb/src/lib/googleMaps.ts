@@ -45,8 +45,8 @@ const SCRIPT_ID = "google-maps-js-api";
  * one that nothing would ever resolve.
  */
 interface MapsWindow extends Window {
-  __installflowMapsReady?: () => void;
-  __installflowMapsWaiters?: Array<() => void>;
+  __rgtMapsReady?: () => void;
+  __rgtMapsWaiters?: Array<() => void>;
 }
 
 /** True once `google.maps.places` is actually usable. */
@@ -80,10 +80,10 @@ export function loadPlacesLibrary(): Promise<typeof google.maps.places> {
     const win = window as MapsWindow;
     // Queue first, so a second caller arriving mid-load is resolved by the same
     // callback rather than replacing it.
-    (win.__installflowMapsWaiters ??= []).push(resolve);
-    win.__installflowMapsReady ??= () => {
-      const waiting = win.__installflowMapsWaiters ?? [];
-      win.__installflowMapsWaiters = [];
+    (win.__rgtMapsWaiters ??= []).push(resolve);
+    win.__rgtMapsReady ??= () => {
+      const waiting = win.__rgtMapsWaiters ?? [];
+      win.__rgtMapsWaiters = [];
       for (const done of waiting) done();
     };
 
@@ -102,7 +102,7 @@ export function loadPlacesLibrary(): Promise<typeof google.maps.places> {
       // marks readiness — see the note at the top of this file.
       loading: "async",
       libraries: "places",
-      callback: "__installflowMapsReady",
+      callback: "__rgtMapsReady",
     });
     script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
     script.async = true;

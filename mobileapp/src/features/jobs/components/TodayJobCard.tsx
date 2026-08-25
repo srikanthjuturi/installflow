@@ -53,7 +53,7 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
               justifyContent: 'space-between',
               marginBottom: 9,
             }}
-          >
+        >
             <View
               style={{
                 backgroundColor: status.bg,
@@ -63,6 +63,8 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
               }}
             >
               <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.4}
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: status.fg }}
               >
                 {status.label}
@@ -72,6 +74,8 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Icon name="clock" size={15} color={palette.secondary[500]} />
               <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.4}
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 12.5, color: color.slotFg }}
               >
                 {job.slotShort}
@@ -79,6 +83,9 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
             </View>
           </View>
 
+          {/* The customer's name is NOT capped and NOT truncated to one line:
+              it is who the technician is about to visit, and a name that has
+              been cut in half is worse than a taller card. */}
           <Text
             style={{ fontFamily: 'Roboto_700Bold', fontSize: 16, color: color.textPrimary }}
           >
@@ -91,7 +98,7 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
               color: color.textLabel,
               marginTop: 2,
             }}
-          >
+        >
             {job.model} · {job.area}
           </Text>
         </View>

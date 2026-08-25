@@ -24,15 +24,37 @@ either lives in `app.core.tickets` already or is small enough to state here.
 """
 
 import datetime
+import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.notifications import notify
+from app.core.realtime import (
+    publish_notification,
+    publish_pool_changed,
+    publish_ticket_changed,
+)
 from app.core.schemas import ListParams
+from app.core.tickets import (
+    MAX_PRODUCT_PHOTOS,
+    MIN_PRODUCT_PHOTOS,
+    PROOF_KINDS,
+    SLOT_TIMEZONE_OFFSET_MINUTES,
+    TERMINAL_STATUSES,
+)
 from app.db.repository import paginate
-from app.features.jobs.schemas import JobOfferOut, JobOut
+from app.features.jobs.schemas import (
+    JobOfferOut,
+    JobOut,
+    ProofArtifactIn,
+    ProofImageOut,
+)
+from app.integrations import blob, whatsapp
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductSubcategory
 from app.models.technician import (
@@ -40,7 +62,7 @@ from app.models.technician import (
     TechnicianPincode,
     TechnicianSubcategory,
 )
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 
@@ -169,6 +191,150 @@ def _offer_out(
     )
 
 
+def serial_mismatch(t: Ticket) -> bool:
+    """Did the unit on site carry a different serial from the order?
+
+    Compared case-insensitively and ignoring surrounding whitespace, because a
+    scanner and a keyboard disagree about both and neither difference means a
+    different appliance. Null observed serial is not a mismatch — it means
+    nobody has looked yet.
+    """
+    if not t.observed_serial or not t.serial_number:
+        return False
+    return t.observed_serial.strip().upper() != t.serial_number.strip().upper()
+
+
+def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
+    """The offer, plus everything that unlocks once the job is this technician's.
+
+    One builder for all three callers — accept, the detail read and the list —
+    because "what does an assigned technician get to see" is a privacy rule, and
+    three copies of it would eventually be two rules.
+    """
+    return JobOut(
+        **offer.model_dump(),
+        customerName=t.customer_name,
+        customerPhone=t.customer_phone,
+        address=t.address,
+        state=t.state,
+        status=t.status,
+        description=t.description,
+        serialNumber=t.serial_number,
+        feedbackRequestStatus=t.feedback_request_status,
+        observedSerial=t.observed_serial,
+        observedSerialSource=t.observed_serial_source,
+        serialMismatch=serial_mismatch(t),
+    )
+
+
+def mine_query(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> Select:
+    """Every ticket assigned to THIS technician, soonest slot first.
+
+    A second query rather than a parameter on `pool_query`, because that one is
+    hard-wired to the opposite case — `status == 'New' AND technician_id IS
+    NULL` is what "in the pool" means, and bending it to also express "mine"
+    would leave one predicate serving two contradictory questions.
+
+    No status filter here: the caller narrows it. Unfiltered, this is the
+    technician's whole history with the company, which is what a "Completed"
+    tab eventually reads.
+
+    Ordered by slot rather than by creation — a technician's list is a day plan,
+    and the only useful order for a day plan is the order they will drive it.
+    `ix_tickets_company_technician` already exists on `tickets` and serves the
+    lookup; the sort is over one technician's own rows, which is small.
+    """
+    return (
+        select(Ticket)
+        .where(
+            Ticket.company_id == company_id,
+            Ticket.technician_id == technician_id,
+            Ticket.deleted_at.is_(None),
+        )
+        .order_by(Ticket.slot_start.asc(), Ticket.code.asc())
+    )
+
+
+async def list_mine(
+    db: AsyncSession,
+    params: ListParams,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    statuses: tuple[str, ...] | None = None,
+) -> tuple[list[JobOut], int]:
+    """The My jobs list, narrowed to one segment's statuses."""
+    stmt = mine_query(company_id=company_id, technician_id=technician_id)
+    if statuses:
+        stmt = stmt.where(Ticket.status.in_(statuses))
+    rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
+    tickets = list(rows)
+    offers = await _hydrate(db, tickets)
+    return [_job_out(o, t) for o, t in zip(offers, tickets)], total
+
+
+async def get_job(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> JobOut:
+    """One of this technician's own jobs, unmasked — or 404.
+
+    The 404 is the privacy boundary, not a convenience. `technician_id` is in
+    the WHERE clause, so a technician who guesses another's ticket id gets the
+    same answer as one who invents a UUID: the row is not theirs, and they
+    cannot learn that it exists. 403 would confirm it does.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    return _job_out((await _hydrate(db, [row]))[0], row)
+
+
+async def list_today(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> list[JobOut]:
+    """What Home shows: this technician's jobs whose slot falls today.
+
+    "Today" is measured in the company's operating timezone, not the server's.
+    `SLOT_TIMEZONE_OFFSET_MINUTES` is the same constant the slot windows are
+    offered in, so a job at 9pm IST belongs to the day the customer thinks it
+    does rather than to whatever date it is in UTC.
+
+    Terminal statuses are excluded — a job cancelled this morning is not
+    something to drive to, and a closed one is already done. Home is a list of
+    work still ahead.
+    """
+    offset = datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES)
+    local_now = _now() + offset
+    start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Back to UTC for the comparison, because that is what the column stores.
+    start = start_local - offset
+    end = start + datetime.timedelta(days=1)
+
+    rows = await db.scalars(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.slot_start >= start,
+            Ticket.slot_start < end,
+            Ticket.status.not_in(TERMINAL_STATUSES),
+        )
+    )
+    tickets = list(rows)
+    offers = await _hydrate(db, tickets)
+    return [_job_out(o, t) for o, t in zip(offers, tickets)]
+
+
 async def list_pool(
     db: AsyncSession,
     params: ListParams,
@@ -272,17 +438,526 @@ async def accept(
             to_status="Assigned",
         )
     )
+    # This job has just LEFT the pool, and every other eligible technician is
+    # still being shown it. The same doorbell that announces a new job announces
+    # one that is gone — first-accept-wins is only fair if losing is visible
+    # promptly, rather than on whenever their next poll happens to land.
+    #
+    # In the same transaction as the assignment, so a rolled-back accept never
+    # tells anybody the job disappeared.
+    await publish_pool_changed(
+        db,
+        company_id=company_id,
+        pincode=offered.pincode,
+        subcategory_id=offered.subcategory_id,
+    )
+    await publish_ticket_changed(db, offered)
     await db.commit()
 
     row = await db.scalar(
         select(Ticket).where(Ticket.id == ticket_id, Ticket.company_id == company_id)
     )
     assert row is not None
-    offer = (await _hydrate(db, [row]))[0]
-    # Now it is theirs, so the three masked fields are theirs to see.
-    return JobOut(
-        **offer.model_dump(),
-        customerName=row.customer_name,
-        customerPhone=row.customer_phone,
-        address=row.address,
+    # Now it is theirs, so the masked fields are theirs to see.
+    return _job_out((await _hydrate(db, [row]))[0], row)
+
+
+# ── doing the job ────────────────────────────────────────────────────────────
+#
+# Two transitions, and both are settled in a WHERE clause rather than by reading
+# the row and then writing it. The pattern is `accept`'s, for the same reason:
+# a guarded UPDATE cannot race, and `rowcount == 0` tells you precisely that
+# somebody else moved the ticket first.
+#
+# Deliberately NOT the pattern in `tickets.confirm_slot`, which reads then
+# writes with no lock and can let two simultaneous requests both through.
+
+
+def _event(
+    row: Ticket,
+    kind: str,
+    *,
+    actor_kind: str,
+    actor_label: str | None = None,
+    note: str | None = None,
+    from_status: str | None = None,
+    to_status: str | None = None,
+) -> TicketEvent:
+    """This slice's own event builder.
+
+    `record_event` lives in the tickets slice and slices never import each other
+    (hard rule 4), so `accept` already constructs its `TicketEvent` inline. This
+    is that, named, now that four more transitions need it.
+    """
+    return TicketEvent(
+        company_id=row.company_id,
+        ticket_id=row.id,
+        kind=kind,
+        actor_kind=actor_kind,
+        actor_label=actor_label,
+        note=note,
+        from_status=from_status,
+        to_status=to_status,
     )
+
+
+async def _technician_name(db: AsyncSession, profile: TechnicianProfile) -> str:
+    name = await db.scalar(
+        select(User.full_name)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.id == profile.membership_id)
+    )
+    return name or profile.code
+
+
+async def submit_proof(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+    artifacts: list[ProofArtifactIn],
+    observed_serial: str | None = None,
+    observed_serial_source: str | None = None,
+) -> JobOut:
+    """Record the four artifacts and start the job.
+
+    The completeness rule is enforced HERE and not on the phone. A client can be
+    old, patched, or simply wrong, and "did this technician actually photograph
+    the serial" is exactly the kind of claim that must not be decided by the
+    thing making the claim.
+
+    Proof and status commit together. Work that started with no evidence, and
+    evidence for work that never started, are both states this refuses to leave
+    behind.
+    """
+    _check_proof_complete(
+        artifacts,
+        observed_serial=observed_serial,
+        observed_serial_source=observed_serial_source,
+    )
+    _check_blobs_are_ours(artifacts, company_id=company_id)
+
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=profile.id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    _check_live_was_taken_at_the_job(artifacts, ticket=row)
+
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == company_id,
+            Ticket.technician_id == profile.id,
+            # Only from Assigned. A second submission on a job already in
+            # progress is a duplicate tap, not a new start.
+            Ticket.status == "Assigned",
+        )
+        .values(status="In Progress")
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"This job is {row.status.lower()} — proof can only be submitted once, when starting.",
+        )
+
+    for artifact in artifacts:
+        db.add(
+            TicketProof(
+                company_id=company_id,
+                ticket_id=ticket_id,
+                kind=artifact.kind,
+                ordinal=artifact.ordinal,
+                blob_name=artifact.blobName,
+                captured_at=artifact.capturedAt,
+                latitude=artifact.latitude,
+                longitude=artifact.longitude,
+                accuracy_m=artifact.accuracyM,
+                device_pincode=artifact.devicePincode,
+            )
+        )
+
+    if observed_serial:
+        row.observed_serial = observed_serial.strip()
+        row.observed_serial_source = observed_serial_source or "manual"
+
+    located = sum(1 for a in artifacts if a.latitude is not None)
+    db.add(
+        _event(
+            row,
+            "started",
+            actor_kind="technician",
+            actor_label=await _technician_name(db, profile),
+            note=(
+                f"{len(artifacts)} proof images captured"
+                + ("" if located else " — no location on the live photo")
+            ),
+            from_status="Assigned",
+            to_status="In Progress",
+        )
+    )
+
+    # Recorded, not enforced. The technician has already done the physical work
+    # and the likeliest cause is a slip at intake — so this goes in the trail
+    # and in front of a manager, rather than stopping somebody standing in a
+    # customer's house over a number they cannot correct.
+    mismatch = serial_mismatch(row)
+    if mismatch:
+        technician = await _technician_name(db, profile)
+        db.add(
+            _event(
+                row,
+                "serial_mismatch",
+                actor_kind="technician",
+                actor_label=technician,
+                note=(
+                    f"Read {row.observed_serial} on site "
+                    f"({row.observed_serial_source}); the order says "
+                    f"{row.serial_number}"
+                ),
+            )
+        )
+        # In the same transaction as the proof it describes. A bell that rings
+        # for a mismatch whose proof failed to save would send a manager to a
+        # ticket where nothing happened.
+        await notify(
+            db,
+            company_id=company_id,
+            kind="serial_mismatch",
+            title=f"Serial mismatch on {row.code}",
+            detail=(
+                f"Read {row.observed_serial} · order says {row.serial_number} "
+                f"· {technician}"
+            ),
+            to=f"/tickets/{row.id}",
+            ticket_id=row.id,
+            # Territory, so it reaches the manager whose area this is rather
+            # than everyone in the company.
+            pincode=row.pincode,
+        )
+
+    await publish_ticket_changed(db, row)
+    await db.commit()
+
+    if mismatch:
+        # After the commit: the notification row is durable, so this only tells
+        # consoles to go and read it.
+        await publish_notification(db, company_id=company_id, pincode=row.pincode)
+        await db.commit()
+
+    return await get_job(
+        db, ticket_id, company_id=company_id, technician_id=profile.id
+    )
+
+
+def _check_live_was_taken_at_the_job(
+    artifacts: list[ProofArtifactIn], *, ticket: Ticket
+) -> None:
+    """The live photo must have been taken where the job is.
+
+    The app already refuses the shutter on a mismatch, but a client-side rule is
+    a rendering choice — this is the one that holds. Two conditions, and they
+    are not the same condition:
+
+      * the live shot must carry COORDINATES. Without this the block is
+        decorative: turning location off would be the way round it.
+      * if it also carries a postal code, that code must match the ticket's.
+
+    A null postal code with good coordinates is ACCEPTED. Reverse geocoding
+    needs map data the phone may not have, and refusing it would strand a
+    technician standing at the right door with a working GPS. The coordinates
+    are stored either way, so the position is auditable even where the label is
+    missing.
+
+    This cannot be a complete guarantee, and it is worth being honest about why:
+    nothing in this database maps a coordinate to a pincode, so the server
+    cannot independently verify the label the phone attached. It enforces "if
+    you tell me where you were, it must be here" — the coordinates remain the
+    evidence for anything argued afterwards.
+    """
+    live = [a for a in artifacts if a.kind == "live"]
+    for shot in live:
+        if shot.latitude is None or shot.longitude is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "The live site photo must carry a location — it is what "
+                    "evidences the visit. Turn location on and retake it."
+                ),
+            )
+        if shot.devicePincode and shot.devicePincode != ticket.pincode:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"The live photo was taken at {shot.devicePincode}, but this "
+                    f"job is at {ticket.pincode}. It must be captured at the "
+                    "customer's address."
+                ),
+            )
+
+
+def _check_blobs_are_ours(
+    artifacts: list[ProofArtifactIn], *, company_id: uuid.UUID
+) -> None:
+    """Every blob name must sit under THIS company's proof prefix.
+
+    Without this the endpoint is a cross-tenant read. `POST /uploads?kind=proof`
+    names a blob `proof/{company_id}/{uuid}.jpg`, but nothing stopped a client
+    from submitting a name it did not get back from that call — and
+    `list_proof` signs whatever name the row holds. A technician who guessed or
+    observed another company's blob name could have had a working link to
+    photographs of the inside of somebody else's customer's home.
+    """
+    prefix = f"proof/{company_id}/"
+    for a in artifacts:
+        name = a.blobName
+        # `..` cannot climb out of a blob container, but a name that tries is a
+        # client doing something it has no reason to do.
+        if not name.startswith(prefix) or ".." in name:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Proof images must be uploaded through this API first",
+            )
+
+
+def _check_proof_complete(
+    artifacts: list[ProofArtifactIn],
+    *,
+    observed_serial: str | None,
+    observed_serial_source: str | None,
+) -> None:
+    """What a complete proof set is — and the serial photo is CONDITIONAL.
+
+    The barcode carries the serial. When it scans, the number is already in
+    hand and photographing the label as well is a step that proves nothing new,
+    so it is not required. When it does not scan — a damaged label, glare, or no
+    barcode at all — the technician types the number, and then the photo of the
+    label IS required, because a typed number with nothing behind it is just an
+    assertion.
+
+    A serial is always required by one route or the other. That is the point of
+    the step: nobody leaves site without recording which unit they installed.
+    """
+    by_kind: dict[str, int] = {}
+    for a in artifacts:
+        by_kind[a.kind] = by_kind.get(a.kind, 0) + 1
+
+    if not (observed_serial or "").strip():
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="The serial number is required — scan the barcode or enter it by hand",
+        )
+
+    scanned = observed_serial_source == "scanned"
+    required = [k for k in PROOF_KINDS if k != "serial" or not scanned]
+
+    missing = [k for k in required if k not in by_kind]
+    if missing:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"Proof is incomplete — missing {', '.join(missing)}",
+        )
+    for single in ("barcode", "serial", "live"):
+        if single in by_kind and by_kind[single] != 1:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=f"Expected exactly one {single} image",
+            )
+    if not MIN_PRODUCT_PHOTOS <= by_kind["photos"] <= MAX_PRODUCT_PHOTOS:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Between {MIN_PRODUCT_PHOTOS} and {MAX_PRODUCT_PHOTOS} product "
+                "photos are required"
+            ),
+        )
+
+
+async def complete(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+) -> JobOut:
+    """The technician says the work is done, and we go and ask the customer.
+
+    This does NOT close the ticket. In this product the customer closes a job —
+    the technician's word starts a question, and `Awaiting Customer` is the
+    state of having asked. That gap is the whole feature: before it, nothing but
+    the technician's own say-so recorded that the work happened.
+
+    The WhatsApp send happens AFTER the commit, exactly as `create_ticket` does.
+    A ticket that reached the customer's phone but was never saved is
+    unrecoverable; a saved ticket whose message failed is a resend.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=profile.id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    token = secrets.token_urlsafe(32)
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == company_id,
+            Ticket.technician_id == profile.id,
+            Ticket.status == "In Progress",
+        )
+        .values(
+            status="Awaiting Customer",
+            feedback_token=token,
+            feedback_request_status="pending",
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=(
+                "Capture and submit proof before completing this job."
+                if row.status == "Assigned"
+                else f"This job is already {row.status.lower()}."
+            ),
+        )
+
+    technician = await _technician_name(db, profile)
+    db.add(
+        _event(
+            row,
+            "completed",
+            actor_kind="technician",
+            actor_label=technician,
+            note="Work finished — waiting for the customer to confirm",
+            from_status="In Progress",
+            to_status="Awaiting Customer",
+        )
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+
+    # Durable first, message second.
+    await _send_feedback_request(db, ticket_id, company_id=company_id, token=token,
+                                 technician=technician)
+
+    return await get_job(
+        db, ticket_id, company_id=company_id, technician_id=profile.id
+    )
+
+
+async def _send_feedback_request(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    token: str,
+    technician: str,
+) -> None:
+    """Ask the customer to confirm. Records the outcome, never raises.
+
+    A refusal from Meta must not undo a completed job. The status stays
+    `Awaiting Customer` either way and the failure is written where somebody can
+    act on it — the same trade `_send_slot_request` makes in the tickets slice.
+    """
+    row = await db.scalar(
+        select(Ticket).where(Ticket.id == ticket_id, Ticket.company_id == company_id)
+    )
+    if row is None:  # pragma: no cover — it was there a moment ago
+        return
+
+    product = await db.scalar(
+        select(ProductModel.name).where(ProductModel.id == row.model_id)
+    )
+    company = await db.scalar(select(Company.name).where(Company.id == company_id))
+    link = f"{settings.FEEDBACK_LINK_BASE.rstrip('/')}/{token}"
+
+    result = await whatsapp.send_feedback_request(
+        row.customer_phone,
+        link,
+        company or "Installation Service",
+        product or "your product",
+        technician,
+    )
+    row.feedback_request_status = "sent" if result.ok else "failed"
+    row.feedback_request_error = None if result.ok else (result.error or "")[:255]
+    db.add(
+        _event(
+            row,
+            "feedback_requested",
+            actor_kind="system",
+            actor_label="WhatsApp",
+            note=(
+                f"Confirmation link sent to {row.customer_phone}"
+                if result.ok
+                else f"Could not send: {result.error or 'unknown error'}"
+            ),
+        )
+    )
+    await db.commit()
+
+
+async def list_proof(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> list[ProofImageOut]:
+    """One job's proof, each image behind a freshly signed link.
+
+    The 404 is the boundary: `mine_query` puts `technician_id` in the WHERE
+    clause, so a technician cannot read another's proof — which, given these are
+    photographs of the inside of somebody's home, is the access rule that
+    matters most in this slice.
+    """
+    owns = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if owns is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    rows = await db.scalars(
+        select(TicketProof)
+        .where(
+            TicketProof.company_id == company_id,
+            TicketProof.ticket_id == ticket_id,
+        )
+        .order_by(TicketProof.captured_at.asc(), TicketProof.ordinal.asc())
+    )
+    # Belt and braces. `submit_proof` already refuses a name outside this
+    # company's prefix, so a row that fails this check should not exist — but
+    # signing is the step that would actually hand the bytes over, and it costs
+    # one string comparison to make that impossible rather than merely unlikely.
+    prefix = f"proof/{company_id}/"
+    return [
+        ProofImageOut(
+            kind=p.kind,
+            ordinal=p.ordinal,
+            capturedAt=p.captured_at,
+            url=(
+                blob.signed_url(p.blob_name)
+                if p.blob_name.startswith(prefix)
+                else None
+            ),
+            latitude=p.latitude,
+            longitude=p.longitude,
+            devicePincode=p.device_pincode,
+        )
+        for p in rows
+    ]

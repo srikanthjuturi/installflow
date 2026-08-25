@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
+import { ScreenStatusBar } from '@/components/layout';
 import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
+import { useCompleteJob } from '@/features/proof/hooks/useProof';
 import { color } from '@/theme/semantic';
 import { formatPaise } from '@/utils/money';
 
@@ -26,7 +27,24 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const { data: job, isPending, isError, refetch } = useJob(jobId);
 
-  const done = job?.status === 'completed';
+  const complete = useCompleteJob(jobId);
+
+  // Three CTA states, from the server's own word rather than the app's coarser
+  // five-value one — `In Progress` and `Awaiting Customer` both map to
+  // `inprogress`, and they need completely different buttons.
+  //
+  //   Assigned           → start, which opens proof capture straight away
+  //   In Progress        → complete, which asks the customer to confirm
+  //   Awaiting Customer  → nothing to do; it is their move
+  const stage = job?.serverStatus;
+  const waiting = stage === 'Awaiting Customer';
+  const working = stage === 'In Progress';
+  // The customer said the work was NOT finished. The technician gets no button:
+  // the person who reported it done is not the person who gets to try again
+  // unsupervised, and every endpoint would refuse them anyway.
+  const escalated = stage === 'Escalated' || stage === 'AI Review';
+  const done = job?.status === 'completed' || job?.status === 'cancelled';
+  const linkFailed = job?.feedbackRequestStatus === 'failed';
 
   const call = () => {
     if (job?.phone) Linking.openURL(`tel:${job.phone.replace(/\s/g, '')}`);
@@ -46,7 +64,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <View
         style={{
@@ -82,7 +100,13 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
             Job details
           </Text>
 
+          {/* `code`, never `id`. This is the screen a technician is looking at
+              when they phone the ASM about a job, and INST-240912 is what ops
+              can search for — the UUID is a route param and means nothing to
+              anybody. The fallback covers mock rows that predate `code`. */}
           <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={1.3}
             style={{
               marginLeft: 'auto',
               fontFamily: 'RobotoMono_400Regular',
@@ -90,7 +114,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
               color: color.textOnChromeFaint,
             }}
           >
-            {job?.id ?? ''}
+            {job?.code ?? ''}
           </Text>
         </View>
 
@@ -175,7 +199,12 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     color: color.textLabel,
                   }}
                 >
-                  {job.address}, {job.area} — {job.pincode}
+                  {/* Filtered, not interpolated bare: `address` is optional on
+                      `Job`, and `{job.address}, ...` rendered the literal
+                      "undefined, Kandivali West — 400067" whenever it was
+                      absent. The navigate handler above already guarded; this
+                      did not. */}
+                  {[job.address, job.area].filter(Boolean).join(', ')} — {job.pincode}
                 </Text>
               </View>
 
@@ -235,7 +264,10 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                       marginTop: 3,
                     }}
                   >
-                    {job.category} · Install &amp; demo
+                    {/* The real service type, not a hardcoded one. "Tech Visit"
+                        and "Service" are equally valid and read very
+                        differently to a technician deciding what to bring. */}
+                    {job.category} · {job.serviceType}
                   </Text>
                 </View>
               </View>
@@ -246,21 +278,113 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
               <StatTile label="Payout" value={formatPaise(job.payoutPaise)} />
             </View>
 
-            {!done ? (
+            {/* "Cancel this job" is deliberately absent, not hidden.
+                `getCancellationPreview` still looks the job up in `mocks/db`
+                and throws on a real ticket id, so the button would take a
+                technician who wants out of a job to an error screen. Rendering
+                it with `display: 'none'` would leave it in the tree and
+                reachable by a screen reader; it returns when the cancel slice
+                is real, alongside the penalty bands it needs. */}
+            {escalated ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  backgroundColor: color.dangerSurface,
+                  borderWidth: 1,
+                  borderColor: color.dangerSurfaceBorder,
+                  borderRadius: 14,
+                  paddingVertical: 14,
+                  paddingHorizontal: 15,
+                }}
+              >
+                <Icon name="warn" size={20} color={color.debit} strokeWidth={1.8} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 13,
+                    lineHeight: 19,
+                    color: color.debit,
+                  }}
+                >
+                  This job has gone to your Area Service Manager. They will be in
+                  touch — there is nothing to do here.
+                </Text>
+              </View>
+            ) : waiting ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  backgroundColor: linkFailed
+                    ? color.dangerSurface
+                    : color.successSurface,
+                  borderWidth: 1,
+                  borderColor: linkFailed
+                    ? color.dangerSurfaceBorder
+                    : color.successSurfaceBorder,
+                  borderRadius: 14,
+                  paddingVertical: 14,
+                  paddingHorizontal: 15,
+                }}
+              >
+                <Icon
+                  name={linkFailed ? 'warn' : 'check'}
+                  size={20}
+                  color={linkFailed ? color.debit : color.credit}
+                  strokeWidth={1.8}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 13,
+                    lineHeight: 19,
+                    color: linkFailed ? color.debit : color.credit,
+                  }}
+                >
+                  {linkFailed
+                    ? `Work submitted, but we could not message ${job.customer ?? 'the customer'}. Ask them to confirm before you leave, or tell your manager.`
+                    : `Work submitted. ${job.customer ?? 'The customer'} has been sent a link to confirm it — the job closes when they do.`}
+                </Text>
+              </View>
+            ) : working ? (
               <>
                 <Button
-                  label="Start job & capture proof"
-                  leadingIcon="play"
-                  onPress={() => router.push(`/job/${jobId}/proof/capture`)}
+                  label="Complete the job"
+                  leadingIcon="check"
+                  loading={complete.isPending}
+                  onPress={() =>
+                    complete.mutate(undefined, {
+                      onSuccess: () => router.push(`/job/${jobId}/proof/closure`),
+                    })
+                  }
                 />
-                <View style={{ marginTop: 12 }}>
-                  <Button
-                    label="Cancel this job"
-                    variant="dangerGhost"
-                    onPress={() => router.push(`/job/${jobId}/cancel`)}
-                  />
-                </View>
+                {complete.isError ? (
+                  <Text
+                    style={{
+                      fontFamily: 'Roboto_400Regular',
+                      fontSize: 12,
+                      color: color.debit,
+                      textAlign: 'center',
+                      marginTop: 8,
+                    }}
+                  >
+                    {complete.error instanceof Error
+                      ? complete.error.message
+                      : "Couldn't complete this job"}
+                  </Text>
+                ) : null}
               </>
+            ) : !done ? (
+              <Button
+                label="Start job & capture proof"
+                leadingIcon="play"
+                onPress={() => router.push(`/job/${jobId}/proof/capture`)}
+              />
             ) : null}
           </>
         )}

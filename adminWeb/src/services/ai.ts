@@ -22,7 +22,7 @@ const AIQUEUE: AiFlag[] = [
   {
     id: "INST-240931",
     customer: "Sameer Bhosale",
-    product: 'Videocon 55" QLED',
+    product: 'Reliance GreenTech 55" QLED',
     expectedSerial: "VDC55QLED-2024",
     // Letter O read where a zero was printed — exactly the class of error the
     // serial comparison has to make legible.
@@ -58,7 +58,7 @@ const AIQUEUE: AiFlag[] = [
   {
     id: "INST-240895",
     customer: "Gopal Verma",
-    product: 'Videocon 43" 4K UHD',
+    product: 'Reliance GreenTech 43" 4K UHD',
     expectedSerial: "VDC43UHD-1180",
     detectedSerial: "VDC43UHD-118O",
     conf: 0.66,

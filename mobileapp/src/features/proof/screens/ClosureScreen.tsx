@@ -1,14 +1,13 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
-import { useSendFeedbackLink } from '@/features/proof/hooks/useVerification';
 import { useCaptureStore } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -17,11 +16,25 @@ export interface ClosureScreenProps {
   jobId: string;
 }
 
-const STEPS = [
-  { label: 'Proof captured & AI-verified', done: true },
-  { label: 'Feedback link delivered', done: true },
-  { label: 'Awaiting customer confirmation', done: false },
-];
+/**
+ * Derived from the ticket, not hardcoded.
+ *
+ * These three used to be a literal array with two ticks and an empty ring, no
+ * matter what had actually happened — including when the WhatsApp send had
+ * failed outright. Now the second step reads the ticket's own record of the
+ * send, so a technician can see that the customer was NOT reached and tell them
+ * in person before leaving.
+ */
+function steps(delivered: boolean): { label: string; done: boolean }[] {
+  return [
+    { label: 'Proof captured & uploaded', done: true },
+    {
+      label: delivered ? 'Confirmation link delivered' : 'Confirmation link not delivered',
+      done: delivered,
+    },
+    { label: 'Awaiting customer confirmation', done: false },
+  ];
+}
 
 /**
  * Closure.
@@ -35,21 +48,22 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { data: job } = useJob(jobId);
-  const send = useSendFeedbackLink(jobId);
   const reset = useCaptureStore((s) => s.reset);
 
-  useEffect(() => {
-    if (send.isIdle) send.mutate();
-  }, [send]);
+  // Nothing is sent from here. `POST /jobs/:id/complete` — which the Job detail
+  // button already called to reach this screen — mints the token and sends the
+  // WhatsApp in the same request that moved the ticket. Sending again here
+  // would be a second message for one finished job.
+  const delivered = job?.serverStatus === 'Awaiting Customer';
 
-  const done = () => {
-    reset();
-    router.replace('/(app)/(tabs)/jobs');
-  };
+  // The captures are on the server now; the local copies are just cache.
+  useEffect(() => reset, [reset]);
+
+  const done = () => router.replace('/(app)/(tabs)/jobs');
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -109,7 +123,7 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
               paddingVertical: 4,
             }}
           >
-            {STEPS.map((step, i) => (
+            {steps(delivered).map((step, i) => (
               <View
                 key={step.label}
                 style={{

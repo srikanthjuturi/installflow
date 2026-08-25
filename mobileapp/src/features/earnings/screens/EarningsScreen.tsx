@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { StatusBar } from 'expo-status-bar';
 import { ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { getEarningsSummary, listTransactions } from '@/features/earnings/api/earnings';
 import { qk } from '@/lib/queryKeys';
 import { color } from '@/theme/semantic';
@@ -34,7 +34,7 @@ export function EarningsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <View

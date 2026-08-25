@@ -7,9 +7,15 @@
  */
 
 import type { ListParams, Page } from "@/types/api";
-import type { CreateTicketInput, Ticket, TicketDetail } from "@/types/ticket";
+import type {
+  CorrectSerialInput,
+  CreateTicketInput,
+  Ticket,
+  TicketDetail,
+  TicketProof,
+} from "@/types/ticket";
 import { ApiError } from "./client";
-import { apiGet, apiGetPage, apiPost } from "./http";
+import { apiGet, apiGetPage, apiPatch, apiPost } from "./http";
 
 /**
  * One page of tickets.
@@ -24,6 +30,31 @@ export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {
 
 export function getTicket(id: string): Promise<TicketDetail> {
   return apiGet<TicketDetail>(`/tickets/${id}`);
+}
+
+/**
+ * What the technician photographed on site.
+ *
+ * Who may read it is decided server-side by the same rule that scopes the
+ * ticket: staff by territory, a vendor by ownership. The URLs come back signed
+ * and expire in minutes, so this is never cached long — see `useTicketProof`.
+ */
+export function getTicketProof(id: string): Promise<TicketProof[]> {
+  return apiGet<TicketProof[]>(`/tickets/${id}/proof`);
+}
+
+/**
+ * Correct the EXPECTED serial — the number taken off the invoice.
+ *
+ * Whoever can see the ticket can fix it, and the vendor matters most: the
+ * invoice is theirs, so a mistyped serial is theirs to correct. It never
+ * touches what the technician read on site.
+ */
+export function correctTicketSerial({
+  id,
+  ...body
+}: CorrectSerialInput): Promise<TicketDetail> {
+  return apiPatch<TicketDetail>(`/tickets/${id}/serial`, body);
 }
 
 /**

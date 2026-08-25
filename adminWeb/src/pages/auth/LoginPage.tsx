@@ -19,7 +19,7 @@ export default function LoginPage() {
 
   return (
     <>
-      <PageMeta title="Sign in" description="InstallFlow console sign-in." />
+      <PageMeta title="Sign in" description="Reliance GreenTech console sign-in." />
       <div className="grid min-h-svh md:grid-cols-[1.05fr_0.95fr]">
         <BrandPanel />
 

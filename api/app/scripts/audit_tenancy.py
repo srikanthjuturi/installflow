@@ -77,6 +77,12 @@ TENANT_LINKS = [
     ("tickets", "model_id", "product_models"),
     ("tickets", "technician_id", "technician_profiles"),
     ("ticket_events", "ticket_id", "tickets"),
+    # Proof photographs — the inside of a customer's home. Of everything in
+    # this list, the row that would hurt most to leak across a tenant boundary.
+    ("ticket_proofs", "ticket_id", "tickets"),
+    # A notification names a ticket in its title. One pointing across a tenant
+    # boundary would put another company's ticket code in somebody's bell.
+    ("notifications", "ticket_id", "tickets"),
     # A vendor's login. NB this proves the LINK is tenant-safe — a membership
     # cannot name another company's vendor. It says nothing about whether one
     # vendor can read another's tickets INSIDE a company; that is an application

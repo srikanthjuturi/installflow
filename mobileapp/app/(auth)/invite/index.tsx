@@ -3,7 +3,7 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import { InviteScreen } from '@/features/onboarding/screens/InviteScreen';
 
 /**
- * `videocontech://invite?token=…` — the query form.
+ * `reliancegreentech://invite?token=…` — the query form.
  *
  * Kept so links already sent keep working. With no token at all there is
  * nothing to resolve, so this falls through to sign-in rather than rendering an

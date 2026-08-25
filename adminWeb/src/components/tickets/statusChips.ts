@@ -9,6 +9,7 @@ export const STATUS_CHIPS: Array<TicketStatus | "All"> = [
   "Slot Pending",
   "Assigned",
   "In Progress",
+  "Awaiting Customer",
   "AI Review",
   "Escalated",
   "Closed",

@@ -193,7 +193,7 @@ const USERS: User[] = [
   {
     id: "U-1001",
     name: "Arjun Mehta",
-    email: "arjun.mehta@installflow.in",
+    email: "arjun.mehta@reliancegreentech.in",
     role: "NH",
     region: "All India",
     status: "Active",
@@ -202,7 +202,7 @@ const USERS: User[] = [
   {
     id: "U-1014",
     name: "Kavita Rao",
-    email: "kavita.rao@installflow.in",
+    email: "kavita.rao@reliancegreentech.in",
     role: "RSH",
     region: "West",
     status: "Active",
@@ -211,7 +211,7 @@ const USERS: User[] = [
   {
     id: "U-1022",
     name: "Ravi Sharma",
-    email: "ravi.sharma@installflow.in",
+    email: "ravi.sharma@reliancegreentech.in",
     role: "ASM",
     region: "Pune",
     status: "Active",
@@ -220,7 +220,7 @@ const USERS: User[] = [
   {
     id: "U-1030",
     name: "Sneha Iyer",
-    email: "sneha.iyer@installflow.in",
+    email: "sneha.iyer@reliancegreentech.in",
     role: "ASM",
     region: "Mumbai",
     status: "Active",
@@ -229,7 +229,7 @@ const USERS: User[] = [
   {
     id: "U-1041",
     name: "Dinesh Kumar",
-    email: "dinesh.kumar@installflow.in",
+    email: "dinesh.kumar@reliancegreentech.in",
     role: "Ops Staff",
     region: "Pune",
     status: "Active",
@@ -238,7 +238,7 @@ const USERS: User[] = [
   {
     id: "U-1052",
     name: "Pooja Nanda",
-    email: "pooja.nanda@installflow.in",
+    email: "pooja.nanda@reliancegreentech.in",
     role: "Ops Staff",
     region: "Pune",
     status: "Invited",
@@ -247,7 +247,7 @@ const USERS: User[] = [
   {
     id: "U-1060",
     name: "Harish Patel",
-    email: "harish.patel@installflow.in",
+    email: "harish.patel@reliancegreentech.in",
     role: "RSH",
     region: "North",
     status: "Suspended",

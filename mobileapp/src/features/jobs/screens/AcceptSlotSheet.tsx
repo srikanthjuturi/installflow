@@ -72,11 +72,21 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
 
   return (
     <Sheet onDismiss={dismiss}>
-      <IconWell icon="clock" fg={palette.secondary[500]} bg={color.slotBlockBg} />
-
-      <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary }}>
-        Commit to this slot?
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+        <IconWell icon="clock" fg={palette.secondary[500]} bg={color.slotBlockBg} inline />
+        {/* `flex: 1` so a longer heading wraps inside the row rather than
+            pushing the well off the edge of the sheet. */}
+        <Text
+          style={{
+            fontFamily: 'Roboto_900Black',
+            fontSize: 20,
+            color: color.textPrimary,
+            flex: 1,
+          }}
+        >
+          Commit to this slot?
+        </Text>
+      </View>
 
       <Text
         style={{
@@ -124,7 +134,18 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
   );
 }
 
-function IconWell({ icon, fg, bg }: { icon: IconName; fg: string; bg: string }) {
+function IconWell({
+  icon,
+  fg,
+  bg,
+  inline,
+}: {
+  icon: IconName;
+  fg: string;
+  bg: string;
+  /** Beside the heading rather than above it — the row owns the spacing. */
+  inline?: boolean;
+}) {
   return (
     <View
       style={{
@@ -134,7 +155,7 @@ function IconWell({ icon, fg, bg }: { icon: IconName; fg: string; bg: string }) 
         backgroundColor: bg,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 14,
+        marginBottom: inline ? 0 : 14,
       }}
     >
       <Icon name={icon} size={26} color={fg} />

@@ -110,7 +110,12 @@ export async function apiRequest<T>(
  */
 let refreshInFlight: Promise<string | null> | null = null;
 
-function refreshAccessToken(): Promise<string | null> {
+/**
+ * Exported for the pool websocket, which authenticates with the same access
+ * token and therefore hits the same expiry. Its close code 4401 is the
+ * socket's spelling of a 401, and it recovers the same way this does.
+ */
+export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {

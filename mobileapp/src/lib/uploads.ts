@@ -11,8 +11,16 @@ import { authedRequest } from '@/lib/api';
  * what gets stored is the URL that comes back.
  */
 
-/** Folder on the server. Mirrors `Kind` in app/features/uploads/router.py. */
-export type UploadKind = 'product' | 'profile';
+/**
+ * Folder on the server. Mirrors `Kind` in app/features/uploads/router.py.
+ *
+ * `proof` is the odd one out: it lands in a PRIVATE container, so what comes
+ * back is an opaque blob NAME rather than a URL. Nothing can render it directly
+ * — the server mints a short-lived signed link when somebody is entitled to
+ * look. Store what `uploadImage` returns and send it on; never treat it as a
+ * URL.
+ */
+export type UploadKind = 'product' | 'profile' | 'proof';
 
 /** React Native's multipart file part — not a web `File`, which RN has no way
  *  to build from a uri. fetch reads the path itself. */
@@ -39,7 +47,8 @@ function partFor(uri: string, kind: UploadKind): FilePart {
 }
 
 /**
- * Uploads a local image file and resolves to its stored URL.
+ * Uploads a local image file and resolves to what the record should keep — a
+ * public URL for `product` and `profile`, an opaque blob name for `proof`.
  *
  * Requires a signed-in session: `POST /uploads` takes any principal but no
  * anonymous caller, which is why a self-registering technician's photo can

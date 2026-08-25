@@ -262,7 +262,7 @@ export const useSession = create<SessionState>()(
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
     }),
     {
-      name: "installflow.session",
+      name: "reliancegreentech.session",
       version: 6,
       // Older sessions predate the live backend (or carry a stale view-role
       // from the removed role toggle, lack activeCompanyId, or — before v5 —

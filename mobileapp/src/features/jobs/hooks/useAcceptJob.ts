@@ -17,10 +17,15 @@ export function useAcceptJob(jobId: string) {
 
   return useMutation({
     mutationFn: () => acceptJob(jobId),
-    onSuccess: () => {
+    onSuccess: (job) => {
+      // The accept response IS the job detail — same `JobOut` shape the detail
+      // endpoint returns. Seeding it means the technician lands on a populated
+      // screen instead of a spinner, and it removes the second round trip that
+      // invalidating alone would have forced.
+      queryClient.setQueryData(qk.job(jobId), job);
+
       queryClient.invalidateQueries({ queryKey: qk.pool() });
       queryClient.invalidateQueries({ queryKey: ['jobs', 'mine'] });
-      queryClient.invalidateQueries({ queryKey: qk.job(jobId) });
     },
     onError: () => {
       // Whether it was taken or genuinely failed, the pool is now stale.

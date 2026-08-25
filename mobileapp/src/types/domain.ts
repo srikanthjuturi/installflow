@@ -50,7 +50,7 @@ export interface TechnicianSession {
   phone: string;
   profileImageUrl: string | null;
   regionName: string;
-  /** Display-only, e.g. "Priya Deshmukh · Videocon Service". */
+  /** Display-only, e.g. "Priya Deshmukh · Reliance GreenTech Service". */
   onboardedBy: string;
   subcategories: SubcategoryRef[];
   pincodes: string[];
@@ -61,6 +61,18 @@ export interface TechnicianSession {
   rating: number | null;
   jobsCompleted: number;
   onTimePct: number | null;
+  /**
+   * Whether this technician currently wants work — the Home screen's toggle.
+   *
+   * The SERVER's answer, not a local default. It used to be neither: the switch
+   * lived only in memory, so it silently returned to "online" on every app
+   * restart and nothing outside this phone ever knew about it.
+   *
+   * Note this is intent alone. Whether they are actually *reachable* is
+   * observed from the live pool socket and derived server-side; the app never
+   * computes that AND itself.
+   */
+  acceptingWork: boolean;
 }
 
 export interface Job {
@@ -82,6 +94,13 @@ export interface Job {
    */
   category: string;
   model: string;
+  /**
+   * `Installation + Demo` · `Tech Visit` · `Service`.
+   *
+   * What the technician is actually going to do, which is not always an
+   * install — the detail screen used to print "Install & demo" regardless.
+   */
+  serviceType: string;
   area: string;
   pincode: string;
   /** Human label for the customer-confirmed slot, e.g. 'Today · 2:00–4:00 PM'. */
@@ -109,6 +128,28 @@ export interface Job {
    */
   payoutPaise: number | null;
   status: JobStatus;
+  /**
+   * The server's own status word — `Assigned`, `In Progress`, `Awaiting
+   * Customer`, `Closed`…
+   *
+   * `status` above is the app's five-value vocabulary, which is what badges and
+   * list filters want. It is deliberately coarser: `In Progress` and `Awaiting
+   * Customer` both map to `inprogress`, because to a badge they are the same
+   * thing. To the Job detail CTA they are not — one needs "Complete the job"
+   * and the other needs no button at all — so the precise word travels too.
+   *
+   * Optional because the pool never sends it: everything in the pool is `New`.
+   */
+  serverStatus?: string;
+  /**
+   * Whether the customer's confirmation link actually reached them:
+   * `not_needed` | `pending` | `sent` | `failed`.
+   *
+   * The Job detail banner reads this rather than assuming. Telling a technician
+   * "the customer has been sent a link" when Meta refused it is the one moment
+   * they could still fix it — they are standing in the customer's house.
+   */
+  feedbackRequestStatus?: string;
   /**
    * Hours until the committed slot; negative means past. Single source for
    * status badges, pool filtering and penalty bands. Becomes a real timestamp

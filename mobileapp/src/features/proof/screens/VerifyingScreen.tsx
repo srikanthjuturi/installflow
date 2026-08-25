@@ -1,5 +1,4 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Text, View } from 'react-native';
 import Animated, {
@@ -11,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useSubmitProof, useVerification } from '@/features/proof/hooks/useVerification';
 import { color } from '@/theme/semantic';
@@ -19,6 +19,18 @@ export interface VerifyingScreenProps {
   jobId: string;
 }
 
+/**
+ * ⚠ NOT IN THE FLOW. Kept, not wired.
+ *
+ * AI verification ships later. Review now submits straight to
+ * `POST /jobs/:id/proof`, which starts the job, and Job detail then
+ * offers "Complete the job". Nothing routes here.
+ *
+ * Left in place deliberately: the screens match the approved prototype
+ * and the copy is signed off, so deleting them would mean rebuilding
+ * them from the bundle when the AI check lands. `api/verification.ts`
+ * behind them is still mock and must be bound before either is used.
+ */
 /**
  * Submits the captures, then polls until the AI run resolves.
  *
@@ -61,7 +73,7 @@ export function VerifyingScreen({ jobId }: VerifyingScreenProps) {
         paddingHorizontal: 34,
       }}
     >
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <VerifyingIndicator />
 

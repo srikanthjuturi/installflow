@@ -26,7 +26,12 @@ CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 #: Folder per kind, so a company's product photos and its people's faces are
 #: separable later — profile pictures are the ones that might need to move to a
 #: private container with signed URLs.
-Kind = Literal["product", "profile"]
+#:
+#: `proof` already has. It is the one kind that does NOT go to the public
+#: container: a technician's site photos show the inside of a customer's home
+#: and the serial off their appliance, so they land in a private container and
+#: this endpoint returns a blob NAME rather than a URL. See `upload_private`.
+Kind = Literal["product", "profile", "proof"]
 
 
 class UploadOut(dict):
@@ -39,7 +44,12 @@ async def upload(
     file: Annotated[UploadFile, File()],
     kind: Kind = "product",
 ) -> ApiEnvelope[dict]:
-    """Store an image and return the URL to persist on the record."""
+    """Store an image and return what to persist on the record.
+
+    A public URL for `product` and `profile`; an opaque blob NAME for `proof`,
+    which is read back through a short-lived signed link instead. Both come back
+    in the same `url` field — the caller knows which kind it asked for.
+    """
     if not blob.is_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -56,12 +66,13 @@ async def upload(
             detail=f"Images must be under {MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
         )
 
-    result = await blob.upload_image(
-        data,
-        (file.content_type or "").split(";")[0].strip().lower(),
-        prefix=kind,
-        company_id=str(principal.company_id or "shared"),
-    )
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    company_id = str(principal.company_id or "shared")
+
+    # The only fork: proof is private, everything else is public. Same size and
+    # content-type rules either way — those are enforced in `blob`.
+    store = blob.upload_private if kind == "proof" else blob.upload_image
+    result = await store(data, content_type, prefix=kind, company_id=company_id)
     if not result.ok:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=result.error

@@ -19,11 +19,11 @@ export function BrandPanel() {
       />
 
       <div className="relative flex items-center gap-3">
-        <div className="grid size-9.5 place-items-center rounded-[9px] bg-white text-lg font-bold text-brand-500">
-          IF
+        <div className="grid size-9.5 place-items-center rounded-[9px] bg-white text-base font-bold text-brand-500">
+          RG
         </div>
         <div className="text-base font-semibold">
-          InstallFlow
+          Reliance GreenTech
           <span className="font-normal opacity-60"> · Ops Console</span>
         </div>
       </div>
@@ -47,7 +47,7 @@ export function BrandPanel() {
       </div>
 
       <div className="relative text-xs text-brand-300">
-        © 2026 InstallFlow · Internal use only
+        © 2026 Reliance GreenTech · Internal use only
       </div>
     </div>
   );

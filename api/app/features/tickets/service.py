@@ -27,13 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import Principal
+from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.schemas import ListParams
-from app.core.scope import (
-    ALL_INDIA_ROLES,
-    own_scope,
-    pincodes_in_regions,
-    pincodes_in_states,
-)
+from app.core.scope import visible_pincodes
 from app.core.sequences import next_code as allocate_code
 from app.core.service_types import SERVICE_TYPES
 from app.core.tickets import (
@@ -45,11 +41,12 @@ from app.core.tickets import (
     TICKET_STATUSES,
 )
 from app.db.repository import paginate
-from app.integrations import whatsapp
+from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
+    TicketProofOut,
     TimelineEventOut,
 )
 from app.models.company import Company
@@ -57,7 +54,7 @@ from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
 from app.models.technician import TechnicianProfile
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -226,42 +223,13 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
 async def _visible_pincodes(
     db: AsyncSession, principal: Principal
 ) -> Select | None | list:
-    """Which pincodes this caller may see tickets in.
+    """Delegates to `core.scope.visible_pincodes`.
 
-    Returns a SUBQUERY of codes, `None` for "all", or `[]` for "none". A
-    subquery rather than a list of strings because a territory is now states,
-    and one state can hold nearly two thousand pincodes — Postgres does the
-    filtering instead of dragging them through Python.
-
-    Still deliberately NOT `db.repository.territory_scope`: that helper filters
-    a MEMBERSHIP query, and a ticket has no membership — only a pincode. What
-    HAS changed is that the pincode → state → region master now exists, so both
-    staff branches below are answered by geography directly:
-
-      * an **area manager** sees the pincodes inside his states;
-      * a **regional head** sees the pincodes inside his regions — which now
-        includes areas no area manager covers yet. Before the master existed
-        his reach had to be approximated as "whatever pincodes my area managers
-        typed in", and a ticket in an unassigned area was invisible to everyone
-        below National Head.
+    Kept as a name because this module reads better for it, but the RULE lives
+    in core now: notifications are scoped the same way, and two copies of a
+    visibility rule is one copy too many.
     """
-    if principal.role in ALL_INDIA_ROLES:
-        return None
-
-    membership_id, scope = await own_scope(
-        db, user_id=principal.user_id, company_id=principal.company_id
-    )
-    if membership_id is None:
-        return []
-
-    if principal.role == AREA_MANAGER:
-        return pincodes_in_states(scope.state_ids) if scope.state_ids else []
-
-    if principal.role == REGIONAL_HEAD:
-        return pincodes_in_regions(scope.region_ids) if scope.region_ids else []
-
-    # Any other role sees nothing rather than everything.
-    return []
+    return await visible_pincodes(db, principal)
 
 
 def _apply_visibility(stmt: Select, pincodes: Select | None | list) -> Select:
@@ -485,6 +453,16 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 serviceType=t.service_type,
                 description=t.description,
                 serialNumber=t.serial_number,
+                observedSerial=t.observed_serial,
+                observedSerialSource=t.observed_serial_source,
+                # Same rule as the jobs slice, stated once here rather than
+                # imported across the slice boundary (hard rule 4).
+                serialMismatch=bool(
+                    t.observed_serial
+                    and t.serial_number
+                    and t.observed_serial.strip().upper()
+                    != t.serial_number.strip().upper()
+                ),
                 customerName=t.customer_name,
                 customerPhone=t.customer_phone,
                 address=t.address,
@@ -739,7 +717,7 @@ async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
     # for every tenant on this platform.
     return (
         await db.scalar(select(Company.name).where(Company.id == company_id))
-    ) or "Videocon Service"
+    ) or "Reliance GreenTech Service"
 
 
 async def _send_slot_request(db: AsyncSession, row: Ticket) -> None:
@@ -878,6 +856,16 @@ async def confirm_slot(
             to_status=row.status,
         )
     )
+    # Eligible technicians are now allowed to see this. The notify joins
+    # THIS transaction, so it reaches their phones only if the ticket is
+    # really saved, and it reaches every worker rather than only this one.
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        subcategory_id=row.subcategory_id,
+    )
+    await publish_ticket_changed(db, row)
     await db.commit()
     await db.refresh(row)
 
@@ -982,6 +970,17 @@ async def create_ticket(
                 by_user=principal.user_id,
             )
         )
+        # A ticket raised WITH a time is already in the pool, so it rings now.
+        # One without is 'Slot Pending' and nobody may see it yet — its ring
+        # comes later, from `confirm_slot`.
+        await publish_pool_changed(
+            db,
+            company_id=row.company_id,
+            pincode=row.pincode,
+            subcategory_id=row.subcategory_id,
+        )
+    # A new ticket is movement the console should see appear.
+    await publish_ticket_changed(db, row)
     await db.commit()
     await db.refresh(row)
 
@@ -1013,3 +1012,98 @@ async def create_ticket(
         await db.commit()
 
     return (await _hydrate(db, [row]))[0]
+
+
+async def list_proof(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
+) -> list[TicketProofOut]:
+    """The proof captured on one ticket, for whoever is entitled to see it.
+
+    Entitlement is `_load`'s, unchanged and not re-stated here — which is the
+    point. Staff see it if the ticket is in their territory, a vendor if the
+    ticket is theirs, a vendor user only if they raised it, and a technician not
+    at all through this route (they have `/jobs/{id}/proof` for their own work).
+    One rule, one place; a second copy would be the one that drifts.
+
+    404 rather than an empty list when the ticket is not visible, because an
+    empty list is an answer and "this ticket exists but is not yours" is not one
+    we want to give.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    rows = await db.scalars(
+        select(TicketProof)
+        .where(
+            TicketProof.company_id == row.company_id,
+            TicketProof.ticket_id == row.id,
+        )
+        .order_by(TicketProof.captured_at.asc(), TicketProof.ordinal.asc())
+    )
+    # Same belt-and-braces as the jobs slice: signing is the step that hands the
+    # bytes over, so a name outside this company's prefix is never signed.
+    prefix = f"proof/{row.company_id}/"
+    return [
+        TicketProofOut(
+            kind=p.kind,
+            ordinal=p.ordinal,
+            capturedAt=p.captured_at,
+            url=blob.signed_url(p.blob_name) if p.blob_name.startswith(prefix) else None,
+            latitude=p.latitude,
+            longitude=p.longitude,
+            accuracyM=p.accuracy_m,
+            devicePincode=p.device_pincode,
+        )
+        for p in rows
+    ]
+
+
+async def correct_serial(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    serial_number: str,
+    reason: str | None,
+) -> TicketDetailOut:
+    """Fix the expected serial on a ticket.
+
+    Open to whoever can already see the ticket — which by `_load` means staff in
+    its territory and the vendor that raised it. The vendor is the important
+    one: they hold the invoice, so when the number was mistyped at intake they
+    are the party who can actually say what it should be, and making them phone
+    a manager to correct their own typo is the kind of process that gets worked
+    around instead of followed.
+
+    It does NOT touch `observed_serial`. What the technician read on site is a
+    record of what was on the unit; correcting the order must never quietly
+    rewrite the evidence it disagreed with.
+
+    Recorded as an event carrying BOTH values, because "what did it say before"
+    is the first question anybody auditing a corrected serial will ask.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    was = row.serial_number
+    now = serial_number.strip()
+    if now == was:
+        # Nothing changed. Writing an event saying so would be noise in a trail
+        # whose value is that every row means something.
+        return await get_ticket(db, principal, ticket_id)
+
+    row.serial_number = now
+    db.add(
+        record_event(
+            row,
+            "serial_corrected",
+            actor_kind="vendor" if principal.is_vendor else "staff",
+            actor_label=principal.user.full_name or "—",
+            note=(
+                f"Expected serial corrected from {was} to {now}"
+                + (f" — {reason.strip()}" if reason and reason.strip() else "")
+            ),
+            by_user=principal.user_id,
+        )
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+    return await get_ticket(db, principal, ticket_id)

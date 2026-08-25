@@ -1,12 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { Avatar, Button, Switch } from '@/components/ui';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { useProfileStore } from '@/store/profile.store';
@@ -66,7 +66,7 @@ export function ProfileScreen() {
   if (!me && isError) {
     return (
       <View style={{ flex: 1, backgroundColor: color.surface, justifyContent: 'center' }}>
-        <StatusBar style="dark" />
+        <ScreenStatusBar style="dark" />
         <ErrorState
           title="Couldn't load your profile"
           body={error instanceof Error ? error.message : undefined}
@@ -78,7 +78,7 @@ export function ProfileScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

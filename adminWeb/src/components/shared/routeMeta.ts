@@ -75,5 +75,5 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
 export function PAGE_META(pathname: string): Meta {
   if (STATIC[pathname]) return STATIC[pathname];
   for (const [re, meta] of DYNAMIC) if (re.test(pathname)) return meta;
-  return { title: "InstallFlow", subtitle: "Ops Console" };
+  return { title: "Reliance GreenTech", subtitle: "Ops Console" };
 }

@@ -39,9 +39,11 @@ from app.core.schemas import (
 )
 from app.features.tickets import service
 from app.features.tickets.schemas import (
+    SerialCorrectionRequest,
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
+    TicketProofOut,
 )
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
@@ -76,6 +78,53 @@ async def list_tickets(
         service_type=serviceType,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.patch("/{ticket_id}/serial", response_model=ApiEnvelope[TicketDetailOut])
+async def correct_ticket_serial(
+    ticket_id: uuid.UUID, db: Db, principal: CanView, body: SerialCorrectionRequest
+) -> ApiEnvelope[TicketDetailOut]:
+    """Correct the expected serial — the number taken off the invoice.
+
+    Whoever can see the ticket can fix it, which by the visibility rule means
+    staff in its territory and the vendor that raised it. The vendor matters
+    most here: the invoice is theirs, so a mistyped serial is theirs to correct.
+
+    Only the EXPECTED serial. What the technician read on site is evidence and
+    is not editable, by anyone.
+    """
+    return envelope(
+        await service.correct_serial(
+            db,
+            principal,
+            ticket_id,
+            serial_number=body.serialNumber,
+            reason=body.reason,
+        ),
+        message="Serial updated",
+    )
+
+
+@router.get(
+    "/{ticket_id}/proof", response_model=ApiEnvelope[list[TicketProofOut]]
+)
+async def get_ticket_proof(
+    ticket_id: uuid.UUID, db: Db, principal: CanView
+) -> ApiEnvelope[list[TicketProofOut]]:
+    """What the technician photographed on site.
+
+    Who sees it is decided by the same visibility rule as the ticket itself:
+    staff by territory, a vendor by ownership, a vendor user only for tickets
+    they raised. A technician gets 404 here — they read their own work through
+    `/jobs/{id}/proof`.
+
+    This exists because of escalation. When a customer says the job was not
+    finished, the manager picking it up needs to see what was actually
+    captured, and until now nothing outside the technician's own phone could.
+
+    Links are signed and expire in minutes; re-read rather than caching them.
+    """
+    return envelope(await service.list_proof(db, principal, ticket_id))
 
 
 @router.get("/{ticket_id}", response_model=ApiEnvelope[TicketDetailOut])

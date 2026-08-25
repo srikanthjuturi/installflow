@@ -1,4 +1,4 @@
-# Videocon Technician Field App
+# Reliance GreenTech Technician Field App
 
 React Native app for technicians doing **installation & demo** jobs — accept a job with a
 customer-confirmed slot, travel, install, capture AI-verified photo proof, close the ticket.
@@ -15,7 +15,7 @@ Two sources of truth:
   and colours are **approved** — match it exactly. It sits with the app because it is the app's
   design reference, not a requirement the backend shares.
 
-For the per-screen spec, token tables and component patterns, load the **`videocon-tech-app`**
+For the per-screen spec, token tables and component patterns, load the **`reliance-greentech-tech-app`**
 skill in `mobileapp/.claude/skills/`.
 
 ## Phase: partly bound
@@ -85,7 +85,7 @@ The repo holds more than the app — the Python backend lands beside it later.
 ```
 RequirementDocs/        business flow + the approved prototypes
 mobileapp/              the Expo app — ALL technician-app work happens in here
-adminWeb/               the InstallFlow ops console (React + Vite) — see adminWeb/AGENTS.md
+adminWeb/               the Reliance GreenTech ops console (React + Vite) — see adminWeb/AGENTS.md
 api/                    the FastAPI backend — auth, tenancy, territory, product master,
                         technician onboarding. Jobs and money are still to come.
                         Has its OWN hard rules — see api/AGENTS.md, tenancy first.
@@ -104,7 +104,7 @@ app never picks up the other's tooling.
   vercel-composition-patterns React composition; React 19 in both apps
   vercel-react-best-practices React/JS perf. ⚠ its server-*/hydration/DOM rules are web-only
 mobileapp/.claude/skills/   MOBILE ONLY
-  videocon-tech-app           the 18-screen spec, tokens, penalty bands, proof state machine
+  reliance-greentech-tech-app           the 18-screen spec, tokens, penalty bands, proof state machine
   vercel-react-native-skills  RN performance, navigation, native modules, platform APIs
   expo-native-ui              Expo native UI: lists, modals, tabs, bottom sheets, haptics
   expo-router                 the routing model behind `app/` — see rule 4
@@ -211,10 +211,10 @@ parent scans the whole child table).
 
 Leave `WHATSAPP_*` empty. Invites then record a retryable failure with a copyable link, and OTP
 codes come back in the response as `devCode` (and to the server log). `INVITE_LINK_BASE` defaults
-to `videocontech://invite`, so a token opens straight into Expo Go:
+to `reliancegreentech://invite`, so a token opens straight into Expo Go:
 
 ```bash
-npx uri-scheme open "videocontech://invite/<token>" --android
+npx uri-scheme open "reliancegreentech://invite/<token>" --android
 ```
 
 ⚠ **That default cannot ship.** WhatsApp only auto-links `http(s)`, so a custom-scheme link
@@ -231,6 +231,13 @@ page and the app resolves it against the shared Azure database.
 ```
 INVITE_LINK_BASE=https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/invite
 ```
+
+**That `installflowapi` hostname keeps its pre-rebrand name on purpose — do not "fix" it.** The
+product is Reliance GreenTech everywhere a person can see it, but an Azure App Service cannot be
+renamed, and this host is baked into `scripts/publish.py`, both clients' `.env`, and the Android
+App Link intent filter compiled into installed builds. Renaming it means a new resource, a
+redeploy, a fresh mobile build, and every invite link already sitting in somebody's WhatsApp goes
+dead. The name is infrastructure, not branding; nobody outside the team reads it.
 
 ## Commit rhythm
 

@@ -21,7 +21,7 @@ const ESCALATIONS: Escalation[] = [
   {
     id: "INST-240940",
     customer: "Vikram Rane",
-    product: "Videocon 253L Direct Cool",
+    product: "Reliance GreenTech 253L Direct Cool",
     city: "Wakad",
     pincode: "411057",
     slot: "Aug 5, 12:00–14:00",

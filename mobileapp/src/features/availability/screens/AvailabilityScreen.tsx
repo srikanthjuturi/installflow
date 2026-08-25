@@ -1,8 +1,7 @@
-import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { TitleBar } from '@/components/layout';
+import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Switch } from '@/components/ui';
 import {
   BANDWIDTH_DEFAULT,
@@ -51,7 +50,7 @@ export function AvailabilityScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
       <TitleBar title="Availability & bandwidth" paddingBottom={14} />
 
       <ScrollView

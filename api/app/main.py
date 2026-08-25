@@ -11,11 +11,13 @@ from sqlalchemy import text
 
 from app.api.router import api_router
 from app.features.onboarding.landing import router as invite_landing_router
+from app.features.tickets.feedback_page import router as feedback_page_router
 from app.features.tickets.slot_page import router as slot_page_router
 from app.features.onboarding.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.errors import register_exception_handlers
+from app.core.realtime import broker
 
 # psycopg's async driver cannot run on Windows' default ProactorEventLoop.
 # Select the SelectorEventLoop before any loop is created (import time). NB: for
@@ -52,7 +54,12 @@ async def lifespan(app: FastAPI):
     # Verify DB connectivity on startup — fail fast if unreachable.
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
+    # The LISTEN connection behind the technician's live pool. Started after
+    # the connectivity check so a database that is down fails as a startup
+    # error rather than as a listener quietly retrying in the background.
+    await broker.start()
     yield
+    await broker.stop()
     await engine.dispose()
 
 
@@ -94,6 +101,12 @@ app.include_router(invite_landing_router)
 # tapped on a phone, so the URL stays short. It is the one unauthenticated
 # write in the app; see the module docstring for what makes that safe.
 app.include_router(slot_page_router)
+
+# The second unauthenticated customer page, and the one that CLOSES a job: the
+# technician says the work is done, this is where the customer agrees. Outside
+# /api/v1 for the same reason as the slot page — it arrives over WhatsApp and
+# gets tapped on a phone.
+app.include_router(feedback_page_router)
 
 # Also outside /api/v1, and the path is fixed by Android — it fetches exactly
 # https://<host>/.well-known/assetlinks.json and nothing else.

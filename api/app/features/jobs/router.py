@@ -37,7 +37,12 @@ from app.core.schemas import (
     paginated,
 )
 from app.features.jobs import service
-from app.features.jobs.schemas import JobOfferOut, JobOut
+from app.features.jobs.schemas import (
+    JobOfferOut,
+    JobOut,
+    ProofImageOut,
+    ProofSubmitRequest,
+)
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -86,6 +91,71 @@ async def get_offer(
     )
 
 
+# ── the technician's own jobs ────────────────────────────────────────────────
+#
+# These three are declared BEFORE `/{ticket_id}`. Starlette matches in
+# declaration order, so a `/{ticket_id}` sitting above them would swallow
+# `/jobs/mine` as a ticket id and answer 422 on a valid request.
+
+#: The three My-jobs segments, mapped onto the ticket vocabulary.
+#:
+#: `Awaiting Customer` sits under **In progress**, not Completed. The technician
+#: has finished, but in this product the customer closes a job — filing it as
+#: complete before they have answered would be the app asserting exactly the
+#: thing the confirmation link exists to establish.
+SEGMENTS: dict[str, tuple[str, ...]] = {
+    "upcoming": ("Assigned",),
+    "inprogress": ("In Progress", "Awaiting Customer", "AI Review", "Escalated"),
+    "completed": ("Closed", "Force-Closed"),
+}
+
+
+@router.get(
+    "/mine",
+    response_model=PaginatedEnvelope[JobOut],
+    dependencies=[CanSeePool],
+)
+async def list_my_jobs(
+    db: Db,
+    me: TechnicianPrincipal,
+    params: Annotated[ListParams, Depends(list_params)],
+    status: str = "all",
+) -> PaginatedEnvelope[JobOut]:
+    """This technician's own jobs, unmasked, newest slot first.
+
+    Unknown segment names are a client bug, not a filter — answering with the
+    unfiltered list would quietly show a technician their completed jobs under
+    "Upcoming", so an unrecognised value returns nothing instead.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    statuses = None if status == "all" else SEGMENTS.get(status, ())
+    rows, total = await service.list_mine(
+        db,
+        params,
+        company_id=principal.company_id,
+        technician_id=profile.id,
+        statuses=statuses,
+    )
+    return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.get("/today", response_model=ApiEnvelope[list[JobOut]], dependencies=[CanSeePool])
+async def list_today(db: Db, me: TechnicianPrincipal) -> ApiEnvelope[list[JobOut]]:
+    """Home's "Today's jobs" — this technician's slots falling today.
+
+    Not paginated: a day's work is a handful of jobs, bounded by the daily cap,
+    and Home shows all of them.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.list_today(
+            db, company_id=principal.company_id, technician_id=profile.id
+        )
+    )
+
+
 @router.post(
     "/{ticket_id}/accept",
     response_model=ApiEnvelope[JobOut],
@@ -105,3 +175,97 @@ async def accept_job(
         db, ticket_id, company_id=principal.company_id, profile=profile
     )
     return envelope(job, message="Job accepted")
+
+
+@router.post(
+    "/{ticket_id}/proof",
+    response_model=ApiEnvelope[JobOut],
+    dependencies=[CanSeePool],
+)
+async def submit_proof(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID, body: ProofSubmitRequest
+) -> ApiEnvelope[JobOut]:
+    """Record the on-site proof and start the job.
+
+    **400 means the set is incomplete** — all four artifact kinds are required
+    and the server counts them, not the phone. **409 means the job is not in
+    `Assigned`**, which is almost always a duplicate tap.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    job = await service.submit_proof(
+        db,
+        ticket_id,
+        company_id=principal.company_id,
+        profile=profile,
+        artifacts=body.artifacts,
+        observed_serial=body.observedSerial,
+        observed_serial_source=body.observedSerialSource,
+    )
+    return envelope(job, message="Job started")
+
+
+@router.post(
+    "/{ticket_id}/complete",
+    response_model=ApiEnvelope[JobOut],
+    dependencies=[CanSeePool],
+)
+async def complete_job(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[JobOut]:
+    """Finish the work and ask the customer to confirm it.
+
+    This does NOT close the ticket — the customer does, through the link this
+    sends. The job moves to `Awaiting Customer` and stays there until they
+    answer. A WhatsApp failure is recorded on the ticket rather than raised: the
+    work is done either way and ops can resend.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    job = await service.complete(
+        db, ticket_id, company_id=principal.company_id, profile=profile
+    )
+    return envelope(job, message="Sent to the customer to confirm")
+
+
+@router.get(
+    "/{ticket_id}/proof",
+    response_model=ApiEnvelope[list[ProofImageOut]],
+    dependencies=[CanSeePool],
+)
+async def list_proof(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[list[ProofImageOut]]:
+    """This technician's own proof for their own job, with signed links.
+
+    404 unless the job is theirs — the same boundary as the detail read. The
+    links expire in minutes; the caller re-reads rather than caching them.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.list_proof(
+            db, ticket_id, company_id=principal.company_id, technician_id=profile.id
+        )
+    )
+
+
+@router.get(
+    "/{ticket_id}",
+    response_model=ApiEnvelope[JobOut],
+    dependencies=[CanSeePool],
+)
+async def get_job(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[JobOut]:
+    """One of this technician's own jobs. 404 unless it is theirs.
+
+    Declared last, so `/mine` and `/today` are matched as literals first.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.get_job(
+            db, ticket_id, company_id=principal.company_id, technician_id=profile.id
+        )
+    )

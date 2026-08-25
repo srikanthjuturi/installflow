@@ -8,12 +8,18 @@ const SURFACE = '#eef1f3';
 
 /**
  * The host that serves invite links, taken from the API URL so there is exactly
- * ONE place to change when the dev tunnel hands out a new name.
+ * ONE place to change it.
  *
  * It is compiled into the Android intent filter below, which is what lets a
- * WhatsApp invite open the app directly instead of a browser. That also means
- * a new hostname needs a new build — the price of a throwaway tunnel, and the
- * thing a real domain would end.
+ * WhatsApp invite open the app directly instead of a browser — so a change of
+ * hostname needs a new build.
+ *
+ * EVERY eas.json build profile must set EXPO_PUBLIC_API_URL. `.env` is
+ * gitignored and there is no .easignore, so EAS never uploads it: a profile
+ * that omits the variable builds an app with NO intent filter and an API base
+ * URL of localhost. Both fail silently — the app simply cannot reach anything
+ * and invite links quietly open a browser. The production profile shipped in
+ * exactly that state until it was caught.
  */
 function inviteHost(): string | undefined {
   const api = process.env.EXPO_PUBLIC_API_URL;
@@ -28,10 +34,10 @@ function inviteHost(): string | undefined {
 const INVITE_HOST = inviteHost();
 
 const config: ExpoConfig = {
-  name: 'Videocon Technician',
-  slug: 'videocon-technician',
+  name: 'Reliance GreenTech Technician',
+  slug: 'reliance-greentech-technician',
   owner: 'srikanth24',
-  scheme: 'videocontech', // invite deep links: videocontech://invite/<token>
+  scheme: 'reliancegreentech', // invite deep links: reliancegreentech://invite/<token>
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light', // no dark mode in v1 — outdoor legibility
@@ -44,10 +50,10 @@ const config: ExpoConfig = {
   },
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'net.deccansoft.videocontechnician',
+    bundleIdentifier: 'com.reliancegreentech.technician',
   },
   android: {
-    package: 'net.deccansoft.videocontechnician',
+    package: 'com.reliancegreentech.technician',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: INK,
@@ -94,7 +100,8 @@ const config: ExpoConfig = {
       'expo-camera',
       {
         // Proof capture — doc §8. Gallery uploads are never accepted.
-        cameraPermission: 'Videocon Technician needs the camera to capture installation proof.',
+        cameraPermission:
+          'Reliance GreenTech Technician needs the camera to capture installation proof.',
         recordAudioAndroid: false,
       },
     ],
@@ -102,8 +109,21 @@ const config: ExpoConfig = {
       'expo-image-picker',
       {
         photosPermission:
-          'Videocon Technician needs your photos so you can set a profile picture.',
-        cameraPermission: 'Videocon Technician needs the camera to take your profile picture.',
+          'Reliance GreenTech Technician needs your photos so you can set a profile picture.',
+        cameraPermission:
+          'Reliance GreenTech Technician needs the camera to take your profile picture.',
+      },
+    ],
+    [
+      'expo-location',
+      {
+        // FOREGROUND only — one reading at the shutter of the live site photo,
+        // which is what evidences that the technician was actually there.
+        // Background location is never requested: it needs a development build,
+        // and following somebody around is not what this is for.
+        locationWhenInUsePermission:
+          'Reliance GreenTech Technician records where the live site photo was taken, to confirm the visit.',
+        isAndroidBackgroundLocationEnabled: false,
       },
     ],
     [

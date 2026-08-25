@@ -1,4 +1,3 @@
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { ScrollView, Text, View } from 'react-native';
@@ -6,8 +5,9 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
+import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
-import { Button } from '@/components/ui';
+import { BrandMark, Button } from '@/components/ui';
 import { resolveInvite } from '@/features/onboarding/api/invite';
 import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
@@ -15,7 +15,7 @@ import { useRegistration } from '@/store/registration.store';
 import { color } from '@/theme/semantic';
 
 export interface InviteScreenProps {
-  /** From the deep link `videocontech://invite/<token>`. */
+  /** From the deep link `reliancegreentech://invite/<token>`. */
   token: string;
 }
 
@@ -79,7 +79,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
       }}
       showsVerticalScrollIndicator={false}
     >
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
 
       <Animated.View
         entering={FadeInDown.duration(340)}
@@ -91,21 +91,13 @@ export function InviteScreen({ token }: InviteScreenProps) {
         </Text>
       </Animated.View>
 
-      <Animated.View
-        entering={FadeInDown.delay(60).duration(340)}
-        style={{
-          width: 58,
-          height: 58,
-          borderRadius: 17,
-          backgroundColor: color.chrome,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginTop: 18,
-        }}
-      >
-        <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 22, color: color.textInverse }}>
-          V
-        </Text>
+      {/*
+       * The shared BrandMark, not a copy of it. This screen used to re-draw the
+       * tile inline, which is how it kept the old "V" glyph after the mark had
+       * already changed everywhere else.
+       */}
+      <Animated.View entering={FadeInDown.delay(60).duration(340)} style={{ marginTop: 18 }}>
+        <BrandMark />
       </Animated.View>
 
       {isError ? (
