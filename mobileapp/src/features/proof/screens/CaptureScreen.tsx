@@ -1,11 +1,11 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { CaptureOverlay } from '@/features/proof/components/CaptureOverlay';
@@ -69,7 +69,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           paddingHorizontal: 24,
         }}
       >
-        <StatusBar style="light" />
+        <ScreenStatusBar style="light" />
         <Icon name="photos" size={40} color={color.textInverse} />
         <Text
           style={{
@@ -106,7 +106,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.cameraBg }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <View
         style={{

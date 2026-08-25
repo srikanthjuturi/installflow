@@ -47,7 +47,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
-          >
+        >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pill label={job.category} tone="primary" />
               <Pill label={`SLA ${job.sla}`} tone="secondary" />
@@ -72,7 +72,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
               marginTop: 11,
               marginBottom: 3,
             }}
-          >
+        >
             {job.model}
           </Text>
 
@@ -83,7 +83,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
               gap: 6,
               marginBottom: 12,
             }}
-          >
+        >
             <Icon name="geo" size={14} color={color.textMuted} />
             <Text
               style={{
@@ -108,7 +108,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
               borderTopColor: color.surface,
               paddingTop: 12,
             }}
-          >
+        >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
               <Icon name="clock" size={16} color={palette.secondary[500]} />
               <Text

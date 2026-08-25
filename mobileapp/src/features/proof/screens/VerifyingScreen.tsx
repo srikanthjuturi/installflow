@@ -1,5 +1,4 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Text, View } from 'react-native';
 import Animated, {
@@ -11,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useSubmitProof, useVerification } from '@/features/proof/hooks/useVerification';
 import { color } from '@/theme/semantic';
@@ -61,7 +61,7 @@ export function VerifyingScreen({ jobId }: VerifyingScreenProps) {
         paddingHorizontal: 34,
       }}
     >
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <VerifyingIndicator />
 

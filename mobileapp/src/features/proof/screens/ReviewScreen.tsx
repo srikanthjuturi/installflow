@@ -1,12 +1,11 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { TitleBar } from '@/components/layout';
+import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { STEP_CONFIG } from '@/features/proof/machine';
@@ -63,7 +62,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
       <TitleBar title="Review & submit" onBack={() => router.replace(`/job/${jobId}`)} />
 
       <ScrollView

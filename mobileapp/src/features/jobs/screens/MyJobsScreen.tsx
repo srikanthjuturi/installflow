@@ -1,11 +1,10 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
-import { TabHeader } from '@/components/layout';
+import { ScreenStatusBar, TabHeader } from '@/components/layout';
 import { SegmentedControl } from '@/components/ui';
 import { MyJobCard } from '@/features/jobs/components/MyJobCard';
 import { useMyJobs } from '@/features/jobs/hooks/useJobs';
@@ -30,7 +29,7 @@ export function MyJobsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
 
       <TabHeader title="My jobs">
         <View style={{ marginBottom: 12 }}>

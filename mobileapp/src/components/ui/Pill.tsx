@@ -49,7 +49,18 @@ export function Pill({ label, tone = 'primary' }: PillProps) {
         paddingVertical: 4,
       }}
     >
-      <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: fg }}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        // 11px metadata sitting in a row beside other pills. Unbounded scaling
+        // wraps a two-word label onto a second line and grows the pill taller
+        // than the row that holds it; capped, it stays legible and stays put.
+        // The information is duplicated in the card body, so this is the safe
+        // place to bound growth rather than the customer's name.
+        maxFontSizeMultiplier={1.4}
+        style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: fg }}
+      >
+        {label}
+      </Text>
     </View>
   );
 }

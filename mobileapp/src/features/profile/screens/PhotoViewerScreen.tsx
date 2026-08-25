@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -9,6 +8,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { ScreenStatusBar } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { qk } from '@/lib/queryKeys';
@@ -129,7 +129,7 @@ export function PhotoViewerScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.cameraBg }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <View
         style={{

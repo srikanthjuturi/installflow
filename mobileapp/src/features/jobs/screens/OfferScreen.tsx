@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
+import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
 import { Button, Pill } from '@/components/ui';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
@@ -30,7 +30,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="light" />
+      <ScreenStatusBar style="light" />
 
       <View
         style={{
@@ -62,21 +62,15 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
             )}
           </Pressable>
 
+          {/* The prototype ends this row with a mono identifier on the right.
+              It is deliberately not rendered: bound to the real API that field
+              is `job.id`, a UUID, which is a route param and means nothing to
+              a technician. `job.code` (INST-240912) is the human-readable one
+              if this ever comes back. */}
           <Text
             style={{ fontFamily: 'Roboto_700Bold', fontSize: 17, color: color.textInverse }}
           >
             Job offer
-          </Text>
-
-          <Text
-            style={{
-              marginLeft: 'auto',
-              fontFamily: 'RobotoMono_400Regular',
-              fontSize: 12,
-              color: color.textOnChromeFaint,
-            }}
-          >
-            {job?.id ?? ''}
           </Text>
         </View>
 

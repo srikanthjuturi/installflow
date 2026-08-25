@@ -58,7 +58,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
               justifyContent: 'space-between',
               marginBottom: 9,
             }}
-          >
+        >
             <View
               style={{
                 backgroundColor: status.bg,
@@ -67,12 +67,18 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
                 paddingVertical: 4,
               }}
             >
-              <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: status.fg }}>
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.4}
+                style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: status.fg }}
+              >
                 {status.label}
               </Text>
             </View>
 
             <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.4}
               style={{
                 fontFamily: 'RobotoMono_400Regular',
                 fontSize: 11,
@@ -94,7 +100,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
               marginTop: 2,
               marginBottom: 11,
             }}
-          >
+        >
             {job.model}
           </Text>
 
@@ -107,7 +113,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
               borderTopColor: color.surface,
               paddingTop: 10,
             }}
-          >
+        >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
               <Icon name="clock" size={15} color={palette.secondary[500]} />
               <Text

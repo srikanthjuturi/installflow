@@ -1,10 +1,9 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { KeyboardFlow } from '@/components/layout';
+import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
 import { BrandMark, Button, StepDots } from '@/components/ui';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { OtpInput } from '@/features/auth/components/OtpInput';
@@ -155,7 +154,7 @@ export function RegisterVerifyScreen() {
         paddingBottom: insets.bottom + 26,
       }}
     >
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
 
       <View style={{ alignItems: 'flex-end' }}>
         <StepDots total={REGISTRATION_STEP_COUNT} current={stepNumber('verify')} />

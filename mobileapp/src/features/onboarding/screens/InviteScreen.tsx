@@ -1,4 +1,3 @@
-import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { ScrollView, Text, View } from 'react-native';
@@ -6,6 +5,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
+import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
 import { resolveInvite } from '@/features/onboarding/api/invite';
@@ -79,7 +79,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
       }}
       showsVerticalScrollIndicator={false}
     >
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
 
       <Animated.View
         entering={FadeInDown.duration(340)}

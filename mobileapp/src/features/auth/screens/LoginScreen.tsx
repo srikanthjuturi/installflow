@@ -1,10 +1,9 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { BackHandler, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { KeyboardFlow } from '@/components/layout';
+import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
 import { BrandMark, Button } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
@@ -111,7 +110,7 @@ export function LoginScreen() {
         paddingBottom: insets.bottom + 26,
       }}
     >
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
 
       <KeyboardFlow>
         <BrandMark />

@@ -1,9 +1,8 @@
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
-import { TitleBar } from '@/components/layout';
+import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
@@ -25,7 +24,7 @@ export function PoolScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
-      <StatusBar style="dark" />
+      <ScreenStatusBar style="dark" />
       <TitleBar title="Open job pool" onBack={() => router.replace('/(app)/(tabs)')} />
 
       <ScrollView
