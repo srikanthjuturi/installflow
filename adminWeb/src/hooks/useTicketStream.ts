@@ -4,10 +4,11 @@ import { useEffect, useRef } from "react";
 import { BASE_URL } from "@/services/http";
 import { useSession } from "@/store/session";
 import { dashboardKeys } from "./useDashboard";
+import { notificationKeys } from "./useNotifications";
 import { ticketKeys } from "./useTickets";
 
 /**
- * Live ticket movement for the console and the vendor portal.
+ * Live ticket movement — and the bell — for the console and the vendor portal.
  *
  * One socket for the whole signed-in session, mounted once high in the tree.
  * The server sends `{"type":"ticket.changed","ticketId":…}` and nothing else —
@@ -102,6 +103,17 @@ export function useTicketStream(): void {
             // outright — the server keeps no backlog — so a fresh connection
             // always re-reads once.
             void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+            void queryClient.invalidateQueries({
+              queryKey: notificationKeys.all,
+            });
+            break;
+          case "notification.raised":
+            // No id and no text in the frame — the bell is a count, and the
+            // feed behind it applies the audience rule in SQL. All this can
+            // honestly do is say "go and look".
+            void queryClient.invalidateQueries({
+              queryKey: notificationKeys.all,
+            });
             break;
           case "ticket.changed":
             if (frame.ticketId) {

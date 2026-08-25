@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.deps import Principal
-from app.core.realtime import TicketChanged, broker
+from app.core.realtime import NotificationRaised, TicketChanged, broker
 from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import ROLE_RANKS, SUPERADMIN, TECHNICIAN, VENDOR_USER
@@ -101,6 +101,20 @@ class _Visibility:
             self.all_india = False
             self.pincodes = set(await db.scalars(visible))
         self._at = time.monotonic()
+
+    def hears_pincode(self, pincode: str | None) -> bool:
+        """Territory only — for events that are not about one ticket.
+
+        A null pincode is company-wide and reaches everyone. Vendors hear
+        nothing: every notification kind written today is an operational event
+        for staff, and telling a vendor "no technician accepted this" would be
+        telling them about our problem rather than theirs.
+        """
+        if self.vendor_id is not None:
+            return False
+        if self.all_india or pincode is None:
+            return True
+        return pincode in self.pincodes
 
     def may_hear(self, event: TicketChanged) -> bool:
         if self.vendor_id is not None:
@@ -222,12 +236,23 @@ async def ticket_stream(ws: WebSocket) -> None:
                     await ws.send_json({"type": "ping"})
                     continue
 
-                # Only ticket movement reaches the console. The pool and
-                # per-technician events share this channel and are not its
-                # business.
-                if not isinstance(event, TicketChanged):
-                    continue
                 if event.company_id != company_id:
+                    continue
+
+                if isinstance(event, NotificationRaised):
+                    if visibility.stale:
+                        with contextlib.suppress(Exception):
+                            async with AsyncSessionLocal() as db:
+                                await visibility.load(db, principal)
+                    if visibility.hears_pincode(event.pincode):
+                        # No id and no text: the bell is a count, and the feed
+                        # behind it applies the audience rule properly.
+                        await ws.send_json({"type": "notification.raised"})
+                    continue
+
+                # Only ticket movement past here. The pool and per-technician
+                # events share this channel and are not the console's business.
+                if not isinstance(event, TicketChanged):
                     continue
 
                 if visibility.stale:

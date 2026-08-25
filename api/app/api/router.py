@@ -12,6 +12,7 @@ from app.features.geo.router import router as geo_router
 from app.features.jobs.router import router as jobs_router
 from app.features.jobs.ws import router as jobs_stream_router
 from app.features.masters.router import router as masters_router
+from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
 from app.features.technicians.router import router as technicians_router
@@ -50,3 +51,7 @@ api_router.include_router(jobs_router)
 api_router.include_router(jobs_stream_router)
 api_router.include_router(onboarding_router)
 api_router.include_router(uploads_router)
+# The bell. Audience is territory, the same rule that scopes tickets — there is
+# no feature key, because a manager must not be unable to hear about an
+# escalation in their own area for want of a permission grant.
+api_router.include_router(notifications_router)

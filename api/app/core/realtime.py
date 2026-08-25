@@ -219,8 +219,64 @@ class TicketChanged:
             return None
 
 
+@dataclass(frozen=True, slots=True)
+class NotificationRaised:
+    """Somebody's bell should ring now.
+
+    Same doorbell rule as everything else here: no title, no detail, nothing
+    about the ticket. The console re-reads `GET /notifications`, which applies
+    the audience rule properly. Carrying the text would mean this file held a
+    second, weaker copy of who may read what.
+
+    `pincode` travels because it IS the audience — the console socket already
+    holds each viewer's territory and can decide without a query.
+    """
+
+    company_id: uuid.UUID
+    pincode: str | None
+
+    def as_payload(self) -> str:
+        return json.dumps(
+            {
+                "kind": "notification.raised",
+                "company_id": str(self.company_id),
+                "pincode": self.pincode,
+            },
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def from_payload(raw: dict[str, Any]) -> "NotificationRaised | None":
+        if raw.get("kind") != "notification.raised":
+            return None
+        try:
+            code = raw.get("pincode")
+            return NotificationRaised(
+                company_id=uuid.UUID(str(raw["company_id"])),
+                pincode=str(code) if code else None,
+            )
+        except (KeyError, ValueError, TypeError):
+            log.warning("realtime: discarding malformed payload %r", raw)
+            return None
+
+
 #: Everything that travels on the channel.
-Event = PoolChanged | JobChanged | TicketChanged
+Event = PoolChanged | JobChanged | TicketChanged | NotificationRaised
+
+
+async def publish_notification(
+    db: AsyncSession, *, company_id: uuid.UUID, pincode: str | None
+) -> None:
+    """Tell every console whose territory covers this that the bell moved."""
+    await db.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {
+            "channel": CHANNEL,
+            "payload": NotificationRaised(
+                company_id=company_id, pincode=pincode
+            ).as_payload(),
+        },
+    )
 
 
 async def publish_ticket_changed(db: AsyncSession, row: Any) -> None:
@@ -383,6 +439,7 @@ class Broker:
             PoolChanged.from_payload(raw)
             or JobChanged.from_payload(raw)
             or TicketChanged.from_payload(raw)
+            or NotificationRaised.from_payload(raw)
         )
         if event is None:
             return

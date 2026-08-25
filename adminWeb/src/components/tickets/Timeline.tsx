@@ -1,4 +1,16 @@
-import { Check, Lock, MessageSquare, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCheck,
+  Lock,
+  MessageSquare,
+  PencilLine,
+  Play,
+  Plus,
+  RotateCcw,
+  Star,
+  UserCheck,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime } from "@/utils/datetime";
@@ -19,6 +31,16 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   },
   confirmation_sent: { icon: MessageSquare, tint: "bg-info-bg text-info" },
   status_changed: { icon: Check, tint: "bg-ok-bg text-ok" },
+  assigned: { icon: UserCheck, tint: "bg-brand-100 text-brand-500" },
+  started: { icon: Play, tint: "bg-info-bg text-info" },
+  feedback_requested: { icon: MessageSquare, tint: "bg-info-bg text-info" },
+  completed: { icon: CheckCheck, tint: "bg-ok-bg text-ok" },
+  feedback_received: { icon: Star, tint: "bg-ok-bg text-ok" },
+  // Both red, and deliberately: the customer said it was not done, or the unit
+  // on site was not the unit on the order. Neither is a step forward.
+  reopened: { icon: RotateCcw, tint: "bg-danger-bg text-danger" },
+  serial_mismatch: { icon: AlertTriangle, tint: "bg-danger-bg text-danger" },
+  serial_corrected: { icon: PencilLine, tint: "bg-warn-bg text-warn" },
 };
 
 /**

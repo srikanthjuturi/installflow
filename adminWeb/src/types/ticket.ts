@@ -78,6 +78,18 @@ export interface Ticket {
    * photographs on site. A mismatch between the two is what AI review is for.
    */
   serialNumber: string | null;
+  /**
+   * What the technician actually READ on site, and how they read it — `scanned`
+   * off a barcode or `manual` off the label. Null until proof is submitted.
+   *
+   * Never editable. `serialNumber` above is the order and can be corrected;
+   * this is evidence of what was on the unit, and correcting the order must
+   * not quietly rewrite what it disagreed with.
+   */
+  observedSerial: string | null;
+  observedSerialSource: "scanned" | "manual" | null;
+  /** Derived server-side from the two above on every read, never stored. */
+  serialMismatch: boolean;
 
   /** Masked from technicians until they accept; ops always sees it. */
   customerName: string;
@@ -136,7 +148,15 @@ export interface TimelineEvent {
     | "slot_requested"
     | "slot_confirmed"
     | "confirmation_sent"
-    | "status_changed";
+    | "status_changed"
+    | "assigned"
+    | "started"
+    | "feedback_requested"
+    | "completed"
+    | "feedback_received"
+    | "reopened"
+    | "serial_mismatch"
+    | "serial_corrected";
   title: string;
   /** Both nullable: a system event has no actor, and some have no detail. */
   by: string | null;
@@ -145,6 +165,38 @@ export interface TimelineEvent {
 
 export interface TicketDetail extends Ticket {
   timeline: TimelineEvent[];
+}
+
+/**
+ * One proof image as ops and the vendor see it.
+ *
+ * Photographs of the inside of a customer's home, so the container is private
+ * and `url` is signed and short-lived — minted per read and useless within
+ * minutes. Never cache one; re-read the list instead.
+ */
+export interface TicketProof {
+  kind: "barcode" | "serial" | "photos" | "live";
+  /** 1-based within its kind. Only `photos` ever goes past 1. */
+  ordinal: number;
+  capturedAt: string;
+  /** Null when blob storage is unconfigured — the record stands, the picture does not. */
+  url: string | null;
+  /** Where the phone was for the live shot; null on the other three. */
+  latitude: number | null;
+  longitude: number | null;
+  accuracyM: number | null;
+  /**
+   * What the phone reverse-geocoded its position to. Compare it with the
+   * ticket's own pincode when a customer disputes that anybody attended.
+   */
+  devicePincode: string | null;
+}
+
+export interface CorrectSerialInput {
+  id: string;
+  serialNumber: string;
+  /** "invoice says 88417" explains a correction that a bare value never will. */
+  reason?: string | null;
 }
 
 export interface CreateTicketInput {

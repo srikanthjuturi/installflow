@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import {
   AlertTriangle,
+  Bell,
   BellOff,
   Check,
   Clock,
@@ -11,6 +12,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/shared/states";
+import { relativeTime } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 import type {
   NotificationKind,
@@ -32,13 +34,24 @@ const KIND: Record<
     wrap: "bg-status-ai-review-bg text-status-ai-review",
     label: "AI verification",
   },
-  "force-close": {
+  serial_mismatch: {
+    icon: ScanLine,
+    wrap: "bg-danger-bg text-danger",
+    label: "Serial mismatch",
+  },
+  force_close: {
     icon: ShieldCheck,
     wrap: "bg-warn-bg text-warn",
     label: "Force closure",
   },
   slot: { icon: Clock, wrap: "bg-info-bg text-info", label: "Slot" },
 };
+
+const FALLBACK = {
+  icon: Bell,
+  wrap: "bg-surface-2 text-ink-2",
+  label: "Event",
+} satisfies (typeof KIND)[NotificationKind];
 
 interface NotificationListProps {
   items?: OpsNotification[];
@@ -81,7 +94,10 @@ export function NotificationList({
   return (
     <ul className="divide-y divide-line-2">
       {items.map((n) => {
-        const kind = KIND[n.kind];
+        // A kind this build has never heard of still renders. The server can
+        // add one before the console ships again, and a `undefined.icon` would
+        // take the whole page down over a label.
+        const kind = KIND[n.kind] ?? FALLBACK;
         const Icon = kind.icon;
         return (
           <li key={n.id} className="flex items-center gap-2">
@@ -120,7 +136,7 @@ export function NotificationList({
                 </span>
               </span>
               <span className="shrink-0 text-xs whitespace-nowrap text-ink-3">
-                {n.when}
+                {relativeTime(n.createdAt)}
               </span>
             </Link>
 

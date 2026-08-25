@@ -32,7 +32,12 @@ from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.realtime import publish_pool_changed, publish_ticket_changed
+from app.core.notifications import notify
+from app.core.realtime import (
+    publish_notification,
+    publish_pool_changed,
+    publish_ticket_changed,
+)
 from app.core.schemas import ListParams
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
@@ -603,13 +608,15 @@ async def submit_proof(
     # and the likeliest cause is a slip at intake — so this goes in the trail
     # and in front of a manager, rather than stopping somebody standing in a
     # customer's house over a number they cannot correct.
-    if serial_mismatch(row):
+    mismatch = serial_mismatch(row)
+    if mismatch:
+        technician = await _technician_name(db, profile)
         db.add(
             _event(
                 row,
                 "serial_mismatch",
                 actor_kind="technician",
-                actor_label=await _technician_name(db, profile),
+                actor_label=technician,
                 note=(
                     f"Read {row.observed_serial} on site "
                     f"({row.observed_serial_source}); the order says "
@@ -617,9 +624,34 @@ async def submit_proof(
                 ),
             )
         )
+        # In the same transaction as the proof it describes. A bell that rings
+        # for a mismatch whose proof failed to save would send a manager to a
+        # ticket where nothing happened.
+        await notify(
+            db,
+            company_id=company_id,
+            kind="serial_mismatch",
+            title=f"Serial mismatch on {row.code}",
+            detail=(
+                f"Read {row.observed_serial} · order says {row.serial_number} "
+                f"· {technician}"
+            ),
+            to=f"/tickets/{row.id}",
+            ticket_id=row.id,
+            # Territory, so it reaches the manager whose area this is rather
+            # than everyone in the company.
+            pincode=row.pincode,
+        )
 
     await publish_ticket_changed(db, row)
     await db.commit()
+
+    if mismatch:
+        # After the commit: the notification row is durable, so this only tells
+        # consoles to go and read it.
+        await publish_notification(db, company_id=company_id, pincode=row.pincode)
+        await db.commit()
+
     return await get_job(
         db, ticket_id, company_id=company_id, technician_id=profile.id
     )

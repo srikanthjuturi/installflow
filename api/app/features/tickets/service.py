@@ -29,12 +29,7 @@ from app.core.config import settings
 from app.core.deps import Principal
 from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.schemas import ListParams
-from app.core.scope import (
-    ALL_INDIA_ROLES,
-    own_scope,
-    pincodes_in_regions,
-    pincodes_in_states,
-)
+from app.core.scope import visible_pincodes
 from app.core.sequences import next_code as allocate_code
 from app.core.service_types import SERVICE_TYPES
 from app.core.tickets import (
@@ -228,42 +223,13 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
 async def _visible_pincodes(
     db: AsyncSession, principal: Principal
 ) -> Select | None | list:
-    """Which pincodes this caller may see tickets in.
+    """Delegates to `core.scope.visible_pincodes`.
 
-    Returns a SUBQUERY of codes, `None` for "all", or `[]` for "none". A
-    subquery rather than a list of strings because a territory is now states,
-    and one state can hold nearly two thousand pincodes — Postgres does the
-    filtering instead of dragging them through Python.
-
-    Still deliberately NOT `db.repository.territory_scope`: that helper filters
-    a MEMBERSHIP query, and a ticket has no membership — only a pincode. What
-    HAS changed is that the pincode → state → region master now exists, so both
-    staff branches below are answered by geography directly:
-
-      * an **area manager** sees the pincodes inside his states;
-      * a **regional head** sees the pincodes inside his regions — which now
-        includes areas no area manager covers yet. Before the master existed
-        his reach had to be approximated as "whatever pincodes my area managers
-        typed in", and a ticket in an unassigned area was invisible to everyone
-        below National Head.
+    Kept as a name because this module reads better for it, but the RULE lives
+    in core now: notifications are scoped the same way, and two copies of a
+    visibility rule is one copy too many.
     """
-    if principal.role in ALL_INDIA_ROLES:
-        return None
-
-    membership_id, scope = await own_scope(
-        db, user_id=principal.user_id, company_id=principal.company_id
-    )
-    if membership_id is None:
-        return []
-
-    if principal.role == AREA_MANAGER:
-        return pincodes_in_states(scope.state_ids) if scope.state_ids else []
-
-    if principal.role == REGIONAL_HEAD:
-        return pincodes_in_regions(scope.region_ids) if scope.region_ids else []
-
-    # Any other role sees nothing rather than everything.
-    return []
+    return await visible_pincodes(db, principal)
 
 
 def _apply_visibility(stmt: Select, pincodes: Select | None | list) -> Select:

@@ -6,9 +6,11 @@ import {
 } from "@tanstack/react-query";
 import {
   assignTechnician,
+  correctTicketSerial,
   createTicket,
   forceCloseTicket,
   getTicket,
+  getTicketProof,
   listTickets,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
@@ -27,6 +29,7 @@ export const ticketKeys = {
   all: ["tickets"] as const,
   list: (params: ListParams) => ["tickets", "list", params] as const,
   detail: (id: string) => ["tickets", "detail", id] as const,
+  proof: (id: string) => ["tickets", "proof", id] as const,
 };
 
 export function useTickets(params: ListParams = {}) {
@@ -45,6 +48,41 @@ export function useTicket(id: string) {
     queryKey: ticketKeys.detail(id),
     queryFn: () => getTicket(id),
     enabled: Boolean(id),
+  });
+}
+
+/**
+ * The proof images, with signed URLs.
+ *
+ * `gcTime` is short and `staleTime` is zero on purpose: the URLs expire in
+ * minutes, so a cached list outlives its own links and would render broken
+ * images. Cheaper to re-read than to explain why the pictures went blank.
+ */
+export function useTicketProof(id: string, enabled = true) {
+  return useQuery({
+    queryKey: ticketKeys.proof(id),
+    queryFn: () => getTicketProof(id),
+    enabled: Boolean(id) && enabled,
+    staleTime: 0,
+    gcTime: 60_000,
+  });
+}
+
+/**
+ * Correct the expected serial. Whoever can see the ticket can fix it — and the
+ * vendor most of all, since the invoice is theirs.
+ */
+export function useCorrectTicketSerial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't correct the serial" },
+    mutationFn: correctTicketSerial,
+    onSuccess: (ticket) => {
+      // The response IS the updated ticket, so seed the detail rather than
+      // putting a spinner between the correction and the screen showing it.
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+    },
   });
 }
 
