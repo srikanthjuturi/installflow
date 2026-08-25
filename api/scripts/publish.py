@@ -132,9 +132,72 @@ def guard_production_config() -> None:
             "FEEDBACK_LINK_BASE does not point at this site — the customer's "
             "'confirm the job' link must be a public https URL"
         )
+    # Every customer-facing message must name an APPROVED template. An empty
+    # name is not "off": the sender falls back to a free-form text message,
+    # Meta accepts it with a 200 and a message id, and then drops it unless the
+    # recipient messaged the business in the last 24 hours. With no delivery
+    # webhook the ticket records "sent" and nobody ever finds out. That is
+    # precisely how the slot messages failed in production — they were set
+    # locally, absent here, and worked on every machine anyone tested on.
+    for key, what in (
+        ("WHATSAPP_OTP_TEMPLATE_NAME", "the sign-in code"),
+        ("WHATSAPP_TEMPLATE_NAME", "the technician invite"),
+        ("WHATSAPP_SLOT_TEMPLATE_NAME", "the customer's 'pick a time' link"),
+        ("WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME", "the slot confirmation"),
+        ("WHATSAPP_FEEDBACK_TEMPLATE_NAME", "the customer's 'confirm the job' link"),
+    ):
+        if not values.get(key, "").strip():
+            problems.append(f"{key} is unset — {what} would go out as free-form text")
+
     if problems:
         fail("; ".join(problems))
+    _guard_templates_exist(values)
     print("  config guards passed")
+
+
+def _guard_templates_exist(values: dict[str, str]) -> None:
+    """Every configured template name must be APPROVED on the WABA.
+
+    Best effort on the network, strict on the answer. If Meta cannot be reached
+    the deploy proceeds with a warning — a publish should not be hostage to
+    Graph being up. But if Meta DOES answer, a name it does not recognise, or
+    one still in review, stops the deploy: shipping either produces the same
+    silent non-delivery as leaving the name blank.
+    """
+    token = values.get("WHATSAPP_TOKEN", "").strip()
+    waba = values.get("WHATSAPP_BUSINESS_ID", "").strip()
+    version = values.get("WHATSAPP_API_VERSION", "").strip() or "v21.0"
+    wanted = {
+        values[k].strip(): k
+        for k in values
+        if k.startswith("WHATSAPP_") and k.endswith("_TEMPLATE_NAME") and values[k].strip()
+    }
+    if not (token and waba and wanted):
+        return
+
+    try:
+        response = httpx.get(
+            f"https://graph.facebook.com/{version}/{waba}/message_templates",
+            params={"limit": 100, "fields": "name,status"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        registry = {t["name"]: t.get("status") for t in response.json().get("data", [])}
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        print(f"  ! could not check templates against Meta ({exc}) — deploying anyway")
+        return
+
+    bad = []
+    for name, key in sorted(wanted.items()):
+        status = registry.get(name)
+        if status is None:
+            bad.append(f"{key}={name} does not exist on this WABA")
+        elif status != "APPROVED":
+            bad.append(f"{key}={name} is {status}, not APPROVED")
+    if bad:
+        fail("; ".join(bad))
+    print(f"  {len(wanted)} WhatsApp template(s) approved on the WABA")
 
 
 def ensure_remote_build(client: httpx.Client, host: str, auth: tuple[str, str]) -> None:
