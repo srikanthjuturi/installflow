@@ -28,7 +28,7 @@ export const CATEGORIES: ProductCategory[] = [
 ];
 
 export const technician: Technician = {
-  id: 'RGT-TECH-2231',
+  id: 'TCH-4021',
   name: 'Rohit Kadam',
   phone: '+91 98765 43210',
   region: 'Mumbai — Suburban',

@@ -169,7 +169,13 @@ function ScanLine() {
   );
 }
 
-/** Dashed target for the serial sticker, with the expected format spelled out. */
+/**
+ * Dashed target for the serial sticker.
+ *
+ * Label only. It used to print a masked pattern under it, which asserted a
+ * format the serial does not have — it is the manufacturer's, off the invoice,
+ * and we are in no position to say how many characters it runs to.
+ */
 function SerialFrame() {
   return (
     <View
@@ -205,7 +211,6 @@ function SerialFrame() {
         >
           SERIAL NO.
         </Text>
-
       </View>
     </View>
   );
