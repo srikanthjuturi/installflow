@@ -41,3 +41,17 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase
+# google-services.json is NOT secret — it is an app identifier and Google
+# publishes it in every Android app. It is committed on purpose.
+#
+# A SERVICE ACCOUNT key is the opposite: a private key that can send push to
+# every user of this app and reach the Firebase Admin APIs. It must never be in
+# the mobile repo at all — it belongs on the server, or uploaded to EAS. These
+# patterns are a backstop for a file dropped here by mistake, not permission to
+# keep one.
+*-adminsdk-*.json
+serviceAccountKey*.json
+firebase-adminsdk*.json
+*service-account*.json
