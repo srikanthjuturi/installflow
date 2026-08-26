@@ -10,6 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.router import api_router
+from app.core.scheduler import ticker
+from app.features.tickets.sweeps import (
+    sweep_force_close,
+    sweep_silent_slots,
+    sweep_unaccepted,
+)
 from app.features.onboarding.landing import router as invite_landing_router
 from app.features.tickets.feedback_page import router as feedback_page_router
 from app.features.tickets.slot_page import router as slot_page_router
@@ -58,7 +64,15 @@ async def lifespan(app: FastAPI):
     # the connectivity check so a database that is down fails as a startup
     # error rather than as a listener quietly retrying in the background.
     await broker.start()
+    # The time-based notifications. Registered here rather than in `core`
+    # because the sweeps are ticket-domain queries and core must not import a
+    # slice — main.py is already the composition root that imports every one.
+    ticker.register("escalation", sweep_unaccepted)
+    ticker.register("slot-silence", sweep_silent_slots)
+    ticker.register("force-close", sweep_force_close)
+    await ticker.start()
     yield
+    await ticker.stop()
     await broker.stop()
     await engine.dispose()
 

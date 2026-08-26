@@ -123,6 +123,22 @@ class Settings(BaseSettings):
     #: send arbitrary notifications to this app's users.
     EXPO_ACCESS_TOKEN: str = ""
 
+    # ── Scheduled sweeps ──────────────────────────────────────────────────
+    #: How often the time-based notifications are swept for. Both Azure workers
+    #: wake together; a Postgres advisory lock decides which one actually runs.
+    SWEEP_INTERVAL_SECONDS: int = 300
+    #: A job still unassigned this close to its slot reaches the Area Service
+    #: Manager. Matches the cancellation band: under four hours is the point at
+    #: which a CANCELLED job escalates, so it is the point at which an empty
+    #: one should too.
+    ESCALATE_HOURS_BEFORE_SLOT: int = 4
+    #: A customer who has not chosen a time in this long is one somebody has to
+    #: telephone. The ticket cannot enter the pool until they do.
+    SLOT_SILENCE_HOURS: int = 6
+    #: A completed visit the customer never confirmed. Nothing is auto-closed —
+    #: a manager force-closes it with supporting documents.
+    FORCE_CLOSE_HOURS: int = 48
+
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:
     # it opens the app directly from `npx uri-scheme open` and needs no domain.
