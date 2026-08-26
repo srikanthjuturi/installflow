@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  BellRing,
   Check,
   CheckCheck,
   Lock,
@@ -41,6 +42,9 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   reopened: { icon: RotateCcw, tint: "bg-danger-bg text-danger" },
   serial_mismatch: { icon: AlertTriangle, tint: "bg-danger-bg text-danger" },
   serial_corrected: { icon: PencilLine, tint: "bg-warn-bg text-warn" },
+  // Routine and system-sent — the quietest tint here, because a timeline where
+  // everything is coloured is one where nothing stands out.
+  reminded: { icon: BellRing, tint: "bg-surface-3 text-ink-2" },
 };
 
 /**

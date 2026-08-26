@@ -14,6 +14,7 @@ from app.core.scheduler import ticker
 from app.features.tickets.sweeps import (
     sweep_force_close,
     sweep_silent_slots,
+    sweep_slot_reminders,
     sweep_unaccepted,
 )
 from app.features.onboarding.landing import router as invite_landing_router
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
     ticker.register("escalation", sweep_unaccepted)
     ticker.register("slot-silence", sweep_silent_slots)
     ticker.register("force-close", sweep_force_close)
+    ticker.register("slot-reminder", sweep_slot_reminders)
     await ticker.start()
     yield
     await ticker.stop()

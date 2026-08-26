@@ -138,6 +138,9 @@ class Settings(BaseSettings):
     #: A completed visit the customer never confirmed. Nothing is auto-closed —
     #: a manager force-closes it with supporting documents.
     FORCE_CLOSE_HOURS: int = 48
+    #: How long before a slot the technician is reminded. The sweep runs every
+    #: SWEEP_INTERVAL_SECONDS, so the reminder lands within one tick of this.
+    SLOT_REMINDER_MINUTES: int = 60
 
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:

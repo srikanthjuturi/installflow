@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.notifications import notify
+from app.core.push import send_to_technician
 from app.core.realtime import publish_notification
 from app.models.notification import Notification
 from app.models.ticket import Ticket
@@ -210,3 +211,66 @@ async def sweep_force_close(db: AsyncSession) -> int:
             f"{r.customer_name}"
         ),
     )
+
+
+async def sweep_slot_reminders(db: AsyncSession) -> int:
+    """The technician's slot is about to start.
+
+    The one notification here aimed squarely at preventing a failure rather than
+    reporting one. A technician accepted a fixed time the customer chose, and
+    the cost of forgetting is a missed appointment, a cancellation band and a
+    customer who takes the day off for nothing.
+
+    A push, not a bell: the person who needs it is outdoors with the app shut,
+    which is the case the whole push feature exists for.
+
+    ## Idempotency uses a `reminded` EVENT, not the notifications table
+
+    The other three sweeps dedupe against `notifications`, because what they
+    raise IS a notification. This one raises nothing a manager should see — a
+    routine reminder in an escalation queue is the noise that makes people stop
+    reading it. So the marker is a ticket event, which is also the honest place
+    for it: "did anybody remind them" is the first question after a no-show, and
+    a push receipt is not something this system keeps.
+    """
+    reminded = select(TicketEvent.ticket_id).where(TicketEvent.kind == "reminded")
+    horizon = _now() + datetime.timedelta(minutes=settings.SLOT_REMINDER_MINUTES)
+    rows = list(
+        await db.scalars(
+            select(Ticket).where(
+                Ticket.status == "Assigned",
+                Ticket.deleted_at.is_(None),
+                Ticket.technician_id.is_not(None),
+                Ticket.slot_start.is_not(None),
+                # Never for a slot that has already opened. Late is not a
+                # reminder, it is an accusation.
+                Ticket.slot_start > _now(),
+                Ticket.slot_start <= horizon,
+                Ticket.id.not_in(reminded),
+            )
+        )
+    )
+
+    for row in rows:
+        db.add(
+            TicketEvent(
+                company_id=row.company_id,
+                ticket_id=row.id,
+                kind="reminded",
+                actor_kind="system",
+                actor_label="Reminder",
+                note=f"Reminded the technician — slot at {row.slot_start:%H:%M}",
+            )
+        )
+        # The event is written whether or not the push lands. A phone with
+        # notifications switched off has no token, and recording that we tried
+        # is what stops this retrying every five minutes until the slot opens.
+        await send_to_technician(
+            db,
+            company_id=row.company_id,
+            technician_id=row.technician_id,
+            title=f"{row.code} starts at {row.slot_start:%H:%M}",
+            body=f"{row.city} {row.pincode} · {_hours_to(row.slot_start)}",
+            data={"type": "job", "ticketId": str(row.id), "code": row.code},
+        )
+    return len(rows)

@@ -156,7 +156,8 @@ export interface TimelineEvent {
     | "feedback_received"
     | "reopened"
     | "serial_mismatch"
-    | "serial_corrected";
+    | "serial_corrected"
+    | "reminded";
   title: string;
   /** Both nullable: a system event has no actor, and some have no detail. */
   by: string | null;

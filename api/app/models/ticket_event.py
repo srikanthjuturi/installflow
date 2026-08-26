@@ -96,6 +96,11 @@ EVENT_KINDS = (
     #: invoice, or a manager. Carries both values, because "what did it say
     #: before" is the question anybody auditing this will ask.
     "serial_corrected",
+    #: We pushed the technician a reminder that their slot is close. Recorded
+    #: rather than merely sent, because "did anybody remind them" is the first
+    #: question asked after a no-show, and a push receipt is not something this
+    #: system keeps.
+    "reminded",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -146,7 +151,7 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "kind IN ('created', 'slot_requested', 'slot_confirmed', "
             "'confirmation_sent', 'status_changed', 'assigned', 'started', "
             "'feedback_requested', 'completed', 'feedback_received', "
-            "'reopened', 'serial_mismatch', 'serial_corrected')",
+            "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded')",
             name="kind",
         ),
         CheckConstraint(

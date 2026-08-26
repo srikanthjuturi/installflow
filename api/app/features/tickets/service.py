@@ -608,6 +608,19 @@ _EVENT_TITLES = {
     "slot_confirmed": "Slot confirmed & locked",
     "confirmation_sent": "Confirmation sent",
     "status_changed": "Status changed",
+    # The nine below had no entry, so the fallback rendered the raw stored key
+    # — a manager reading a timeline saw the literal word "serial_mismatch".
+    # The fallback is still there for a kind added without one; it is a last
+    # resort, not a naming scheme.
+    "assigned": "Technician accepted",
+    "started": "Proof captured — job started",
+    "completed": "Technician marked it complete",
+    "feedback_requested": "Confirmation link sent",
+    "feedback_received": "Customer responded",
+    "reopened": "Customer says it is not finished",
+    "serial_mismatch": "Serial did not match the order",
+    "serial_corrected": "Expected serial corrected",
+    "reminded": "Technician reminded",
 }
 
 
