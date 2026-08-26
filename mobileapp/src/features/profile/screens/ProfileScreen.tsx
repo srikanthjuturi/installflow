@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +7,7 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
 import { Avatar, Button, Switch } from '@/components/ui';
+import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
@@ -55,7 +55,10 @@ export function ProfileScreen() {
   const signOut = useSession((s) => s.signOut);
   const avatarUri = useProfileStore((s) => s.avatarUri);
   const clearAvatar = useProfileStore((s) => s.clearAvatar);
-  const [pushEnabled, setPushEnabled] = useState(true);
+  // Persisted per DEVICE and connected to the server, not local component
+  // state: this was `useState(true)`, which reset on every launch and pushed
+  // to a technician who had switched it off.
+  const { enabled: pushEnabled, toggle: togglePush } = usePushToggle();
 
   const categories =
     me?.subcategories.map((c) => SHORT_CATEGORY[c.name] ?? c.name).join(' · ') ?? '—';
@@ -239,7 +242,7 @@ export function ProfileScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => setPushEnabled(!pushEnabled)}
+              onPress={togglePush}
               accessibilityRole="switch"
               accessibilityState={{ checked: pushEnabled }}
               accessibilityLabel="Push notifications"
@@ -267,7 +270,7 @@ export function ProfileScreen() {
                   Push notifications
                 </Text>
                 {/* Row is the tap target, so the switch is presentational. */}
-                <Switch value={pushEnabled} onValueChange={setPushEnabled} static />
+                <Switch value={pushEnabled} onValueChange={togglePush} static />
               </View>
             </Pressable>
 

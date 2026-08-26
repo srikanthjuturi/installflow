@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 
 import { authedRequest } from '@/lib/api';
+import { usePushPrefs } from '@/store/pushPrefs.store';
 import { useSessionStatus } from '@/store/session.store';
 
 /**
@@ -54,10 +55,19 @@ Notifications.setNotificationHandler({
 export function usePushRegistration(): void {
   const status = useSessionStatus();
   const router = useRouter();
+  const enabled = usePushPrefs((s) => s.enabled);
+  const setToken = usePushPrefs((s) => s.setToken);
   const registered = useRef(false);
 
   // ── the token ────────────────────────────────────────────────────────────
   useEffect(() => {
+    // The switch is off on this device. Nothing is registered, so there is
+    // nothing for the server to send to — see `pushPrefs.store` for why the
+    // preference is per device rather than a column on the technician.
+    if (!enabled) {
+      registered.current = false;
+      return;
+    }
     if (status !== 'authenticated' || registered.current) return;
     // A ref, not state: registering must not re-run because it registered.
     registered.current = true;
@@ -106,6 +116,9 @@ export function usePushRegistration(): void {
             deviceName: Device.deviceName ?? undefined,
           },
         });
+        // Kept so the switch can name this device when it is turned off — by
+        // then there is no reason to have asked Expo for a token again.
+        setToken(token);
       } catch (error) {
         // Expo Go on Android lands here every launch. Never surfaced: the app
         // works without push, and an error toast about a feature the
@@ -114,7 +127,7 @@ export function usePushRegistration(): void {
         registered.current = false;
       }
     })();
-  }, [status]);
+  }, [status, enabled, setToken]);
 
   // ── tapping one ──────────────────────────────────────────────────────────
   useEffect(() => {

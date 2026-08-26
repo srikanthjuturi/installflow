@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import CompanyPrincipal, TechnicianPrincipal
-from app.core.push import register_device
+from app.core.push import forget_device, register_device
 from app.core.schemas import ApiEnvelope, envelope
 from app.features.notifications import service
 from app.features.notifications.schemas import (
@@ -94,3 +94,30 @@ async def register_push_device(
     )
     await db.commit()
     return envelope(None, message="Device registered")
+
+
+@router.delete("/devices", response_model=ApiEnvelope[None])
+async def unregister_push_device(
+    db: Db, me: TechnicianPrincipal, body: DeviceRegistration
+) -> ApiEnvelope[None]:
+    """Stop pushing to this device — the Profile switch, turned off.
+
+    Takes the token in the body rather than the path: an Expo token contains
+    characters that have to be escaped in a URL, and a path parameter would put
+    a device identifier into every access log between here and the client.
+
+    Idempotent, and silent when the token is not there. Switching off something
+    that is already off is not an error, and a technician toggling it twice
+    should not see one.
+    """
+    principal, profile = me
+    assert principal.company_id is not None  # CompanyPrincipal guarantees it
+
+    await forget_device(
+        db,
+        company_id=principal.company_id,
+        technician_id=profile.id,
+        token=body.token,
+    )
+    await db.commit()
+    return envelope(None, message="Device removed")

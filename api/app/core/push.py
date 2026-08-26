@@ -94,6 +94,35 @@ async def register_device(
     row.last_seen_at = _now()
 
 
+async def forget_device(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    token: str,
+) -> bool:
+    """Stop pushing to this device. Adds to the caller's transaction.
+
+    Deleting the row rather than flagging it: "do not send here" and "we have
+    nowhere to send" are the same state, and a second way to express it is a
+    second thing to get wrong. Turning the setting back on re-registers, which
+    is a fresh token anyway.
+
+    Scoped to the caller's own company AND technician id, so a token belonging
+    to somebody else cannot be removed by naming it — the one thing an
+    unscoped delete here would allow is silently switching another
+    technician's notifications off.
+    """
+    result = await db.execute(
+        delete(PushToken).where(
+            PushToken.company_id == company_id,
+            PushToken.technician_id == technician_id,
+            PushToken.token == token,
+        )
+    )
+    return bool(result.rowcount)
+
+
 async def send_to_technician(
     db: AsyncSession,
     *,
