@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { BrowserRouter, useRoutes } from "react-router";
 import {
   MutationCache,
@@ -11,6 +11,7 @@ import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { Toaster, ToastProvider } from "@/components/ui/toast";
 import { ApiError } from "@/services/client";
 import { toastApiError } from "@/lib/apiError";
+import { dismissBootSplash } from "@/lib/bootSplash";
 
 /**
  * Every API failure — query or mutation — is reported in the toaster from
@@ -59,6 +60,13 @@ function Routes() {
 }
 
 export function App() {
+  // Takes down the index.html splash. Here rather than in main.tsx because an
+  // effect is the first thing that runs after React has actually committed —
+  // see lib/bootSplash.ts.
+  useEffect(() => {
+    dismissBootSplash();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>

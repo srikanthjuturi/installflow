@@ -11,8 +11,182 @@
     -->
     <title>Reliance GreenTech · Ops Console</title>
     <meta name="description" content="Reliance GreenTech Ops Console — installation and demo operations." />
+
+    <script>
+      /*
+       * Theme, before the first paint.
+       *
+       * ThemeProvider owns this decision, but it can only act once React has
+       * mounted — which is a whole bundle-download too late. Until then <html>
+       * carries no class, so light tokens apply and anyone on dark gets a white
+       * flash. Blocking and inline is the point: it must run before the browser
+       * paints anything.
+       *
+       * Deliberately a duplicate of the provider's rule, and the only one worth
+       * having. Keep the storage key and the class names in step with
+       * components/theme-provider.tsx — nothing checks them at runtime.
+       */
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var dark =
+            stored === "dark" ||
+            ((stored === "system" || stored === null) &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var root = document.documentElement;
+          root.classList.add(dark ? "dark" : "light");
+          // Makes the browser's own furniture — scrollbars, form controls, the
+          // canvas behind the app — match, rather than staying stubbornly light.
+          root.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {
+          /* Private mode can throw on localStorage. Light is the sane default. */
+        }
+      })();
+    </script>
+
+    <style>
+      /*
+       * Boot splash — what fills the gap between the browser painting this file
+       * and React having a bundle to run. Without it that gap is a blank page,
+       * which on a slow connection reads as broken rather than as loading.
+       *
+       * Pure CSS, no assets, no JS: anything it had to fetch would arrive in the
+       * same queue as the bundle it is covering for.
+       *
+       * Colours come from styles/theme.css, which the build links ahead of the
+       * bundle. The hex fallbacks are for `vite dev` ALONE, where the stylesheet
+       * is injected by JS and therefore is not there yet — if you change the
+       * tokens, change these too or dev boots the wrong colour.
+       */
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: var(--bg, #eef0f4);
+        color: var(--ink, #171a21);
+        font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+        /* Held back briefly so a fast load never flashes a splash nobody needed
+           — it simply never becomes visible. */
+        opacity: 0;
+        animation: boot-in 160ms ease-out 140ms forwards;
+      }
+      html.dark #boot {
+        background: var(--bg, #101219);
+        color: var(--ink, #e9eaf0);
+      }
+      #boot[data-leaving="true"] {
+        animation: none;
+        opacity: 0;
+        transition: opacity 220ms ease-out;
+      }
+      @keyframes boot-in {
+        to {
+          opacity: 1;
+        }
+      }
+
+      #boot .mark {
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        /* Ink tile, page-coloured letters. Inverts with the theme and keeps
+           full contrast in both, which a brand-coloured tile would not.
+           Both stated outright: setting `color` here would also redefine
+           `currentColor`, so a currentColor background silently matches the
+           letters and the tile disappears. */
+        background: var(--ink, #171a21);
+        color: var(--bg, #eef0f4);
+        font-size: 19px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+      }
+      html.dark #boot .mark {
+        background: var(--ink, #e9eaf0);
+        color: var(--bg, #101219);
+      }
+
+      #boot .wordmark {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.2px;
+      }
+      #boot .wordmark span {
+        font-weight: 400;
+        opacity: 0.55;
+      }
+
+      #boot .track {
+        position: relative;
+        overflow: hidden;
+        width: 132px;
+        height: 2px;
+        border-radius: 2px;
+        /* Tinted rather than faded: `opacity` here would apply to the moving
+           bar inside it too, leaving the one thing meant to be visible at 14%. */
+        background: color-mix(in srgb, currentColor 16%, transparent);
+      }
+      #boot .track::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        border-radius: inherit;
+        background: currentColor;
+        animation: boot-slide 1.15s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(350%);
+        }
+      }
+
+      /* An indeterminate bar is decoration, not information. Anyone who asked
+         for less motion gets a still one rather than nothing. */
+      @media (prefers-reduced-motion: reduce) {
+        #boot {
+          animation: none;
+          opacity: 1;
+        }
+        #boot .track::after {
+          animation: none;
+          width: 100%;
+        }
+      }
+
+      #boot noscript {
+        max-width: 300px;
+        text-align: center;
+        font-size: 13px;
+        line-height: 1.5;
+        opacity: 0.7;
+      }
+    </style>
   </head>
   <body>
+    <!--
+      A sibling of #root, not a child: React clears its container on the first
+      render, which would swap the splash out with no chance to fade. main.tsx
+      dismisses this once React has actually committed.
+    -->
+    <div id="boot" role="status" aria-live="polite" aria-label="Loading the console">
+      <div class="mark" aria-hidden="true">RG</div>
+      <div class="wordmark">Reliance GreenTech<span> · Ops Console</span></div>
+      <div class="track" aria-hidden="true"></div>
+      <noscript>
+        This console needs JavaScript to run. Enable it, then reload the page.
+      </noscript>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
