@@ -14,7 +14,13 @@ from fastapi import HTTPException, status as http_status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.realtime import publish_job_changed, publish_ticket_changed
+from app.core.notifications import notify
+from app.core.push import send_to_technician
+from app.core.realtime import (
+    publish_job_changed,
+    publish_notification,
+    publish_ticket_changed,
+)
 from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
@@ -170,7 +176,58 @@ async def record_feedback(
     # and an escalation are the two ticket movements anybody is waiting on.
     await publish_ticket_changed(db, row)
 
+    if not confirmed:
+        # A refusal used to move the ticket to Escalated, write the event, fire
+        # two socket frames and stop. If no console happened to be open at that
+        # moment the frames went nowhere and the ticket simply sat there — the
+        # one case this entire feedback loop exists to catch, silently dropped.
+        #
+        # Same transaction as the transition: a bell for a refusal that failed
+        # to save would send a manager to a ticket that says the job is fine.
+        await notify(
+            db,
+            company_id=row.company_id,
+            kind="escalation",
+            title=f"{row.code}: customer says the work is not finished",
+            detail=(
+                f"{row.customer_name} refused the closure"
+                + (f' — "{clean}"' if clean else "")
+            ),
+            to=f"/tickets/{row.id}",
+            ticket_id=row.id,
+            pincode=row.pincode,
+        )
+
     await db.commit()
+
+    # After the commit, all of it: these reach a phone and a browser, and
+    # neither is worth losing a customer's answer to.
+    if not confirmed:
+        await publish_notification(
+            db, company_id=row.company_id, pincode=row.pincode
+        )
+        await db.commit()
+
+    if row.technician_id is not None:
+        # The technician is the other person who has to know, and the app they
+        # would read it in is shut — they finished the job and put the phone
+        # away. A refusal especially: a manager is about to ring them about it.
+        await send_to_technician(
+            db,
+            company_id=row.company_id,
+            technician_id=row.technician_id,
+            title=(
+                f"{row.code} closed"
+                if confirmed
+                else f"{row.code}: the customer says it is not finished"
+            ),
+            body=(
+                _closed_body(rating)
+                if confirmed
+                else "A manager will be in touch. Do not return to site until they call."
+            ),
+            data={"type": "job", "ticketId": str(row.id), "code": row.code},
+        )
 
     if confirmed and row.technician_id is not None:
         await _refresh_technician_stats(
@@ -230,3 +287,16 @@ async def _refresh_technician_stats(
         )
     )
     await db.commit()
+
+
+def _closed_body(rating: int | None) -> str:
+    """What a technician reads when the customer accepted the work.
+
+    The rating is only mentioned when there is one. "Rated 0 stars" for a
+    customer who confirmed without rating would be a fabricated score, and the
+    rule everywhere else in this codebase is that a null rating renders as
+    nothing rather than as a bad one.
+    """
+    if rating is None:
+        return "The customer confirmed the installation. Nice work."
+    return f"The customer confirmed it and rated you {rating}/5."

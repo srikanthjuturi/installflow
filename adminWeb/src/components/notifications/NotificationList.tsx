@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { relativeTime } from "@/lib/relativeTime";
+import { useSession } from "@/store/session";
 import { cn } from "@/lib/utils";
 import type {
   NotificationKind,
@@ -63,6 +64,20 @@ interface NotificationListProps {
   pendingId?: string;
 }
 
+/**
+ * The server stores ONE route per notification, written for the console —
+ * `/tickets/{id}`. The vendor portal is a separate route tree over the same
+ * ticket, so the same row has to point somewhere else there.
+ *
+ * Rewritten here rather than stored twice: two columns would have to be kept
+ * in step by every writer, and a notification whose two routes disagreed would
+ * be worse than one that needed translating.
+ */
+function routeFor(to: string, portal: boolean): string {
+  if (!portal) return to;
+  return to.startsWith("/tickets/") ? `/portal${to}` : "/portal/tickets";
+}
+
 export function NotificationList({
   items,
   isLoading,
@@ -71,6 +86,8 @@ export function NotificationList({
   onMarkRead,
   pendingId,
 }: NotificationListProps) {
+  const portal = useSession((s) => s.portal);
+
   if (error)
     return (
       <ErrorState
@@ -103,7 +120,7 @@ export function NotificationList({
           <li key={n.id} className="flex items-center gap-2">
             {/* The row navigates to the screen that clears the event. */}
             <Link
-              to={n.to}
+              to={routeFor(n.to, portal)}
               className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-surface-2"
             >
               <span

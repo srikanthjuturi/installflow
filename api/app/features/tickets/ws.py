@@ -102,16 +102,23 @@ class _Visibility:
             self.pincodes = set(await db.scalars(visible))
         self._at = time.monotonic()
 
-    def hears_pincode(self, pincode: str | None) -> bool:
-        """Territory only — for events that are not about one ticket.
+    def hears_notification(
+        self, pincode: str | None, vendor: uuid.UUID | None
+    ) -> bool:
+        """Whether this viewer is in a notification's audience.
 
-        A null pincode is company-wide and reaches everyone. Vendors hear
-        nothing: every notification kind written today is an operational event
-        for staff, and telling a vendor "no technician accepted this" would be
-        telling them about our problem rather than theirs.
+        Two audiences, and a row can be in both. Staff are matched on territory
+        — a null pincode is company-wide and reaches everyone. A vendor is
+        matched only on being NAMED: most events here are operational problems
+        of ours, and telling a vendor "no technician accepted this" is telling
+        them about our staffing rather than their customer.
+
+        The vendor test is `==` on their own id and never falls through to the
+        territory branch. A vendor has no territory, and letting one reach that
+        code would hand them every company-wide notification we write.
         """
         if self.vendor_id is not None:
-            return False
+            return vendor is not None and vendor == self.vendor_id
         if self.all_india or pincode is None:
             return True
         return pincode in self.pincodes
@@ -244,7 +251,7 @@ async def ticket_stream(ws: WebSocket) -> None:
                         with contextlib.suppress(Exception):
                             async with AsyncSessionLocal() as db:
                                 await visibility.load(db, principal)
-                    if visibility.hears_pincode(event.pincode):
+                    if visibility.hears_notification(event.pincode, event.vendor_id):
                         # No id and no text: the bell is a count, and the feed
                         # behind it applies the audience rule properly.
                         await ws.send_json({"type": "notification.raised"})

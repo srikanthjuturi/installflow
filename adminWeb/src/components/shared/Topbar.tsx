@@ -14,6 +14,9 @@ interface TopbarProps {
 export function Topbar({ title, subtitle }: TopbarProps) {
   const setSidebarOpen = useSession((s) => s.setSidebarOpen);
   const { data: unread = 0 } = useUnreadNotificationCount();
+  // The two surfaces have separate route trees; the bell is the same
+  // component in both.
+  const portal = useSession((s) => s.portal);
 
   return (
     <header className="sticky top-0 z-30 flex h-topbar items-center gap-3.5 border-b border-line bg-surface px-5.5">
@@ -55,7 +58,7 @@ export function Topbar({ title, subtitle }: TopbarProps) {
       {/* It navigates, so it is a link. The dot is decorative — the count is
           in the accessible name, never carried by colour alone. */}
       <LinkButton
-        to="/notifications"
+        to={portal ? "/portal/notifications" : "/notifications"}
         variant="outline"
         size="icon"
         className="relative rounded-full"

@@ -191,6 +191,11 @@ export const routes: RouteObject[] = [
                 element: <TicketDetailPage backTo="/portal/tickets" actions={null} />,
               },
               { path: "portal/users", element: <VendorUsersPage /> },
+              // The bell is in the shared Topbar, so a vendor has always been
+              // able to see it. Without this route it linked into the ops tree,
+              // where `RequireOps` bounced them straight back to /portal — a
+              // control that could only ever throw them out of the page.
+              { path: "portal/notifications", element: <NotificationsPage /> },
               { path: "portal/account", element: <AccountPage /> },
               { path: "portal/password", element: <ChangePasswordPage /> },
             ],

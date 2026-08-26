@@ -32,19 +32,26 @@ def _now() -> datetime.datetime:
 async def _visible(db: AsyncSession, principal: Principal) -> Select:
     """This principal's notifications, newest first.
 
-    A vendor sees none. Every kind written today is an operational event for
-    staff — an escalation, a serial mismatch, a slot timeout — and showing a
-    vendor "no technician accepted this" would be telling them about our
-    problem rather than theirs. When a vendor-facing kind exists it gets an
-    explicit audience rather than inheriting this one by default.
+    A vendor sees ONLY what names them. Most events here are operational
+    problems of ours — an escalation, a slot timeout — and telling a vendor "no
+    technician accepted this" is telling them about our staffing rather than
+    their customer. A row reaches them only when `notify` was given their id,
+    which is a decision taken per event at the point of writing it.
     """
     stmt = select(Notification).where(Notification.company_id == principal.company_id)
 
     if principal.is_vendor:
-        # `sql_false()`, not `func.false()`: the latter renders as `false()`,
-        # which Postgres rejects as a call to a function that does not exist.
-        # The tickets slice learned this the same way.
-        return stmt.where(sql_false())
+        if principal.vendor_id is None:
+            # A vendor principal with no vendor. Fail closed rather than
+            # matching every row whose vendor_id is also null.
+            #
+            # `sql_false()`, not `func.false()`: the latter renders as
+            # `false()`, which Postgres rejects as a call to a function that
+            # does not exist. The tickets slice learned this the same way.
+            return stmt.where(sql_false())
+        return stmt.where(Notification.vendor_id == principal.vendor_id).order_by(
+            Notification.created_at.desc()
+        )
 
     pincodes = await visible_pincodes(db, principal)
     if isinstance(pincodes, list):

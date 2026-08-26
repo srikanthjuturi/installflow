@@ -83,6 +83,9 @@ TENANT_LINKS = [
     # A notification names a ticket in its title. One pointing across a tenant
     # boundary would put another company's ticket code in somebody's bell.
     ("notifications", "ticket_id", "tickets"),
+    # A notification can also be addressed to a VENDOR. One naming another
+    # company's vendor would put a stranger's customer on their portal.
+    ("notifications", "vendor_id", "vendors"),
     # Where a phone gets pushed to. A row pointing at another company's
     # technician would deliver one tenant's customer address to the other's
     # lock screen — and unlike a leaked list, nobody would ever see it happen.

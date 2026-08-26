@@ -26,6 +26,7 @@ async def notify(
     to: str,
     ticket_id: uuid.UUID | None = None,
     pincode: str | None = None,
+    vendor_id: uuid.UUID | None = None,
 ) -> Notification:
     """Ring the bell. Adds to the caller's transaction; does NOT commit.
 
@@ -33,9 +34,14 @@ async def notify(
     or not at all. A bell that rings for a serial mismatch whose proof failed to
     save sends somebody to look at a ticket that says nothing happened.
 
-    `pincode` IS the audience — it is matched against the reader's territory by
+    `pincode` IS the staff audience — matched against the reader's territory by
     the same rule that scopes tickets. NULL means the whole company, which is
     right for anything not tied to a place and is not a way to skip scoping.
+
+    `vendor_id` WIDENS it to one vendor's portal; it never narrows the staff
+    audience. Pass it when the vendor is a party to the event rather than a
+    spectator of it — a serial mismatch they can correct, not an escalation
+    about our own staffing.
 
     The realtime frame is the caller's to publish, AFTER their commit. See
     `core.realtime.publish_notification`.
@@ -48,6 +54,7 @@ async def notify(
         to=to[:255],
         ticket_id=ticket_id,
         pincode=pincode,
+        vendor_id=vendor_id,
     )
     db.add(row)
     return row

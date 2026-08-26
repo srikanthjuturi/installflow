@@ -641,6 +641,11 @@ async def submit_proof(
             # Territory, so it reaches the manager whose area this is rather
             # than everyone in the company.
             pincode=row.pincode,
+            # And the vendor. They hold the invoice, so a mismatch is usually
+            # their typo at intake and theirs to settle — the console already
+            # offers them the correction, and until now nothing told them there
+            # was anything to correct.
+            vendor_id=row.vendor_id,
         )
 
     await publish_ticket_changed(db, row)
@@ -649,7 +654,12 @@ async def submit_proof(
     if mismatch:
         # After the commit: the notification row is durable, so this only tells
         # consoles to go and read it.
-        await publish_notification(db, company_id=company_id, pincode=row.pincode)
+        await publish_notification(
+            db,
+            company_id=company_id,
+            pincode=row.pincode,
+            vendor_id=row.vendor_id,
+        )
         await db.commit()
 
     return await get_job(

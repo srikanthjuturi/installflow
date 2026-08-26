@@ -84,6 +84,20 @@ class Notification(Base, IdMixin, AuditMixin):
     #: anything not tied to a place.
     pincode: Mapped[str | None] = mapped_column(String(6), nullable=True)
 
+    #: ADDITIONALLY visible to this vendor, on their own portal. Null for the
+    #: staff-only events, which is most of them.
+    #:
+    #: It widens the audience, it does not replace it — the pincode rule above
+    #: still decides which staff see the row. A serial mismatch is the case
+    #: that needed it: the vendor holds the invoice, so they are usually the
+    #: one who can actually settle it, and the console offers them the
+    #: correction while nothing told them there was anything to correct.
+    #:
+    #: One row, two audiences, in keeping with the note at the top of this
+    #: file: fanning out per recipient would freeze the staff audience at write
+    #: time, which is the thing that design avoids.
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "kind IN ('escalation', 'ai', 'serial_mismatch', 'force_close', "
@@ -98,6 +112,17 @@ class Notification(Base, IdMixin, AuditMixin):
             name="fk_notifications_company_ticket",
             ondelete="CASCADE",
         ),
+        # Composite, like every parent link here: a notification must not be
+        # able to name another company's vendor. CASCADE — a removed vendor's
+        # notifications have nobody left to read them.
+        ForeignKeyConstraint(
+            ["company_id", "vendor_id"],
+            ["vendors.company_id", "vendors.id"],
+            name="fk_notifications_company_vendor",
+            ondelete="CASCADE",
+        ),
+        # The vendor portal's feed. Postgres makes no index for a foreign key.
+        Index("ix_notifications_company_vendor", "company_id", "vendor_id"),
     )
 
 

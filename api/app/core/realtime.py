@@ -228,12 +228,16 @@ class NotificationRaised:
     the audience rule properly. Carrying the text would mean this file held a
     second, weaker copy of who may read what.
 
-    `pincode` travels because it IS the audience — the console socket already
-    holds each viewer's territory and can decide without a query.
+    `pincode` travels because it IS the staff audience — the console socket
+    already holds each viewer's territory and can decide without a query.
+    `vendor_id` is the other half: a row addressed to a vendor reaches their
+    portal, and without it here the socket could only guess, which for a vendor
+    means either missing their own events or hearing everybody's.
     """
 
     company_id: uuid.UUID
     pincode: str | None
+    vendor_id: uuid.UUID | None = None
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -241,6 +245,7 @@ class NotificationRaised:
                 "kind": "notification.raised",
                 "company_id": str(self.company_id),
                 "pincode": self.pincode,
+                "vendor_id": str(self.vendor_id) if self.vendor_id else None,
             },
             separators=(",", ":"),
         )
@@ -251,9 +256,11 @@ class NotificationRaised:
             return None
         try:
             code = raw.get("pincode")
+            vendor = raw.get("vendor_id")
             return NotificationRaised(
                 company_id=uuid.UUID(str(raw["company_id"])),
                 pincode=str(code) if code else None,
+                vendor_id=uuid.UUID(str(vendor)) if vendor else None,
             )
         except (KeyError, ValueError, TypeError):
             log.warning("realtime: discarding malformed payload %r", raw)
@@ -265,15 +272,23 @@ Event = PoolChanged | JobChanged | TicketChanged | NotificationRaised
 
 
 async def publish_notification(
-    db: AsyncSession, *, company_id: uuid.UUID, pincode: str | None
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    pincode: str | None,
+    vendor_id: uuid.UUID | None = None,
 ) -> None:
-    """Tell every console whose territory covers this that the bell moved."""
+    """Tell every console whose territory covers this that the bell moved.
+
+    `vendor_id` additionally rings the named vendor's portal. It widens the
+    audience; it never narrows the staff one.
+    """
     await db.execute(
         text("SELECT pg_notify(:channel, :payload)"),
         {
             "channel": CHANNEL,
             "payload": NotificationRaised(
-                company_id=company_id, pincode=pincode
+                company_id=company_id, pincode=pincode, vendor_id=vendor_id
             ).as_payload(),
         },
     )
