@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   InputOTP,
   InputOTPGroup,
@@ -101,7 +102,8 @@ export function OtpStep({
           className="mt-6 h-11.5 w-full"
           disabled={!complete || verifying}
         >
-          Verify &amp; sign in
+          {verifying ? <Spinner data-icon="inline-start" /> : null}
+          {verifying ? "Verifying…" : "Verify & sign in"}
         </Button>
       </form>
 

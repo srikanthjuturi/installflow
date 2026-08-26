@@ -14,10 +14,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import CompanyPrincipal
+from app.core.deps import CompanyPrincipal, TechnicianPrincipal
+from app.core.push import register_device
 from app.core.schemas import ApiEnvelope, envelope
 from app.features.notifications import service
-from app.features.notifications.schemas import NotificationOut, UnreadCountOut
+from app.features.notifications.schemas import (
+    DeviceRegistration,
+    NotificationOut,
+    UnreadCountOut,
+)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -56,3 +61,36 @@ async def read_one(
     """Idempotent — a duplicate tap is not an error worth showing anybody."""
     await service.mark_read(db, principal, notification_id)
     return envelope(UnreadCountOut(unread=await service.unread_count(db, principal)))
+
+
+@router.post("/devices", response_model=ApiEnvelope[None], status_code=201)
+async def register_push_device(
+    db: Db, me: TechnicianPrincipal, body: DeviceRegistration
+) -> ApiEnvelope[None]:
+    """Remember where to push to this technician.
+
+    Technicians only. The console is a browser tab with a live socket and a
+    bell; it has nowhere to push TO, and a web-push story is a different
+    feature with a different consent model.
+
+    No feature key, and deliberately: this stores a delivery address, it does
+    not decide what gets sent. Gating it would mean a technician whose company
+    had not enabled some key silently stops being reachable, which looks
+    exactly like the app being broken.
+
+    Idempotent — the app calls it on every launch, because an Expo token
+    rotates and changes on reinstall.
+    """
+    principal, profile = me
+    assert principal.company_id is not None  # CompanyPrincipal guarantees it
+
+    await register_device(
+        db,
+        company_id=principal.company_id,
+        technician_id=profile.id,
+        token=body.token,
+        platform=body.platform,
+        device_name=body.deviceName,
+    )
+    await db.commit()
+    return envelope(None, message="Device registered")

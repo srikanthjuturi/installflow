@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+
 import type { ExpoConfig } from 'expo/config';
 
 // Colours are duplicated as literals ONLY here: app.config.ts is evaluated by
@@ -60,6 +62,17 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.reliancegreentech.technician',
+    // FCM credentials for push. Referenced only when the file is present, so a
+    // clone without it still runs — `expo start` and Expo Go do not need it,
+    // and a hard reference to a missing path fails the config outright rather
+    // than the one command that actually needs it.
+    //
+    // This package name must match the Android app registered in Firebase
+    // character for character. A mismatch does not error anywhere: FCM simply
+    // accepts the send and never delivers it.
+    ...(existsSync('./google-services.json')
+      ? { googleServicesFile: './google-services.json' }
+      : {}),
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: INK,
@@ -102,6 +115,22 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-font',
+    [
+      'expo-notifications',
+      {
+        color: INK,
+        // Android draws the status-bar icon as a flat silhouette and falls back
+        // to a featureless white square without a purpose-made asset. Wired
+        // conditionally so dropping `notification-icon.png` in picks it up —
+        // naming a file that is not there fails the config outright, and an
+        // ugly icon is a smaller problem than a build that will not run.
+        ...(existsSync('./assets/notification-icon.png')
+          ? { icon: './assets/notification-icon.png' }
+          : {}),
+        // No `sounds`: the default is what a technician's phone is already
+        // configured for, and a custom tone is a decision nobody has made.
+      },
+    ],
     [
       'expo-camera',
       {

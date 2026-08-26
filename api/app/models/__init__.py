@@ -25,6 +25,7 @@ from app.models.territory import (
 )
 from app.models.ticket import Ticket
 from app.models.notification import Notification, NotificationRead
+from app.models.push_token import PushToken
 from app.models.ticket_event import TicketEvent
 from app.models.token import RefreshToken
 from app.models.user import User
@@ -58,6 +59,7 @@ __all__ = [
     "Ticket",
     "Notification",
     "NotificationRead",
+    "PushToken",
     "TicketEvent",
     "User",
     "Vendor",

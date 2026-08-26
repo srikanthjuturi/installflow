@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import Principal
+from app.core.push import announce_pool_job
 from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.schemas import ListParams
 from app.core.scope import visible_pincodes
@@ -867,6 +868,10 @@ async def confirm_slot(
     )
     await publish_ticket_changed(db, row)
     await db.commit()
+
+    # After the commit, and never inside it: this is a network call to Expo,
+    # and a slot confirmation must not be lost because a push service was slow.
+    await _push_pool_job(db, row)
     await db.refresh(row)
 
     sent = await _send_slot_confirmed(db, row)
@@ -982,6 +987,11 @@ async def create_ticket(
     # A new ticket is movement the console should see appear.
     await publish_ticket_changed(db, row)
     await db.commit()
+
+    # No outer condition needed: `_push_pool_job` checks that the ticket is
+    # actually in the pool, which is the same test the `publish_pool_changed`
+    # above is nested under.
+    await _push_pool_job(db, row)
     await db.refresh(row)
 
     # Both branches tell the customer something, and neither can fail the
@@ -1107,3 +1117,23 @@ async def correct_serial(
     await publish_ticket_changed(db, row)
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
+
+
+async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:
+    """Tell eligible technicians' phones that this job is takeable.
+
+    Guarded on the ticket really being in the pool. Both callers establish that
+    before getting here, but they do it in two different places and only one of
+    them is obvious from the call site.
+    """
+    if row.status != "New" or row.technician_id is not None:
+        return
+    await announce_pool_job(
+        db,
+        company_id=row.company_id,
+        ticket_id=row.id,
+        code=row.code,
+        pincode=row.pincode,
+        city=row.city,
+        subcategory_id=row.subcategory_id,
+    )

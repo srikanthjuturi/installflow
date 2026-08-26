@@ -113,6 +113,16 @@ class Settings(BaseSettings):
     # storage — reads are short-lived SAS links minted per request.
     AZURE_PROOF_CONTAINER: str = "installflow-proof"
 
+    # ── Push notifications ────────────────────────────────────────────────
+    #: Master switch. Off by default so a deployment without the Firebase
+    #: credentials behind it does not spend twenty seconds per notification
+    #: discovering that Expo cannot deliver.
+    PUSH_ENABLED: bool = False
+    #: Optional but recommended. With it set, Expo refuses any send that does
+    #: not carry it — so a push token lifted off a device cannot be used to
+    #: send arbitrary notifications to this app's users.
+    EXPO_ACCESS_TOKEN: str = ""
+
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:
     # it opens the app directly from `npx uri-scheme open` and needs no domain.

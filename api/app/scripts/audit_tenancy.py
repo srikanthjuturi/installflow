@@ -83,6 +83,10 @@ TENANT_LINKS = [
     # A notification names a ticket in its title. One pointing across a tenant
     # boundary would put another company's ticket code in somebody's bell.
     ("notifications", "ticket_id", "tickets"),
+    # Where a phone gets pushed to. A row pointing at another company's
+    # technician would deliver one tenant's customer address to the other's
+    # lock screen — and unlike a leaked list, nobody would ever see it happen.
+    ("push_tokens", "technician_id", "technician_profiles"),
     # A vendor's login. NB this proves the LINK is tenant-safe — a membership
     # cannot name another company's vendor. It says nothing about whether one
     # vendor can read another's tickets INSIDE a company; that is an application

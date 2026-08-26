@@ -1,6 +1,7 @@
 import { Redirect, Stack } from 'expo-router';
 
 import { usePoolStream } from '@/features/jobs/hooks/usePoolStream';
+import { usePushRegistration } from '@/features/notifications/hooks/usePushRegistration';
 import { useSessionStatus } from '@/store/session.store';
 
 /**
@@ -22,6 +23,12 @@ export default function AppLayout() {
   // Hooks cannot sit below the redirect, so it is written to do nothing until
   // there is a session to authenticate with.
   usePoolStream();
+
+  // Register this device for push, once per signed-in session, and route a tap
+  // to the job it names. Alongside the socket rather than inside a screen for
+  // the same reason: it belongs to the session, not to a route. Does nothing
+  // in Expo Go on Android — remote push left it in SDK 53.
+  usePushRegistration();
 
   // 'loading' cannot happen here — the root layout holds the splash until the
   // session has rehydrated — but treating it as signed-out would flash the

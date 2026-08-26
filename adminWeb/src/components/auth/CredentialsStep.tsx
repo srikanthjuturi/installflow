@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
@@ -117,7 +118,8 @@ export function CredentialsStep({
         className="mt-5.5 h-11.5 w-full"
         disabled={isSubmitting}
       >
-        Sign in
+        {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
+        {isSubmitting ? "Signing in…" : "Sign in"}
       </Button>
 
       <p className="mt-4.5 text-center text-xs text-ink-3">
