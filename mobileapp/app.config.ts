@@ -35,7 +35,13 @@ const INVITE_HOST = inviteHost();
 
 const config: ExpoConfig = {
   name: 'Reliance GreenTech Technician',
-  slug: 'reliance-greentech-technician',
+  // NOT the product name, and never shown to a technician — `name` above is
+  // what appears under the launcher icon. Deliberately still the pre-rebrand
+  // value: an Expo project's slug is fixed at creation, so renaming it here
+  // would mean a NEW project, a new projectId and fresh credentials — hence a
+  // new signing keystore, which would invalidate the SHA-256 already published
+  // in the API's assetlinks.json and silently break every App Link.
+  slug: 'videocon-technician',
   owner: 'srikanth24',
   scheme: 'reliancegreentech', // invite deep links: reliancegreentech://invite/<token>
   version: '1.0.0',
