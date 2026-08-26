@@ -6,14 +6,27 @@
  * it is already on screen by the time any of this runs. All that is left is
  * taking it away at the right moment.
  *
- * "The right moment" is after React has COMMITTED, not after `render()` was
- * called: with a concurrent root that call only schedules work, so anything
- * timed off it can uncover a container React has not filled yet — a flicker of
- * blank page in the one place the splash exists to prevent it. An effect is the
- * earliest thing guaranteed to run after a commit, so the call site is one.
+ * "The right moment" is when the app has actually PUT SOMETHING ON SCREEN, which
+ * is later than it sounds. React having mounted is not enough: entering at `/`
+ * redirects to the landing route, and a redirect commits an empty tree before
+ * the target's lazy chunk arrives. React Router runs navigations inside a
+ * transition, and a transition deliberately keeps the previous UI rather than
+ * dropping to a Suspense fallback — so with "previous UI" being that empty
+ * commit, nothing renders at all until the chunk lands. Measured at 1.6s of
+ * blank page on a throttled load, with the route skeleton never appearing.
+ *
+ * That gap predates this splash; it was simply invisible while the whole boot
+ * was blank. Dismissing on mount would have made it worse, not better — a
+ * splash that appears, vanishes, and leaves a blank page reads as a crash.
+ *
+ * So the splash waits for `#root` to hold something. The ceiling matters as
+ * much as the wait: if the app never renders, hiding that behind a tidy splash
+ * forever is the worst possible outcome, so it gives up and reveals whatever is
+ * underneath — an error boundary, an empty state, or the truth.
  */
 
 const FADE_MS = 220;
+const MAX_WAIT_MS = 10_000;
 
 let dismissed = false;
 
@@ -25,6 +38,22 @@ export function dismissBootSplash(): void {
 
   const boot = document.getElementById("boot");
   if (!boot) return;
+
+  const root = document.getElementById("root");
+  const startedAt = performance.now();
+
+  const whenPainted = () => {
+    const hasContent = (root?.childElementCount ?? 0) > 0;
+    if (hasContent || performance.now() - startedAt > MAX_WAIT_MS) {
+      fadeOut(boot);
+      return;
+    }
+    requestAnimationFrame(whenPainted);
+  };
+  whenPainted();
+}
+
+function fadeOut(boot: HTMLElement): void {
 
   // Drives the CSS transition rather than carrying the duration in JS as well;
   // index.html owns how it looks, this owns when.

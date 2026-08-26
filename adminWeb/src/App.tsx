@@ -7,7 +7,6 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import { routes } from "./routes";
-import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { Toaster, ToastProvider } from "@/components/ui/toast";
 import { ApiError } from "@/services/client";
 import { toastApiError } from "@/lib/apiError";
@@ -71,7 +70,23 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <BrowserRouter>
-          <Suspense fallback={<PageSkeleton />}>
+          {/*
+            * No fallback here, deliberately.
+            *
+            * This is the OUTERMOST boundary — it catches a lazy page that has
+            * no shell around it yet, which in practice means the login screen.
+            * A generic toolbar-and-panel skeleton is the wrong shape for a
+            * split brand panel and a sign-in form, and reads as clumsy rather
+            * than as loading.
+            *
+            * Nothing is lost by leaving it empty: the boot splash in index.html
+            * is still on top at this point and stays until #root actually holds
+            * a page, so the sequence is splash → the real screen, with no
+            * shape-shifting in between. The shells keep their own PageSkeleton,
+            * where it belongs — there the chrome is already on screen and the
+            * skeleton stands in for a page inside it.
+            */}
+          <Suspense fallback={null}>
             <Routes />
           </Suspense>
         </BrowserRouter>
