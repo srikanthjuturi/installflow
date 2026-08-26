@@ -217,13 +217,13 @@ One screen, four modes. Header shows title + `Step N of 4`.
 | photos | `Product photos` | `Capture the installed unit from 2–3 angles` |
 | live | `Live site photo` | `On-site live capture · gallery uploads not accepted` |
 
-Serial overlay shows `SERIAL NO.` / `VCN-•••••-••••`. Live overlay shows
+Serial overlay shows `SERIAL NO.` / `RGT-•••••-••••`. Live overlay shows
 `Location locked · {pincode}`. Photos mode has a counter `{n}/4` and a `Next` button that
 enables at ≥1 photo, max 4.
 
 ### 13 — Review & submit
 `Review & submit` / `Check your four captures before AI verification. Tap any to retake.`
-Tiles: `Barcode image` (`Barcode · decoded`) · `Serial number` (`Serial · VCN-••••-8841`) ·
+Tiles: `Barcode image` (`Barcode · decoded`) · `Serial number` (`Serial · RGT-••••-8841`) ·
 `Product photos` (`{n} photos`) · `Geo-tagged live photos` (`Geo-tagged · {pincode}`), each with `Retake`.
 Footer `All photos geo-tagged & matched to pincode {pincode}.` · CTA `Submit for AI verification`.
 
@@ -252,7 +252,7 @@ tiles `Earned` / `Bonuses` / `Penalties` · `Transactions`.
 Ledger kinds: install credit (green) · `Reassignment bonus` (amber) · `Late cancellation penalty` (red).
 
 ### 16 — Profile
-Avatar initials · name · `Technician` · `ID VCN-TECH-2231` · stats `Rating` / `Jobs done` /
+Avatar initials · name · `Technician` · `ID RGT-TECH-2231` · stats `Rating` / `Jobs done` /
 `On-time` · `Service coverage` (Categories, Pincodes) · link `Availability & bandwidth` ·
 rows `Push notifications` / `Language` / `Payout account` · `Log out`.
 
