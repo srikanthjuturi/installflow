@@ -20,7 +20,7 @@ export { AI_CONFIDENCE_THRESHOLD } from "./rulesDefaults";
 
 const AIQUEUE: AiFlag[] = [
   {
-    id: "INST-240931",
+    id: "RGT-INST-0009",
     customer: "Sameer Bhosale",
     product: 'Reliance GreenTech 55" QLED',
     expectedSerial: "VDC55QLED-2024",
@@ -33,7 +33,7 @@ const AIQUEUE: AiFlag[] = [
     when: "12m ago",
   },
   {
-    id: "INST-240960",
+    id: "RGT-INST-0012",
     customer: "Karan Mehta",
     product: "Electrolux 470L Side-by-Side",
     expectedSerial: "ELX470SBS-A11",
@@ -45,7 +45,7 @@ const AIQUEUE: AiFlag[] = [
     when: "28m ago",
   },
   {
-    id: "INST-240902",
+    id: "RGT-INST-0007",
     customer: "Latha Menon",
     product: "Sansui 1.5T Inverter Split",
     expectedSerial: "SNS15INV-3300",
@@ -56,7 +56,7 @@ const AIQUEUE: AiFlag[] = [
     when: "44m ago",
   },
   {
-    id: "INST-240895",
+    id: "RGT-INST-0006",
     customer: "Gopal Verma",
     product: 'Reliance GreenTech 43" 4K UHD',
     expectedSerial: "VDC43UHD-1180",

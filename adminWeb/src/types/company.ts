@@ -8,6 +8,9 @@ export interface Company {
   id: string;
   name: string;
   slug: string;
+  /** Prefix on every code this company mints — `RGT` in `RGT-INST-0001`.
+   *  Assigned at creation and immutable: tickets store the assembled string. */
+  code: string;
   email: string;
   phone: string | null;
   isActive: boolean;
@@ -28,6 +31,8 @@ export interface Company {
 
 /** Body for `POST /companies`. */
 export interface CreateCompanyInput {
+  /** Omit to let the server derive it from the name. */
+  code?: string;
   name: string;
   email: string;
   phone?: string | null;

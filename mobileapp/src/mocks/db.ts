@@ -9,10 +9,11 @@ import type {
 /**
  * Seeded mock dataset for the UI phase.
  *
- * Deterministic on purpose — stable demos, stable screenshots. The four jobs
- * carried over from the prototype (INST-4821 / 4830 / 4847 / 4790) are kept
- * verbatim as the demo path; the rest exist so pagination, every filter and
- * every empty state are actually reachable.
+ * Deterministic on purpose — stable demos, stable screenshots.
+ *
+ * Codes here are the shape the API actually mints — `RGT-INST-0001`, company
+ * prefix and all. They used to be the prototype's own invention, which meant
+ * every screen demoed a format the system could never produce.
  *
  * Mutations write to this module's state, so accepting a job persists for the
  * session. It resets on reload — acceptable while there's no backend.
@@ -28,7 +29,7 @@ export const CATEGORIES: ProductCategory[] = [
 ];
 
 export const technician: Technician = {
-  id: 'TCH-4021',
+  id: 'RGT-TCH-0001',
   name: 'Rohit Kadam',
   phone: '+91 98765 43210',
   region: 'Mumbai — Suburban',
@@ -65,7 +66,7 @@ export const transactions: Transaction[] = [
     id: 'TXN-9001',
     kind: 'install',
     title: 'Install · Reliance GreenTech 55" QLED',
-    subtitle: 'Today · INST-4788',
+    subtitle: 'Today · RGT-INST-0005',
     amountPaise: 46000,
   },
   {
@@ -79,28 +80,28 @@ export const transactions: Transaction[] = [
     id: 'TXN-9003',
     kind: 'install',
     title: 'Install · Reliance GreenTech 7kg WM',
-    subtitle: 'Yesterday · INST-4771',
+    subtitle: 'Yesterday · RGT-INST-0004',
     amountPaise: 52000,
   },
   {
     id: 'TXN-9004',
     kind: 'penalty',
     title: 'Late cancellation penalty',
-    subtitle: 'Yesterday · INST-4769',
+    subtitle: 'Yesterday · RGT-INST-0003',
     amountPaise: -15000,
   },
   {
     id: 'TXN-9005',
     kind: 'install',
     title: 'Install · Reliance GreenTech 43" LED',
-    subtitle: 'Mon · INST-4752',
+    subtitle: 'Mon · RGT-INST-0002',
     amountPaise: 42000,
   },
   {
     id: 'TXN-9006',
     kind: 'install',
     title: 'Install · Reliance GreenTech 32" HD',
-    subtitle: 'Mon · INST-4740',
+    subtitle: 'Mon · RGT-INST-0001',
     amountPaise: 38000,
   },
 ];

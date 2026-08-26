@@ -16,8 +16,8 @@ export interface Verification {
  * roll, and each branch has genuinely different UI that needs checking.
  */
 const FORCED: Record<string, VerificationOutcome> = {
-  'INST-4830': 'mismatch',
-  'INST-4847': 'unreadable',
+  'RGT-INST-0007': 'mismatch',
+  'RGT-INST-0008': 'unreadable',
 };
 
 /** How many polls before a result lands — mimics a real async AI pipeline. */

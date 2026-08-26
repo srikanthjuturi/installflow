@@ -1,4 +1,5 @@
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +22,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useCreateCompany, useUpdateCompany } from "@/hooks/useCompanies";
+import { suggestCompanyCode } from "@/services/companies";
 import type { Company } from "@/types/company";
 import {
   companyResolver,
@@ -77,6 +79,7 @@ function CompanyForm({
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<CompanyFormValues>({
@@ -86,6 +89,7 @@ function CompanyForm({
     defaultValues: company
       ? {
           name: company.name,
+          code: company.code,
           email: company.email,
           phone: company.phone ?? "",
           gstNumber: company.gstNumber,
@@ -103,6 +107,33 @@ function CompanyForm({
   });
 
   const isSubmitting = create.isPending || update.isPending;
+
+  /**
+   * What the server would call this company, asked of the server.
+   *
+   * The console deliberately does not derive the code itself. Two copies of one
+   * rule disagree eventually, and the disagreement would surface as a
+   * superadmin watching the code they were shown not be the code they got.
+   *
+   * Only while creating: an existing company's code is fixed, so a suggestion
+   * for it would be an invitation to change something that cannot change.
+   */
+  const watchedName = useWatch({ control, name: "name" });
+  const trimmedName = (watchedName ?? "").trim();
+  const { data: suggestion } = useQuery({
+    queryKey: ["company-code-suggestion", trimmedName],
+    queryFn: () => suggestCompanyCode(trimmedName),
+    // No `open` guard: this body only mounts while the dialog is open.
+    enabled: !isEdit && trimmedName.length > 1,
+    staleTime: 60_000,
+  });
+
+  const codeSuggestion = isEdit ? null : (suggestion?.code ?? null);
+  const codeHint = !codeSuggestion
+    ? "Leave blank to use the initials of the name."
+    : suggestion?.exact
+      ? `Blank uses ${codeSuggestion}. Every code starts with it: ${codeSuggestion}-INST-0001.`
+      : `Blank uses ${codeSuggestion} — the natural code is already taken.`;
 
   const renderField = (
     name: keyof CompanyFormValues,
@@ -179,6 +210,9 @@ function CompanyForm({
     };
 
     if (company) {
+      // `code` is deliberately absent here. It is create-only on the API too —
+      // every ticket already carries the assembled string, so a company that
+      // changed its prefix would have two spellings of itself in circulation.
       update.mutate(
         { id: company.id, input: shared },
         {
@@ -194,6 +228,9 @@ function CompanyForm({
     create.mutate(
       {
         ...shared,
+        // Blank means "derive it" — the server owns that rule, so an untouched
+        // field must not be sent as an empty string it would have to interpret.
+        code: values.code.trim().toUpperCase() || undefined,
         password: values.password,
         adminName: values.adminName.trim() || null,
       },
@@ -225,6 +262,12 @@ function CompanyForm({
           {renderField("name", "Company name", {
             placeholder: "Acme Installations Pvt Ltd",
             autoComplete: "organization",
+          })}
+          {renderField("code", "Code", {
+            placeholder: codeSuggestion ?? "RGT",
+            hint: isEdit
+              ? "Fixed once created — every code already issued starts with it."
+              : codeHint,
           })}
           {renderField("email", "Contact / admin email", {
             type: "email",

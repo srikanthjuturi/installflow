@@ -18,6 +18,15 @@ export function listCompanies(params: ListParams = {}): Promise<Page<Company>> {
   return apiGetPage<Company>("/companies", params);
 }
 
+/** The code the server would assign to a company of this name. */
+export function suggestCompanyCode(
+  name: string
+): Promise<{ code: string; exact: boolean }> {
+  return apiGet<{ code: string; exact: boolean }>(
+    `/companies/code-suggestion?name=${encodeURIComponent(name)}`
+  );
+}
+
 export function getCompany(id: string): Promise<Company> {
   return apiGet<Company>(`/companies/${id}`);
 }

@@ -2,7 +2,7 @@ import type { EligibleTechnician } from "@/types";
 
 export const TECHNICIANS: EligibleTechnician[] = [
   {
-    id: "TCH-4021",
+    id: "RGT-TCH-0001",
     name: "Sunil Pawar",
     phone: "+91 98220 66301",
     cats: ["Television", "Air Conditioner"],
@@ -18,7 +18,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "Mar 2023",
   },
   {
-    id: "TCH-4033",
+    id: "RGT-TCH-0002",
     name: "Imran Shaikh",
     phone: "+91 90110 44872",
     cats: ["Washing Machine", "Refrigerator", "Television"],
@@ -34,7 +34,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "Jan 2022",
   },
   {
-    id: "TCH-4048",
+    id: "RGT-TCH-0003",
     name: "Ganesh More",
     phone: "+91 98765 11209",
     cats: ["Microwave", "Washing Machine", "Television"],
@@ -50,7 +50,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "Aug 2023",
   },
   {
-    id: "TCH-4055",
+    id: "RGT-TCH-0004",
     name: "Prakash Jadhav",
     phone: "+91 89990 33741",
     cats: ["Air Conditioner", "Refrigerator"],
@@ -66,7 +66,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "Jun 2021",
   },
   {
-    id: "TCH-4067",
+    id: "RGT-TCH-0005",
     name: "Santosh Gaikwad",
     phone: "+91 70301 99820",
     cats: ["Television", "Microwave"],
@@ -82,7 +82,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "Nov 2023",
   },
   {
-    id: "TCH-4072",
+    id: "RGT-TCH-0006",
     name: "Ramesh Kadam",
     phone: "+91 96570 28810",
     cats: ["Refrigerator", "Washing Machine"],
@@ -98,7 +98,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "Feb 2024",
   },
   {
-    id: "TCH-4080",
+    id: "RGT-TCH-0007",
     name: "Vijay Sawant",
     phone: "+91 88888 90012",
     cats: ["Television", "Air Conditioner", "Microwave"],
@@ -114,7 +114,7 @@ export const TECHNICIANS: EligibleTechnician[] = [
     joined: "May 2022",
   },
   {
-    id: "TCH-4091",
+    id: "RGT-TCH-0008",
     name: "Amit Borkar",
     phone: "+91 99000 71265",
     cats: ["Washing Machine", "Microwave"],
@@ -134,25 +134,25 @@ export const TECHNICIANS: EligibleTechnician[] = [
 /** Recent jobs shown on a technician's profile. */
 export const JOB_HISTORY = [
   {
-    id: "INST-240951",
+    id: "RGT-INST-0011",
     cat: "Washing Machine",
     date: "Aug 3",
     outcome: "Closed" as const,
   },
   {
-    id: "INST-240889",
+    id: "RGT-INST-0005",
     cat: "Television",
     date: "Aug 2",
     outcome: "Cancelled" as const,
   },
   {
-    id: "INST-240810",
+    id: "RGT-INST-0002",
     cat: "Air Conditioner",
     date: "Aug 1",
     outcome: "Closed" as const,
   },
   {
-    id: "INST-240770",
+    id: "RGT-INST-0001",
     cat: "Television",
     date: "Jul 30",
     outcome: "Closed" as const,

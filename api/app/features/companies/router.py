@@ -18,6 +18,7 @@ from app.core.schemas import (
 )
 from app.features.companies import service
 from app.features.companies.schemas import (
+    CodeSuggestionOut,
     CompanyCreateRequest,
     CompanyOut,
     CompanyStatusRequest,
@@ -36,6 +37,23 @@ async def create_company(
 ) -> ApiEnvelope[CompanyOut]:
     data = await service.create_company(db, principal, body)
     return envelope(data, message="Company created", status_code=201)
+
+
+@router.get("/code-suggestion", response_model=ApiEnvelope[CodeSuggestionOut])
+async def suggest_code(
+    name: str, principal: Superadmin, db: Db
+) -> ApiEnvelope[CodeSuggestionOut]:
+    """What code the server WOULD assign to a company of this name.
+
+    Exists so the console can show the suggestion without owning a second copy
+    of the derivation rule. A rule implemented twice is a rule that disagrees
+    with itself eventually, and here the disagreement would only surface as a
+    superadmin watching the code they were shown not be the code they got.
+
+    Declared above `/{company_id}` deliberately: FastAPI matches in order, and
+    below it this path would be read as a company id and fail to parse as a UUID.
+    """
+    return envelope(await service.suggest_code(db, name))
 
 
 @router.get("", response_model=PaginatedEnvelope[CompanyOut])

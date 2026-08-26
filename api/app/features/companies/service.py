@@ -13,11 +13,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import company_code
 from app.core.deps import Principal
 from app.core.schemas import ListParams
 from app.core.security import hash_password
 from app.db.repository import paginate
 from app.features.companies.schemas import (
+    CodeSuggestionOut,
     CompanyCreateRequest,
     CompanyOut,
     CompanyUpdateRequest,
@@ -47,6 +49,58 @@ async def _unique_slug(session: AsyncSession, name: str) -> str:
     return candidate
 
 
+async def _unique_code(
+    session: AsyncSession, name: str, requested: str | None
+) -> str:
+    """The company's permanent code — the one the superadmin confirmed, or ours.
+
+    A collision is resolved by appending a digit rather than refusing, but ONLY
+    when the code was derived. A code somebody actually typed is answered with a
+    409 instead: silently storing ACE2 for a superadmin who asked for ACE means
+    every ticket that company ever prints carries a name they did not choose.
+    """
+    typed = bool(company_code.normalise(requested or ""))
+    base = company_code.normalise(requested) if typed else company_code.derive(name)
+
+    if typed:
+        problem = company_code.validate(base)
+        if problem:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem
+            )
+
+    async def taken(candidate: str) -> bool:
+        return bool(
+            await session.scalar(
+                select(func.count()).select_from(Company).where(
+                    func.lower(Company.code) == candidate.lower()
+                )
+            )
+        )
+
+    if typed:
+        if await taken(base):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Company code {base} is already in use",
+            )
+        return base
+
+    candidate, n = base, 2
+    while await taken(candidate):
+        suffix = str(n)
+        candidate = f"{base[: company_code.MAX_LEN - len(suffix)]}{suffix}"
+        n += 1
+    return candidate
+
+
+async def suggest_code(session: AsyncSession, name: str) -> CodeSuggestionOut:
+    """The code `create_company` would derive, resolved against what exists."""
+    natural = company_code.derive(name)
+    assigned = await _unique_code(session, name, None)
+    return CodeSuggestionOut(code=assigned, exact=assigned == natural)
+
+
 async def _ensure_gst_unique(
     session: AsyncSession, gst_number: str, *, exclude_id: uuid.UUID | None = None
 ) -> None:
@@ -70,6 +124,7 @@ def _company_out(
         id=company.id,
         name=company.name,
         slug=company.slug,
+        code=company.code,
         email=company.email,
         phone=company.phone,
         isActive=company.is_active,
@@ -131,9 +186,11 @@ async def create_company(
 ) -> CompanyOut:
     await _ensure_gst_unique(session, body.gstNumber)
     slug = await _unique_slug(session, body.name)
+    code = await _unique_code(session, body.name, body.code)
     company = Company(
         name=body.name,
         slug=slug,
+        code=code,
         email=str(body.email),
         phone=body.phone,
         is_active=True,

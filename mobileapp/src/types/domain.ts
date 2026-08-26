@@ -82,7 +82,7 @@ export interface Job {
    */
   id: string;
   /**
-   * `INST-240912`. What the cards actually print and what ops quote on the
+   * `RGT-INST-0001`. What the cards actually print and what ops quote on the
    * phone. Optional because the mock dataset predates it and uses `id` for
    * both; read it as `job.code ?? job.id`.
    */

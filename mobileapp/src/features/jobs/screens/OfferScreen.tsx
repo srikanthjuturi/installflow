@@ -65,7 +65,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
           {/* The prototype ends this row with a mono identifier on the right.
               It is deliberately not rendered: bound to the real API that field
               is `job.id`, a UUID, which is a route param and means nothing to
-              a technician. `job.code` (INST-240912) is the human-readable one
+              a technician. `job.code` (RGT-INST-0001) is the human-readable one
               if this ever comes back. */}
           <Text
             style={{ fontFamily: 'Roboto_700Bold', fontSize: 17, color: color.textInverse }}

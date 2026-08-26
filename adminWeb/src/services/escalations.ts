@@ -8,7 +8,7 @@ import type { Escalation } from "@/types";
  */
 const ESCALATIONS: Escalation[] = [
   {
-    id: "INST-240921",
+    id: "RGT-INST-0008",
     customer: "Rajesh Nair",
     product: "Kelvinator 7kg Front Load",
     city: "Pimpri",
@@ -19,7 +19,7 @@ const ESCALATIONS: Escalation[] = [
     pool: 1800,
   },
   {
-    id: "INST-240940",
+    id: "RGT-INST-0010",
     customer: "Vikram Rane",
     product: "Reliance GreenTech 253L Direct Cool",
     city: "Wakad",
@@ -30,7 +30,7 @@ const ESCALATIONS: Escalation[] = [
     pool: 2400,
   },
   {
-    id: "INST-240988",
+    id: "RGT-INST-0013",
     customer: "Shalini Rao",
     product: "Sansui 1T Window AC",
     city: "Katraj",

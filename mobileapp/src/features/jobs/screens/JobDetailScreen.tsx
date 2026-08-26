@@ -101,7 +101,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
           </Text>
 
           {/* `code`, never `id`. This is the screen a technician is looking at
-              when they phone the ASM about a job, and INST-240912 is what ops
+              when they phone the ASM about a job, and RGT-INST-0001 is what ops
               can search for — the UUID is a route param and means nothing to
               anybody. The fallback covers mock rows that predate `code`. */}
           <Text

@@ -23,6 +23,10 @@ from app.core.statutory import (  # noqa: F401
 
 class CompanyCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    #: The prefix on every code this company ever mints — `RGT-INST-0001`.
+    #: Omit it and the server derives one from the name; it cannot be changed
+    #: afterwards, because tickets store the assembled string.
+    code: str | None = Field(default=None, max_length=6)
     email: EmailStr  # becomes the admin's login email
     phone: str | None = Field(default=None, max_length=32)
     password: str = Field(min_length=8, max_length=128)
@@ -56,10 +60,20 @@ class CompanyStatusRequest(BaseModel):
     isActive: bool
 
 
+class CodeSuggestionOut(AppModel):
+    """What `POST /companies` would store if `code` were left out."""
+
+    code: str
+    #: False when something already holds the natural code and a digit had to be
+    #: appended, so the console can say so rather than showing RGT2 unexplained.
+    exact: bool
+
+
 class CompanyOut(AppModel):
     id: uuid.UUID
     name: str
     slug: str
+    code: str
     email: str
     phone: str | None
     isActive: bool
