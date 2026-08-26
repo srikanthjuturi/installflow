@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "34219317524",
+    "project_id": "reliancegreentech-1a021",
+    "storage_bucket": "reliancegreentech-1a021.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:34219317524:android:28f41d83722fbd3073ca01",
+        "android_client_info": {
+          "package_name": "com.reliancegreentech.technician"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8lCYKSXIBtXiiKeLtIAxcqM4NpDsmJkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
