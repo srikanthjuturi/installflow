@@ -1,4 +1,4 @@
-"""Per-company counters for the human-facing codes: `INST-240912`, `TCH-4021`.
+"""Per-company counters for the human-facing codes: `RGT-INST-0001`, `RGT-TCH-0001`.
 
 Both used to be `base + COUNT(*)`, which the docstrings admitted was racy and
 settled "as a 409". That is survivable for one person typing a form and fails
@@ -34,7 +34,7 @@ class CompanySequence(Base, IdMixin, AuditMixin):
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
-    #: 'ticket' | 'technician'. See `app.core.sequences.SEQUENCES`.
+    #: 'ticket' | 'technician'. See `app.core.sequences.KINDS`.
     name: Mapped[str] = mapped_column(String(32), nullable=False)
     #: The NEXT number to hand out — not the last one used.
     next_value: Mapped[int] = mapped_column(Integer, nullable=False)

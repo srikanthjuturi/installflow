@@ -14,6 +14,11 @@ class Company(Base, IdMixin, AuditMixin, SoftDeleteMixin):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The short token every human-facing code starts with — `RGT` in
+    #: `RGT-INST-0001`. Set once at creation and never updated: tickets store
+    #: the formatted string, so a code that moved would leave a company's older
+    #: rows spelling a prefix it no longer uses. See `app.core.company_code`.
+    code: Mapped[str] = mapped_column(String(6), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_active: Mapped[bool] = mapped_column(
@@ -33,6 +38,6 @@ class Company(Base, IdMixin, AuditMixin, SoftDeleteMixin):
 
     # created_by (→ users.id, the superadmin) comes from AuditMixin.
 
-    # NB: the case-insensitive UNIQUE indexes on lower(slug) and lower(gst_number)
-    # are created in the migration.
+    # NB: the case-insensitive UNIQUE indexes on lower(slug), lower(gst_number)
+    # and lower(code) are created in the migration.
     __table_args__ = (Index("ix_companies_is_active", "is_active"),)
