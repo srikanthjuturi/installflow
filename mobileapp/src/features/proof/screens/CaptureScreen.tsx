@@ -320,8 +320,17 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
     // a round trip, and the review screen shows how each one got on.
     upload(shot);
 
-    // Photos accumulate and advance manually; every other step is one-and-done.
-    if (step === 'photos') return;
+    // Two steps do NOT advance on the shutter.
+    //
+    // `photos` accumulates, which was always true. `serial` is the one this
+    // caught late: it needs the number typed as well as the label
+    // photographed, and advancing on the photo alone walked straight past the
+    // field in the most natural order there is — point the camera at the
+    // label, press the button. The technician then finished the whole capture
+    // and the SERVER refused the proof for a missing serial, by which time
+    // they could easily have left the site. Both leave by the Next control,
+    // which is gated on everything the step owes.
+    if (step === 'photos' || step === 'serial') return;
 
     const next = nextStep(step, steps);
     if (next) setStep(next);
@@ -622,7 +631,11 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
       </View>
 
       {step === 'serial' ? (
-        <SerialField value={serialValue ?? ''} onChange={(text) => setSerial(text, 'manual')} />
+        <SerialField
+          value={serialValue ?? ''}
+          onChange={(text) => setSerial(text, 'manual')}
+          hasPhoto={!!captureState.serial}
+        />
       ) : null}
 
       <View
@@ -794,11 +807,27 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 function SerialField({
   value,
   onChange,
+  hasPhoto,
 }: {
   value: string;
   onChange: (text: string) => void;
+  /** Whether the label itself has been photographed yet. */
+  hasPhoto: boolean;
 }) {
   const [focused, setFocused] = useState(false);
+
+  // The step owes two things and the Next control simply is not drawn until it
+  // has both — so this line has to be the one that says which is missing.
+  // Without it the technician sees a photo taken, a camera still on screen and
+  // no way forward, which reads as a broken app rather than as an unfinished
+  // field.
+  const helper = !value.trim()
+    ? hasPhoto
+      ? 'Label photographed — now type the serial'
+      : 'Serial number, exactly as printed'
+    : hasPhoto
+      ? 'Serial number, exactly as printed'
+      : 'Now photograph the label';
 
   return (
     <View style={{ backgroundColor: color.cameraBg, paddingHorizontal: 20, paddingTop: 4 }}>
@@ -891,7 +920,7 @@ function SerialField({
           marginTop: 6,
         }}
       >
-        Serial number, exactly as printed
+        {helper}
       </Text>
     </View>
   );
