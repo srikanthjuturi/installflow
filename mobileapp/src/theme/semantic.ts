@@ -62,6 +62,11 @@ export const color = {
   cameraDim: '#607284',
   cameraGuide: 'rgba(255,255,255,0.7)',
   shutterRing: 'rgba(255,255,255,0.4)',
+  /** A text field docked on the camera chrome — the typed serial. Lighter than
+   *  the bar it sits in, so it reads as somewhere to type rather than as more
+   *  chrome. */
+  cameraFieldBg: 'rgba(255,255,255,0.08)',
+  cameraFieldBorder: 'rgba(255,255,255,0.18)',
   /** The geo-lock badge is GREEN — it confirms a check passed, not a warning. */
   geoLockBg: 'rgba(22,163,74,0.9)',
   scanLine: palette.secondary[400],

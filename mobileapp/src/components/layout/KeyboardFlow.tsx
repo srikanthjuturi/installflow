@@ -1,25 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { type ReactNode } from 'react';
+import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** True while the software keyboard is on screen. */
-function useKeyboardVisible(): boolean {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    // iOS gets the `will` pair so the footer moves with the keyboard rather
-    // than a frame behind it; Android only ever emits the `did` pair.
-    const show = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hide = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const subs = [
-      Keyboard.addListener(show, () => setVisible(true)),
-      Keyboard.addListener(hide, () => setVisible(false)),
-    ];
-    return () => subs.forEach((s) => s.remove());
-  }, []);
-
-  return visible;
-}
+import { useKeyboardVisible } from './keyboard';
 
 export interface KeyboardFlowProps {
   children: ReactNode;

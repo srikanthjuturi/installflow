@@ -7,13 +7,13 @@ import {
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, Text, TextInput, View } from 'react-native';
+import { Keyboard, Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Image } from 'expo-image';
 
 import { Icon } from '@/components/icons/Icon';
-import { ScreenStatusBar } from '@/components/layout';
+import { ScreenStatusBar, useKeyboardHeight } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { CaptureOverlay } from '@/features/proof/components/CaptureOverlay';
@@ -107,6 +107,7 @@ async function describe(fix: Location.LocationObject): Promise<Coords> {
 export function CaptureScreen({ jobId }: CaptureScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const cameraRef = useRef<CameraView>(null);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -397,7 +398,16 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: color.cameraBg }}>
+    // The keyboard is subtracted HERE, on the root, so the camera (which is
+    // `flex: 1`) gives up the height and everything below it rises with the
+    // keys. `KeyboardFlow` cannot do this job: it scrolls its content, and a
+    // viewfinder that scrolls is not a viewfinder.
+    //
+    // No `insets.bottom` on top of this — the keyboard is drawn OVER the
+    // navigation bar, so its height already covers it.
+    <View
+      style={{ flex: 1, backgroundColor: color.cameraBg, paddingBottom: keyboardHeight }}
+    >
       <ScreenStatusBar style="light" />
 
       <View
@@ -539,49 +549,6 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
               </View>
             ) : null}
 
-            {step === 'serial' ? (
-              <View
-                style={{
-                  marginTop: 10,
-                  alignSelf: 'center',
-                  width: '100%',
-                  backgroundColor: color.cameraTopControl,
-                  borderRadius: 12,
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                }}
-                pointerEvents="auto"
-              >
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_400Regular',
-                    fontSize: 11,
-                    color: color.textOnChrome,
-                    marginBottom: 4,
-                  }}
-                >
-                  Serial number, exactly as printed
-                </Text>
-                <TextInput
-                  value={serialValue ?? ''}
-                  onChangeText={(text) => setSerial(text, 'manual')}
-                  placeholder="e.g. 4021884170099"
-                  placeholderTextColor={color.cameraDim}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  // No format is imposed. Serial formats vary by manufacturer
-                  // and a mask that guessed one would refuse the others.
-                  style={{
-                    fontFamily: 'RobotoMono_700Bold',
-                    fontSize: 16,
-                    letterSpacing: 1.2,
-                    color: color.textInverse,
-                    paddingVertical: 4,
-                  }}
-                />
-              </View>
-            ) : null}
-
             {geoBlocked ? (
               <View
                 style={{
@@ -654,6 +621,10 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
         </CameraView>
       </View>
 
+      {step === 'serial' ? (
+        <SerialField value={serialValue ?? ''} onChange={(text) => setSerial(text, 'manual')} />
+      ) : null}
+
       <View
         style={{
           flexDirection: 'row',
@@ -662,7 +633,10 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           backgroundColor: color.cameraBg,
           paddingTop: 16,
           paddingHorizontal: 24,
-          paddingBottom: insets.bottom + 20,
+          // With the keyboard up the root has already cleared the navigation
+          // bar, so adding the inset again would leave a bar-sized gap between
+          // the shutter and the keys.
+          paddingBottom: keyboardHeight > 0 ? 20 : insets.bottom + 20,
         }}
       >
         {/* The last thing captured, tappable.
@@ -801,6 +775,124 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
         }
         onClose={() => setPreview(null)}
       />
+    </View>
+  );
+}
+
+/**
+ * The typed serial, docked above the shutter.
+ *
+ * It used to float inside the viewfinder at `bottom: 16`, where the software
+ * keyboard covered it outright — this app is edge-to-edge, so the Android
+ * window does not resize for the IME and nothing moved out of its way. Docking
+ * it in the chrome fixes more than the overlap: a field is a control, and a
+ * control that hovers over a live camera feed reads as a caption.
+ *
+ * Both halves of this step are still required — the label photographed AND the
+ * number typed — so this sits beside the shutter rather than replacing it.
+ */
+function SerialField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (text: string) => void;
+}) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <View style={{ backgroundColor: color.cameraBg, paddingHorizontal: 20, paddingTop: 4 }}>
+      <Text
+        style={{
+          fontFamily: 'RobotoMono_400Regular',
+          fontSize: 10.5,
+          letterSpacing: 1.1,
+          color: color.textOnChrome,
+          marginBottom: 6,
+        }}
+      >
+        SERIAL NUMBER
+      </Text>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: color.cameraFieldBg,
+          borderRadius: 12,
+          borderWidth: 1.5,
+          // The focus ring is the only thing that says "this is where you are
+          // typing" on a screen whose other control is a shutter.
+          borderColor: focused ? color.borderFocus : color.cameraFieldBorder,
+          paddingLeft: 14,
+          paddingRight: 6,
+        }}
+      >
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="e.g. 4021884170099"
+          placeholderTextColor={color.cameraDim}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          autoComplete="off"
+          // The shutter rises above the keyboard now, so Done is a convenience
+          // rather than the only way out — but a serial is one field and one
+          // field should end with the keyboard gone.
+          returnKeyType="done"
+          onSubmitEditing={() => Keyboard.dismiss()}
+          // No format is imposed. Serial formats vary by manufacturer and a
+          // mask that guessed one would refuse the others.
+          style={{
+            flex: 1,
+            fontFamily: 'RobotoMono_700Bold',
+            fontSize: 17,
+            letterSpacing: 1.4,
+            color: color.textInverse,
+            paddingVertical: 12,
+          }}
+        />
+
+        {/* A mistyped serial is the whole failure mode of this step, and
+            holding backspace on 13 monospace characters is a poor apology for
+            not offering this. */}
+        {value.length > 0 ? (
+          <Pressable
+            onPress={() => onChange('')}
+            accessibilityRole="button"
+            accessibilityLabel="Clear the serial number"
+            hitSlop={8}
+          >
+            {({ pressed }) => (
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: pressed ? 0.5 : 1,
+                }}
+              >
+                <Icon name="close" size={17} color={color.textOnChrome} />
+              </View>
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+
+      <Text
+        style={{
+          fontFamily: 'Roboto_400Regular',
+          fontSize: 11.5,
+          color: color.cameraDim,
+          marginTop: 6,
+        }}
+      >
+        Serial number, exactly as printed
+      </Text>
     </View>
   );
 }
