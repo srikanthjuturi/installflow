@@ -81,7 +81,14 @@ export function CompanyTable({
           <Monogram name={c.name} />
           <div className="leading-tight">
             <p className="font-medium text-ink">{c.name}</p>
-            <p className="text-[11px] text-ink-3">{c.slug}</p>
+            {/* The code leads: it is what every ticket and technician this
+                company mints begins with, so it is the identifier anyone here
+                actually quotes. The slug follows because it is only ever a URL. */}
+            <p className="text-[11px] text-ink-3">
+              <span className="font-mono text-ink-2">{c.code}</span>
+              <span aria-hidden> · </span>
+              {c.slug}
+            </p>
           </div>
         </div>
       ),

@@ -19,18 +19,25 @@ moment, and the event is where moments are kept.
 """
 
 import datetime
+import logging
 import uuid
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.coverage import area_managers_covering
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import publish_notification
+from app.models.company import Company
 from app.models.notification import Notification
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
+from app.integrations import whatsapp
+
+
+log = logging.getLogger(__name__)
 
 
 def _now() -> datetime.datetime:
@@ -115,13 +122,60 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
             )
         )
     )
-    return await _raise_for(
+    raised = await _raise_for(
         db,
         rows,
         kind="escalation",
         title=lambda r: f"{r.code} unassigned — {_hours_to(r.slot_start)}",
         detail=lambda r: f"No technician accepted · {r.city} {r.pincode}",
     )
+    for row in rows:
+        await _whatsapp_the_area_manager(db, row)
+    return raised
+
+
+async def _whatsapp_the_area_manager(db: AsyncSession, row: Ticket) -> None:
+    """Reach the ASM off the console. The one message this system sends staff.
+
+    A manager has no mobile app, so the bell is a badge they see the next time
+    they open a browser tab — no use at nine in the evening for a slot at eight
+    tomorrow morning. This is the interruption; the bell remains the record.
+
+    Escalations only, and area managers only. Every rank above them covers
+    enough ground that a message per escalation becomes a message they mute,
+    and then the one that mattered is lost with the rest.
+
+    Never raises and never blocks the sweep: the notification row is already
+    written and committed by the caller, so a WhatsApp that fails costs the
+    interruption, not the record.
+    """
+    try:
+        company = await db.scalar(
+            select(Company.name).where(Company.id == row.company_id)
+        )
+        managers = await area_managers_covering(
+            db, company_id=row.company_id, pincode=row.pincode
+        )
+        if not managers:
+            # Worth a log line rather than silence: a pincode with no area
+            # manager means an escalation nobody is interrupted about, and that
+            # is a territory gap somebody should close.
+            log.warning(
+                "escalation %s: no area manager with a phone covers %s",
+                row.code,
+                row.pincode,
+            )
+            return
+        for manager in managers:
+            await whatsapp.send_escalation(
+                manager.phone or "",
+                company or "Reliance GreenTech",
+                row.code,
+                f"{row.city} {row.pincode}",
+                _hours_to(row.slot_start),
+            )
+    except Exception:
+        log.exception("escalation %s: could not message the area manager", row.code)
 
 
 async def sweep_silent_slots(db: AsyncSession) -> int:

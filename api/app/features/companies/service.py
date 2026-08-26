@@ -19,7 +19,6 @@ from app.core.schemas import ListParams
 from app.core.security import hash_password
 from app.db.repository import paginate
 from app.features.companies.schemas import (
-    CodeSuggestionOut,
     CompanyCreateRequest,
     CompanyOut,
     CompanyUpdateRequest,
@@ -92,13 +91,6 @@ async def _unique_code(
         candidate = f"{base[: company_code.MAX_LEN - len(suffix)]}{suffix}"
         n += 1
     return candidate
-
-
-async def suggest_code(session: AsyncSession, name: str) -> CodeSuggestionOut:
-    """The code `create_company` would derive, resolved against what exists."""
-    natural = company_code.derive(name)
-    assigned = await _unique_code(session, name, None)
-    return CodeSuggestionOut(code=assigned, exact=assigned == natural)
 
 
 async def _ensure_gst_unique(

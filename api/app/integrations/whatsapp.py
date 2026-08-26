@@ -336,6 +336,57 @@ async def _send(payload: dict, *, what: str) -> SendResult:
     return SendResult(ok=True, message_id=message_id)
 
 
+def build_escalation_payload(
+    phone: str, company: str, code: str, area: str, left: str
+) -> dict:
+    """"Nobody has taken this job and the slot is close." To the area manager.
+
+    The only message this system sends to its OWN staff. Everything else here
+    goes to a customer or a technician, and the reason for the exception is
+    that managers have no mobile app — the console's bell is a badge they see
+    when they next open a browser tab, which is no use at nine in the evening
+    for a job whose slot is at eight tomorrow.
+
+    Registered as `job_escalation` (UTILITY, en_US, four body parameters):
+
+        Escalation from {{1}}: job {{2}} at {{3}} still has no technician and
+        the slot is {{4}}.
+
+        Open the ops console to reassign it or add a bonus.
+
+    Opens with "Escalation" rather than a variable — Meta rejects a body that
+    starts or ends with one (subcode 2388299), which cost a submission on the
+    feedback template before this one.
+    """
+    if settings.WHATSAPP_ESCALATION_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_ESCALATION_TEMPLATE_NAME,
+            settings.WHATSAPP_ESCALATION_TEMPLATE_LANG,
+            [company, code, area, left],
+        )
+    # Development only — see build_invite_payload for why a template is what
+    # makes this actually arrive.
+    return _text_payload(
+        phone,
+        (
+            f"Escalation from {company}: job {code} at {area} still has no "
+            f"technician and the slot is {left}.\n\n"
+            "Open the ops console to reassign it or add a bonus."
+        ),
+    )
+
+
+async def send_escalation(
+    phone: str, company: str, code: str, area: str, left: str
+) -> SendResult:
+    """Tell an area manager a job is about to miss its slot. Never raises."""
+    return await _send(
+        build_escalation_payload(phone, company, code, area, left),
+        what="escalation",
+    )
+
+
 async def send_invite(phone: str, link: str, company: str) -> SendResult:
     """Send one invite. Returns the outcome; never raises for a delivery failure."""
     return await _send(build_invite_payload(phone, link, company), what="invite")

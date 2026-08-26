@@ -23,14 +23,6 @@ export function companySchema(mode: "create" | "edit") {
   return z
     .object({
       name: z.string().trim().min(1, "Company name is required").max(255),
-      // The prefix on every code this company mints — RGT-INST-0001. Blank is
-      // valid: the server derives one from the name. Only ever editable while
-      // creating; tickets store the assembled string, so it cannot move after.
-      code: z
-        .string()
-        .trim()
-        .max(6, "At most 6 characters")
-        .regex(/^$|^[A-Za-z][A-Za-z0-9]{1,5}$/, "Letters and digits, starting with a letter"),
       email: z.string().trim().email("Enter a valid email"),
       phone: z.string().trim().max(32),
       gstNumber: z
@@ -70,7 +62,6 @@ export const companyResolver = (mode: "create" | "edit") =>
 /** Blank create form. */
 export const EMPTY_COMPANY_FORM: CompanyFormValues = {
   name: "",
-  code: "",
   email: "",
   phone: "",
   gstNumber: "",

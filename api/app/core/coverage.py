@@ -25,11 +25,15 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.membership import Membership
+from app.models.role import AREA_MANAGER
 from app.models.technician import (
     TechnicianPincode,
     TechnicianProfile,
     TechnicianSubcategory,
 )
+from app.models.territory import MembershipState, Pincode
+from app.models.user import User
 
 
 async def technicians_covering(
@@ -78,5 +82,50 @@ async def technicians_covering(
                 covers_pincode,
                 certified_for,
             )
+        )
+    )
+
+
+async def area_managers_covering(
+    db: AsyncSession, *, company_id: uuid.UUID, pincode: str
+) -> list[User]:
+    """The area managers responsible for this pincode, for reaching OFF console.
+
+    `core.scope.visible_pincodes` answers "which codes are this person's"; this
+    is the same rule read backwards — which people is this code's.
+
+    Area managers ONLY, and that is the point rather than a limitation. The
+    requirement document sends an escalation to the Area Service Manager, and
+    every rank above them covers so much ground that a message per escalation
+    would be a message they learn to ignore. The bell still reaches everyone
+    senior; this is the interruption, and an interruption that fires too often
+    stops being one.
+
+    A pincode belongs to exactly one state, and an area manager covers states,
+    so the join is direct — no `pincodes_in_states` subquery needed in this
+    direction.
+
+    Returns only managers who have a phone number. `users.phone` is nullable
+    for console staff, who sign in with an email; one without a number cannot
+    be reached this way and the caller is told how many were skipped.
+    """
+    state = select(Pincode.state_id).where(Pincode.code == pincode).scalar_subquery()
+
+    return list(
+        await db.scalars(
+            select(User)
+            .join(Membership, Membership.user_id == User.id)
+            .join(MembershipState, MembershipState.membership_id == Membership.id)
+            .where(
+                Membership.company_id == company_id,
+                Membership.is_active.is_(True),
+                Membership.deleted_at.is_(None),
+                User.role == AREA_MANAGER,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                User.phone.is_not(None),
+                MembershipState.state_id == state,
+            )
+            .distinct()
         )
     )

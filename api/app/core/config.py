@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     # different set of languages from the scheduling pair.
     WHATSAPP_FEEDBACK_TEMPLATE_NAME: str = ""
     WHATSAPP_FEEDBACK_TEMPLATE_LANG: str = "en_US"
+    #: The only message this system sends to its own STAFF. Managers have no
+    #: mobile app, so an escalation four hours from a slot cannot wait for
+    #: somebody to open a browser tab.
+    WHATSAPP_ESCALATION_TEMPLATE_NAME: str = ""
+    WHATSAPP_ESCALATION_TEMPLATE_LANG: str = "en_US"
     # Comma-separated E.164 numbers. When set, ONLY these receive a real send;
     # anything else is refused before it reaches Meta.
     #

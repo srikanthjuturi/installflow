@@ -60,15 +60,6 @@ class CompanyStatusRequest(BaseModel):
     isActive: bool
 
 
-class CodeSuggestionOut(AppModel):
-    """What `POST /companies` would store if `code` were left out."""
-
-    code: str
-    #: False when something already holds the natural code and a digit had to be
-    #: appended, so the console can say so rather than showing RGT2 unexplained.
-    exact: bool
-
-
 class CompanyOut(AppModel):
     id: uuid.UUID
     name: str

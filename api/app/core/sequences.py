@@ -30,6 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 #: The kind token that sits between the company and the number:
 #: `RGT-INST-0001`. Adding a third series costs an entry here and nothing else.
 #:
+#: `INST` is every ticket, DELIBERATELY — including Tech Visit and Service ones,
+#: which are not installations. It came from the prototype, it was queried, and
+#: it stays: to ops it is the opaque handle they quote on the phone, not a word
+#: they expand. Do not "fix" it to TKT or split it per service type without
+#: asking; every code already issued would stop matching the new rule, and a
+#: ticket's code is the thing people write down.
+#:
 #: Every series starts at 1 and is padded to WIDTH. They used to start at
 #: 240912 and 4021, lifted from the approved prototypes — and 240912 in
 #: particular read as a date (24-09 = September 2024) that nothing in the code
