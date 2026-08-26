@@ -9,6 +9,32 @@ import { authedRequest } from '@/lib/api';
 import { useSessionStatus } from '@/store/session.store';
 
 /**
+ * How a notification behaves while the app is OPEN.
+ *
+ * Without this, expo-notifications shows nothing in the foreground — the
+ * notification arrives, the listeners fire, and the technician sees no banner
+ * at all. That is the correct default for a chat app whose UI already shows the
+ * message; it is wrong here, where a job offer is worth interrupting whatever
+ * screen somebody is on, and where the alternative is silence that looks
+ * exactly like push being broken.
+ *
+ * Module scope on purpose: it must be set before the first notification can be
+ * delivered, which can be before any component has mounted.
+ *
+ * No badge. A number on the app icon has to be cleared by something, and
+ * nothing here owns "how many did you not deal with" — an offer resolves by
+ * somebody else accepting it, not by being read.
+ */
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+/**
  * Register this device for push, and route a tap to the job it is about.
  *
  * ## This does nothing in Expo Go on Android
