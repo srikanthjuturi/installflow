@@ -376,9 +376,21 @@ to change in two places. Check what is actually live before a build:
 curl -s https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/.well-known/assetlinks.json
 ```
 
-The fingerprint is tied to the KEYSTORE, not to the package name, so renaming the package alone
-keeps it valid. It changes if EAS mints new credentials — which is what happens if somebody runs
-`eas init` fresh instead of renaming the existing project, so don't.
+**Changing the Android package gives you a NEW signing key.** EAS keys its Android credentials by
+application identifier, not by project, so `com.reliancegreentech.technician` was issued a fresh
+keystore even though the projectId never moved. The published fingerprint did not match the new
+APK, and App Links would have failed in the silent way described above. Measured, not assumed —
+the first build after the rename came back `EE:54:…`, against `07:85:…` in the deployed file.
+
+So after ANY build that changes the package, read the fingerprint off the artifact and ADD it —
+`ANDROID_CERT_FINGERPRINTS` is a comma-separated list precisely so old and new builds can both
+verify while devices catch up. Never replace: that breaks whoever has not updated yet.
+
+`apksigner verify --print-certs app.apk` is the documented way. There is no Android SDK on the
+dev box here, and EAS signs with scheme v2 only — no `META-INF/*.RSA` to read — so the fingerprint
+was taken by parsing the APK Signing Block (`APK Sig Block 42`, pair id `0x7109871a`) and
+SHA-256'ing the certificate DER. Any method is fine; taking it from the ARTIFACT rather than from
+what you expect is the part that matters.
 
 ### When WhatsApp is configured and sends still fail
 
