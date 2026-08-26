@@ -145,6 +145,7 @@ def guard_production_config() -> None:
         ("WHATSAPP_SLOT_TEMPLATE_NAME", "the customer's 'pick a time' link"),
         ("WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME", "the slot confirmation"),
         ("WHATSAPP_FEEDBACK_TEMPLATE_NAME", "the customer's 'confirm the job' link"),
+        ("WHATSAPP_ESCALATION_TEMPLATE_NAME", "the area manager's escalation"),
     ):
         if not values.get(key, "").strip():
             problems.append(f"{key} is unset — {what} would go out as free-form text")
