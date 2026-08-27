@@ -802,6 +802,11 @@ async def technician_session(
         jobsCompleted=profile.jobs_completed,
         onTimePct=profile.on_time_pct,
         acceptingWork=profile.accepting_work,
+        jobsToday=(
+            await jobs_today_by_technician(
+                session, company_id=profile.company_id, technician_ids=[profile.id]
+            )
+        )[profile.id],
     )
 
 

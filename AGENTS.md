@@ -267,10 +267,12 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   before anybody has worked a day is a number nobody has a basis for. The technician sets their own
   in the app (Profile → Availability & bandwidth) and a manager can change it afterwards. There is
   no upper bound; the floor is 1, because a cap of 0 means "never offer me work", which is what
-  going offline says.
+  going offline says. It is counted by **SLOT date in IST** — the day the work happens, not the day
+  it was accepted — and `Closed` jobs still count, because the cap means "how many will I do that
+  day", not "how many are still open". Only `Cancelled` frees the slot back.
 - **A ticket's history lives in `ticket_events`, not in its `status` column.** Both of the two
-  facts above need a moment, not a state: the cancellation band is measured from the slot, and the
-  cap counts jobs assigned on a DATE. Overwriting `status` keeps neither. Write the event in the
+  facts above need a moment, not a state: the cancellation band is measured from the slot, and a
+  closure has to be answerable for later. Overwriting `status` keeps neither. Write the event in the
   same transaction as the change it describes — a trail that can disagree with the ticket is worse
   than none.
 - **`expected_date` and the confirmed slot are allowed to differ**, and the gap between them is

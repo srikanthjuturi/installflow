@@ -198,6 +198,13 @@ class TechnicianSessionOut(AppModel):
     #: than from a local default, which is what made it reset to "online" on
     #: every restart.
     acceptingWork: bool
+    #: Jobs already held for TODAY, counted by the same rule the daily cap is
+    #: enforced with. Here as well as on `AvailabilityOut` so the Availability
+    #: screen can say "2 of 3" on first paint rather than only after a save.
+    #:
+    #: NOT derivable from `/jobs/today`: that list drops closed jobs, so the
+    #: screen would show a smaller number than the server refuses on.
+    jobsToday: int
 
 
 class AvailabilityRequest(AppModel):
