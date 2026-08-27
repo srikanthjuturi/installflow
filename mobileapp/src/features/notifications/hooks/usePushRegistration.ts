@@ -56,16 +56,37 @@ export function usePushRegistration(): void {
   const status = useSessionStatus();
   const router = useRouter();
   const enabled = usePushPrefs((s) => s.enabled);
+  const token = usePushPrefs((s) => s.token);
+  const hydrated = usePushPrefs((s) => s.hydrated);
   const setToken = usePushPrefs((s) => s.setToken);
   const registered = useRef(false);
 
   // ── the token ────────────────────────────────────────────────────────────
   useEffect(() => {
+    // Until SecureStore has answered, `enabled` is still its default `true`.
+    // Acting on that would register a token for a technician who had switched
+    // notifications OFF, and then delete it a moment later — every launch.
+    if (!hydrated) return;
     // The switch is off on this device. Nothing is registered, so there is
     // nothing for the server to send to — see `pushPrefs.store` for why the
     // preference is per device rather than a column on the technician.
     if (!enabled) {
       registered.current = false;
+      // Off, but the server was never told. The delete failed at the moment
+      // the switch moved — no signal, a 500 — and nothing expires a
+      // `push_tokens` row, so without this the technician keeps receiving
+      // notifications they switched off, indefinitely. Retried every launch
+      // until it sticks.
+      if (token && status === 'authenticated') {
+        void authedRequest('/notifications/devices', {
+          method: 'DELETE',
+          body: { token, platform: Platform.OS === 'ios' ? 'ios' : 'android' },
+        })
+          .then(() => setToken(null))
+          .catch(() => {
+            // Still unreachable. Try again next launch.
+          });
+      }
       return;
     }
     if (status !== 'authenticated' || registered.current) return;
@@ -127,7 +148,7 @@ export function usePushRegistration(): void {
         registered.current = false;
       }
     })();
-  }, [status, enabled, setToken]);
+  }, [status, enabled, token, hydrated, setToken]);
 
   // ── tapping one ──────────────────────────────────────────────────────────
   useEffect(() => {

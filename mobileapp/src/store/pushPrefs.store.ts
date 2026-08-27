@@ -8,6 +8,14 @@ interface PushPrefsState {
   enabled: boolean;
   /** The Expo token currently registered, so it can be unregistered. */
   token: string | null;
+  /**
+   * Whether SecureStore has been read yet. Same reason `session.store` has one:
+   * the read is async, so on the first frame `enabled` is still the default
+   * `true`. Registering on that would hand the server a token belonging to a
+   * technician who had switched notifications OFF — then delete it a moment
+   * later, on every single launch.
+   */
+  hydrated: boolean;
   setEnabled: (enabled: boolean) => void;
   setToken: (token: string | null) => void;
 }
@@ -41,6 +49,7 @@ export const usePushPrefs = create<PushPrefsState>()(
       // consent gate, and this switch is how they change their mind later.
       enabled: true,
       token: null,
+      hydrated: false,
       setEnabled: (enabled) => set({ enabled }),
       setToken: (token) => set({ token }),
     }),
@@ -48,6 +57,41 @@ export const usePushPrefs = create<PushPrefsState>()(
       name: 'reliancegreentech.push',
       version: 1,
       storage: createJSONStorage(() => secureStorage),
+      // `hydrated` is derived, not stored — persisting it would boot the app
+      // claiming to have read storage before it had.
+      partialize: (s) => ({ enabled: s.enabled, token: s.token }),
     },
   ),
 );
+
+/**
+ * Flip `hydrated` once storage has been read.
+ *
+ * Wired from OUT here rather than inside `create()`, for the reason
+ * `session.store` spells out: referencing the store inside its own config is a
+ * temporal-dead-zone trap, and the resulting rejection is swallowed.
+ */
+function markHydrated() {
+  if (!usePushPrefs.getState().hydrated) {
+    usePushPrefs.setState({ hydrated: true });
+  }
+}
+
+usePushPrefs.persist.onFinishHydration(markHydrated);
+// Covers the race where rehydration already finished before this line ran.
+if (usePushPrefs.persist.hasHydrated()) markHydrated();
+
+/**
+ * Failsafe. A hung Keychain read must not leave push permanently unregistered
+ * with nothing to show why — the defaults are the right answer for a fresh
+ * install, which is the case this would otherwise strand.
+ */
+const HYDRATION_TIMEOUT_MS = 3000;
+setTimeout(() => {
+  if (!usePushPrefs.getState().hydrated) {
+    console.warn(
+      `[push] storage did not respond in ${HYDRATION_TIMEOUT_MS}ms — using defaults`,
+    );
+    markHydrated();
+  }
+}, HYDRATION_TIMEOUT_MS);

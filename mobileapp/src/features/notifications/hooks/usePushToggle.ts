@@ -29,28 +29,32 @@ export function usePushToggle(): {
   toggle: () => void;
 } {
   const enabled = usePushPrefs((s) => s.enabled);
+  const hydrated = usePushPrefs((s) => s.hydrated);
   const token = usePushPrefs((s) => s.token);
   const setEnabled = usePushPrefs((s) => s.setEnabled);
   const setToken = usePushPrefs((s) => s.setToken);
 
   const toggle = useCallback(() => {
     if (enabled) {
-      // Optimistic: the switch moves now. The delete is best-effort because a
-      // technician turning notifications off on a train should not have it fail
-      // — and the registration on the next launch is gated on this preference,
-      // so the token stops being refreshed either way.
+      // The switch moves immediately — a technician turning notifications off
+      // on a train must not watch a spinner. But the TOKEN is kept until the
+      // server confirms it is gone.
+      //
+      // Discarding it here was a real hole: nothing expires a `push_tokens`
+      // row — `last_seen_at` is written and never read — so a delete that
+      // failed left the server pushing forever to a phone whose switch said
+      // off, and with the token forgotten there was nothing left to retry
+      // with. `usePushRegistration` now retries on the next launch.
       setEnabled(false);
-      const current = token;
-      setToken(null);
-      if (current) {
+      if (token) {
         void authedRequest('/notifications/devices', {
           method: 'DELETE',
-          body: { token: current, platform: 'android' },
-        }).catch(() => {
-          // Swallowed on purpose. See above: the preference is what gates
-          // registration, and a failed delete leaves a token that stops being
-          // renewed rather than one that keeps being pushed to forever.
-        });
+          body: { token, platform: 'android' },
+        })
+          .then(() => setToken(null))
+          .catch(() => {
+            // Keep the token. Off + a stored token is the retry signal.
+          });
       }
       return;
     }
@@ -74,5 +78,7 @@ export function usePushToggle(): {
     })();
   }, [enabled, token, setEnabled, setToken]);
 
-  return { enabled, toggle };
+  // Show the DEFAULT until storage answers, never a stored value we have
+  // not read yet — the switch must not flip under the technician.
+  return { enabled: hydrated ? enabled : true, toggle };
 }
