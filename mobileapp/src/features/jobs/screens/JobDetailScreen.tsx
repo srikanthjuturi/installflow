@@ -463,100 +463,201 @@ function StatTile({ label, value }: { label: string; value: string }) {
 }
 
 /**
+ * "27 Aug, 10:41 AM" — short, because the job's own slot is the date that
+ * matters here; this is only how long they took to answer.
+ *
+ * Pinned to IST like every other time in the app. The device's own zone would
+ * be right for a technician standing in India and wrong for anybody testing
+ * from anywhere else, which is the worst combination: it looks correct.
+ */
+function answeredAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Kolkata',
+  });
+}
+
+/**
+ * Five stars filled to the rating.
+ *
+ * Characters, not icons: this app's icon set is stroked at 1.8 and a rating
+ * star has to read as FILLED to be countable at a glance. The console already
+ * uses the same glyph, so the two surfaces show one thing one way.
+ */
+function Stars({ rating }: { rating: number }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 2 }} accessibilityLabel={`${rating} out of 5`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Text
+          key={n}
+          maxFontSizeMultiplier={1.2}
+          style={{
+            fontSize: 19,
+            lineHeight: 22,
+            color: n <= rating ? color.ratingStar : color.ratingStarEmpty,
+          }}
+        >
+          ★
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+/**
  * What the customer said when they answered the confirmation link.
  *
- * Only the customer closes a job here, so this is the verdict on the work —
- * and until now it reached nobody: the rating fed the technician's aggregate
+ * Only the customer closes a job here, so this is the verdict on the work — and
+ * for a long time it reached nobody: the rating fed the technician's aggregate
  * score and the words went only to the ticket timeline, which the app cannot
- * see. A technician looking at their own 3.8 on Profile had no way to find out
- * what any of it was based on.
+ * see. A technician looking at their own 3.8 had no way to find out why.
+ *
+ * Built to be read in one glance and to feel like a person said it: stars
+ * before the number, the words set as a quotation rather than a field, and the
+ * customer's own name under them. A rating rendered as a data row invites the
+ * technician to skim past the one part that tells them what to do differently.
  *
  * Renders nothing until they have actually answered. "Awaiting customer" is
- * already said by the CTA area above; an empty review card under it would just
- * be a second way of saying the same thing.
+ * already said by the CTA above; an empty card would be a second way of saying
+ * the same thing.
  */
 function CustomerVerdict({ job }: { job: Job }) {
   if (!job.customerConfirmedAt) return null;
 
   const refused = job.customerRefused === true;
-  const rating = job.customerRating ?? null;
+  const rating = job.customerRating;
   const words = job.customerFeedback?.trim();
+  const when = answeredAt(job.customerConfirmedAt);
+  const who = job.customer ?? job.maskedCustomer;
 
   return (
     <View
       style={{
-        backgroundColor: refused ? color.statusCancelled.bg : color.surfaceRaised,
+        backgroundColor: refused ? color.dangerSurface : color.surfaceRaised,
         borderWidth: 1,
-        borderColor: refused ? color.debit : color.border,
-        borderRadius: 14,
-        padding: 16,
+        borderColor: refused ? color.dangerSurfaceBorder : color.border,
+        borderRadius: 16,
+        padding: 18,
         marginBottom: 20,
       }}
     >
-      <Text
+      {/* Eyebrow, with the moment they answered pushed to the far edge. The
+          date is context, not the headline, so it never competes with the
+          verdict for the first glance. */}
+      <View
         style={{
-          fontFamily: 'Roboto_700Bold',
-          fontSize: 11,
-          letterSpacing: 0.88,
-          textTransform: 'uppercase',
-          color: refused ? color.debit : color.textFootnote,
-          marginBottom: 10,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: refused ? 12 : 14,
         }}
       >
-        {refused ? 'Customer says it is not finished' : 'Customer feedback'}
-      </Text>
+        {refused ? <Icon name="warn" size={16} color={color.debit} strokeWidth={2} /> : null}
+        <Text
+          style={{
+            flex: 1,
+            fontFamily: 'Roboto_700Bold',
+            fontSize: 11,
+            letterSpacing: 0.88,
+            textTransform: 'uppercase',
+            color: refused ? color.debit : color.textFootnote,
+          }}
+        >
+          {refused ? 'Not finished, they say' : 'Customer feedback'}
+        </Text>
+        <Text
+          style={{ fontFamily: 'Roboto_400Regular', fontSize: 11, color: color.textMuted }}
+        >
+          {when}
+        </Text>
+      </View>
 
-      {/* A refusal leads with the refusal. The score is beside the point when
-          the customer's answer was "you have not done it" — and they are not
-          asked to rate work they say did not happen. */}
+      {/* A refusal has no score. The customer is not asked to rate work they
+          say did not happen, and a row of empty stars would imply they rated
+          it nothing — which is a different, worse claim. */}
       {!refused ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: words ? 10 : 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          {rating === null ? null : <Stars rating={rating} />}
           <Text
             style={{
               fontFamily: 'Roboto_900Black',
-              fontSize: 26,
-              lineHeight: 28,
+              fontSize: 20,
+              lineHeight: 22,
               color: color.textPrimary,
             }}
           >
             {/* Null is "confirmed without rating" — a real answer, and not the
-                same claim as zero, which would read as the worst score there
-                is. Same rule the Profile stat follows. */}
-            {rating ?? '—'}
-          </Text>
-          <Text
-            style={{
-              fontFamily: 'Roboto_400Regular',
-              fontSize: 12.5,
-              color: color.textMuted,
-            }}
-          >
-            {rating === null ? 'Confirmed, not rated' : 'out of 5'}
+                same claim as zero, which reads as the worst score there is. */}
+            {rating === null ? 'Not rated' : `${rating}.0`}
           </Text>
         </View>
       ) : null}
 
       {words ? (
-        <Text
-          style={{
-            fontFamily: 'Roboto_400Regular',
-            fontSize: 13.5,
-            lineHeight: 20,
-            color: refused ? color.debit : color.textPrimary,
-          }}
-        >
-          “{words}”
-        </Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          {/* A rule rather than quotation marks: the words are the customer's
+              and should look it, without a glyph fighting the apostrophes
+              inside whatever they typed. */}
+          <View
+            style={{
+              width: 3,
+              borderRadius: 2,
+              backgroundColor: refused ? color.debit : color.borderStrong,
+            }}
+          />
+          <Text
+            style={{
+              flex: 1,
+              fontFamily: 'Roboto_400Regular',
+              fontSize: 14.5,
+              lineHeight: 22,
+              color: refused ? color.debit : color.textPrimary,
+            }}
+          >
+            {words}
+          </Text>
+        </View>
       ) : refused ? (
         <Text
           style={{
             fontFamily: 'Roboto_400Regular',
-            fontSize: 13.5,
-            lineHeight: 20,
+            fontSize: 14,
+            lineHeight: 21,
             color: color.debit,
           }}
         >
-          They gave no reason. A manager will be in touch.
+          They gave no reason.
+        </Text>
+      ) : null}
+
+      <Text
+        style={{
+          fontFamily: 'Roboto_500Medium',
+          fontSize: 12,
+          color: color.textMuted,
+          marginTop: words || refused ? 12 : 0,
+        }}
+      >
+        — {who}
+      </Text>
+
+      {refused ? (
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 12.5,
+            lineHeight: 19,
+            color: color.textLabel,
+            marginTop: 12,
+          }}
+        >
+          A manager will review this. Do not return to site until they call.
         </Text>
       ) : null}
     </View>

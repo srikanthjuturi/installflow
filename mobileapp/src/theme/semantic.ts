@@ -108,6 +108,10 @@ export const color = {
   credit: palette.success[500],
   debit: palette.danger[500],
   bonus: palette.secondary[600],
+  /** A filled rating star, and the hollow remainder beside it. Amber rather
+   *  than the success green: a rating is a judgement, not a pass/fail. */
+  ratingStar: palette.secondary[500],
+  ratingStarEmpty: palette.neutral[200],
   /** Money figures on the dark chrome need lifted tints to stay legible. */
   creditOnChrome: '#7ee2a8',
   bonusOnChrome: '#f8d78a',
