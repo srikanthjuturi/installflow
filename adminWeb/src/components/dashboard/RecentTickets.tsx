@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { EMPTY, formatSlot } from "@/utils/datetime";
@@ -10,8 +10,11 @@ const columns: Column<Ticket>[] = [
     header: "Ticket",
     cell: (t) => (
       <>
+        {/* The row is clickable, but the code stays a real link so it
+            is reachable by keyboard and opens in a new tab. */}
         <Link
           to={`/tickets/${t.id}`}
+          onClick={(e) => e.stopPropagation()}
           className="font-semibold hover:text-brand-400"
         >
           {t.code}
@@ -73,6 +76,8 @@ export function RecentTickets({
   error,
   onRetry,
 }: RecentTicketsProps) {
+  const navigate = useNavigate();
+
   return (
     <section>
       {/* No Card wrapper: DataTable already draws the card, and nesting one
@@ -95,6 +100,7 @@ export function RecentTickets({
         isLoading={isLoading}
         error={error}
         onRetry={onRetry}
+        onRowClick={(t) => navigate(`/tickets/${t.id}`)}
         // A peek, not a workspace — six rows, no search, no paging. The
         // "Open ticket list →" link is the way to the real thing.
         pagination={false}
