@@ -1,9 +1,11 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Switch } from '@/components/ui';
 import {
   useDailyJobCap,
+  useJobsToday,
   useSetDailyJobCap,
 } from '@/features/availability/hooks/useAvailability';
 import { color } from '@/theme/semantic';
@@ -12,6 +14,15 @@ import { color } from '@/theme/semantic';
 const BANDWIDTH_DEFAULT = 6;
 /** A cap of 0 means "never offer me work", which is what going offline says. */
 const BANDWIDTH_MIN = 1;
+
+/**
+ * How long the stepper waits before saving.
+ *
+ * Long enough that walking 3 → 7 is one request rather than four, short enough
+ * that nobody notices it. Every tap used to PATCH, on the connection a field
+ * technician actually has.
+ */
+const SAVE_DEBOUNCE_MS = 700;
 
 /**
  * Screen 3 — Availability & bandwidth.
@@ -39,13 +50,50 @@ const BANDWIDTH_MIN = 1;
 export function AvailabilityScreen() {
   // `undefined` while the profile loads; `null` means NO LIMIT.
   const cap = useDailyJobCap();
+  const jobsToday = useJobsToday();
   const { mutate: setBandwidth } = useSetDailyJobCap();
+
+  // What the technician has tapped but the server has not been told yet.
+  // `undefined` means "nothing pending, show the server's answer".
+  const [draft, setDraft] = useState<number | null | undefined>(undefined);
+  const pending = useRef<{ value: number | null; timer: ReturnType<typeof setTimeout> } | null>(
+    null,
+  );
+
+  const save = useCallback(
+    (next: number | null) => {
+      setDraft(next);
+      if (pending.current) clearTimeout(pending.current.timer);
+      pending.current = {
+        value: next,
+        timer: setTimeout(() => {
+          pending.current = null;
+          setBandwidth(next, { onSettled: () => setDraft(undefined) });
+        }, SAVE_DEBOUNCE_MS),
+      };
+    },
+    [setBandwidth],
+  );
+
+  // Leaving the screen mid-debounce must not discard the change. Tapping "+"
+  // and immediately going back is an ordinary thing to do, and losing the
+  // setting there would be the exact bug this screen was rewritten to fix.
+  useEffect(
+    () => () => {
+      if (pending.current) {
+        clearTimeout(pending.current.timer);
+        setBandwidth(pending.current.value);
+        pending.current = null;
+      }
+    },
+    [setBandwidth],
+  );
 
   // Three states, not two. Coalescing `undefined` to `null` would render "no
   // limit" at a technician who has one, for as long as the profile takes to
   // arrive — and then flip under them. Loading is its own answer.
-  const loading = cap === undefined;
-  const bandwidthPerDay = cap ?? null;
+  const loading = cap === undefined && draft === undefined;
+  const bandwidthPerDay = draft !== undefined ? draft : (cap ?? null);
   const limited = !loading && bandwidthPerDay !== null;
 
   return (
@@ -86,7 +134,7 @@ export function AvailabilityScreen() {
           </Text>
 
           <Pressable
-            onPress={loading ? undefined : () => setBandwidth(limited ? null : BANDWIDTH_DEFAULT)}
+            onPress={loading ? undefined : () => save(limited ? null : BANDWIDTH_DEFAULT)}
             disabled={loading}
             accessibilityRole="switch"
             accessibilityState={{ checked: limited, disabled: loading }}
@@ -107,9 +155,10 @@ export function AvailabilityScreen() {
             >
               Limit jobs per day
             </Text>
-            <Switch value={limited} onValueChange={() =>
-              setBandwidth(limited ? null : BANDWIDTH_DEFAULT)
-            } />
+            <Switch
+              value={limited}
+              onValueChange={() => save(limited ? null : BANDWIDTH_DEFAULT)}
+            />
           </Pressable>
 
           {limited ? (
@@ -123,7 +172,7 @@ export function AvailabilityScreen() {
           >
             <StepperButton
               glyph="−"
-              onPress={() => bandwidthPerDay && setBandwidth(bandwidthPerDay - 1)}
+              onPress={() => bandwidthPerDay && save(bandwidthPerDay - 1)}
               disabled={bandwidthPerDay === null || bandwidthPerDay <= BANDWIDTH_MIN}
               label="Decrease bandwidth"
             />
@@ -154,11 +203,31 @@ export function AvailabilityScreen() {
             {/* No ceiling — a technician may take as many as they will. */}
             <StepperButton
               glyph="+"
-              onPress={() => bandwidthPerDay && setBandwidth(bandwidthPerDay + 1)}
+              onPress={() => bandwidthPerDay && save(bandwidthPerDay + 1)}
               disabled={bandwidthPerDay === null}
               label="Increase bandwidth"
             />
           </View>
+          ) : null}
+
+          {/* What the number MEANS today. A cap on its own is a setting; "2 of
+              3 used today" is the thing a technician actually wants to know
+              before deciding whether to change it.
+
+              Counted the way the server enforces it — closed jobs included —
+              so this can never disagree with a refused accept. */}
+          {limited && jobsToday !== undefined ? (
+            <Text
+              style={{
+                fontFamily: 'Roboto_400Regular',
+                fontSize: 12,
+                color: color.textMuted,
+                textAlign: 'center',
+                marginTop: 14,
+              }}
+            >
+              {jobsToday} of {bandwidthPerDay} used today
+            </Text>
           ) : null}
         </View>
 

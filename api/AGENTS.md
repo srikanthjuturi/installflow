@@ -10,8 +10,14 @@ the list, and the customer's own slot confirmation).
 The **job pool** is real too: a confirmed ticket (`status = 'New'`) is offered through
 `/jobs/pool` to the technicians whose `technician_pincodes` and `technician_subcategories`
 match it, and taken by a guarded UPDATE whose rowcount settles first-accept-wins.
-Still to come: my-jobs and job detail, proof capture, escalations, the ledger — and the daily
-job cap, which counts `assigned` events per IST date and now has rows to count.
+The **daily job cap** is enforced, in `core/coverage.py` and nowhere else: one predicate used by
+`pool_query`, by the guarded UPDATE in `accept`, by push targeting and by the console's `bwUsed`,
+so all four agree by construction. It counts by **SLOT date in IST** — not by when the job was
+accepted, and not from `assigned` events. Five jobs taken tonight for Friday exhaust *Friday*.
+`Closed` and `Force-Closed` still count; only `Cancelled` is exempt.
+
+Still to come: escalations, the ledger, and a technician EDIT screen in the console — the API
+takes `dailyJobCap` on `PUT /technicians/{id}` and no screen calls it.
 
 ---
 

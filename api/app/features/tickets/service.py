@@ -1149,4 +1149,6 @@ async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:
         pincode=row.pincode,
         city=row.city,
         subcategory_id=row.subcategory_id,
+        # So a technician whose day is already full is not told about it.
+        slot_start=row.slot_start,
     )

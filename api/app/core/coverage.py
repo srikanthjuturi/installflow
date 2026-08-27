@@ -66,12 +66,20 @@ async def technicians_covering(
     company_id: uuid.UUID,
     pincode: str,
     subcategory_id: uuid.UUID,
+    slot_start: datetime.datetime | None = None,
 ) -> list[uuid.UUID]:
     """Technician profile ids eligible to be offered this job.
 
     Only technicians who are ONLINE. Going offline is the app's way of saying
     "do not offer me work", and a push that ignored it would make the toggle a
     lie — the one setting a technician uses to protect their evening.
+
+    `slot_start` applies the DAILY CAP as well, and omitting it is a bug waiting
+    to happen: `pool_query` hides a job from a technician whose day is full, so
+    without this they would still be pushed about it, tap the notification, and
+    land on a job they cannot take. That is precisely the notification that
+    teaches people to ignore notifications. It is optional only because a caller
+    may genuinely not have a slot — a ticket in the pool always does.
 
     Returns profile ids, which is what `push_tokens.technician_id` keys on.
     """
@@ -94,20 +102,20 @@ async def technicians_covering(
         .exists()
     )
 
-    return list(
-        await db.scalars(
-            select(TechnicianProfile.id).where(
-                TechnicianProfile.company_id == company_id,
-                # `status`, not a soft-delete column — this table has none.
-                # A suspended technician keeps their coverage rows, so
-                # filtering on coverage alone would still reach them.
-                TechnicianProfile.status == ACTIVE,
-                TechnicianProfile.accepting_work.is_(True),
-                covers_pincode,
-                certified_for,
-            )
-        )
-    )
+    conditions = [
+        TechnicianProfile.company_id == company_id,
+        # `status`, not a soft-delete column — this table has none.
+        # A suspended technician keeps their coverage rows, so
+        # filtering on coverage alone would still reach them.
+        TechnicianProfile.status == ACTIVE,
+        TechnicianProfile.accepting_work.is_(True),
+        covers_pincode,
+        certified_for,
+    ]
+    if slot_start is not None:
+        conditions.append(has_room_at(slot_start))
+
+    return list(await db.scalars(select(TechnicianProfile.id).where(*conditions)))
 
 
 def ist_date(column: ColumnElement) -> ColumnElement:
@@ -191,6 +199,39 @@ def has_cap_room(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> ColumnEl
     #
     # `<`, never `<=`: a cap of 5 with `<=` admits a sixth job.
     return case((cap.is_(None), True), else_=used < cap)
+
+
+def has_room_at(slot_start: datetime.datetime) -> ColumnElement:
+    """The cap predicate with the PROFILE as the outer row and the day fixed.
+
+    `has_cap_room` is the mirror of this: there the technician is fixed and the
+    day comes from the candidate ticket. Here the day is known and the question
+    is which technicians still have room on it — which is what push targeting
+    asks.
+
+    Uses a half-open UTC range rather than `ist_date`, so it is sargable and
+    reaches `ix_tickets_company_technician`. The cast form cannot be indexed —
+    see `ist_day_bounds`.
+    """
+    start, end = ist_day_bounds(slot_start)
+    held = aliased(Ticket)
+    used = (
+        select(func.count())
+        .select_from(held)
+        .where(
+            held.company_id == TechnicianProfile.company_id,
+            held.technician_id == TechnicianProfile.id,
+            held.deleted_at.is_(None),
+            held.status.not_in(CAP_EXEMPT_STATUSES),
+            held.slot_start >= start,
+            held.slot_start < end,
+        )
+        .scalar_subquery()
+    )
+    return case(
+        (TechnicianProfile.daily_job_cap.is_(None), True),
+        else_=used < TechnicianProfile.daily_job_cap,
+    )
 
 
 def ist_day_bounds(

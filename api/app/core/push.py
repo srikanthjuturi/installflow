@@ -263,6 +263,7 @@ async def announce_pool_job(
     pincode: str,
     city: str,
     subcategory_id: uuid.UUID,
+    slot_start: datetime.datetime | None = None,
 ) -> int:
     """A job entered the pool — tell the phones that could take it.
 
@@ -275,14 +276,22 @@ async def announce_pool_job(
     job from the pool, and announcing one somebody has just taken is the exact
     notification that teaches people to ignore notifications.
 
-    Audience is `technicians_covering`, which is `pool_query` read backwards and
-    excludes anyone who has gone offline.
+    Audience is `technicians_covering`, which is `pool_query` read backwards: it
+    excludes anyone offline, suspended, or already full for that day.
     """
     if not settings.PUSH_ENABLED:
         return 0
 
+    # `slot_start` carries the DAILY CAP into the audience. Without it a
+    # technician whose day is already full would be pushed about a job the pool
+    # will not show them and `accept` will refuse — the exact notification that
+    # teaches people to stop reading notifications.
     technician_ids = await technicians_covering(
-        db, company_id=company_id, pincode=pincode, subcategory_id=subcategory_id
+        db,
+        company_id=company_id,
+        pincode=pincode,
+        subcategory_id=subcategory_id,
+        slot_start=slot_start,
     )
     if not technician_ids:
         return 0

@@ -96,6 +96,22 @@ export function useDailyJobCap(): number | null | undefined {
 }
 
 /**
+ * How many jobs are already held for TODAY, by the same rule the cap enforces.
+ *
+ * Deliberately NOT counted from `/jobs/today`: that list drops closed jobs, so
+ * it would read lower than the number the server actually refuses on. A screen
+ * saying "2 of 3" while an accept comes back "you have 3" is worse than showing
+ * nothing at all.
+ *
+ * It rides on `/technicians/me` so the screen has it on first paint, rather
+ * than only after a save.
+ */
+export function useJobsToday(): number | undefined {
+  const { data } = useMe();
+  return data?.jobsToday;
+}
+
+/**
  * Set or clear the cap.
  *
  * Optimistic for the same reason the toggle is: a stepper that waits for a
@@ -131,12 +147,18 @@ export function useSetDailyJobCap() {
     },
 
     onSuccess: (result) => {
+      // Both values, not just the cap: the save is the one moment the server
+      // recounts today, and dropping it would leave "2 of 3" stale next to a
+      // number that just changed.
       const current = queryClient.getQueryData<TechnicianSession>(qk.me());
       if (current) {
-        useSession.getState().setTechnician({
+        const next = {
           ...current,
           dailyJobCap: result.dailyJobCap,
-        });
+          jobsToday: result.jobsToday,
+        };
+        queryClient.setQueryData<TechnicianSession>(qk.me(), next);
+        useSession.getState().setTechnician(next);
       }
     },
 

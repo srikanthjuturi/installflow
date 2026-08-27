@@ -56,6 +56,13 @@ export interface TechnicianSession {
   pincodes: string[];
   /** Null means no limit — the default until they set one. */
   dailyJobCap: number | null;
+  /**
+   * Jobs already held for TODAY, counted the way the cap is enforced.
+   *
+   * Not derived from `/jobs/today`: that list drops closed jobs, so it reads
+   * lower than the number the server actually refuses on.
+   */
+  jobsToday: number;
   status: 'active' | 'inactive' | 'suspended';
   /** Null until they have closed a job — a dash, not a zero. */
   rating: number | null;
