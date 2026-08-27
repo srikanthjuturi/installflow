@@ -60,8 +60,9 @@ from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductSubcategory
 from app.models.technician import (
-    TechnicianProfile,
+    ACTIVE,
     TechnicianPincode,
+    TechnicianProfile,
     TechnicianSubcategory,
 )
 from app.models.ticket import Ticket, TicketProof
@@ -91,8 +92,20 @@ def pool_query(
     company_id: uuid.UUID,
     technician_id: uuid.UUID,
     eligible_only: bool = True,
+    open_only: bool = True,
 ) -> Select:
     """Every ticket this technician may be offered, soonest slot first.
+
+    ## `open_only=False` — "was this ever yours to take?"
+
+    Drops `status == 'New'` and `technician_id IS NULL`, so a job somebody else
+    has already accepted still matches. Exactly one caller wants that: `accept`,
+    distinguishing "taken" from "not found". Losing a race is a normal outcome
+    and the technician has to be told which one it was — "Job not found" for a
+    job they were looking at ten seconds ago is both wrong and alarming.
+
+    It discloses nothing new: coverage and certification still apply, so it only
+    ever confirms a ticket that WAS in this technician's own pool.
 
     ## `eligible_only=False` — "would this be yours if you had room?"
 
@@ -103,9 +116,13 @@ def pool_query(
     plainly exists and they could take it tomorrow. Callers that need to tell
     somebody WHY pass `False` and check the reason themselves; see `accept`.
 
-    What `False` drops is only availability and capacity. Coverage,
-    certification, company and `status == 'New'` still apply, so it never
-    widens what a technician may see.
+    What `False` drops is exactly two things: the technician's own
+    `accepting_work` toggle, and the cap. It does NOT drop `status` — a
+    SUSPENDED technician sees nothing through any flag here, because that is
+    somebody else's decision about them rather than their own. Coverage,
+    certification and company still apply too, so this never widens what a
+    technician may see — only what they may be TOLD about a ticket that was
+    already theirs to see.
 
     The predicate is deliberately keyed on `status == 'New'` plus
     `slot_start IS NOT NULL`, and NOT on `slot_confirmed_at`. That column is
@@ -150,12 +167,27 @@ def pool_query(
     # sent, which the note at the top of this module says is not a boundary.
     # `core.coverage.technicians_covering` has always filtered on both, and its
     # docstring warns that the two must agree; this is that debt.
-    available = (
+    # Split in two on purpose, because they are different KINDS of state.
+    #
+    # `status` is an administrative decision somebody else made: a suspended
+    # technician should see nothing, ever, and no flag below relaxes it.
+    # `accepting_work` is the technician's own toggle — relaxing that lets a
+    # single offer still open from a push, so they can be told "you're offline"
+    # rather than "job not found".
+    is_active = (
         select(TechnicianProfile.id)
         .where(
             TechnicianProfile.company_id == company_id,
             TechnicianProfile.id == technician_id,
-            TechnicianProfile.status == "active",
+            TechnicianProfile.status == ACTIVE,
+        )
+        .exists()
+    )
+    accepting = (
+        select(TechnicianProfile.id)
+        .where(
+            TechnicianProfile.company_id == company_id,
+            TechnicianProfile.id == technician_id,
             TechnicianProfile.accepting_work.is_(True),
         )
         .exists()
@@ -163,8 +195,6 @@ def pool_query(
 
     conditions = [
         Ticket.company_id == company_id,
-        Ticket.status == "New",
-        Ticket.technician_id.is_(None),
         Ticket.deleted_at.is_(None),
         Ticket.slot_start.is_not(None),
         # A window that has already opened cannot be travelled to. The pool
@@ -172,10 +202,16 @@ def pool_query(
         Ticket.slot_start > _now(),
         covers_pincode,
         certified_for,
+        is_active,
     ]
+    if open_only:
+        conditions += [
+            Ticket.status == "New",
+            Ticket.technician_id.is_(None),
+        ]
     if eligible_only:
         conditions += [
-            available,
+            accepting,
             # "New offers stop once you hit this cap" — the approved copy on
             # the Availability screen, which was untrue until this line.
             has_cap_room(company_id=company_id, technician_id=technician_id),
@@ -482,11 +518,28 @@ async def accept(
         ).where(Ticket.id == ticket_id)
     )
     if offered is None:
+        # Not in the pool. Two reasons, and only one of them is "no such job":
+        # the usual case by far is that somebody accepted it while this
+        # technician was reading the card. Answering 404 for a job they were
+        # looking at seconds ago is wrong AND alarming, and it is the case the
+        # app's `JobTakenError` exists to render calmly.
+        taken = await db.scalar(
+            pool_query(
+                company_id=company_id,
+                technician_id=profile.id,
+                eligible_only=False,
+                open_only=False,
+            ).where(Ticket.id == ticket_id)
+        )
+        if taken is not None:
+            raise JobRefused(
+                "JOB_ALREADY_TAKEN", "Another technician accepted this job first"
+            )
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
-    if profile.status != "active" or not profile.accepting_work:
+    if profile.status != ACTIVE or not profile.accepting_work:
         raise JobRefused(
             "NOT_ACCEPTING_WORK",
             "You're not accepting work right now — turn availability back on to "

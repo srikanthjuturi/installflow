@@ -370,13 +370,23 @@ async def _technicians_out(
             )
         )
     }
-    # One grouped query for the page. `bwUsed` was hardcoded 0 until the jobs
-    # slice existed to count; it now comes from the same rule the daily cap is
-    # enforced with, so the console's bandwidth bar and the technician's pool
-    # cannot disagree about the same day.
-    used_today = await jobs_today_by_technician(
-        session, company_id=triples[0][0].company_id, technician_ids=ids
-    )
+    # One grouped query per company — normally exactly one, since both callers
+    # are company-scoped. Grouped rather than keyed off `triples[0]`, because
+    # that would silently report 0 for every technician outside the first row's
+    # company if a caller ever passed a mixed page: a wrong number with nothing
+    # to show it was wrong.
+    #
+    # `bwUsed` was hardcoded 0 until the jobs slice existed to count it. It now
+    # uses the same rule the daily cap is enforced with, so the console's
+    # bandwidth bar and the technician's own pool cannot disagree about a day.
+    used_today: dict[uuid.UUID, int] = {}
+    by_company: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for profile, _m, _u in triples:
+        by_company.setdefault(profile.company_id, []).append(profile.id)
+    for company_id, tech_ids in by_company.items():
+        used_today |= await jobs_today_by_technician(
+            session, company_id=company_id, technician_ids=tech_ids
+        )
 
     out: list[TechnicianOut] = []
     for profile, membership, user in triples:

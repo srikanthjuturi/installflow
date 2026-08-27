@@ -31,6 +31,7 @@ from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.models.membership import Membership
 from app.models.role import AREA_MANAGER
 from app.models.technician import (
+    ACTIVE,
     TechnicianPincode,
     TechnicianProfile,
     TechnicianSubcategory,
@@ -100,7 +101,7 @@ async def technicians_covering(
                 # `status`, not a soft-delete column — this table has none.
                 # A suspended technician keeps their coverage rows, so
                 # filtering on coverage alone would still reach them.
-                TechnicianProfile.status == "active",
+                TechnicianProfile.status == ACTIVE,
                 TechnicianProfile.accepting_work.is_(True),
                 covers_pincode,
                 certified_for,

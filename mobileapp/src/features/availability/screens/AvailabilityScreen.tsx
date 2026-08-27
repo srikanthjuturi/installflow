@@ -41,8 +41,12 @@ export function AvailabilityScreen() {
   const cap = useDailyJobCap();
   const { mutate: setBandwidth } = useSetDailyJobCap();
 
+  // Three states, not two. Coalescing `undefined` to `null` would render "no
+  // limit" at a technician who has one, for as long as the profile takes to
+  // arrive — and then flip under them. Loading is its own answer.
+  const loading = cap === undefined;
   const bandwidthPerDay = cap ?? null;
-  const limited = bandwidthPerDay !== null;
+  const limited = !loading && bandwidthPerDay !== null;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -74,15 +78,18 @@ export function AvailabilityScreen() {
               marginBottom: 14,
             }}
           >
-            {limited
-              ? "Maximum installs you'll take per day. New offers stop once you hit this cap."
-              : "You'll be offered as many installs a day as come up. Set a cap if you'd rather not."}
+            {loading
+              ? 'Loading your current limit…'
+              : limited
+                ? "Maximum installs you'll take per day. New offers stop once you hit this cap."
+                : "You'll be offered as many installs a day as come up. Set a cap if you'd rather not."}
           </Text>
 
           <Pressable
-            onPress={() => setBandwidth(limited ? null : BANDWIDTH_DEFAULT)}
+            onPress={loading ? undefined : () => setBandwidth(limited ? null : BANDWIDTH_DEFAULT)}
+            disabled={loading}
             accessibilityRole="switch"
-            accessibilityState={{ checked: limited }}
+            accessibilityState={{ checked: limited, disabled: loading }}
             accessibilityLabel="Limit jobs per day"
             style={{
               flexDirection: 'row',
