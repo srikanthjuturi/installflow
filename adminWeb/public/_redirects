@@ -1,0 +1,7 @@
+# SPA fallback. The console is client-routed (BrowserRouter), so every path
+# below has to be served index.html and let src/routes.tsx match it — without
+# this, a refresh on /tickets or a pasted deep link returns Netlify's own 404
+# and our NotFoundPage is unreachable.
+#
+# 200, not 301: the address must stay put so the router can read it.
+/*    /index.html    200

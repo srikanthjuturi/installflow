@@ -159,7 +159,9 @@ colour table.
 
 ```
 adminWeb/
-  public/images/placeholders/
+  public/
+    _redirects          Netlify SPA fallback — see Deployment
+    images/placeholders/
   src/
     components/
       dashboard/          KpiRow · SlaBar · FunnelStrip · AttentionCards · RecentTickets
@@ -168,6 +170,7 @@ adminWeb/
       vendor/             VendorShell · PortalNav · portalNav.ts · AddVendorUserDialog
                           — the vendor PORTAL, a third shell. See below.
       escalations/        EscalationCard · BonusPicker · EligibleTechTable
+      notfound/           DispatchRadar — the `0` of 404, on-domain rather than stock art
       ai-review/          AiQueueTable · ConfidenceMeter · SerialCompare · ProofLightbox
       technicians/        TechTable · BandwidthBar · TechProfileHeader · JobHistoryTable
       masters/            VendorTable · TerritoryTree · CategoryCard · UserTable
@@ -187,6 +190,7 @@ adminWeb/
       masters/            VendorsPage · TerritoryPage · CategoriesPage
       settings/           RulesConfigPage · UsersRolesPage
       auth/LoginPage.tsx
+      NotFoundPage.tsx    the `*` route — eager, not lazy
     hooks/                useTickets · useEscalations · useAiQueue · useTechnicians · useRules …
     services/
       mocks/              seeded mock data, one file per domain
@@ -432,6 +436,22 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named |
 | `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet; drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link |
 | `/settings/rules` · `/settings/users` | settings | |
+| `*` | `NotFoundPage` | every unmatched URL. Renders — it does not redirect |
+
+**The `*` route renders a page; it does not redirect.** Bouncing an unknown URL to the dashboard
+makes a mistyped link look like a successful navigation, with nothing on screen to say otherwise.
+Three things about `NotFoundPage` are deliberate:
+
+- **It is the only page imported eagerly.** A fallback that must fetch a chunk of its own can fail
+  in precisely the situation it exists for — a stale deploy whose chunks have moved.
+- **It sits outside all three shells.** `*` is react-router's lowest-ranked pattern, so one splat
+  per shell would leave three equally specific candidates for an unknown URL and let declaration
+  order pick the winner. A single top-level route is unambiguous, and it is also the only version
+  that renders signed-OUT, where no shell exists to sit inside.
+- **Its way back is `landingPath()`, not `/`.** Losing the sidebar means the button IS the
+  navigation, and a vendor sent to `/` would bounce off the staff guard and visibly redirect twice.
+
+It needs `public/_redirects` to be reachable at all in production — see Deployment.
 
 **Domain types are discriminated unions.** `TicketStatus` = `New | Slot Pending | Assigned |
 In Progress | AI Review | Escalated | Closed | Force-Closed | Cancelled` (9).
@@ -696,6 +716,47 @@ npm run lint        # must pass before every commit
 npm run typecheck
 npm run build
 ```
+
+## Deployment (Netlify)
+
+The console is a static SPA: Netlify builds it and serves `dist/`. Only this half is on Netlify —
+the API stays on Azure App Service.
+
+| Netlify setting | Value | Why |
+|---|---|---|
+| Base directory | `adminWeb` | the repo root also holds `api/` and `mobileapp/` and has **no** `package.json`; a build from the root fails on the first command |
+| Build command | `npm run build` | |
+| Publish directory | `dist` | resolved **relative to the base directory** — not `adminWeb/dist` |
+| Functions directory | *empty* | there are none |
+| Branch | `main` | |
+
+**The environment variables are mandatory, not optional.** `.env` is git-ignored, so the build
+clone starts with nothing; without them the bundle calls `undefined/companies` and every screen
+fails at once. Set both in the Netlify UI — never commit the values, which is the whole reason
+`.env` is ignored:
+
+- `VITE_API_BASE_URL` — the Azure API, ending in `/api/v1`
+- `VITE_GOOGLE_MAPS_API_KEY` — the referrer-restricted browser key
+
+Node is pinned by `adminWeb/.nvmrc` (`24`), which Netlify reads out of the base directory. Keep
+that file as the single source and skip a `NODE_VERSION` variable — a second declaration is one
+that can drift.
+
+**`public/_redirects` is what makes client-side routing work at all.** It is one line,
+`/*  /index.html  200`. Without it Netlify resolves `/tickets` against the filesystem, finds
+nothing, and returns **its own** 404 — so a refresh, a bookmark or any pasted deep link dies
+before React starts, and `NotFoundPage` is never reached. `200` rather than `301` because the
+address has to stay put for the router to read it.
+
+Two prerequisites live outside this repo, and both fail silently — the build goes green and the
+app is broken:
+
+- **`CORS_ORIGINS` must name the deployed origin.** `api/app/core/config.py` ships localhost
+  only; add the Netlify origin to the Azure App Service settings and restart, or the browser
+  blocks every request.
+- **The Maps key's HTTP-referrer allowlist must name it too.** A `VITE_*` value is inlined into
+  the bundle, so that restriction is the only thing keeping a public key safe — and until the
+  origin is on the list, address autocomplete fails everywhere it is used.
 
 ## Commit rhythm
 

@@ -1,5 +1,10 @@
 import { lazy } from "react";
 import { Navigate, Outlet, useLocation, type RouteObject } from "react-router";
+/* The one page that is NOT lazy — see the route table's `*` entry. It is the
+   fallback for every unmatched URL, including the one you land on when a stale
+   chunk 404s, and a fallback that must fetch a chunk of its own can fail in
+   exactly the situation it exists for. */
+import NotFoundPage from "@/pages/NotFoundPage";
 import { AppShell } from "@/components/shared/AppShell";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { featureForPath } from "@/components/shared/nav";
@@ -142,16 +147,6 @@ function RedirectIfSignedIn() {
   return <Navigate to={landingPath({ superadmin, portal })} replace />;
 }
 
-/**
- * Unknown URL → wherever this session lives. `/` would cost a vendor a visible
- * double redirect out through the staff guard.
- */
-function NotFound() {
-  const superadmin = useSession((s) => s.superadmin);
-  const portal = useSession((s) => s.portal);
-  return <Navigate to={landingPath({ superadmin, portal })} replace />;
-}
-
 export const routes: RouteObject[] = [
   {
     element: <RedirectIfSignedIn />,
@@ -260,5 +255,5 @@ export const routes: RouteObject[] = [
       },
     ],
   },
-  { path: "*", element: <NotFound /> },
+  { path: "*", element: <NotFoundPage /> },
 ];

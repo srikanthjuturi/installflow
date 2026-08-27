@@ -57,6 +57,84 @@
 }
 
 @layer utilities {
+  /* ── The 404 dispatch radar ──────────────────────────────────
+     Keyframes live here rather than in the component because AGENTS.md keeps
+     inline `style=` out of components, and Tailwind has no rotation loop.
+
+     Every base state is authored on the SVG element itself, never in a `from`
+     keyframe. That is what makes reduced motion correct for free: the global
+     `prefers-reduced-motion` block collapses these to 0.01ms with fill-mode
+     `none`, so each element reverts to the attributes it was drawn with — a
+     parked sweep and a lit blip, no snapping and no rules repeated here. */
+  @keyframes radar-sweep {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Pure kinetic ornament — base opacity is 0, so under reduced motion these
+     rings are absent rather than frozen mid-pulse. That is the intent. */
+  @keyframes radar-ping {
+    0% {
+      transform: scale(1);
+      opacity: 0.4;
+    }
+    100% {
+      transform: scale(1.34);
+      opacity: 0;
+    }
+  }
+
+  /* Same 4.5s period as the sweep, spiking at the top of the cycle — which is
+     where the wedge is drawn sitting over the blip. They stay in phase. */
+  @keyframes radar-blip {
+    0% {
+      opacity: 1;
+    }
+    28%,
+    100% {
+      opacity: 0.12;
+    }
+  }
+
+  .animate-radar-sweep {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
+    animation: radar-sweep 4.5s linear infinite;
+  }
+
+  .animate-radar-ping {
+    transform-box: view-box;
+    transform-origin: 50% 50%;
+    animation: radar-ping 3.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  .animate-radar-blip {
+    animation: radar-blip 4.5s linear infinite;
+  }
+
+  /* The dot lattice from the sign-in brand panel, reusable on any surface.
+     `--dot` is the ink, so a caller on a dark ground overrides it and the
+     geometry stays in one place. `.dot-grid-fade` softens the edges so the
+     lattice never ends on a hard line. */
+  .dot-grid {
+    --dot: var(--border-2);
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      var(--dot) 1px,
+      transparent 0
+    );
+    background-size: 26px 26px;
+  }
+
+  .dot-grid-fade {
+    mask-image: radial-gradient(
+      ellipse 58% 52% at 50% 45%,
+      black 30%,
+      transparent 100%
+    );
+  }
+
   /* Wide content (tables, timelines) scrolls inside its own box so the page
      body never scrolls horizontally. */
   .scroll-x {
