@@ -31,6 +31,24 @@ export const TICKET_STATUSES = [
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 /**
+ * The three statuses a ticket never leaves. Mirrors TERMINAL_STATUSES in
+ * `api/app/core/tickets.py`.
+ *
+ * A ticket here is answered for. Nothing is left to force-close and nobody is
+ * left to send, so the controls that do either are not offered — the point is
+ * that the record has stopped moving, which is also why `slaState` reads
+ * `done` rather than `ok`.
+ */
+export const TERMINAL_TICKET_STATUSES: readonly TicketStatus[] = [
+  "Closed",
+  "Force-Closed",
+  "Cancelled",
+];
+
+export const isTerminalTicketStatus = (status: TicketStatus): boolean =>
+  TERMINAL_TICKET_STATUSES.includes(status);
+
+/**
  * SLA state. `done` means the window closed with the job complete — it is a
  * terminal state, not a healthy one, so it never sorts with `ok`.
  *

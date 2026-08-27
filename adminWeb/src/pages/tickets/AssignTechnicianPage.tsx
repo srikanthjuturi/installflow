@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useAssignTicket, useTicket } from "@/hooks/useTickets";
 import { useCandidateTechnicians } from "@/hooks/useTechnicians";
+import { isTerminalTicketStatus } from "@/types";
 import type { Technician } from "@/types/technician";
 
 /**
@@ -61,6 +62,13 @@ export default function AssignTechnicianPage() {
         onSettled: () => setPending(null),
       }
     );
+  }
+
+  // Same guard, same reason, as `ForceClosePage` — see the note there. A
+  // settled ticket has nobody left to send, and the shortlist below would
+  // otherwise offer a manager a dozen technicians for a job that is over.
+  if (ticket && isTerminalTicketStatus(ticket.status)) {
+    return <Navigate to={`/tickets/${ticket.id}`} replace />;
   }
 
   return (

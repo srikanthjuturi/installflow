@@ -61,11 +61,19 @@ const SUMMARY: DashboardSummary = {
       tone: "ai",
     },
     {
+      // The queue, not one ticket. This pointed at `/tickets/INST-240970` —
+      // a ticket CODE, from when the list was mock and keyed by them. The
+      // route and the API both take a UUID now, so it 422'd on arrival.
+      //
+      // `Awaiting Customer` is the status `sweep_force_close` reads
+      // (`api/app/features/tickets/sweeps.py`); the list can filter on that,
+      // but not on the 48h silence, so this lands a superset. Honest, and the
+      // rows the manager wants are in it — unlike a link that only errored.
       key: "force-close",
       title: "Awaiting force-close",
       sub: "No customer response 48h",
       count: "2",
-      to: "/tickets/INST-240970",
+      to: "/tickets?status=Awaiting%20Customer",
       tone: "warn",
     },
     {

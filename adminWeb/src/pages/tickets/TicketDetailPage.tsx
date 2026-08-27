@@ -16,6 +16,7 @@ import {
 } from "@/components/tickets/SidePanels";
 import { Timeline } from "@/components/tickets/Timeline";
 import { useTicket } from "@/hooks/useTickets";
+import { isTerminalTicketStatus } from "@/types";
 
 /**
  * One ticket, on two surfaces.
@@ -43,6 +44,13 @@ export default function TicketDetailPage({
   // is the portal. Every ops-only control reads this, so a new one cannot be
   // added on the ops side and quietly appear on the vendor's.
   const isOps = actions === undefined;
+
+  // Closed, Force-Closed and Cancelled are the end of the record. Force-closing
+  // a ticket that is already closed, or sending a technician to a job nobody is
+  // waiting on, are not things a manager can mean — so the controls go rather
+  // than sit there waiting to be pressed and rejected.
+  const isSettled = !!ticket && isTerminalTicketStatus(ticket.status);
+  const canAct = isOps && !isSettled;
 
   return (
     <>
@@ -99,18 +107,20 @@ export default function TicketDetailPage({
                   </div>
 
                   {isOps ? (
-                    <div className="flex flex-wrap gap-2.5">
-                      <LinkButton
-                        variant="outline"
-                        className="hover:border-danger hover:text-danger"
-                        to={`/tickets/${ticket.id}/force-close`}
-                      >
-                        Force close
-                      </LinkButton>
-                      <LinkButton to={`/tickets/${ticket.id}/assign`}>
-                        Re-assign
-                      </LinkButton>
-                    </div>
+                    canAct ? (
+                      <div className="flex flex-wrap gap-2.5">
+                        <LinkButton
+                          variant="outline"
+                          className="hover:border-danger hover:text-danger"
+                          to={`/tickets/${ticket.id}/force-close`}
+                        >
+                          Force close
+                        </LinkButton>
+                        <LinkButton to={`/tickets/${ticket.id}/assign`}>
+                          Re-assign
+                        </LinkButton>
+                      </div>
+                    ) : null
                   ) : (
                     actions
                   )}
@@ -147,8 +157,12 @@ export default function TicketDetailPage({
               // subject up in the escalation MOCK, whose three rows are keyed
               // by ticket CODE, so a real ticket's UUID could only ever come
               // back as "Escalation <uuid> not found".
+              //
+              // It disappears on a settled ticket for the same reason the pair
+              // in the header do: it is the same re-assignment, reached from
+              // the panel it would change.
               action={
-                isOps ? (
+                canAct ? (
                   <LinkButton
                     variant="outline"
                     size="sm"

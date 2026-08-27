@@ -87,6 +87,12 @@ export interface ForceCloseInput {
  *
  * So it fails where it can be seen. Force-closure needs a status transition, a
  * real attachment upload and an audit row; it lands with the closure slice.
+ *
+ * When it does, it must refuse a ticket already in `TERMINAL_STATUSES` with a
+ * 409 — `api/app/core/tickets.py`, the same set the detail screen hides its
+ * actions on. The client guard is a courtesy, not the rule: it only knows what
+ * the last read told it, and a colleague can close a ticket in the seconds
+ * between that read and this call.
  */
 export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
   void input;
@@ -122,6 +128,11 @@ export interface AssignTechnicianInput {
  * `ticket_events.kind` has no `assigned` yet, so it needs a migration. Until
  * that lands this fails where it can be seen — an assignment that appeared to
  * work and moved nothing is the worse outcome.
+ *
+ * It refuses a ticket in `TERMINAL_STATUSES` with a 409 for the same reason
+ * force-closure does, and there is a second one here: the daily cap counts
+ * `Closed` jobs, so assigning a settled ticket would spend a technician's
+ * bandwidth on a day whose work is already done.
  */
 export function assignTechnician(input: AssignTechnicianInput): Promise<Ticket> {
   void input;
