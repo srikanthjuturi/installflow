@@ -13,6 +13,8 @@ technician sees, often on a bad connection, and a build pipeline for one page
 would be its own liability.
 """
 
+from urllib.parse import quote
+
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
@@ -32,6 +34,43 @@ router = APIRouter(tags=["onboarding"])
 #: Nothing verifies it against `scheme` in mobileapp/app.config.ts at runtime,
 #: so a wrong value fails the only way deep links ever fail: the button does
 #: nothing at all.
+
+
+def _android_intent(path: str) -> str:
+    """The same deep link as an Android `intent://` URI.
+
+    Chrome on Android does NOT follow a bare `customscheme://` href. It blocks
+    the navigation and reports nothing, so "Open the app" appears to be a dead
+    button even with the app installed and the scheme registered correctly —
+    which is exactly how this failed in the field.
+
+    `intent://` is the supported route: Chrome resolves it against an installed
+    package, and `S.browser_fallback_url` gives it somewhere to go when the app
+    is absent, so the button stops silently doing nothing in BOTH cases.
+
+    The package is the first of `ANDROID_PACKAGE`. That setting is
+    comma-separated to survive a rename, and the first entry is the current
+    name — an old build carrying the old package still opens through its App
+    Link, which is verified against both.
+    """
+    package = next(
+        (p.strip() for p in settings.ANDROID_PACKAGE.split(",") if p.strip()),
+        "",
+    )
+    fallback = settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK
+    parts = [
+        f"intent://{path}#Intent",
+        f"scheme={settings.APP_SCHEME}",
+    ]
+    if package:
+        parts.append(f"package={package}")
+    parts.append(f"S.browser_fallback_url={quote(fallback, safe='')}")
+    return ";".join(parts) + ";end"
+
+
+#: Where to send someone who does not have the app. Overridden by
+#: TECHNICIAN_APP_LINK, which currently names a build artifact directly.
+_DEFAULT_APP_LINK = "https://install.reliancegreentech.in/technician"
 
 _PAGE = """<!doctype html>
 <html lang="en">
@@ -75,7 +114,7 @@ _PAGE = """<!doctype html>
     <div class="mark">RG</div>
     <h1>Your invite is ready</h1>
     <p>Open it in the Reliance GreenTech Technician app to set up your account.</p>
-    <a class="cta" href="{deep_link}">Open the app</a>
+    <a class="cta" id="open" href="{deep_link}">Open the app</a>
     <a class="store" href="{app_link}">I don&rsquo;t have the app yet</a>
     <p class="note">
       This link is personal to you &mdash; please don&rsquo;t share it. If nothing
@@ -83,10 +122,19 @@ _PAGE = """<!doctype html>
     </p>
   </div>
   <script>
+    // Android needs an intent:// URI — Chrome refuses a bare custom scheme and
+    // says nothing, which makes the button look broken. Everything else (iOS,
+    // Firefox, a desktop browser) follows the plain scheme in the href, so it
+    // stays as the no-JavaScript default and only Android is rewritten.
+    var ANDROID = {android_intent_js};
+    var onAndroid = /android/i.test(navigator.userAgent);
+    var target = onAndroid ? ANDROID : {deep_link_js};
+    if (onAndroid) document.getElementById("open").href = ANDROID;
+
     // Try the app immediately: most people arriving here already have it, and
-    // one tap is better than two. If it is not installed nothing happens and
-    // the buttons are still there.
-    window.location.href = {deep_link_js};
+    // one tap is better than two. A browser that requires a real tap first will
+    // ignore this and the button is still there.
+    window.location.href = target;
   </script>
 </body>
 </html>
@@ -102,11 +150,12 @@ async def invite_landing(token: str) -> HTMLResponse:
     """
     safe = "".join(c for c in token if c.isalnum() or c in "-_")
     deep_link = f"{settings.APP_SCHEME}://invite/{safe}"
+    android_intent = _android_intent(f"invite/{safe}")
     return HTMLResponse(
         _PAGE.format(
             deep_link=deep_link,
             deep_link_js=f'"{deep_link}"',
-            app_link=settings.TECHNICIAN_APP_LINK
-            or "https://install.reliancegreentech.in/technician",
+            android_intent_js=f'"{android_intent}"',
+            app_link=settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK,
         )
     )
