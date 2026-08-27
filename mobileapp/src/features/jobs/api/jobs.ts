@@ -160,6 +160,13 @@ function toJob(dto: JobOfferDto): Job {
     status: 'pool',
     hoursToSlot: hoursUntil(dto.slotStart),
     maskedCustomer: dto.maskedCustomer,
+    // A pool offer has no history: nobody has done it, so no customer has
+    // passed judgement on it. Stated rather than omitted so the compiler can
+    // keep insisting that every mapper answers the question.
+    customerRating: null,
+    customerFeedback: null,
+    customerConfirmedAt: null,
+    customerRefused: false,
   };
 }
 
@@ -177,6 +184,12 @@ export function toAcceptedJob(dto: JobDto): Job {
     customer: dto.customerName,
     phone: dto.customerPhone,
     address: dto.address,
+    // The customer's verdict. Only an ACCEPTED job can have one, which is why
+    // it is mapped here and not in `toJob` — a pool offer has no history.
+    customerRating: dto.customerRating,
+    customerFeedback: dto.customerFeedback,
+    customerConfirmedAt: dto.customerConfirmedAt,
+    customerRefused: dto.customerRefused,
   };
 }
 

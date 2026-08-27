@@ -164,12 +164,18 @@ export interface Job {
    * `customerConfirmedAt` is the one that says whether there IS a verdict —
    * a rating of null means "confirmed without rating", which is a different
    * claim from "has not answered yet".
+   *
+   * REQUIRED, not optional, and nullable instead. Optional let a mapper forget
+   * them and still compile: the fields reached the DTO type, the mapping was
+   * silently dropped, and the section rendered nothing while the API was
+   * returning the data perfectly. A pool offer states them as null, which is
+   * true — it has no history — and the compiler now insists somebody says so.
    */
-  customerRating?: number | null;
-  customerFeedback?: string | null;
-  customerConfirmedAt?: string | null;
+  customerRating: number | null;
+  customerFeedback: string | null;
+  customerConfirmedAt: string | null;
   /** They answered and said the work is NOT finished. */
-  customerRefused?: boolean;
+  customerRefused: boolean;
   /**
    * Hours until the committed slot; negative means past. Single source for
    * status badges, pool filtering and penalty bands. Becomes a real timestamp
