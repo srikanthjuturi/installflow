@@ -1,27 +1,17 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 
-import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Switch } from '@/components/ui';
 import {
-  BANDWIDTH_DEFAULT,
-  BANDWIDTH_MIN,
-  useAvailabilityStore,
-  useBandwidthPerDay,
-} from '@/store/availability.store';
+  useDailyJobCap,
+  useSetDailyJobCap,
+} from '@/features/availability/hooks/useAvailability';
 import { color } from '@/theme/semantic';
-import { palette } from '@/theme/tokens';
-import type { WeekdayKey } from '@/types/domain';
 
-const DAYS: { key: WeekdayKey; label: string; hours: string }[] = [
-  { key: 'Mon', label: 'Monday', hours: '9–6' },
-  { key: 'Tue', label: 'Tuesday', hours: '9–6' },
-  { key: 'Wed', label: 'Wednesday', hours: '9–6' },
-  { key: 'Thu', label: 'Thursday', hours: '9–6' },
-  { key: 'Fri', label: 'Friday', hours: '9–6' },
-  { key: 'Sat', label: 'Saturday', hours: '10–4' },
-  { key: 'Sun', label: 'Sunday', hours: '9–6' },
-];
+/** Where the stepper starts when somebody switches a limit on. */
+const BANDWIDTH_DEFAULT = 6;
+/** A cap of 0 means "never offer me work", which is what going offline says. */
+const BANDWIDTH_MIN = 1;
 
 /**
  * Screen 3 — Availability & bandwidth.
@@ -31,21 +21,27 @@ const DAYS: { key: WeekdayKey; label: string; hours: string }[] = [
  * count is the only version a technician can reason about in the field.
  *
  * **A new technician arrives with no limit.** Neither the ops console's Add
- * screen nor the joining flow asks for one any more — a number invented before
- * anybody has worked a day is a number nobody has a basis for.
+ * screen nor the joining flow asks for one — a number invented before anybody
+ * has worked a day is a number nobody has a basis for.
  *
- * WARNING: what this screen changes does NOT reach the server yet. It writes to
- * Zustand only, so the value resets on relaunch. The update endpoint is gated
- * on technicians.edit, which a technician does not hold, and there is no
- * self-service endpoint — the same gap as the missing technician-edit screen
- * noted in adminWeb/AGENTS.md.
+ * ## What used to be here
+ *
+ * A weekday grid and a "Mark time off" switch, both of which wrote to Zustand
+ * and nowhere else. Neither had a table, a column or an endpoint behind it, the
+ * `9–6` / `10–4` hours were hardcoded display strings tied to no data, and time
+ * off duplicated the Home online toggle — which is real and genuinely stops
+ * offers. They are gone rather than wired: the honest screen is the small one.
+ *
+ * The cap is now server state and lives in Query under hard rule 3, like the
+ * online toggle before it. The warning that used to sit here — "what this screen
+ * changes does NOT reach the server" — is what the change deletes.
  */
 export function AvailabilityScreen() {
-  const { days, timeOff, toggleDay, setBandwidth, setTimeOff } = useAvailabilityStore();
+  // `undefined` while the profile loads; `null` means NO LIMIT.
+  const cap = useDailyJobCap();
+  const { mutate: setBandwidth } = useSetDailyJobCap();
 
-  // Their own edit if they made one, otherwise the cap their manager set.
-  // Null means NO LIMIT, which is the default for a new technician.
-  const bandwidthPerDay = useBandwidthPerDay();
+  const bandwidthPerDay = cap ?? null;
   const limited = bandwidthPerDay !== null;
 
   return (
@@ -57,70 +53,6 @@ export function AvailabilityScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel>Working days</SectionLabel>
-
-        <View
-          style={{
-            backgroundColor: color.surfaceRaised,
-            borderWidth: 1,
-            borderColor: color.border,
-            borderRadius: 16,
-            paddingVertical: 8,
-            paddingHorizontal: 6,
-            marginBottom: 20,
-          }}
-        >
-          {DAYS.map((day, i) => {
-            const active = days[day.key];
-
-            return (
-              <Pressable
-                key={day.key}
-                onPress={() => toggleDay(day.key)}
-                accessibilityRole="switch"
-                accessibilityState={{ checked: active }}
-                accessibilityLabel={day.label}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingVertical: 11,
-                    paddingHorizontal: 12,
-                    borderTopWidth: i === 0 ? 0 : 1,
-                    borderTopColor: palette.neutral[100],
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: 'Roboto_500Medium',
-                      fontSize: 14.5,
-                      color: active ? color.textPrimary : color.textMuted,
-                    }}
-                  >
-                    {day.label}
-                  </Text>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Roboto_400Regular',
-                        fontSize: 12.5,
-                        color: color.textMuted,
-                      }}
-                    >
-                      {active ? day.hours : 'Off'}
-                    </Text>
-                    {/* Row is the tap target, so the switch is presentational. */}
-                    <Switch value={active} onValueChange={() => toggleDay(day.key)} static />
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-
         <SectionLabel>Daily job bandwidth</SectionLabel>
 
         <View
@@ -223,66 +155,6 @@ export function AvailabilityScreen() {
           ) : null}
         </View>
 
-        <Pressable
-          onPress={() => setTimeOff(!timeOff)}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: timeOff }}
-          accessibilityLabel="Mark time off"
-        >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              backgroundColor: color.surfaceRaised,
-              borderWidth: 1,
-              borderColor: color.border,
-              borderRadius: 16,
-              padding: 15,
-            }}
-          >
-            <View
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                backgroundColor: color.slotBg,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Icon name="calendar" size={22} color={palette.secondary[600]} strokeWidth={1.7} />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontFamily: 'Roboto_700Bold',
-                  fontSize: 14.5,
-                  color: color.textPrimary,
-                }}
-              >
-                Mark time off
-              </Text>
-              <Text
-                style={{
-                  fontFamily: 'Roboto_400Regular',
-                  fontSize: 12.5,
-                  color: color.textSecondary,
-                }}
-              >
-                {timeOff ? 'Time off is on — no offers today' : 'You are available today'}
-              </Text>
-            </View>
-
-            <Switch
-              value={timeOff}
-              onValueChange={setTimeOff}
-              activeColor={palette.secondary[600]}
-              static
-            />
-          </View>
-        </Pressable>
       </ScrollView>
     </View>
   );

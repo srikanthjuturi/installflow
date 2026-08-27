@@ -178,14 +178,7 @@ export interface Technician {
   pincodes: string[];
 }
 
-export type WeekdayKey = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 
-export interface Availability {
-  days: Record<WeekdayKey, boolean>;
-  /** Simple jobs-per-day cap, 1–12 — not weighted by job type. */
-  bandwidthPerDay: number;
-  timeOff: boolean;
-}
 
 export type TransactionKind = 'install' | 'bonus' | 'penalty';
 

@@ -3,6 +3,7 @@ import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
+import { useAcceptingWork } from '@/features/availability/hooks/useAvailability';
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
@@ -20,6 +21,7 @@ import { palette } from '@/theme/tokens';
  */
 export function PoolScreen() {
   const router = useRouter();
+  const online = useAcceptingWork();
   const { data, isPending, isError, isRefetching, refetch } = usePool();
 
   return (
@@ -57,7 +59,30 @@ export function PoolScreen() {
           details stay masked until you accept.
         </Text>
 
-        {isPending ? (
+        {!online ? (
+          /* `usePool` is `enabled: online`, and a DISABLED query in Query v5
+             never leaves `pending` — so without this branch an offline
+             technician sat in front of three loading skeletons forever, with
+             nothing saying why or how to fix it. */
+          <View style={{ alignItems: 'center', paddingVertical: 50, paddingHorizontal: 20 }}>
+            <Text
+              style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
+            >
+              You&apos;re offline
+            </Text>
+            <Text
+              style={{
+                fontFamily: 'Roboto_400Regular',
+                fontSize: 12.5,
+                color: color.textMuted,
+                marginTop: 4,
+                textAlign: 'center',
+              }}
+            >
+              Turn availability on from Home to start receiving offers.
+            </Text>
+          </View>
+        ) : isPending ? (
           <>
             <JobCardSkeleton />
             <JobCardSkeleton />

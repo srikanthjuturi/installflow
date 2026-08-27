@@ -25,6 +25,7 @@ from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.coverage import jobs_today_by_technician
 from app.core.deps import Principal
 from app.core.schemas import ListParams
 from app.core.scope import (
@@ -39,6 +40,7 @@ from app.core.presence import is_online
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     AvailabilityOut,
+    AvailabilityRequest,
     InviteCreateRequest,
     OnboardingOut,
     SubcategoryRef,
@@ -368,6 +370,13 @@ async def _technicians_out(
             )
         )
     }
+    # One grouped query for the page. `bwUsed` was hardcoded 0 until the jobs
+    # slice existed to count; it now comes from the same rule the daily cap is
+    # enforced with, so the console's bandwidth bar and the technician's pool
+    # cannot disagree about the same day.
+    used_today = await jobs_today_by_technician(
+        session, company_id=triples[0][0].company_id, technician_ids=ids
+    )
 
     out: list[TechnicianOut] = []
     for profile, membership, user in triples:
@@ -388,7 +397,7 @@ async def _technicians_out(
                 subcategories=subs.get(profile.id, []),
                 pincodes=pins.get(profile.id, []),
                 dailyJobCap=profile.daily_job_cap,
-                bwUsed=0,
+                bwUsed=used_today.get(profile.id, 0),
                 rating=float(profile.rating) if profile.rating is not None else None,
                 jobsCompleted=profile.jobs_completed,
                 jobsCancelled=profile.jobs_cancelled,
@@ -679,22 +688,40 @@ async def get_me(session: AsyncSession, principal: Principal) -> TechnicianSessi
 
 
 async def set_availability(
-    session: AsyncSession, principal: Principal, *, accepting_work: bool
+    session: AsyncSession, principal: Principal, body: AvailabilityRequest
 ) -> AvailabilityOut:
-    """The technician turning their own availability on or off.
+    """The technician's own availability — the toggle, the cap, or both.
 
-    Writes ONLY the intent. `last_seen_at` is left alone on purpose: it is
-    observed from the live socket, and letting a request assert it would put
-    the lie back into the data that `app.core.presence` exists to keep out.
+    Writes only what was SENT. `model_fields_set`, not `is not None`, because a
+    null cap is a real value meaning no limit; testing for None would make it
+    settable and never clearable.
+
+    `last_seen_at` is left alone on purpose: it is observed from the live
+    socket, and letting a request assert it would put the lie back into the data
+    that `app.core.presence` exists to keep out.
 
     Turning availability off does not close the socket from here. The app drops
     it the moment the toggle moves — see `usePoolStream` — and presence then
     ages out on its own. Reaching across to kill a connection would be a second
     mechanism for something one already handles.
+
+    **Lowering the cap below what is already held is allowed.** The cap governs
+    future accepts, not existing commitments: those jobs are promises to
+    customers with times the customer chose, and a settings screen must not be
+    able to cancel them. `count < cap` handles it — hold five, set the cap to
+    two, and no sixth arrives.
     """
     if principal.role != TECHNICIAN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not a technician account"
+        )
+    sent = body.model_fields_set
+    if not sent:
+        # A PATCH that changes nothing returning 200 tells the app it saved
+        # something it did not.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Nothing to update",
         )
     profile = await session.scalar(
         select(TechnicianProfile)
@@ -708,11 +735,21 @@ async def set_availability(
     if profile is None:
         raise _not_found("Technician profile")
 
-    profile.accepting_work = accepting_work
+    if "acceptingWork" in sent and body.acceptingWork is not None:
+        profile.accepting_work = body.acceptingWork
+    if "dailyJobCap" in sent:
+        profile.daily_job_cap = body.dailyJobCap
     await session.commit()
     await session.refresh(profile)
+
+    held = await jobs_today_by_technician(
+        session, company_id=profile.company_id, technician_ids=[profile.id]
+    )
     return AvailabilityOut(
-        acceptingWork=profile.accepting_work, online=is_online(profile)
+        acceptingWork=profile.accepting_work,
+        online=is_online(profile),
+        dailyJobCap=profile.daily_job_cap,
+        jobsToday=held.get(profile.id, 0),
     )
 
 

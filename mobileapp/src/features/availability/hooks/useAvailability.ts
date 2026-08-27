@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { setAcceptingWork } from '@/features/availability/api/availability';
+import {
+  setAcceptingWork,
+  setDailyJobCap,
+} from '@/features/availability/api/availability';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { qk } from '@/lib/queryKeys';
 import { useSession } from '@/store/session.store';
@@ -70,6 +73,69 @@ export function useSetAcceptingWork() {
         useSession.getState().setTechnician({
           ...current,
           acceptingWork: result.acceptingWork,
+        });
+      }
+    },
+
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.me() });
+    },
+  });
+}
+
+/**
+ * The technician's own daily job cap. **Null means no limit**, which is what
+ * every new technician has until they set one.
+ *
+ * `undefined` while the profile loads, so the screen can hold its shape instead
+ * of flashing "no limit" at somebody who has one.
+ */
+export function useDailyJobCap(): number | null | undefined {
+  const { data } = useMe();
+  return data?.dailyJobCap;
+}
+
+/**
+ * Set or clear the cap.
+ *
+ * Optimistic for the same reason the toggle is: a stepper that waits for a
+ * round trip per tap is unusable on a field connection. Rolled back on failure,
+ * because leaving the number where they dragged it would tell a technician they
+ * had raised their cap while the server kept refusing jobs at the old one.
+ *
+ * The value it writes was Zustand-only until this existed — set, then silently
+ * lost on the next relaunch, with nothing on screen to explain it.
+ */
+export function useSetDailyJobCap() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: setDailyJobCap,
+
+    onMutate: async (next: number | null) => {
+      await queryClient.cancelQueries({ queryKey: qk.me() });
+      const previous = queryClient.getQueryData<TechnicianSession>(qk.me());
+      if (previous) {
+        queryClient.setQueryData<TechnicianSession>(qk.me(), {
+          ...previous,
+          dailyJobCap: next,
+        });
+      }
+      return { previous };
+    },
+
+    onError: (_error, _next, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(qk.me(), context.previous);
+      }
+    },
+
+    onSuccess: (result) => {
+      const current = queryClient.getQueryData<TechnicianSession>(qk.me());
+      if (current) {
+        useSession.getState().setTechnician({
+          ...current,
+          dailyJobCap: result.dailyJobCap,
         });
       }
     },

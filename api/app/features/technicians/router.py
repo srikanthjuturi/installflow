@@ -60,19 +60,27 @@ async def get_my_technician_profile(
 async def set_my_availability(
     db: Db, principal: CompanyPrincipal, body: AvailabilityRequest
 ) -> ApiEnvelope[AvailabilityOut]:
-    """A technician saying whether they want work.
+    """A technician saying whether they want work, and how much of it.
 
-    No feature guard, for the same reason `/me` has none: the seeded technician
-    role does not carry `technicians.edit`, so gating this would 403 every
-    technician against their own availability.
+    Both halves of the Availability & bandwidth screen. The daily cap lives here
+    rather than on its own route because it is the same decision — how much work
+    am I taking — saved from the same screen; a second endpoint would be two
+    round trips and two failure modes for one action.
+
+    Until this accepted a cap there was no way for a technician to set their
+    own at all: `PUT /technicians/{id}` requires `technicians.edit`, which the
+    seeded technician role does not hold. The joining flow's own docstring
+    already promised "a technician sets their own cap afterwards, in the app's
+    Availability screen" — an endpoint that did not exist.
+
+    No feature guard, for the same reason `/me` has none: gating this would 403
+    every technician against their own availability.
 
     Only the caller's own row is reachable — the profile is resolved from the
     principal, and there is no id in the path to guess at.
     """
     return envelope(
-        await service.set_availability(
-            db, principal, accepting_work=body.acceptingWork
-        ),
+        await service.set_availability(db, principal, body),
         message="Availability updated",
     )
 

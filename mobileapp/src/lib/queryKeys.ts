@@ -10,7 +10,6 @@ import type { JobStatus } from '@/types/domain';
 export const qk = {
   invite: (token: string) => ['auth', 'invite', token] as const,
   me: () => ['me'] as const,
-  availability: () => ['me', 'availability'] as const,
 
   pool: () => ['jobs', 'pool'] as const,
   poolOffer: (id: string) => ['jobs', 'pool', id] as const,

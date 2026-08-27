@@ -1,5 +1,4 @@
 import type {
-  Availability,
   EarningsSummary,
   ProductCategory,
   Technician,
@@ -41,11 +40,6 @@ export const technician: Technician = {
   pincodes: ['400067', '400097', '400104'],
 };
 
-export const availability: Availability = {
-  days: { Mon: true, Tue: true, Wed: true, Thu: true, Fri: true, Sat: true, Sun: false },
-  bandwidthPerDay: 6,
-  timeOff: false,
-};
 
 /**
  * The seeded jobs are GONE.

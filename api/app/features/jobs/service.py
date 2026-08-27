@@ -32,6 +32,8 @@ from sqlalchemy import Select, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.coverage import has_cap_room
+from app.core.errors import AppError
 from app.core.notifications import notify
 from app.core.realtime import (
     publish_notification,
@@ -84,8 +86,26 @@ def mask_name(full_name: str) -> str:
     return " ".join(f"{p[0].upper()}••••" for p in parts[:2])
 
 
-def pool_query(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> Select:
+def pool_query(
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    eligible_only: bool = True,
+) -> Select:
     """Every ticket this technician may be offered, soonest slot first.
+
+    ## `eligible_only=False` — "would this be yours if you had room?"
+
+    The LIST wants the full predicate: a pool showing a job the technician
+    cannot take is a pool that wastes their time. But a single ticket reached
+    from a stale list or a push notification must not answer "Job not found"
+    just because the day has since filled or the toggle went off — the job
+    plainly exists and they could take it tomorrow. Callers that need to tell
+    somebody WHY pass `False` and check the reason themselves; see `accept`.
+
+    What `False` drops is only availability and capacity. Coverage,
+    certification, company and `status == 'New'` still apply, so it never
+    widens what a technician may see.
 
     The predicate is deliberately keyed on `status == 'New'` plus
     `slot_start IS NOT NULL`, and NOT on `slot_confirmed_at`. That column is
@@ -122,21 +142,48 @@ def pool_query(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> Select:
         )
         .exists()
     )
+    # The technician's own row has to qualify too, and until now it did not.
+    #
+    # Going offline stopped the CLIENT polling and nothing else, so an offline
+    # or suspended technician could still read the pool and accept from it with
+    # a plain HTTP call — a client-side filter over a list the server already
+    # sent, which the note at the top of this module says is not a boundary.
+    # `core.coverage.technicians_covering` has always filtered on both, and its
+    # docstring warns that the two must agree; this is that debt.
+    available = (
+        select(TechnicianProfile.id)
+        .where(
+            TechnicianProfile.company_id == company_id,
+            TechnicianProfile.id == technician_id,
+            TechnicianProfile.status == "active",
+            TechnicianProfile.accepting_work.is_(True),
+        )
+        .exists()
+    )
+
+    conditions = [
+        Ticket.company_id == company_id,
+        Ticket.status == "New",
+        Ticket.technician_id.is_(None),
+        Ticket.deleted_at.is_(None),
+        Ticket.slot_start.is_not(None),
+        # A window that has already opened cannot be travelled to. The pool
+        # is a list of commitments a technician could still keep.
+        Ticket.slot_start > _now(),
+        covers_pincode,
+        certified_for,
+    ]
+    if eligible_only:
+        conditions += [
+            available,
+            # "New offers stop once you hit this cap" — the approved copy on
+            # the Availability screen, which was untrue until this line.
+            has_cap_room(company_id=company_id, technician_id=technician_id),
+        ]
 
     return (
         select(Ticket)
-        .where(
-            Ticket.company_id == company_id,
-            Ticket.status == "New",
-            Ticket.technician_id.is_(None),
-            Ticket.deleted_at.is_(None),
-            Ticket.slot_start.is_not(None),
-            # A window that has already opened cannot be travelled to. The pool
-            # is a list of commitments a technician could still keep.
-            Ticket.slot_start > _now(),
-            covers_pincode,
-            certified_for,
-        )
+        .where(*conditions)
         # Soonest first: the pool is read top-down and the job most at risk of
         # going unassigned is the one happening next.
         .order_by(Ticket.slot_start.asc(), Ticket.code.asc())
@@ -359,16 +406,49 @@ async def get_offer(
     404 rather than 403 for a ticket that exists but is not in this
     technician's pool — the same rule the rest of the API follows, and for the
     same reason: 403 confirms the row is there.
+
+    `eligible_only=False`, unlike the LIST above. This screen is reached from a
+    push sent hours earlier or from a list that has since gone stale, and a job
+    that has become untakeable — the day filled, the toggle went off — is not a
+    job that stopped existing. Answering 404 would be false, and would leave a
+    notification that opens onto "not found". The honest refusal is at `accept`,
+    which can say which of the two happened.
     """
-    stmt = pool_query(company_id=company_id, technician_id=technician_id).where(
-        Ticket.id == ticket_id
-    )
+    stmt = pool_query(
+        company_id=company_id, technician_id=technician_id, eligible_only=False
+    ).where(Ticket.id == ticket_id)
     row = await db.scalar(stmt)
     if row is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
     return (await _hydrate(db, [row]))[0]
+
+
+def JobRefused(code: str, detail: str) -> AppError:
+    """A 409 that says which kind of "no" it is.
+
+    Three of them share this status, and the app has to act differently on
+    each: try another job, turn availability on, or raise your cap. Matching on
+    409 alone told a capped technician somebody else had been faster.
+    """
+    return AppError(http_status.HTTP_409_CONFLICT, code, detail)
+
+
+def _ist_day_label(when: datetime.datetime | None) -> str:
+    """"Fri 29 Aug", in the technician's OWN day — never the server's.
+
+    Built by hand rather than with `%-d`/`%#d`, which are the same idea spelled
+    differently on Linux and Windows: this codebase is developed on Windows and
+    runs on Linux, so a platform-specific format string works on exactly one of
+    them.
+    """
+    if when is None:
+        return "that day"
+    local = when.astimezone(
+        datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
+    )
+    return f"{local:%a} {local.day} {local:%b}"
 
 
 async def accept(
@@ -392,14 +472,25 @@ async def accept(
     # Eligibility first, and through the pool query itself so there is exactly
     # one definition of "may be offered this". A technician who does not cover
     # the pincode gets the same 404 as one guessing at ids.
+    # `eligible_only=False`, and the availability and cap reasons are raised
+    # separately below. With them folded in here, a technician whose day had
+    # filled — or who had gone offline — would be told the job did not exist,
+    # which is both false and unactionable.
     offered = await db.scalar(
-        pool_query(company_id=company_id, technician_id=profile.id).where(
-            Ticket.id == ticket_id
-        )
+        pool_query(
+            company_id=company_id, technician_id=profile.id, eligible_only=False
+        ).where(Ticket.id == ticket_id)
     )
     if offered is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    if profile.status != "active" or not profile.accepting_work:
+        raise JobRefused(
+            "NOT_ACCEPTING_WORK",
+            "You're not accepting work right now — turn availability back on to "
+            "take jobs.",
         )
 
     result = await db.execute(
@@ -409,13 +500,40 @@ async def accept(
             Ticket.company_id == company_id,
             Ticket.status == "New",
             Ticket.technician_id.is_(None),
+            # The cap is re-tested HERE and not only in the eligibility read
+            # above, because that read is a read: one technician tapping two
+            # jobs for the same day at the same moment passes it twice and
+            # would end the transaction over their cap. Settled in the WHERE
+            # clause, Postgres serialises them and the second matches nothing.
+            has_cap_room(company_id=company_id, technician_id=profile.id),
         )
         .values(technician_id=profile.id, status="Assigned")
     )
     if result.rowcount == 0:
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail="Another technician accepted this job first",
+        # Two very different reasons to have matched nothing, and a technician
+        # can act on only one of them. Losing a race means try another job;
+        # being full means the day is done — telling them "somebody was faster"
+        # would send them back to a pool with nothing in it for them either.
+        #
+        # Read the ticket rather than re-running the cap: if it is still open,
+        # the cap is the only clause left that can have failed.
+        still_open = await db.scalar(
+            select(Ticket.id).where(
+                Ticket.id == ticket_id,
+                Ticket.company_id == company_id,
+                Ticket.status == "New",
+                Ticket.technician_id.is_(None),
+            )
+        )
+        if still_open is not None:
+            day = _ist_day_label(offered.slot_start)
+            raise JobRefused(
+                "DAILY_CAP_REACHED",
+                f"You already have {profile.daily_job_cap} jobs on {day} — that is "
+                "your daily limit. Raise it under Availability & bandwidth.",
+            )
+        raise JobRefused(
+            "JOB_ALREADY_TAKEN", "Another technician accepted this job first"
         )
 
     name = await db.scalar(

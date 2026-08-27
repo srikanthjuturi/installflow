@@ -33,6 +33,18 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly errors: string[] = [],
+    /**
+     * The server's machine-readable reason, when one status carries several.
+     *
+     * `POST /jobs/{id}/accept` returns 409 for three unrelated things — the job
+     * was taken, you are offline, you are at your daily cap — and matching on
+     * the status alone told a capped technician somebody else had been faster.
+     * Wrong, and it hid the only action that fixes it.
+     *
+     * Undefined on every error that has only one meaning, which is most of
+     * them. Never render it: the `message` is what a person reads.
+     */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -45,6 +57,8 @@ interface Envelope<T> {
   message: string;
   data: T | null;
   errors: string[];
+  /** Present only on errors that need distinguishing — see `ApiError.code`. */
+  code?: string;
 }
 
 interface RequestOptions {
@@ -93,6 +107,7 @@ export async function apiRequest<T>(
       envelope?.message ?? `Request failed (${response.status})`,
       response.status,
       envelope?.errors ?? [],
+      envelope?.code,
     );
   }
 

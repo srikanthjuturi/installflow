@@ -201,18 +201,33 @@ class TechnicianSessionOut(AppModel):
 
 
 class AvailabilityRequest(AppModel):
-    """The technician turning their own availability on or off.
+    """The technician's own availability — the toggle and the daily cap.
 
-    One field on purpose. `last_seen_at` is NOT settable: reachability is
-    observed from the live socket, never asserted by a client — see
-    `app.core.presence`.
+    Both halves of one screen and one save. Two endpoints would mean two round
+    trips and two failure modes for a single user action, and the app would have
+    to reconcile a half-succeeded save.
+
+    Both fields are OPTIONAL, and read through `model_fields_set` rather than by
+    testing for None:
+
+      * `acceptingWork` omitted must not be resent by a client that only wanted
+        to change the cap — that is how a stale toggle overwrites a fresh one.
+      * `dailyJobCap` **null is a real value** meaning NO LIMIT. Testing for
+        None would make the cap settable and never clearable, which is the bug
+        `update_technician` already carries a comment about.
+
+    `last_seen_at` is NOT settable: reachability is observed from the live
+    socket, never asserted by a client — see `app.core.presence`.
     """
 
-    acceptingWork: bool
+    acceptingWork: bool | None = None
+    #: Floor of 1, matching the DB CHECK. No ceiling — twelve was a guess, and a
+    #: technician may take as many jobs a day as they are willing to.
+    dailyJobCap: int | None = Field(default=None, ge=1)
 
 
 class AvailabilityOut(AppModel):
-    """What the toggle gets back.
+    """What the screen gets back.
 
     `online` is returned as well as the intent because they are different
     questions and the app should never compute the AND itself — the staleness
@@ -221,3 +236,9 @@ class AvailabilityOut(AppModel):
 
     acceptingWork: bool
     online: bool
+    #: Null means no limit.
+    dailyJobCap: int | None
+    #: Jobs already held for TODAY, so the screen can say "3 of 5" without
+    #: deriving it from `/jobs/today` — that list excludes closed jobs and would
+    #: give a smaller number than the cap is actually enforced with.
+    jobsToday: int
