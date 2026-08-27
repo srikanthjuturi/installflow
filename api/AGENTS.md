@@ -304,17 +304,70 @@ app/
                          holding it could read every manager in the tenant.
   integrations/          whatsapp.py, otp_channel.py — outbound, and never raise on failure
   models/                one module per area; every model reachable from __init__
-  scripts/               bootstrap, audit_tenancy
+  scripts/               bootstrap, audit_tenancy, create_database, copy_geography
 alembic/versions/        hand-written, with a prose docstring saying WHY
 ```
+
+## Environments — two databases, one server
+
+`sdlcaiserver.postgres.database.azure.com` hosts both:
+
+| Database | Environment | Configured in | Who talks to it |
+|---|---|---|---|
+| `RelianceDB` | development | `.env` | a laptop running `python run.py` · `adminWeb`'s `.env.local` · Expo Go over the LAN |
+| `RelianceProdDB` | production | `.env.production` | the deployed Azure App Service — and so the Netlify console and every installed mobile build |
+
+**There is no environment switch in the code.** `Settings` always reads `.env` from the working
+directory, `DATABASE_URL` is computed from that file's `POSTGRES_*` values, and `publish.py`
+copies `.env.production` into the deployment zip **as `.env`**. The file is the switch.
+`ENVIRONMENT` is a safety flag for OTP echo and the boot check — it selects nothing.
+
+**A command run from `api/` hits DEVELOPMENT unless you say otherwise.** To target production for
+one command, set the environment variable: pydantic-settings ranks it above the `.env` file, so
+nothing is edited and there is nothing to forget to revert.
+
+```powershell
+$env:POSTGRES_DB='RelianceProdDB'; python -m alembic upgrade head
+```
+
+⚠ Editing `.env` to point at production "just for a minute" is how a laptop ends up migrating,
+seeding or wiping the live database an hour later. Use the override.
+
+Two consequences worth carrying:
+
+- **A schema change has to be applied twice** — once to dev, once to prod — and prod must be
+  migrated *before* the code that needs the new column is published, or the deployed API 500s
+  against a schema it is ahead of.
+- **The blob containers are still shared.** `installflow-media` and `installflow-proof` hold both
+  environments' files. The database rows are separate; the files are one pool, so a dev-side blob
+  cleanup can blank out production images.
+
+### Standing up a database from empty
+
+```bash
+python -m app.scripts.create_database --name RelianceProdDB   # quotes the mixed-case identifier
+POSTGRES_DB=RelianceProdDB python -m alembic upgrade head     # schema + roles/regions/features
+POSTGRES_DB=RelianceProdDB python -m app.scripts.bootstrap    # the one superadmin user
+python -m app.scripts.copy_geography --to RelianceProdDB      # 41,073 rows, ids preserved
+POSTGRES_DB=RelianceProdDB python -m app.scripts.audit_tenancy
+```
+
+`upgrade head` seeds the global reference data itself — 8 roles, 5 regions, 26 features, 78 role
+defaults — so there is nothing else to seed. Geography is the exception, because the tables are
+created empty and normally filled from a spreadsheet through Super Admin → Geography;
+`copy_geography` lifts it from an existing database instead. It replaces the target's five seeded
+`regions` rows rather than reusing them, because `regions.id` is `gen_random_uuid()` and the two
+databases would otherwise disagree about which UUID is North.
 
 ## Commands
 
 ```bash
-python run.py                              # uvicorn on :8000
-python -m alembic upgrade head
+python run.py                              # uvicorn on :8000 — DEVELOPMENT database
+python -m alembic upgrade head             # DEVELOPMENT unless POSTGRES_DB is overridden
 python -m app.scripts.bootstrap            # the platform superadmin
 python -m app.scripts.audit_tenancy        # after any schema change
+python -m app.scripts.create_database --name <db>      # a new database on the same server
+python -m app.scripts.copy_geography --to <db>         # the geography master, ids preserved
 ```
 
 ### ⚠ Orphaned workers, and why "stale code" keeps happening on Windows

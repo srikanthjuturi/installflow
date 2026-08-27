@@ -40,6 +40,12 @@ PAYLOAD_FILES = ("requirements.txt", "alembic.ini", "application.py")
 #: must never be deployed — it points at localhost and has OTP_DEV_ECHO on.
 ENV_SOURCE = ".env.production"
 
+#: The production database, on the same Azure server as the development one
+#: (`RelianceDB`). Guarded below, because for a long time BOTH env files named
+#: the dev database and the deployed API served it without anything on screen
+#: to say so. A second copy of the name is cheap; that failure was not.
+PRODUCTION_DB = "RelianceProdDB"
+
 
 def fail(message: str) -> None:
     print(f"\nFAILED: {message}", file=sys.stderr)
@@ -106,6 +112,25 @@ def guard_production_config() -> None:
     problems = []
     if values.get("ENVIRONMENT", "").strip() != "production":
         problems.append("ENVIRONMENT must be production")
+    # The check that did not exist while it was most needed. Dev and prod are
+    # two databases on ONE server, so the only thing separating them is this
+    # string — and a wrong one is invisible: the app boots, every screen works,
+    # and it is serving development data to production.
+    if values.get("POSTGRES_DB", "").strip() != PRODUCTION_DB:
+        problems.append(
+            f"POSTGRES_DB must be {PRODUCTION_DB}, not "
+            f"{values.get('POSTGRES_DB', '').strip() or '<unset>'} — this would "
+            f"deploy an API that serves the development database"
+        )
+    # A signing key is the whole of the session's security, and the placeholder
+    # shipped in `.env.example` is public in the repository. It ran in
+    # production until the databases were split.
+    jwt_secret = values.get("JWT_SECRET_KEY", "").strip()
+    if "CHANGE_ME" in jwt_secret or len(jwt_secret) < 32:
+        problems.append(
+            "JWT_SECRET_KEY is a placeholder or too short — generate one with "
+            '`python -c "import secrets; print(secrets.token_urlsafe(64))"`'
+        )
     if values.get("OTP_DEV_ECHO", "").strip().lower() not in ("false", "0", ""):
         problems.append("OTP_DEV_ECHO must be false — it returns codes in the response")
     if not values.get("OTP_PEPPER", "").strip():

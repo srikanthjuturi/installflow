@@ -722,6 +722,19 @@ npm run build
 The console is a static SPA: Netlify builds it and serves `dist/`. Only this half is on Netlify —
 the API stays on Azure App Service.
 
+**Which database you are looking at is decided by `VITE_API_BASE_URL`,** because the two API
+deployments read different ones:
+
+| Where | `VITE_API_BASE_URL` | API | Database |
+|---|---|---|---|
+| `npm run dev` on a laptop | `.env.local` → `http://127.0.0.1:8000/api/v1` | the one you started | `RelianceDB` (development) |
+| the Netlify build | the Netlify UI variable → the Azure host | the deployed App Service | `RelianceProdDB` (production) |
+
+Vite ranks `.env.local` above `.env`, so a local `npm run dev` or `npm run build` targets the
+**local** API even though `.env` names the Azure one — which is what you want, and worth knowing
+before wondering why a screen is empty. Delete or rename `.env.local` to point a local session at
+production. See `api/AGENTS.md` → Environments.
+
 | Netlify setting | Value | Why |
 |---|---|---|
 | Base directory | `adminWeb` | the repo root also holds `api/` and `mobileapp/` and has **no** `package.json`; a build from the root fails on the first command |

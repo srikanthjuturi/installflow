@@ -105,10 +105,47 @@ Register every new model in `app/db/base.py` so autogenerate can see it.
 
 ## Database
 
-Azure PostgreSQL 18, database `RelianceDB`, SSL required (`sslmode=require`). Connection
-parameters live in `.env`.
+Azure PostgreSQL 18, SSL required (`sslmode=require`). **Two databases on one server:**
 
-The database name is **mixed case**, so it is quoted everywhere it appears in SQL
-(`CREATE DATABASE "RelianceDB"`); an unquoted `RelianceDB` folds to `reliancedb` and does not
-exist. A connection string passes the name through verbatim, so `POSTGRES_DB=RelianceDB` is
-correct as written.
+| Database | Environment | Configured in | Used by |
+|---|---|---|---|
+| `RelianceDB` | development | `.env` | a laptop running `python run.py`; the console's `.env.local`; Expo Go over the LAN |
+| `RelianceProdDB` | production | `.env.production` | the deployed Azure App Service, and therefore the Netlify console and every installed mobile build |
+
+Nothing in the code chooses between them — `DATABASE_URL` is computed from the `POSTGRES_*`
+values in whichever file is loaded, and `publish.py` copies `.env.production` into the deployment
+zip **as `.env`**. So the file you are editing decides the database, and `publish.py` refuses to
+deploy unless `POSTGRES_DB` names the production one.
+
+To point a single command at the other database, set the environment variable — pydantic-settings
+ranks it above the `.env` file, so nothing needs editing and there is nothing to revert:
+
+```powershell
+$env:POSTGRES_DB='RelianceProdDB'; python -m alembic upgrade head
+```
+
+⚠ **Without that override, `alembic upgrade head` migrates DEVELOPMENT.**
+
+Both names are **mixed case**, so they are quoted everywhere they appear in SQL
+(`CREATE DATABASE "RelianceProdDB"`); an unquoted `RelianceProdDB` folds to `relianceproddb` and
+does not exist. A connection string passes the name through verbatim, so
+`POSTGRES_DB=RelianceProdDB` is correct as written.
+
+### Standing up a database from empty
+
+```bash
+python -m app.scripts.create_database --name RelianceProdDB   # quotes the identifier for you
+POSTGRES_DB=RelianceProdDB python -m alembic upgrade head     # schema + roles, regions, features
+POSTGRES_DB=RelianceProdDB python -m app.scripts.bootstrap    # the one superadmin user
+python -m app.scripts.copy_geography --to RelianceProdDB      # 41,073 rows of geography master
+POSTGRES_DB=RelianceProdDB python -m app.scripts.audit_tenancy
+```
+
+`upgrade head` seeds the global reference data itself — 8 roles, 5 regions, 26 features and their
+78 role defaults all ship inside the migrations, so there is no separate seed step for them. The
+geography master is the exception: the tables are created empty and normally filled from a
+spreadsheet through Super Admin → Geography, so `copy_geography` lifts it from an existing
+database instead, preserving ids so a pincode means the same thing in both.
+
+Everything else — companies, users, vendors, the product master, technicians — is created through
+the console. There is no demo-data seeder.

@@ -185,6 +185,19 @@ cd adminWeb
 npm run dev      # vite; the API must be up for anything to load
 ```
 
+⚠ **Those api commands hit the DEVELOPMENT database.** There are two, on one Azure server:
+`RelianceDB` (development, configured in `api/.env`) and `RelianceProdDB` (production, configured
+in `api/.env.production`, which `publish.py` ships to Azure as `.env`). No code chooses between
+them — the file does. To run one command against production, override the variable rather than
+editing a file, because an environment variable outranks a `.env` value:
+
+```powershell
+$env:POSTGRES_DB='RelianceProdDB'; python -m alembic upgrade head
+```
+
+A schema change therefore has to be applied to **both**, and production must be migrated before
+the code that needs the new column is published. Full detail in `api/AGENTS.md` → Environments.
+
 ⚠ **A restart of the API can silently do nothing.** uvicorn's `--reload` runs a child worker, and
 on Windows that child can outlive its parent and keep the listening socket on :8000. The new
 server then binds alongside it and the ORPHAN keeps answering — with the config it loaded hours or
