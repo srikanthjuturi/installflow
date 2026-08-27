@@ -16,6 +16,7 @@ import {
 import { formatPhone } from "@/utils/phone";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { TechnicianInvite, TechnicianRow } from "@/types/technician";
+import { AvailabilityPill } from "./AvailabilityPill";
 import { BandwidthBar, CancelCount } from "./BandwidthBar";
 import { OnboardingStatusCell } from "./OnboardingStatusCell";
 import {
@@ -154,6 +155,26 @@ export function TechTable({
       id: "region",
       header: "Region",
       cell: (t) => t.regionName,
+    },
+    {
+      id: "availability",
+      header: "Availability",
+      // The same pill the profile header shows, so "Online" means the same
+      // thing in both places.
+      //
+      // Next to Bandwidth rather than next to Status, for two reasons. The two
+      // together are the dispatch question — can this person take work, and how
+      // much of their day is left — and Status sits far enough right that on a
+      // 1440px screen it is already behind the table's horizontal scroll. A
+      // column somebody has to go looking for does not answer anything.
+      cell: (t) =>
+        t.registered ? (
+          <AvailabilityPill acceptingWork={t.acceptingWork} online={t.online} />
+        ) : (
+          /* An invite has no app and no toggle — there is nothing to report
+             yet, which is not the same as "not taking work". */
+          NONE
+        ),
     },
     {
       id: "bandwidth",
@@ -313,7 +334,7 @@ export function TechTable({
   return (
     <DataTable
       errorTitle="Couldn't load technicians"
-      caption="Technicians and open invites, with their categories, service pincodes, region, bandwidth and who appointed them"
+      caption="Technicians and open invites, with their categories, service pincodes, region, bandwidth, availability and who appointed them"
       data={rows}
       columns={columns}
       getRowId={(t) => t.id}
@@ -329,7 +350,7 @@ export function TechTable({
       toolbarActions={toolbarActions}
       server={{ meta, params, onParams }}
       onRowClick={(t) => t.registered && navigate(`/technicians/${t.id}`)}
-      minWidth="82rem"
+      minWidth="90rem"
       emptyIcon={Users}
       emptyTitle="No technicians yet"
       emptyDescription="Add a technician, or invite one by mobile number and let them register themselves."

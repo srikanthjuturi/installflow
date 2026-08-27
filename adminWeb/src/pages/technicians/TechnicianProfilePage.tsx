@@ -14,10 +14,15 @@ import {
 } from "@/components/technicians/TechProfileHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTechnician } from "@/hooks/useTechnicians";
+import { useTechnicianJobs } from "@/hooks/useTickets";
 
 export default function TechnicianProfilePage() {
   const { id = "" } = useParams();
   const { data: tech, isLoading, isError, error, refetch } = useTechnician(id);
+  /* Beside the profile read, not behind it: the two are independent, and
+     waiting for the record before asking for the jobs would put a second
+     round trip in front of the table for no reason. */
+  const jobs = useTechnicianJobs(id);
 
   return (
     <>
@@ -69,9 +74,16 @@ export default function TechnicianProfilePage() {
             )}
 
             {/* The skeleton is the real table, row for row — never a spinner.
-                History stays empty until the jobs slice exists; inventing rows
-                here would be the one number on this page that is not real. */}
-            <JobHistoryTable history={[]} isLoading={isLoading || !tech} />
+                Its own query rather than a field on the technician: the ticket
+                list already scopes by territory and pages in SQL, so this is
+                six rows of the same source the ticket screens read, not a
+                second answer to the same question. */}
+            <JobHistoryTable
+              jobs={jobs.data?.rows}
+              isLoading={isLoading || jobs.isLoading}
+              error={jobs.error}
+              onRetry={() => jobs.refetch()}
+            />
           </div>
         </div>
       )}

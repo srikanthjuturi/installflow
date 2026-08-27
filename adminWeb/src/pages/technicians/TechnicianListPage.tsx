@@ -51,7 +51,7 @@ export default function TechnicianListPage() {
     <>
       <PageMeta
         title="Technicians"
-        description="Technician master list — categories, pincodes, region, bandwidth and how each was onboarded."
+        description="Technician master list — categories, pincodes, region, bandwidth, availability and how each was onboarded."
       />
 
       <TechnicianFormDialog

@@ -28,6 +28,33 @@ export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {
   return apiGetPage<Ticket>("/tickets", params);
 }
 
+/**
+ * One technician's recent jobs — the profile screen's "Recent job history".
+ *
+ * Ordered by SLOT rather than by intake, because the table prints the day the
+ * WORK happened: a ticket raised a week before its slot would otherwise sit at
+ * the top of a list whose dates say it belongs further down.
+ *
+ * No status filter. A manager opening a profile mid-shift wants to see what the
+ * technician is on right now as much as what they finished yesterday, and
+ * hiding everything still open would make a busy technician's page read empty.
+ *
+ * Scoping is the server's: the id narrows a list that is already company- and
+ * territory-scoped, so a technician outside the reader's area returns nothing
+ * rather than leaking that they exist.
+ */
+export function listTechnicianJobs(
+  technicianId: string,
+  limit = 6
+): Promise<Page<Ticket>> {
+  return apiGetPage<Ticket>("/tickets", {
+    limit,
+    sortBy: "slotStart",
+    sortDir: "desc",
+    filters: { technicianId },
+  });
+}
+
 export function getTicket(id: string): Promise<TicketDetail> {
   return apiGet<TicketDetail>(`/tickets/${id}`);
 }

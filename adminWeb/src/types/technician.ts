@@ -113,13 +113,6 @@ export interface TechnicianInvite {
 /** One row of the Technicians screen. Discriminated on `registered`. */
 export type TechnicianRow = Technician | TechnicianInvite;
 
-export interface JobHistoryEntry {
-  id: string;
-  cat: string;
-  date: string;
-  outcome: "Closed" | "Cancelled";
-}
-
 /* ----------------------------------------------------------------- inputs */
 
 export interface CreateTechnicianInput {

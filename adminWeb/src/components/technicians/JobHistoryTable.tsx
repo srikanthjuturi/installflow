@@ -1,76 +1,60 @@
+import { Link, useNavigate } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
-import { cn } from "@/lib/utils";
-import type { JobHistoryEntry } from "@/types/technician";
-
-const OUTCOME_CLASS: Record<JobHistoryEntry["outcome"], string> = {
-  Closed: "bg-status-closed-bg text-status-closed",
-  Cancelled: "bg-status-cancelled-bg text-status-cancelled",
-};
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { formatDate } from "@/utils/datetime";
+import type { Ticket } from "@/types/ticket";
 
 /**
- * "Aug 3" carries no year, so it is compared as an in-year ordinal —
- * month index × 100 + day, giving 803 for "Aug 3" and 730 for "Jul 30".
- * That orders the four recent jobs correctly; anything unparseable returns
- * `null` and the table sorts it last.
+ * The day this job happened.
+ *
+ * The slot, not the intake stamp — a ticket raised on Monday for Friday's
+ * window is Friday's job. `createdAt` is only the fallback for a row that has
+ * somehow reached a technician without a locked slot; nothing should, since
+ * accepting one is what assigns it.
  */
-function dayOfYear(date: string): number | null {
-  const [month, day] = date.trim().split(/\s+/);
-  const index = MONTHS.indexOf(month ?? "");
-  const value = Number(day);
-
-  return index < 0 || Number.isNaN(value) ? null : (index + 1) * 100 + value;
+function jobDate(t: Ticket): string {
+  return t.slotStart ?? t.createdAt;
 }
 
-const columns: Column<JobHistoryEntry>[] = [
+const columns: Column<Ticket>[] = [
   {
-    id: "id",
+    id: "ticket",
     header: "Ticket",
-    cell: (h) => (
-      <span className="font-mono text-xs font-semibold text-brand-400">
-        {h.id}
-      </span>
+    cell: (t) => (
+      /* The row is clickable, but the code stays a real link so it is
+         reachable by keyboard and opens in a new tab. */
+      <Link
+        to={`/tickets/${t.id}`}
+        onClick={(e) => e.stopPropagation()}
+        className="font-mono text-xs font-semibold text-brand-400 hover:text-brand-500"
+      >
+        {t.code}
+      </Link>
     ),
   },
-  { id: "cat", header: "Category", cell: (h) => h.cat },
+  { id: "cat", header: "Category", cell: (t) => t.subcategoryName },
   {
     id: "date",
     header: "Date",
-    sortValue: (h) => dayOfYear(h.date),
-    cell: (h) => h.date,
+    // Sorted on the instant, rendered as "5 Aug". The two used to be the same
+    // string — the mock stored "Aug 3" and this parsed it back into a
+    // month-and-day ordinal, which could not tell December from last December.
+    sortValue: (t) => Date.parse(jobDate(t)),
+    cell: (t) => formatDate(jobDate(t)),
   },
   {
     id: "outcome",
     header: "Outcome",
-    cell: (h) => (
-      <span
-        className={cn(
-          "inline-flex items-center rounded-full px-2.25 py-0.75 text-[11px] font-semibold whitespace-nowrap",
-          OUTCOME_CLASS[h.outcome]
-        )}
-      >
-        {h.outcome}
-      </span>
-    ),
+    // The ticket's real status, in the same badge the ticket list and the
+    // dashboard draw. It reads "In Progress" for a job still running: a
+    // manager opening this page mid-shift is asking what the technician is on
+    // as much as what they finished.
+    cell: (t) => <StatusBadge status={t.status} />,
   },
 ];
 
 /**
- * Four recent jobs inside the technician profile — a short fixed list, not a
+ * Recent jobs inside the technician profile — a short fixed list, not a
  * workspace, so it carries no search, no filters and no paging.
  *
  * DataTable brings the card chrome with it (`rounded-xl bg-card ring-1`, the
@@ -78,27 +62,37 @@ const columns: Column<JobHistoryEntry>[] = [
  * card inside a card. The heading sits above it instead.
  */
 export function JobHistoryTable({
-  history,
+  jobs,
   isLoading = false,
+  error,
+  onRetry,
 }: {
-  history?: JobHistoryEntry[];
+  jobs?: Ticket[];
   isLoading?: boolean;
+  error?: unknown;
+  onRetry?: () => void;
 }) {
+  const navigate = useNavigate();
+
   return (
     <section>
       <h2 className="mb-3.5 text-sm font-semibold">Recent job history</h2>
 
       <DataTable
         caption="Recent job history — ticket, category, date and outcome"
-        data={history}
+        errorTitle="Couldn't load this technician's jobs"
+        data={jobs}
         columns={columns}
-        getRowId={(h) => h.id}
+        getRowId={(t) => t.id}
         isLoading={isLoading}
+        error={error}
+        onRetry={onRetry}
+        onRowClick={(t) => navigate(`/tickets/${t.id}`)}
         pagination={false}
         defaultSort={{ columnId: "date", dir: "desc" }}
         minWidth="32.5rem"
-        emptyTitle="No recent jobs"
-        emptyDescription="Jobs appear here once this technician accepts and closes a ticket."
+        emptyTitle="No jobs yet"
+        emptyDescription="Jobs appear here once this technician accepts a ticket."
       />
     </section>
   );

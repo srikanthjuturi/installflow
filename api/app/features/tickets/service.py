@@ -559,6 +559,7 @@ async def list_tickets(
     status_filter: str | None = None,
     sla_filter: str | None = None,
     service_type: str | None = None,
+    technician_id: uuid.UUID | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -566,6 +567,12 @@ async def list_tickets(
     )
     stmt = await scoped(db, stmt, principal)
     stmt = _apply_search(stmt, params.search)
+
+    # One technician's work. The company filter above is already in the WHERE,
+    # so this rides `ix_tickets_company_technician` rather than scanning — the
+    # profile screen asks for it on every open.
+    if technician_id is not None:
+        stmt = stmt.where(Ticket.technician_id == technician_id)
 
     wanted = _canonical(status_filter, TICKET_STATUSES)
     if wanted is False:
@@ -587,11 +594,26 @@ async def list_tickets(
         stmt = stmt.where(_sla_order_case() == rank)
 
     # Default: most urgent first, which is the whole point of the screen.
-    if params.sortBy == "createdAt":
-        column = Ticket.created_at
-        stmt = stmt.order_by(
-            column.asc() if params.sortDir == "asc" else column.desc()
+    #
+    # `slotStart` is the second axis, and it is a different question from
+    # `createdAt`: when the WORK happens, not when the ticket was typed. They
+    # disagree by days — a job booked a week out is raised long before it is
+    # done — so a technician's history has to be ordered by the slot or it
+    # reads out of sequence against the dates printed beside it. Nulls last
+    # either way: a ticket with no slot yet is not a dated job, and Postgres
+    # would otherwise sort it to the top of a descending list.
+    if params.sortBy in ("createdAt", "slotStart"):
+        column = (
+            Ticket.created_at if params.sortBy == "createdAt" else Ticket.slot_start
         )
+        direction = (
+            column.asc().nulls_last()
+            if params.sortDir == "asc"
+            else column.desc().nulls_last()
+        )
+        # `created_at` breaks the tie, so two jobs in the same slot window keep
+        # a stable order across pages rather than swapping between reads.
+        stmt = stmt.order_by(direction, Ticket.created_at.desc())
     else:
         stmt = stmt.order_by(_sla_order_case().asc(), Ticket.created_at.desc())
 
@@ -899,6 +921,10 @@ async def confirm_slot(
     sent = await _send_slot_confirmed(db, row)
     if sent is not None:
         db.add(sent)
+        # The doorbell above rang before this row existed. Without this one the
+        # `confirmation_sent` entry is invisible to an open console until it is
+        # reloaded — see the same pattern at the end of `create_ticket`.
+        await publish_ticket_changed(db, row)
         await db.commit()
     return row
 
@@ -1023,6 +1049,11 @@ async def create_ticket(
         sent = await _send_slot_confirmed(db, row)
         if sent is not None:
             db.add(sent)
+            # A SECOND doorbell, and it is not redundant. The one above rang at
+            # the first commit; this row lands after it, so a console already
+            # watching this ticket would hold a timeline missing its newest
+            # entry until somebody reloaded the page by hand.
+            await publish_ticket_changed(db, row)
             await db.commit()
     else:
         await _send_slot_request(db, row)
@@ -1041,6 +1072,9 @@ async def create_ticket(
                 ),
             )
         )
+        # Same again, and this branch matters more: "Could not send" is the row
+        # somebody has to act on, and it is the one that would have sat unseen.
+        await publish_ticket_changed(db, row)
         await db.commit()
 
     return (await _hydrate(db, [row]))[0]

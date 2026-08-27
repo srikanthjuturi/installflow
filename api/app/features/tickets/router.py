@@ -62,12 +62,19 @@ async def list_tickets(
     status: Annotated[str | None, Query()] = None,
     slaState: Annotated[str | None, Query()] = None,
     serviceType: Annotated[str | None, Query()] = None,
+    technicianId: Annotated[uuid.UUID | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """One page of tickets, most urgent first.
 
     Sorted by SLA urgency by default rather than by date — the screen exists for
     triage, so the ones already late come first. `?sortBy=createdAt` gives the
     chronological view instead.
+
+    `technicianId` answers "what has this person worked", which is the console's
+    technician profile. It needs no guard of its own: the query is already
+    company-scoped and territory-scoped, so an id from another company — or from
+    outside the reader's own area — narrows to nothing and returns an empty
+    page. It cannot be used to discover that a technician exists.
     """
     rows, total = await service.list_tickets(
         db,
@@ -76,6 +83,7 @@ async def list_tickets(
         status_filter=status,
         sla_filter=slaState,
         service_type=serviceType,
+        technician_id=technicianId,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 

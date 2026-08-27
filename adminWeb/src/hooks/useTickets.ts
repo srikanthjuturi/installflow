@@ -11,9 +11,11 @@ import {
   forceCloseTicket,
   getTicket,
   getTicketProof,
+  listTechnicianJobs,
   listTickets,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
+import { BACKSTOP_REFETCH_MS } from "./liveness";
 import { technicianKeys } from "./useTechnicians";
 import type { ListParams } from "@/types/api";
 
@@ -30,6 +32,14 @@ export const ticketKeys = {
   list: (params: ListParams) => ["tickets", "list", params] as const,
   detail: (id: string) => ["tickets", "detail", id] as const,
   proof: (id: string) => ["tickets", "proof", id] as const,
+  /**
+   * Under the `tickets` prefix on purpose, even though the screen showing it is
+   * a technician's. Every mutation here already invalidates that prefix, and so
+   * does the socket on `ticket.changed` — so a job this technician closes lands
+   * on their profile without anything new having to remember to say so.
+   */
+  byTechnician: (technicianId: string, limit: number) =>
+    ["tickets", "byTechnician", technicianId, limit] as const,
 };
 
 export function useTickets(params: ListParams = {}) {
@@ -40,14 +50,44 @@ export function useTickets(params: ListParams = {}) {
     // every page change empties the table back to skeletons, which reads as
     // the data having gone away rather than as a step sideways.
     placeholderData: keepPreviousData,
+    // The socket keeps this current; the interval is the floor under it for a
+    // socket that has died without saying so. See BACKSTOP_REFETCH_MS.
+    refetchInterval: BACKSTOP_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
+/**
+ * The jobs on a technician's profile. A short peek, not a workspace — six rows,
+ * no paging, most recent slot first.
+ *
+ * Same backstop as the board and the detail: the socket keeps it current, and
+ * the interval is the floor under a socket that has died without saying so.
+ */
+export function useTechnicianJobs(technicianId: string, limit = 6) {
+  return useQuery({
+    queryKey: ticketKeys.byTechnician(technicianId, limit),
+    queryFn: () => listTechnicianJobs(technicianId, limit),
+    enabled: Boolean(technicianId),
+    refetchInterval: BACKSTOP_REFETCH_MS,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * One ticket, including the timeline the audit trail renders.
+ *
+ * The same backstop as the board, and it earns it more: this is the screen
+ * somebody sits on while a job is happening, so it is the one most likely to be
+ * left open long enough for a dead socket to matter.
+ */
 export function useTicket(id: string) {
   return useQuery({
     queryKey: ticketKeys.detail(id),
     queryFn: () => getTicket(id),
     enabled: Boolean(id),
+    refetchInterval: BACKSTOP_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
