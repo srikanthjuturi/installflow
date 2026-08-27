@@ -23,10 +23,24 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # ─── CORS ──────────────────────────────────────────────────────────────
-    # Origins allowed to call the API from a browser (the adminWeb dev server).
-    # Set CORS_ORIGINS in .env as a JSON array to override.
+    # Origins allowed to call the API from a browser. Set CORS_ORIGINS in .env
+    # as a JSON array to override the whole list.
+    #
+    # The deployed console lives in this default rather than in an App Service
+    # setting on purpose: it is a fixed, public origin, and a browser blocks
+    # EVERY request when it is missing — so the one place it must not be
+    # forgotten is the place that ships with the code.
+    #
+    # `allow_credentials=True` in main.py means "*" is not available here: the
+    # CORS spec rejects the wildcard once credentials are in play, so every
+    # origin has to be named. Netlify deploy previews and branch deploys get
+    # their own `<name>--reliancegreentech.netlify.app` hostnames and are NOT
+    # covered — that needs `allow_origin_regex`, a wider grant than anyone has
+    # asked for yet.
+    #
     # Vite auto-increments its port when one is taken, so allow the usual range.
     CORS_ORIGINS: list[str] = [
+        "https://reliancegreentech.netlify.app",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
