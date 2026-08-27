@@ -268,7 +268,72 @@ class NotificationRaised:
 
 
 #: Everything that travels on the channel.
-Event = PoolChanged | JobChanged | TicketChanged | NotificationRaised
+@dataclass(frozen=True, slots=True)
+class TechnicianChanged:
+    """A technician's own availability moved, for the CONSOLE.
+
+    Raised when they toggle "accepting work" or change their daily cap — the
+    two things they can change about themselves that a manager assigning work
+    needs to see. Without it the availability pill is only ever as fresh as the
+    last page load, and a manager hands a job to somebody who went offline ten
+    minutes ago.
+
+    Deliberately NOT raised for presence. `last_seen_at` is stamped on every
+    socket ping, so publishing that would be a firehose — one frame per
+    technician per 30 seconds, to say nothing anybody asked about. Reachability
+    decays on a TTL and the console picks it up on its normal refetch, which is
+    the right trade: a toggle is a decision and should be instant, while
+    "their phone went quiet" is an observation that can arrive a minute late.
+
+    Carries no state, like everything else here. The console re-reads
+    `GET /technicians`, which applies territory scoping in SQL.
+    """
+
+    company_id: uuid.UUID
+    technician_id: uuid.UUID
+
+    def as_payload(self) -> str:
+        return json.dumps(
+            {
+                "kind": "technician.changed",
+                "company_id": str(self.company_id),
+                "technician_id": str(self.technician_id),
+            },
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def from_payload(raw: dict[str, Any]) -> "TechnicianChanged | None":
+        if raw.get("kind") != "technician.changed":
+            return None
+        try:
+            return TechnicianChanged(
+                company_id=uuid.UUID(str(raw["company_id"])),
+                technician_id=uuid.UUID(str(raw["technician_id"])),
+            )
+        except (KeyError, ValueError, TypeError):
+            log.warning("realtime: discarding malformed payload %r", raw)
+            return None
+
+
+async def publish_technician_changed(
+    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
+) -> None:
+    """Tell the consoles this technician's availability moved."""
+    await db.execute(
+        text("SELECT pg_notify(:channel, :payload)"),
+        {
+            "channel": CHANNEL,
+            "payload": TechnicianChanged(
+                company_id=company_id, technician_id=technician_id
+            ).as_payload(),
+        },
+    )
+
+
+Event = (
+    PoolChanged | JobChanged | TicketChanged | NotificationRaised | TechnicianChanged
+)
 
 
 async def publish_notification(
@@ -455,6 +520,7 @@ class Broker:
             or JobChanged.from_payload(raw)
             or TicketChanged.from_payload(raw)
             or NotificationRaised.from_payload(raw)
+            or TechnicianChanged.from_payload(raw)
         )
         if event is None:
             return

@@ -37,6 +37,7 @@ from app.core.scope import (
     pincodes_in_states,
 )
 from app.core.presence import is_online
+from app.core.realtime import publish_technician_changed
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     AvailabilityOut,
@@ -751,6 +752,12 @@ async def set_availability(
         profile.accepting_work = body.acceptingWork
     if "dailyJobCap" in sent:
         profile.daily_job_cap = body.dailyJobCap
+
+    # In the same transaction as the change, so a rolled-back save never tells
+    # a manager somebody went offline. `pg_notify` fires on commit.
+    await publish_technician_changed(
+        session, company_id=profile.company_id, technician_id=profile.id
+    )
     await session.commit()
     await session.refresh(profile)
 

@@ -5,6 +5,7 @@ import { BASE_URL } from "@/services/http";
 import { useSession } from "@/store/session";
 import { dashboardKeys } from "./useDashboard";
 import { notificationKeys } from "./useNotifications";
+import { technicianKeys } from "./useTechnicians";
 import { ticketKeys } from "./useTickets";
 
 /**
@@ -106,6 +107,17 @@ export function useTicketStream(): void {
             void queryClient.invalidateQueries({
               queryKey: notificationKeys.all,
             });
+            break;
+          case "technician.changed":
+            // Somebody toggled their availability or changed their daily cap.
+            // The frame names nobody: the console re-reads `GET /technicians`,
+            // which applies territory scoping in SQL.
+            //
+            // Only the technician's own DECISION arrives this way. Whether
+            // their phone is still reachable decays on a TTL server-side and
+            // lands on the next refetch — publishing that would be one frame
+            // per technician per ping, to say nothing anybody asked about.
+            void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
             break;
           case "notification.raised":
             // No id and no text in the frame — the bell is a count, and the

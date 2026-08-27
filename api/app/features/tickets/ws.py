@@ -41,7 +41,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.deps import Principal
-from app.core.realtime import NotificationRaised, TicketChanged, broker
+from app.core.realtime import (
+    NotificationRaised,
+    TechnicianChanged,
+    TicketChanged,
+    broker,
+)
 from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import ROLE_RANKS, SUPERADMIN, TECHNICIAN, VENDOR_USER
@@ -255,6 +260,19 @@ async def ticket_stream(ws: WebSocket) -> None:
                         # No id and no text: the bell is a count, and the feed
                         # behind it applies the audience rule properly.
                         await ws.send_json({"type": "notification.raised"})
+                    continue
+
+                if isinstance(event, TechnicianChanged):
+                    # Availability, for the assignment screens. Staff only —
+                    # a vendor has no business knowing who is on shift, and no
+                    # screen that would show it.
+                    #
+                    # No territory test: the frame names nobody the console can
+                    # act on without re-reading, and `GET /technicians` applies
+                    # the real scoping in SQL. Filtering here would need this
+                    # file to hold a second copy of that rule.
+                    if visibility.vendor_id is None:
+                        await ws.send_json({"type": "technician.changed"})
                     continue
 
                 # Only ticket movement past here. The pool and per-technician
