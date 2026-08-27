@@ -103,10 +103,19 @@ export function useTicketStream(): void {
             // Whatever moved while this console was disconnected was missed
             // outright — the server keeps no backlog — so a fresh connection
             // always re-reads once.
+            //
+            // It re-reads everything the cases below touch, which is the whole
+            // point: a key this socket keeps fresh but does not re-read here is
+            // a key that stays wrong for as long as the console is left open.
+            // Technicians and the dashboard were exactly that — a colleague
+            // going offline during a dropped connection stayed "Online" on the
+            // manager's screen indefinitely.
             void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
             void queryClient.invalidateQueries({
               queryKey: notificationKeys.all,
             });
+            void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+            void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
             break;
           case "technician.changed":
             // Somebody toggled their availability or changed their daily cap.

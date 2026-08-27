@@ -29,7 +29,7 @@ from app.core.config import settings
 from app.core.coverage import area_managers_covering
 from app.core.notifications import notify
 from app.core.push import send_to_technician
-from app.core.realtime import publish_notification
+from app.core.realtime import publish_notification, publish_ticket_changed
 from app.models.company import Company
 from app.models.notification import Notification
 from app.models.ticket import Ticket
@@ -316,6 +316,15 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
                 note=f"Reminded the technician — slot at {row.slot_start:%H:%M}",
             )
         )
+        # The only sweep that raises no notification still has to ring the
+        # ticket's own doorbell. It writes a timeline row, and a manager with
+        # that ticket open should watch "Reminded the technician" arrive rather
+        # than discover it on the next reload.
+        #
+        # Before the push, not after: `send_to_technicians` commits when it
+        # prunes a dead token, and the notify must be inside whichever commit
+        # carries the event — never in a later one that could land alone.
+        await publish_ticket_changed(db, row)
         # The event is written whether or not the push lands. A phone with
         # notifications switched off has no token, and recording that we tried
         # is what stops this retrying every five minutes until the slot opens.

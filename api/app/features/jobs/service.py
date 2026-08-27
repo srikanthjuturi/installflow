@@ -1095,6 +1095,11 @@ async def _send_feedback_request(
             ),
         )
     )
+    # `complete` already rang, but it rang one commit ago and this row is newer.
+    # The failure branch is the one that earns it: a customer who never got the
+    # link is a job that will sit in `Awaiting Customer` until somebody notices,
+    # and "somebody notices" should not depend on reloading the page.
+    await publish_ticket_changed(db, row)
     await db.commit()
 
 

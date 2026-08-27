@@ -38,7 +38,16 @@ export default function TicketDetailPage({
   actions?: React.ReactNode;
 } = {}) {
   const { id = "" } = useParams();
-  const { data: ticket, isLoading, isError, error, refetch } = useTicket(id);
+  const {
+    data: ticket,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    // `isFetching`, not `isLoading`: this is a re-read of a ticket already on
+    // screen, and `isLoading` is only true when there is nothing to show.
+    isFetching,
+  } = useTicket(id);
 
   // The one switch between the two surfaces: a caller that named its actions
   // is the portal. Every ops-only control reads this, so a new one cannot be
@@ -136,7 +145,15 @@ export default function TicketDetailPage({
               </CardContent>
             </Card>
 
-            <Timeline events={ticket.timeline} />
+            {/* The same query the whole page reads — refreshing the trail
+                refreshes the facts above it, which is the honest behaviour:
+                a timeline newer than the status beside it would be worse
+                than a stale one. */}
+            <Timeline
+              events={ticket.timeline}
+              onRefresh={() => void refetch()}
+              isRefreshing={isFetching}
+            />
           </div>
 
           <div className="flex flex-col gap-3.5">

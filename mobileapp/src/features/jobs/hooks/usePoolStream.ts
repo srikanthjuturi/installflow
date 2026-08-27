@@ -29,6 +29,23 @@ import { getAccessToken, useSession } from '@/store/session.store';
  * fetch bring it back — masked, tenant-scoped, exactly as it always was. This
  * hook adds a transport, not a second source of truth.
  *
+ * ## The availability toggle gates the OFFERS, not the socket
+ *
+ * The two frames answer to different rules, and conflating them was a bug. An
+ * offline technician must receive no offers — so `pool.changed` is dropped —
+ * but `job.changed` is the customer answering for work they have already done,
+ * and there is no version of "I have finished for the day" that means "do not
+ * tell me the customer said it was not done".
+ *
+ * So the connection follows the SESSION and the toggle is read per frame. The
+ * server never consulted the toggle anyway (`api/app/features/jobs/ws.py`
+ * authenticates and nothing more), so this is entirely a client rule.
+ *
+ * The cost is a socket held while an offline technician has the app open, and
+ * presence stamped for them — which is the honest reading of `last_seen_at`:
+ * their phone IS answering. The console's pill takes "accepting work" and
+ * "reachable" as two facts precisely because they are two facts.
+ *
  * ## Why the poll survives
  *
  * `usePool` keeps a timer even while this is connected, just a much slower one.
@@ -76,11 +93,24 @@ export function usePoolStream(): void {
   const delayRef = useRef(BACKOFF_MIN_MS);
   const closedByUsRef = useRef(false);
 
+  // The toggle is read INSIDE the message handler, not from the effect's
+  // dependency list. It decides what to do with a frame; it must not tear the
+  // connection down and build it again every time somebody flips it.
+  const onlineRef = useRef(online);
   useEffect(() => {
-    // Offline is a promise the Home screen makes out loud — "Not receiving
-    // offers". Holding a live socket open would quietly contradict it, and
-    // would keep waking the radio for somebody who has finished for the day.
-    if (!online || !hasSession) return;
+    onlineRef.current = online;
+  }, [online]);
+
+  useEffect(() => {
+    // Signed in is the whole condition. The toggle used to be part of it, which
+    // silently cost the technician their OWN job updates: `job.changed` is the
+    // customer answering — confirming the work, or saying it was not done — and
+    // somebody who has stopped taking new offers has not stopped caring about
+    // the job they finished an hour ago.
+    //
+    // "Not receiving offers" stays literally true: `pool.changed` is dropped
+    // below while the toggle is off, so no offer ever reaches the screen.
+    if (!hasSession) return;
 
     closedByUsRef.current = false;
 
@@ -137,10 +167,26 @@ export function usePoolStream(): void {
             // outright — the server keeps no backlog. So a fresh connection
             // always re-reads once, which is what makes a reconnect after a
             // tunnel or a signal drop leave a correct screen behind.
-            void queryClient.invalidateQueries({ queryKey: qk.pool() });
+            //
+            // The whole `jobs` prefix, not just the pool. Only the pool was
+            // re-read here, so a `job.changed` that arrived while the phone was
+            // in a tunnel was simply lost — and that frame is the customer
+            // answering, which is the one thing on this socket nobody else will
+            // tell them about.
+            //
+            // The prefix rather than a list of keys: a reconnect cannot know
+            // WHICH job moved, and enumerating them is how the next key added
+            // to `qk` quietly stops being restored. Invalidation only refetches
+            // queries that are actually mounted, so the breadth costs a request
+            // for the screen in front of the technician and nothing else.
+            void queryClient.invalidateQueries({ queryKey: ['jobs'] });
             break;
           case 'pool.changed':
-            void queryClient.invalidateQueries({ queryKey: qk.pool() });
+            // Dropped while offline. This is where "Not receiving offers"
+            // is kept honest now that the socket itself stays open.
+            if (onlineRef.current) {
+              void queryClient.invalidateQueries({ queryKey: qk.pool() });
+            }
             break;
           case 'job.changed': {
             // One of THIS technician's own jobs moved — almost always the
@@ -231,5 +277,5 @@ export function usePoolStream(): void {
       subscription.remove();
       teardown();
     };
-  }, [online, hasSession, queryClient, setStreamConnected]);
+  }, [hasSession, queryClient, setStreamConnected]);
 }

@@ -16,6 +16,7 @@ import {
   resendInvite,
   updateTechnician,
 } from "@/services/technicians";
+import { PRESENCE_REFETCH_MS } from "./liveness";
 import type { ListParams } from "@/types/api";
 
 export const technicianKeys = {
@@ -39,6 +40,12 @@ export function useTechnicians(params: ListParams = {}) {
     queryKey: technicianKeys.list(params),
     queryFn: () => listTechnicians(params),
     placeholderData: keepPreviousData,
+    // Reachability is the reason this one polls rather than waiting on the
+    // socket. A toggle arrives as `technician.changed`; a phone going quiet
+    // never does, by design — it decays on a TTL server-side and only a read
+    // notices. See PRESENCE_REFETCH_MS.
+    refetchInterval: PRESENCE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -47,6 +54,8 @@ export function useTechnician(id: string) {
     queryKey: technicianKeys.detail(id),
     queryFn: () => getTechnician(id),
     enabled: Boolean(id),
+    refetchInterval: PRESENCE_REFETCH_MS,
+    refetchOnWindowFocus: true,
   });
 }
 

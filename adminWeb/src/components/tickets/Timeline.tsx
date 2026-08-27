@@ -9,11 +9,19 @@ import {
   Play,
   Plus,
   RotateCcw,
+  RotateCw,
   Star,
   UserCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { formatDateTime } from "@/utils/datetime";
 import type { TimelineEvent } from "@/types";
 
@@ -51,8 +59,30 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
  * The audit trail. Every closure and escalation has to be answerable for
  * later — who did what, when, and on what basis — so this is a record, not
  * decoration. Rendered as an ordered list because the sequence is the point.
+ *
+ * ## Why it has a refresh button when it is already live
+ *
+ * `useTicketStream` invalidates this ticket on `ticket.changed`, so entries
+ * normally appear on their own. The button is not the mechanism and is not a
+ * confession that the socket is unreliable — it is what someone reaches for
+ * during the minute they are watching a job land, when "has anything happened
+ * yet" is a question they want answered NOW rather than whenever.
+ *
+ * Icon-only on purpose. Neither prototype has a refresh control anywhere, so
+ * there is no approved string for one (hard rule 6); a labelled button here
+ * would be invented copy sitting in the most audit-sensitive card on the page.
+ * The `aria-label` is the accessible name, not visible text.
  */
-export function Timeline({ events }: { events: TimelineEvent[] }) {
+export function Timeline({
+  events,
+  onRefresh,
+  isRefreshing = false,
+}: {
+  events: TimelineEvent[];
+  /** Omitted on any surface that has no query to re-read. */
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+}) {
   return (
     <Card>
       <CardHeader className="border-b border-line-2 pb-4">
@@ -62,6 +92,24 @@ export function Timeline({ events }: { events: TimelineEvent[] }) {
             {events.length} events
           </span>
         </CardTitle>
+        {onRefresh ? (
+          <CardAction className="self-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Refresh the timeline"
+              onClick={onRefresh}
+              // Disabled while in flight so a second click cannot queue a
+              // second read of a query that is already fetching.
+              disabled={isRefreshing}
+            >
+              <RotateCw
+                className={isRefreshing ? "animate-spin" : undefined}
+                aria-hidden
+              />
+            </Button>
+          </CardAction>
+        ) : null}
       </CardHeader>
       <CardContent>
         <ol className="flex flex-col">

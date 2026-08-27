@@ -75,14 +75,40 @@ export function useOffer(id: string) {
   return useQuery({ queryKey: qk.poolOffer(id), queryFn: () => getOffer(id), enabled: !!id });
 }
 
+/**
+ * The technician's own work, refreshed when they come back to the app.
+ *
+ * `refetchOnWindowFocus` is off by default (`app/_layout.tsx`) and turned on
+ * per query; `usePool` did it and these three did not, which left the jobs the
+ * technician actually owns as the stalest thing on the phone. A phone spends
+ * most of its day in a pocket, so "when the app comes back" — which
+ * `useAppStateFocus` maps this to — is the moment that matters most.
+ *
+ * No poll here, deliberately. The pool is a race against other technicians and
+ * earns a backstop timer; these move only when the technician or the customer
+ * does something, and both of those already arrive as `job.changed`.
+ */
 export function useMyJobs(status: JobStatus | 'all') {
-  return useQuery({ queryKey: qk.myJobs(status), queryFn: () => listMine(status) });
+  return useQuery({
+    queryKey: qk.myJobs(status),
+    queryFn: () => listMine(status),
+    refetchOnWindowFocus: true,
+  });
 }
 
 export function useJob(id: string) {
-  return useQuery({ queryKey: qk.job(id), queryFn: () => getJob(id), enabled: !!id });
+  return useQuery({
+    queryKey: qk.job(id),
+    queryFn: () => getJob(id),
+    enabled: !!id,
+    refetchOnWindowFocus: true,
+  });
 }
 
 export function useTodayJobs() {
-  return useQuery({ queryKey: [...qk.myJobs('all'), 'today'], queryFn: listToday });
+  return useQuery({
+    queryKey: [...qk.myJobs('all'), 'today'],
+    queryFn: listToday,
+    refetchOnWindowFocus: true,
+  });
 }
