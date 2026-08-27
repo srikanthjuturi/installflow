@@ -307,6 +307,15 @@ def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
         observedSerial=t.observed_serial,
         observedSerialSource=t.observed_serial_source,
         serialMismatch=serial_mismatch(t),
+        customerRating=t.customer_rating,
+        customerFeedback=t.customer_feedback,
+        customerConfirmedAt=t.customer_confirmed_at,
+        # Answered, and the answer was no. `Escalated` alone is not enough —
+        # a job can reach it without a customer ever being asked — so both
+        # halves are required.
+        customerRefused=(
+            t.customer_confirmed_at is not None and t.status == "Escalated"
+        ),
     )
 
 

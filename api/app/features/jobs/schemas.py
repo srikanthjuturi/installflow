@@ -98,6 +98,26 @@ class JobOut(JobOfferOut):
     #: corrected either one.
     serialMismatch: bool
 
+    # ── what the customer said ────────────────────────────────────────────
+    #
+    # Written by the confirmation page and, until now, read by nothing: the
+    # rating fed the technician's aggregate score and the words reached only the
+    # ticket timeline, where the app cannot see them. A technician looking at
+    # their own 3.8 had no way to find out what any of it was based on.
+    #
+    #: 1–5, or null. Null is a real answer — a customer may confirm the work
+    #: without rating it — and it must render as "not rated", never as 0.
+    customerRating: int | None
+    #: Their words, as typed. Null when they left the box empty.
+    customerFeedback: str | None
+    #: When they answered. Null while still `Awaiting Customer`, which is how
+    #: the app tells "no verdict yet" from "confirmed without comment".
+    customerConfirmedAt: datetime.datetime | None
+    #: True when the customer said the work was NOT finished. The rating is
+    #: beside the point in that case — this is the fact the screen leads with,
+    #: and the one a manager opens the ticket for.
+    customerRefused: bool
+
 
 class ProofArtifactIn(AppModel):
     """One captured image, as the app reports it after uploading.

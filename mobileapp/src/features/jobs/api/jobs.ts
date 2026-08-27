@@ -48,6 +48,14 @@ export interface JobDto extends JobOfferDto {
   serialNumber: string;
   /** not_needed | pending | sent | failed */
   feedbackRequestStatus: string;
+
+  /** 1–5, or null. Null is "confirmed without rating", never 0. */
+  customerRating: number | null;
+  customerFeedback: string | null;
+  /** Null while still awaiting them. */
+  customerConfirmedAt: string | null;
+  /** They answered, and the answer was "not finished". */
+  customerRefused: boolean;
 }
 
 /**

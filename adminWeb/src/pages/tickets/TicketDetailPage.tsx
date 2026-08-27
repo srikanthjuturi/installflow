@@ -7,6 +7,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { ErrorState } from "@/components/shared/states";
 import { FactGrid } from "@/components/tickets/FactGrid";
+import { CustomerVerdict } from "@/components/tickets/CustomerVerdict";
 import { SerialMismatchBanner } from "@/components/tickets/SerialMismatch";
 import {
   CustomerPanel,
@@ -129,6 +130,10 @@ export default function TicketDetailPage({
           </div>
 
           <div className="flex flex-col gap-3.5">
+            {/* Above the customer's contact details: on an escalated ticket
+                this is the reason the manager opened the page, and it should
+                not be below the fold under an address they already know. */}
+            <CustomerVerdict ticket={ticket} />
             <CustomerPanel ticket={ticket} />
             <TechnicianPanel
               ticket={ticket}

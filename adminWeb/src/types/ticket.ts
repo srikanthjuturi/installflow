@@ -129,6 +129,19 @@ export interface Ticket {
    */
   slotLink: string | null;
 
+  /**
+   * The customer's verdict, from the confirmation link.
+   *
+   * `customerConfirmedAt` is what says whether there IS one — a null rating
+   * means "confirmed without rating", which is a different claim from "has not
+   * answered yet", and rendering either as 0 would invent a bad score.
+   */
+  customerRating: number | null;
+  customerFeedback: string | null;
+  customerConfirmedAt: string | null;
+  /** They answered and said the work is NOT finished. */
+  customerRefused: boolean;
+
   createdAt: string;
 }
 

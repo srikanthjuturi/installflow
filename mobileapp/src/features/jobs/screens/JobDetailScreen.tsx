@@ -9,6 +9,7 @@ import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCompleteJob } from '@/features/proof/hooks/useProof';
 import { color } from '@/theme/semantic';
+import type { Job } from '@/types/domain';
 import { formatPaise } from '@/utils/money';
 
 export interface JobDetailScreenProps {
@@ -278,6 +279,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
               <StatTile label="Payout" value={formatPaise(job.payoutPaise)} />
             </View>
 
+            <CustomerVerdict job={job} />
+
             {/* "Cancel this job" is deliberately absent, not hidden.
                 `getCancellationPreview` still looks the job up in `mocks/db`
                 and throws on a real ticket id, so the button would take a
@@ -455,6 +458,107 @@ function StatTile({ label, value }: { label: string; value: string }) {
       >
         {value}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * What the customer said when they answered the confirmation link.
+ *
+ * Only the customer closes a job here, so this is the verdict on the work —
+ * and until now it reached nobody: the rating fed the technician's aggregate
+ * score and the words went only to the ticket timeline, which the app cannot
+ * see. A technician looking at their own 3.8 on Profile had no way to find out
+ * what any of it was based on.
+ *
+ * Renders nothing until they have actually answered. "Awaiting customer" is
+ * already said by the CTA area above; an empty review card under it would just
+ * be a second way of saying the same thing.
+ */
+function CustomerVerdict({ job }: { job: Job }) {
+  if (!job.customerConfirmedAt) return null;
+
+  const refused = job.customerRefused === true;
+  const rating = job.customerRating ?? null;
+  const words = job.customerFeedback?.trim();
+
+  return (
+    <View
+      style={{
+        backgroundColor: refused ? color.statusCancelled.bg : color.surfaceRaised,
+        borderWidth: 1,
+        borderColor: refused ? color.debit : color.border,
+        borderRadius: 14,
+        padding: 16,
+        marginBottom: 20,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: 'Roboto_700Bold',
+          fontSize: 11,
+          letterSpacing: 0.88,
+          textTransform: 'uppercase',
+          color: refused ? color.debit : color.textFootnote,
+          marginBottom: 10,
+        }}
+      >
+        {refused ? 'Customer says it is not finished' : 'Customer feedback'}
+      </Text>
+
+      {/* A refusal leads with the refusal. The score is beside the point when
+          the customer's answer was "you have not done it" — and they are not
+          asked to rate work they say did not happen. */}
+      {!refused ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: words ? 10 : 0 }}>
+          <Text
+            style={{
+              fontFamily: 'Roboto_900Black',
+              fontSize: 26,
+              lineHeight: 28,
+              color: color.textPrimary,
+            }}
+          >
+            {/* Null is "confirmed without rating" — a real answer, and not the
+                same claim as zero, which would read as the worst score there
+                is. Same rule the Profile stat follows. */}
+            {rating ?? '—'}
+          </Text>
+          <Text
+            style={{
+              fontFamily: 'Roboto_400Regular',
+              fontSize: 12.5,
+              color: color.textMuted,
+            }}
+          >
+            {rating === null ? 'Confirmed, not rated' : 'out of 5'}
+          </Text>
+        </View>
+      ) : null}
+
+      {words ? (
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 13.5,
+            lineHeight: 20,
+            color: refused ? color.debit : color.textPrimary,
+          }}
+        >
+          “{words}”
+        </Text>
+      ) : refused ? (
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 13.5,
+            lineHeight: 20,
+            color: color.debit,
+          }}
+        >
+          They gave no reason. A manager will be in touch.
+        </Text>
+      ) : null}
     </View>
   );
 }

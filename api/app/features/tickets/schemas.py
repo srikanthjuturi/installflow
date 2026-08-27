@@ -157,6 +157,23 @@ class TicketOut(AppModel):
     #: pick; it disappears the moment it is used.
     slotLink: str | None
 
+    # ── the customer's verdict ────────────────────────────────────────────
+    #
+    # Written by the confirmation page and, until now, surfaced only as a line
+    # in the timeline — where a manager investigating an escalation had to find
+    # it among thirteen kinds of event.
+    #
+    #: 1–5, or null. Null is a real answer: a customer may confirm the work
+    #: without rating it, and that must read as "not rated" rather than 0.
+    customerRating: int | None
+    #: Their words, as typed.
+    customerFeedback: str | None
+    #: When they answered. Null means still waiting on them.
+    customerConfirmedAt: datetime.datetime | None
+    #: They answered and said the work is NOT finished. The reason matters more
+    #: than the score here, and this is what the console leads with.
+    customerRefused: bool
+
     createdAt: datetime.datetime
 
 

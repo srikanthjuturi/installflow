@@ -484,6 +484,15 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 slotRequestStatus=t.slot_request_status,
                 slotRequestError=t.slot_request_error,
                 slotConfirmedAt=t.slot_confirmed_at,
+                customerRating=t.customer_rating,
+                customerFeedback=t.customer_feedback,
+                customerConfirmedAt=t.customer_confirmed_at,
+                # Answered, and the answer was no. `Escalated` alone will not
+                # do — a ticket reaches it when nobody accepts, with no
+                # customer involved at all.
+                customerRefused=(
+                    t.customer_confirmed_at is not None and t.status == "Escalated"
+                ),
                 # Only while it is still the customer's to pick. Once used the
                 # token is spent, and a link that does nothing is worse than
                 # none at all.

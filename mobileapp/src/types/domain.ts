@@ -157,6 +157,19 @@ export interface Job {
    * they could still fix it — they are standing in the customer's house.
    */
   feedbackRequestStatus?: string;
+
+  /**
+   * What the customer said when they answered the confirmation link.
+   *
+   * `customerConfirmedAt` is the one that says whether there IS a verdict —
+   * a rating of null means "confirmed without rating", which is a different
+   * claim from "has not answered yet".
+   */
+  customerRating?: number | null;
+  customerFeedback?: string | null;
+  customerConfirmedAt?: string | null;
+  /** They answered and said the work is NOT finished. */
+  customerRefused?: boolean;
   /**
    * Hours until the committed slot; negative means past. Single source for
    * status badges, pool filtering and penalty bands. Becomes a real timestamp
