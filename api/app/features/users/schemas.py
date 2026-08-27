@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.phone import OptionalPhone
 from app.core.images import ImageUrl
 from app.core.schemas import AppModel
 
@@ -13,7 +14,7 @@ class UserCreateRequest(BaseModel):
     email: EmailStr
     role: str
     fullName: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=32)
+    phone: OptionalPhone = None
     # Required only when the email is new (a fresh identity). Ignored on reuse.
     password: str | None = Field(default=None, min_length=8, max_length=128)
     profileImageUrl: ImageUrl = None
@@ -31,7 +32,7 @@ class UserCreateRequest(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     fullName: str | None = Field(default=None, max_length=255)
-    phone: str | None = Field(default=None, max_length=32)
+    phone: OptionalPhone = None
     profileImageUrl: ImageUrl = None
     isActive: bool | None = None
     managerId: uuid.UUID | None = None

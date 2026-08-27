@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.phone import OptionalPhone
 from app.core.schemas import AppModel
 
 # Normalise-then-validate field types. They live in app/core/statutory.py because
@@ -28,7 +29,7 @@ class CompanyCreateRequest(BaseModel):
     #: afterwards, because tickets store the assembled string.
     code: str | None = Field(default=None, max_length=6)
     email: EmailStr  # becomes the admin's login email
-    phone: str | None = Field(default=None, max_length=32)
+    phone: OptionalPhone = None
     password: str = Field(min_length=8, max_length=128)
     adminName: str | None = Field(default=None, max_length=255)
     # Statutory identity (mandatory; the GST API will auto-fill these later).
@@ -45,7 +46,7 @@ class CompanyCreateRequest(BaseModel):
 class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     email: EmailStr | None = None
-    phone: str | None = Field(default=None, max_length=32)
+    phone: OptionalPhone = None
     gstNumber: GstNumber | None = None
     pan: Pan | None = None
     gstCompanyStatus: GstStatus | None = None
