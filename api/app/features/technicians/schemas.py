@@ -122,9 +122,20 @@ class TechnicianOut(AppModel):
 
     #: Null means no limit, and both clients render it as "Unlimited".
     dailyJobCap: int | None
-    #: Jobs in flight today. Always 0 until the jobs slice exists — it is
-    #: derived from open assignments, not stored.
-    bwUsed: int = 0
+    #: Jobs held for TODAY, by slot date — the same rule the daily cap is
+    #: enforced with, so the bandwidth bar and the technician's own pool can
+    #: never disagree about a day.
+    bwUsed: int
+    #: The technician's own decision: are they taking work at all.
+    acceptingWork: bool
+    #: Intent AND reachability, derived at read time (`core.presence`).
+    #:
+    #: The console's question, not the app's. A manager assigning a job by hand
+    #: needs to know whether anybody will actually see it in the next minute;
+    #: the technician's own switch shows INTENT instead, because a switch that
+    #: flicked to "offline" every time their socket blinked would be reporting
+    #: something they did not do.
+    online: bool
     rating: float | None
     #: All three NULL until the jobs slice measures them. Null means "not
     #: measured", which is why it is not 0 — see the model's note.

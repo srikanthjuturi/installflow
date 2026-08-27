@@ -3,6 +3,7 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { formatPhone } from "@/utils/phone";
 import type { Technician } from "@/types/technician";
 import { BandwidthBar, CancelCount, TechStatusPill } from "./BandwidthBar";
+import { AvailabilityPill } from "@/components/technicians/AvailabilityPill";
 
 /* ------------------------------------------------------------------ identity */
 
@@ -45,8 +46,12 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
           />
           <h2 className="mt-3 text-[17px] font-semibold">{tech.name}</h2>
           <p className="font-mono text-xs text-ink-3">{tech.code}</p>
-          <div className="mt-2">
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
             <TechStatusPill status={tech.status} />
+            <AvailabilityPill
+              acceptingWork={tech.acceptingWork}
+              online={tech.online}
+            />
           </div>
         </div>
 

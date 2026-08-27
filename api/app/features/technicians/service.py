@@ -408,6 +408,8 @@ async def _technicians_out(
                 pincodes=pins.get(profile.id, []),
                 dailyJobCap=profile.daily_job_cap,
                 bwUsed=used_today.get(profile.id, 0),
+                acceptingWork=profile.accepting_work,
+                online=is_online(profile),
                 rating=float(profile.rating) if profile.rating is not None else None,
                 jobsCompleted=profile.jobs_completed,
                 jobsCancelled=profile.jobs_cancelled,

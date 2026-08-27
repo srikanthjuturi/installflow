@@ -62,8 +62,19 @@ export interface Technician {
 
   /** Null = no limit. */
   dailyJobCap: number | null;
-  /** Jobs in flight today. Always 0 until the jobs slice exists. */
+  /** Jobs held for TODAY, by slot date — the rule the daily cap is enforced on. */
   bwUsed: number;
+  /** The technician's own decision: are they taking work at all. */
+  acceptingWork: boolean;
+  /**
+   * Intent AND reachability, derived server-side.
+   *
+   * Deliberately not the same as `acceptingWork`: somebody can be willing to
+   * work and have a phone that has not been reachable for an hour. A manager
+   * assigning by hand needs the second question answered, which is why this is
+   * a console field and the app's own switch shows intent instead.
+   */
+  online: boolean;
   rating: number | null;
   /**
    * All three are null until the jobs slice measures them. Null means "not

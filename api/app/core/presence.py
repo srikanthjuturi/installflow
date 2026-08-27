@@ -11,6 +11,23 @@ separate:
 
 **Online is the AND of the two, derived at read time and never stored.**
 
+## Who asks which question
+
+They have different audiences, and mixing them up is the mistake this module
+exists to prevent:
+
+  * **The console asks "online"** — a manager assigning a job by hand needs to
+    know whether anybody will actually see it in the next minute. That is
+    `TechnicianOut.online`, and it is the only consumer of the derived answer.
+  * **The technician's own switch shows `accepting_work`** — their intent, not
+    the state of their socket. A switch that flicked to "offline" because the
+    connection blinked would be reporting something they did not do, and the
+    obvious next move (turn it back on) would fix nothing.
+  * **Routing uses `accepting_work` too**, never `online` — see `pool_query`
+    and `technicians_covering`. A technician whose app has not connected yet has
+    `last_seen_at IS NULL`, so filtering the pool on `online` would hand them an
+    empty screen on first launch with no way to fix it.
+
 That last part is the design. The obvious implementation — one `is_online`
 boolean the app writes on toggle — fails in the most ordinary situation there
 is: a technician's battery dies mid-shift. The phone cannot write "offline"
