@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { BrandPanel } from "@/components/auth/BrandPanel";
 import { CredentialsStep } from "@/components/auth/CredentialsStep";
-import { GoogleOneTap } from "@/components/auth/GoogleOneTap";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { useGoogleSignIn, useLogin } from "@/hooks/useAuth";
@@ -31,7 +30,6 @@ export default function LoginPage() {
   const login = useLogin();
   const google = useGoogleSignIn();
   const navigate = useNavigate();
-  const signedIn = useSession((s) => s.signedIn);
 
   /** Where a session goes once it exists. One path, not two. */
   function goToLanding() {
@@ -99,10 +97,6 @@ export default function LoginPage() {
                 }}
               >
                 {form}
-                <GoogleOneTap
-                  onCredential={(c) => void handleCredential(c)}
-                  disabled={signedIn || google.isPending}
-                />
               </GoogleOAuthProvider>
             ) : (
               form
