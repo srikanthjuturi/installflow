@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Generic, Literal, TypeVar
 
 from fastapi import Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import AfterValidator, BaseModel, ConfigDict
 
 T = TypeVar("T")
 
@@ -18,6 +18,32 @@ class AppModel(BaseModel):
     """Base for response models — reads from ORM objects, camelCase on the wire."""
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _within_bcrypt_limit(value: str) -> str:
+    """Reject a password bcrypt cannot hash, in BYTES rather than characters.
+
+    `max_length` alone is not enough: pydantic counts characters, and 72 emoji
+    are 288 bytes. Without this the request passes validation and then explodes
+    inside `hash_password` as a 500.
+
+    The message names bytes because that is the real rule, and says why the two
+    numbers can differ — "72 characters" would be a lie to anyone typing an
+    accented or Indic script.
+    """
+    from app.core.security import BCRYPT_MAX_BYTES, too_long_for_bcrypt
+
+    if too_long_for_bcrypt(value):
+        raise ValueError(
+            f"Password is too long — at most {BCRYPT_MAX_BYTES} bytes. "
+            "Accented and non-Latin characters count as more than one each."
+        )
+    return value
+
+
+#: A password somebody TYPES. Bounded so an over-long one is a 422 naming the
+#: field, never a 500 from inside bcrypt.
+BoundedPassword = Annotated[str, AfterValidator(_within_bcrypt_limit)]
 
 
 #: What happened to an account's temporary-password email.

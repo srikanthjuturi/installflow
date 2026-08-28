@@ -1,6 +1,18 @@
 import { z } from "zod";
 
 /**
+ * The password bcrypt can actually hash, in BYTES.
+ *
+ * Not 128 characters, which is what this said until it was found to be a lie:
+ * bcrypt refuses anything over 72 bytes, so a longer password passed validation
+ * here and then failed on the server. And it is bytes, not characters — an
+ * emoji is four of them, Devanagari three — so a character count would still be
+ * wrong for anyone not typing ASCII.
+ */
+const MAX_PASSWORD_BYTES = 72;
+const byteLength = (s: string) => new TextEncoder().encode(s).length;
+
+/**
  * Mirrors the backend's rules so the first refusal happens here rather than
  * after a round trip. `min(8)` matches every other password field in the
  * console; the two must not drift into disagreeing about what is acceptable.
@@ -11,7 +23,10 @@ export const changePasswordSchema = z
     newPassword: z
       .string()
       .min(8, "At least 8 characters")
-      .max(128, "At most 128 characters"),
+      .refine(
+        (v) => byteLength(v) <= MAX_PASSWORD_BYTES,
+        "Too long. Accented and non-Latin characters count as more than one each."
+      ),
     confirmPassword: z.string().min(1, "Repeat the new password"),
   })
   .superRefine((v, ctx) => {

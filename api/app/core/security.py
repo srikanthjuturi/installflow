@@ -16,15 +16,54 @@ from app.core.config import settings
 
 
 # ─── Password hashing (bcrypt) ─────────────────────────────────────────────
+#: bcrypt's hard limit, and it is BYTES, not characters. Older versions
+#: truncated silently; bcrypt 5 raises instead, which is better — but it means
+#: an over-long password is an exception on a hot path rather than a quiet
+#: weakening, and both callers below have to say what they do about it.
+#:
+#: Worth remembering that 72 bytes is far fewer than 72 characters for anyone
+#: not typing ASCII: an emoji is four, and Devanagari is three.
+BCRYPT_MAX_BYTES = 72
+
+
+def too_long_for_bcrypt(plain_password: str) -> bool:
+    return len(plain_password.encode("utf-8")) > BCRYPT_MAX_BYTES
+
+
 def hash_password(plain_password: str) -> str:
+    """Hash a password. Raises ValueError past bcrypt's 72-BYTE limit.
+
+    Callers that take the password from a request must bound it in their schema
+    (see `BoundedPassword`), so the caller gets a 422 naming the field rather
+    than a 500 from in here.
+    """
     hashed = bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt())
     return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-    )
+    """Check a password. NEVER raises — an unusable candidate is simply False.
+
+    The length guard is not cosmetic. `/auth/login` accepts whatever the client
+    sends, and bcrypt 5 raises on anything over 72 bytes, so without this an
+    over-long password turns an ordinary failed sign-in into a 500 — from an
+    UNAUTHENTICATED endpoint, on attacker-chosen input.
+
+    False is also the correct answer, not merely the safe one: nothing could
+    ever have hashed a string bcrypt refuses to hash, so no stored hash can
+    match it.
+    """
+    if too_long_for_bcrypt(plain_password):
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        )
+    except ValueError:
+        # A malformed or truncated stored hash. A database in that state is a
+        # problem, but it is not this caller's problem and it is not a 500 —
+        # they simply cannot sign in.
+        return False
 
 
 #: Every confusable pair removed: no I/O against 1/0, no lowercase l. This

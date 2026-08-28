@@ -6,14 +6,18 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.core.images import ImageUrl
 from app.core.phone import Phone
-from app.core.schemas import AppModel
+from app.core.schemas import AppModel, BoundedPassword
 from app.features.technicians.schemas import TechnicianSessionOut
 
 
 # ─── Requests ──────────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=1)
+    #: Bounded, and generously — this is a DoS guard, not a policy. An unbounded
+    #: string here meant an unauthenticated caller could 500 the API with a long
+    #: password; `verify_password` now returns False for one, and this stops the
+    #: pathological case reaching it at all.
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class GoogleLoginRequest(BaseModel):
@@ -159,10 +163,13 @@ class MeVendorOut(AppModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    currentPassword: str = Field(min_length=1, max_length=128)
-    #: Same floor as every other password in the system, so the two rules cannot
-    #: drift into disagreeing about what is acceptable.
-    newPassword: str = Field(min_length=8, max_length=128)
+    #: Not byte-bounded: whatever they type is checked against the stored hash,
+    #: and `verify_password` answers False for anything bcrypt cannot hash.
+    currentPassword: str = Field(min_length=1, max_length=1024)
+    #: Byte-bounded, because this one gets HASHED. The old `max_length=128` was
+    #: a lie: bcrypt refuses anything over 72 bytes, so a 100-character password
+    #: passed validation and then 500'd inside hash_password.
+    newPassword: BoundedPassword = Field(min_length=8)
 
 
 class MeResponse(AppModel):
