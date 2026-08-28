@@ -68,8 +68,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 #: Every confusable pair removed: no I/O against 1/0, no lowercase l. This
 #: string is read off a screen in an email and typed into a login form on a
-#: different device, and a misread costs a support call — staff have no password
-#: reset, so the only remedy is a manager reissuing it.
+#: different device, and a misread costs a round trip through
+#: `/auth/password-reset/*` or a manager reissuing it.
 #:
 #: No symbols. They would add ~2.5 bits and cost far more than that in
 #: phone-keyboard friction and in "is that a comma or a full stop".
@@ -142,6 +142,64 @@ def decode_token(token: str) -> dict[str, Any]:
     return jwt.decode(
         token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
     )
+
+
+#: The ticket between a verified password-reset code and the new password.
+#: `deps.get_current_principal` rejects anything whose `type` is not "access",
+#: so this can never be presented as a session — the same guarantee
+#: `onboarding`'s "invite_reg" token relies on.
+PASSWORD_RESET_TOKEN_TYPE = "pwreset"
+
+
+def password_fingerprint(password_hash: str) -> str:
+    """A short, non-reversing witness of the hash a reset token was minted for."""
+    return hash_token(password_hash)[:16]
+
+
+def create_password_reset_token(subject: str | Any, password_hash: str) -> str:
+    """A short-lived token that authorises exactly one password change.
+
+    The `pwd` claim is what makes it single-use. It witnesses the password hash
+    that was in place when the code was verified, and the confirm step refuses a
+    token whose witness no longer matches — so the moment a new password is set,
+    every token minted against the old one is dead. A manager reissuing the
+    password in the same window kills it too, which is also the right answer:
+    whoever asked for that reset is no longer looking at the current state of
+    the account.
+
+    A revocation table would buy nothing over this. The only thing a reset token
+    can do is set a password, and doing that is precisely what invalidates it.
+    """
+    return _create_token(
+        subject,
+        timedelta(minutes=settings.PASSWORD_RESET_TOKEN_MINUTES),
+        token_type=PASSWORD_RESET_TOKEN_TYPE,
+        extra_claims={"pwd": password_fingerprint(password_hash)},
+    )
+
+
+def read_password_reset_token(token: str) -> tuple[str, str] | None:
+    """`(user id, password fingerprint)`, or None for anything at all wrong.
+
+    Returns the claimed fingerprint rather than checking it, because checking it
+    needs the user — and finding the user needs the subject this returns. The
+    caller loads the row and compares against `password_fingerprint(...)` of the
+    hash it actually holds now.
+
+    One return value for every structural failure — expired, wrong signature,
+    wrong type, missing claims. Telling them apart helps an attacker and nobody
+    else, and the caller has one sentence to say either way.
+    """
+    try:
+        payload = decode_token(token)
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != PASSWORD_RESET_TOKEN_TYPE:
+        return None
+    subject, claimed = payload.get("sub"), payload.get("pwd")
+    if not subject or not isinstance(claimed, str):
+        return None
+    return str(subject), claimed
 
 
 # ─── Opaque refresh-token material (stored hashed for revocation) ──────────

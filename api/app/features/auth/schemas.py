@@ -42,6 +42,27 @@ class OtpVerifyRequest(BaseModel):
     code: str = Field(min_length=4, max_length=8)
 
 
+class PasswordResetRequestRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetVerifyRequest(BaseModel):
+    email: EmailStr
+    #: The same bounds `OtpVerifyRequest` uses — it is the same six digits out of
+    #: the same generator, and the two must not disagree about what is a code.
+    code: str = Field(min_length=4, max_length=8)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    #: Bounded for the same reason `GoogleLoginRequest.credential` is: an
+    #: unbounded string on an unauthenticated endpoint is a cheap denial of
+    #: service against the JWT parser.
+    resetToken: str = Field(min_length=1, max_length=4096)
+    #: Byte-bounded and floored at 8 — the same rule as
+    #: `ChangePasswordRequest.newPassword`, because it is the same act.
+    newPassword: BoundedPassword = Field(min_length=8)
+
+
 class SwitchCompanyRequest(BaseModel):
     companyId: uuid.UUID
 
@@ -113,13 +134,25 @@ class LoginResponse(AppModel):
 
 class OtpRequestResponse(AppModel):
     sent: bool
-    #: 'whatsapp' | 'log'. Which channel took it.
+    #: 'whatsapp' | 'email' | 'log'. Which channel took it.
     channel: str
     expiresInSeconds: int
     resendInSeconds: int
     #: Development only, and only when OTP_DEV_ECHO is on — startup refuses to
     #: boot with it enabled in production.
     devCode: str | None = None
+
+
+class PasswordResetVerifyResponse(AppModel):
+    """The ticket that stands between a right code and a new password.
+
+    Carries no identity of its own that a client could read — the user id is
+    inside a signed token, so the browser holding it learns nothing it did not
+    already type.
+    """
+
+    resetToken: str
+    expiresInSeconds: int
 
 
 class SwitchCompanyResponse(AppModel):

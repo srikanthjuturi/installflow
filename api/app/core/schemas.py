@@ -71,10 +71,15 @@ class EmailOutcome(AppModel):
     #:
     #: Always returning it would put the credential in devtools and any HTTP log
     #: for every creation, defeating the point of emailing it. Never returning
-    #: it would strand the account: staff have no password reset, and
-    #: /auth/change-password needs the current password. Exactly-on-failure is
-    #: the same trade as an undelivered WhatsApp invite still leaving a copyable
-    #: link on the row.
+    #: it would leave the account reachable only through a mailbox that has just
+    #: proved unreliable — `/auth/password-reset/*` emails a code to the same
+    #: address that failed, and `/auth/change-password` needs a password nobody
+    #: has yet. Exactly-on-failure is the same trade as an undelivered WhatsApp
+    #: invite still leaving a copyable link on the row.
+    #:
+    #: This escape hatch is for an AUTHENTICATED manager only. The reset flow
+    #: deliberately has no equivalent: on an open endpoint, handing back a
+    #: credential when the mail fails is an oracle anybody could ask.
     temporaryPassword: str | None = None
 
 

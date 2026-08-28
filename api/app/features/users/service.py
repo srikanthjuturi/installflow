@@ -662,9 +662,13 @@ async def reissue_password(
 
     This exists because the change that stopped managers TYPING a password also
     removed the only way back in for somebody who never received the email — it
-    lands in spam, or the address has a typo that still validates. Staff have no
-    password reset and `/auth/change-password` needs the current one, so without
-    this the account would be unreachable by anyone.
+    lands in spam, or the address has a typo that still validates.
+
+    `/auth/password-reset/*` now covers the ordinary case of a forgotten
+    password, but not this one: it emails a code to the same address, so an
+    address that is wrong or unwatched is exactly where it cannot help. A
+    manager reissuing by hand stays the answer when the mailbox itself is the
+    problem.
 
     Every outstanding refresh token is revoked, for the same reason a password
     change revokes them and the same reason the vendor reset does: whoever
