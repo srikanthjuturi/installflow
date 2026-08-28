@@ -1,10 +1,9 @@
 """One-time codes: issuing, throttling and verifying.
 
 Lives inside the auth slice on purpose. Verifying a code has to issue exactly
-the token pair `login` issues, so this reuses `_issue_refresh_token`,
-`_active_memberships` and `_resolve_active_company` directly rather than
-duplicating token logic — and the rule that slices never import each other stays
-intact.
+the token pair `login` issues, so `sign_in` delegates to `issue_session` rather
+than duplicating token logic — and the rule that slices never import each other
+stays intact.
 
 Everything here is shared by two callers:
   * technician sign-in            purpose='login',  keyed on a user
@@ -22,20 +21,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import create_access_token
 from app.features.auth.schemas import LoginResponse, OtpRequestResponse
-from app.features.auth.service import (
-    _active_memberships,
-    _issue_refresh_token,
-    _membership_out,
-    _resolve_active_company,
-    _user_out,
-)
+from app.features.auth.service import issue_session
 from app.integrations.otp_channel import resolve_channel
-from app.models.membership import Membership
 from app.models.otp import PURPOSE_LOGIN, OtpCode
 from app.models.role import TECHNICIAN
-from app.models.technician import TechnicianProfile
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -285,54 +275,13 @@ async def request_login_code(
 async def sign_in(session: AsyncSession, user: User) -> LoginResponse:
     """Issue the same token pair `login` issues, plus the technician profile.
 
-    The access token carries `company_id` — `require_company` 403s without it,
-    so every gated technician endpoint would fail otherwise. `/auth/refresh`
-    re-derives the company from `last_active_company_id`, so it needs no change
-    for technicians.
+    One line, because it IS the same thing — `issue_session` carries the shared
+    tail so the password door and this one cannot drift. The access token it
+    mints carries `company_id`; `require_company` 403s without it, so every
+    gated technician endpoint would fail otherwise. `/auth/refresh` re-derives
+    the company from `last_active_company_id` and needs no change here.
     """
-    memberships = await _active_memberships(session, user)
-    active_company_id = _resolve_active_company(user, memberships)
-
-    access = create_access_token(
-        user.id, company_id=str(active_company_id) if active_company_id else None
-    )
-    refresh = await _issue_refresh_token(session, user)
-    user.last_active_company_id = active_company_id
-
-    profile_out = None
-    if active_company_id is not None:
-        row = (
-            await session.execute(
-                select(TechnicianProfile, Membership, User)
-                .join(Membership, Membership.id == TechnicianProfile.membership_id)
-                .join(User, User.id == Membership.user_id)
-                .where(
-                    Membership.user_id == user.id,
-                    TechnicianProfile.company_id == active_company_id,
-                    Membership.deleted_at.is_(None),
-                )
-            )
-        ).first()
-        if row is not None:
-            # Imported here rather than at module scope: the technicians slice
-            # imports nothing from auth, and doing this at the top would make
-            # the two mutually dependent at load time.
-            from app.features.technicians.service import (  # noqa: PLC0415
-                technician_session,
-            )
-
-            profile_out = await technician_session(session, *tuple(row))
-
-    await session.commit()
-
-    return LoginResponse(
-        user=_user_out(user),
-        memberships=[_membership_out(user, m, c) for m, c in memberships],
-        activeCompanyId=active_company_id,
-        accessToken=access,
-        refreshToken=refresh,
-        technicianProfile=profile_out,
-    )
+    return await issue_session(session, user)
 
 
 async def verify_login_code(
