@@ -396,11 +396,22 @@ def verify(client: httpx.Client) -> None:
     #   404 — the route is missing, i.e. a stale deploy
     #   503 — GOOGLE_CLIENT_ID is unset or malformed, so every real sign-in
     #         would fail with nothing on the server saying why
-    google = client.post(
-        f"{SITE}/api/v1/auth/google",
-        json={"credential": "not-a-real-token"},
-        timeout=90,
-    )
+    #
+    # Retried, and NOT because the check is flaky. /health answers from the
+    # platform before uvicorn has finished importing the app, so on a cold start
+    # the first requests can 404 against a container that is genuinely fine —
+    # this probe cried wolf on the deploy that introduced it. The retry is what
+    # makes a 404 here mean "the route is missing" rather than "you asked early".
+    deadline = time.monotonic() + 120
+    while True:
+        google = client.post(
+            f"{SITE}/api/v1/auth/google",
+            json={"credential": "not-a-real-token"},
+            timeout=90,
+        )
+        if google.status_code == 401 or time.monotonic() > deadline:
+            break
+        time.sleep(10)
     if google.status_code != 401:
         fail(
             f"Google sign-in probe returned {google.status_code}, expected 401 — "
