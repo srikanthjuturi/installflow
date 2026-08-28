@@ -30,6 +30,12 @@ API_DIR = Path(__file__).resolve().parent.parent
 PROFILE = API_DIR / "installflowapi.PublishSettings"
 SITE = "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net"
 
+#: The CONSOLE, on Netlify — a DIFFERENT host from SITE. Every link guard below
+#: compares against SITE because the API mints and sends those links itself;
+#: this one points at the browser app instead, so copying the sibling pattern
+#: would demand a URL that is wrong.
+CONSOLE_SITE = "https://reliancegreentech.netlify.app"
+
 #: Shipped to the server. `alembic/` travels so migrations can be run there if
 #: the database is ever unreachable from a laptop.
 PAYLOAD_DIRS = ("app", "alembic")
@@ -95,6 +101,12 @@ def build_package(destination: Path) -> Path:
     for name in PAYLOAD_FILES:
         shutil.copy2(API_DIR / name, staging / name)
     shutil.copy2(env_source, staging / ".env")
+
+    # copytree takes .html along with the .py, but nothing else asserts that —
+    # and an API shipped without its email templates 500s the first time
+    # somebody adds a user, which is a long way from here.
+    if not list((staging / "app" / "emails" / "templates").glob("*.html")):
+        fail("no email templates in the package — app/emails/templates is empty")
 
     zip_path = destination / "deploy.zip"
     count = 0
@@ -211,6 +223,49 @@ def guard_production_config() -> None:
                 "VAPID_SUBJECT must be a mailto: a push service can complain "
                 "to; providers may start refusing sends without a real one"
             )
+
+    # The console link is the fourth of the same kind, and the only one that
+    # points somewhere other than SITE — see CONSOLE_SITE. It ships inside every
+    # emailed temporary password, and a localhost value sends perfectly and
+    # arrives as a dead button.
+    if CONSOLE_SITE not in values.get("CONSOLE_LINK_BASE", ""):
+        problems.append(
+            "CONSOLE_LINK_BASE does not point at the console — the 'Sign in' "
+            "button in every emailed temporary password would be dead"
+        )
+
+    # Email. Not in the startup guard, because an unconfigured mailer is loud
+    # (every creation reports emailStatus: failed) rather than silent — but it
+    # still must not ship, because every account created would be one whose
+    # password only ever existed in somebody's browser for a moment.
+    for key, what in (
+        ("ACS_CONNECTION_STRING", "no temporary password would ever be emailed"),
+        ("ACS_SENDER_ADDRESS", "ACS refuses a send with no verified sender"),
+    ):
+        if not values.get(key, "").strip():
+            problems.append(f"{key} is unset — {what}")
+
+    # An allowlist is a DEVELOPMENT guard. Left set in production it silently
+    # refuses every address not named in it, so real accounts are created and
+    # never told their password, and the only trace is one warning line.
+    #
+    # WHATSAPP_ALLOWLIST rides along because it is the identical latent bug and
+    # has never had a guard.
+    for key in ("ACS_EMAIL_ALLOWLIST", "WHATSAPP_ALLOWLIST"):
+        if values.get(key, "").strip():
+            problems.append(
+                f"{key} must be empty in production — anything else silently "
+                f"drops messages to everyone not named in it"
+            )
+
+    # Google Sign-In. Deliberately not "must be set": unset is the intended
+    # arrangement, because it falls through to the default in app/core/config.py
+    # exactly as ANDROID_PACKAGE does. This can only guard the half it can see —
+    # the console's VITE_GOOGLE_CLIENT_ID lives in the Netlify UI, so keeping the
+    # two in step is a checklist step, not a guard.
+    google_id = values.get("GOOGLE_CLIENT_ID", "").strip()
+    if google_id and not google_id.endswith(".apps.googleusercontent.com"):
+        problems.append("GOOGLE_CLIENT_ID is not a Google OAuth client id")
 
     if problems:
         fail("; ".join(problems))
@@ -335,6 +390,24 @@ def verify(client: httpx.Client) -> None:
             "a 500 here means the app booted but cannot reach Postgres"
         )
     print("  database    reachable (login probe returned 401)")
+
+    # One request distinguishes three states with no Google account needed:
+    #   401 — the route is live and the client id is set (what we want)
+    #   404 — the route is missing, i.e. a stale deploy
+    #   503 — GOOGLE_CLIENT_ID is unset or malformed, so every real sign-in
+    #         would fail with nothing on the server saying why
+    google = client.post(
+        f"{SITE}/api/v1/auth/google",
+        json={"credential": "not-a-real-token"},
+        timeout=90,
+    )
+    if google.status_code != 401:
+        fail(
+            f"Google sign-in probe returned {google.status_code}, expected 401 — "
+            "404 means the route did not deploy, 503 means GOOGLE_CLIENT_ID is "
+            "unset or malformed"
+        )
+    print("  google      configured (rejection probe returned 401)")
 
     for path in ("/docs", "/.well-known/assetlinks.json"):
         response = client.get(f"{SITE}{path}", timeout=90)

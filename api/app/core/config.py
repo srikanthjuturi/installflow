@@ -132,6 +132,63 @@ class Settings(BaseSettings):
     # storage — reads are short-lived SAS links minted per request.
     AZURE_PROOF_CONTAINER: str = "installflow-proof"
 
+    # ─── Azure Communication Services (email) ──────────────────────────────
+    # The only outbound EMAIL channel there is — WhatsApp carries everything
+    # aimed at a phone, this carries the one thing aimed at an inbox: the
+    # temporary password a new console account is created with.
+    #
+    # Empty disables sending, and does so the same way an empty WHATSAPP_TOKEN
+    # does: nothing 500s, the account is still created, and the password comes
+    # back in the response for the manager to hand over. From the Communication
+    # Services resource → Keys.
+    ACS_CONNECTION_STRING: str = ""
+    # A verified MailFrom of that resource's email domain. ACS rejects any other
+    # sender with a 400, so a typo here means every email fails while nothing
+    # else in the app changes. Deliberately no default: an invented address
+    # would send nothing while looking configured.
+    ACS_SENDER_ADDRESS: str = ""
+    # The From name a recipient sees. Without it the raw azurecomm.net address
+    # shows, which reads as machine spam.
+    ACS_SENDER_NAME: str = "Reliance GreenTech"
+    # Where the "Sign in" button in an email points.
+    #
+    # This is the CONSOLE's origin — Netlify — and NOT this API's, which is why
+    # it is the one link setting `publish.py` must not compare against SITE. A
+    # localhost value sends perfectly and arrives as a dead button, with nothing
+    # on the server to say so; that is why startup refuses it in production.
+    CONSOLE_LINK_BASE: str = "http://localhost:5173"
+    # Hard ceiling on one send, retries included. Creating a user blocks on
+    # this, so without it a slow ACS makes adding a user look hung.
+    ACS_TIMEOUT_SECONDS: int = 20
+    # Comma-separated addresses. When set, ONLY these receive a real send.
+    #
+    # Exists for the same reason WHATSAPP_ALLOWLIST does, and it matters more
+    # here because development and production currently share ONE ACS resource:
+    # live credentials plus somebody exercising the create form sends real mail
+    # to invented addresses that belong to real people. Set it to your own
+    # address while testing. Empty = anyone, i.e. production, and `publish.py`
+    # refuses to deploy with it set.
+    ACS_EMAIL_ALLOWLIST: str = ""
+
+    # ─── Google Sign-In (console) ──────────────────────────────────────────
+    # The OAuth *web client* id backing the "Continue with Google" button and
+    # One Tap on the console's sign-in page.
+    #
+    # It lives here rather than in .env.production for the same reason
+    # CORS_ORIGINS and ANDROID_PACKAGE do: it is not a secret — it is inlined
+    # into the console bundle and travels in every request to Google — so it
+    # moves with the code rather than being a value somebody has to remember to
+    # change in two places. The console's copy is VITE_GOOGLE_CLIENT_ID, set in
+    # the Netlify UI, and the two MUST match or every sign-in 401s.
+    #
+    # There is deliberately no client SECRET. The browser receives a signed ID
+    # token directly; there is no authorization code and no token exchange, so
+    # a secret would have nothing to sign. Empty disables the endpoint with a
+    # clear 503 rather than a confusing 401.
+    GOOGLE_CLIENT_ID: str = (
+        "691663954590-q4h187gopmvml8dksbdvc4v1k91s3g50.apps.googleusercontent.com"
+    )
+
     # ── Push notifications ────────────────────────────────────────────────
     #: Master switch. Off by default so a deployment without the Firebase
     #: credentials behind it does not spend twenty seconds per notification
