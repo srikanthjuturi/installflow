@@ -2,12 +2,15 @@ import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   changePassword,
+  confirmPasswordReset,
   login,
   loginWithGoogle,
   logout,
   me,
+  requestPasswordReset,
   switchCompany,
   updateMyProfileImage,
+  verifyPasswordResetCode,
 } from "@/services/auth";
 import {
   dropWebPush,
@@ -223,5 +226,56 @@ export function useChangePassword() {
       }),
     gcTime: 0,
     meta: { errorTitle: "Couldn't change your password" },
+  });
+}
+
+/**
+ * The three steps of a forgotten password, for somebody who is signed OUT.
+ *
+ * All three carry `gcTime: 0` for the reason `useLogin` does: the code and the
+ * new password are mutation variables, and the reset token is bearer-grade for
+ * its lifetime. None of them should outlive the call in the mutation cache or
+ * in devtools.
+ */
+
+/** Step 1 — email a code. */
+export function useRequestPasswordReset() {
+  return useMutation({
+    meta: { errorTitle: "Couldn't send a code" },
+    mutationFn: (email: string) => requestPasswordReset(email),
+    gcTime: 0,
+  });
+}
+
+/** Step 2 — exchange the code for the ticket that authorises step 3. */
+export function useVerifyPasswordResetCode() {
+  return useMutation({
+    meta: { errorTitle: "Couldn't verify that code" },
+    mutationFn: (vars: { email: string; code: string }) =>
+      verifyPasswordResetCode(vars.email, vars.code),
+    gcTime: 0,
+  });
+}
+
+/**
+ * Step 3 — set the password, and sign in on the reply.
+ *
+ * Identical to `useLogin` from here on, and deliberately so: the payload IS a
+ * session, so the cache is cleared before the store is filled — a new identity
+ * must not inherit the previous one's server-scoped lists.
+ */
+export function useConfirmPasswordReset() {
+  const signInBackend = useSession((s) => s.signInBackend);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { errorTitle: "Couldn't set your new password" },
+    mutationFn: (vars: { resetToken: string; newPassword: string }) =>
+      confirmPasswordReset(vars.resetToken, vars.newPassword),
+    onSuccess: (payload) => {
+      queryClient.clear();
+      signInBackend(payload);
+    },
+    gcTime: 0,
   });
 }

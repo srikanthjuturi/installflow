@@ -416,7 +416,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 
 | Route | Page | Notes |
 |---|---|---|
-| `/login` | `LoginPage` | single step, two doors: email + password, or Google (button + One Tap). No OTP — that is the technician app's flow. `components/auth/OtpStep.tsx` is dead code from a prototype step that was never wired |
+| `/login` | `LoginPage` | single step, two doors: email + password, or Google (button + One Tap). No OTP — signing IN never asks for a code here |
+| `/forgot-password` | `ForgotPasswordPage` | three steps in local state: email → 6-digit code emailed → new password, then straight into a session. Signed-out only (under `RedirectIfSignedIn`), and it shares `AuthLayout` with `/login`. `OtpStep.tsx` was dead prototype code until this used it |
 | `/` | `DashboardPage` | 4 KPI tiles · SLA stacked bar · 3-stat funnel · "Needs your attention" (4 cards, each deep-links) · recent tickets |
 | `/tickets` | `TicketListPage` | status pills, search, **default sort = SLA urgency** (breach → warn → ok → done) |
 | `/tickets/:id` | `TicketDetailPage` | facts grid · timeline & audit trail · customer · technician · proof-of-completion grid |
@@ -508,7 +509,13 @@ refresh and replays the original request; the screen sees only the eventual resu
   must not fire six refreshes — rotation would revoke five of them mid-flight and kill the session.
 - **One replay.** If the second attempt also 401s, the token was not the problem.
 - **`NO_REFRESH`** excludes `/auth/refresh` (a failed refresh ends the session), `/auth/login`
-  (its 401 means *wrong password* — replaying resends bad credentials) and `/auth/logout`.
+  (its 401 means *wrong password* — replaying resends bad credentials), `/auth/logout`,
+  `/auth/google`, and all three `/auth/password-reset/*` paths. **Every auth endpoint that takes
+  no bearer token belongs on that list**: its 401 is an answer, not an expired token, and
+  replaying it resends the same wrong credential — for a reset, spending a second of the five
+  code attempts the backend allows. Two other things happen to prevent that today
+  (`RedirectIfSignedIn` keeps a session away from `/forgot-password`, and `performRefresh`
+  returns early with no refresh token to present); the transport should not depend on either.
 - **Only 401/403 from the refresh endpoint ends the session** — `signOut()` plus a hard
   `location.replace("/login")`, which drops the query cache with the rest of the page. A 500 or a
   network failure proves nothing about the token, so the session survives.

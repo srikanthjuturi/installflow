@@ -20,6 +20,9 @@ import { landingPath, useSession } from "@/store/session";
 /* Route-based code splitting — each page is its own chunk, resolved behind
    the AppShell's Suspense boundary. */
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
+const ForgotPasswordPage = lazy(
+  () => import("@/pages/auth/ForgotPasswordPage")
+);
 const DashboardPage = lazy(() => import("@/pages/dashboard/DashboardPage"));
 const TicketListPage = lazy(() => import("@/pages/tickets/TicketListPage"));
 const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
@@ -153,7 +156,13 @@ function RedirectIfSignedIn() {
 export const routes: RouteObject[] = [
   {
     element: <RedirectIfSignedIn />,
-    children: [{ path: "/login", element: <LoginPage /> }],
+    children: [
+      { path: "/login", element: <LoginPage /> },
+      // Signed-out by definition, so it belongs under this guard and not
+      // beside `/account/password`: somebody who still has a session has a
+      // current password to type and should be sent to that screen instead.
+      { path: "/forgot-password", element: <ForgotPasswordPage /> },
+    ],
   },
   {
     element: <RequireSuperadmin />,

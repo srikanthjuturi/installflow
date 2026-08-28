@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router";
-import { motion } from "framer-motion";
 import { GoogleOAuthProvider } from "@react-oauth/google";
-import { BrandPanel } from "@/components/auth/BrandPanel";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import { CredentialsStep } from "@/components/auth/CredentialsStep";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -70,40 +69,29 @@ export default function LoginPage() {
   return (
     <>
       <PageMeta title="Sign in" description="Reliance GreenTech console sign-in." />
-      <div className="grid min-h-svh md:grid-cols-[1.05fr_0.95fr]">
-        <BrandPanel />
-
-        <div className="flex items-center justify-center bg-surface px-8 py-10">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="w-full max-w-90"
+      <AuthLayout>
+        {/* Without a client id there is no provider, no button and no
+            divider — password sign-in is untouched. That is what a Netlify
+            deploy missing VITE_GOOGLE_CLIENT_ID looks like, and it must not
+            take the login page down with it. */}
+        {GOOGLE_SIGN_IN_ENABLED ? (
+          <GoogleOAuthProvider
+            clientId={GOOGLE_CLIENT_ID}
+            onScriptLoadError={() => {
+              // Today a blocked accounts.google.com produces nothing at all.
+              if (import.meta.env.DEV) {
+                console.warn(
+                  "[Google] the Identity Services script failed to load"
+                );
+              }
+            }}
           >
-            {/* Without a client id there is no provider, no button and no
-                divider — password sign-in is untouched. That is what a Netlify
-                deploy missing VITE_GOOGLE_CLIENT_ID looks like, and it must not
-                take the login page down with it. */}
-            {GOOGLE_SIGN_IN_ENABLED ? (
-              <GoogleOAuthProvider
-                clientId={GOOGLE_CLIENT_ID}
-                onScriptLoadError={() => {
-                  // Today a blocked accounts.google.com produces nothing at all.
-                  if (import.meta.env.DEV) {
-                    console.warn(
-                      "[Google] the Identity Services script failed to load"
-                    );
-                  }
-                }}
-              >
-                {form}
-              </GoogleOAuthProvider>
-            ) : (
-              form
-            )}
-          </motion.div>
-        </div>
-      </div>
+            {form}
+          </GoogleOAuthProvider>
+        ) : (
+          form
+        )}
+      </AuthLayout>
     </>
   );
 }

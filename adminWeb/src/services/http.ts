@@ -77,12 +77,26 @@ const REFRESH_PATH = "/auth/refresh";
  *   replay the whole Google credential, doubling the failure — and a 401 on the
  *   refresh itself calls `endSession()`, so somebody with no account would be
  *   bounced through a hard redirect instead of reading the message.
+ * - the three `/auth/password-reset/*` paths: they authenticate nobody, so
+ *   there is no session to renew. `verify`'s 401 means *that code was wrong*,
+ *   and a replay would spend a second of the five attempts the backend allows
+ *   against the same wrong digits.
+ *
+ * The rule the last two are instances of: **an endpoint that takes no bearer
+ * token belongs on this list.** Today `RedirectIfSignedIn` keeps a live session
+ * away from `/forgot-password`, and `performRefresh` returns early when there
+ * is no refresh token to present — so in practice neither path can currently
+ * reach the replay. Both of those are somebody else's invariant. The transport
+ * should not need either of them to be true.
  */
 const NO_REFRESH = new Set([
   REFRESH_PATH,
   "/auth/login",
   "/auth/logout",
   "/auth/google",
+  "/auth/password-reset/request",
+  "/auth/password-reset/verify",
+  "/auth/password-reset/confirm",
 ]);
 
 /**

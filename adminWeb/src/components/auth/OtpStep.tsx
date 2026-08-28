@@ -9,20 +9,35 @@ import {
 } from "@/components/ui/input-otp";
 
 const OTP_LENGTH = 6;
-const RESEND_SECONDS = 24;
 
+/**
+ * The 6-digit code step, shared by anything that has to prove possession of a
+ * destination before continuing.
+ *
+ * Its copy is the prototype's and does not change; what varies is where the
+ * code went (`destination`) and how long until another may be asked for
+ * (`resendInSeconds`, which the API states — it is `OTP_RESEND_SECONDS`, not a
+ * number this component may invent).
+ */
 export function OtpStep({
+  destination,
+  resendInSeconds,
   onBack,
   onVerify,
+  onResend,
 }: {
+  /** Already masked or plain, whatever the caller judged safe to show. */
+  destination: string;
+  resendInSeconds: number;
   onBack: () => void;
   /** Receives the code to verify. Rejects if the call fails. */
   onVerify: (code: string) => Promise<void>;
+  /** Asks for another code. Resolves with the new cooldown, in seconds. */
+  onResend: () => Promise<number>;
 }) {
   const [code, setCode] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
-  const [verifying, setVerifying] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(resendInSeconds);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -32,18 +47,34 @@ export function OtpStep({
 
   const complete = code.length === OTP_LENGTH;
 
-  /** Awaited so the button stays disabled for the whole round trip. */
+  /**
+   * Awaited so the button stays disabled for the whole round trip.
+   *
+   * The rejection is swallowed rather than rendered here: hard rule 9 — every
+   * API failure goes to the toaster, and an inline red box would report the
+   * same wrong code twice. The code is cleared so the next attempt starts from
+   * an empty field rather than from six digits already known to be wrong.
+   */
   const submit = async () => {
-    setFailure(null);
-    setVerifying(true);
+    setBusy(true);
     try {
       await onVerify(code);
-    } catch (err) {
-      setFailure(
-        err instanceof Error ? err.message : "Something went wrong. Try again."
-      );
+    } catch {
+      setCode("");
     } finally {
-      setVerifying(false);
+      setBusy(false);
+    }
+  };
+
+  const resend = async () => {
+    setBusy(true);
+    try {
+      setSecondsLeft(await onResend());
+      setCode("");
+    } catch {
+      // Toasted. The countdown stays at zero so they can try again.
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -57,14 +88,14 @@ export function OtpStep({
       <h1 className="mt-4.5 text-[22px] font-semibold">Verify it's you</h1>
       <p className="mt-1.5 text-[13px] text-ink-2">
         Enter the 6-digit code sent to{" "}
-        <b className="font-semibold text-ink">+91 98••• ••210</b>.
+        <b className="font-semibold text-ink">{destination}</b>.
       </p>
 
       <form
         className="mt-6"
         onSubmit={(e) => {
           e.preventDefault();
-          if (complete && !verifying) void submit();
+          if (complete && !busy) void submit();
         }}
       >
         <InputOTP
@@ -86,36 +117,29 @@ export function OtpStep({
           </InputOTPGroup>
         </InputOTP>
 
-        {/* Whatever the envelope reported, in the same shape every other form
-            in the console uses for a failed request. */}
-        {failure ? (
-          <p
-            role="alert"
-            className="mt-4 rounded-md bg-danger-bg px-3 py-2.5 text-xs text-danger"
-          >
-            {failure}
-          </p>
-        ) : null}
-
         <Button
           type="submit"
           className="mt-6 h-11.5 w-full"
-          disabled={!complete || verifying}
+          disabled={!complete || busy}
         >
-          {verifying ? <Spinner data-icon="inline-start" /> : null}
-          {verifying ? "Verifying…" : "Verify & sign in"}
+          {busy ? <Spinner data-icon="inline-start" /> : null}
+          {busy ? "Verifying…" : "Verify"}
         </Button>
       </form>
 
       <p className="mt-4 text-center text-xs text-ink-3">
         Didn't get it?{" "}
         {secondsLeft > 0 ? (
-          <span>Resend in 0:{String(secondsLeft).padStart(2, "0")}</span>
+          <span>
+            Resend in {Math.floor(secondsLeft / 60)}:
+            {String(secondsLeft % 60).padStart(2, "0")}
+          </span>
         ) : (
           <button
             type="button"
-            className="font-medium text-brand-400 hover:text-brand-500"
-            onClick={() => setSecondsLeft(RESEND_SECONDS)}
+            className="font-medium text-brand-400 hover:text-brand-500 disabled:opacity-60"
+            disabled={busy}
+            onClick={() => void resend()}
           >
             Resend code
           </button>
