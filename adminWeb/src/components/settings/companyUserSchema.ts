@@ -9,6 +9,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
  * enforces the same rule. Role and email are not editable after creation, so
  * the edit schema omits them.
  *
+ * Neither form takes a password. The server generates a temporary one and
+ * emails it; if that send fails it comes back in the response for the manager
+ * to hand over, and `POST /users/{id}/reissue-password` mints another.
+ *
  * Territory rules mirror the server exactly: a regional head covers one or more
  * REGIONS and every state inside them comes with it; an area manager covers one
  * or more STATES, and his region is derived from them rather than chosen; and
@@ -78,7 +82,6 @@ export function createUserSchema(assignableKeys: string[]) {
       role: z
         .string()
         .refine((v) => assignableKeys.includes(v), "Select a role"),
-      password: z.string().min(8, "At least 8 characters").max(128),
       regionIds: z.array(z.string()),
       stateIds: z.array(z.string()),
     })
@@ -95,7 +98,6 @@ export const EMPTY_INVITE: CreateUserValues = {
   email: "",
   phone: "",
   role: "",
-  password: "",
   regionIds: [],
   stateIds: [],
 };

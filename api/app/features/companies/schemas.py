@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.phone import OptionalPhone
-from app.core.schemas import AppModel
+from app.core.schemas import AppModel, EmailOutcome
 
 # Normalise-then-validate field types. They live in app/core/statutory.py because
 # vendors need the same GSTIN and address shapes, and hard rule 4 forbids that
@@ -30,7 +30,7 @@ class CompanyCreateRequest(BaseModel):
     code: str | None = Field(default=None, max_length=6)
     email: EmailStr  # becomes the admin's login email
     phone: OptionalPhone = None
-    password: str = Field(min_length=8, max_length=128)
+    #: No password: the server mints a temporary one and emails it to `email`.
     adminName: str | None = Field(default=None, max_length=255)
     # Statutory identity (mandatory; the GST API will auto-fill these later).
     gstNumber: GstNumber
@@ -80,3 +80,7 @@ class CompanyOut(AppModel):
     adminEmail: str | None = None
     userCount: int | None = None
     createdAt: datetime
+
+
+class CompanyCreatedOut(CompanyOut, EmailOutcome):
+    """`POST /companies` only — see `UserCreatedOut` for why a subclass."""

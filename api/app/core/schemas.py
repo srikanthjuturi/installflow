@@ -6,7 +6,7 @@ with a sibling `pagination` block on list responses.
 """
 
 from datetime import datetime, timezone
-from typing import Annotated, Generic, TypeVar
+from typing import Annotated, Generic, Literal, TypeVar
 
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict
@@ -18,6 +18,38 @@ class AppModel(BaseModel):
     """Base for response models — reads from ORM objects, camelCase on the wire."""
 
     model_config = ConfigDict(from_attributes=True)
+
+
+#: What happened to an account's temporary-password email.
+#:
+#: `sent` means Azure accepted it (202) — NOT that it arrived; there is no
+#: delivery webhook, so an asynchronous bounce is invisible to us.
+#: `failed` means it was refused, timed out, unconfigured, or allowlist-blocked.
+#: `skipped` means no password was issued at all, because the email already
+#: belonged to an identity that keeps its own. That is a success, not a failure,
+#: which is why it is a third value rather than `failed` with a special message.
+EmailStatus = Literal["sent", "failed", "skipped"]
+
+
+class EmailOutcome(AppModel):
+    """Mixed into every response that creates or reissues a password.
+
+    Six endpoints report one of these — four creates and two reissues — across
+    four slices that may not import each other, so the shape lives here.
+    """
+
+    emailStatus: EmailStatus
+    emailError: str | None = None
+    #: Returned ONLY when `emailStatus == "failed"`, so the manager can still
+    #: hand the password over.
+    #:
+    #: Always returning it would put the credential in devtools and any HTTP log
+    #: for every creation, defeating the point of emailing it. Never returning
+    #: it would strand the account: staff have no password reset, and
+    #: /auth/change-password needs the current password. Exactly-on-failure is
+    #: the same trade as an undelivered WhatsApp invite still leaving a copyable
+    #: link on the row.
+    temporaryPassword: str | None = None
 
 
 def _now() -> datetime:

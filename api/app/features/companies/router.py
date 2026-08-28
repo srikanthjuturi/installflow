@@ -19,6 +19,7 @@ from app.core.schemas import (
 from app.features.companies import service
 from app.features.companies.schemas import (
     CompanyCreateRequest,
+    CompanyCreatedOut,
     CompanyOut,
     CompanyStatusRequest,
     CompanyUpdateRequest,
@@ -29,13 +30,28 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 Db = Annotated[AsyncSession, Depends(get_db)]
 Superadmin = Annotated[Principal, Depends(require_superadmin)]
 
+#: Keyed on what happened to the admin's password email. The console reads
+#: `data.emailStatus`; this serves API consumers, Swagger and the logs.
+_CREATED_MESSAGE = {
+    "sent": "Company created — the admin's temporary password has been emailed",
+    "skipped": "Company created — the admin signs in with the password they already use",
+    "failed": "Company created, but the admin's password email did not go out",
+}
 
-@router.post("", response_model=ApiEnvelope[CompanyOut], status_code=201)
+
+@router.post("", response_model=ApiEnvelope[CompanyCreatedOut], status_code=201)
 async def create_company(
     body: CompanyCreateRequest, principal: Superadmin, db: Db
-) -> ApiEnvelope[CompanyOut]:
+) -> ApiEnvelope[CompanyCreatedOut]:
+    """Create a tenant and its first admin.
+
+    The server mints the admin's temporary password and emails it. **201 even
+    when that email fails** — read `data.emailStatus` to tell the cases apart.
+    """
     data = await service.create_company(db, principal, body)
-    return envelope(data, message="Company created", status_code=201)
+    return envelope(
+        data, message=_CREATED_MESSAGE[data.emailStatus], status_code=201
+    )
 
 
 @router.get("", response_model=PaginatedEnvelope[CompanyOut])

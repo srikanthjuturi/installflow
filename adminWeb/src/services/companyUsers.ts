@@ -8,6 +8,7 @@ import { apiDelete, apiGet, apiGetPage, apiPost, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type {
   CompanyUser,
+  CreatedCompanyUser,
   CreateUserInput,
   Region,
   RoleOption,
@@ -18,8 +19,30 @@ export function listUsers(params: ListParams = {}): Promise<Page<CompanyUser>> {
   return apiGetPage<CompanyUser>("/users", params);
 }
 
-export function createUser(input: CreateUserInput): Promise<CompanyUser> {
-  return apiPost<CompanyUser>("/users", input);
+/**
+ * Create a member. The server generates the temporary password and emails it,
+ * so there is none to send — read `emailStatus` on the reply to find out
+ * whether it went, and `temporaryPassword` when it did not.
+ */
+export function createUser(
+  input: CreateUserInput
+): Promise<CreatedCompanyUser> {
+  return apiPost<CreatedCompanyUser>("/users", input);
+}
+
+/**
+ * Email this member a fresh temporary password, ending every session they hold.
+ *
+ * The way back in for somebody who never received the first one. Takes no body:
+ * the password is the server's to choose.
+ */
+export function reissueUserPassword(
+  membershipId: string
+): Promise<CreatedCompanyUser> {
+  return apiPost<CreatedCompanyUser>(
+    `/users/${membershipId}/reissue-password`,
+    {}
+  );
 }
 
 export function updateUser(

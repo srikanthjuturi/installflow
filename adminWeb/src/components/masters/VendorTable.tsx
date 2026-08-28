@@ -58,6 +58,8 @@ interface VendorTableProps {
   canEdit: boolean;
   onEdit: (vendor: Vendor) => void;
   onDelete: (vendor: Vendor) => void;
+  /** Email the vendor's login a fresh temporary password. */
+  onReissuePassword: (vendor: Vendor) => void;
   toolbarActions?: React.ReactNode;
 }
 
@@ -72,6 +74,7 @@ export function VendorTable({
   canEdit,
   onEdit,
   onDelete,
+  onReissuePassword,
   toolbarActions,
 }: VendorTableProps) {
   // Search and the status filter are query parameters, so each control writes
@@ -194,6 +197,16 @@ export function VendorTable({
             >
               Edit
               <span className="sr-only"> {v.name}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs font-semibold text-ink-2"
+              onClick={() => onReissuePassword(v)}
+            >
+              Reset password
+              <span className="sr-only"> for {v.name}</span>
             </Button>
             <Button
               type="button"

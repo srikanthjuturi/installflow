@@ -416,7 +416,7 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 
 | Route | Page | Notes |
 |---|---|---|
-| `/login` | `LoginPage` | two steps: email + password → 6-digit OTP. Admin **has** a password (unlike the technician app, which is OTP-only) |
+| `/login` | `LoginPage` | single step, two doors: email + password, or Google (button + One Tap). No OTP — that is the technician app's flow. `components/auth/OtpStep.tsx` is dead code from a prototype step that was never wired |
 | `/` | `DashboardPage` | 4 KPI tiles · SLA stacked bar · 3-stat funnel · "Needs your attention" (4 cards, each deep-links) · recent tickets |
 | `/tickets` | `TicketListPage` | status pills, search, **default sort = SLA urgency** (breach → warn → ok → done) |
 | `/tickets/:id` | `TicketDetailPage` | facts grid · timeline & audit trail · customer · technician · proof-of-completion grid |
@@ -750,6 +750,11 @@ fails at once. Set both in the Netlify UI — never commit the values, which is 
 
 - `VITE_API_BASE_URL` — the Azure API, ending in `/api/v1`
 - `VITE_GOOGLE_MAPS_API_KEY` — the referrer-restricted browser key
+- `VITE_GOOGLE_CLIENT_ID` — the OAuth web client id behind "Continue with
+  Google" and One Tap. Public by design, like every `VITE_*`; it must match
+  `GOOGLE_CLIENT_ID` on the API, which keeps it as a default in `config.py`.
+  Unset is survivable — the login page renders without the button and password
+  sign-in is unaffected — which is exactly what makes forgetting it easy
 
 Node is pinned by `adminWeb/.nvmrc` (`24`), which Netlify reads out of the base directory. Keep
 that file as the single source and skip a `NODE_VERSION` variable — a second declaration is one
@@ -770,6 +775,13 @@ app is broken:
 - **The Maps key's HTTP-referrer allowlist must name it too.** A `VITE_*` value is inlined into
   the bundle, so that restriction is the only thing keeping a public key safe — and until the
   origin is on the list, address autocomplete fails everywhere it is used.
+- **The Google OAuth client's "Authorized JavaScript origins" must name it too**, along with
+  both `localhost` and `127.0.0.1` on ports 5173-5175 for development. A missing origin fails
+  entirely client-side: Google refuses to initialise, the button renders as an empty box, One
+  Tap never prompts, and the only evidence is a `[GSI_LOGGER]` line in the browser console — no
+  request reaches the API, so its logs show nothing. The consent screen must also be **Internal**
+  or **External + In production**; one left in *Testing* admits only its test-user list, which
+  presents as "it works for the developer and nobody else".
 
 ## Commit rhythm
 

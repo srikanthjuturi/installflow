@@ -38,13 +38,22 @@ if sys.platform == "win32":
 
 
 def _check_production_settings() -> None:
-    """Refuse to boot with development-only OTP settings in production.
+    """Refuse to boot with development-only settings in production.
 
-    Both of these are silent in every log and in every response — the only
-    moment they can be caught is startup. OTP_DEV_ECHO returns the code in the
-    response body, and an empty OTP_PEPPER leaves a 6-digit code stored as a
-    bare sha256, which a database dump reverses by brute force in under a
-    second.
+    The bar for being on this list is narrow and worth keeping narrow: each of
+    these is silent in every log and in every response, so startup is the only
+    moment it can be caught.
+
+    OTP_DEV_ECHO returns the code in the response body. An empty OTP_PEPPER
+    leaves a 6-digit code stored as a bare sha256, which a database dump
+    reverses by brute force in under a second. And a localhost CONSOLE_LINK_BASE
+    sends perfectly — Azure accepts the mail, the recipient gets it, and the
+    "Sign in" button resolves to their own machine.
+
+    Deliberately NOT here: the ACS credentials. An unconfigured mailer is loud —
+    every account created answers `emailStatus: "failed"` on screen with the
+    reason — so it does not meet the bar, and taking the whole API down for it
+    would be the wrong trade. `scripts/publish.py` guards those instead.
     """
     if settings.ENVIRONMENT != "production":
         return
@@ -53,6 +62,12 @@ def _check_production_settings() -> None:
         problems.append("OTP_DEV_ECHO must be false")
     if not settings.OTP_PEPPER:
         problems.append("OTP_PEPPER must be set")
+    if settings.CONSOLE_LINK_BASE.startswith("http://localhost"):
+        problems.append(
+            "CONSOLE_LINK_BASE must be the public console origin — the sign-in "
+            "button in every emailed password points at it, and a localhost one "
+            "sends fine and arrives dead"
+        )
     if problems:
         raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
 

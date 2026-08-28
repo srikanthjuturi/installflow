@@ -16,6 +16,19 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1)
 
 
+class GoogleLoginRequest(BaseModel):
+    """The `credential` from Google Identity Services — an ID token, not a code.
+
+    Both the "Continue with Google" button and One Tap produce this, which is
+    why there is one endpoint rather than two.
+
+    Bounded because an unbounded string is a cheap denial-of-service against the
+    JWT parser. A real Google ID token is around a kilobyte.
+    """
+
+    credential: str = Field(min_length=1, max_length=4096)
+
+
 class OtpRequestRequest(BaseModel):
     phone: Phone
 

@@ -13,6 +13,7 @@ import type { ListParams, PaginationMeta } from "@/types/api";
 import type { CompanyUser } from "@/types/user";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { EditUserDialog } from "./EditUserDialog";
+import { ReissuePasswordDialog } from "./ReissuePasswordDialog";
 
 function initialsOf(user: CompanyUser): string {
   const base = user.fullName?.trim() || user.email;
@@ -60,6 +61,10 @@ export function UsersTable({
     undefined
   );
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reissueFor, setReissueFor] = useState<CompanyUser | undefined>(
+    undefined
+  );
+  const [reissueOpen, setReissueOpen] = useState(false);
 
   const write = useParamsWriter(params, onParams);
   const update = useUpdateUser();
@@ -217,6 +222,19 @@ export function UsersTable({
               type="button"
               variant="link"
               size="sm"
+              className="h-auto p-0 text-xs font-semibold text-ink-2"
+              onClick={() => {
+                setReissueFor(u);
+                setReissueOpen(true);
+              }}
+            >
+              Reset password
+              <span className="sr-only"> for {u.fullName ?? u.email}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
               className="h-auto p-0 text-xs font-semibold text-danger"
               onClick={() => {
                 setPendingDelete(u);
@@ -259,6 +277,11 @@ export function UsersTable({
       />
 
       <EditUserDialog open={editOpen} onOpenChange={setEditOpen} user={managed} />
+      <ReissuePasswordDialog
+        open={reissueOpen}
+        onOpenChange={setReissueOpen}
+        user={reissueFor}
+      />
       <DeleteUserDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

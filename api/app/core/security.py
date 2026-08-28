@@ -27,6 +27,45 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     )
 
 
+#: Every confusable pair removed: no I/O against 1/0, no lowercase l. This
+#: string is read off a screen in an email and typed into a login form on a
+#: different device, and a misread costs a support call — staff have no password
+#: reset, so the only remedy is a manager reissuing it.
+#:
+#: No symbols. They would add ~2.5 bits and cost far more than that in
+#: phone-keyboard friction and in "is that a comma or a full stop".
+_TEMP_ALPHABET = (
+    "ABCDEFGHJKLMNPQRSTUVWXYZ"  # no I, no O
+    "abcdefghijkmnopqrstuvwxyz"  # no l
+    "23456789"  # no 0, no 1
+)
+
+
+def generate_temporary_password() -> str:
+    """A random first password, e.g. `hK4m-Q2xv-R9tB`.
+
+    12 random characters from 57 symbols is ~70 bits — orders of magnitude past
+    anything bcrypt plus login throttling needs. The hyphens are fixed, so they
+    cost no entropy; they make the string readable at a glance and make it
+    visibly machine-generated, so nobody mistakes it for one they chose.
+
+    `secrets.choice`, deliberately not `secrets.token_urlsafe`, whose alphabet
+    contains `-`, `_` and every ambiguous character removed above.
+
+    No character-class rejection sampling: there is no complexity policy
+    anywhere in this codebase. If one is ever added it belongs immediately next
+    to this function, or the generator starts producing passwords the API
+    rejects.
+
+    The rule that binds every caller: **this value is never logged.** Same rule
+    `integrations/whatsapp.py` states for the invite token and the OTP.
+    """
+    groups = [
+        "".join(secrets.choice(_TEMP_ALPHABET) for _ in range(4)) for _ in range(3)
+    ]
+    return "-".join(groups)
+
+
 # ─── JWT ───────────────────────────────────────────────────────────────────
 def _create_token(
     subject: str | Any,

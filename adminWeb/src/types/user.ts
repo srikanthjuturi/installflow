@@ -45,14 +45,39 @@ export interface CompanyUser {
   createdAt: string;
 }
 
-/** Body for `POST /users`. */
+/**
+ * What happened to an account's temporary-password email.
+ *
+ * `sent` — Azure accepted it. Not proof it arrived; there is no delivery
+ * webhook, so a later bounce is invisible.
+ * `failed` — refused, timed out, unconfigured, or blocked by the dev allowlist.
+ * `skipped` — no password was issued, because the email already belonged to an
+ * identity that keeps its own. A success, not a failure.
+ */
+export type EmailStatus = "sent" | "failed" | "skipped";
+
+/** The three fields every create/reissue response carries. */
+export interface EmailOutcome {
+  emailStatus: EmailStatus;
+  /** Why it did not go out. Null unless `emailStatus === "failed"`. */
+  emailError: string | null;
+  /**
+   * Returned ONLY when the email failed, and it is the only copy that will ever
+   * exist — staff have no password reset, so if this is lost the account can be
+   * recovered only by reissuing. Never persist or log it.
+   */
+  temporaryPassword: string | null;
+}
+
+/** `POST /users` and the reissue only — every other endpoint returns `CompanyUser`. */
+export type CreatedCompanyUser = CompanyUser & EmailOutcome;
+
+/** Body for `POST /users`. No password: the server mints and emails one. */
 export interface CreateUserInput {
   email: string;
   role: string;
   fullName?: string | null;
   phone?: string | null;
-  /** Temporary password for a brand-new identity (ignored if the email exists). */
-  password?: string | null;
   managerId?: string | null;
   /** Territory. A regional head sends `regionIds`; an area manager sends
    *  `stateIds` ONLY — his region is derived from them server-side. */

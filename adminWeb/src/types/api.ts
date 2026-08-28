@@ -15,6 +15,12 @@ export interface ApiEnvelope<T> {
   data: T;
   /** Populated on failure; empty array on success. */
   errors: string[];
+  /**
+   * A stable machine-readable reason, on failures where one status code carries
+   * more than one meaning. Omitted — not null — whenever the status says it all,
+   * so most errors never carry it. See `lib/errorCodes.ts`.
+   */
+  code?: string;
 }
 
 /** List endpoints add this alongside `data`. */

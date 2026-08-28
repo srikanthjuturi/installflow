@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +17,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import {
   Select,
   SelectContent,
@@ -28,8 +28,10 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { FormSection } from "@/components/shared/FormSection";
+import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useAssignableRoles, useCreateUser } from "@/hooks/useCompanyUsers";
+import type { CreatedCompanyUser } from "@/types/user";
 import { ScopeField } from "./ScopeField";
 import {
   createUserResolver,
@@ -52,22 +54,52 @@ export function AddUserDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // The account whose password email did NOT go out. While this is set the
+  // dialog shows the password instead of the form — see TemporaryPasswordPanel
+  // for why this cannot be a toast.
+  const [undelivered, setUndelivered] = useState<CreatedCompanyUser | null>(
+    null
+  );
+
+  function close() {
+    onOpenChange(false);
+    // Only after the dialog has gone, so the panel does not flash back to the
+    // empty form on the way out.
+    setTimeout(() => setUndelivered(null), 200);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       {/* Sized and sectioned like the vendor and company dialogs. Two columns
-          rather than three: this form has six fields, and a third column would
+          rather than three: this form has five fields, and a third column would
           leave a ragged empty cell in every row.
 
           The popup itself scrolls, as those dialogs do, so the scrollbar sits
           on the popup wall rather than in a gutter inside it. */}
       <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
-        <AddUserForm onDone={() => onOpenChange(false)} />
+        {undelivered ? (
+          <TemporaryPasswordPanel
+            heading="Created, but the email didn't send"
+            email={undelivered.email}
+            password={undelivered.temporaryPassword ?? ""}
+            reason={undelivered.emailError}
+            onDone={close}
+          />
+        ) : (
+          <AddUserForm onDone={close} onUndelivered={setUndelivered} />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function AddUserForm({ onDone }: { onDone: () => void }) {
+function AddUserForm({
+  onDone,
+  onUndelivered,
+}: {
+  onDone: () => void;
+  onUndelivered: (user: CreatedCompanyUser) => void;
+}) {
   const roles = useAssignableRoles();
   const create = useCreateUser();
 
@@ -106,15 +138,23 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
         role: values.role,
         fullName: values.fullName.trim(),
         phone: values.phone.trim() || null,
-        password: values.password,
         regionIds: values.regionIds,
         stateIds: values.stateIds,
       },
       {
         onSuccess: (u) => {
+          // The account exists in all three cases — the server answers 201 even
+          // when the email failed. Only WHAT to say differs.
+          if (u.emailStatus === "failed") {
+            onUndelivered(u);
+            return;
+          }
           toast.add({
             title: `${u.fullName ?? u.email} added`,
-            description: `Role: ${u.roleLabel}. Share the temporary password so they can sign in.`,
+            description:
+              u.emailStatus === "skipped"
+                ? `Role: ${u.roleLabel}. They sign in with the password they already use.`
+                : `Role: ${u.roleLabel}. A temporary password has been emailed to ${u.email}.`,
           });
           onDone();
         },
@@ -127,8 +167,8 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
       <DialogHeader>
         <DialogTitle>Invite user</DialogTitle>
         <DialogDescription>
-          Add a user to your company with a temporary password. You can only
-          assign roles below your own.
+          Add a user to your company. We&rsquo;ll email them a temporary
+          password. You can only assign roles below your own.
         </DialogDescription>
       </DialogHeader>
 
@@ -192,7 +232,13 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
 
       <FormSection legend="Access">
         <FieldGroup className={COLS}>
-          <Field data-invalid={err("role") ? true : undefined}>
+          {/* Spans the row: it is the only field in this section now that the
+              password is the server's, and a lone control in a two-column grid
+              leaves exactly the ragged cell the comments above warn about. */}
+          <Field
+            className="sm:col-span-2"
+            data-invalid={err("role") ? true : undefined}
+          >
           <FieldLabel htmlFor="role">Role</FieldLabel>
           <Controller
             name="role"
@@ -238,28 +284,15 @@ function AddUserForm({ onDone }: { onDone: () => void }) {
               </Select>
             )}
           />
+            {/* Says what will happen, now that removing the password field
+                removed the form's only sign that anything is sent. */}
             <FieldDescription>
-              Only roles below your own are listed.
+              Only roles below your own are listed. We email them a temporary
+              password to sign in with.
             </FieldDescription>
             {err("role") ? (
               <FieldDescription role="alert" className="text-danger">
                 {err("role")}
-              </FieldDescription>
-            ) : null}
-          </Field>
-
-          <Field data-invalid={err("password") ? true : undefined}>
-            <FieldLabel htmlFor="password">Temporary password</FieldLabel>
-            <PasswordInput
-              id="password"
-              placeholder="At least 8 characters"
-              autoComplete="new-password"
-              aria-invalid={err("password") ? true : undefined}
-              {...register("password")}
-            />
-            {err("password") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("password")}
               </FieldDescription>
             ) : null}
           </Field>

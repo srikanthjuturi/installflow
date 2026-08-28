@@ -24,14 +24,17 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
-from app.core.schemas import ListParams
-from app.core.security import hash_password
+from app.core.schemas import EmailStatus, ListParams
+from app.core.security import generate_temporary_password, hash_password
 from app.core.sessions import revoke_refresh_tokens
+from app.emails import send_temporary_password
 from app.features.vendor_users.schemas import (
     VendorUserCreateRequest,
+    VendorUserCreatedOut,
     VendorUserOut,
     VendorUserUpdateRequest,
 )
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.role import ROLE_LABELS, VENDOR, VENDOR_ROLES, VENDOR_USER
 from app.models.user import User
@@ -133,7 +136,7 @@ async def list_users(
 
 async def create_user(
     db: AsyncSession, principal: Principal, body: VendorUserCreateRequest
-) -> VendorUserOut:
+) -> VendorUserCreatedOut:
     email = str(body.email)
     existing = await db.scalar(
         select(User).where(
@@ -160,18 +163,25 @@ async def create_user(
         if clash is not None:
             raise _conflict(f"{email} already has an account here")
 
-    user = existing or User(
-        email=email,
-        password_hash=hash_password(body.password),
-        full_name=body.fullName.strip(),
-        phone=body.phone,
-        # Fixed, never taken from the request. A vendor creates vendor users;
-        # there is no other kind of account it could make.
-        role=VENDOR_USER,
-        is_active=True,
-        created_by=principal.user_id,
-    )
-    if existing is None:
+    # Stays None when an existing identity is reused: that person already has a
+    # password of their own, and `users` is global, so minting a new one would
+    # sign them out of every other company they work in.
+    temporary_password: str | None = None
+    if existing is not None:
+        user = existing
+    else:
+        temporary_password = generate_temporary_password()
+        user = User(
+            email=email,
+            password_hash=hash_password(temporary_password),
+            full_name=body.fullName.strip(),
+            phone=body.phone,
+            # Fixed, never taken from the request. A vendor creates vendor users;
+            # there is no other kind of account it could make.
+            role=VENDOR_USER,
+            is_active=True,
+            created_by=principal.user_id,
+        )
         db.add(user)
         # autoflush is OFF (hard rule 9) and the membership needs the id.
         await db.flush()
@@ -187,7 +197,43 @@ async def create_user(
         )
     )
     await db.commit()
-    return await get_user_by_user_id(db, principal, user.id)
+    base = await get_user_by_user_id(db, principal, user.id)
+    # After the commit — see `users.service.create_user` for why that ordering
+    # is the opposite of the technician invite's.
+    outcome = await _mail_password(
+        db,
+        company_id=principal.company_id,
+        user=user,
+        temporary_password=temporary_password,
+    )
+    return VendorUserCreatedOut(**base.model_dump(), **outcome)
+
+
+async def _mail_password(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    user: User,
+    temporary_password: str | None,
+) -> dict[str, object]:
+    """Send the temporary password and report what happened. Never raises."""
+    if temporary_password is None:
+        return {"emailStatus": "skipped", "emailError": None, "temporaryPassword": None}
+
+    company_name = await db.scalar(select(Company.name).where(Company.id == company_id))
+    result = await send_temporary_password(
+        to=str(user.email),
+        full_name=user.full_name,
+        company_name=company_name or "Reliance GreenTech",
+        role_label=ROLE_LABELS.get(user.role, user.role),
+        temporary_password=temporary_password,
+    )
+    status_value: EmailStatus = "sent" if result.ok else "failed"
+    return {
+        "emailStatus": status_value,
+        "emailError": None if result.ok else result.error,
+        "temporaryPassword": None if result.ok else temporary_password,
+    }
 
 
 async def get_user_by_user_id(

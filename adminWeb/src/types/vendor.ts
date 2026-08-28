@@ -19,6 +19,8 @@
  *                    vendor would be a worse lie than an absent column.
  */
 
+import type { EmailOutcome } from "./user";
+
 /** §4 of the requirement document. Mirrors INTAKE_CHANNELS in app/core/intake.py. */
 export type IntakeChannel = "API" | "Excel" | "Manual";
 
@@ -67,11 +69,13 @@ export interface VendorOption {
   name: string;
 }
 
+/** `POST /vendors` and the reissue only — elsewhere it is a plain `Vendor`. */
+export type CreatedVendor = Vendor & EmailOutcome;
+
 export interface CreateVendorInput {
   /** Required: only a vendor raises a ticket, so one without a login is a
    *  brand nobody could ever raise a ticket against. */
   loginEmail: string;
-  password: string;
   name: string;
   gstNumber: string;
   cin?: string | null;
@@ -86,8 +90,6 @@ export interface CreateVendorInput {
 }
 
 export interface UpdateVendorInput {
-  /** Reissue the password. Omit to leave it alone; the email is not editable. */
-  password?: string;
   id: string;
   name?: string;
   gstNumber?: string;

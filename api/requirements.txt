@@ -3,6 +3,17 @@ alembic==1.19.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
+# Pinned even though nothing imports it directly. azure-storage-blob and
+# azure-communication-email both FLOAT their azure-core requirement, and pip
+# resolves one version for both — so a resolver move could break blob uploads,
+# and you would find that out from a container log after a deploy. The rest of
+# this file is not a full freeze; this pin is a deliberate exception.
+azure-core==1.41.0
+# Transactional email — the temporary password a new account is created with.
+# Pure Python (azure-core, isodate, typing-extensions are all py3-none-any), so
+# Oryx has nothing to compile, unlike pywebpush below. Its async client rides on
+# aiohttp, which is already listed above.
+azure-communication-email==1.1.0
 azure-storage-blob==12.24.0
 bcrypt==5.0.0
 certifi==2026.7.22
@@ -26,7 +37,12 @@ psycopg==3.3.4
 pydantic-settings==2.14.2
 pydantic==2.13.4
 pydantic_core==2.46.4
-PyJWT==2.13.0
+# [crypto] pulls `cryptography`, which RS256 needs — Google's ID tokens are
+# RS256, so verifying a Google sign-in fails without it. It is already installed
+# as a transitive dependency of pywebpush below; this declares the INTENT, so
+# dropping web push one day cannot silently break sign-in with a
+# `NotImplementedError` nobody would connect to a push change.
+PyJWT[crypto]==2.13.0
 # Web push to the console. Pulls py-vapid, http-ece and cryptography; the last
 # is a compiled wheel, and Oryx builds remotely on Azure — see api/AGENTS.md.
 pywebpush==2.0.3

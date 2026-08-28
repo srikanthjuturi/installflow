@@ -2,9 +2,10 @@
 
 Users are created into the ACTIVE company only. Role must sit below the actor's
 role (roles never change afterwards). Identity is reused when the email already
-exists with the same role (the single-email / multi-company model); a new
-identity requires a password. Membership fields (active, manager) are
-per-company; identity fields (name, phone, image) are shared across companies.
+exists with the same role (the single-email / multi-company model); a NEW
+identity gets a server-generated temporary password, emailed to it. Membership
+fields (active, manager) are per-company; identity fields (name, phone, image)
+are shared across companies.
 """
 
 import uuid
@@ -15,7 +16,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal, ensure_below_rank
-from app.core.schemas import ListParams
+from app.core.schemas import EmailStatus, ListParams
 from app.core.scope import (
     ALL_INDIA_ROLES,
     Scope,
@@ -24,15 +25,19 @@ from app.core.scope import (
     own_scope,
     scope_label,
 )
-from app.core.security import hash_password
+from app.core.security import generate_temporary_password, hash_password
+from app.core.sessions import revoke_refresh_tokens
 from app.db.repository import territory_scope
+from app.emails import send_temporary_password
 from app.features.users.schemas import (
     RegionOut,
     StateOut,
     UserCreateRequest,
+    UserCreatedOut,
     UserOut,
     UserUpdateRequest,
 )
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.role import (
     VENDOR_ROLES,
@@ -397,7 +402,7 @@ async def list_users(
 
 async def create_user(
     session: AsyncSession, principal: Principal, body: UserCreateRequest
-) -> UserOut:
+) -> UserCreatedOut:
     if body.role == SUPERADMIN or body.role not in ROLE_RANKS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
     # A technician needs a profile, certifications and coverage, none of which
@@ -433,6 +438,12 @@ async def create_user(
 
     image = None if body.role in ROLES_WITHOUT_PROFILE_IMAGE else body.profileImageUrl
 
+    # Stays None on the identity-reuse branch, and that is what selects the
+    # "skipped" outcome below. A reused identity already has a password of its
+    # own; minting a new one would sign that person out of every OTHER company
+    # they work in, because `users` is global by design.
+    temporary_password: str | None = None
+
     existing = await session.scalar(
         select(User).where(func.lower(User.email) == str(body.email).lower())
     )
@@ -461,14 +472,10 @@ async def create_user(
         user = existing
     else:
         revived = None
-        if not body.password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password is required for a new user",
-            )
+        temporary_password = generate_temporary_password()
         user = User(
             email=str(body.email),
-            password_hash=hash_password(body.password),
+            password_hash=hash_password(temporary_password),
             full_name=body.fullName,
             phone=body.phone,
             role=body.role,
@@ -511,7 +518,56 @@ async def create_user(
     await session.refresh(user)
     scope = await load_scope(session, membership.id)
     appointed = await _appointed_by(session, [membership])
-    return _user_out(membership, user, scope, appointed.get(membership.id))
+    base = _user_out(membership, user, scope, appointed.get(membership.id))
+
+    # AFTER the commit, deliberately — and this inverts the technician-invite
+    # precedent, which sends first because it records the outcome on the invite
+    # row in the same transaction. There is no row to record on here, which
+    # flips the constraint: an accepted email for an account whose commit then
+    # failed would tell somebody to sign in to an account that does not exist.
+    # A committed account whose email failed is the case the failure branch
+    # below exists for.
+    outcome = await _mail_password(
+        session,
+        company_id=principal.company_id,
+        user=user,
+        temporary_password=temporary_password,
+    )
+    return UserCreatedOut(**base.model_dump(), **outcome)
+
+
+async def _mail_password(
+    session: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    user: User,
+    temporary_password: str | None,
+) -> dict[str, object]:
+    """Send the temporary password and report what happened. Never raises.
+
+    `temporary_password` of None means none was issued (an identity that keeps
+    its own), which is a success — `skipped` — not a failure.
+    """
+    if temporary_password is None:
+        return {"emailStatus": "skipped", "emailError": None, "temporaryPassword": None}
+
+    company_name = await session.scalar(
+        select(Company.name).where(Company.id == company_id)
+    )
+    result = await send_temporary_password(
+        to=str(user.email),
+        full_name=user.full_name,
+        company_name=company_name or "Reliance GreenTech",
+        role_label=ROLE_LABELS.get(user.role, user.role),
+        temporary_password=temporary_password,
+    )
+    status_value: EmailStatus = "sent" if result.ok else "failed"
+    return {
+        "emailStatus": status_value,
+        "emailError": None if result.ok else result.error,
+        # Only on failure — see EmailOutcome.temporaryPassword for why.
+        "temporaryPassword": None if result.ok else temporary_password,
+    }
 
 
 async def get_user(
@@ -597,6 +653,58 @@ async def update_user(
     scope = await load_scope(session, membership.id)
     appointed = await _appointed_by(session, [membership])
     return _user_out(membership, user, scope, appointed.get(membership.id))
+
+
+async def reissue_password(
+    session: AsyncSession, principal: Principal, membership_id: uuid.UUID
+) -> UserCreatedOut:
+    """Mint a fresh temporary password, email it, and kill the old sessions.
+
+    This exists because the change that stopped managers TYPING a password also
+    removed the only way back in for somebody who never received the email — it
+    lands in spam, or the address has a typo that still validates. Staff have no
+    password reset and `/auth/change-password` needs the current one, so without
+    this the account would be unreachable by anyone.
+
+    Every outstanding refresh token is revoked, for the same reason a password
+    change revokes them and the same reason the vendor reset does: whoever
+    prompted the reissue may be exactly who should stop having access.
+    """
+    membership, user = await _load_membership(session, principal, membership_id)
+    ensure_below_rank(principal, user.role)
+
+    # Neither can arise through this screen today — `create_user` refuses both
+    # roles — but a membership id is a client-supplied value and the failure
+    # would be silent: a technician has no email, so the send would go nowhere
+    # while their phone sign-in kept working against a password nobody wanted.
+    if user.role == TECHNICIAN or user.role in VENDOR_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account does not sign in with a password here",
+        )
+    if not user.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has no email address to send a password to",
+        )
+
+    temporary_password = generate_temporary_password()
+    user.password_hash = hash_password(temporary_password)
+    user.updated_by = principal.user_id
+    await revoke_refresh_tokens(session, user.id)
+    await session.commit()
+    await session.refresh(user)
+
+    scope = await load_scope(session, membership.id)
+    appointed = await _appointed_by(session, [membership])
+    base = _user_out(membership, user, scope, appointed.get(membership.id))
+    outcome = await _mail_password(
+        session,
+        company_id=principal.company_id,
+        user=user,
+        temporary_password=temporary_password,
+    )
+    return UserCreatedOut(**base.model_dump(), **outcome)
 
 
 async def delete_user(

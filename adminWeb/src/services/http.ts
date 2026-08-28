@@ -72,8 +72,18 @@ const REFRESH_PATH = "/auth/refresh";
  *   would rotate the token, leaving the request body holding the one that was
  *   just revoked — the server would then revoke nothing. The local session is
  *   cleared regardless, and the untouched token ages out.
+ * - `/auth/google`: its 401 means *no console account uses that Google
+ *   address*. Without this entry a leftover session would burn a refresh and
+ *   replay the whole Google credential, doubling the failure — and a 401 on the
+ *   refresh itself calls `endSession()`, so somebody with no account would be
+ *   bounced through a hard redirect instead of reading the message.
  */
-const NO_REFRESH = new Set([REFRESH_PATH, "/auth/login", "/auth/logout"]);
+const NO_REFRESH = new Set([
+  REFRESH_PATH,
+  "/auth/login",
+  "/auth/logout",
+  "/auth/google",
+]);
 
 /**
  * A dead access token fails every in-flight request at once. Without this, a

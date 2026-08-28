@@ -22,6 +22,22 @@ export function login(email: string, password: string): Promise<LoginResponse> {
 }
 
 /**
+ * Sign in with a Google ID token (`POST /auth/google`).
+ *
+ * The `credential` comes from Google Identity Services — both the button and
+ * One Tap produce the same thing, so one function serves both. It is an
+ * argument only: nothing here stores, logs or returns it.
+ *
+ * The reply is the same `LoginResponse` a password sign-in gives, so the
+ * session store and routing need no special case. A 401 here means "no console
+ * account uses that Google address", never an expired token — which is why
+ * `/auth/google` is on the transport's `NO_REFRESH` list.
+ */
+export function loginWithGoogle(credential: string): Promise<LoginResponse> {
+  return apiPost<LoginResponse>("/auth/google", { credential });
+}
+
+/**
  * Revoke the session server-side. Uses the current bearer token (added by the
  * transport), so call it BEFORE clearing the session locally.
  *

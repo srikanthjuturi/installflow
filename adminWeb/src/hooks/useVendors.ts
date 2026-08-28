@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createVendor,
+  reissueVendorPassword,
   deleteVendor,
   listIntakeChannels,
   listVendorOptions,
@@ -84,6 +85,24 @@ function useVendorMutation<TVars, TData>(
 
 export const useCreateVendor = () =>
   useVendorMutation(createVendor, "Couldn't add the vendor");
+
+/**
+ * Email this vendor's login a fresh temporary password.
+ *
+ * The way back in for a vendor who never received the first one — and, since
+ * `/auth/change-password` needs the current password, the only one.
+ *
+ * `gcTime: 0`: when the email fails the reply carries a live credential, and it
+ * must not sit in the mutation cache. Nothing to invalidate — the vendor row is
+ * unchanged, only its login's password is.
+ */
+export function useReissueVendorPassword() {
+  return useMutation({
+    meta: { errorTitle: "Couldn't reset the password" },
+    mutationFn: (id: string) => reissueVendorPassword(id),
+    gcTime: 0,
+  });
+}
 export const useUpdateVendor = () =>
   useVendorMutation(updateVendor, "Couldn't save the vendor");
 export const useDeleteVendor = () =>

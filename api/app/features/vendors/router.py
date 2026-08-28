@@ -37,11 +37,26 @@ from app.features.vendors import service
 from app.features.vendors.schemas import (
     IntakeChannelOut,
     VendorCreateRequest,
+    VendorCreatedOut,
     VendorOptionOut,
     VendorOut,
     VendorUpdateRequest,
 )
 from app.models.role import NATIONAL_HEAD
+
+#: Keyed on what happened to the password email. The console reads
+#: `data.emailStatus`; these serve API consumers, Swagger and the logs.
+_ADDED_MESSAGE = {
+    "sent": "Vendor added — the temporary password has been emailed",
+    "skipped": "Vendor added — the login uses the password it already has",
+    "failed": "Vendor added, but the password email did not go out",
+}
+
+_REISSUED_MESSAGE = {
+    "sent": "A new temporary password has been emailed",
+    "failed": "Password reset, but the email did not go out",
+    "skipped": "Password reset",
+}
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
 
@@ -120,15 +135,38 @@ async def get_vendor(
 
 @router.post(
     "",
-    response_model=ApiEnvelope[VendorOut],
+    response_model=ApiEnvelope[VendorCreatedOut],
     status_code=201,
     dependencies=[NationalHeadUp],
 )
 async def create_vendor(
     body: VendorCreateRequest, db: Db, principal: CanEdit
-) -> ApiEnvelope[VendorOut]:
+) -> ApiEnvelope[VendorCreatedOut]:
+    """Add a vendor and the account that signs in as it.
+
+    The server mints the login's temporary password and emails it. **201 even
+    when that email fails** — the vendor exists and the password is in the
+    response; read `data.emailStatus` to tell the cases apart.
+    """
     data = await service.create_vendor(db, principal, body)
-    return envelope(data, message="Vendor added", status_code=201)
+    return envelope(data, message=_ADDED_MESSAGE[data.emailStatus], status_code=201)
+
+
+@router.post(
+    "/{vendor_id}/reissue-password",
+    response_model=ApiEnvelope[VendorCreatedOut],
+    dependencies=[NationalHeadUp],
+)
+async def reissue_vendor_password(
+    vendor_id: uuid.UUID, db: Db, principal: CanEdit
+) -> ApiEnvelope[VendorCreatedOut]:
+    """Email this vendor's login a fresh temporary password, ending its sessions.
+
+    Takes no body: the password is the server's to choose. Replaces the
+    `password` field that used to ride on `PUT /vendors/{id}`.
+    """
+    data = await service.reissue_login_password(db, principal, vendor_id)
+    return envelope(data, message=_REISSUED_MESSAGE[data.emailStatus])
 
 
 @router.put(

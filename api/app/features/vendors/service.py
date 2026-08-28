@@ -20,23 +20,28 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
+from app.core.errors import AppError
+from app.core.gst import GST_DUPLICATE_VENDOR, assert_gst_not_the_company
 from app.core.intake import (
     CHANNEL_DESCRIPTION,
     INTAKE_CHANNELS,
     UNAVAILABLE_REASON,
     is_available,
 )
-from app.core.schemas import ListParams
+from app.core.schemas import EmailStatus, ListParams
 from app.db.repository import paginate
+from app.emails import send_temporary_password
 from app.features.vendors.schemas import (
     IntakeChannelOut,
     VendorCreateRequest,
+    VendorCreatedOut,
     VendorOptionOut,
     VendorOut,
     VendorUpdateRequest,
 )
-from app.core.security import hash_password
+from app.core.security import generate_temporary_password, hash_password
 from app.core.sessions import revoke_refresh_tokens
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductModel
 from app.models.role import ROLE_LABELS, VENDOR, VENDOR_ROLES
@@ -163,7 +168,14 @@ async def _assert_gst_free(
         stmt = stmt.where(Vendor.id != exclude_id)
     clash = await db.scalar(stmt)
     if clash is not None:
-        raise _conflict(f"{clash} is already registered under GSTIN {gst_number}")
+        # Coded, because the GSTIN box on the vendor form has to be able to tell
+        # this 409 from the one that says the number is the COMPANY's own — and
+        # from the name and login-email 409s the same endpoint raises.
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            GST_DUPLICATE_VENDOR,
+            f"{clash} is already registered under GSTIN {gst_number}",
+        )
 
 
 # ── hydration ─────────────────────────────────────────────────────────────────
@@ -395,7 +407,7 @@ async def list_options(
 
 async def create_vendor(
     db: AsyncSession, principal: Principal, body: VendorCreateRequest
-) -> VendorOut:
+) -> VendorCreatedOut:
     """The vendor record and the account that signs in as it, in ONE transaction.
 
     Both or neither. A vendor with no login is a brand nobody can raise a ticket
@@ -409,6 +421,10 @@ async def create_vendor(
     name = body.name.strip()
     await _assert_name_free(db, company_id, name)
     await _assert_gst_free(db, company_id, body.gstNumber)
+    # A vendor is an outside party, so it cannot be registered under the GSTIN
+    # of the company it supplies. Asked after the vendor-vs-vendor check because
+    # a duplicate of an existing vendor is the likelier mistake of the two.
+    await assert_gst_not_the_company(db, company_id, body.gstNumber)
     identity = await _resolve_login_identity(db, company_id, str(body.loginEmail))
 
     contact = body.contactPerson.strip()
@@ -431,13 +447,17 @@ async def create_vendor(
     # autoflush is OFF (hard rule 9) and the membership needs the vendor's id.
     await db.flush()
 
+    # Stays None when an existing identity is reused — that account keeps the
+    # password it already signs in with everywhere else.
+    temporary_password: str | None = None
     if identity is None:
         # The account describes the same human as the record: the contact
         # person's name, the vendor's phone. Two rows that would otherwise drift
         # apart the first time one of them is corrected.
+        temporary_password = generate_temporary_password()
         identity = User(
             email=str(body.loginEmail),
-            password_hash=hash_password(body.password),
+            password_hash=hash_password(temporary_password),
             full_name=contact,
             phone=body.phone,
             role=VENDOR,
@@ -458,17 +478,78 @@ async def create_vendor(
     )
     await db.commit()
     await db.refresh(row)
-    return await _one(db, company_id, row)
+    base = await _one(db, company_id, row)
+    # After the commit — see `users.service.create_user` for the ordering.
+    outcome = await _mail_password(
+        db,
+        company_id=company_id,
+        user=identity,
+        temporary_password=temporary_password,
+    )
+    return VendorCreatedOut(**base.model_dump(), **outcome)
+
+
+async def _mail_password(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    user: User,
+    temporary_password: str | None,
+) -> dict[str, object]:
+    """Send the temporary password and report what happened. Never raises."""
+    if temporary_password is None:
+        return {"emailStatus": "skipped", "emailError": None, "temporaryPassword": None}
+
+    company_name = await db.scalar(select(Company.name).where(Company.id == company_id))
+    result = await send_temporary_password(
+        to=str(user.email),
+        full_name=user.full_name,
+        company_name=company_name or "Reliance GreenTech",
+        role_label=ROLE_LABELS.get(user.role, user.role),
+        temporary_password=temporary_password,
+    )
+    status_value: EmailStatus = "sent" if result.ok else "failed"
+    return {
+        "emailStatus": status_value,
+        "emailError": None if result.ok else result.error,
+        "temporaryPassword": None if result.ok else temporary_password,
+    }
+
+
+async def reissue_login_password(
+    db: AsyncSession, principal: Principal, vendor_id: uuid.UUID
+) -> VendorCreatedOut:
+    """Email this vendor a fresh temporary password and end its sessions.
+
+    Replaces the `password` field that used to ride on `PUT /vendors/{id}`: the
+    password is the server's to choose now, so there is nothing to send.
+    """
+    row = await _load(db, principal.company_id, vendor_id)
+    account, temporary_password = await _reset_login_password(db, principal, row)
+    await db.commit()
+    await db.refresh(account)
+
+    base = await _one(db, principal.company_id, row)
+    outcome = await _mail_password(
+        db,
+        company_id=principal.company_id,
+        user=account,
+        temporary_password=temporary_password,
+    )
+    return VendorCreatedOut(**base.model_dump(), **outcome)
 
 
 async def _reset_login_password(
-    db: AsyncSession, principal: Principal, row: Vendor, password: str
-) -> None:
-    """Reissue the vendor's password, and kill the sessions it replaces.
+    db: AsyncSession, principal: Principal, row: Vendor
+) -> tuple[User, str]:
+    """Mint a new password for the vendor's login and kill its sessions.
 
-    This is the only way back in for a vendor who has forgotten theirs, because
-    `/auth/change-password` needs the current one and there is no email channel
-    to send a reset link through.
+    Returns the account and the plaintext, because the caller has to email it
+    and — if that fails — hand it back so somebody can pass it on. It is never
+    logged and never stored anywhere but the bcrypt hash.
+
+    This is the only way back in for a vendor who has forgotten theirs, since
+    `/auth/change-password` needs the current one.
 
     Every outstanding refresh token is revoked, for the same reason a password
     change revokes them: whoever prompted the reset may be exactly who should
@@ -487,10 +568,14 @@ async def _reset_login_password(
     )
     if account is None:
         raise _conflict(f"{row.name} has no login to reset")
+    if not account.email:
+        raise _conflict(f"{row.name}'s login has no email address to send a password to")
 
+    password = generate_temporary_password()
     account.password_hash = hash_password(password)
     account.updated_by = principal.user_id
     await revoke_refresh_tokens(db, account.id)
+    return account, password
 
 
 async def update_vendor(
@@ -505,10 +590,14 @@ async def update_vendor(
         name = body.name.strip()
         await _assert_name_free(db, principal.company_id, name, exclude_id=vendor_id)
         row.name = name
-    if body.gstNumber is not None:
+    # Only when it actually CHANGES. Checking it unconditionally would block
+    # every other edit to a vendor that already holds a GSTIN it should not —
+    # a row this rule was never meant to freeze, only to stop being created.
+    if body.gstNumber is not None and body.gstNumber.lower() != row.gst_number.lower():
         await _assert_gst_free(
             db, principal.company_id, body.gstNumber, exclude_id=vendor_id
         )
+        await assert_gst_not_the_company(db, principal.company_id, body.gstNumber)
         row.gst_number = body.gstNumber
     # The one clearable field: an explicit null means "this vendor has no CIN".
     if "cin" in body.model_fields_set:
@@ -530,8 +619,6 @@ async def update_vendor(
         row.intake_channels = list(body.intakeChannels)
     if body.isActive is not None:
         row.is_active = body.isActive
-    if body.password is not None:
-        await _reset_login_password(db, principal, row, body.password)
     row.updated_by = principal.user_id
 
     await db.commit()

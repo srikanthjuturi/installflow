@@ -30,12 +30,27 @@ export class ApiError extends Error {
   readonly status: number;
   /** The envelope's `errors[]`, for field-level messages. */
   readonly errors: string[];
+  /**
+   * The envelope's `code` — WHY, for the client rather than the user.
+   *
+   * Present only where one status carries more than one meaning and the screen
+   * has to tell them apart: `POST /vendors` answers 409 for a duplicate name, a
+   * duplicate GSTIN, the company's own GSTIN and a taken login email, and only
+   * this says which. Never match on the status alone, and never on the prose.
+   */
+  readonly code?: string;
 
-  constructor(message: string, status = 500, errors: string[] = []) {
+  constructor(
+    message: string,
+    status = 500,
+    errors: string[] = [],
+    code?: string
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.errors = errors;
+    this.code = code;
   }
 }
 
@@ -140,7 +155,8 @@ export function unwrap<T>(res: ApiEnvelope<T>): T {
     throw new ApiError(
       res.message || "Request failed",
       res.statusCode,
-      res.errors
+      res.errors,
+      res.code
     );
   }
   return res.data;
