@@ -300,8 +300,13 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review ·
   unreadable → retake on-site before leaving.
 - Auth is **OTP only** for technicians — the phone IS the credential, so there is no password
-  and no "forgot password". Console users still sign in with email + password; `users.email` and
-  `users.password_hash` are nullable precisely because a technician has neither.
+  and no "forgot password". Console users sign in with email + password **or with Google**
+  (`POST /auth/google`, which never creates an account — it matches an existing verified email);
+  `users.email` and `users.password_hash` are nullable precisely because a technician has neither.
+- **Nobody types a password when creating an account.** The server generates a temporary one and
+  emails it. If that email cannot be sent the account is still created and the password comes
+  back in the response for the manager to hand over — and `POST /users/{id}/reissue-password`
+  mints another, which is the only recovery path staff have. See `api/AGENTS.md` → Email.
 - There are **two onboarding modes**, and a technician record records which:
   `onboarding_mode` (invite | direct) is how the record came to exist, `registered_by`
   (self | manager) is who actually filled it in. They are not the same question — a manager can

@@ -298,11 +298,19 @@ app/
                          icons, phone, schemas (the envelope), scope, security,
                          sequences, sessions (revoking refresh tokens)
   db/                    base_class (naming convention), mixins, repository (territory_scope)
+  emails/                templates/*.html and the renderer — the ONE place an email
+                         BODY lives. Content only; the egress is integrations/.
+                         Filled with string.Template ($name), NOT str.format, because
+                         an email is mostly CSS braces. Every value is html-escaped.
   features/<slice>/      router.py · schemas.py · service.py — nothing else
                          NB `vendor_users` is its OWN slice, not part of `users`:
                          `users.*` gates the COMPANY's staff, and a vendor
                          holding it could read every manager in the tenant.
-  integrations/          whatsapp.py, otp_channel.py — outbound, and never raise on failure
+  integrations/          whatsapp.py, acs_email.py, otp_channel.py, blob.py — OUTBOUND,
+                         and never raise on failure.
+                         google_identity.py is the exception and says so: it is
+                         INBOUND verification, where a bad token has exactly one
+                         right outcome and there is no record to preserve.
   models/                one module per area; every model reachable from __init__
   scripts/               bootstrap, audit_tenancy, create_database, copy_geography
 alembic/versions/        hand-written, with a prose docstring saying WHY
@@ -399,6 +407,50 @@ Two traps that hid this:
 - **Background commands do not inherit a `cd` from an earlier Bash call.** Launch the server with
   absolute paths, or it exits 127 and the previous server keeps serving while you believe you
   restarted it.
+
+## Email — the temporary password
+
+A new console account (user, vendor, vendor user, company admin) gets a **server-generated**
+password, emailed through Azure Communication Services. Nobody types one any more.
+
+The same degradation rule as WhatsApp, and for the same reason: **leave `ACS_*` empty and
+nothing 500s.** The account is still created, and the plaintext comes back in the response as
+`temporaryPassword` so the manager can hand it over. It is returned **only** when
+`emailStatus == "failed"` — always returning it would put a live credential in every HTTP log,
+and never returning it would strand the account, because staff have no password reset and
+`/auth/change-password` needs the current one. `POST /users/{id}/reissue-password` (and the
+vendor twin) is the way back in when the email is lost.
+
+⚠ **Set `ACS_EMAIL_ALLOWLIST` to your own address before exercising any create form.** The key
+in `.env` is live and is the SAME resource production uses, so an invented test address sends
+real mail to whoever owns it. `publish.py` refuses to deploy while the allowlist is non-empty,
+which is what keeps it a development-only guard.
+
+Three outcomes, and the console branches on the field, not the message — `apiPost` returns
+`data` and drops `message`: `sent` (Azure accepted it; not proof of delivery, there is no
+webhook) · `failed` · `skipped` (the email already belonged to an identity that keeps its own
+password — `users` is global, so minting a new one would sign that person out of every other
+company they work in).
+
+## Google sign-in
+
+`POST /auth/google` takes the ID token from Google Identity Services — the button and One Tap
+both produce it — and answers with the same `LoginResponse` as `/auth/login`. There is **no
+client secret** anywhere: the credential flow has no authorization code to exchange.
+
+It **never creates an account.** An address Google verifies but this database has never seen is
+a 401, not a new user; otherwise anyone holding a Gmail could mint a tenant account.
+
+`GOOGLE_CLIENT_ID` lives as a **default in `config.py`**, not in `.env.production` — it is
+public (it is inlined into the console bundle), so it belongs with the code, exactly like
+`CORS_ORIGINS` and `ANDROID_PACKAGE`. It must match the console's `VITE_GOOGLE_CLIENT_ID`, which
+lives in the Netlify UI.
+
+⚠ **The console's origins must be listed under "Authorized JavaScript origins"** on that client
+in Google Cloud — both `localhost` and `127.0.0.1`, ports 5173-5175, plus the Netlify host. A
+missing origin fails **entirely client-side**: the button does nothing, and no request ever
+reaches this API, so the logs show nothing. Same class of silent, outside-the-repo prerequisite
+as `CORS_ORIGINS`.
 
 ## Testing onboarding without Meta credentials
 
