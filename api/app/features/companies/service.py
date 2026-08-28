@@ -15,17 +15,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import company_code
 from app.core.deps import Principal
-from app.core.schemas import ListParams
-from app.core.security import hash_password
+from app.core.errors import AppError
+from app.core.gst import GST_DUPLICATE_COMPANY, assert_gst_not_a_vendor
+from app.core.schemas import EmailStatus, ListParams
+from app.core.security import generate_temporary_password, hash_password
 from app.db.repository import paginate
+from app.emails import send_temporary_password
 from app.features.companies.schemas import (
     CompanyCreateRequest,
+    CompanyCreatedOut,
     CompanyOut,
     CompanyUpdateRequest,
 )
 from app.models.company import Company
 from app.models.membership import Membership
-from app.models.role import ADMIN
+from app.models.role import ADMIN, ROLE_LABELS
 from app.models.user import User
 
 
@@ -96,16 +100,24 @@ async def _unique_code(
 async def _ensure_gst_unique(
     session: AsyncSession, gst_number: str, *, exclude_id: uuid.UUID | None = None
 ) -> None:
-    """409 if any company (incl. soft-deleted, matching the unique index) uses this GSTIN."""
+    """409 if any company uses this GSTIN, soft-deleted ones INCLUDED.
+
+    ⚠ That is stricter than `uq_companies_gst_lower`, which `4c8f1b7d2e93` made
+    partial on `deleted_at IS NULL`. So a soft-deleted company still blocks its
+    GSTIN here even though the database would now allow it — and the blocking
+    row is invisible on every screen, which makes the 409 unexplainable. Left
+    alone deliberately; reconciling the two is its own change.
+    """
     stmt = select(func.count()).select_from(Company).where(
         func.lower(Company.gst_number) == gst_number.lower()
     )
     if exclude_id is not None:
         stmt = stmt.where(Company.id != exclude_id)
     if await session.scalar(stmt):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="GST number already registered",
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            GST_DUPLICATE_COMPANY,
+            "GST number already registered",
         )
 
 
@@ -175,7 +187,7 @@ async def _user_count(session: AsyncSession, company_id: uuid.UUID) -> int:
 
 async def create_company(
     session: AsyncSession, principal: Principal, body: CompanyCreateRequest
-) -> CompanyOut:
+) -> CompanyCreatedOut:
     await _ensure_gst_unique(session, body.gstNumber)
     slug = await _unique_slug(session, body.name)
     code = await _unique_code(session, body.name, body.code)
@@ -199,6 +211,11 @@ async def create_company(
     session.add(company)
     await session.flush()  # populate company.id
 
+    # Stays None on the reuse branch: that admin already has a password, and
+    # `users` is global, so minting a new one would sign them out of every other
+    # company they administer.
+    temporary_password: str | None = None
+
     existing = await session.scalar(
         select(User).where(func.lower(User.email) == str(body.email).lower())
     )
@@ -210,9 +227,10 @@ async def create_company(
             )
         admin_user = existing  # reuse identity → admin of multiple companies
     else:
+        temporary_password = generate_temporary_password()
         admin_user = User(
             email=str(body.email),
-            password_hash=hash_password(body.password),
+            password_hash=hash_password(temporary_password),
             full_name=body.adminName,
             role=ADMIN,
             is_active=True,
@@ -231,7 +249,32 @@ async def create_company(
     )
     await session.commit()
     await session.refresh(company)
-    return _company_out(company, admin_email=admin_user.email, user_count=1)
+    base = _company_out(company, admin_email=admin_user.email, user_count=1)
+
+    # After the commit — see `users.service.create_user` for the ordering. The
+    # company is named as itself here, not as the superadmin's tenant: this
+    # admin has never heard of us under any other name.
+    if temporary_password is None:
+        outcome: dict[str, object] = {
+            "emailStatus": "skipped",
+            "emailError": None,
+            "temporaryPassword": None,
+        }
+    else:
+        result = await send_temporary_password(
+            to=str(admin_user.email),
+            full_name=admin_user.full_name,
+            company_name=company.name,
+            role_label=ROLE_LABELS.get(ADMIN, ADMIN),
+            temporary_password=temporary_password,
+        )
+        status_value: EmailStatus = "sent" if result.ok else "failed"
+        outcome = {
+            "emailStatus": status_value,
+            "emailError": None if result.ok else result.error,
+            "temporaryPassword": None if result.ok else temporary_password,
+        }
+    return CompanyCreatedOut(**base.model_dump(), **outcome)
 
 
 async def list_companies(
@@ -281,6 +324,11 @@ async def update_company(
         company.phone = body.phone
     if body.gstNumber is not None and body.gstNumber.lower() != company.gst_number.lower():
         await _ensure_gst_unique(session, body.gstNumber, exclude_id=company.id)
+        # The other edge of the same rule the vendor form enforces: a company
+        # and one of its own vendors cannot share a GST number. Only asked on
+        # UPDATE — a company being created has no vendors yet, so the query
+        # could not return a row.
+        await assert_gst_not_a_vendor(session, company.id, body.gstNumber)
         company.gst_number = body.gstNumber
     if body.pan is not None:
         company.pan = body.pan

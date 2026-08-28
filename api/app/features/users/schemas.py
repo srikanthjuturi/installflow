@@ -7,16 +7,19 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.core.phone import OptionalPhone
 from app.core.images import ImageUrl
-from app.core.schemas import AppModel
+from app.core.schemas import AppModel, EmailOutcome
 
 
 class UserCreateRequest(BaseModel):
+    # NB: there is deliberately no `password`. The server mints a temporary one
+    # and emails it — see `app.emails.send_temporary_password`. The field was
+    # deleted rather than deprecated: pydantic ignores unknown keys, so a client
+    # still sending one would get a 201 and have it silently discarded, and
+    # somebody would hand over a credential that does not work.
     email: EmailStr
     role: str
     fullName: str | None = Field(default=None, max_length=255)
     phone: OptionalPhone = None
-    # Required only when the email is new (a fresh identity). Ignored on reuse.
-    password: str | None = Field(default=None, min_length=8, max_length=128)
     profileImageUrl: ImageUrl = None
     managerId: uuid.UUID | None = None  # a membership id in the same company
     # Territory. Which of these is required depends on the role — see the
@@ -79,3 +82,13 @@ class UserOut(AppModel):
     states: list[StateOut]
     scopeLabel: str
     createdAt: datetime
+
+
+class UserCreatedOut(UserOut, EmailOutcome):
+    """`POST /users` and the reissue only.
+
+    A subclass rather than a wrapper: wrapping would push every field above down
+    a level and break the console's `onSuccess: (u) => u.fullName`, and widening
+    `UserOut` itself would add three permanently-null fields to the list, get
+    and update responses. This is purely additive.
+    """

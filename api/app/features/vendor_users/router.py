@@ -32,9 +32,18 @@ from app.core.schemas import (
 from app.features.vendor_users import service
 from app.features.vendor_users.schemas import (
     VendorUserCreateRequest,
+    VendorUserCreatedOut,
     VendorUserOut,
     VendorUserUpdateRequest,
 )
+
+#: Keyed on what happened to the password email. The portal reads
+#: `data.emailStatus`; this serves API consumers, Swagger and the logs.
+_ADDED_MESSAGE = {
+    "sent": "User added — the temporary password has been emailed",
+    "skipped": "User added — they sign in with the password they already use",
+    "failed": "User added, but the password email did not go out",
+}
 
 router = APIRouter(prefix="/vendor/users", tags=["vendor-users"])
 
@@ -58,20 +67,24 @@ async def list_vendor_users(
 
 @router.post(
     "",
-    response_model=ApiEnvelope[VendorUserOut],
+    response_model=ApiEnvelope[VendorUserCreatedOut],
     status_code=201,
     dependencies=[IsVendor],
 )
 async def create_vendor_user(
     body: VendorUserCreateRequest, db: Db, principal: CanManage
-) -> ApiEnvelope[VendorUserOut]:
+) -> ApiEnvelope[VendorUserCreatedOut]:
     """Add somebody who can raise tickets for this vendor.
 
     They see only the tickets they raise themselves; the vendor sees all of
     them. That split is enforced in the ticket service, not here.
+
+    The server mints the temporary password and emails it. **201 even when that
+    email fails** — the account exists and the password is in the response, read
+    `data.emailStatus` to tell the cases apart.
     """
     row = await service.create_user(db, principal, body)
-    return envelope(row, message="User added")
+    return envelope(row, message=_ADDED_MESSAGE[row.emailStatus])
 
 
 @router.put("/{membership_id}", response_model=ApiEnvelope[VendorUserOut], dependencies=[IsVendor])

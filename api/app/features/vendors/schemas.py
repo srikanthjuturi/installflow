@@ -18,7 +18,7 @@ from app.core.intake import (
     UNAVAILABLE_REASON,
 )
 from app.core.phone import Phone
-from app.core.schemas import AppModel
+from app.core.schemas import AppModel, EmailOutcome
 from app.core.statutory import Address, CityState, Cin, GstNumber, Pincode
 
 Name255 = Field(min_length=2, max_length=255)
@@ -81,8 +81,9 @@ class VendorCreateRequest(BaseModel):
     #: The vendor's login. REQUIRED, because only a vendor can raise a ticket —
     #: a vendor without an account would be a brand nobody could ever raise one
     #: against, which is a dead end rather than a choice.
+    #:
+    #: No password: the server mints a temporary one and emails it here.
     loginEmail: EmailStr
-    password: str = Field(min_length=8, max_length=128)
 
 
 class VendorUpdateRequest(BaseModel):
@@ -106,14 +107,12 @@ class VendorUpdateRequest(BaseModel):
     #: channels alone, and an empty list is refused rather than clearing them.
     intakeChannels: IntakeChannels | None = None
     isActive: bool | None = None
-    #: Reissue the vendor's password. Omit to leave it alone — this is the only
-    #: way back in for a vendor who has forgotten theirs, since changing a
-    #: password otherwise requires knowing the current one.
+    #: NB: no password. Reissuing one is now `POST /vendors/{id}/reissue-password`
+    #: — it takes no body, because the password is the server's to choose.
     #:
-    #: The login EMAIL is deliberately not editable: it is the identity the
-    #: account is looked up by, and moving it would silently strand the vendor
-    #: on credentials nobody has recorded.
-    password: str | None = Field(default=None, min_length=8, max_length=128)
+    #: The login EMAIL is deliberately not editable either: it is the identity
+    #: the account is looked up by, and moving it would silently strand the
+    #: vendor on credentials nobody has recorded.
 
 
 class VendorOut(AppModel):
@@ -139,6 +138,10 @@ class VendorOut(AppModel):
     #: before logins existed, which is nothing outside a half-migrated database.
     loginEmail: str | None = None
     createdAt: datetime
+
+
+class VendorCreatedOut(VendorOut, EmailOutcome):
+    """`POST /vendors` and the reissue — see `UserCreatedOut` for why a subclass."""
 
 
 class VendorOptionOut(AppModel):

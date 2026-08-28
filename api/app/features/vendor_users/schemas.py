@@ -7,18 +7,19 @@ from typing import Annotated
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.phone import Phone
-from app.core.schemas import AppModel
+from app.core.schemas import AppModel, EmailOutcome
 
 Name255 = Annotated[str, Field(min_length=2, max_length=255)]
 
 
 class VendorUserCreateRequest(BaseModel):
-    """No `role` and no territory.
+    """No `role`, no territory and no password.
 
     The role is fixed — a vendor creates vendor users and nothing else — and a
     vendor has no regions or pincodes to hand out. Both are absent rather than
     optional-and-ignored, so there is no field a caller could set and be quietly
-    disappointed by.
+    disappointed by. The password is the server's: it mints a temporary one and
+    emails it, so there is nothing for the vendor to invent or pass along.
     """
 
     fullName: Name255
@@ -26,9 +27,6 @@ class VendorUserCreateRequest(BaseModel):
     #: Optional, unlike a technician's. A vendor's people are reached by email;
     #: the phone is for whoever ends up calling them about a job.
     phone: Phone | None = None
-    #: The one they are told, and change themselves through
-    #: `/auth/change-password`. Nothing forces that change — see the plan.
-    password: str = Field(min_length=8, max_length=128)
 
 
 class VendorUserUpdateRequest(BaseModel):
@@ -59,3 +57,7 @@ class VendorUserOut(AppModel):
     #: whoever is looking at it, and it cannot be edited or removed from here.
     isOwner: bool
     createdAt: datetime
+
+
+class VendorUserCreatedOut(VendorUserOut, EmailOutcome):
+    """`POST /vendor/users` only — see `UserCreatedOut` for why it subclasses."""
