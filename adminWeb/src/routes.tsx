@@ -50,6 +50,9 @@ const TechnicianListPage = lazy(
 const TechnicianProfilePage = lazy(
   () => import("@/pages/technicians/TechnicianProfilePage")
 );
+const TechnicianJobsPage = lazy(
+  () => import("@/pages/technicians/TechnicianJobsPage")
+);
 const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
 const AiReviewDetailPage = lazy(
   () => import("@/pages/ai-review/AiReviewDetailPage")
@@ -240,6 +243,10 @@ export const routes: RouteObject[] = [
               { path: "ai-review/:id", element: <AiReviewDetailPage /> },
               { path: "technicians", element: <TechnicianListPage /> },
               { path: "technicians/:id", element: <TechnicianProfilePage /> },
+              {
+                path: "technicians/:id/tickets",
+                element: <TechnicianJobsPage />,
+              },
               { path: "ledger", element: <LedgerPage /> },
               { path: "vendors", element: <VendorsPage /> },
               { path: "categories", element: <CategoriesPage /> },

@@ -26,6 +26,9 @@ export default function TicketListPage() {
         error={isError ? error : null}
         onRetry={() => refetch()}
         emptyDescription="Tickets raised by your vendors will appear here."
+        /* Same words as the old hard-coded default, but now it returns to the
+           page and filters you left rather than a bare /tickets. */
+        backLabel="Back to tickets"
       />
     </>
   );

@@ -233,11 +233,19 @@ class NotificationRaised:
     `vendor_id` is the other half: a row addressed to a vendor reaches their
     portal, and without it here the socket could only guess, which for a vendor
     means either missing their own events or hearing everybody's.
+
+    `notification_id` names the row and carries none of it. It is here for web
+    push, which has to re-read the title and detail to put them in an encrypted
+    payload, and which has to deduplicate across the two Azure workers that both
+    receive this frame. An id is routing — it is the address of the content, not
+    the content — so the rule above still holds: nothing here says what
+    happened, and the console still learns that by asking.
     """
 
     company_id: uuid.UUID
     pincode: str | None
     vendor_id: uuid.UUID | None = None
+    notification_id: uuid.UUID | None = None
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -246,6 +254,9 @@ class NotificationRaised:
                 "company_id": str(self.company_id),
                 "pincode": self.pincode,
                 "vendor_id": str(self.vendor_id) if self.vendor_id else None,
+                "notification_id": (
+                    str(self.notification_id) if self.notification_id else None
+                ),
             },
             separators=(",", ":"),
         )
@@ -257,10 +268,15 @@ class NotificationRaised:
         try:
             code = raw.get("pincode")
             vendor = raw.get("vendor_id")
+            # Optional on the way in, so a frame published by an older worker
+            # mid-deploy degrades to "the bell rings, nothing is pushed"
+            # rather than to a discarded payload.
+            row_id = raw.get("notification_id")
             return NotificationRaised(
                 company_id=uuid.UUID(str(raw["company_id"])),
                 pincode=str(code) if code else None,
                 vendor_id=uuid.UUID(str(vendor)) if vendor else None,
+                notification_id=uuid.UUID(str(row_id)) if row_id else None,
             )
         except (KeyError, ValueError, TypeError):
             log.warning("realtime: discarding malformed payload %r", raw)
@@ -342,18 +358,27 @@ async def publish_notification(
     company_id: uuid.UUID,
     pincode: str | None,
     vendor_id: uuid.UUID | None = None,
+    notification_id: uuid.UUID | None = None,
 ) -> None:
     """Tell every console whose territory covers this that the bell moved.
 
     `vendor_id` additionally rings the named vendor's portal. It widens the
     audience; it never narrows the staff one.
+
+    `notification_id` is what web push needs to find the row again and to
+    deduplicate across workers. Pass it — `notify()` flushes so the id exists
+    before the commit. Omitting it still rings every open console; it only
+    means nothing reaches a browser that is closed.
     """
     await db.execute(
         text("SELECT pg_notify(:channel, :payload)"),
         {
             "channel": CHANNEL,
             "payload": NotificationRaised(
-                company_id=company_id, pincode=pincode, vendor_id=vendor_id
+                company_id=company_id,
+                pincode=pincode,
+                vendor_id=vendor_id,
+                notification_id=notification_id,
             ).as_payload(),
         },
     )

@@ -1,0 +1,9 @@
+# The service worker must never be served from cache.
+#
+# Browsers re-fetch /sw.js on their own schedule and honour its cache headers
+# doing so, so a worker cached for a year is a worker that keeps running the
+# notification logic of whatever deploy first installed it. Everything else in
+# this app is content-hashed by Vite and can be cached hard; this one file
+# cannot be, because its URL never changes.
+/sw.js
+  Cache-Control: no-cache

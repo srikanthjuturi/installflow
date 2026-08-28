@@ -46,6 +46,12 @@ ENV_SOURCE = ".env.production"
 #: to say so. A second copy of the name is cheap; that failure was not.
 PRODUCTION_DB = "RelianceProdDB"
 
+#: The development VAPID private key, from `.env`. Named here so shipping it to
+#: production is refused rather than merely discouraged: it sits in a file every
+#: developer has a copy of, and whoever holds it can push a notification to
+#: every browser that ever turned desktop alerts on.
+_DEV_VAPID_PRIVATE_KEY = "lX6xivPgJRlEOrkCtIMfQj4HNwt9P8rXV5L4vWT7ygA"
+
 
 def fail(message: str) -> None:
     print(f"\nFAILED: {message}", file=sys.stderr)
@@ -174,6 +180,37 @@ def guard_production_config() -> None:
     ):
         if not values.get(key, "").strip():
             problems.append(f"{key} is unset — {what} would go out as free-form text")
+
+    # Web push fails the same silent way. With the switch on and no VAPID pair
+    # the console renders a working-looking "Desktop alerts" toggle, the browser
+    # grants permission, and every send is dropped server-side — so it is only
+    # discovered by somebody eventually asking why they never hear about an
+    # escalation. Off with no keys is a legitimate state; on without them is not.
+    if values.get("WEB_PUSH_ENABLED", "").strip().lower() in ("true", "1"):
+        missing = [
+            key
+            for key in ("VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY")
+            if not values.get(key, "").strip()
+        ]
+        if missing:
+            problems.append(
+                f"WEB_PUSH_ENABLED is on but {' and '.join(missing)} "
+                f"{'are' if len(missing) > 1 else 'is'} empty — the console "
+                "would offer desktop alerts that silently never arrive. "
+                "Generate a pair for THIS environment (vapid --gen); never "
+                "reuse the development one."
+            )
+        elif values.get("VAPID_PRIVATE_KEY", "").strip() == _DEV_VAPID_PRIVATE_KEY:
+            problems.append(
+                "VAPID_PRIVATE_KEY is the development key from .env — it is in "
+                "a file every developer has. Generate a separate pair for "
+                "production with `vapid --gen`."
+            )
+        if not values.get("VAPID_SUBJECT", "").strip().startswith("mailto:"):
+            problems.append(
+                "VAPID_SUBJECT must be a mailto: a push service can complain "
+                "to; providers may start refusing sends without a real one"
+            )
 
     if problems:
         fail("; ".join(problems))

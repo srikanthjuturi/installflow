@@ -12,6 +12,7 @@ import {
   getTicket,
   getTicketProof,
   listTechnicianJobs,
+  listTechnicianTickets,
   listTickets,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
@@ -40,6 +41,10 @@ export const ticketKeys = {
    */
   byTechnician: (technicianId: string, limit: number) =>
     ["tickets", "byTechnician", technicianId, limit] as const,
+  /** The full, paged list behind the profile's "See all" — same prefix, same
+   *  invalidation, but keyed on the whole request the way `list` is. */
+  byTechnicianList: (technicianId: string, params: ListParams) =>
+    ["tickets", "byTechnicianList", technicianId, params] as const,
 };
 
 export function useTickets(params: ListParams = {}) {
@@ -58,17 +63,44 @@ export function useTickets(params: ListParams = {}) {
 }
 
 /**
- * The jobs on a technician's profile. A short peek, not a workspace — six rows,
- * no paging, most recent slot first.
+ * The jobs on a technician's profile. A short peek, not a workspace — five
+ * rows, no paging, most recent slot first.
+ *
+ * The response still carries `pagination.totalRecords` for the technician's
+ * whole history, so the profile can say how many there are and link to them
+ * without asking twice.
  *
  * Same backstop as the board and the detail: the socket keeps it current, and
  * the interval is the floor under a socket that has died without saying so.
  */
-export function useTechnicianJobs(technicianId: string, limit = 6) {
+export function useTechnicianJobs(technicianId: string, limit = 5) {
   return useQuery({
     queryKey: ticketKeys.byTechnician(technicianId, limit),
     queryFn: () => listTechnicianJobs(technicianId, limit),
     enabled: Boolean(technicianId),
+    refetchInterval: BACKSTOP_REFETCH_MS,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Every ticket for one technician — the page behind "See all".
+ *
+ * The full workspace, not the peek: search, status, sort and paging all come
+ * from the query string, exactly as on the ticket board, because this renders
+ * the same `TicketTable`.
+ */
+export function useTechnicianTickets(
+  technicianId: string,
+  params: ListParams = {}
+) {
+  return useQuery({
+    queryKey: ticketKeys.byTechnicianList(technicianId, params),
+    queryFn: () => listTechnicianTickets(technicianId, params),
+    enabled: Boolean(technicianId),
+    // Same reason as the board: a page change should step sideways, not blank
+    // the table back to skeletons.
+    placeholderData: keepPreviousData,
     refetchInterval: BACKSTOP_REFETCH_MS,
     refetchOnWindowFocus: true,
   });

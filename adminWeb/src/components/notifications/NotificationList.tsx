@@ -1,67 +1,31 @@
-import { Link } from "react-router";
-import {
-  AlertTriangle,
-  Bell,
-  BellOff,
-  Check,
-  Clock,
-  ScanLine,
-  ShieldCheck,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { BellOff, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { EmptyState, ErrorState } from "@/components/shared/states";
-import { relativeTime } from "@/lib/relativeTime";
+import { groupByDay } from "@/lib/dayGroup";
 import { useSession } from "@/store/session";
-import { cn } from "@/lib/utils";
-import type {
-  NotificationKind,
-  OpsNotification,
-} from "@/services/notifications";
-
-/** Static per-kind classes — an interpolated colour class never compiles. */
-const KIND: Record<
-  NotificationKind,
-  { icon: LucideIcon; wrap: string; label: string }
-> = {
-  escalation: {
-    icon: AlertTriangle,
-    wrap: "bg-danger-bg text-danger",
-    label: "Escalation",
-  },
-  ai: {
-    icon: ScanLine,
-    wrap: "bg-status-ai-review-bg text-status-ai-review",
-    label: "AI verification",
-  },
-  serial_mismatch: {
-    icon: ScanLine,
-    wrap: "bg-danger-bg text-danger",
-    label: "Serial mismatch",
-  },
-  force_close: {
-    icon: ShieldCheck,
-    wrap: "bg-warn-bg text-warn",
-    label: "Force closure",
-  },
-  slot: { icon: Clock, wrap: "bg-info-bg text-info", label: "Slot" },
-};
-
-const FALLBACK = {
-  icon: Bell,
-  wrap: "bg-surface-2 text-ink-2",
-  label: "Event",
-} satisfies (typeof KIND)[NotificationKind];
+import { NotificationRow } from "./NotificationRow";
+import type { OpsNotification } from "@/services/notifications";
 
 interface NotificationListProps {
-  items?: OpsNotification[];
+  items: OpsNotification[];
+  /** How many match the filters, not how many have loaded. */
+  total: number;
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
+  onOpen: (id: string) => void;
   onMarkRead: (id: string) => void;
   /** The row currently being marked read, if any. */
   pendingId?: string;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => void;
+  /** Set while a filter is on, so "nothing here" can say why. */
+  isFiltered: boolean;
+  onClearFilters: () => void;
 }
 
 /**
@@ -80,13 +44,36 @@ function routeFor(to: string, portal: boolean): string {
 
 export function NotificationList({
   items,
+  total,
   isLoading,
   error,
   onRetry,
+  onOpen,
   onMarkRead,
   pendingId,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+  isFiltered,
+  onClearFilters,
 }: NotificationListProps) {
   const portal = useSession((s) => s.portal);
+
+  // Auto-load on scroll, with the button below as the real control. The
+  // observer is the convenience; the button is what a keyboard reaches, and
+  // what somebody gets when the observer never fires because the list is
+  // shorter than the viewport.
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => entries[0]?.isIntersecting && fetchNextPage(),
+      { rootMargin: "300px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (error)
     return (
@@ -99,8 +86,19 @@ export function NotificationList({
 
   if (isLoading) return <NotificationSkeleton />;
 
-  if (!items?.length)
-    return (
+  if (items.length === 0)
+    return isFiltered ? (
+      <EmptyState
+        icon={SearchX}
+        title="No events match"
+        description="Nothing in this feed matches what you're looking for."
+        action={
+          <Button variant="outline" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        }
+      />
+    ) : (
       <EmptyState
         icon={BellOff}
         title="No events yet"
@@ -108,94 +106,88 @@ export function NotificationList({
       />
     );
 
-  return (
-    <ul className="divide-y divide-line-2">
-      {items.map((n) => {
-        // A kind this build has never heard of still renders. The server can
-        // add one before the console ships again, and a `undefined.icon` would
-        // take the whole page down over a label.
-        const kind = KIND[n.kind] ?? FALLBACK;
-        const Icon = kind.icon;
-        return (
-          <li key={n.id} className="flex items-center gap-2">
-            {/* The row navigates to the screen that clears the event. */}
-            <Link
-              to={routeFor(n.to, portal)}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-3 transition-colors hover:bg-surface-2"
-            >
-              <span
-                className={cn(
-                  "grid size-9 shrink-0 place-items-center rounded-md",
-                  kind.wrap
-                )}
-              >
-                <Icon className="size-4.5" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  {/* Unread is stated in words, not signalled by weight alone. */}
-                  <span
-                    className={cn(
-                      "truncate text-[13px]",
-                      n.read ? "font-medium text-ink-2" : "font-semibold"
-                    )}
-                  >
-                    {n.title}
-                  </span>
-                  {n.read ? null : (
-                    <span className="shrink-0 rounded-full bg-brand-100 px-2 py-px text-[10px] font-bold tracking-[0.04em] text-brand-500 uppercase">
-                      Unread
-                    </span>
-                  )}
-                </span>
-                <span className="block truncate text-xs text-ink-3">
-                  {kind.label} · {n.detail}
-                </span>
-              </span>
-              <span className="shrink-0 text-xs whitespace-nowrap text-ink-3">
-                {relativeTime(n.createdAt)}
-              </span>
-            </Link>
+  const groups = groupByDay(items, (n) => n.createdAt);
 
-            {/* Acting on the row, not going anywhere — so a Button. */}
-            {n.read ? (
-              <span className="hidden w-24 shrink-0 items-center gap-1 px-2 text-xs text-ink-3 sm:flex">
-                <Check className="size-3.5" aria-hidden />
-                Read
-              </span>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-24 shrink-0"
-                disabled={pendingId === n.id}
-                onClick={() => onMarkRead(n.id)}
-              >
-                Mark read
-                <span className="sr-only"> · {n.title}</span>
-              </Button>
-            )}
+  return (
+    <>
+      {/* One list of days, each holding its own events, so the divider is the
+          heading of the rows under it rather than a sibling that happens to sit
+          above them. Screen readers get the same grouping the eye does. */}
+      <ul>
+        {groups.map((group) => (
+          <li key={group.key}>
+            {/* Sticky under the topbar: on a feed spanning weeks the day you
+                are reading scrolls off long before you reach the end of it.
+                Full-bleed (`-mx-2`) so rows pass behind it, text at `px-5` so
+                it still lines up with the icon column. */}
+            <h3 className="sticky top-topbar z-10 -mx-2 bg-card/95 px-5 py-2 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase backdrop-blur-sm">
+              {group.label}
+            </h3>
+            {/* Spaced rather than divided. Each event is its own thing to act
+                on, and the unread tint is a filled block — butted together they
+                read as one shaded region instead of four separate items. */}
+            <ul className="space-y-1.5 pb-3">
+              {group.items.map((n) => (
+                <NotificationRow
+                  key={n.id}
+                  notification={n}
+                  to={routeFor(n.to, portal)}
+                  onOpen={onOpen}
+                  onMarkRead={onMarkRead}
+                  busy={pendingId === n.id}
+                />
+              ))}
+            </ul>
           </li>
-        );
-      })}
-    </ul>
+        ))}
+      </ul>
+
+      <div ref={sentinel} className="h-px" aria-hidden />
+
+      <div className="flex flex-col items-center gap-2 px-3 pt-3 pb-1">
+        {hasNextPage ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={fetchNextPage}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage && <Spinner data-icon="inline-start" />}
+            {isFetchingNextPage
+              ? "Loading…"
+              : `Load more (${(total - items.length).toLocaleString("en-IN")} left)`}
+          </Button>
+        ) : (
+          // A feed that just stops looks like a feed that failed to load the
+          // rest. Saying where the end is costs one line.
+          <p className="text-xs text-ink-3">
+            That's everything — {items.length.toLocaleString("en-IN")}{" "}
+            {items.length === 1 ? "event" : "events"}.
+          </p>
+        )}
+      </div>
+    </>
   );
 }
 
 /** Matches the real row's shape so nothing jumps when the feed lands. */
-function NotificationSkeleton({ rows = 5 }: { rows?: number }) {
+function NotificationSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <ul className="divide-y divide-line-2">
-      {Array.from({ length: rows }).map((_, i) => (
-        <li key={i} className="flex items-center gap-3 px-2 py-3">
-          <Skeleton className="size-9 shrink-0 rounded-md" />
-          <div className="min-w-0 flex-1">
-            <Skeleton className="h-3.5 w-56 max-w-full" />
-            <Skeleton className="mt-2 h-3 w-40 max-w-full" />
-          </div>
-          <Skeleton className="h-3 w-14 shrink-0" />
-        </li>
-      ))}
-    </ul>
+    <div>
+      <Skeleton className="mx-3 my-2 h-3 w-16" />
+      <ul>
+        {Array.from({ length: rows }).map((_, i) => (
+          <li key={i} className="flex items-center gap-3 px-3 py-3">
+            <Skeleton className="size-9 shrink-0 rounded-md" />
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-3.5 w-56 max-w-full" />
+              <Skeleton className="mt-2 h-3 w-40 max-w-full" />
+            </div>
+            <Skeleton className="h-3 w-14 shrink-0" />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -769,12 +769,13 @@ async def submit_proof(
         row.observed_serial_source = observed_serial_source or "manual"
 
     located = sum(1 for a in artifacts if a.latitude is not None)
+    started_by = await _technician_name(db, profile)
     db.add(
         _event(
             row,
             "started",
             actor_kind="technician",
-            actor_label=await _technician_name(db, profile),
+            actor_label=started_by,
             note=(
                 f"{len(artifacts)} proof images captured"
                 + ("" if located else " — no location on the live photo")
@@ -784,19 +785,40 @@ async def submit_proof(
         )
     )
 
+    # The visit is really happening, and until now the only way to find that out
+    # was to be looking at the ticket when its status moved. This is the first
+    # moment anybody off the phone knows somebody is standing in the customer's
+    # house — which is what makes it the moment a manager can still do something
+    # about a job going wrong.
+    #
+    # Territory, like every ticket-shaped notification here: the pincode reaches
+    # the area manager whose area the work is in.
+    started = await notify(
+        db,
+        company_id=company_id,
+        kind="job_started",
+        title=f"Work started on {row.code}",
+        detail=(
+            f"{started_by} · {len(artifacts)} proof images"
+            + ("" if located else " · no location on the live photo")
+        ),
+        to=f"/tickets/{row.id}",
+        ticket_id=row.id,
+        pincode=row.pincode,
+    )
+
     # Recorded, not enforced. The technician has already done the physical work
     # and the likeliest cause is a slip at intake — so this goes in the trail
     # and in front of a manager, rather than stopping somebody standing in a
     # customer's house over a number they cannot correct.
     mismatch = serial_mismatch(row)
     if mismatch:
-        technician = await _technician_name(db, profile)
         db.add(
             _event(
                 row,
                 "serial_mismatch",
                 actor_kind="technician",
-                actor_label=technician,
+                actor_label=started_by,
                 note=(
                     f"Read {row.observed_serial} on site "
                     f"({row.observed_serial_source}); the order says "
@@ -807,14 +829,14 @@ async def submit_proof(
         # In the same transaction as the proof it describes. A bell that rings
         # for a mismatch whose proof failed to save would send a manager to a
         # ticket where nothing happened.
-        await notify(
+        raised = await notify(
             db,
             company_id=company_id,
             kind="serial_mismatch",
             title=f"Serial mismatch on {row.code}",
             detail=(
                 f"Read {row.observed_serial} · order says {row.serial_number} "
-                f"· {technician}"
+                f"· {started_by}"
             ),
             to=f"/tickets/{row.id}",
             ticket_id=row.id,
@@ -831,16 +853,29 @@ async def submit_proof(
     await publish_ticket_changed(db, row)
     await db.commit()
 
+    # After the commit: both notification rows are durable, so these only tell
+    # consoles to go and read them.
+    #
+    # Two bells for one submit when the serial is also wrong, and that is
+    # deliberate. They are different facts with different answers — one says
+    # the visit is under way, the other says something on it needs correcting —
+    # and they are not addressed to the same people: the mismatch also reaches
+    # the vendor, who is usually the one who can fix it.
+    await publish_notification(
+        db,
+        company_id=company_id,
+        pincode=row.pincode,
+        notification_id=started.id,
+    )
     if mismatch:
-        # After the commit: the notification row is durable, so this only tells
-        # consoles to go and read it.
         await publish_notification(
             db,
             company_id=company_id,
             pincode=row.pincode,
             vendor_id=row.vendor_id,
+            notification_id=raised.id,
         )
-        await db.commit()
+    await db.commit()
 
     return await get_job(
         db, ticket_id, company_id=company_id, technician_id=profile.id

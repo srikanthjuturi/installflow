@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import jwt
 
 from app.core.config import settings
+from app.core.notifications import notify
+from app.core.realtime import publish_notification
 from app.core.schemas import ListParams
 from app.core.security import _create_token, decode_token
 from app.features.auth.otp_service import consume_code, issue_code, sign_in
@@ -205,6 +207,22 @@ def _decode_registration_token(
         raise unauthorized
 
 
+async def _inviter_name(
+    session: AsyncSession, invite: TechnicianInvite
+) -> str | None:
+    """Who sent the invite, by name.
+
+    A name rather than an id, and copied into the notification rather than
+    joined at read time — the same rule `ticket_events.actor_label` follows:
+    renaming somebody later must not rewrite the record of what happened.
+    """
+    if invite.invited_by_user_id is None:
+        return None
+    return await session.scalar(
+        select(User.full_name).where(User.id == invite.invited_by_user_id)
+    )
+
+
 async def register(
     session: AsyncSession,
     token: str,
@@ -305,6 +323,46 @@ async def register(
     invite.registered_user_id = user.id
     invite.registered_membership_id = membership.id
     invite.updated_by = user.id
+
+    # Somebody sent this invite days ago and has had no way of knowing it
+    # landed. Nothing else in the system says "they registered": the invite
+    # quietly changes status and the technician appears in a list nobody was
+    # watching.
+    #
+    # No separate addressing for the inviting manager, and none is needed. A
+    # manager may only invite into territory they already cover — the area
+    # manager into his own states, everyone above him into all of India — so a
+    # notification scoped to the technician's own pincode reaches BOTH the
+    # person who invited them and the area manager responsible for where they
+    # will work. Adding a recipient field to reach somebody the territory rule
+    # already reaches would be a second, weaker copy of who-sees-what.
+    inviter = await _inviter_name(session, invite)
+    detail = f"{profile.code} · covers {tech_service.coverage_summary(assigned)}"
+    if inviter:
+        detail += f" · invited by {inviter}"
+
+    raised = await notify(
+        session,
+        company_id=invite.company_id,
+        kind="technician_joined",
+        title=f"{body.fullName} registered as a technician",
+        detail=detail,
+        to=f"/technicians/{profile.id}",
+        # The FIRST covered pincode anchors the territory. A technician usually
+        # covers a handful of neighbouring codes inside one manager's states, so
+        # one anchor reaches the right person; where a senior manager has spread
+        # coverage across two areas, the second area manager reads it in the
+        # technicians list rather than the bell. None means no coverage at all,
+        # which is company-wide — and a technician nobody can offer work to is
+        # exactly the anomaly everyone should see.
+        pincode=assigned[0] if assigned else None,
+    )
+    await publish_notification(
+        session,
+        company_id=invite.company_id,
+        pincode=assigned[0] if assigned else None,
+        notification_id=raised.id,
+    )
 
     # sign_in commits, so the whole registration lands in one transaction.
     return await sign_in(session, user)

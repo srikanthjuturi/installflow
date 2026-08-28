@@ -1,10 +1,11 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   DataTable,
   type Column,
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
+import { useNavOrigin } from "@/hooks/useNavOrigin";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
 import type { SlaState, Ticket } from "@/types";
@@ -42,6 +43,12 @@ interface TicketTableProps {
   error: unknown;
   onRetry: () => void;
   toolbarActions?: React.ReactNode;
+  /**
+   * What the ticket's own "Back" button should say when opened from here.
+   * Supplying it is what makes the detail screen return to THIS list, on this
+   * page, with these filters — rather than to the ticket board.
+   */
+  backLabel?: string;
 }
 
 export function TicketTable({
@@ -55,8 +62,10 @@ export function TicketTable({
   error,
   onRetry,
   toolbarActions,
+  backLabel,
 }: TicketTableProps) {
   const navigate = useNavigate();
+  const origin = useNavOrigin(backLabel);
   const status = params.filters?.status ?? "All";
 
   // Anything that changes WHICH rows match sends the reader back to page 1 —
@@ -72,13 +81,14 @@ export function TicketTable({
         <>
           {/* The row is clickable, but the code stays a real link so it
               is reachable by keyboard and opens in a new tab. */}
-          <a
-            href={`${basePath}/${t.id}`}
+          <Link
+            to={`${basePath}/${t.id}`}
+            state={origin}
             onClick={(e) => e.stopPropagation()}
             className="font-mono text-xs font-semibold text-brand-400"
           >
             {t.code}
-          </a>
+          </Link>
           <div className="mt-0.5 text-xs text-ink-3">
             {t.vendorName} · {formatDateTime(t.createdAt)}
           </div>
@@ -207,7 +217,7 @@ export function TicketTable({
           </>
         ) : null
       }
-      onRowClick={(t) => navigate(`${basePath}/${t.id}`)}
+      onRowClick={(t) => navigate(`${basePath}/${t.id}`, { state: origin })}
       minWidth="57.5rem"
       emptyTitle="No tickets yet"
       emptyDescription={emptyDescription}

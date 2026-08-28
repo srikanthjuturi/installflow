@@ -29,29 +29,49 @@ export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {
 }
 
 /**
- * One technician's recent jobs — the profile screen's "Recent job history".
+ * One technician's tickets, as a normal ticket list.
  *
- * Ordered by SLOT rather than by intake, because the table prints the day the
- * WORK happened: a ticket raised a week before its slot would otherwise sit at
- * the top of a list whose dates say it belongs further down.
+ * The id is merged into `filters`, which the transport flattens into the query
+ * string — so this IS `listTickets` with one more filter, and it keeps every
+ * capability the ticket screens have: search, status, sort and paging.
  *
- * No status filter. A manager opening a profile mid-shift wants to see what the
- * technician is on right now as much as what they finished yesterday, and
- * hiding everything still open would make a busy technician's page read empty.
+ * No status filter of its own. A manager opening a technician mid-shift wants
+ * to see what they are on right now as much as what they finished yesterday,
+ * and hiding everything still open would make a busy technician read empty.
  *
  * Scoping is the server's: the id narrows a list that is already company- and
  * territory-scoped, so a technician outside the reader's area returns nothing
  * rather than leaking that they exist.
  */
-export function listTechnicianJobs(
+export function listTechnicianTickets(
   technicianId: string,
-  limit = 6
+  params: ListParams = {}
 ): Promise<Page<Ticket>> {
   return apiGetPage<Ticket>("/tickets", {
+    ...params,
+    filters: { ...params.filters, technicianId },
+  });
+}
+
+/**
+ * The profile screen's "Recent job history" — a short peek, not a workspace.
+ *
+ * Ordered by SLOT rather than by intake, because the table prints the day the
+ * WORK happened: a ticket raised a week before its slot would otherwise sit at
+ * the top of a list whose dates say it belongs further down.
+ *
+ * `limit` bounds the rows, but the response's `pagination.totalRecords` still
+ * reports how many the technician has in total — which is what lets the profile
+ * offer "See all N" without a second request.
+ */
+export function listTechnicianJobs(
+  technicianId: string,
+  limit = 5
+): Promise<Page<Ticket>> {
+  return listTechnicianTickets(technicianId, {
     limit,
     sortBy: "slotStart",
     sortDir: "desc",
-    filters: { technicianId },
   });
 }
 

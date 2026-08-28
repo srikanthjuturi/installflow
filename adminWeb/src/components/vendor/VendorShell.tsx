@@ -7,6 +7,8 @@ import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useMe, useSignOut } from "@/hooks/useAuth";
+import { useNotificationToasts } from "@/hooks/useNotificationToasts";
+import { useTicketStream } from "@/hooks/useTicketStream";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
 import { VendorSidebar } from "./VendorSidebar";
@@ -38,6 +40,16 @@ export function VendorShell() {
   const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useSession();
   const { data: me, isPending } = useMe();
   const signOut = useSignOut();
+
+  // The portal had no live socket at all until now — the bell and
+  // `/portal/notifications` were kept fresh only by the refetch interval under
+  // them. The server has always scoped `notification.raised` to vendors
+  // properly (`_visible` matches on `vendor_id`, and the socket's own
+  // authentication already admits a vendor user), so this is the one line it
+  // looks like: a vendor is told about the serial mismatches that name THEM
+  // and about nothing else.
+  useTicketStream();
+  useNotificationToasts();
 
   // A route change must never leave the drawer open behind the new page.
   useEffect(() => setSidebarOpen(false), [pathname, setSidebarOpen]);

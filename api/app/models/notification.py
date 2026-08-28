@@ -60,6 +60,18 @@ NOTIFICATION_KINDS = (
     "force_close",
     #: The customer has gone quiet on a slot request.
     "slot",
+    #: A technician's record now exists and they can be offered work — whether
+    #: they registered themselves from an invite or a manager typed them in.
+    #: The one arrival event in this system: everything else here is a problem,
+    #: and a manager finding out they have a new pair of hands is not.
+    "technician_joined",
+    #: A technician photographed the proof and is on the job. The first moment
+    #: anybody outside the app knows the visit is actually happening.
+    "job_started",
+    #: An invite ran out with nobody registering against it. Until this existed
+    #: the invite simply rotted: its status only ever flipped when somebody
+    #: happened to try a resend, so nothing told the manager who sent it.
+    "invite_expired",
 )
 
 
@@ -101,7 +113,7 @@ class Notification(Base, IdMixin, AuditMixin):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('escalation', 'ai', 'serial_mismatch', 'force_close', "
-            "'slot')",
+            "'slot', 'technician_joined', 'job_started', 'invite_expired')",
             name="kind",
         ),
         # The feed: one company's notifications, newest first.

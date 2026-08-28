@@ -68,7 +68,7 @@ async def _raise_for(
     rolled-back sweep never tells anybody anything.
     """
     for row in rows:
-        await notify(
+        raised = await notify(
             db,
             company_id=row.company_id,
             kind=kind,
@@ -84,6 +84,7 @@ async def _raise_for(
             company_id=row.company_id,
             pincode=row.pincode,
             vendor_id=row.vendor_id if vendor else None,
+            notification_id=raised.id,
         )
     return len(rows)
 

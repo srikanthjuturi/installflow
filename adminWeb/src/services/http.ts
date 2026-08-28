@@ -8,6 +8,9 @@
  * differs (fetch instead of a timeout).
  */
 
+// The browser half only — `lib/webPush` imports nothing, so this cannot
+// re-enter the transport the way `services/notifications` would.
+import { unsubscribe } from "@/lib/webPush";
 import { useSession } from "@/store/session";
 import type {
   ApiEnvelope,
@@ -82,6 +85,13 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 /** Wipes the session and sends the user to sign in again. */
 function endSession(): void {
+  // Locally only, and deliberately not awaited. The token is already dead, so
+  // `DELETE /notifications/web-devices` would 401 — but dropping the browser's
+  // own subscription is enough: the push service then answers 410 and the
+  // server prunes the row on its next attempt. Without this, a session that
+  // expired rather than being signed out keeps receiving notification text on
+  // a machine nobody is signed in on.
+  void unsubscribe().catch(() => {});
   useSession.getState().signOut();
   // A hard navigation, not a router push: it drops the query cache and every
   // other in-memory trace of the previous identity.

@@ -142,6 +142,26 @@ class Settings(BaseSettings):
     #: send arbitrary notifications to this app's users.
     EXPO_ACCESS_TOKEN: str = ""
 
+    # ── Web push (the console) ────────────────────────────────────────────
+    #: Master switch, off by default for the same reason `PUSH_ENABLED` is: a
+    #: deployment without the VAPID pair behind it should send nothing rather
+    #: than fail once per notification discovering it cannot.
+    WEB_PUSH_ENABLED: bool = False
+    #: The VAPID pair, base64url, from `vapid --gen` (py-vapid, installed with
+    #: pywebpush). The PUBLIC half is handed to browsers by
+    #: `GET /notifications/web-push-key` and is not a secret; the PRIVATE half
+    #: is what proves a push came from this server and never leaves it.
+    #:
+    #: Rotating them invalidates every existing subscription — a browser's
+    #: subscription is bound to the key it was created with — so every user has
+    #: to switch desktop alerts on again. Generate once per environment and
+    #: leave them alone.
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
+    #: Required by the standard: a `mailto:` a push service can complain to if
+    #: this server misbehaves. Real, or a provider may start refusing sends.
+    VAPID_SUBJECT: str = "mailto:support@reliancegreentech.in"
+
     # ── Scheduled sweeps ──────────────────────────────────────────────────
     #: How often the time-based notifications are swept for. Both Azure workers
     #: wake together; a Postgres advisory lock decides which one actually runs.

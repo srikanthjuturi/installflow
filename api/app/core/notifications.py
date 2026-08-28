@@ -43,8 +43,9 @@ async def notify(
     spectator of it — a serial mismatch they can correct, not an escalation
     about our own staffing.
 
-    The realtime frame is the caller's to publish, AFTER their commit. See
-    `core.realtime.publish_notification`.
+    The realtime frame is the caller's to publish. See
+    `core.realtime.publish_notification`, and pass it the returned row's `id` —
+    web push needs it to find the row again and to deduplicate across workers.
     """
     row = Notification(
         company_id=company_id,
@@ -57,4 +58,9 @@ async def notify(
         vendor_id=vendor_id,
     )
     db.add(row)
+    # `id` is a DB-side `gen_random_uuid()` default and sessions run
+    # `autoflush=False` (hard rule 10), so without this the returned row's id is
+    # None and no caller can name what it just raised. Still the caller's
+    # transaction — this changes when the INSERT is sent, not whether it commits.
+    await db.flush()
     return row

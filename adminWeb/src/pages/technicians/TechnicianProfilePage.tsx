@@ -76,10 +76,18 @@ export default function TechnicianProfilePage() {
             {/* The skeleton is the real table, row for row — never a spinner.
                 Its own query rather than a field on the technician: the ticket
                 list already scopes by territory and pages in SQL, so this is
-                six rows of the same source the ticket screens read, not a
-                second answer to the same question. */}
+                five rows of the same source the ticket screens read, not a
+                second answer to the same question.
+
+                `totalRecords` comes back with those five, so "See all" can name
+                the real count without a second request. */}
             <JobHistoryTable
               jobs={jobs.data?.rows}
+              total={jobs.data?.pagination.totalRecords}
+              seeAllTo={`/technicians/${id}/tickets`}
+              backLabel={
+                tech ? `Back to ${tech.name}` : "Back to technician"
+              }
               isLoading={isLoading || jobs.isLoading}
               error={jobs.error}
               onRetry={() => jobs.refetch()}

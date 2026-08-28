@@ -27,6 +27,40 @@ function streamUrl(): string {
   return `${BASE_URL.replace(/^http/, "ws")}/tickets/stream`;
 }
 
+/**
+ * Anything else that wants to know a frame arrived.
+ *
+ * The socket stays the one owner of the connection and of what each frame
+ * invalidates; this is only a way for a second consumer to hear about one
+ * without opening a second socket. `useNotificationToasts` is the first.
+ *
+ * Module-level rather than a callback prop because the socket is mounted in the
+ * shell and the listener is mounted beside it — threading a handler through
+ * would make every shell responsible for wiring something neither of them owns.
+ */
+type StreamListener = () => void;
+const listeners = new Map<string, Set<StreamListener>>();
+
+/** Listen for one frame type. Returns the unsubscribe. */
+export function onStreamEvent(type: string, listener: StreamListener): () => void {
+  const set = listeners.get(type) ?? new Set();
+  set.add(listener);
+  listeners.set(type, set);
+  return () => set.delete(listener);
+}
+
+function emit(type: string): void {
+  for (const listener of listeners.get(type) ?? []) {
+    try {
+      listener();
+    } catch {
+      // One bad listener must not stop the others, and must never take down
+      // the socket's message handler — the invalidations above are the part
+      // that has to keep working.
+    }
+  }
+}
+
 /** The server's spelling of a 401 — the access token expired. */
 const CLOSE_AUTH_FAILED = 4401;
 
@@ -135,6 +169,9 @@ export function useTicketStream(): void {
             void queryClient.invalidateQueries({
               queryKey: notificationKeys.all,
             });
+            // And tell whoever wants to say so out loud. The listener does its
+            // own read: this frame still carries nothing worth showing.
+            emit("notification.raised");
             break;
           case "ticket.changed":
             if (frame.ticketId) {

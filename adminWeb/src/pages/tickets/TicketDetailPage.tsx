@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { useParams } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +15,7 @@ import {
   TechnicianPanel,
 } from "@/components/tickets/SidePanels";
 import { Timeline } from "@/components/tickets/Timeline";
+import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useTicket } from "@/hooks/useTickets";
 import { isTerminalTicketStatus } from "@/types";
 
@@ -27,8 +28,8 @@ import { isTerminalTicketStatus } from "@/types";
  * other renders.
  */
 export default function TicketDetailPage({
-  backTo = "/tickets",
-  backLabel = "Back to tickets",
+  backTo,
+  backLabel,
   actions,
 }: {
   backTo?: string;
@@ -38,6 +39,21 @@ export default function TicketDetailPage({
   actions?: React.ReactNode;
 } = {}) {
   const { id = "" } = useParams();
+  const location = useLocation();
+
+  /* One route, several ways in: the board, a technician's recent jobs, a
+     technician's full list. Whoever navigated left an origin in router state,
+     so "Back" returns THERE — and to the same page of the same filtered list,
+     because the origin carries the query string too.
+
+     Order matters. An explicit prop wins because that is the portal pinning a
+     vendor to `/portal/tickets`, and a vendor must never be handed a link into
+     the ops side. State comes next. The board is the last resort: state is gone
+     after a reload or on a pasted link, and a dead-end detail page is worse
+     than a back button that goes somewhere reasonable. */
+  const origin = readNavOrigin(location.state);
+  const backHref = backTo ?? origin?.backTo ?? "/tickets";
+  const backText = backLabel ?? origin?.backLabel ?? "Back to tickets";
   const {
     data: ticket,
     isLoading,
@@ -72,10 +88,10 @@ export default function TicketDetailPage({
         variant="ghost"
         size="sm"
         className="mb-3.5 -ml-2"
-        to={backTo}
+        to={backHref}
       >
         <ArrowLeft data-icon="inline-start" />
-        {backLabel}
+        {backText}
       </LinkButton>
 
       {isError ? (

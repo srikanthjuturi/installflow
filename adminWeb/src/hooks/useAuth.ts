@@ -1,6 +1,10 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { changePassword, login, logout, me, switchCompany, updateMyProfileImage } from "@/services/auth";
+import {
+  dropWebPush,
+  moveWebPushToActiveCompany,
+} from "@/services/notifications";
 import { useSession } from "@/store/session";
 
 /**
@@ -96,6 +100,10 @@ export function useSwitchCompany() {
     onSuccess: (payload) => {
       setActiveCompany(payload);
       queryClient.clear();
+      // After the re-scoped token is in place, so this registers against the
+      // company just switched TO. One call moves the row rather than leaving
+      // desktop alerts pointed at the company they just left.
+      void moveWebPushToActiveCompany();
     },
   });
 }
@@ -141,6 +149,11 @@ export function useSignOut() {
   const queryClient = useQueryClient();
 
   return useCallback(async () => {
+    // BEFORE the token goes: the call that removes this browser's push
+    // subscription needs a session to authenticate with. A subscription left
+    // behind keeps delivering notification text to a machine nobody is signed
+    // in on — see `dropWebPush`.
+    await dropWebPush();
     try {
       // This device's token only — the backend revokes every token the user
       // holds when it isn't given one, which would sign them out everywhere.

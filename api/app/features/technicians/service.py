@@ -36,8 +36,9 @@ from app.core.scope import (
     pincodes_in_regions,
     pincodes_in_states,
 )
+from app.core.notifications import notify
 from app.core.presence import is_online
-from app.core.realtime import publish_technician_changed
+from app.core.realtime import publish_notification, publish_technician_changed
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     AvailabilityOut,
@@ -883,6 +884,23 @@ async def set_certifications(
     await session.flush()
 
 
+def coverage_summary(pincodes: list[str]) -> str:
+    """"500003", "500003 +2 more", or "no pincodes yet".
+
+    For a notification body, which is capped at 255 characters and read at a
+    glance: a manager wants to know roughly WHERE, not to read six postcodes.
+
+    Public, and here rather than in the onboarding slice, because BOTH doors a
+    technician can arrive through phrase it — invite self-registration and a
+    manager typing them in — and coverage is this slice's word to choose.
+    """
+    if not pincodes:
+        return "no pincodes yet"
+    if len(pincodes) == 1:
+        return pincodes[0]
+    return f"{pincodes[0]} +{len(pincodes) - 1} more"
+
+
 async def set_coverage(
     session: AsyncSession,
     *,
@@ -1096,6 +1114,30 @@ async def create_technician(
     await set_coverage(
         session, profile=profile, pincodes=body.pincodes, actor_id=principal.user_id
     )
+
+    # The same arrival the invite flow raises, from the other door. Whoever
+    # typed this in already knows; the area manager whose states the technician
+    # now covers may not, because anybody senior to him can add one there.
+    #
+    # Territory does the addressing, exactly as in `onboarding.register` — see
+    # the note there for why no explicit recipient is needed.
+    anchor = body.pincodes[0] if body.pincodes else None
+    raised = await notify(
+        session,
+        company_id=principal.company_id,
+        kind="technician_joined",
+        title=f"{body.fullName} added as a technician",
+        detail=f"{profile.code} · covers {coverage_summary(body.pincodes)}",
+        to=f"/technicians/{profile.id}",
+        pincode=anchor,
+    )
+    await publish_notification(
+        session,
+        company_id=principal.company_id,
+        pincode=anchor,
+        notification_id=raised.id,
+    )
+
     await session.commit()
 
     return await get_technician(session, principal, profile.id)

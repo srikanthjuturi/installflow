@@ -184,7 +184,7 @@ async def record_feedback(
         #
         # Same transaction as the transition: a bell for a refusal that failed
         # to save would send a manager to a ticket that says the job is fine.
-        await notify(
+        raised = await notify(
             db,
             company_id=row.company_id,
             kind="escalation",
@@ -204,7 +204,10 @@ async def record_feedback(
     # neither is worth losing a customer's answer to.
     if not confirmed:
         await publish_notification(
-            db, company_id=row.company_id, pincode=row.pincode
+            db,
+            company_id=row.company_id,
+            pincode=row.pincode,
+            notification_id=raised.id,
         )
         await db.commit()
 

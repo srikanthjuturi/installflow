@@ -17,6 +17,7 @@ from app.features.tickets.sweeps import (
     sweep_slot_reminders,
     sweep_unaccepted,
 )
+from app.features.technicians.sweeps import sweep_expired_invites
 from app.features.onboarding.landing import router as invite_landing_router
 from app.features.tickets.feedback_page import router as feedback_page_router
 from app.features.tickets.slot_page import router as slot_page_router
@@ -24,6 +25,7 @@ from app.features.onboarding.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.errors import register_exception_handlers
+from app.core.notification_relay import relay
 from app.core.realtime import broker
 
 # psycopg's async driver cannot run on Windows' default ProactorEventLoop.
@@ -65,6 +67,10 @@ async def lifespan(app: FastAPI):
     # the connectivity check so a database that is down fails as a startup
     # error rather than as a listener quietly retrying in the background.
     await broker.start()
+    # Web push to the console, driven off that same broker. After the broker so
+    # it has something to subscribe to; it is a no-op when WEB_PUSH_ENABLED is
+    # off or the VAPID pair is missing.
+    await relay.start()
     # The time-based notifications. Registered here rather than in `core`
     # because the sweeps are ticket-domain queries and core must not import a
     # slice — main.py is already the composition root that imports every one.
@@ -72,9 +78,16 @@ async def lifespan(app: FastAPI):
     ticker.register("slot-silence", sweep_silent_slots)
     ticker.register("force-close", sweep_force_close)
     ticker.register("slot-reminder", sweep_slot_reminders)
+    # Not a ticket: an invite that lapsed with nobody registering against it.
+    # Same reason it is registered here — the sweep is a technicians-domain
+    # query and core must not import a slice.
+    ticker.register("invite-expiry", sweep_expired_invites)
     await ticker.start()
     yield
     await ticker.stop()
+    # Before the broker: the relay is one of its subscribers, and stopping the
+    # thing it reads from first would leave it awaiting a mailbox nobody fills.
+    await relay.stop()
     await broker.stop()
     await engine.dispose()
 

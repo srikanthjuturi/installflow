@@ -23,20 +23,21 @@ it belongs in both, and this note is where whoever adds it should look.
 import datetime
 import uuid
 
-from sqlalchemy import ColumnElement, Date, case, cast, func, select
+from sqlalchemy import ColumnElement, Date, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.scope import ALL_INDIA_ROLES
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.models.membership import Membership
-from app.models.role import AREA_MANAGER
+from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_ROLES
 from app.models.technician import (
     ACTIVE,
     TechnicianPincode,
     TechnicianProfile,
     TechnicianSubcategory,
 )
-from app.models.territory import MembershipState, Pincode
+from app.models.territory import MembershipRegion, MembershipState, Pincode, State
 from app.models.ticket import Ticket
 from app.models.user import User
 
@@ -329,6 +330,103 @@ async def area_managers_covering(
                 User.deleted_at.is_(None),
                 User.phone.is_not(None),
                 MembershipState.state_id == state,
+            )
+            .distinct()
+        )
+    )
+
+
+async def users_notified_by(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    pincode: str | None,
+    vendor_id: uuid.UUID | None = None,
+) -> list[uuid.UUID]:
+    """Whose browsers should be pushed about this notification.
+
+    `notifications.service._visible` asks "which notifications may THIS reader
+    see". This asks the other direction: given a notification that has just been
+    raised, who should hear about it. Same rule, read backwards — the same
+    relationship `area_managers_covering` above has with `visible_pincodes`.
+
+    ## It must agree with `_visible`, and that is the whole risk
+
+    Somebody pushed about an event they then cannot find on `/notifications`
+    opens the console to an empty feed, and that is precisely the notification
+    that teaches people to ignore notifications. The two cannot share code —
+    `_visible` narrows a query correlated to one principal, this one tests many
+    principals against literals — so they are duplicated deliberately, exactly
+    as `technicians_covering` duplicates `pool_query`. **If a sixth audience
+    rule is ever added it belongs in both, and this note is where whoever adds
+    it should look.**
+
+    Four branches, mirroring `_visible` clause for clause:
+
+    * **Admin and national head** hear everything in the company. They are the
+      `ALL_INDIA_ROLES` for whom `visible_pincodes` returns None. A superadmin
+      is in that set too and is silently absent here for the right reason: they
+      hold no membership, so they never join.
+    * **An area manager** hears a notification whose pincode is in one of their
+      states — a pincode belongs to exactly one state, so the join is direct.
+    * **A regional head** hears the same thing one level up, via the state's
+      region.
+    * **A vendor's people** hear a row that NAMES their vendor. It widens the
+      audience; it never narrows the staff one.
+
+    Note what the `EXISTS` clauses do to a company-wide row (`pincode IS NULL`):
+    an area manager with no states assigned hears nothing at all, not even that.
+    That is not an oversight — it is `_visible` failing closed on an empty
+    scope, and the mirror has to fail closed the same way or the push would
+    reach somebody whose feed is empty.
+
+    Returns user ids, which is what `web_push_subscriptions.user_id` keys on.
+    """
+    state_of_pincode = (
+        select(Pincode.state_id).where(Pincode.code == pincode).scalar_subquery()
+    )
+    region_of_pincode = (
+        select(State.region_id)
+        .join(Pincode, Pincode.state_id == State.id)
+        .where(Pincode.code == pincode)
+        .scalar_subquery()
+    )
+
+    # An area manager's states, restricted to the one holding this pincode
+    # unless the row is company-wide.
+    covers_state = select(MembershipState.id).where(
+        MembershipState.membership_id == Membership.id
+    )
+    covers_region = select(MembershipRegion.id).where(
+        MembershipRegion.membership_id == Membership.id
+    )
+    if pincode is not None:
+        covers_state = covers_state.where(MembershipState.state_id == state_of_pincode)
+        covers_region = covers_region.where(
+            MembershipRegion.region_id == region_of_pincode
+        )
+
+    audience = [
+        User.role.in_(ALL_INDIA_ROLES),
+        (User.role == AREA_MANAGER) & covers_state.exists(),
+        (User.role == REGIONAL_HEAD) & covers_region.exists(),
+    ]
+    if vendor_id is not None:
+        audience.append(
+            User.role.in_(VENDOR_ROLES) & (Membership.vendor_id == vendor_id)
+        )
+
+    return list(
+        await db.scalars(
+            select(Membership.user_id)
+            .join(User, User.id == Membership.user_id)
+            .where(
+                Membership.company_id == company_id,
+                Membership.is_active.is_(True),
+                Membership.deleted_at.is_(None),
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+                or_(*audience),
             )
             .distinct()
         )

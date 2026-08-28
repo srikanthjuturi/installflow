@@ -157,6 +157,16 @@ interface SessionState {
   /** Desktop rail collapsed to icons. Persisted: it is a workspace preference,
    *  and having it reset on every reload would be worse than not having it. */
   sidebarCollapsed: boolean;
+  /**
+   * Whether a new notification makes a sound while the console is open.
+   *
+   * A preference of this machine, not of the account — the person working in a
+   * quiet office and the person working in a warehouse are often the same
+   * person, and it is the room that decides. Kept beside `sidebarCollapsed`
+   * for that reason, and left alone by `signOut` for the same one: nobody
+   * wants to re-mute the console every morning.
+   */
+  notificationSound: boolean;
   signIn: (payload: AuthPayload) => void;
   /** Sign in from the live backend's login payload (the superadmin path). */
   signInBackend: (payload: LoginResponse) => void;
@@ -176,6 +186,7 @@ interface SessionState {
   setRole: (role: Role) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebarCollapsed: () => void;
+  setNotificationSound: (on: boolean) => void;
 }
 
 export const useSession = create<SessionState>()(
@@ -196,6 +207,10 @@ export const useSession = create<SessionState>()(
       role: DEFAULT_VIEW_ROLE,
       sidebarOpen: false,
       sidebarCollapsed: false,
+      // On by default: these are events somebody is meant to react to, and a
+      // notification nobody hears is the problem the whole slice exists to fix.
+      // One click turns it off, and that choice survives signing out.
+      notificationSound: true,
       // The whole identity arrives in one payload, so it is stored in one
       // write — there is no moment where a token exists without its user.
       signIn: ({ accessToken, user }) =>
@@ -260,6 +275,7 @@ export const useSession = create<SessionState>()(
       setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
       toggleSidebarCollapsed: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      setNotificationSound: (notificationSound) => set({ notificationSound }),
     }),
     {
       name: "reliancegreentech.session",
@@ -302,6 +318,7 @@ export const useSession = create<SessionState>()(
         avatarUrl: s.avatarUrl,
         role: s.role,
         sidebarCollapsed: s.sidebarCollapsed,
+        notificationSound: s.notificationSound,
       }),
     }
   )
