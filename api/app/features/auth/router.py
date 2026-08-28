@@ -11,6 +11,7 @@ from app.core.schemas import ApiEnvelope, envelope
 from app.features.auth import otp_service, service
 from app.features.auth.schemas import (
     ChangePasswordRequest,
+    GoogleLoginRequest,
     LoginRequest,
     LoginResponse,
     LogoutRequest,
@@ -34,6 +35,23 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 async def login(body: LoginRequest, db: Db) -> ApiEnvelope[LoginResponse]:
     data = await service.login(db, body.email, body.password)
     return envelope(data, message="Logged in")
+
+
+@router.post("/google", response_model=ApiEnvelope[LoginResponse])
+async def google_login(
+    body: GoogleLoginRequest, db: Db
+) -> ApiEnvelope[LoginResponse]:
+    """Exchange a Google ID token for the same token pair `/auth/login` issues.
+
+    Serves BOTH the "Continue with Google" button and One Tap — they produce the
+    same credential, so nothing downstream knows which one it came from.
+
+    Unauthenticated by nature, like `/login` and `/otp/*`. It never creates an
+    account: an address Google verifies but this company has never heard of is a
+    401, not a new user.
+    """
+    data = await service.google_login(db, body.credential)
+    return envelope(data, message="Signed in")
 
 
 @router.post("/otp/request", response_model=ApiEnvelope[OtpRequestResponse])
