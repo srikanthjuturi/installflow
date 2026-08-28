@@ -24,10 +24,19 @@ export type Credentials = z.infer<typeof schema>;
 export function CredentialsStep({
   defaultEmail,
   onSubmit,
+  googleSlot,
 }: {
   defaultEmail: string;
   /** Rejects if the call fails; the message is shown, never the password. */
   onSubmit: (values: Credentials) => Promise<void>;
+  /**
+   * The Google button, passed in rather than imported.
+   *
+   * Keeps this a pure react-hook-form component and leaves the requirement to
+   * be inside `GoogleOAuthProvider` with `LoginPage`, which owns that provider.
+   * Omitted when `VITE_GOOGLE_CLIENT_ID` is unset.
+   */
+  googleSlot?: React.ReactNode;
 }) {
   const {
     register,
@@ -55,7 +64,8 @@ export function CredentialsStep({
   };
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate>
+    <>
+      <form onSubmit={handleSubmit(submit)} noValidate>
       <h1 className="text-[22px] font-semibold">Sign in</h1>
       <p className="mt-1.5 text-[13px] text-ink-2">
         Use your ops credentials to continue.
@@ -121,10 +131,26 @@ export function CredentialsStep({
         {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
         {isSubmitting ? "Signing in…" : "Sign in"}
       </Button>
+    </form>
+
+      {/* Below the password fields, and outside the <form>. Below because every
+          existing user has a password and it is the primary credential here;
+          outside because Google's button is a foreign iframe that has no
+          business being swept into a submit. */}
+      {googleSlot ? (
+        <div className="mt-5.5">
+          <div className="flex items-center gap-3 text-xs text-ink-3">
+            <span className="h-px flex-1 bg-line" />
+            or
+            <span className="h-px flex-1 bg-line" />
+          </div>
+          <div className="mt-4.5">{googleSlot}</div>
+        </div>
+      ) : null}
 
       <p className="mt-4.5 text-center text-xs text-ink-3">
         Access is restricted to authorised console accounts.
       </p>
-    </form>
+    </>
   );
 }

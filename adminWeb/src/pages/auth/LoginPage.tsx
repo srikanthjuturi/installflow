@@ -1,21 +1,73 @@
 import { useNavigate } from "react-router";
 import { motion } from "framer-motion";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import { BrandPanel } from "@/components/auth/BrandPanel";
 import { CredentialsStep } from "@/components/auth/CredentialsStep";
+import { GoogleOneTap } from "@/components/auth/GoogleOneTap";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { PageMeta } from "@/components/shared/PageMeta";
-import { useLogin } from "@/hooks/useAuth";
+import { useGoogleSignIn, useLogin } from "@/hooks/useAuth";
+import { GOOGLE_CLIENT_ID, GOOGLE_SIGN_IN_ENABLED } from "@/lib/googleIdentity";
 import { landingPath, useSession } from "@/store/session";
 
 /**
- * Single-step sign-in against the live backend. The API is password-only (no
- * OTP — that is the technician mobile app's flow), so a successful credentials
- * submit is the session. A superadmin lands on the companies console; anyone
- * else lands on the ops dashboard. The password is never held in this
- * component — it is passed straight to the mutation and dropped.
+ * Single-step sign-in against the live backend.
+ *
+ * Two doors, one session. A password (`/auth/login`) or a Google ID token
+ * (`/auth/google`) — the backend answers both with the same payload, so
+ * everything after `signInBackend` is identical. The password is never held in
+ * this component, and neither is the Google credential: both are passed straight
+ * to a mutation and dropped.
+ *
+ * `GoogleOAuthProvider` wraps this page rather than the app root on purpose. It
+ * injects Google's ~100 KB script on mount, and `/login` is already the only
+ * signed-out route (`RedirectIfSignedIn` guards it), so putting it here keeps
+ * the script off every signed-in page, keeps `accounts.google.com` from seeing
+ * internal page views, and avoids a second place that decides whether somebody
+ * is signed in. This page is lazily routed, so the package stays out of the
+ * initial chunk for free.
  */
 export default function LoginPage() {
   const login = useLogin();
+  const google = useGoogleSignIn();
   const navigate = useNavigate();
+  const signedIn = useSession((s) => s.signedIn);
+
+  /** Where a session goes once it exists. One path, not two. */
+  function goToLanding() {
+    const { superadmin, portal } = useSession.getState();
+    navigate(landingPath({ superadmin, portal }), { replace: true });
+  }
+
+  async function handleCredential(credential: string) {
+    try {
+      await google.mutateAsync(credential);
+      goToLanding();
+    } catch {
+      // Reported in the toaster by the global mutation handler.
+    }
+  }
+
+  const form = (
+    <CredentialsStep
+      defaultEmail=""
+      onSubmit={async (values) => {
+        await login.mutateAsync({
+          email: values.email,
+          password: values.password,
+        });
+        // signInBackend has run; route by role.
+        goToLanding();
+      }}
+      googleSlot={
+        GOOGLE_SIGN_IN_ENABLED ? (
+          <GoogleSignInButton
+            onCredential={(c) => void handleCredential(c)}
+          />
+        ) : undefined
+      }
+    />
+  );
 
   return (
     <>
@@ -30,18 +82,31 @@ export default function LoginPage() {
             transition={{ duration: 0.4, ease: "easeOut" }}
             className="w-full max-w-90"
           >
-            <CredentialsStep
-              defaultEmail=""
-              onSubmit={async (values) => {
-                await login.mutateAsync({
-                  email: values.email,
-                  password: values.password,
-                });
-                // signInBackend has run; route by role.
-                const { superadmin, portal } = useSession.getState();
-                navigate(landingPath({ superadmin, portal }), { replace: true });
-              }}
-            />
+            {/* Without a client id there is no provider, no button and no
+                divider — password sign-in is untouched. That is what a Netlify
+                deploy missing VITE_GOOGLE_CLIENT_ID looks like, and it must not
+                take the login page down with it. */}
+            {GOOGLE_SIGN_IN_ENABLED ? (
+              <GoogleOAuthProvider
+                clientId={GOOGLE_CLIENT_ID}
+                onScriptLoadError={() => {
+                  // Today a blocked accounts.google.com produces nothing at all.
+                  if (import.meta.env.DEV) {
+                    console.warn(
+                      "[Google] the Identity Services script failed to load"
+                    );
+                  }
+                }}
+              >
+                {form}
+                <GoogleOneTap
+                  onCredential={(c) => void handleCredential(c)}
+                  disabled={signedIn || google.isPending}
+                />
+              </GoogleOAuthProvider>
+            ) : (
+              form
+            )}
           </motion.div>
         </div>
       </div>

@@ -1,6 +1,14 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { changePassword, login, logout, me, switchCompany, updateMyProfileImage } from "@/services/auth";
+import {
+  changePassword,
+  login,
+  loginWithGoogle,
+  logout,
+  me,
+  switchCompany,
+  updateMyProfileImage,
+} from "@/services/auth";
 import {
   dropWebPush,
   moveWebPushToActiveCompany,
@@ -41,6 +49,33 @@ export function useLogin() {
     },
     // The password is a mutation variable; drop the cache entry as soon as the
     // call settles so it is not retained in memory (or devtools).
+    gcTime: 0,
+  });
+}
+
+/**
+ * Sign in with a Google ID token — the button and One Tap both land here.
+ *
+ * Named `useGoogleSignIn`, not `useGoogleLogin`, because `@react-oauth/google`
+ * exports a hook by that name and the two would be easy to confuse at a call
+ * site. Otherwise identical to `useLogin`: the reply is the same payload, so the
+ * cache is cleared and the store filled the same way.
+ *
+ * `gcTime: 0` for the reason `useLogin` has it — the credential is bearer-grade
+ * for its lifetime and must not linger in the mutation cache or devtools.
+ */
+export function useGoogleSignIn() {
+  const signInBackend = useSession((s) => s.signInBackend);
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    // Its own title, so the toaster says which door failed.
+    meta: { errorTitle: "Couldn't sign in with Google" },
+    mutationFn: (credential: string) => loginWithGoogle(credential),
+    onSuccess: (payload) => {
+      queryClient.clear();
+      signInBackend(payload);
+    },
     gcTime: 0,
   });
 }
