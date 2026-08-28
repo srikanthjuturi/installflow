@@ -1,0 +1,93 @@
+curl --location 'https://my.gstzen.in/api/gstin-validator/' 
+--header 'token: e4d04f41-391a-4638-9713-071cebf3cb66' 
+--header 'Content-Type: application/json' 
+--data '{
+  "gstin": "36AAPCR4356Q1ZF"
+}'
+
+
+POST Method
+Header: token: e4d04f41-391a-4638-9713-071cebf3cb66
+Body: JSON payload with the GSTIN number
+
+
+Responce:
+
+{
+    "status": 1,
+    "gstin": "36AAPCR4356Q1ZF",
+    "valid": true,
+    "company_details": {
+        "legal_name": "RELIANCEGREENTECH PRIVATE LIMITED",
+        "trade_name": "RELIANCEGREENTECH PRIVATE LIMITED",
+        "company_status": "Active",
+        "pan": "AAPCR4356Q",
+        "state": "36 - Telangana TS",
+        "state_info": {
+            "code": "36",
+            "name": "Telangana",
+            "alpha_code": "TS"
+        },
+        "registration_date": "2026-02-10",
+        "cancellation_date": "",
+        "gst_type": "Regular",
+        "stj": "Uppal",
+        "ctj": "UPPAL-III",
+        "ctb": "Private Limited Company",
+        "nba": [
+            "Retail Business",
+            "Wholesale Business",
+            "Factory / Manufacturing",
+            "Import",
+            "Export"
+        ],
+        "lstupddt": "08/06/2026",
+        "stjCd": "TG125",
+        "ctjCd": "YO0607",
+        "adadr": [],
+        "pradr": {
+            "addr": "SY NO 45, SAI NAGAR COLONY, BODUPPAL, Hyderabad, Medchal Malkajgiri, Telangana, 500039",
+            "loc": "Hyderabad",
+            "pincode": "500039",
+            "street": "SAI NAGAR COLONY",
+            "ntr": "Retail Business, Wholesale Business, Factory / Manufacturing, Import, Export",
+            "addr1": "SY NO 45",
+            "addr2": "BODUPPAL",
+            "city": "Hyderabad",
+            "district": "Medchal Malkajgiri",
+            "pinc": "500039",
+            "building_number": "SY NO 45",
+            "building_name": "",
+            "floor_number": "",
+            "locality": "BODUPPAL",
+            "landmark": "",
+            "state_in_address": "Telangana",
+            "latitude": "17.4030910000001",
+            "longitude": "78.5615460000001",
+            "geocode_level": "pincode"
+        },
+        "einvoice_status": "No"
+    }
+}
+
+
+
+
+Invalid GSTIN
+{
+  "status": 1,
+  "gstin": "01AAFQQ9980MZQR",
+  "valid": false
+}
+
+Subscription Limit Exhausted
+{
+  "status": 0,
+  "message": "Your GSTZen GSTIN Validator Subscription has exhausted. Current usage: 100000, Total Subscription Package: 10000. Please contact GSTZen support."
+}
+
+Subscription Period Expired
+{
+  "status": 0,
+  "message": "Your GSTZen GSTIN Validator Subscription has expired. Please contact GSTZen support."
+}
