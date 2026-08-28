@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -17,10 +18,11 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { useCreateVendorUser } from "@/hooks/useVendorUsers";
+import type { CreatedVendorUser } from "@/types/vendorUser";
 import {
   EMPTY_VENDOR_USER,
   vendorUserSchema,
@@ -42,17 +44,45 @@ export function AddVendorUserDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // Set when the password email did not go out — the dialog then shows the
+  // password instead of the form. See TemporaryPasswordPanel for why not a toast.
+  const [undelivered, setUndelivered] = useState<CreatedVendorUser | null>(null);
+
+  function close() {
+    onOpenChange(false);
+    setTimeout(() => setUndelivered(null), 200);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : close())}
+    >
       {/* Unmounts on close, so a second open never holds the first attempt. */}
       <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
-        <AddVendorUserForm onDone={() => onOpenChange(false)} />
+        {undelivered ? (
+          <TemporaryPasswordPanel
+            heading="Added, but the email didn't send"
+            email={undelivered.email ?? ""}
+            password={undelivered.temporaryPassword ?? ""}
+            reason={undelivered.emailError}
+            onDone={close}
+          />
+        ) : (
+          <AddVendorUserForm onDone={close} onUndelivered={setUndelivered} />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function AddVendorUserForm({ onDone }: { onDone: () => void }) {
+function AddVendorUserForm({
+  onDone,
+  onUndelivered,
+}: {
+  onDone: () => void;
+  onUndelivered: (user: CreatedVendorUser) => void;
+}) {
   const create = useCreateVendorUser();
 
   const {
@@ -67,15 +97,23 @@ function AddVendorUserForm({ onDone }: { onDone: () => void }) {
 
   const submit = async (values: VendorUserValues) => {
     try {
-      await create.mutateAsync({
+      const created = await create.mutateAsync({
         fullName: values.fullName,
         email: values.email,
         phone: values.phone || null,
-        password: values.password,
       });
+      // The account exists in every case — the server answers 201 even when the
+      // email failed. Only what to say differs.
+      if (created.emailStatus === "failed") {
+        onUndelivered(created);
+        return;
+      }
       toast.add({
         title: `${values.fullName} added`,
-        description: "Share the temporary password so they can sign in.",
+        description:
+          created.emailStatus === "skipped"
+            ? "They sign in with the password they already use."
+            : `A temporary password has been emailed to ${values.email}.`,
       });
       onDone();
     } catch {
@@ -147,31 +185,6 @@ function AddVendorUserForm({ onDone }: { onDone: () => void }) {
           ) : null}
         </Field>
 
-        <Field data-invalid={errors.password ? true : undefined}>
-          <FieldLabel htmlFor="vu-password">Temporary password</FieldLabel>
-          <PasswordInput
-            id="vu-password"
-            autoComplete="new-password"
-            aria-invalid={errors.password ? true : undefined}
-            aria-describedby={
-              errors.password ? "vu-password-error" : "vu-password-hint"
-            }
-            {...register("password")}
-          />
-          {errors.password ? (
-            <FieldDescription
-              id="vu-password-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.password.message}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="vu-password-hint">
-              At least 8 characters. They can change it once signed in.
-            </FieldDescription>
-          )}
-        </Field>
       </FieldGroup>
 
       <DialogFooter className="mt-6">

@@ -102,13 +102,6 @@ export const vendorSchema = z.object({
     .trim()
     .min(1, "Enter a login email")
     .pipe(z.email("Enter a valid email")),
-  /**
-   * Blank on edit means "leave the password alone". On add it is required.
-   * This is the only way back in for a vendor who has forgotten theirs:
-   * changing a password otherwise needs the current one, and there is no email
-   * channel to send a reset link through.
-   */
-  password: z.string(),
   gstNumber: z
     .string()
     .transform(upper)
@@ -147,25 +140,14 @@ export const vendorSchema = z.object({
 export type VendorFormValues = z.infer<typeof vendorSchema>;
 
 /**
- * Adding: both credentials are required, because only a vendor raises a ticket
- * — one without a login would be a brand nobody could ever raise a ticket
+ * Adding: the login EMAIL is required, because only a vendor raises a ticket —
+ * one without a login would be a brand nobody could ever raise a ticket
  * against, which is a silent dead end rather than a visible choice.
+ *
+ * There is no password on either form. The server mints a temporary one and
+ * emails it to that address; "Reset password" on the vendor row mints another.
  */
-export const addVendorSchema = vendorSchema.extend({
-  password: z.string().min(8, "At least 8 characters").max(128),
-});
+export const addVendorSchema = vendorSchema;
 
-/**
- * Editing: the email is shown but not submitted, and a blank password leaves
- * the existing one alone. `superRefine` rather than `.min()`, so that "" is
- * valid and anything shorter than 8 is not.
- */
-export const editVendorSchema = vendorSchema.superRefine((v, ctx) => {
-  if (v.password !== "" && v.password.length < 8) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["password"],
-      message: "At least 8 characters",
-    });
-  }
-});
+/** Editing: the login email is shown but not submitted — it is the identity. */
+export const editVendorSchema = vendorSchema;

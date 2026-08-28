@@ -4,6 +4,8 @@
  * surface that speaks these.
  */
 
+import type { EmailOutcome } from "./user";
+
 export interface Company {
   id: string;
   name: string;
@@ -36,7 +38,6 @@ export interface CreateCompanyInput {
   name: string;
   email: string;
   phone?: string | null;
-  password: string;
   adminName?: string | null;
   gstNumber: string;
   pan: string;
@@ -48,7 +49,10 @@ export interface CreateCompanyInput {
   pincode: string;
 }
 
+/** `POST /companies` only — every other endpoint returns `Company`. */
+export type CreatedCompany = Company & EmailOutcome;
+
 /** Body for `PUT /companies/{id}` — every field optional. */
 export type UpdateCompanyInput = Partial<
-  Omit<CreateCompanyInput, "password" | "adminName">
+  Omit<CreateCompanyInput, "adminName">
 >;

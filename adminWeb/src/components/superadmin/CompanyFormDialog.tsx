@@ -1,4 +1,5 @@
-import { useForm } from "react-hook-form";
+import { useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,12 +17,14 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { FormSection } from "@/components/shared/FormSection";
+import { useFieldConflict } from "@/components/shared/useFieldConflict";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { useCreateCompany, useUpdateCompany } from "@/hooks/useCompanies";
-import type { Company } from "@/types/company";
+import { COMPANY_GST_CODES } from "@/lib/errorCodes";
+import type { Company, CreatedCompany } from "@/types/company";
 import {
   companyResolver,
   EMPTY_COMPANY_FORM,
@@ -40,16 +43,40 @@ export function CompanyFormDialog({
   onOpenChange,
   company,
 }: CompanyFormDialogProps) {
+  // Set when the admin's password email did not go out — the dialog then shows
+  // the password instead of the form. See TemporaryPasswordPanel for why this
+  // cannot be a toast.
+  const [undelivered, setUndelivered] = useState<CreatedCompany | null>(null);
+
+  function close() {
+    onOpenChange(false);
+    setTimeout(() => setUndelivered(null), 200);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : close())}
+    >
       <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-4xl">
-        {/* Remounts on open so the form is always clean; the key also covers
-            reopening on a different row. */}
-        <CompanyForm
-          key={company?.id ?? "new"}
-          company={company}
-          onDone={() => onOpenChange(false)}
-        />
+        {undelivered ? (
+          <TemporaryPasswordPanel
+            heading="Created, but the email didn't send"
+            email={undelivered.adminEmail ?? undelivered.email}
+            password={undelivered.temporaryPassword ?? ""}
+            reason={undelivered.emailError}
+            onDone={close}
+          />
+        ) : (
+          /* Remounts on open so the form is always clean; the key also covers
+             reopening on a different row. */
+          <CompanyForm
+            key={company?.id ?? "new"}
+            company={company}
+            onDone={close}
+            onUndelivered={setUndelivered}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -67,20 +94,23 @@ const COLS = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
 function CompanyForm({
   company,
   onDone,
+  onUndelivered,
 }: {
   company?: Company;
   onDone: () => void;
+  onUndelivered: (created: CreatedCompany) => void;
 }) {
   const isEdit = Boolean(company);
   const create = useCreateCompany();
   const update = useUpdateCompany();
 
   const {
+    control,
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<CompanyFormValues>({
-    resolver: companyResolver(isEdit ? "edit" : "create"),
+    resolver: companyResolver(),
     // Surface validation errors as the user types, not only on submit.
     mode: "onChange",
     defaultValues: company
@@ -97,12 +127,18 @@ function CompanyForm({
           state: company.state,
           pincode: company.pincode,
           adminName: "",
-          password: "",
         }
       : EMPTY_COMPANY_FORM,
   });
 
   const isSubmitting = create.isPending || update.isPending;
+
+  // Two GSTIN clashes only the server can see: another company already has it,
+  // or one of THIS company's own vendors does. Both are 409s that belong on the
+  // GSTIN box. `mode: "onChange"` is exactly why they cannot live in RHF —
+  // see useFieldConflict.
+  const gstConflict = useFieldConflict();
+  const gstValue = useWatch({ control, name: "gstNumber" });
 
   const renderField = (
     name: keyof CompanyFormValues,
@@ -112,13 +148,16 @@ function CompanyForm({
       type?: string;
       placeholder?: string;
       autoComplete?: string;
-      password?: boolean;
       /** Column span inside the three-column grid — for the one or two fields
        *  that genuinely need the room, like a street address. */
       className?: string;
+      /** A rejection the schema could not have known about — a server 409.
+       *  Zod wins if both are present: a malformed value is the nearer
+       *  problem, and the stale conflict clears as soon as it is fixed. */
+      error?: string;
     }
   ) => {
-    const message = errors[name]?.message;
+    const message = errors[name]?.message ?? opts?.error;
     const describedBy = message
       ? `${name}-error`
       : opts?.hint
@@ -127,16 +166,7 @@ function CompanyForm({
     return (
       <Field data-invalid={message ? true : undefined} className={opts?.className}>
         <FieldLabel htmlFor={name}>{label}</FieldLabel>
-        {opts?.password ? (
-          <PasswordInput
-            id={name}
-            placeholder={opts?.placeholder}
-            autoComplete={opts?.autoComplete}
-            aria-invalid={message ? true : undefined}
-            aria-describedby={describedBy}
-            {...register(name)}
-          />
-        ) : (
+        {(
           <Input
             id={name}
             type={opts?.type}
@@ -177,6 +207,9 @@ function CompanyForm({
       state: values.state.trim(),
       pincode: values.pincode.trim(),
     };
+    // The toaster still reports it — this only says WHICH box to fix.
+    const onError = (err: unknown) =>
+      gstConflict.capture(err, shared.gstNumber, COMPANY_GST_CODES);
 
     if (company) {
       // `code` is deliberately absent here. It is create-only on the API too —
@@ -189,6 +222,7 @@ function CompanyForm({
             toast.add({ title: `${saved.name} updated` });
             onDone();
           },
+          onError,
         }
       );
       return;
@@ -197,17 +231,26 @@ function CompanyForm({
     create.mutate(
       {
         ...shared,
-        password: values.password,
         adminName: values.adminName.trim() || null,
       },
       {
         onSuccess: (saved) => {
+          // The company exists in every case — the server answers 201 even when
+          // the admin's password email failed. Only what to say differs.
+          if (saved.emailStatus === "failed") {
+            onUndelivered(saved);
+            return;
+          }
           toast.add({
             title: `${saved.name} created`,
-            description: `${saved.adminEmail ?? saved.email} can now sign in as its admin.`,
+            description:
+              saved.emailStatus === "skipped"
+                ? `${saved.adminEmail ?? saved.email} signs in as its admin with the password they already use.`
+                : `A temporary password has been emailed to ${saved.adminEmail ?? saved.email}.`,
           });
           onDone();
         },
+        onError,
       }
     );
   }
@@ -219,7 +262,7 @@ function CompanyForm({
         <DialogDescription>
           {isEdit
             ? "Update this company's profile and statutory details."
-            : "Create a company and its first admin. The admin signs in with the email and password below."}
+            : "Create a company and its first admin. We email the admin a temporary password to sign in with."}
         </DialogDescription>
       </DialogHeader>
 
@@ -249,11 +292,6 @@ function CompanyForm({
               placeholder: "Full name",
               autoComplete: "name",
             })}
-            {renderField("password", "Temporary password", {
-              password: true,
-              placeholder: "At least 8 characters",
-              autoComplete: "new-password",
-            })}
           </FieldGroup>
         </FormSection>
       )}
@@ -263,6 +301,7 @@ function CompanyForm({
           {renderField("gstNumber", "GSTIN", {
             placeholder: "29ABCDE1234F1Z5",
             hint: "15-character GST number.",
+            error: gstConflict.messageFor(gstValue),
           })}
           {renderField("pan", "PAN", { placeholder: "ABCDE1234F" })}
           {renderField("gstCompanyStatus", "GST company status", {

@@ -10,6 +10,7 @@ import { apiDelete, apiGet, apiGetPage, apiPatch, apiPost, apiPut } from "./http
 import type { ListParams, Page } from "@/types/api";
 import type {
   Company,
+  CreatedCompany,
   CreateCompanyInput,
   UpdateCompanyInput,
 } from "@/types/company";
@@ -22,8 +23,10 @@ export function getCompany(id: string): Promise<Company> {
   return apiGet<Company>(`/companies/${id}`);
 }
 
-export function createCompany(input: CreateCompanyInput): Promise<Company> {
-  return apiPost<Company>("/companies", input);
+export function createCompany(
+  input: CreateCompanyInput
+): Promise<CreatedCompany> {
+  return apiPost<CreatedCompany>("/companies", input);
 }
 
 export function updateCompany(

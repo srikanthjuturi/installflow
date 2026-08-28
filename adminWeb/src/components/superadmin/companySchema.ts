@@ -15,11 +15,13 @@ export const PINCODE_RE = /^[0-9]{6}$/;
 
 /**
  * Every field is a string (empty = "not provided" for the optional ones), so
- * the inferred type matches the all-string form values RHF holds. `password`
- * is only required in create mode — enforced via `superRefine` on the captured
- * mode.
+ * the inferred type matches the all-string form values RHF holds.
+ *
+ * Create and edit validate identically now that neither takes a password — the
+ * server mints a temporary one for the admin and emails it to the company
+ * address. One schema, no mode.
  */
-export function companySchema(mode: "create" | "edit") {
+export function companySchema() {
   return z
     .object({
       name: z.string().trim().min(1, "Company name is required").max(255),
@@ -41,23 +43,12 @@ export function companySchema(mode: "create" | "edit") {
       state: z.string().trim().min(1, "State is required").max(120),
       pincode: z.string().trim().regex(PINCODE_RE, "Enter a 6-digit PIN code"),
       adminName: z.string().trim().max(255),
-      password: z.string().max(128),
-    })
-    .superRefine((val, ctx) => {
-      if (mode === "create" && val.password.trim().length < 8) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["password"],
-          message: "At least 8 characters",
-        });
-      }
     });
 }
 
 export type CompanyFormValues = z.infer<ReturnType<typeof companySchema>>;
 
-export const companyResolver = (mode: "create" | "edit") =>
-  zodResolver(companySchema(mode));
+export const companyResolver = () => zodResolver(companySchema());
 
 /** Blank create form. */
 export const EMPTY_COMPANY_FORM: CompanyFormValues = {
@@ -73,5 +64,4 @@ export const EMPTY_COMPANY_FORM: CompanyFormValues = {
   state: "",
   pincode: "",
   adminName: "",
-  password: "",
 };

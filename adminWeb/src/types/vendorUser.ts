@@ -6,6 +6,8 @@
  * has — and it is served by `/users`, an endpoint a vendor cannot call at all.
  */
 
+import type { EmailOutcome } from "./user";
+
 export interface VendorUser {
   /** The MEMBERSHIP id, which is what the routes take: removing somebody
    *  removes them from this vendor, not from the platform. */
@@ -21,12 +23,14 @@ export interface VendorUser {
   createdAt: string;
 }
 
+/** `POST /vendor/users` only — every other endpoint returns `VendorUser`. */
+export type CreatedVendorUser = VendorUser & EmailOutcome;
+
+/** Body for `POST /vendor/users`. No password: the server mints and emails one. */
 export interface CreateVendorUserInput {
   fullName: string;
   email: string;
   phone?: string | null;
-  /** Told to them, and changed by them on the change-password screen. */
-  password: string;
 }
 
 export interface UpdateVendorUserInput {

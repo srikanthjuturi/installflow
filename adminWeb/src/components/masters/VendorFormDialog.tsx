@@ -1,4 +1,5 @@
-import { Controller, useForm } from "react-hook-form";
+import { useState } from "react";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,8 +19,8 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { FormSection } from "@/components/shared/FormSection";
+import { useFieldConflict } from "@/components/shared/useFieldConflict";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -28,12 +29,15 @@ import {
   useIntakeChannels,
   useUpdateVendor,
 } from "@/hooks/useVendors";
+import { VENDOR_GST_CODES } from "@/lib/errorCodes";
 import { cn } from "@/lib/utils";
 import type {
+  CreatedVendor,
   IntakeChannel,
   IntakeChannelOption,
   Vendor,
 } from "@/types/vendor";
+import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { StatusField } from "./StatusField";
 import {
   CHANNEL_HINT,
@@ -58,8 +62,21 @@ export function VendorFormDialog({
   onOpenChange,
   vendor,
 }: VendorFormDialogProps) {
+  // Set when the login's password email did not go out — the dialog then shows
+  // the password instead of the form. See TemporaryPasswordPanel for why this
+  // cannot be a toast.
+  const [undelivered, setUndelivered] = useState<CreatedVendor | null>(null);
+
+  function close() {
+    onOpenChange(false);
+    setTimeout(() => setUndelivered(null), 200);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : close())}
+    >
       {/* Laid out like the superadmin company dialog, and sized like it: three
           columns need the room, and two of these fields are long identifiers
           nobody can proof-read in a narrow box.
@@ -69,9 +86,23 @@ export function VendorFormDialog({
           negative margin to escape the dialog's padding, and any drift between
           the two left the bar floating in a gutter. */}
       <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-4xl">
-        {/* The popup unmounts on close, so the form is fresh on every open and
-            an edit never opens holding the previous row's values. */}
-        <VendorForm vendor={vendor} onDone={() => onOpenChange(false)} />
+        {undelivered ? (
+          <TemporaryPasswordPanel
+            heading="Added, but the email didn't send"
+            email={undelivered.loginEmail ?? ""}
+            password={undelivered.temporaryPassword ?? ""}
+            reason={undelivered.emailError}
+            onDone={close}
+          />
+        ) : (
+          /* The popup unmounts on close, so the form is fresh on every open and
+             an edit never opens holding the previous row's values. */
+          <VendorForm
+            vendor={vendor}
+            onDone={close}
+            onUndelivered={setUndelivered}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -231,9 +262,11 @@ function IntakeChannelField({
 function VendorForm({
   vendor,
   onDone,
+  onUndelivered,
 }: {
   vendor?: Vendor;
   onDone: () => void;
+  onUndelivered: (created: CreatedVendor) => void;
 }) {
   const isEdit = vendor !== undefined;
   const create = useCreateVendor();
@@ -250,9 +283,6 @@ function VendorForm({
     defaultValues: {
       name: vendor?.name ?? "",
       loginEmail: vendor?.loginEmail ?? "",
-      // Never pre-filled, on either path: on add there is nothing to show, and
-      // on edit a blank box is what "leave it alone" looks like.
-      password: "",
       gstNumber: vendor?.gstNumber ?? "",
       cin: vendor?.cin ?? "",
       contactPerson: vendor?.contactPerson ?? "",
@@ -267,6 +297,12 @@ function VendorForm({
       status: statusOf(vendor?.isActive ?? true),
     },
   });
+
+  // A GSTIN clash is only knowable at the server: it can be the number of
+  // another vendor here, or the company's own. Both come back 409 and belong on
+  // the GSTIN box, not only in the toaster.
+  const gstConflict = useFieldConflict();
+  const gstValue = useWatch({ control, name: "gstNumber" });
 
   /**
    * One field, one id — so the label, the hint and the error can never point at
@@ -283,7 +319,6 @@ function VendorForm({
       placeholder?: string;
       inputMode?: "tel" | "numeric";
       maxLength?: number;
-      password?: boolean;
       textarea?: boolean;
       rows?: number;
       /** Shown but not editable — an identity the account is looked up by. */
@@ -295,10 +330,14 @@ function VendorForm({
       /** Column span inside the three-column grid — for the one field that
        *  genuinely needs the room, like a street address. */
       className?: string;
+      /** A rejection the schema could not have known about — a server 409.
+       *  Zod wins if both are present: a malformed value is the nearer
+       *  problem, and the stale conflict clears as soon as it is fixed. */
+      error?: string;
     }
   ) => {
     const id = `vendor-${name}`;
-    const message = errors[name]?.message;
+    const message = errors[name]?.message ?? opts?.error;
     const describedBy = message
       ? `${id}-error`
       : opts?.hint
@@ -316,14 +355,6 @@ function VendorForm({
             rows={opts.rows ?? 2}
             className="resize-y"
             placeholder={opts.placeholder}
-            aria-invalid={message ? true : undefined}
-            aria-describedby={describedBy}
-            {...register(name)}
-          />
-        ) : opts?.password ? (
-          <PasswordInput
-            id={id}
-            autoComplete="new-password"
             aria-invalid={message ? true : undefined}
             aria-describedby={describedBy}
             {...register(name)}
@@ -382,30 +413,40 @@ function VendorForm({
       isActive: values.status === "Active",
     };
     const done = (saved: Vendor) => {
+      // On ADD the reply is a CreatedVendor and may carry an undelivered
+      // password; on edit it is a plain Vendor and never does.
+      const created = saved as Partial<CreatedVendor>;
+      if (created.emailStatus === "failed") {
+        onUndelivered(created as CreatedVendor);
+        return;
+      }
       toast.add({
         title: `${saved.name} ${isEdit ? "updated" : "added"}`,
-        description: `Intake ${saved.intakeChannels.join(" + ")} · ${
-          saved.isActive ? "Active" : "Paused"
-        }.`,
+        description:
+          created.emailStatus === "sent"
+            ? `A temporary password has been emailed to ${values.loginEmail}.`
+            : `Intake ${saved.intakeChannels.join(" + ")} · ${
+                saved.isActive ? "Active" : "Paused"
+              }.`,
       });
       onDone();
     };
+    // The toaster still reports it — this only says WHICH box to fix.
+    const onError = (err: unknown) =>
+      gstConflict.capture(err, values.gstNumber, VENDOR_GST_CODES);
 
     if (isEdit) {
       update.mutate(
         {
           id: vendor.id,
           ...body,
-          // Omitted entirely when blank, so the API leaves the password alone
-          // rather than being asked to set it to "".
-          ...(values.password ? { password: values.password } : {}),
         },
-        { onSuccess: done }
+        { onSuccess: done, onError }
       );
     } else {
       create.mutate(
-        { ...body, loginEmail: values.loginEmail, password: values.password },
-        { onSuccess: done }
+        { ...body, loginEmail: values.loginEmail },
+        { onSuccess: done, onError }
       );
     }
   }
@@ -464,6 +505,7 @@ function VendorForm({
             mono: true,
             maxLength: 15,
             placeholder: "27AAACV1234A1Z5",
+            error: gstConflict.messageFor(gstValue),
           })}
           {renderField(
             "cin",
@@ -511,14 +553,8 @@ function VendorForm({
             // recorded. The server does not accept a change either.
             readOnly: isEdit,
             hint: isEdit
-              ? "The address this vendor signs in with."
-              : "They sign in with this and raise their own tickets.",
-          })}
-          {renderField("password", isEdit ? "New password" : "Temporary password", {
-            password: true,
-            hint: isEdit
-              ? "Leave blank to keep the current one. Setting a new password signs the vendor out everywhere."
-              : "At least 8 characters. Share it so they can sign in.",
+              ? "The address this vendor signs in with. Use Reset password on the vendor row to email a new one."
+              : "We email a temporary password here. They sign in with it and raise their own tickets.",
           })}
         </FieldGroup>
       </FormSection>

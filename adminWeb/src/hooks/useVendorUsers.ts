@@ -35,9 +35,9 @@ export function useCreateVendorUser() {
   return useMutation({
     mutationFn: (input: CreateVendorUserInput) => createVendorUser(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: vendorUserKeys.all }),
-    // The password is an argument, never cached: `gcTime: 0` so it does not sit
-    // in the mutation cache after the screen has moved on. Same reason
-    // `useLogin` does it.
+    // When the email fails the REPLY carries a live credential (it used to be
+    // the argument). Either way it must not sit in the mutation cache after the
+    // screen has moved on. Same reason `useLogin` does it.
     gcTime: 0,
     meta: { errorTitle: "Couldn't add the user" },
   });

@@ -7,6 +7,7 @@
  */
 
 import type {
+  CreatedVendor,
   CreateVendorInput,
   IntakeChannelOption,
   UpdateVendorInput,
@@ -45,8 +46,18 @@ export function getVendor(id: string): Promise<Vendor> {
   return apiGet<Vendor>(`/vendors/${id}`);
 }
 
-export function createVendor(input: CreateVendorInput): Promise<Vendor> {
-  return apiPost<Vendor>("/vendors", input);
+export function createVendor(input: CreateVendorInput): Promise<CreatedVendor> {
+  return apiPost<CreatedVendor>("/vendors", input);
+}
+
+/**
+ * Email this vendor's login a fresh temporary password, ending its sessions.
+ *
+ * Replaces the `password` field that used to ride on the update body — the
+ * password is the server's to choose, so there is nothing to send.
+ */
+export function reissueVendorPassword(id: string): Promise<CreatedVendor> {
+  return apiPost<CreatedVendor>(`/vendors/${id}/reissue-password`, {});
 }
 
 export function updateVendor({ id, ...body }: UpdateVendorInput): Promise<Vendor> {

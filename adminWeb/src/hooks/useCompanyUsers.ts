@@ -20,6 +20,7 @@ import {
   listRegions,
   listRoles,
   listUsers,
+  reissueUserPassword,
   updateUser,
 } from "@/services/companyUsers";
 
@@ -145,6 +146,25 @@ export function useCreateUser() {
     meta: { errorTitle: "Couldn't add the user" },
     mutationFn: (input: CreateUserInput) => createUser(input),
     onSuccess: invalidate,
+    // When the email fails, the reply carries a live credential. Drop the cache
+    // entry as soon as it settles so it is not retained in memory or devtools —
+    // the same reasoning as `useLogin`.
+    gcTime: 0,
+  });
+}
+
+/**
+ * Email a member a fresh temporary password.
+ *
+ * `gcTime: 0` for the reason `useLogin` has it: on failure the reply carries a
+ * live credential, and it must not linger in the mutation cache or devtools.
+ * Nothing to invalidate — a password is not on any list.
+ */
+export function useReissueUserPassword() {
+  return useMutation({
+    meta: { errorTitle: "Couldn't reset the password" },
+    mutationFn: (membershipId: string) => reissueUserPassword(membershipId),
+    gcTime: 0,
   });
 }
 

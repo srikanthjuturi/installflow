@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { ConfirmDeleteDialog } from "@/components/masters/ConfirmDeleteDialog";
 import { VendorFormDialog } from "@/components/masters/VendorFormDialog";
+import { ReissueVendorPasswordDialog } from "@/components/masters/ReissueVendorPasswordDialog";
 import { VendorTable } from "@/components/masters/VendorTable";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ type OpenDialog =
   | { kind: "add" }
   | { kind: "edit"; vendor: Vendor }
   | { kind: "delete"; vendor: Vendor }
+  | { kind: "reissue"; vendor: Vendor }
   | null;
 
 export default function VendorsPage() {
@@ -64,6 +66,7 @@ export default function VendorsPage() {
         canEdit={canEdit}
         onEdit={(vendor) => setDialog({ kind: "edit", vendor })}
         onDelete={(vendor) => setDialog({ kind: "delete", vendor })}
+        onReissuePassword={(vendor) => setDialog({ kind: "reissue", vendor })}
         toolbarActions={
           canEdit ? (
             <Button
@@ -84,6 +87,12 @@ export default function VendorsPage() {
         open={dialog?.kind === "add" || dialog?.kind === "edit"}
         onOpenChange={(open) => !open && setDialog(null)}
         vendor={dialog?.kind === "edit" ? dialog.vendor : undefined}
+      />
+
+      <ReissueVendorPasswordDialog
+        open={dialog?.kind === "reissue"}
+        onOpenChange={(open) => !open && setDialog(null)}
+        vendor={dialog?.kind === "reissue" ? dialog.vendor : undefined}
       />
 
       <ConfirmDeleteDialog

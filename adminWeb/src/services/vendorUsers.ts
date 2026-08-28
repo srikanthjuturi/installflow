@@ -9,6 +9,7 @@
 import { apiDelete, apiGetPage, apiPost, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type {
+  CreatedVendorUser,
   CreateVendorUserInput,
   UpdateVendorUserInput,
   VendorUser,
@@ -22,8 +23,8 @@ export function listVendorUsers(
 
 export function createVendorUser(
   input: CreateVendorUserInput
-): Promise<VendorUser> {
-  return apiPost<VendorUser>("/vendor/users", input);
+): Promise<CreatedVendorUser> {
+  return apiPost<CreatedVendorUser>("/vendor/users", input);
 }
 
 export function updateVendorUser(
