@@ -6,14 +6,18 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.core.images import ImageUrl
 from app.core.phone import Phone
-from app.core.schemas import AppModel
+from app.core.schemas import AppModel, BoundedPassword
 from app.features.technicians.schemas import TechnicianSessionOut
 
 
 # ─── Requests ──────────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=1)
+    #: Bounded, and generously — this is a DoS guard, not a policy. An unbounded
+    #: string here meant an unauthenticated caller could 500 the API with a long
+    #: password; `verify_password` now returns False for one, and this stops the
+    #: pathological case reaching it at all.
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class GoogleLoginRequest(BaseModel):
@@ -36,6 +40,27 @@ class OtpRequestRequest(BaseModel):
 class OtpVerifyRequest(BaseModel):
     phone: Phone
     code: str = Field(min_length=4, max_length=8)
+
+
+class PasswordResetRequestRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetVerifyRequest(BaseModel):
+    email: EmailStr
+    #: The same bounds `OtpVerifyRequest` uses — it is the same six digits out of
+    #: the same generator, and the two must not disagree about what is a code.
+    code: str = Field(min_length=4, max_length=8)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    #: Bounded for the same reason `GoogleLoginRequest.credential` is: an
+    #: unbounded string on an unauthenticated endpoint is a cheap denial of
+    #: service against the JWT parser.
+    resetToken: str = Field(min_length=1, max_length=4096)
+    #: Byte-bounded and floored at 8 — the same rule as
+    #: `ChangePasswordRequest.newPassword`, because it is the same act.
+    newPassword: BoundedPassword = Field(min_length=8)
 
 
 class SwitchCompanyRequest(BaseModel):
@@ -109,13 +134,25 @@ class LoginResponse(AppModel):
 
 class OtpRequestResponse(AppModel):
     sent: bool
-    #: 'whatsapp' | 'log'. Which channel took it.
+    #: 'whatsapp' | 'email' | 'log'. Which channel took it.
     channel: str
     expiresInSeconds: int
     resendInSeconds: int
     #: Development only, and only when OTP_DEV_ECHO is on — startup refuses to
     #: boot with it enabled in production.
     devCode: str | None = None
+
+
+class PasswordResetVerifyResponse(AppModel):
+    """The ticket that stands between a right code and a new password.
+
+    Carries no identity of its own that a client could read — the user id is
+    inside a signed token, so the browser holding it learns nothing it did not
+    already type.
+    """
+
+    resetToken: str
+    expiresInSeconds: int
 
 
 class SwitchCompanyResponse(AppModel):
@@ -159,10 +196,13 @@ class MeVendorOut(AppModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    currentPassword: str = Field(min_length=1, max_length=128)
-    #: Same floor as every other password in the system, so the two rules cannot
-    #: drift into disagreeing about what is acceptable.
-    newPassword: str = Field(min_length=8, max_length=128)
+    #: Not byte-bounded: whatever they type is checked against the stored hash,
+    #: and `verify_password` answers False for anything bcrypt cannot hash.
+    currentPassword: str = Field(min_length=1, max_length=1024)
+    #: Byte-bounded, because this one gets HASHED. The old `max_length=128` was
+    #: a lie: bcrypt refuses anything over 72 bytes, so a 100-character password
+    #: passed validation and then 500'd inside hash_password.
+    newPassword: BoundedPassword = Field(min_length=8)
 
 
 class MeResponse(AppModel):

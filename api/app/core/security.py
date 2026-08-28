@@ -16,21 +16,60 @@ from app.core.config import settings
 
 
 # ─── Password hashing (bcrypt) ─────────────────────────────────────────────
+#: bcrypt's hard limit, and it is BYTES, not characters. Older versions
+#: truncated silently; bcrypt 5 raises instead, which is better — but it means
+#: an over-long password is an exception on a hot path rather than a quiet
+#: weakening, and both callers below have to say what they do about it.
+#:
+#: Worth remembering that 72 bytes is far fewer than 72 characters for anyone
+#: not typing ASCII: an emoji is four, and Devanagari is three.
+BCRYPT_MAX_BYTES = 72
+
+
+def too_long_for_bcrypt(plain_password: str) -> bool:
+    return len(plain_password.encode("utf-8")) > BCRYPT_MAX_BYTES
+
+
 def hash_password(plain_password: str) -> str:
+    """Hash a password. Raises ValueError past bcrypt's 72-BYTE limit.
+
+    Callers that take the password from a request must bound it in their schema
+    (see `BoundedPassword`), so the caller gets a 422 naming the field rather
+    than a 500 from in here.
+    """
     hashed = bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt())
     return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-    )
+    """Check a password. NEVER raises — an unusable candidate is simply False.
+
+    The length guard is not cosmetic. `/auth/login` accepts whatever the client
+    sends, and bcrypt 5 raises on anything over 72 bytes, so without this an
+    over-long password turns an ordinary failed sign-in into a 500 — from an
+    UNAUTHENTICATED endpoint, on attacker-chosen input.
+
+    False is also the correct answer, not merely the safe one: nothing could
+    ever have hashed a string bcrypt refuses to hash, so no stored hash can
+    match it.
+    """
+    if too_long_for_bcrypt(plain_password):
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        )
+    except ValueError:
+        # A malformed or truncated stored hash. A database in that state is a
+        # problem, but it is not this caller's problem and it is not a 500 —
+        # they simply cannot sign in.
+        return False
 
 
 #: Every confusable pair removed: no I/O against 1/0, no lowercase l. This
 #: string is read off a screen in an email and typed into a login form on a
-#: different device, and a misread costs a support call — staff have no password
-#: reset, so the only remedy is a manager reissuing it.
+#: different device, and a misread costs a round trip through
+#: `/auth/password-reset/*` or a manager reissuing it.
 #:
 #: No symbols. They would add ~2.5 bits and cost far more than that in
 #: phone-keyboard friction and in "is that a comma or a full stop".
@@ -103,6 +142,64 @@ def decode_token(token: str) -> dict[str, Any]:
     return jwt.decode(
         token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
     )
+
+
+#: The ticket between a verified password-reset code and the new password.
+#: `deps.get_current_principal` rejects anything whose `type` is not "access",
+#: so this can never be presented as a session — the same guarantee
+#: `onboarding`'s "invite_reg" token relies on.
+PASSWORD_RESET_TOKEN_TYPE = "pwreset"
+
+
+def password_fingerprint(password_hash: str) -> str:
+    """A short, non-reversing witness of the hash a reset token was minted for."""
+    return hash_token(password_hash)[:16]
+
+
+def create_password_reset_token(subject: str | Any, password_hash: str) -> str:
+    """A short-lived token that authorises exactly one password change.
+
+    The `pwd` claim is what makes it single-use. It witnesses the password hash
+    that was in place when the code was verified, and the confirm step refuses a
+    token whose witness no longer matches — so the moment a new password is set,
+    every token minted against the old one is dead. A manager reissuing the
+    password in the same window kills it too, which is also the right answer:
+    whoever asked for that reset is no longer looking at the current state of
+    the account.
+
+    A revocation table would buy nothing over this. The only thing a reset token
+    can do is set a password, and doing that is precisely what invalidates it.
+    """
+    return _create_token(
+        subject,
+        timedelta(minutes=settings.PASSWORD_RESET_TOKEN_MINUTES),
+        token_type=PASSWORD_RESET_TOKEN_TYPE,
+        extra_claims={"pwd": password_fingerprint(password_hash)},
+    )
+
+
+def read_password_reset_token(token: str) -> tuple[str, str] | None:
+    """`(user id, password fingerprint)`, or None for anything at all wrong.
+
+    Returns the claimed fingerprint rather than checking it, because checking it
+    needs the user — and finding the user needs the subject this returns. The
+    caller loads the row and compares against `password_fingerprint(...)` of the
+    hash it actually holds now.
+
+    One return value for every structural failure — expired, wrong signature,
+    wrong type, missing claims. Telling them apart helps an attacker and nobody
+    else, and the caller has one sentence to say either way.
+    """
+    try:
+        payload = decode_token(token)
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != PASSWORD_RESET_TOKEN_TYPE:
+        return None
+    subject, claimed = payload.get("sub"), payload.get("pwd")
+    if not subject or not isinstance(claimed, str):
+        return None
+    return str(subject), claimed
 
 
 # ─── Opaque refresh-token material (stored hashed for revocation) ──────────

@@ -2,6 +2,8 @@ import { apiGet, apiPatch, apiPost } from "./http";
 import type {
   LoginResponse,
   MeResponse,
+  PasswordResetRequestResponse,
+  PasswordResetVerifyResponse,
   SwitchCompanyResponse,
 } from "@/types/api";
 
@@ -95,6 +97,67 @@ export function changePassword(
 ): Promise<LoginResponse> {
   return apiPost<LoginResponse>("/auth/change-password", {
     currentPassword,
+    newPassword,
+  });
+}
+
+/**
+ * Step 1 of a forgotten password — email a one-time code (`POST
+ * /auth/password-reset/request`).
+ *
+ * Unauthenticated, like `/auth/login`: the whole premise is that the caller
+ * cannot prove who they are yet. All three reset paths are on the transport's
+ * `NO_REFRESH` list for that reason.
+ *
+ * An address with no console account is a **404**, deliberately — the
+ * alternative leaves somebody who mistyped their own email on a code screen no
+ * code will ever reach. A 429 carries `Retry-After` and a message naming the
+ * wait; both are throttles the backend counts, not this client.
+ */
+export function requestPasswordReset(
+  email: string
+): Promise<PasswordResetRequestResponse> {
+  return apiPost<PasswordResetRequestResponse>("/auth/password-reset/request", {
+    email: email.trim(),
+  });
+}
+
+/**
+ * Step 2 — exchange the code for a reset ticket
+ * (`POST /auth/password-reset/verify`).
+ *
+ * Burns the code, so a second call with the same one fails however right it
+ * was. The `resetToken` is bearer-grade for its fifteen minutes: it is the only
+ * thing standing between its holder and a new password, so it is kept in
+ * component state and never persisted.
+ */
+export function verifyPasswordResetCode(
+  email: string,
+  code: string
+): Promise<PasswordResetVerifyResponse> {
+  return apiPost<PasswordResetVerifyResponse>("/auth/password-reset/verify", {
+    email: email.trim(),
+    code,
+  });
+}
+
+/**
+ * Step 3 — set the new password (`POST /auth/password-reset/confirm`).
+ *
+ * Answers with the same `LoginResponse` a sign-in gives, so the caller stores
+ * the pair and is signed in: they proved the address a moment ago and a second
+ * sign-in form would have nothing to establish. Every OTHER session is revoked.
+ *
+ * A spent, expired or superseded token is a **400**, not a 401 — the transport
+ * reads a 401 as an expired access token, and this endpoint has no session to
+ * refresh.
+ */
+export function confirmPasswordReset(
+  resetToken: string,
+  newPassword: string
+): Promise<LoginResponse> {
+  return apiPost<LoginResponse>("/auth/password-reset/confirm", {
+    resetToken,
     newPassword,
   });
 }

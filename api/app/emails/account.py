@@ -2,7 +2,8 @@
 
 This is the single helper every account-creating slice calls — company users,
 vendors, vendor portal users and company admins — so the decision to put a
-password in an email lives in exactly one place.
+password in an email lives in exactly one place. `send_password_reset_code` is
+the other half of that decision: the way somebody gets back in without a manager.
 """
 
 from __future__ import annotations
@@ -81,4 +82,66 @@ async def send_temporary_password(
     except Exception as exc:  # noqa: BLE001 - see the docstring
         # Names the recipient and the reason. NEVER the password.
         logger.exception("Could not build the temporary-password email for %s", to)
+        return EmailSendResult.failure(f"Could not build the email: {exc}")
+
+
+async def send_password_reset_code(
+    *,
+    to: str,
+    full_name: str | None,
+    company_name: str,
+    code: str,
+    expires_minutes: int,
+) -> EmailSendResult:
+    """Send a one-time code for a forgotten console password. Never raises.
+
+    The same shape as `send_temporary_password` above, and for the same reasons:
+    the company is a PARAMETER because one sender serves every company on this
+    platform, and rendering sits inside the try because the OTP row is already
+    written by the time this is called — a template typo must degrade to "we
+    could not send it", not 500 a request that has already spent a throttle slot.
+
+    No link and no button. The tab that asked for the code is still open, so a
+    link buys nothing, and a password email that trains people to click through
+    to a sign-in page is the exact shape of the phishing mail we would rather
+    they ignored.
+
+    The rule that binds every caller: **the code is never logged**, exactly as
+    the temporary password is not. `otp_service._echo` is the one exception, and
+    it is gated on OTP_DEV_ECHO, which production refuses to boot with.
+    """
+    subject = f"Your {company_name} password reset code"
+    greeting = f"Hello {full_name}," if full_name else "Hello,"
+
+    try:
+        html = render(
+            "password_reset_code",
+            subject=subject,
+            company=company_name,
+            greeting=greeting,
+            code=code,
+            expires_minutes=expires_minutes,
+            year=datetime.now(timezone.utc).year,
+        )
+        plain_text = (
+            f"{greeting}\n\n"
+            f"Somebody asked to reset the password for your {company_name} "
+            "account.\n\n"
+            f"Your code: {code}\n\n"
+            f"It expires in {expires_minutes} minutes and can be used once.\n\n"
+            f"Nobody from {company_name} will ever ask you for this code.\n\n"
+            "If you did not ask for this, you can ignore this email — your "
+            "password has not changed.\n"
+        )
+        return await acs_email.send(
+            to=to,
+            display_name=full_name,
+            subject=subject,
+            html=html,
+            plain_text=plain_text,
+            what="password reset code",
+        )
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        # Names the recipient and the reason. NEVER the code.
+        logger.exception("Could not build the password-reset email for %s", to)
         return EmailSendResult.failure(f"Could not build the email: {exc}")

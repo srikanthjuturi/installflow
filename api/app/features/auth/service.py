@@ -1,4 +1,4 @@
-"""Auth business logic: login, company switching, refresh rotation, logout, me."""
+"""Auth business logic: login, password reset, company switching, refresh, me."""
 
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -18,6 +18,8 @@ from app.core.security import (
     generate_refresh_token,
     hash_token,
     hash_password,
+    password_fingerprint,
+    read_password_reset_token,
     verify_password,
 )
 from app.features.auth.schemas import (
@@ -518,3 +520,139 @@ async def change_password(
         accessToken=access,
         refreshToken=refresh,
     )
+
+
+# ─── Forgotten password ────────────────────────────────────────────────────
+#
+# Three steps, and the middle one is the reason there are three rather than two:
+# the person is told their code was right at the moment they type it, not after
+# they have also chosen a password. `request` and `verify` live in
+# `otp_service` beside the technician code they share every rule with; the
+# confirm below is here, next to `change_password`, because it is the same act
+# reached through a different door.
+
+
+async def resettable_user(session: AsyncSession, email: str) -> User:
+    """The account a password reset may act on, or an honest refusal.
+
+    An unknown address gets a 404 rather than a bland 200. That is the same
+    trade `_find_technician_user` makes and it is made for the same reason: the
+    privacy-preserving answer leaves a real person who mistyped their own email
+    on a code screen no code will ever reach, whose only possible outcome is
+    "that code didn't match" forever. Per-address and per-IP throttling is what
+    blunts enumeration, and `/auth/google` already answers the same question out
+    loud ("No console account uses that Google address").
+
+    Vendor portal users are admitted — they are ordinary `users` rows with an
+    email and a password, and `google_login` admits them on the same reasoning.
+    So are superadmins, who have no membership and the least help available when
+    they are locked out.
+    """
+    user = await session.scalar(
+        select(User).where(
+            func.lower(User.email) == email.lower(),
+            # Filtered IN the query for the reason `login` spells out: the
+            # unique index on lower(email) is PARTIAL on `deleted_at IS NULL`,
+            # so a soft-deleted row and a live one may share an address.
+            User.deleted_at.is_(None),
+        )
+    )
+    if user is None:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="RESET_NO_ACCOUNT",
+            detail="No console account uses that address.",
+        )
+    # Tested on the role first, because that is the actual reason. The hash
+    # check stays as a second line so an account that is somehow passwordless
+    # cannot have one minted for it through this door.
+    if user.role == TECHNICIAN or user.password_hash is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account signs in with a one-time code, not a password.",
+        )
+    if not user.is_active:
+        # Byte-identical to the password and Google paths, on purpose.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled"
+        )
+    return user
+
+
+async def reset_company_name(session: AsyncSession, user: User) -> str:
+    """Whose name the reset email is sent in.
+
+    A parameter rather than the literal "Reliance GreenTech", because one sender
+    serves every company on this platform — the same argument
+    `send_temporary_password` makes. The company they last worked in is the one
+    they will recognise; a superadmin belongs to none, so the sender's own
+    display name is the honest fallback rather than an arbitrary tenant's.
+    """
+    memberships = await _active_memberships(session, user)
+    for _membership, company in memberships:
+        if company.id == user.last_active_company_id:
+            return company.name
+    if memberships:
+        return memberships[0][1].name
+    return settings.ACS_SENDER_NAME
+
+
+async def confirm_password_reset(
+    session: AsyncSession, reset_token: str, new_password: str
+) -> LoginResponse:
+    """Set the new password and sign them in. Ends every other session.
+
+    They proved the address a moment ago, so a second sign-in form would be a
+    step with nothing to do. `issue_session` is the same tail `/login`,
+    `/google` and `/otp/verify` all end in.
+
+    A bad token is a 400, never a 401, for the reason `change_password` gives:
+    the console's transport reads a 401 as an expired access token, burns a
+    refresh on it and replays — so the user would see one failure for two
+    attempts, and a 401 from the refresh would sign them out mid-flow.
+
+    Every failure below is the same sentence. Expired, forged, replayed after a
+    successful reset, or minted before a manager reissued the password: telling
+    them apart helps an attacker and tells an honest user nothing they can act
+    on beyond "start again".
+    """
+    invalid = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="That reset has expired or has already been used. Start again.",
+    )
+
+    claim = read_password_reset_token(reset_token)
+    if claim is None:
+        raise invalid
+    subject, claimed_fingerprint = claim
+    try:
+        user_id = uuid.UUID(subject)
+    except ValueError:
+        raise invalid from None
+
+    user = await session.scalar(
+        select(User).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    if user is None or user.password_hash is None:
+        raise invalid
+    # What makes the token single-use: it witnesses the hash it was minted
+    # against, and the successful reset below replaces that hash.
+    if claimed_fingerprint != password_fingerprint(user.password_hash):
+        raise invalid
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled"
+        )
+    if verify_password(new_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The new password is the same as the current one",
+        )
+
+    user.password_hash = hash_password(new_password)
+    user.updated_by = user.id
+    # Whoever else held a session on this account no longer does. That is the
+    # point of resetting a password you think somebody else knows.
+    await revoke_refresh_tokens(session, user.id)
+
+    return await issue_session(session, user)

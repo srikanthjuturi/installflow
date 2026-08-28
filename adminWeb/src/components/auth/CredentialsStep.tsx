@@ -1,5 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Link } from "react-router";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -113,12 +114,12 @@ export function CredentialsStep({
           <Checkbox id="trust" defaultChecked {...register("trustDevice")} />
           Trust this device
         </label>
-        <a
-          href="#reset"
+        <Link
+          to="/forgot-password"
           className="font-medium text-brand-400 hover:text-brand-500"
         >
           Forgot password?
-        </a>
+        </Link>
       </div>
 
       {/* Whatever the envelope reported goes to the toaster, like every other

@@ -303,10 +303,17 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   and no "forgot password". Console users sign in with email + password **or with Google**
   (`POST /auth/google`, which never creates an account — it matches an existing verified email);
   `users.email` and `users.password_hash` are nullable precisely because a technician has neither.
+- **A forgotten console password is a one-time code emailed to the address**, not a link:
+  `/auth/password-reset/request` → `verify` → `confirm`, which answers with a session because
+  the address was just proved. It shares `otp_codes` with the technician flow — the table takes
+  a phone or an email, never both — so both inherit one pepper, one TTL and one set of throttles.
+  Technicians are refused: there is no password to reset. See `api/AGENTS.md` → Forgotten
+  passwords.
 - **Nobody types a password when creating an account.** The server generates a temporary one and
   emails it. If that email cannot be sent the account is still created and the password comes
   back in the response for the manager to hand over — and `POST /users/{id}/reissue-password`
-  mints another, which is the only recovery path staff have. See `api/AGENTS.md` → Email.
+  mints another, which is what a manager reaches for when the mailbox itself is the problem and
+  the self-service reset therefore cannot help. See `api/AGENTS.md` → Email.
 - There are **two onboarding modes**, and a technician record records which:
   `onboarding_mode` (invite | direct) is how the record came to exist, `registered_by`
   (self | manager) is who actually filled it in. They are not the same question — a manager can

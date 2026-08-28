@@ -147,6 +147,30 @@ export interface LoginResponse {
 }
 
 /**
+ * `POST /auth/password-reset/request` payload.
+ *
+ * The same shape the technician OTP endpoints answer with, because it is the
+ * same generator behind both — only `channel` differs (`email` here).
+ *
+ * `sent: false` is a 200, not a failure: the code exists and the throttle slot
+ * is spent, but the mail did not go out. `devCode` is present only while
+ * `OTP_DEV_ECHO` is on, which production refuses to boot with.
+ */
+export interface PasswordResetRequestResponse {
+  sent: boolean;
+  channel: string;
+  expiresInSeconds: number;
+  resendInSeconds: number;
+  devCode: string | null;
+}
+
+/** `POST /auth/password-reset/verify` payload — the ticket for the last step. */
+export interface PasswordResetVerifyResponse {
+  resetToken: string;
+  expiresInSeconds: number;
+}
+
+/**
  * `POST /auth/refresh` payload. The backend **rotates**: the presented refresh
  * token is revoked and a new pair issued, so both values must be stored.
  */

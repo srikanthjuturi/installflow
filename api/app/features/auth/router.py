@@ -1,4 +1,4 @@
-"""Auth endpoints: login, switch-company, refresh, logout, me."""
+"""Auth endpoints: login, password reset, switch-company, refresh, logout, me."""
 
 from typing import Annotated
 
@@ -20,6 +20,10 @@ from app.features.auth.schemas import (
     OtpRequestRequest,
     OtpRequestResponse,
     OtpVerifyRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequestRequest,
+    PasswordResetVerifyRequest,
+    PasswordResetVerifyResponse,
     RefreshRequest,
     RefreshResponse,
     SwitchCompanyRequest,
@@ -69,6 +73,54 @@ async def verify_otp(body: OtpVerifyRequest, db: Db) -> ApiEnvelope[LoginRespons
     """Exchange a code for the same token pair `/auth/login` issues."""
     data = await otp_service.verify_login_code(db, body.phone, body.code)
     return envelope(data, message="Signed in")
+
+
+@router.post(
+    "/password-reset/request", response_model=ApiEnvelope[OtpRequestResponse]
+)
+async def request_password_reset(
+    body: PasswordResetRequestRequest, request: Request, db: Db
+) -> ApiEnvelope[OtpRequestResponse]:
+    """Email a console account a code for a forgotten password.
+
+    Unauthenticated by nature — the whole premise is that the caller cannot
+    prove who they are yet. Throttled per address and per IP by the same
+    counters the technician code path uses.
+    """
+    client = request.client.host if request.client else None
+    data = await otp_service.request_password_reset(db, body.email, client)
+    return envelope(
+        data, message="Code sent" if data.sent else "Code could not be sent"
+    )
+
+
+@router.post(
+    "/password-reset/verify", response_model=ApiEnvelope[PasswordResetVerifyResponse]
+)
+async def verify_password_reset(
+    body: PasswordResetVerifyRequest, db: Db
+) -> ApiEnvelope[PasswordResetVerifyResponse]:
+    """Burn the code and answer with the ticket that authorises a new password.
+
+    Deliberately not the last step. Telling somebody their code was right at the
+    moment they type it, rather than after they have also chosen a password, is
+    the reason this flow has three requests instead of two.
+    """
+    data = await otp_service.verify_password_reset(db, body.email, body.code)
+    return envelope(data, message="Code verified")
+
+
+@router.post("/password-reset/confirm", response_model=ApiEnvelope[LoginResponse])
+async def confirm_password_reset(
+    body: PasswordResetConfirmRequest, db: Db
+) -> ApiEnvelope[LoginResponse]:
+    """Set the new password and sign them in, ending every other session.
+
+    Answers with the same payload `/auth/login` does: they proved the address a
+    moment ago, so a second sign-in form would have nothing to establish.
+    """
+    data = await service.confirm_password_reset(db, body.resetToken, body.newPassword)
+    return envelope(data, message="Password changed")
 
 
 @router.post("/switch-company", response_model=ApiEnvelope[SwitchCompanyResponse])

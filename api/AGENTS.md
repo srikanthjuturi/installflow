@@ -417,9 +417,43 @@ The same degradation rule as WhatsApp, and for the same reason: **leave `ACS_*` 
 nothing 500s.** The account is still created, and the plaintext comes back in the response as
 `temporaryPassword` so the manager can hand it over. It is returned **only** when
 `emailStatus == "failed"` — always returning it would put a live credential in every HTTP log,
-and never returning it would strand the account, because staff have no password reset and
-`/auth/change-password` needs the current one. `POST /users/{id}/reissue-password` (and the
-vendor twin) is the way back in when the email is lost.
+and never returning it would leave the account reachable only through a mailbox that has just
+proved unreliable. `POST /users/{id}/reissue-password` (and the vendor twin) is the way back in
+when the email is lost.
+
+That escape hatch is for an **authenticated manager only**. `/auth/password-reset/*` is open,
+and deliberately has no equivalent: handing a credential back when the mail fails would be an
+oracle anybody could ask.
+
+## Forgotten passwords — the email OTP
+
+Staff used to have no self-service reset at all. They do now, and it is three unauthenticated
+calls, mirroring the technician OTP flow one field over:
+
+| Path | Body | Answers |
+|---|---|---|
+| `POST /auth/password-reset/request` | `{ email }` | `OtpRequestResponse`, `channel: "email"` |
+| `POST /auth/password-reset/verify` | `{ email, code }` | `{ resetToken, expiresInSeconds }` |
+| `POST /auth/password-reset/confirm` | `{ resetToken, newPassword }` | the same `LoginResponse` `/auth/login` gives |
+
+Four things about it are load-bearing:
+
+- **The codes live in `otp_codes`, not a table of their own.** `phone` is nullable, `email` sits
+  beside it, and a CHECK says exactly one is set. That is what lets a reset inherit the pepper,
+  the TTL, the five-attempt burn, the resend cooldown and both window counters instead of
+  growing a second copy of each — copies drift the first time one of those numbers is tuned.
+- **The `resetToken` is a JWT bound to the password hash it was minted against** (`pwd` claim,
+  `type: "pwreset"`). Setting a password changes the hash, so the token that set it dies, and so
+  does every sibling minted in the same window. That is the whole revocation mechanism; there is
+  no table, because the only thing the token can do is the thing that invalidates it.
+- **An unknown address is a 404**, matching `_find_technician_user` and `/auth/google`. The bland
+  200 leaves somebody who mistyped their own email on a code screen no code will ever reach.
+- **A bad token is a 400, never a 401** — the console's transport reads 401 as an expired access
+  token and would burn a refresh replaying it. All three paths are on its `NO_REFRESH` list.
+
+Vendor portal users and superadmins are admitted; technicians are refused, because a phone is
+their credential and there is no password to reset. Verify and confirm both re-resolve the
+account, so one disabled between two requests is caught before a password is set.
 
 ⚠ **Set `ACS_EMAIL_ALLOWLIST` to your own address before exercising any create form.** The key
 in `.env` is live and is the SAME resource production uses, so an invented test address sends

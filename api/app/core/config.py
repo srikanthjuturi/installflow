@@ -325,6 +325,12 @@ class Settings(BaseSettings):
     OTP_DEV_ECHO: bool = True
     # How long the post-OTP registration token lives.
     REGISTRATION_TOKEN_MINUTES: int = 15
+    # How long the post-OTP password-reset token lives — the ticket between
+    # "that code was right" and "here is my new password". Longer than the
+    # registration token because the two screens on either side of it are a
+    # password field and its confirmation, typed by somebody who has just been
+    # locked out and is likely reaching for a password manager.
+    PASSWORD_RESET_TOKEN_MINUTES: int = 15
 
     @computed_field  # type: ignore[prop-decorator]
     @property
