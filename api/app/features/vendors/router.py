@@ -34,6 +34,7 @@ from app.core.schemas import (
     paginated,
 )
 from app.features.vendors import service
+from app.core.gst_lookup import GstinLookupOut, GstinLookupRequest, lookup_gstin_service
 from app.features.vendors.schemas import (
     IntakeChannelOut,
     VendorCreateRequest,
@@ -50,6 +51,14 @@ _ADDED_MESSAGE = {
     "sent": "Vendor added — the temporary password has been emailed",
     "skipped": "Vendor added — the login uses the password it already has",
     "failed": "Vendor added, but the password email did not go out",
+}
+
+#: Keyed on what the GST registry said. The console reads `data.outcome`; these
+#: serve API consumers, Swagger and the logs.
+_LOOKUP_MESSAGE = {
+    "found": "GSTIN found",
+    "not_registered": "That GSTIN is not registered",
+    "unavailable": "The GST portal could not be reached",
 }
 
 _REISSUED_MESSAGE = {
@@ -122,6 +131,40 @@ async def list_vendor_options(
     The statutory identity, contact and address stay National-Head-only.
     """
     return envelope(await service.list_options(db, principal))
+
+
+@router.post(
+    "/gstin-lookup",
+    response_model=ApiEnvelope[GstinLookupOut],
+    dependencies=[NationalHeadUp],
+)
+async def lookup_gstin(
+    body: GstinLookupRequest, db: Db, principal: CanEdit
+) -> ApiEnvelope[GstinLookupOut]:
+    """What the GST registry says about a GSTIN — the vendor form's autofill.
+
+    **Always 200.** `data.outcome` is `found`, `not_registered` (a real answer:
+    block the save) or `unavailable` (we could not ask: block nothing). See
+    `GstinLookupOut` for why an upstream failure is not an HTTP error here.
+
+    `CanEdit` rather than `CanView`: it reads a public registry, but each call
+    spends a unit of a metered subscription, so it belongs behind the people who
+    can act on the answer.
+
+    POST rather than GET, despite reading: it matches upstream, keeps a GSTIN
+    out of access logs and proxy caches, and cannot be confused with
+    `/{vendor_id}`.
+
+    A subscription failure also emails this company's National and Regional
+    Heads, at most once a day — nothing else would tell them autofill has
+    stopped, since from the screen it looks like a form that has gone quiet.
+
+    The behaviour lives in `app.core.gst_lookup` because the superadmin's
+    company form asks the same question of the same registry; only WHO may ask
+    differs, and that is what stays here.
+    """
+    data = await lookup_gstin_service(db, principal.company_id, body.gstin)
+    return envelope(data, message=_LOOKUP_MESSAGE[data.outcome])
 
 
 @router.get(

@@ -136,7 +136,6 @@ def _company_out(
         pan=company.pan,
         gstCompanyStatus=company.gst_company_status,
         addressLine1=company.address_line1,
-        addressLine2=company.address_line2,
         city=company.city,
         state=company.state,
         pincode=company.pincode,
@@ -202,7 +201,6 @@ async def create_company(
         pan=body.pan,
         gst_company_status=body.gstCompanyStatus,
         address_line1=body.addressLine1,
-        address_line2=body.addressLine2,
         city=body.city,
         state=body.state,
         pincode=body.pincode,
@@ -336,8 +334,6 @@ async def update_company(
         company.gst_company_status = body.gstCompanyStatus
     if body.addressLine1 is not None:
         company.address_line1 = body.addressLine1
-    if body.addressLine2 is not None:
-        company.address_line2 = body.addressLine2
     if body.city is not None:
         company.city = body.city
     if body.state is not None:

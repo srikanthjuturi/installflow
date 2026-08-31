@@ -46,11 +46,11 @@ Cin = Annotated[
 Pincode = Annotated[str, BeforeValidator(_strip), Field(pattern=r"^[0-9]{6}$")]
 GstStatus = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=64)]
 
-#: A whole street address in one box. `companies` splits line 1 / line 2 because
-#: its form does; the vendor form is a single textarea, so it gets one field with
-#: room for the newlines that come with pasting an address off a letterhead.
+#: A whole street address in ONE box, with room for the newlines that come with
+#: pasting one off a letterhead. Both forms ask for it this way — `companies`
+#: split line 1 / line 2 until `e6b40d92c7a5` folded them together, which is
+#: also when the 255-character `AddrLine` / `AddrLineOpt` pair stopped having a
+#: single caller and was removed.
 Address = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=500)]
 
-AddrLine = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=255)]
-AddrLineOpt = Annotated[str, BeforeValidator(_strip), Field(max_length=255)]
 CityState = Annotated[str, BeforeValidator(_strip), Field(min_length=1, max_length=120)]

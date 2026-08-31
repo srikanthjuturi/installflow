@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowLeft, CheckCircle2, Lock } from "lucide-react";
+import { DistrictTechnicians } from "@/components/masters/DistrictTechnicians";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
 import { plural } from "@/lib/plural";
@@ -86,6 +87,15 @@ export function TerritoryStatePanel({ state, coverage, onClear }: Props) {
           <p className="mt-3.5 border-t border-line-2 pt-3 text-[12px] text-ink-3">
             This state is in your own territory.
           </p>
+        )}
+
+        {/* Only for a state the caller can actually see. Outside their
+            territory the counts would be somebody else's staffing, which is
+            exactly what the rest of this panel declines to show. */}
+        {!outside && (
+          // Keyed on the state so picking another one resets the search box
+          // and the scroll position rather than carrying them across.
+          <DistrictTechnicians key={state.id} stateId={state.id} />
         )}
       </div>
     </section>

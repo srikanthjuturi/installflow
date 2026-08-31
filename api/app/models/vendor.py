@@ -68,6 +68,21 @@ class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
 
     # Statutory identity. Entered by hand today, like companies.
     gst_number: Mapped[str] = mapped_column(String(15), nullable=False)
+    #: The holder's PAN — the same ten characters that sit inside `gst_number`,
+    #: which is where `d3f27a8c1904` backfilled it from.
+    #:
+    #: Nullable, unlike `companies.pan`, only because it arrived after the
+    #: vendors did. It is knowable for every row by construction, so treat a
+    #: NULL as "not filled in yet", never as "this vendor has none".
+    pan: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    #: The registration's standing at the GST portal — "Active", "Cancelled".
+    #: Same fact `companies.gst_company_status` records about the tenant.
+    #:
+    #: Nullable because nothing can know it yet: it comes back with the GSTIN
+    #: lookup, which does not exist. NULL means "never looked up" and renders as
+    #: nothing — inventing "Active" here would be asserting a registration is
+    #: live on no evidence at all.
+    gst_company_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: Nullable: only an MCA-registered company has a CIN. A proprietorship or a
     #: partnership vendor is perfectly normal and has none.
     cin: Mapped[str | None] = mapped_column(String(21), nullable=True)

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { useAssignableRegions } from "@/hooks/useCompanyUsers";
+import { useDistricts } from "@/hooks/useGeo";
 import {
   useCancelInvite,
   useCreateTechnician,
@@ -15,7 +16,7 @@ import {
   useResendInvite,
   useTechnicians,
 } from "@/hooks/useTechnicians";
-import { useListParams } from "@/hooks/useListParams";
+import { useUrlSeededListParams } from "@/hooks/useListParams";
 import type { TechnicianRow } from "@/types/technician";
 import { copyToClipboard } from "@/utils/clipboard";
 import { formatPhone, toE164 } from "@/utils/phone";
@@ -33,12 +34,17 @@ export default function TechnicianListPage() {
   const canCreate = has("technicians.create");
   const canInvite = has("technicians.invite");
   const { regions } = useAssignableRegions();
+  // Scoped by the server to the caller's own territory, so the dropdown can
+  // never offer a district whose technicians they would not be shown.
+  const { data: districts } = useDistricts({ mine: true });
 
   // The query the server answers. Search, filters and page all live in one
   // object so the table can hand back a whole new intent in one call. The
   // table already strips "All" — it is a control value, not a filter — so
   // nothing here has to know which values are sentinels.
-  const [params, setParams] = useListParams();
+  // Seeded from the URL so the territory panel's "8 technicians in
+  // Visakhapatnam" lands here already filtered to that district.
+  const [params, setParams] = useUrlSeededListParams({}, ["districtId"]);
 
   const { data, isLoading, isError, error, refetch } = useTechnicians(params);
 
@@ -124,6 +130,7 @@ export default function TechnicianListPage() {
         params={params}
         onParams={setParams}
         regions={regions}
+        districts={districts ?? []}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

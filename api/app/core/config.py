@@ -74,6 +74,21 @@ class Settings(BaseSettings):
     # verification. Never disable verification instead.
     HTTP_CA_BUNDLE: str = ""
 
+    # ─── GSTZen GSTIN Validator ────────────────────────────────────────────
+    # Fills a vendor's name, PAN, registration status and registered address
+    # from its GSTIN, so an operator pastes one value instead of typing six.
+    #
+    # Empty disables it, the same way an empty WHATSAPP_TOKEN does: the lookup
+    # reports itself unavailable, nothing blocks, and every box stays typeable.
+    #
+    # A METERED subscription — each call spends one unit — and a bearer token
+    # with no origin restriction, which is why the call is made here and never
+    # from the browser. A VITE_* copy would be inlined into the console bundle
+    # and let anybody drain the package.
+    GSTZEN_TOKEN: str = ""
+    GSTZEN_URL: str = "https://my.gstzen.in/api/gstin-validator/"
+    GSTZEN_TIMEOUT_SECONDS: float = 15.0
+
     # ─── WhatsApp Cloud API ────────────────────────────────────────────────
     # Unset in development: sends then fail softly and the code is logged
     # instead. Nothing in the flow blocks on Meta being configured.

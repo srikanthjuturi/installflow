@@ -11,6 +11,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { useStates } from "@/hooks/useGeo";
 import { useTerritory } from "@/hooks/useTerritory";
 import { plural } from "@/lib/plural";
@@ -28,8 +29,10 @@ import type { TerritoryState } from "@/types/territory";
  * Two data sources, joined by state id:
  *
  *   * `/territory` — SCOPED. An all-India role gets every region; a regional
- *     head only their own; an area manager only the regions their states sit
- *     in. So this decides what is visible at all.
+ *     head only their own; an area manager only the STATES assigned to him,
+ *     not the rest of the region they sit in — he cannot assign a manager or
+ *     reach a technician outside them, so showing them only invited him to
+ *     try. So this decides what is visible at all.
  *   * `/geo/states` — the master, all 36. Unscoped because geography is not
  *     tenant data, and the map needs every outline or India stops looking like
  *     India.
@@ -43,6 +46,9 @@ export default function TerritoryPage() {
   const [params, setParams] = useSearchParams();
   const stateId = params.get("state") ?? undefined;
 
+  // Territory is assigned on Users & roles, so the link there is only worth
+  // offering to somebody that screen will let in.
+  const canAssign = useFeatureAccess().has("users.view");
   const territory = useTerritory();
   const geo = useStates();
 
@@ -68,14 +74,6 @@ export default function TerritoryPage() {
       outside: Math.max(0, (geo.data?.length ?? 0) - coverage.size),
     };
   }, [coverage, geo.data]);
-
-  // An all-India role owns everything they can see, so outlining all 36 says
-  // nothing. Only mark "mine" when it actually distinguishes something — an
-  // area manager among their colleagues' states.
-  const minePartial = useMemo(() => {
-    const values = [...coverage.values()];
-    return values.length > 0 && values.some((s) => !s.isMine);
-  }, [coverage]);
 
   const markFor = (state: GeoState): StateMark => {
     const own = coverage.get(state.id);
@@ -106,7 +104,11 @@ export default function TerritoryPage() {
     return {
       fill: own.isCovered ? "fill-ok" : "fill-warn",
       active: true,
-      marked: stateId ? state.id === stateId : minePartial && own.isMine,
+      // Only the selected state is outlined. There used to be a second reason
+      // — marking an area manager's own states among his colleagues' — but the
+      // payload no longer carries anybody else's, so every state a caller can
+      // see is now theirs and the outline distinguished nothing.
+      marked: stateId ? state.id === stateId : false,
       interactive: true,
       detail,
     };
@@ -128,19 +130,26 @@ export default function TerritoryPage() {
         <p className="text-[13px] text-ink-2">
           Region → Regional Head → Area Manager → covered states
         </p>
-        {/* `outline` is built for a CARD or a dialog: its fill is
+        {/* Only for somebody who can actually assign. An area manager holds
+            states but cannot hand them out — `users.view` is not in his
+            features — so this used to send him to a screen the router bounces
+            him off. A link to a page you cannot open is worse than no link.
+
+            `outline` is built for a CARD or a dialog: its fill is
             `bg-background`, which on a page is the page's own colour, and its
             border sits at 1.11:1 against it — a control with no visible
             boundary. White plus a brand border takes that to 7.72:1 and reads
             as the secondary action it is, without promoting a navigation link
             to a primary button. */}
-        <LinkButton
-          to="/settings/users"
-          variant="outline"
-          className="border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
-        >
-          Assign in Users &amp; roles
-        </LinkButton>
+        {canAssign ? (
+          <LinkButton
+            to="/settings/users"
+            variant="outline"
+            className="border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
+          >
+            Assign in Users &amp; roles
+          </LinkButton>
+        ) : null}
       </div>
 
       {isError ? (

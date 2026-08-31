@@ -1,7 +1,8 @@
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
 import { useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
 import { CompanySwitcher } from "./CompanySwitcher";
+import { GlobalSearch } from "./GlobalSearch";
 import { LinkButton } from "./LinkButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { useNavOrigin } from "@/hooks/useNavOrigin";
@@ -33,6 +34,10 @@ export function Topbar({ title, subtitle }: TopbarProps) {
   );
 
   return (
+    // Already `sticky`, so it is a positioned ancestor — which is what the
+    // small-screen search bar anchors to when it covers this row rather than
+    // trying to fit inside it. No `relative` needed, and adding one would lose
+    // to `sticky` anyway.
     <header className="sticky top-0 z-30 flex h-topbar items-center gap-3.5 border-b border-line bg-surface px-5.5">
       <Button
         variant="outline"
@@ -44,23 +49,19 @@ export function Topbar({ title, subtitle }: TopbarProps) {
         <Menu aria-hidden />
       </Button>
 
-      <div className="min-w-0">
+      {/* Yields to the search bar rather than squeezing it — a long page title
+          and a usable box cannot both have the room on a narrow window. */}
+      <div className="min-w-0 shrink">
         <h1 className="truncate text-base leading-tight font-semibold">
           {title}
         </h1>
         <p className="truncate text-xs text-ink-3">{subtitle}</p>
       </div>
 
-      <div className="flex-1" />
-
-      <div className="hidden h-9.5 w-65 items-center gap-2 rounded-full border border-line bg-surface-2 px-3.5 text-ink-3 lg:flex">
-        <Search className="size-4 shrink-0" aria-hidden />
-        <input
-          type="search"
-          placeholder="Search tickets, technicians…"
-          aria-label="Search"
-          className="w-full border-none bg-transparent text-[13px] text-ink outline-none"
-        />
+      {/* No spacer: the search bar is the flex grower from `md` up, and below
+          that it is a button, so this row still ends hard against the right. */}
+      <div className="flex flex-1 justify-end md:justify-center">
+        <GlobalSearch />
       </div>
 
       {/* The company this session is scoped to; a dropdown when there's more

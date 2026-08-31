@@ -15,6 +15,7 @@ from app.features.masters.router import router as masters_router
 from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
+from app.features.search.router import router as search_router
 from app.features.technicians.router import router as technicians_router
 from app.features.tickets.router import router as tickets_router
 from app.features.tickets.ws import router as tickets_stream_router
@@ -55,3 +56,7 @@ api_router.include_router(uploads_router)
 # no feature key, because a manager must not be unable to hear about an
 # escalation in their own area for want of a permission grant.
 api_router.include_router(notifications_router)
+# The topbar box. Reads across five slices at once, so it owns none of them —
+# every statement it builds re-applies that entity's own list predicates, and
+# staff-only at the door keeps a vendor's ownership rule out of it entirely.
+api_router.include_router(search_router)

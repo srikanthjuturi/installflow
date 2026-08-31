@@ -14,6 +14,7 @@ import type { ListParams, Page } from "@/types/api";
 import type { EligibleTechnician } from "@/types";
 import type {
   CreateTechnicianInput,
+  DistrictBreakdown,
   InviteTechnicianInput,
   Technician,
   TechnicianInvite,
@@ -35,6 +36,25 @@ export function listTechnicians(
 
 export function getTechnician(id: string): Promise<Technician> {
   return apiGet<Technician>(`/technicians/${id}`);
+}
+
+/**
+ * How many technicians work in each district of one state.
+ *
+ * Scoped like the list itself, so a district's number always matches the rows
+ * behind it — an area manager counts only the technicians he can already see.
+ *
+ * **The counts do not sum to `totalTechnicians`.** A pincode can belong to
+ * several districts at once, so a technician covering one is genuinely present
+ * in each. Anything presenting these as a partition of the state is wrong; see
+ * `DistrictBreakdown`.
+ */
+export function getDistrictBreakdown(
+  stateId: string
+): Promise<DistrictBreakdown> {
+  return apiGet<DistrictBreakdown>(
+    `/technicians/districts?stateId=${encodeURIComponent(stateId)}`
+  );
 }
 
 export function createTechnician(

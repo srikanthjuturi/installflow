@@ -17,6 +17,7 @@ import {
 import { Timeline } from "@/components/tickets/Timeline";
 import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useTicket } from "@/hooks/useTickets";
+import { useRecordRecentlySeen } from "@/store/recentlySeen";
 import { isTerminalTicketStatus } from "@/types";
 
 /**
@@ -69,6 +70,17 @@ export default function TicketDetailPage({
   // is the portal. Every ops-only control reads this, so a new one cannot be
   // added on the ops side and quietly appear on the vendor's.
   const isOps = actions === undefined;
+
+  // Into the topbar search's "Recently seen". Recorded here rather than only on
+  // a search result, so a ticket opened from the board or from the bell counts
+  // as seen too. No-ops in the portal, which has no global search and whose
+  // session has no ops trail to add to.
+  useRecordRecentlySeen(
+    "ticket",
+    ticket?.id,
+    ticket?.code,
+    ticket ? `${ticket.customerName} · ${ticket.pincode}` : null
+  );
 
   // Closed, Force-Closed and Cancelled are the end of the record. Force-closing
   // a ticket that is already closed, or sending a technician to a job nobody is

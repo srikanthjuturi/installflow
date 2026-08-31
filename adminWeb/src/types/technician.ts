@@ -144,3 +144,30 @@ export interface InviteTechnicianInput {
   regionId?: string | null;
   dailyJobCap?: number;
 }
+
+/** One district of a state, and how many technicians work in it. */
+export interface DistrictTechnicianCount {
+  districtId: string;
+  name: string;
+  technicianCount: number;
+  /** The district's pincodes, so a zero reads as "nobody covers these 41". */
+  pincodeCount: number;
+}
+
+/**
+ * Technicians per district for one state.
+ *
+ * `totalTechnicians` is NOT the sum of the districts, and nothing may present
+ * it as if it were: a pincode can sit in several districts at once, so a
+ * technician covering one is counted in each — correctly. The total is counted
+ * once over the state.
+ *
+ * `withoutDistrict` is the opposite case: a pincode can have no district at
+ * all, and anybody whose coverage in this state is only such codes appears in
+ * no column. Reported rather than dropped.
+ */
+export interface DistrictBreakdown {
+  districts: DistrictTechnicianCount[];
+  totalTechnicians: number;
+  withoutDistrict: number;
+}

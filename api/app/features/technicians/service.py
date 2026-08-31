@@ -11,8 +11,9 @@ Two ways a technician comes to exist:
 Visibility deliberately does NOT reuse `db.repository.territory_scope`. Its
 area-manager branch filters through `membership_pincodes` — the one table
 technician coverage cannot use — so an ASM would see zero technicians through
-it. `_visible_technicians` below is the equivalent written against
-`technician_pincodes` plus the manager link.
+it. The equivalent, written against `technician_pincodes` plus the manager link,
+is `core.visibility.technician_scope`; `_visible_technicians` below is this
+module's name for it.
 """
 
 import secrets
@@ -20,8 +21,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, literal, or_, select, union_all
-from sqlalchemy import false as sql_false
+from sqlalchemy import case, delete, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -33,16 +33,20 @@ from app.core.scope import (
     Scope,
     load_scope,
     own_scope,
+    pincodes_in_districts,
     pincodes_in_regions,
     pincodes_in_states,
 )
 from app.core.notifications import notify
 from app.core.presence import is_online
+from app.core.visibility import technician_scope
 from app.core.realtime import publish_notification, publish_technician_changed
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     AvailabilityOut,
     AvailabilityRequest,
+    DistrictBreakdownOut,
+    DistrictTechnicianCount,
     InviteCreateRequest,
     OnboardingOut,
     SubcategoryRef,
@@ -75,7 +79,13 @@ from app.models.technician import (
     TechnicianProfile,
     TechnicianSubcategory,
 )
-from app.models.territory import MembershipRegion, Pincode, Region
+from app.models.territory import (
+    District,
+    MembershipRegion,
+    Pincode,
+    PincodeDistrict,
+    Region,
+)
 from app.models.user import User
 
 
@@ -247,43 +257,11 @@ async def set_invite_pincodes(
 def _visible_technicians(stmt, principal: Principal, own_id, own: Scope):
     """What this role sees in the technician list.
 
-    Not `territory_scope`: that helper filters a MEMBERSHIP query, and a
-    technician's coverage lives in `technician_pincodes` — a separate table with
-    the opposite rule (many technicians share one pincode).
+    Kept as a name because this module reads better for it, but the RULE lives
+    in core now — global search asks the same question, and slices never import
+    each other.
     """
-    if principal.role in ALL_INDIA_ROLES:
-        return stmt
-
-    mine = TechnicianProfile.appointed_by_user_id == principal.user_id
-
-    if own.region_ids:
-        if principal.role == AREA_MANAGER:
-            # Their own reports, anyone covering a pincode inside their states,
-            # and anyone they appointed — an ASM must not lose a technician
-            # because the technician's coverage later drifted.
-            #
-            # The pincode test is a subquery against the master, not a list: an
-            # area manager's states can hold thousands of codes and this runs on
-            # every page of the technician list.
-            covers = select(TechnicianPincode.technician_id).where(
-                TechnicianPincode.technician_id == TechnicianProfile.id,
-                TechnicianPincode.pincode.in_(pincodes_in_states(own.state_ids))
-                if own.state_ids
-                else sql_false(),
-            )
-            return stmt.where(
-                or_(
-                    Membership.manager_id == own_id,
-                    covers.exists(),
-                    mine,
-                )
-            )
-        return stmt.where(
-            or_(TechnicianProfile.region_id.in_(own.region_ids), mine)
-        )
-
-    # No territory yet — only what they appointed themselves.
-    return stmt.where(mine)
+    return technician_scope(stmt, principal, own_id, own)
 
 
 def _visible_invites(stmt, principal: Principal, own: Scope):
@@ -486,6 +464,141 @@ async def _invites_out(
     ]
 
 
+# ── district breakdown ────────────────────────────────────────────────────────
+
+
+async def district_breakdown(
+    session: AsyncSession, principal: Principal, state_id: uuid.UUID
+) -> DistrictBreakdownOut:
+    """How many technicians work in each district of one state.
+
+    Counted the only way the geography allows, and the two consequences are
+    reported rather than smoothed over.
+
+    **The columns do not sum to the total.** A pincode may sit in up to four
+    districts (1,209 real ones do), so a technician covering it is genuinely
+    present in each. `COUNT(DISTINCT technician_id)` per district is right;
+    adding the districts up is not, which is why `totalTechnicians` is counted
+    separately over the state rather than summed here.
+
+    **A pincode can have no district at all**, which would drop a technician
+    from every column. `PincodeDistrict` records four the source left that way;
+    the current import has filled them, so `withoutDistrict` is 0 on today's
+    data — but it is a property of the spreadsheet, not an invariant, and a
+    breakdown that walked state → district → pincode would lose those people
+    silently. It is counted so the screen can show them instead. (Verified by
+    removing a district link and checking the technician still appears.)
+
+    Scoped like the list itself: an area manager counts only the technicians he
+    can already see, so the numbers here and the rows behind them agree.
+    """
+    own_id, own = await own_scope(
+        session, user_id=principal.user_id, company_id=principal.company_id
+    )
+
+    # The technicians this caller may count, as a subquery — the same rule the
+    # list uses, so a district's number always matches the rows it links to.
+    visible = _visible_technicians(
+        select(TechnicianProfile.id)
+        .join(Membership, Membership.id == TechnicianProfile.membership_id)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            TechnicianProfile.company_id == principal.company_id,
+            Membership.deleted_at.is_(None),
+            User.deleted_at.is_(None),
+        ),
+        principal,
+        own_id,
+        own,
+    ).scalar_subquery()
+
+    # Their pincodes, restricted to this state. Everything below is a slice of
+    # this: the per-district counts, the total, and the no-district remainder.
+    in_state = (
+        select(
+            TechnicianPincode.technician_id.label("technician_id"),
+            TechnicianPincode.pincode.label("pincode"),
+        )
+        .join(Pincode, Pincode.code == TechnicianPincode.pincode)
+        .where(
+            TechnicianPincode.company_id == principal.company_id,
+            TechnicianPincode.technician_id.in_(visible),
+            Pincode.state_id == state_id,
+        )
+        .subquery()
+    )
+
+    rows = (
+        await session.execute(
+            select(
+                District.id,
+                District.name,
+                func.count(func.distinct(in_state.c.technician_id)),
+                func.count(func.distinct(PincodeDistrict.pincode_code)),
+            )
+            # OUTER, so a district nobody covers still gets a row saying zero.
+            # That is the actionable half of this screen — an area manager is
+            # looking for the gaps, not the places already staffed.
+            .select_from(District)
+            .outerjoin(PincodeDistrict, PincodeDistrict.district_id == District.id)
+            .outerjoin(in_state, in_state.c.pincode == PincodeDistrict.pincode_code)
+            .where(District.state_id == state_id)
+            .group_by(District.id, District.name)
+            .order_by(District.name)
+        )
+    ).all()
+
+    # Both totals in ONE round trip. The database is remote, so a second query
+    # here cost more than the work it did — three trips made this endpoint
+    # 1.6s, and folding these two together is most of the way back.
+    #
+    # `placed` is the technicians located by at least one of their pincodes
+    # here; anyone in the state who is not among them has coverage only through
+    # codes with no district, so no district row can show them. Counted as
+    # "total minus placed" rather than as a row-level test for a missing
+    # district: somebody covering both a districtless code and a normal one
+    # would fail that test on one row and be reported as districtless while
+    # also appearing in a district column.
+    totals = (
+        await session.execute(
+            select(
+                func.count(func.distinct(in_state.c.technician_id)),
+                func.count(
+                    func.distinct(
+                        case(
+                            (
+                                PincodeDistrict.district_id.isnot(None),
+                                in_state.c.technician_id,
+                            )
+                        )
+                    )
+                ),
+            ).select_from(
+                in_state.outerjoin(
+                    PincodeDistrict,
+                    PincodeDistrict.pincode_code == in_state.c.pincode,
+                )
+            )
+        )
+    ).one()
+    total, placed = int(totals[0] or 0), int(totals[1] or 0)
+    without = total - placed
+
+    return DistrictBreakdownOut(
+        districts=[
+            DistrictTechnicianCount(
+                districtId=did,
+                name=name,
+                technicianCount=int(techs or 0),
+                pincodeCount=int(pins or 0),
+            )
+            for did, name, techs, pins in rows
+        ],
+        totalTechnicians=total,
+        withoutDistrict=without,
+    )
+
+
 # ── list ──────────────────────────────────────────────────────────────────────
 
 
@@ -500,6 +613,7 @@ async def list_technicians(
     region_id: uuid.UUID | None = None,
     subcategory_id: uuid.UUID | None = None,
     pincode: str | None = None,
+    district_id: uuid.UUID | None = None,
     onboarding_mode: str | None = None,
 ) -> tuple[list, int]:
     """One page of the Technicians screen — registered technicians and open invites.
@@ -559,6 +673,19 @@ async def list_technicians(
             )
             .exists()
         )
+    if district_id:
+        # "Works anywhere in this district" — an EXISTS over the technician's
+        # own pincodes, tested against the district's, not a join. A technician
+        # covering four codes in one district must appear once, and a join
+        # would return him four times and inflate the count.
+        tech_keys = tech_keys.where(
+            select(TechnicianPincode.id)
+            .where(
+                TechnicianPincode.technician_id == TechnicianProfile.id,
+                TechnicianPincode.pincode.in_(pincodes_in_districts([district_id])),
+            )
+            .exists()
+        )
     if term:
         tech_keys = tech_keys.where(
             or_(
@@ -586,9 +713,22 @@ async def list_technicians(
     if term:
         invite_keys = invite_keys.where(func.lower(TechnicianInvite.phone).like(term))
 
-    # An invite has no status, subcategory, pincode or mode of the technician
-    # kind — filtering on one is implicitly "registered only".
-    if view == "registered" or tech_status or subcategory_id or pincode or onboarding_mode:
+    # An invite has no status, subcategory, pincode, district or mode of the
+    # technician kind — filtering on one is implicitly "registered only".
+    #
+    # An invite DOES carry pincodes (`technician_invite_pincodes`), so a
+    # district filter could in principle include unregistered invites. It
+    # deliberately does not: the district breakdown this filter is reached from
+    # counts technicians, and a list that answered with a different population
+    # than the number clicked would be worse than a narrower one.
+    if (
+        view == "registered"
+        or tech_status
+        or subcategory_id
+        or pincode
+        or district_id
+        or onboarding_mode
+    ):
         combined = tech_keys.subquery()
     elif view == "invites" or invite_status:
         combined = invite_keys.subquery()

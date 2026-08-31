@@ -96,7 +96,7 @@ export function useStatesByRegion(regionIds: string[]): {
  * all 754 before a state is chosen.
  */
 export function useDistricts(
-  filters: { stateId?: string; regionId?: string } = {},
+  filters: { stateId?: string; regionId?: string; mine?: boolean } = {},
   enabled = true
 ) {
   return useQuery({

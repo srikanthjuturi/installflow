@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import Principal, get_current_principal, require_superadmin
+from app.core.scope import ALL_INDIA_ROLES, own_scope
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -73,14 +74,44 @@ async def list_districts(
     db: Db,
     stateId: Annotated[uuid.UUID | None, Query()] = None,
     regionId: Annotated[uuid.UUID | None, Query()] = None,
+    mine: Annotated[bool, Query()] = False,
 ) -> ApiEnvelope[list[DistrictOut]]:
     """Districts with their pincode counts. Unpaged — 754 in all, 75 at most in
     one state.
 
     Their counts do not sum to the state's pincode count; see `DistrictOut`.
+
+    `mine=true` narrows the list to the caller's own territory — an area
+    manager's states, a regional head's regions, everything for an all-India
+    role. Geography is a global master, so the SCOPE is resolved here rather
+    than in the service: the service stays a query over a table nobody owns,
+    and the one thing that knows who is asking stays at the edge.
     """
+    state_ids: list[uuid.UUID] | None = None
+    region_ids: list[uuid.UUID] | None = None
+    if mine and principal.role not in ALL_INDIA_ROLES:
+        _own_id, own = await own_scope(
+            db, user_id=principal.user_id, company_id=principal.company_id
+        )
+        # An area manager holds states; a regional head holds regions and no
+        # states at all. Sending an empty list for the one he does not hold
+        # would filter everything away, so only the populated side is applied.
+        if own.state_ids:
+            state_ids = list(own.state_ids)
+        elif own.region_ids:
+            region_ids = list(own.region_ids)
+        else:
+            # Scoped role, nothing assigned yet: no districts are his.
+            return envelope([])
+
     return envelope(
-        await service.list_districts(db, state_id=stateId, region_id=regionId)
+        await service.list_districts(
+            db,
+            state_id=stateId,
+            region_id=regionId,
+            state_ids=state_ids,
+            region_ids=region_ids,
+        )
     )
 
 

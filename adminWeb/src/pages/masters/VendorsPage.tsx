@@ -8,7 +8,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
-import { useListParams } from "@/hooks/useListParams";
+import { useUrlSeededListParams } from "@/hooks/useListParams";
 import { useDeleteVendor, useVendors } from "@/hooks/useVendors";
 import type { Vendor } from "@/types/vendor";
 
@@ -24,8 +24,10 @@ type OpenDialog =
   | null;
 
 export default function VendorsPage() {
-  // The page owns the query string; the table reports intent into it.
-  const [params, setParams] = useListParams();
+  // The page owns the query string; the table reports intent into it. Seeded
+  // from `?search=`, which is where global search lands a vendor hit — a vendor
+  // is edited on this screen and has no detail route.
+  const [params, setParams] = useUrlSeededListParams();
   const { data, isLoading, isError, error, refetch } = useVendors(params);
   const [dialog, setDialog] = useState<OpenDialog>(null);
   const remove = useDeleteVendor();

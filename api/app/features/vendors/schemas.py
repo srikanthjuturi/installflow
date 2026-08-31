@@ -19,7 +19,15 @@ from app.core.intake import (
 )
 from app.core.phone import Phone
 from app.core.schemas import AppModel, EmailOutcome
-from app.core.statutory import Address, CityState, Cin, GstNumber, Pincode
+from app.core.statutory import (
+    Address,
+    CityState,
+    Cin,
+    GstNumber,
+    GstStatus,
+    Pan,
+    Pincode,
+)
 
 Name255 = Field(min_length=2, max_length=255)
 
@@ -63,6 +71,17 @@ IntakeChannels = Annotated[list[str], AfterValidator(_check_channels)]
 class VendorCreateRequest(BaseModel):
     name: str = Name255
     gstNumber: GstNumber
+    #: The holder's PAN — characters 3-12 of `gstNumber`, which is why the
+    #: console can fill it without asking anybody.
+    #:
+    #: Optional here, unlike on a company, because the two clients that predate
+    #: the column send nothing. Omitting it stores NULL rather than deriving one:
+    #: the slice belongs where a person can see the result and correct it, not in
+    #: a service quietly writing a value nobody typed.
+    pan: Pan | None = None
+    #: The registration's standing at the GST portal. Nothing fills this until
+    #: the GSTIN lookup exists, and NULL honestly says "never looked up".
+    gstCompanyStatus: GstStatus | None = None
     #: Optional: only an MCA-registered company has one.
     cin: Cin | None = None
     contactPerson: str = Name255
@@ -89,13 +108,16 @@ class VendorCreateRequest(BaseModel):
 class VendorUpdateRequest(BaseModel):
     """Omit a field to leave it alone.
 
-    `cin` is the one field that can be CLEARED, so the service tests presence in
-    `model_fields_set` rather than truthiness — an explicit null has to mean
-    "remove it", which an `is not None` test would read as "leave it alone".
+    `cin`, `pan` and `gstCompanyStatus` are the fields that can be CLEARED, so
+    the service tests presence in `model_fields_set` rather than truthiness — an
+    explicit null has to mean "remove it", which an `is not None` test would read
+    as "leave it alone".
     """
 
     name: str | None = Field(default=None, min_length=2, max_length=255)
     gstNumber: GstNumber | None = None
+    pan: Pan | None = None
+    gstCompanyStatus: GstStatus | None = None
     cin: Cin | None = None
     contactPerson: str | None = Field(default=None, min_length=2, max_length=255)
     phone: Phone | None = None
@@ -119,6 +141,12 @@ class VendorOut(AppModel):
     id: uuid.UUID
     name: str
     gstNumber: str
+    #: NULL only where nobody has filled it in — a PAN is derivable from the
+    #: GSTIN of every vendor, so it never means "this one has none".
+    pan: str | None = None
+    #: NULL means the GST portal has never been asked. The console renders that
+    #: as nothing, not as "Active".
+    gstCompanyStatus: str | None = None
     cin: str | None
     contactPerson: str
     phone: str

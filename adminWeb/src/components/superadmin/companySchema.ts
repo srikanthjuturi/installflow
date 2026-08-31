@@ -37,8 +37,8 @@ export function companySchema() {
         .trim()
         .min(1, "GST status is required")
         .max(64),
-      addressLine1: z.string().trim().min(1, "Address is required").max(255),
-      addressLine2: z.string().trim().max(255),
+      // One box, 500 like a vendor's — the API folded line 2 into this one.
+      addressLine1: z.string().trim().min(1, "Address is required").max(500),
       city: z.string().trim().min(1, "City is required").max(120),
       state: z.string().trim().min(1, "State is required").max(120),
       pincode: z.string().trim().regex(PINCODE_RE, "Enter a 6-digit PIN code"),
@@ -59,7 +59,6 @@ export const EMPTY_COMPANY_FORM: CompanyFormValues = {
   pan: "",
   gstCompanyStatus: "",
   addressLine1: "",
-  addressLine2: "",
   city: "",
   state: "",
   pincode: "",

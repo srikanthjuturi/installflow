@@ -16,6 +16,7 @@ import type {
   ProductSubcategory,
 } from "@/types/product";
 import { DEFAULT_ICON_KEY, PRODUCT_ICONS } from "./icons";
+import { masterNodeId } from "./nodeIds";
 
 /**
  * Everything the tree can ask the page to do. One union beats eight callback
@@ -64,7 +65,7 @@ export function CategoryTree({
   return (
     <ul className="flex flex-col gap-3" aria-label="Product categories">
       {categories.map((category) => (
-        <li key={category.id}>
+        <li key={category.id} id={masterNodeId(category.id)}>
           <CategoryNode
             category={category}
             onAction={onAction}
@@ -197,7 +198,7 @@ function CategoryNode({
           aria-label={`Subcategories in ${category.name}`}
         >
           {category.subcategories.map((subcategory) => (
-            <li key={subcategory.id}>
+            <li key={subcategory.id} id={masterNodeId(subcategory.id)}>
               <SubcategoryNode
                 category={category}
                 subcategory={subcategory}
@@ -280,7 +281,7 @@ function SubcategoryNode({
           aria-label={`Product models in ${subcategory.name}`}
         >
           {subcategory.models.map((model) => (
-            <li key={model.id}>
+            <li key={model.id} id={masterNodeId(model.id)}>
               <ModelChip
                 subcategory={subcategory}
                 model={model}

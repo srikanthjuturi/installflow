@@ -4,6 +4,8 @@ import { AuthLayout } from "@/components/auth/AuthLayout";
 import { ForgotEmailStep } from "@/components/auth/ForgotEmailStep";
 import { NewPasswordStep } from "@/components/auth/NewPasswordStep";
 import { OtpStep } from "@/components/auth/OtpStep";
+import { ResetSteps } from "@/components/auth/ResetSteps";
+import type { ResetStep } from "@/components/auth/resetFlow";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { toast } from "@/components/ui/toast";
 import {
@@ -40,9 +42,10 @@ export default function ForgotPasswordPage() {
   const confirm = useConfirmPasswordReset();
 
   const [email, setEmail] = useState("");
-  const [resendInSeconds, setResendInSeconds] = useState(30);
+  /** Both stated by the API on every send, never assumed here. */
+  const [timing, setTiming] = useState({ resendIn: 30, expiresIn: 600 });
   const [resetToken, setResetToken] = useState<string | null>(null);
-  const [step, setStep] = useState<"email" | "code" | "password">("email");
+  const [step, setStep] = useState<ResetStep>("email");
 
   /**
    * A 200 with `sent: false` is not an error — the code exists and the throttle
@@ -60,13 +63,18 @@ export default function ForgotPasswordPage() {
     });
   }
 
-  async function sendCode(to: string): Promise<number> {
+  /** Sends, and reports back the two waits the code screen counts down. */
+  async function sendCode(to: string): Promise<[number, number]> {
     const result = await request.mutateAsync(to);
     if (!result.sent) {
       reportUndelivered();
       throw new Error("undelivered");
     }
-    return result.resendInSeconds;
+    setTiming({
+      resendIn: result.resendInSeconds,
+      expiresIn: result.expiresInSeconds,
+    });
+    return [result.resendInSeconds, result.expiresInSeconds];
   }
 
   return (
@@ -76,54 +84,65 @@ export default function ForgotPasswordPage() {
         description="Reset your Reliance GreenTech console password."
       />
       <AuthLayout>
-        {step === "email" ? (
-          <ForgotEmailStep
-            defaultEmail={email}
-            onSubmit={async (values) => {
-              setResendInSeconds(await sendCode(values.email));
-              setEmail(values.email);
-              setStep("code");
-            }}
-          />
-        ) : null}
+        {/* Above every step and rendered once, so the three of them stay
+            unaware of the sequence they are part of and there is one place
+            deciding where it sits. */}
+        <ResetSteps current={step} />
 
-        {step === "code" ? (
-          <OtpStep
-            // The address they just typed, unmasked: they are looking at the
-            // screen they typed it on, so hiding it would only make a typo
-            // harder to spot — and it is already in the field behind Back.
-            destination={email}
-            resendInSeconds={resendInSeconds}
-            onBack={() => setStep("email")}
-            onVerify={async (code) => {
-              const ticket = await verify.mutateAsync({ email, code });
-              setResetToken(ticket.resetToken);
-              setStep("password");
-            }}
-            onResend={() => sendCode(email)}
-          />
-        ) : null}
+        <div className="mt-6">
+          {step === "email" ? (
+            <ForgotEmailStep
+              defaultEmail={email}
+              onSubmit={async (values) => {
+                await sendCode(values.email);
+                setEmail(values.email);
+                setStep("code");
+              }}
+            />
+          ) : null}
 
-        {step === "password" && resetToken ? (
-          <NewPasswordStep
-            email={email}
-            onSubmit={async (values) => {
-              await confirm.mutateAsync({
-                resetToken,
-                newPassword: values.newPassword,
-              });
-              toast.add({
-                title: "Password changed",
-                description: "You have been signed out on every other device.",
-              });
-              // `signInBackend` has run, so the store already knows which
-              // surface this account belongs to. One path, not two — the same
-              // call LoginPage makes.
-              const { superadmin, portal } = useSession.getState();
-              navigate(landingPath({ superadmin, portal }), { replace: true });
-            }}
-          />
-        ) : null}
+          {step === "code" ? (
+            <OtpStep
+              // The address they just typed, unmasked: they are looking at the
+              // screen they typed it on, so hiding it would only make a typo
+              // harder to spot — and it is already in the field behind Back.
+              destination={email}
+              resendInSeconds={timing.resendIn}
+              expiresInSeconds={timing.expiresIn}
+              onBack={() => setStep("email")}
+              onVerify={async (code) => {
+                const ticket = await verify.mutateAsync({ email, code });
+                setResetToken(ticket.resetToken);
+                setStep("password");
+              }}
+              onResend={() => sendCode(email)}
+            />
+          ) : null}
+
+          {step === "password" && resetToken ? (
+            <NewPasswordStep
+              email={email}
+              onSubmit={async (values) => {
+                await confirm.mutateAsync({
+                  resetToken,
+                  newPassword: values.newPassword,
+                });
+                toast.add({
+                  title: "Password changed",
+                  description:
+                    "You have been signed out on every other device.",
+                });
+                // `signInBackend` has run, so the store already knows which
+                // surface this account belongs to. One path, not two — the same
+                // call LoginPage makes.
+                const { superadmin, portal } = useSession.getState();
+                navigate(landingPath({ superadmin, portal }), {
+                  replace: true,
+                });
+              }}
+            />
+          ) : null}
+        </div>
       </AuthLayout>
     </>
   );

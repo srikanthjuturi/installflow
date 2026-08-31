@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Select,
   SelectContent,
@@ -57,6 +58,36 @@ export function Toolbar<T>({
       {filters.map((f) => {
         const value = filterValue(f);
         const all = f.allValue ?? "All";
+
+        // Too long to scroll: type to narrow, and the list pages as it goes.
+        if (f.variant === "combobox") {
+          const chosen = f.options.find((o) => o.value === value);
+          return (
+            <Combobox
+              key={f.id}
+              className="h-10 w-56"
+              // Held as an object because Base UI reads `.label` off it to
+              // fill the input; `All` is the cleared state, so it is null.
+              value={
+                value === all || !chosen
+                  ? null
+                  : { value: chosen.value, label: chosen.label }
+              }
+              onValueChange={(next) => onFilter(f, next?.value ?? all)}
+              options={f.options}
+              onSearch={f.onSearch}
+              onLoadMore={f.onLoadMore}
+              hasMore={f.hasMore}
+              loading={f.loading}
+              loadingMore={f.loadingMore}
+              // Names the dimension when empty, exactly as the select does —
+              // two blank boxes tell you nothing about what they filter.
+              placeholder={`${f.label}: all`}
+              emptyMessage={`No ${f.label.toLowerCase()} matches`}
+              aria-describedby={undefined}
+            />
+          );
+        }
 
         // A short option set reads better as pills — they show every choice at
         // once, which a select hides behind an interaction.

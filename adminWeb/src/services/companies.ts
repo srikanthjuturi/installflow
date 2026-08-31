@@ -14,9 +14,25 @@ import type {
   CreateCompanyInput,
   UpdateCompanyInput,
 } from "@/types/company";
+import type { GstinLookup } from "@/types/gst";
 
 export function listCompanies(params: ListParams = {}): Promise<Page<Company>> {
   return apiGetPage<Company>("/companies", params);
+}
+
+/**
+ * What the GST registry says about a GSTIN — the company form's autofill.
+ *
+ * The superadmin twin of `lookupGstin` in `services/vendors.ts`. Same registry,
+ * same answer, one shared implementation on the server; the routes differ only
+ * because a superadmin holds no membership and no company feature, so the
+ * vendors route refuses them outright.
+ *
+ * Answers 200 for a GSTIN that is not registered and for a portal that could
+ * not be reached — read `outcome`, do not rely on a rejection.
+ */
+export function lookupCompanyGstin(gstin: string): Promise<GstinLookup> {
+  return apiPost<GstinLookup>("/companies/gstin-lookup", { gstin });
 }
 
 export function getCompany(id: string): Promise<Company> {

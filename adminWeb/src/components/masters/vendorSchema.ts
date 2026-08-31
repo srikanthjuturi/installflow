@@ -12,8 +12,23 @@ import type { IntakeChannel } from "@/types/vendor";
  * it punishes the clipboard rather than the data.
  */
 
-/** 2-digit state code, 10-char PAN, entity number, 'Z', checksum. */
-const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+/**
+ * 2-digit state code, 10-char PAN, entity number, 'Z', checksum.
+ *
+ * Exported because the registry lookup gates on it: a call is only made once
+ * the box holds a complete, well-formed GSTIN, so a metered subscription is
+ * never spent proving that 14 characters are not one.
+ */
+export const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+/**
+ * 10 chars: five letters, four digits, a check letter. Mirrors `Pan` in
+ * `api/app/core/statutory.py`.
+ *
+ * Note it is the SAME shape as characters 3–12 of the GSTIN above, because that
+ * is literally where a GSTIN's middle ten characters come from — which is why
+ * this box never needs an API to fill it.
+ */
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 /**
  * 21 chars: listed/unlisted flag, 5-digit industry code, 2-letter state,
  * 4-digit year, 3-letter company class, 6-digit registration number.
@@ -107,6 +122,17 @@ export const vendorSchema = z.object({
     .transform(upper)
     .pipe(z.string().regex(GSTIN_RE, "That is not a valid 15-character GSTIN")),
   /**
+   * The entity's PAN — the same ten characters that sit inside its GSTIN.
+   *
+   * Empty is allowed today for the reason `gstCompanyStatus` is: nothing is
+   * storing it yet. It becomes REQUIRED with the column, as it is on the
+   * company form, because every GST-registered entity has one by construction.
+   */
+  pan: z
+    .string()
+    .transform(upper)
+    .refine((v) => v === "" || PAN_RE.test(v), "That is not a valid 10-character PAN"),
+  /**
    * Optional: only an MCA-registered company has a CIN. An empty box means
    * "not recorded", which the API stores as null — never an empty string.
    */
@@ -114,6 +140,17 @@ export const vendorSchema = z.object({
     .string()
     .transform(upper)
     .refine((v) => v === "" || CIN_RE.test(v), "That is not a valid 21-character CIN"),
+  /**
+   * The registration's standing at the GST portal — "Active", "Cancelled",
+   * "Suspended". The superadmin's company form records the same fact about the
+   * tenant itself, so the vendor field carries the same name.
+   *
+   * Nobody types this from memory: it arrives with the GSTIN lookup, alongside
+   * the name and the registered address. Empty is allowed for exactly that
+   * reason — until that lookup exists there is no honest way to fill it, and a
+   * required box would be answered with a guess.
+   */
+  gstCompanyStatus: z.string().trim().max(64),
   contactPerson: z.string().trim().min(2, "Contact person is required"),
   phone: z
     .string()

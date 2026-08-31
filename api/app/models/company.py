@@ -30,8 +30,10 @@ class Company(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     gst_number: Mapped[str] = mapped_column(String(15), nullable=False)
     pan: Mapped[str] = mapped_column(String(10), nullable=False)
     gst_company_status: Mapped[str] = mapped_column(String(64), nullable=False)
-    address_line1: Mapped[str] = mapped_column(String(255), nullable=False)
-    address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: ONE box, like `vendors.address` — same width, same reason. It was two
+    #: lines until `e6b40d92c7a5`, which folded line 2 in with a newline; the
+    #: textarea keeps those, so a pasted letterhead address survives intact.
+    address_line1: Mapped[str] = mapped_column(String(500), nullable=False)
     city: Mapped[str] = mapped_column(String(120), nullable=False)
     state: Mapped[str] = mapped_column(String(120), nullable=False)
     pincode: Mapped[str] = mapped_column(String(10), nullable=False)

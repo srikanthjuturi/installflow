@@ -254,6 +254,8 @@ def _to_out(
         id=row.id,
         name=row.name,
         gstNumber=row.gst_number,
+        pan=row.pan,
+        gstCompanyStatus=row.gst_company_status,
         cin=row.cin,
         contactPerson=row.contact_person,
         phone=row.phone,
@@ -432,6 +434,8 @@ async def create_vendor(
         company_id=company_id,
         name=name,
         gst_number=body.gstNumber,
+        pan=body.pan,
+        gst_company_status=body.gstCompanyStatus,
         cin=body.cin,
         contact_person=contact,
         phone=body.phone,
@@ -599,9 +603,14 @@ async def update_vendor(
         )
         await assert_gst_not_the_company(db, principal.company_id, body.gstNumber)
         row.gst_number = body.gstNumber
-    # The one clearable field: an explicit null means "this vendor has no CIN".
+    # The clearable fields: an explicit null means "empty this", where omitting
+    # the key means "leave it alone". Truthiness cannot tell those apart.
     if "cin" in body.model_fields_set:
         row.cin = body.cin
+    if "pan" in body.model_fields_set:
+        row.pan = body.pan
+    if "gstCompanyStatus" in body.model_fields_set:
+        row.gst_company_status = body.gstCompanyStatus
     if body.contactPerson is not None:
         row.contact_person = body.contactPerson.strip()
     if body.phone is not None:
