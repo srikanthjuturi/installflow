@@ -12,8 +12,7 @@ from app.core.schemas import AppModel, EmailOutcome
 # vendors need the same GSTIN and address shapes, and hard rule 4 forbids that
 # slice importing this one. Re-exported here so existing readers still find them.
 from app.core.statutory import (  # noqa: F401
-    AddrLine,
-    AddrLineOpt,
+    Address,
     CityState,
     GstNumber,
     GstStatus,
@@ -36,8 +35,9 @@ class CompanyCreateRequest(BaseModel):
     gstNumber: GstNumber
     pan: Pan
     gstCompanyStatus: GstStatus
-    addressLine1: AddrLine
-    addressLine2: AddrLineOpt | None = None
+    #: ONE box, `Address` like a vendor's — 500 characters, newlines kept.
+    #: `addressLine2` was dropped in `e6b40d92c7a5` and folded into this.
+    addressLine1: Address
     city: CityState
     state: CityState
     pincode: Pincode
@@ -50,8 +50,7 @@ class CompanyUpdateRequest(BaseModel):
     gstNumber: GstNumber | None = None
     pan: Pan | None = None
     gstCompanyStatus: GstStatus | None = None
-    addressLine1: AddrLine | None = None
-    addressLine2: AddrLineOpt | None = None
+    addressLine1: Address | None = None
     city: CityState | None = None
     state: CityState | None = None
     pincode: Pincode | None = None
@@ -73,7 +72,6 @@ class CompanyOut(AppModel):
     pan: str
     gstCompanyStatus: str
     addressLine1: str
-    addressLine2: str | None
     city: str
     state: str
     pincode: str

@@ -408,6 +408,53 @@ Two traps that hid this:
   absolute paths, or it exits 127 and the previous server keeps serving while you believe you
   restarted it.
 
+## GSTIN lookup — where a vendor's details come from
+
+`POST /vendors/gstin-lookup` asks **GSTZen's GSTIN Validator** what the GST registry holds for a
+GSTIN, and the console fills the vendor form from it: name, PAN, GST company status, and the
+registered address. `app/integrations/gstzen.py` owns the call; `RequirementDocs/GSTRequest.txt`
+is the provider's contract.
+
+**`status` and `valid` answer different questions, and conflating them is the bug to avoid.**
+`valid: false` is about the GSTIN — not registered, and the console blocks the save.
+`status: 0` is about **us** — the subscription is spent or lapsed — and blocks nothing at all.
+Three outcomes, never two:
+
+| `outcome` | Means | Console |
+|---|---|---|
+| `found` | registered | fills the form |
+| `not_registered` | a real refusal | blocks the save |
+| `unavailable` | we could not ask | blocks **nothing** — everything stays typeable |
+
+Same degradation rule as WhatsApp and ACS: **leave `GSTZEN_TOKEN` empty and nothing 500s.** The
+lookup reports itself unavailable and the form is typed by hand, exactly as before it existed.
+Which also means a deploy that forgets the variable looks like a working build with a form that
+has quietly stopped filling itself in — set it in the Azure App Service settings, not only in
+`api/.env`.
+
+**Every call spends a unit of a metered subscription.** Hence the two guards worth keeping: the
+request is refused with a 422 before it leaves this process unless the GSTIN is well-formed
+(`GstNumber`, shared with companies), and the console holds each answer with
+`staleTime: Infinity` under its own `gstin-lookup` query key — deliberately outside the
+`vendors` prefix, so saving a vendor does not evict what the registry said and buy it again.
+
+**A subscription failure emails this company's National and Regional Heads**, at most once a day
+(`vendors/service._alert_heads` → `emails/alerts.py`). Nothing else would tell them: from the
+screen a dead subscription looks like a form that has gone quiet. A timeout does *not* alert —
+it fixes itself, and an alert that cries wolf is one nobody opens. The throttle is in process
+memory, so a restart or a second gunicorn worker can send one extra; that was judged better than
+a table and a migration for an alert clock.
+
+`python -m app.scripts.check_gstzen` verifies the whole mapping against the provider's recorded
+payloads — **offline, spending nothing**. Run it after touching the mapper. It pins the two
+traps in that payload: `state` is the display composite `"36 - Telangana TS"` (the real value is
+`state_info.name`), and `pradr.addr` already contains the city, district, state and pincode we
+store in their own columns, so the street line is assembled from the structured parts instead.
+
+The GSTIN also encodes two things we can check for free — `gstin[:2]` is the state code and
+`gstin[2:12]` is the PAN, which is what the backfill in `d3f27a8c1904` relied on. A mismatch is
+logged, never enforced: the registry is the authority on its own payload.
+
 ## Email — the temporary password
 
 A new console account (user, vendor, vendor user, company admin) gets a **server-generated**

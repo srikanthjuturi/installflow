@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTechnician } from "@/hooks/useTechnicians";
 import { useTechnicianJobs } from "@/hooks/useTickets";
+import { useRecordRecentlySeen } from "@/store/recentlySeen";
 
 export default function TechnicianProfilePage() {
   const { id = "" } = useParams();
@@ -23,6 +24,15 @@ export default function TechnicianProfilePage() {
      waiting for the record before asking for the jobs would put a second
      round trip in front of the table for no reason. */
   const jobs = useTechnicianJobs(id);
+
+  // Into the topbar search's "Recently seen" — a technician reached from the
+  // roster or from a ticket counts as seen, not only one found by searching.
+  useRecordRecentlySeen(
+    "technician",
+    tech?.id,
+    tech?.name,
+    tech ? `${tech.phone} · ${tech.code}` : null
+  );
 
   return (
     <>

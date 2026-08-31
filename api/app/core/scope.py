@@ -20,7 +20,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.membership import Membership
 from app.models.role import ADMIN, AREA_MANAGER, NATIONAL_HEAD, REGIONAL_HEAD, SUPERADMIN
-from app.models.territory import MembershipRegion, MembershipState, Pincode, Region, State
+from app.models.territory import (
+    MembershipRegion,
+    MembershipState,
+    Pincode,
+    PincodeDistrict,
+    Region,
+    State,
+)
 
 if TYPE_CHECKING:  # `deps` imports this module, so the real import would cycle.
     from app.core.deps import Principal
@@ -64,6 +71,34 @@ def pincodes_in_regions(region_ids: set[uuid.UUID] | list[uuid.UUID]) -> Select:
         Pincode.state_id.in_(
             select(State.id).where(State.region_id.in_(list(region_ids)))
         )
+    )
+
+
+def pincodes_in_districts(
+    district_ids: set[uuid.UUID] | list[uuid.UUID],
+) -> Select:
+    """The same idea one level DOWN — every code in these districts.
+
+    Goes through `pincode_districts` rather than a column on `pincodes`,
+    because a pincode has no single district: 1,209 real codes span two to
+    four, and each of them belongs to all of them. Two consequences anything
+    using this has to live with.
+
+    **A code can match more than one district**, so counting technicians per
+    district and adding the results up overcounts. Use `COUNT(DISTINCT …)` per
+    district and never sum the columns.
+
+    **A code can have no district at all.** `PincodeDistrict` records that the
+    source left four without one (222101, 390008, 605012, 804454); the current
+    import has since filled them, so today every code maps to at least one. It
+    is a property of the imported spreadsheet, not an invariant — a re-import
+    can reintroduce it. Such a code is in a state but in no district, so a
+    filter built on this can never return it. That is right for a district
+    filter and wrong for anything partitioning a state; `district_breakdown` in
+    the technicians slice counts them separately rather than losing them.
+    """
+    return select(PincodeDistrict.pincode_code).where(
+        PincodeDistrict.district_id.in_(list(district_ids))
     )
 
 

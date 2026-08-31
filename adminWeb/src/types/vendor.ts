@@ -29,8 +29,22 @@ export interface Vendor {
   /** The trading name, and the label the brand picker shows. */
   name: string;
   gstNumber: string;
+  /**
+   * The entity's PAN — the ten characters inside its own GSTIN.
+   *
+   * Null only where nobody has filled it in. It is derivable for every vendor,
+   * so it never means "this one has none", the way a null `cin` does.
+   */
+  pan: string | null;
   /** Only an MCA-registered company has one; a proprietorship does not. */
   cin: string | null;
+  /**
+   * The registration's standing at the GST portal — "Active", "Cancelled".
+   *
+   * Null means the portal has never been asked, which is every vendor until the
+   * GSTIN lookup ships. Render it as nothing; never as "Active".
+   */
+  gstCompanyStatus: string | null;
   contactPerson: string;
   /** E.164 — the API normalises whatever is typed. */
   phone: string;
@@ -78,6 +92,8 @@ export interface CreateVendorInput {
   loginEmail: string;
   name: string;
   gstNumber: string;
+  pan?: string | null;
+  gstCompanyStatus?: string | null;
   cin?: string | null;
   contactPerson: string;
   phone: string;
@@ -93,7 +109,9 @@ export interface UpdateVendorInput {
   id: string;
   name?: string;
   gstNumber?: string;
-  /** Explicit null clears it — the one field on a vendor that can be cleared. */
+  /** Explicit null clears these three; omitting a key leaves it alone. */
+  pan?: string | null;
+  gstCompanyStatus?: string | null;
   cin?: string | null;
   contactPerson?: string;
   phone?: string;

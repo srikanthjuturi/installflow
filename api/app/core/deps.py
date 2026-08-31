@@ -242,6 +242,31 @@ def require_vendor_principal(principal: CompanyPrincipal) -> Principal:
     return principal
 
 
+def require_staff_principal(principal: CompanyPrincipal) -> Principal:
+    """An ops-console role: not a vendor, not a technician. The mirror of the two
+    guards above, and like them a role test rather than a feature or a rank.
+
+    Rank cannot express it — technicians and vendors sit below every staff role,
+    so a floor that admitted staff would admit them too — and a feature cannot
+    either, since `masters.view` and `jobs.view` are deliberately granted to
+    vendors so the intake form has a product tree.
+
+    It exists for global search. Anything that reads ACROSS slices at once has to
+    satisfy every slice's ownership rule at the same time, and a vendor's rule is
+    the awkward one: they hold `jobs.view` and `masters.view`, so a cross-entity
+    read would have to re-derive the vendor pinning that `list_categories` and
+    `tickets.scoped()` each do their own way. Refusing the role at the door is
+    both safer and honest — the vendor portal has no search box, and a technician
+    searches in the app.
+    """
+    if principal.role in VENDOR_ROLES or principal.role == TECHNICIAN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not available on this account",
+        )
+    return principal
+
+
 async def require_technician_principal(
     principal: CompanyPrincipal,
     db: Annotated[AsyncSession, Depends(get_db)],

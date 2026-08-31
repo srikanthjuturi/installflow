@@ -166,6 +166,8 @@ async def list_districts(
     *,
     state_id: uuid.UUID | None = None,
     region_id: uuid.UUID | None = None,
+    state_ids: list[uuid.UUID] | None = None,
+    region_ids: list[uuid.UUID] | None = None,
 ) -> list[DistrictOut]:
     """Districts with their pincode counts. Unpaged — 754 in all, 75 at most
     in one state (Uttar Pradesh).
@@ -190,6 +192,13 @@ async def list_districts(
         stmt = stmt.where(District.state_id == state_id)
     if region_id is not None:
         stmt = stmt.where(State.region_id == region_id)
+    # The plural forms are a territory restriction, applied ON TOP of any
+    # single-id filter above rather than instead of it — so asking for one
+    # state you do not cover returns nothing, which is the honest answer.
+    if state_ids is not None:
+        stmt = stmt.where(District.state_id.in_(state_ids))
+    if region_ids is not None:
+        stmt = stmt.where(State.region_id.in_(region_ids))
 
     rows = await session.execute(
         stmt.order_by(Region.sort_order, State.name, District.name)

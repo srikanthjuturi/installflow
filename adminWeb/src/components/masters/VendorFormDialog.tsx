@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useGstinLookup } from "@/hooks/useGstinLookup";
 import {
   useCreateVendor,
   useIntakeChannels,
@@ -42,6 +44,7 @@ import { StatusField } from "./StatusField";
 import {
   CHANNEL_HINT,
   CHANNEL_SCREEN,
+  GSTIN_RE,
   INTAKE_CHANNELS,
   LOCAL_AVAILABLE,
   statusOf,
@@ -277,6 +280,8 @@ function VendorForm({
     control,
     register,
     handleSubmit,
+    setValue,
+    getValues,
     formState: { errors },
   } = useForm<VendorFormValues>({
     resolver: zodResolver(isEdit ? editVendorSchema : addVendorSchema),
@@ -284,7 +289,9 @@ function VendorForm({
       name: vendor?.name ?? "",
       loginEmail: vendor?.loginEmail ?? "",
       gstNumber: vendor?.gstNumber ?? "",
+      pan: vendor?.pan ?? "",
       cin: vendor?.cin ?? "",
+      gstCompanyStatus: vendor?.gstCompanyStatus ?? "",
       contactPerson: vendor?.contactPerson ?? "",
       phone: vendor?.phone ?? "",
       address: vendor?.address ?? "",
@@ -303,6 +310,118 @@ function VendorForm({
   // the GSTIN box, not only in the toaster.
   const gstConflict = useFieldConflict();
   const gstValue = useWatch({ control, name: "gstNumber" });
+
+  /*
+   * ── Autofill from the GST registry ──────────────────────────────────────
+   *
+   * This is why Statutory identity leads the form: the GSTIN identifies the
+   * company, so the name, the PAN, the registration's standing and the
+   * registered address are all answerable from it.
+   *
+   * Two things keep the spend honest. The call is gated on a COMPLETE GSTIN,
+   * so no partial value is ever asked about; and it is debounced, so pasting
+   * one and typing one both cost exactly one call. The hook then holds the
+   * answer for the session — see `useGstinLookup`.
+   */
+  const gstin = (gstValue ?? "").trim().toUpperCase();
+  const debouncedGstin = useDebouncedValue(gstin, 400);
+  const gstinComplete = GSTIN_RE.test(debouncedGstin);
+  const gstLookup = useGstinLookup(debouncedGstin, gstinComplete);
+
+  /** The GSTIN already filled from — without it this fights the user's typing. */
+  const filledFrom = useRef<string | null>(null);
+
+  useEffect(() => {
+    const found = gstLookup.data;
+    if (!found || found.outcome !== "found") return;
+    if (filledFrom.current === debouncedGstin) return;
+    filledFrom.current = debouncedGstin;
+
+    /*
+     * ADDING fills everything. EDITING fills only what is empty.
+     *
+     * A saved vendor's fields may have been corrected by hand, and a postal
+     * address deliberately different from the registered one is an ordinary
+     * thing — so an edit never overwrites. What the registry says is shown
+     * under the GSTIN instead, where a disagreement is visible and nothing is
+     * destroyed to make it so.
+     */
+    const fill = (
+      name:
+        | "name"
+        | "pan"
+        | "gstCompanyStatus"
+        | "address"
+        | "city"
+        | "state"
+        | "pincode",
+      value: string | null
+    ) => {
+      if (!value) return;
+      if (isEdit && (getValues(name) ?? "").trim() !== "") return;
+      setValue(name, value, { shouldDirty: true, shouldValidate: true });
+    };
+
+    fill("name", found.name);
+    fill("pan", found.pan);
+    fill("gstCompanyStatus", found.gstCompanyStatus);
+    fill("address", found.address);
+    fill("city", found.city);
+    fill("state", found.state);
+    fill("pincode", found.pincode);
+  }, [gstLookup.data, debouncedGstin, isEdit, getValues, setValue]);
+
+  /**
+   * A real answer about the GSTIN: it is not registered. Blocks the save — a
+   * vendor is a party we invoice against, and an unregistered number is
+   * cheaper to refuse now than to find at invoicing.
+   */
+  const gstNotRegistered =
+    gstinComplete && gstLookup.data?.outcome === "not_registered";
+
+  /**
+   * We could not ask — our subscription, or the portal. **Blocks nothing.**
+   * `isError` (the request failed) and `unavailable` (the API answered 200 and
+   * said so) are one thing to the person filling the form in.
+   */
+  const gstUnavailable =
+    gstinComplete &&
+    (gstLookup.isError || gstLookup.data?.outcome === "unavailable");
+
+  /** The line under the GSTIN: what the registry said, or why it did not. */
+  const gstNote = (() => {
+    if (!gstinComplete) return null;
+    if (gstLookup.isFetching)
+      return { tone: "muted" as const, text: "Checking with the GST portal…" };
+    if (gstUnavailable)
+      return {
+        tone: "warn" as const,
+        text: "Couldn't check this GSTIN right now — fill the rest in by hand.",
+      };
+    const found = gstLookup.data;
+    if (found?.outcome !== "found") return null;
+
+    const text = [
+      found.name,
+      // Only ever sent when it differs from the trading name.
+      found.legalName,
+      found.gstCompanyStatus,
+      found.state,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    // Never colour alone — the status word carries the meaning, and the
+    // cancellation date is named rather than implied.
+    if ((found.gstCompanyStatus ?? "").toLowerCase() === "active")
+      return { tone: "ok" as const, text };
+    return {
+      tone: "warn" as const,
+      text: found.cancellationDate
+        ? `${text} · cancelled ${found.cancellationDate}`
+        : text,
+    };
+  })();
 
   /**
    * One field, one id — so the label, the hint and the error can never point at
@@ -334,15 +453,21 @@ function VendorForm({
        *  Zod wins if both are present: a malformed value is the nearer
        *  problem, and the stale conflict clears as soon as it is fixed. */
       error?: string;
+      /** A line that is NOT a rejection: what a lookup found, or why it could
+       *  not ask. Sits under the hint and carries its own tone, so "we could
+       *  not check" never reads like "this is wrong". */
+      note?: { text: string; tone: "muted" | "ok" | "warn" } | null;
     }
   ) => {
     const id = `vendor-${name}`;
     const message = errors[name]?.message ?? opts?.error;
-    const describedBy = message
-      ? `${id}-error`
-      : opts?.hint
-        ? `${id}-hint`
-        : undefined;
+    const describedBy =
+      [
+        message ? `${id}-error` : opts?.hint ? `${id}-hint` : null,
+        opts?.note ? `${id}-note` : null,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined;
     return (
       <Field
         data-invalid={message ? true : undefined}
@@ -392,17 +517,35 @@ function VendorForm({
             {message}
           </FieldDescription>
         ) : null}
+        {opts?.note ? (
+          <FieldDescription
+            id={`${id}-note`}
+            className={cn(
+              opts.note.tone === "ok" && "text-ok",
+              opts.note.tone === "warn" && "text-warn"
+            )}
+          >
+            {opts.note.text}
+          </FieldDescription>
+        ) : null}
       </Field>
     );
   };
 
   function submit(values: VendorFormValues) {
+    // The disabled button is not the guard — a form still submits on Enter.
+    // Only a REFUSAL stops it; a lookup we could not make never does.
+    if (gstNotRegistered) return;
+
     const body = {
       name: values.name,
       gstNumber: values.gstNumber,
       // An empty box means "not recorded", which the API stores as null —
-      // never an empty string.
+      // never an empty string. All three statutory extras behave that way.
       cin: values.cin === "" ? null : values.cin,
+      pan: values.pan === "" ? null : values.pan,
+      gstCompanyStatus:
+        values.gstCompanyStatus === "" ? null : values.gstCompanyStatus,
       contactPerson: values.contactPerson,
       phone: values.phone,
       address: values.address,
@@ -462,8 +605,65 @@ function VendorForm({
       </DialogHeader>
 
       {/* Five sections rather than twelve loose fields. Each is answered from
-          one place — the letterhead, the GST certificate, a phone, an envelope
-          — and each row of three is one of those places. */}
+          one place — the GST certificate, the letterhead, a phone, an envelope
+          — and each row of three is one of those places.
+
+          STATUTORY IDENTITY LEADS, and the two sections it feeds follow it. The
+          GSTIN is the one value an operator actually holds at the start: it
+          identifies the company, so the name, the registered address and the
+          registration's standing are all answerable from it. Asking for the
+          company name first and overwriting it a moment later is the wrong
+          order to put a person through — the same reasoning that fixed the
+          order of `shared/AddressFields` (address → pincode → city → state). */}
+      <FormSection
+        legend="Statutory identity"
+        hint="As printed on the GST certificate. The GSTIN and CIN are stored in upper case."
+      >
+        <FieldGroup className={COLS}>
+          {renderField("gstNumber", "GSTIN", {
+            mono: true,
+            maxLength: 15,
+            placeholder: "27AAACV1234A1Z5",
+            // An unregistered number comes first: "already registered to
+            // vendor Y" would be a strange thing to say about a GSTIN that
+            // does not exist. In practice they cannot both be live — a save
+            // only 409s for a number the registry accepted.
+            error: gstNotRegistered
+              ? (gstLookup.data?.reason ?? "That GSTIN is not registered")
+              : gstConflict.messageFor(gstValue),
+            note: gstNote,
+          })}
+          {/* Beside the GSTIN because it IS the GSTIN: characters 3–12 of one
+              are the holder's PAN, so this box never needs a lookup — only the
+              slice. Same row-of-three as the company form. */}
+          {renderField("pan", "PAN", {
+            mono: true,
+            maxLength: 10,
+            placeholder: "AAACV1234A",
+            hint: "The ten characters inside the GSTIN.",
+          })}
+          {/* Named as the superadmin's company form names the same fact about
+              the tenant itself. Nobody types it from memory — it comes back
+              with the GSTIN, which is why it sits beside it. */}
+          {renderField("gstCompanyStatus", "GST company status", {
+            placeholder: "Active",
+            hint: "The registration's standing at the GST portal.",
+          })}
+          {renderField(
+            "cin",
+            <>
+              CIN <OptionalTag />
+            </>,
+            {
+              mono: true,
+              maxLength: 21,
+              placeholder: "L32100MH1985PLC123456",
+              hint: "Only an MCA-registered company has one.",
+            }
+          )}
+        </FieldGroup>
+      </FormSection>
+
       <FormSection legend="Company">
         <FieldGroup className={COLS}>
           {renderField("name", "Company name", {
@@ -481,44 +681,6 @@ function VendorForm({
             placeholder: "98200 11001",
             hint: "10 digits. Spaces and a +91 are fine.",
           })}
-        </FieldGroup>
-      </FormSection>
-
-      <Controller
-        name="intakeChannels"
-        control={control}
-        render={({ field }) => (
-          <IntakeChannelField
-            value={field.value}
-            onChange={field.onChange}
-            error={errors.intakeChannels?.message}
-          />
-        )}
-      />
-
-      <FormSection
-        legend="Statutory identity"
-        hint="As printed on the GST certificate. Both are stored in upper case."
-      >
-        <FieldGroup className={COLS}>
-          {renderField("gstNumber", "GSTIN", {
-            mono: true,
-            maxLength: 15,
-            placeholder: "27AAACV1234A1Z5",
-            error: gstConflict.messageFor(gstValue),
-          })}
-          {renderField(
-            "cin",
-            <>
-              CIN <OptionalTag />
-            </>,
-            {
-              mono: true,
-              maxLength: 21,
-              placeholder: "L32100MH1985PLC123456",
-              hint: "Only an MCA-registered company has one.",
-            }
-          )}
         </FieldGroup>
       </FormSection>
 
@@ -542,6 +704,18 @@ function VendorForm({
           })}
         </FieldGroup>
       </FormSection>
+
+      <Controller
+        name="intakeChannels"
+        control={control}
+        render={({ field }) => (
+          <IntakeChannelField
+            value={field.value}
+            onChange={field.onChange}
+            error={errors.intakeChannels?.message}
+          />
+        )}
+      />
 
       <FormSection legend="Portal access">
         <FieldGroup className={COLS}>
@@ -578,7 +752,7 @@ function VendorForm({
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
         </DialogClose>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || gstNotRegistered}>
           {pending ? <Spinner data-icon="inline-start" /> : null}
           {isEdit ? "Save changes" : "Add vendor"}
         </Button>

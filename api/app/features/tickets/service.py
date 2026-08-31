@@ -520,6 +520,10 @@ def _apply_search(stmt: Select, search: str | None) -> Select:
             func.lower(Ticket.customer_name).like(term),
             func.lower(Ticket.customer_phone).like(term),
             Ticket.pincode.like(term),
+            # The expected serial. Mandatory on every ticket and every service
+            # type, so it is always there to be found — and it is what ops are
+            # read out over the phone when nobody has the ticket number.
+            func.lower(Ticket.serial_number).like(term),
         )
     )
 

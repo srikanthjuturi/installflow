@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- Dark-mode clients invert any colour the page does not state, so every
+         container below carries an explicit background AND text colour. -->
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>$subject</title>
+  </head>
+  <!--
+    Email clients are not browsers — see password_reset_code.html for the full
+    reasoning. Tables, inline styles, no remote images, hex literals.
+
+    This one is an OPERATIONAL alert rather than a message to a customer, so it
+    leads with what stopped working and what still does. Somebody reading it on
+    a phone should know within one line whether they need to do anything today.
+  -->
+  <body
+    style="margin:0; padding:0; width:100%; background-color:#f4f5f9; color:#1c1d26;"
+  >
+    <!-- Preheader: the inbox preview line. -->
+    <div
+      style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f4f5f9;"
+    >
+      GSTIN autofill has stopped. Vendors can still be added by typing.
+    </div>
+
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      style="background-color:#f4f5f9;"
+    >
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table
+            role="presentation"
+            width="600"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="width:100%; max-width:600px; background-color:#ffffff; border-radius:12px; overflow:hidden; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
+          >
+            <tr>
+              <td
+                style="background-color:#2c2f74; padding:22px 28px; color:#ffffff; font-size:16px; font-weight:600; letter-spacing:0.2px;"
+              >
+                $company
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:32px 28px 8px 28px;">
+                <h1 style="margin:0 0 16px 0; font-size:21px; line-height:28px; font-weight:600; color:#1c1d26;">
+                  GSTIN autofill has stopped
+                </h1>
+                <p style="margin:0 0 8px 0; font-size:15px; line-height:23px; color:#3f4150;">
+                  $greeting
+                </p>
+                <p style="margin:0 0 24px 0; font-size:15px; line-height:23px; color:#3f4150;">
+                  The GST verification service is no longer answering, so the
+                  vendor form can no longer fill in a company's name, PAN,
+                  registration status and address from its GSTIN.
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:0 28px;">
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                  style="border:1px solid #e2e3ec; border-radius:10px; background-color:#fafbfd;"
+                >
+                  <tr>
+                    <td style="padding:16px 18px 8px 18px; font-size:12px; letter-spacing:0.6px; text-transform:uppercase; color:#6b6d80;">
+                      What the service said
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 18px 18px 18px; font-size:14px; line-height:22px; color:#1c1d26;">
+                      $reason
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:26px 28px 6px 28px;">
+                <p style="margin:0; font-size:14px; line-height:22px; color:#3f4150; background-color:#eef7f1; border-left:3px solid #1a8a4d; padding:12px 14px; border-radius:0 6px 6px 0;">
+                  <strong style="color:#1c1d26;">Nothing is blocked.</strong>
+                  Vendors can still be added and edited — every field can be
+                  typed in by hand, exactly as before autofill existed.
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:14px 28px 6px 28px;">
+                <p style="margin:0; font-size:14px; line-height:22px; color:#8a3b16; background-color:#fdf1ec; border-left:3px solid #e5562b; padding:12px 14px; border-radius:0 6px 6px 0;">
+                  Until the subscription is renewed, a GSTIN is no longer
+                  checked against the registry — so an unregistered number can
+                  now be saved on a vendor.
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td
+                style="padding:18px 28px 26px 28px; border-top:1px solid #eceef4; font-size:12px; line-height:19px; color:#7a7c8c;"
+              >
+                Sent once per day while the problem lasts, to the National and
+                Regional Heads of $company.
+              </td>
+            </tr>
+          </table>
+
+          <div style="max-width:600px; margin:16px auto 0 auto; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; line-height:18px; color:#9a9cab;">
+            $company · $year
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

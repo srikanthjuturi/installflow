@@ -260,3 +260,36 @@ class AvailabilityOut(AppModel):
     #: deriving it from `/jobs/today` — that list excludes closed jobs and would
     #: give a smaller number than the cap is actually enforced with.
     jobsToday: int
+
+
+class DistrictTechnicianCount(AppModel):
+    """One district of a state, and how many technicians work in it."""
+
+    districtId: uuid.UUID
+    name: str
+    technicianCount: int
+    #: The district's pincodes, so a zero reads as "nobody covers these 41
+    #: codes" rather than as an empty row of unknown size.
+    pincodeCount: int
+
+
+class DistrictBreakdownOut(AppModel):
+    """Technicians per district for one state.
+
+    Two fields exist because the geography makes the obvious arithmetic wrong,
+    and a screen that presented these as a partition would be lying.
+
+    `totalTechnicians` is NOT the sum of the districts. A pincode can sit in up
+    to four districts and 1,209 real ones do, so a technician covering one is
+    counted in each — correctly. The total is counted once over the state.
+
+    `withoutDistrict` is the other direction: a pincode can have no district at
+    all — `PincodeDistrict` names four the source left that way — and anybody
+    whose coverage here is only such codes appears in no district column. The
+    current import has filled all four, so this is 0 on today's data; it is
+    reported rather than assumed away because a re-import can bring it back.
+    """
+
+    districts: list[DistrictTechnicianCount]
+    totalTechnicians: int
+    withoutDistrict: int

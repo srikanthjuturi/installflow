@@ -25,6 +25,7 @@ from app.features.technicians import service
 from app.features.technicians.schemas import (
     AvailabilityOut,
     AvailabilityRequest,
+    DistrictBreakdownOut,
     InviteCreateRequest,
     TechnicianCreateRequest,
     TechnicianDetailOut,
@@ -131,6 +132,7 @@ async def list_technicians(
     regionId: Annotated[uuid.UUID | None, Query()] = None,
     subcategoryId: Annotated[uuid.UUID | None, Query()] = None,
     pincode: Annotated[str | None, Query(pattern="^[0-9]{6}$")] = None,
+    districtId: Annotated[uuid.UUID | None, Query()] = None,
     onboardingMode: Annotated[str | None, Query()] = None,
 ) -> PaginatedEnvelope[TechnicianRowOut]:
     """Registered technicians and open invites in one list.
@@ -149,9 +151,29 @@ async def list_technicians(
         region_id=regionId,
         subcategory_id=subcategoryId,
         pincode=pincode,
+        district_id=districtId,
         onboarding_mode=onboardingMode,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.get("/districts", response_model=ApiEnvelope[DistrictBreakdownOut])
+async def district_breakdown(
+    db: Db,
+    principal: CanView,
+    stateId: Annotated[uuid.UUID, Query()],
+) -> ApiEnvelope[DistrictBreakdownOut]:
+    """Technicians per district for one state.
+
+    Declared above `/{technician_id}`, like `/me` and `/invites` — otherwise
+    the path matches as an id and answers 422 for a technician called
+    "districts".
+
+    The counts do NOT sum to `totalTechnicians`, and that is the geography, not
+    a bug: a pincode can belong to four districts at once. See the service.
+    """
+    data = await service.district_breakdown(db, principal, stateId)
+    return envelope(data, message="Technicians by district")
 
 
 @router.post("", response_model=ApiEnvelope[TechnicianDetailOut], status_code=201)

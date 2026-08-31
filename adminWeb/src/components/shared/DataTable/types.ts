@@ -29,6 +29,8 @@ export interface Column<T> {
 export interface FilterOption {
   value: string;
   label: string;
+  /** A dimmer second line under the label. `combobox` only. */
+  hint?: string;
 }
 
 export interface FilterDef {
@@ -47,7 +49,26 @@ export interface FilterDef {
    */
   allLabel?: string;
   /** `pills` for a small set, `select` for a long one. */
-  variant?: "pills" | "select";
+  /**
+   * `pills` for a handful of choices, `select` for a menu, `combobox` for a
+   * list too long to scroll — it types to search and pages as it scrolls.
+   * Defaults to pills at 7 options or fewer, select above that.
+   */
+  variant?: "pills" | "select" | "combobox";
+  /**
+   * `combobox` only. Called as the user types; the caller narrows `options`.
+   * Whether that narrowing happens in memory or over the network is the
+   * caller's business — see `useIncrementalOptions`.
+   */
+  onSearch?: (query: string) => void;
+  /** `combobox` only. Reveal the next page; called on scrolling near the end. */
+  onLoadMore?: () => void;
+  /** `combobox` only. Without it `onLoadMore` is never called. */
+  hasMore?: boolean;
+  /** `combobox` only. True while a search is in flight. */
+  loading?: boolean;
+  /** `combobox` only. True while the next page is in flight. */
+  loadingMore?: boolean;
   /** Matches a row against the active value. Omit in server mode — the
    *  backend filters, so a client matcher would be dead code. */
   match?: (row: never, value: string) => boolean;

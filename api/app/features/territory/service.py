@@ -76,6 +76,26 @@ async def get_territory(
         ).all()
     ) if regions else []
 
+    # An area manager's territory is his STATES, not the region they sit in.
+    #
+    # He used to get every state in that region — Arunachal Pradesh's manager
+    # saw all thirteen of North — with only his own marked "mine". That was a
+    # deliberate design once, and it is the wrong one: he cannot assign a
+    # manager, cannot open a technician list outside his own coverage, and
+    # cannot act on a gap in Uttar Pradesh. Showing it invited him to try, and
+    # the state panel went as far as offering him an "Assign an Area Manager"
+    # button linking to a screen his role cannot even load.
+    #
+    # Filtered here rather than in the console, because hiding a state in the
+    # UI is presentation and this is scope. Everything he does not cover then
+    # falls through the client's "not in the payload" branch and is drawn grey
+    # and inert, exactly as another region's states already were.
+    #
+    # What it costs: he no longer sees that a neighbouring state in his region
+    # has no manager. That is a regional head's question, and they still get it.
+    if principal.role == AREA_MANAGER:
+        all_states = [s for s in all_states if s.id in own.state_ids]
+
     # Which states are taken, across the WHOLE company — not just the managers
     # this caller can see. `rows` above is territory-filtered, so computing it
     # from there told a regional head a state was free when another region's

@@ -79,11 +79,16 @@ export interface PincodeFilters {
  * Their counts do not sum to the state's — see `GeoDistrict.pincodeCount`.
  */
 export function listDistricts(
-  filters: { stateId?: string; regionId?: string } = {}
+  filters: { stateId?: string; regionId?: string; mine?: boolean } = {}
 ): Promise<GeoDistrict[]> {
   const query = new URLSearchParams();
   if (filters.stateId) query.set("stateId", filters.stateId);
   if (filters.regionId) query.set("regionId", filters.regionId);
+  // `mine` narrows to the caller's own territory — an area manager's states, a
+  // regional head's regions, everything for an all-India role. The server
+  // resolves that from the session; the console never names a scope of its own.
+  // Only ever sent when true, so the cache key of an unscoped call is unchanged.
+  if (filters.mine) query.set("mine", "true");
   const qs = query.toString();
   return apiGet<GeoDistrict[]>(`/geo/districts${qs ? `?${qs}` : ""}`);
 }

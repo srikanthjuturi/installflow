@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
+import { useSearchParams } from "react-router";
 import { CategoryFormDialog } from "@/components/masters/CategoryFormDialog";
 import {
   CategoryTree,
   CategoryTreeSkeleton,
   type MasterAction,
 } from "@/components/masters/CategoryTree";
+import { masterNodeId } from "@/components/masters/nodeIds";
 import { ConfirmDeleteDialog } from "@/components/masters/ConfirmDeleteDialog";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { SubcategoryFormDialog } from "@/components/masters/SubcategoryFormDialog";
@@ -36,6 +38,38 @@ export default function CategoriesPage() {
   const deleteCategory = useDeleteCategory();
   const deleteSubcategory = useDeleteSubcategory();
   const deleteModel = useDeleteModel();
+
+  /**
+   * `?focus=<id>` — where a global-search hit on the product master lands.
+   *
+   * Nothing in the master has a detail route; it is one page with the whole
+   * tree already expanded on it. So a hit points at a node, and the page's job
+   * is to put that node in front of you rather than leave you scanning a
+   * hundred chips for the one you asked for.
+   *
+   * Written straight to the DOM rather than held in state: this is a one-off
+   * visual cue with no meaning afterwards, and a re-render that dropped it
+   * would be a highlight that flickered off mid-look. Runs once the tree has
+   * data — the node does not exist before that.
+   */
+  const [searchParams] = useSearchParams();
+  const focusId = searchParams.get("focus");
+  const loaded = !!data?.length;
+
+  useEffect(() => {
+    if (!focusId || !loaded) return;
+    const node = document.getElementById(masterNodeId(focusId));
+    if (!node) return;
+
+    node.scrollIntoView({ block: "center", behavior: "smooth" });
+    const ring = ["ring-2", "ring-brand-500", "rounded-md"];
+    node.classList.add(...ring);
+    const timer = window.setTimeout(() => node.classList.remove(...ring), 2400);
+    return () => {
+      window.clearTimeout(timer);
+      node.classList.remove(...ring);
+    };
+  }, [focusId, loaded]);
 
   const close = () => setDialog(null);
   const removed = (name: string) => () => {

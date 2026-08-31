@@ -61,10 +61,16 @@ export function useIntakeChannels() {
   });
 }
 
+/* The GSTIN registry lookup lives in `hooks/useGstinLookup.ts` — two dialogs in
+   different slices use it, and its cache key must stay OUT of the `vendors`
+   prefix that every write below invalidates. */
+
 /**
  * Every write invalidates the whole `vendors` prefix rather than the one key it
  * touched: pausing a vendor drops it out of the options list, and renaming one
  * changes the brand shown on every model that carries it.
+ *
+ * GSTIN lookups are outside that prefix on purpose — see `gstinKeys`.
  */
 function useVendorMutation<TVars, TData>(
   fn: (vars: TVars) => Promise<TData>,

@@ -8,6 +8,7 @@ import {
   cancelInvite,
   createTechnician,
   deleteTechnician,
+  getDistrictBreakdown,
   getTechnician,
   inviteTechnician,
   listCandidateTechnicians,
@@ -28,7 +29,28 @@ export const technicianKeys = {
   candidates: (subcategoryId: string, pincode: string) =>
     ["technicians", "candidates", subcategoryId, pincode] as const,
   detail: (id: string) => ["technicians", "detail", id] as const,
+  districts: (stateId: string) =>
+    ["technicians", "districts", stateId] as const,
 };
+
+/**
+ * Technicians per district for one state, for the territory panel.
+ *
+ * Under `technicianKeys.all`, so onboarding somebody invalidates this count
+ * along with the list — the two are the same population and must not disagree
+ * on screen.
+ *
+ * No presence polling: this counts who COVERS a district, which does not change
+ * when a phone goes quiet. The list polls because it shows an online dot.
+ */
+export function useDistrictBreakdown(stateId: string | undefined) {
+  return useQuery({
+    queryKey: technicianKeys.districts(stateId ?? ""),
+    queryFn: () => getDistrictBreakdown(stateId as string),
+    enabled: Boolean(stateId),
+    staleTime: 60_000,
+  });
+}
 
 /**
  * `keepPreviousData` holds the page the reader is looking at on screen while

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link, useNavigate } from "react-router";
 import { Users } from "lucide-react";
 import {
@@ -13,6 +14,7 @@ import {
   withFilter,
   withSearch,
 } from "@/hooks/useListParams";
+import { useIncrementalOptions } from "@/hooks/useIncrementalOptions";
 import { formatPhone } from "@/utils/phone";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { TechnicianInvite, TechnicianRow } from "@/types/technician";
@@ -55,6 +57,8 @@ interface TechTableProps {
   /** Merges what it is given into the query — see `applyParams` on the page. */
   onParams: (next: ListParams) => void;
   regions: { id: string; name: string }[];
+  /** Districts the caller covers, for the district filter. */
+  districts: { id: string; name: string; stateName: string }[];
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -72,6 +76,7 @@ export function TechTable({
   params,
   onParams,
   regions,
+  districts,
   isLoading,
   error,
   onRetry,
@@ -83,6 +88,25 @@ export function TechTable({
   busyInviteId,
 }: TechTableProps) {
   const navigate = useNavigate();
+
+  /**
+   * The district filter's options: searched, and revealed a page at a time.
+   *
+   * The state is the hint rather than part of the label, so the chosen value
+   * reads "Bilaspur" in the box while the list still tells the Himachal one
+   * from the Chhattisgarh one.
+   */
+  const districtOptions = useIncrementalOptions(
+    useMemo(
+      () =>
+        districts.map((d) => ({
+          value: d.id,
+          label: d.name,
+          hint: d.stateName,
+        })),
+      [districts]
+    )
+  );
 
   /**
    * "Clear filters" writes the search and every filter in one event, and each
@@ -327,6 +351,33 @@ export function TechTable({
       options: regions.map((r) => ({ value: r.id, label: r.name })),
       value: filterValue(params, "regionId"),
       onChange: (v) => setFilter("regionId", v),
+      match: () => true,
+    });
+  }
+
+  // Districts the caller actually covers — an area manager's states', a
+  // regional head's regions', all of them for an all-India role. Same test as
+  // the region filter above: one district is not a choice.
+  //
+  // Only registered technicians carry a district, so the server reads this as
+  // "registered only". An open invite has pincodes but no profile yet, and a
+  // list that answered with a different population than the count clicked
+  // through from would be worse than a narrower one.
+  //
+  // A combobox, not a select: a national head covers all 754 districts, and
+  // five names belong to two states each — so the list has to be typed at, and
+  // each option has to name its state or the two Bilaspurs are the same row.
+  if (districts.length > 1) {
+    filters.push({
+      id: "districtId",
+      label: "District",
+      variant: "combobox",
+      options: districtOptions.options,
+      onSearch: districtOptions.onSearch,
+      onLoadMore: districtOptions.loadMore,
+      hasMore: districtOptions.hasMore,
+      value: filterValue(params, "districtId"),
+      onChange: (v) => setFilter("districtId", v),
       match: () => true,
     });
   }

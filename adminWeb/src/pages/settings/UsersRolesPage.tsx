@@ -5,7 +5,7 @@ import { AddUserDialog } from "@/components/settings/AddUserDialog";
 import { UsersTable } from "@/components/settings/UsersTable";
 import { Button } from "@/components/ui/button";
 import { useCompanyUsers } from "@/hooks/useCompanyUsers";
-import { useListParams } from "@/hooks/useListParams";
+import { useUrlSeededListParams } from "@/hooks/useListParams";
 
 /**
  * Company users — who can sign in to this company and as what role. Backed by
@@ -14,7 +14,9 @@ import { useListParams } from "@/hooks/useListParams";
  * enforces the same rule.
  */
 export default function UsersRolesPage() {
-  const [params, setParams] = useListParams();
+  // Seeded from `?search=` — global search lands here, since a user has no
+  // detail route of their own.
+  const [params, setParams] = useUrlSeededListParams();
   const { data, isLoading, isError, error, refetch } = useCompanyUsers(params);
   const [inviting, setInviting] = useState(false);
 

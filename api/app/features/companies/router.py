@@ -8,6 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import Principal, require_superadmin
+from app.core.gst_lookup import (
+    GstinLookupOut,
+    GstinLookupRequest,
+    lookup_gstin_service,
+)
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -38,6 +43,14 @@ _CREATED_MESSAGE = {
     "failed": "Company created, but the admin's password email did not go out",
 }
 
+#: Keyed on what the GST registry said. The console reads `data.outcome`; these
+#: serve API consumers, Swagger and the logs. Same wording as the vendor twin.
+_LOOKUP_MESSAGE = {
+    "found": "GSTIN found",
+    "not_registered": "That GSTIN is not registered",
+    "unavailable": "The GST portal could not be reached",
+}
+
 
 @router.post("", response_model=ApiEnvelope[CompanyCreatedOut], status_code=201)
 async def create_company(
@@ -52,6 +65,29 @@ async def create_company(
     return envelope(
         data, message=_CREATED_MESSAGE[data.emailStatus], status_code=201
     )
+
+
+@router.post("/gstin-lookup", response_model=ApiEnvelope[GstinLookupOut])
+async def lookup_gstin(
+    body: GstinLookupRequest, principal: Superadmin, db: Db
+) -> ApiEnvelope[GstinLookupOut]:
+    """What the GST registry says about a GSTIN — the company form's autofill.
+
+    The superadmin twin of `POST /vendors/gstin-lookup`. Same registry, same
+    answer, same `app.core.gst_lookup` behind both; only the gate differs, and
+    it has to — a superadmin holds no membership and no company feature, so the
+    vendors route refuses them outright.
+
+    **Always 200.** `data.outcome` is `found`, `not_registered` (a real answer:
+    block the save) or `unavailable` (we could not ask: block nothing).
+
+    Declared BEFORE `/{company_id}`, or FastAPI parses the literal as a UUID and
+    422s. `company_id` is None for a superadmin, so a subscription failure is
+    logged rather than emailed: there is no tenant to tell, and the person who
+    renews the subscription is the one reading this screen.
+    """
+    data = await lookup_gstin_service(db, principal.company_id, body.gstin)
+    return envelope(data, message=_LOOKUP_MESSAGE[data.outcome])
 
 
 @router.get("", response_model=PaginatedEnvelope[CompanyOut])

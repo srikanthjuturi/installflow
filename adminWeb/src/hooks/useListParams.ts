@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
 
 /**
@@ -19,6 +20,77 @@ export function useListParams(initial: ListParams = {}) {
     limit: DEFAULT_PAGE_SIZE,
     ...initial,
   });
+}
+
+/**
+ * `useListParams`, seeded from `?search=` in the URL.
+ *
+ * For the screens global search lands on. Users, vendors and the product master
+ * have no detail route, so a hit there navigates to the list with the term
+ * already applied — which only works if the list reads it.
+ *
+ * Seeded rather than bound: the box is the user's the moment they touch it, so
+ * clearing it does not fight the URL it arrived from. The term is re-applied
+ * only when the URL's own value CHANGES, which is what makes a second search
+ * for something else work while the page is already open — a plain initial
+ * value would be ignored, because React Router reuses the component.
+ */
+export function useUrlSeededListParams(
+  initial: ListParams = {},
+  /**
+   * Query keys to seed as FILTERS rather than as the search term — e.g.
+   * `["districtId"]`, so `/technicians?districtId=…` arrives filtered. Named
+   * explicitly rather than sweeping up every unknown key: `page` and `limit`
+   * are also in that query string and are not filters.
+   */
+  filterKeys: readonly string[] = []
+) {
+  const [searchParams] = useSearchParams();
+  const fromUrl = searchParams.get("search")?.trim() || undefined;
+
+  // A stable signature of the seeded filters, so the same comparison that
+  // re-applies a changed search term works for them too without comparing
+  // objects by identity on every render.
+  const seededFilters: Record<string, string> = {};
+  for (const key of filterKeys) {
+    const value = searchParams.get(key)?.trim();
+    if (value) seededFilters[key] = value;
+  }
+  const filterSignature = JSON.stringify(seededFilters);
+
+  const [params, setParams] = useState<ListParams>({
+    page: 1,
+    limit: DEFAULT_PAGE_SIZE,
+    ...initial,
+    ...(fromUrl ? { search: fromUrl } : {}),
+    ...(filterSignature !== "{}" ? { filters: { ...seededFilters } } : {}),
+  });
+
+  // Adjusted during render, not in an effect: the list must not fetch once
+  // unfiltered and then again with the term, which is a visible flash of the
+  // wrong rows and one wasted request.
+  const [seeded, setSeeded] = useState(fromUrl);
+  if (seeded !== fromUrl) {
+    setSeeded(fromUrl);
+    setParams((current) => withSearch(current, fromUrl ?? ""));
+  }
+
+  // The same rule for the filters, and for the same reason: arriving a second
+  // time from a different district must re-apply, or the list would answer the
+  // question the previous link asked.
+  const [seededSignature, setSeededSignature] = useState(filterSignature);
+  if (seededSignature !== filterSignature) {
+    setSeededSignature(filterSignature);
+    setParams((current) => {
+      let next = current;
+      for (const key of filterKeys) {
+        next = withFilter(next, key, seededFilters[key] ?? "");
+      }
+      return next;
+    });
+  }
+
+  return [params, setParams] as const;
 }
 
 /**

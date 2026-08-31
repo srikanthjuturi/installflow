@@ -19,8 +19,12 @@ export interface Company {
   gstNumber: string;
   pan: string;
   gstCompanyStatus: string;
+  /**
+   * The whole street address in ONE field, newlines kept — the same shape a
+   * vendor's has. It was line 1 + line 2 until the API folded them together;
+   * the name stays `addressLine1` because that is the column.
+   */
   addressLine1: string;
-  addressLine2: string | null;
   city: string;
   state: string;
   pincode: string;
@@ -43,7 +47,6 @@ export interface CreateCompanyInput {
   pan: string;
   gstCompanyStatus: string;
   addressLine1: string;
-  addressLine2?: string | null;
   city: string;
   state: string;
   pincode: string;
