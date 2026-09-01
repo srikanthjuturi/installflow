@@ -21,10 +21,14 @@ skill in `mobileapp/.claude/skills/`.
 ## Phase: partly bound
 
 The API is real for **auth, companies, users, territory, the product master, technician
-onboarding, ticket intake and the job pool**. Everything else — my jobs, earnings, escalations,
-the ledger, AI review, proof capture — is still typed mock data behind a TanStack Query hook, so
-binding each remaining slice stays a one-line change and we keep loading / empty / error states
-today.
+onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation, the
+penalty pool, earnings and Rules configuration**. What is left on typed mock data behind a
+TanStack Query hook is **AI review and the dashboard**, so binding each stays a one-line change
+and we keep loading / empty / error states today.
+
+Two things are real but **not yet priced**, and both render `—` rather than a figure:
+`tickets` has no payout column, so what a job PAYS is unknown — and with it unknown, so is a
+technician's net. Bonuses and penalties are real money in `ledger_entries`.
 
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.
@@ -272,8 +276,20 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   fixed time — they never propose one.
 - Assignment is **first-accept-wins**. Losing the race is a normal outcome, not an error.
 - **Customer name, phone and address stay masked until the technician accepts.**
-- Cancelling costs money, banded by lateness: **₹80** (>8h) · **₹150** (4–8h) · **₹250** (<4h,
-  which also escalates to the Area Service Manager).
+- Cancelling costs money, banded by lateness: **₹300** (>4h) · **₹500** (2–4h) · **₹800** (<2h) ·
+  **₹1,200** (no-show), capped at **₹5,000 per technician per calendar month in IST**. Under four
+  hours also escalates to the Area Service Manager.
+  These are **seeded defaults**, not constants — every one is a `company_rules` column a company
+  edits on Configuration → Rules Config. The BOUNDARIES are not: where one band ends is a fact
+  about the clock, and lives in `api/app/core/rules.py`.
+  ⚠ This used to read ₹80 / ₹150 / ₹250 cutting at 8h and 4h, from the technician prototype. The
+  console's prototype said something else, and the contradiction was a logged open decision until
+  the ledger forced it. **Ruled in favour of the console's four.** The technician's cancel screen
+  needed no redesign, because it renders whatever the server sends.
+- **No-show is not a late cancellation**, which is why it is the priciest band rather than merely
+  the last. Cancelling after the slot has opened is still `< 2h`: they told somebody, and the gap
+  between the two prices is what speaking up is worth. Detected by `sweep_no_shows`, which charges
+  nothing — a manager confirms it, because a dead phone and a deliberate no-show look identical.
 - Bandwidth is a **simple jobs-per-day cap**, not weighted by job type — and it is **optional**.
   `daily_job_cap` is nullable and **NULL means no limit**, which is what every new technician has:
   neither the console's Add screen nor the joining flow asks for one, because a number invented

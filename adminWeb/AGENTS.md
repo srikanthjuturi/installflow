@@ -801,16 +801,22 @@ app is broken:
 
 Blocking or near-blocking. Do not silently pick a side.
 
-1. **Penalty bands contradict the mobile app.** This console: **₹300** (>4h) · **₹500** (2–4h) ·
-   **₹800** (<2h) · **₹1,200** (no-show), cap ₹5,000/technician/month. `mobileapp/AGENTS.md` and
-   the technician app: **₹80** (>8h) · **₹150** (4–8h) · **₹250** (<4h). Different amounts *and*
-   different band boundaries — the technician's cancel screen and the ASM's ledger would show
-   different money for the same event. **Needs a ruling before either side binds to an API.**
-   Still cheap: nothing collects a penalty. It stops being cheap the day the ledger lands.
-   The console's four are now `company_rules.cancel_penalties_paise`, a JSONB array **precisely
-   so the ruling changes a value rather than a set of columns** — three bands cutting at 8h/4h is
-   a different `CANCEL_PENALTY_BANDS` tuple in `api/app/core/rules.py` and an arity CHECK, not a
-   migration that rewrites reads.
+1. ~~**Penalty bands contradict the mobile app.**~~ **RULED — this console's four win:**
+   **₹300** (>4h) · **₹500** (2–4h) · **₹800** (<2h) · **₹1,200** (no-show), cap
+   ₹5,000/technician/**calendar month in IST**. The technician app's ₹80 / ₹150 / ₹250 cutting at
+   8h and 4h are gone.
+   Decided on cost of change: these were already in `company_rules`, already editable per company,
+   and already carried the no-show band the other scheme had no place for — while the technician's
+   cancel screen needed no redesign at all, because it renders whatever the server sends. It used
+   to compute the band on the DEVICE, which meant a phone with a wrong clock could talk itself
+   into a cheaper penalty.
+   The amounts are policy and live in the table. The BOUNDARIES are not, and live in
+   `api/app/core/rules.py`: where one band ends is a fact about the clock, and a company that moved
+   the cut to 3h would be showing "2–4h before slot" over a charge made at three.
+   Two consequences worth carrying: **cancelling after the slot has opened is still `< 2h`, not a
+   no-show** — they told somebody, and the gap between ₹800 and ₹1,200 is what speaking up is
+   worth — and the API refuses a penalty list that does not ascend, so no-show can never be
+   cheaper than a late cancellation.
 2. **Weighted bandwidth: closed for now, and the control is gone.** Rules Config used to offer
    "Jobs per day" against "Weighted by job type". Nothing in the product ever read the answer —
    the API stores a plain `daily_job_cap`, the field app models a plain count, `BandwidthBar`

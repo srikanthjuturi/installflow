@@ -16,8 +16,25 @@ so all four agree by construction. It counts by **SLOT date in IST** — not by 
 accepted, and not from `assigned` events. Five jobs taken tonight for Friday exhaust *Friday*.
 `Closed` and `Force-Closed` still count; only `Cancelled` is exempt.
 
-Still to come: escalations, the ledger, and a technician EDIT screen in the console — the API
-takes `dailyJobCap` on `PUT /technicians/{id}` and no screen calls it.
+**Escalation, cancellation and the penalty pool are live**, which is §7 end to end. A job nobody
+accepts inside its company's window moves to `Escalated` — out of `pool_query` — and a manager
+either assigns somebody or funds a bonus that re-publishes it. A technician can give a job back;
+the slot never moves, the band is charged, and inside the window it escalates immediately.
+`ledger_entries` is the pool both directions run through: `balance = penalties − bonuses`. A
+no-show is detected by a sweep that charges NOTHING and confirmed by a person.
+
+Every operating number is per company in `company_rules`, edited on Configuration → Rules Config.
+The band BOUNDARIES are not, and belong in `core/rules.py`: an amount is policy, but where one
+band ends is a fact about the clock.
+
+Still to come: **AI review**, the **dashboard**, **job payouts** — nothing prices an install, so
+`payoutPaise` and a technician's net earnings are null everywhere and render `—` — and a
+technician EDIT screen in the console, since the API takes `dailyJobCap` on
+`PUT /technicians/{id}` and no screen calls it.
+
+Two things nothing clears yet, both deliberate and both needing a product decision rather than
+code: an escalated job whose slot has PASSED stays in the queue for ever (re-slotting means asking
+the customer for another time), and the vendor is never told their customer's slot is at risk.
 
 ---
 
