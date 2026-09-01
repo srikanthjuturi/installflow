@@ -82,6 +82,24 @@ things about it are worth knowing before editing:
 - **Zero is a normal state now.** A territory or a date range can legitimately match nothing, so
   `SlaPanel` draws a filled `bg-chart-empty` bar at a total of 0; three zero-width segments render
   as a bare strip that reads as a chart that failed to load.
+- **Every card opens a list holding exactly what the card counted.** A count that disagrees with
+  the rows behind it is worse than no count. Two things make it hold, and both must survive:
+  the Escalations card links with **`half=live`** (it counts the savable half; the queue also
+  carries a missed pile that only grows, so the unfiltered link showed seven rows under a card
+  saying two), and every card carries the dashboard's own four filters through `linkTo()`.
+  `list_escalations` and `list_tickets` both accept them and apply the same `narrowed()` the
+  figures came from. Verified across all five roles, unfiltered and narrowed.
+- **A filter the destination cannot show must announce itself.** The escalation queue has no
+  control for territory or intake dates, so arriving with them set would hide rows with nothing
+  on screen to explain it. `NarrowedNotice` names them and offers "Show the whole queue". Its
+  `half` pill, by contrast, needs no notice — it is a visible control that reflects the URL.
+- **The queue's filters live in the query string.** They were `useState`, which is why
+  `?half=live` was ignored and the card's link did nothing. A filter in component state cannot be
+  linked to, and this screen is a link target.
+- **The dashboard's filter bar emits a PATCH, not the whole set.** `onChange({ stateId })` names
+  only what changed, and `setFilters` merges it onto the live URL through `setSearchParams`'
+  functional form. Passing the whole object let two changes in one tick clobber each other —
+  the same hazard `useTicketFilters` solves with its pending ref.
 
 Two seams to know about:
 - `services/client.ts` is the MOCK transport, `services/http.ts` the real one. Both unwrap the

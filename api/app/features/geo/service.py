@@ -108,11 +108,18 @@ def title_case(raw: str) -> str:
 # ── reading ────────────────────────────────────────────────────────────────
 
 
-async def list_regions(session: AsyncSession) -> list[RegionOut]:
+async def list_regions(
+    session: AsyncSession, *, region_ids: list[uuid.UUID] | None = None
+) -> list[RegionOut]:
     """Every region, active or not, with what sits under it.
 
     Includes regions with ZERO states on purpose: a region nobody can usefully
     be assigned to is exactly what the Geography screen has to surface.
+
+    `region_ids` narrows to a caller's own territory — resolved at the router,
+    never here, because geography is a global master and this stays a query over
+    a table nobody owns. `None` means no narrowing; an EMPTY list would mean "no
+    regions" and the router returns early rather than sending one.
 
     All three counts are computed here rather than summed in the browser — the
     console would otherwise add up 36 state rows to draw five tiles, and would
@@ -135,7 +142,7 @@ async def list_regions(session: AsyncSession) -> list[RegionOut]:
         .group_by(State.region_id)
         .subquery()
     )
-    rows = await session.execute(
+    stmt = (
         select(
             Region,
             func.coalesce(states.c.n, 0),
@@ -147,6 +154,9 @@ async def list_regions(session: AsyncSession) -> list[RegionOut]:
         .outerjoin(pincodes, pincodes.c.region_id == Region.id)
         .order_by(Region.sort_order)
     )
+    if region_ids is not None:
+        stmt = stmt.where(Region.id.in_(region_ids))
+    rows = await session.execute(stmt)
     return [
         RegionOut(
             id=region.id,
@@ -217,8 +227,19 @@ async def list_districts(
     ]
 
 
-async def list_states(session: AsyncSession) -> list[StateOut]:
-    """Every state with its region and counts. 36 rows — deliberately unpaged."""
+async def list_states(
+    session: AsyncSession,
+    *,
+    region_ids: list[uuid.UUID] | None = None,
+    state_ids: list[uuid.UUID] | None = None,
+) -> list[StateOut]:
+    """Every state with its region and counts. 36 rows — deliberately unpaged.
+
+    Narrowed the same way `list_regions` is, and by whichever side the caller
+    actually holds: an area manager holds STATES, a regional head holds REGIONS
+    and no states at all. `state_ids` wins when both are given, because it is
+    the more specific of the two.
+    """
     districts = (
         select(District.state_id, func.count().label("n"))
         .group_by(District.state_id)
@@ -229,7 +250,7 @@ async def list_states(session: AsyncSession) -> list[StateOut]:
         .group_by(Pincode.state_id)
         .subquery()
     )
-    rows = await session.execute(
+    stmt = (
         select(
             State,
             Region,
@@ -241,6 +262,11 @@ async def list_states(session: AsyncSession) -> list[StateOut]:
         .outerjoin(pincodes, pincodes.c.state_id == State.id)
         .order_by(Region.sort_order, State.name)
     )
+    if state_ids is not None:
+        stmt = stmt.where(State.id.in_(state_ids))
+    elif region_ids is not None:
+        stmt = stmt.where(State.region_id.in_(region_ids))
+    rows = await session.execute(stmt)
     return [
         StateOut(
             id=state.id,

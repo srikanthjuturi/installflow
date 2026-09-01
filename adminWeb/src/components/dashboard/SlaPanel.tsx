@@ -11,13 +11,15 @@ import type { FunnelStage, SlaBreakdown } from "@/types";
 interface SlaPanelProps {
   sla: SlaBreakdown;
   stages: FunnelStage[];
+  /** The board, still narrowed to whatever the dashboard is showing. */
+  ticketsHref: string;
 }
 
 /**
  * SLA proportion across open tickets, with the flow funnel beneath it —
  * the same card: "how healthy is the queue" and "where is it sitting".
  */
-export function SlaPanel({ sla, stages }: SlaPanelProps) {
+export function SlaPanel({ sla, stages, ticketsHref }: SlaPanelProps) {
   const total = sla.ok + sla.warn + sla.breach;
   const pct = (n: number) => (total ? (n / total) * 100 : 0);
 
@@ -35,7 +37,7 @@ export function SlaPanel({ sla, stages }: SlaPanelProps) {
         </CardTitle>
         <CardAction>
           <Link
-            to="/tickets"
+            to={ticketsHref}
             className="text-xs font-semibold text-brand-400 hover:text-brand-500"
           >
             View all →
@@ -44,21 +46,34 @@ export function SlaPanel({ sla, stages }: SlaPanelProps) {
       </CardHeader>
 
       <CardContent>
-        <div
-          className="flex h-3.5 overflow-hidden rounded-lg"
-          role="img"
-          aria-label={`SLA breakdown of ${total} open tickets: ${segments
-            .map((s) => `${s.n} ${s.label.toLowerCase()}`)
-            .join(", ")}`}
-        >
-          {segments.map((s) => (
-            <div
-              key={s.key}
-              className={s.tint}
-              style={{ width: `${pct(s.n)}%` }}
-            />
-          ))}
-        </div>
+        {/* Nothing open is a real answer, and it became a common one when the
+            filters landed: a territory or a date range can legitimately match
+            no tickets. Three zero-width segments render as a bare rounded
+            strip that reads as a chart that failed to draw, so the empty case
+            gets its own filled bar in the "no data" step and says so. */}
+        {total === 0 ? (
+          <div
+            className="flex h-3.5 overflow-hidden rounded-lg bg-chart-empty"
+            role="img"
+            aria-label="No open tickets to report an SLA breakdown for"
+          />
+        ) : (
+          <div
+            className="flex h-3.5 overflow-hidden rounded-lg"
+            role="img"
+            aria-label={`SLA breakdown of ${total} open tickets: ${segments
+              .map((s) => `${s.n} ${s.label.toLowerCase()}`)
+              .join(", ")}`}
+          >
+            {segments.map((s) => (
+              <div
+                key={s.key}
+                className={s.tint}
+                style={{ width: `${pct(s.n)}%` }}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Every figure is written out — the bar's colour is never the only
             thing carrying the meaning. */}

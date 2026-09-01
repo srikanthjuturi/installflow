@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useSearchParams } from "react-router";
 import { AlertTriangle, CheckCircle2, RefreshCw, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,13 +56,59 @@ function isMissed(ticket: Ticket, now: number): boolean {
   return ticket.slotEnd !== null && new Date(ticket.slotEnd).getTime() < now;
 }
 
+/**
+ * Filter keys this screen keeps in the query string.
+ *
+ * `half`, `slotFrom` and `slotTo` are its own controls. The last four arrive
+ * from the dashboard — its "Escalations · 2" card links here with whatever it
+ * was narrowed to, so the queue you land on holds exactly the two it counted.
+ * They have no control of their own on this screen; `NarrowedNotice` says they
+ * are on and offers the way out, because a filter you cannot see is one you
+ * forget you left running.
+ */
+const URL_KEYS = [
+  "half",
+  "slotFrom",
+  "slotTo",
+  "regionId",
+  "stateId",
+  "dateFrom",
+  "dateTo",
+] as const;
+
+/** The four that came from the dashboard rather than from this toolbar. */
+const FROM_DASHBOARD = ["regionId", "stateId", "dateFrom", "dateTo"] as const;
+
 export default function EscalationQueuePage() {
   const listId = useId();
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  /* In the URL, not in component state. It was `useState`, which meant the
+     dashboard could link here with `?half=live` and the queue would ignore it
+     and render all seven rows under a card that said two. It also makes a
+     narrowed queue a link, which is what the state-management table asks of
+     every filter. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters: Record<string, string> = Object.fromEntries(
+    URL_KEYS.map((k) => [k, searchParams.get(k)]).filter(([, v]) => v) as [
+      string,
+      string,
+    ][]
+  );
   // A keystroke must not be a request. 300ms is the point where typing a ticket
   // code feels instant but a six-character code is one query rather than six.
   const search = useDebouncedValue(query, 300);
+
+  /** Write the whole filter set back to the URL, dropping what is unset. */
+  const writeFilters = (next: Record<string, string>) => {
+    const url = new URLSearchParams(searchParams);
+    for (const key of URL_KEYS) {
+      if (next[key]) url.set(key, next[key]);
+      else url.delete(key);
+    }
+    // Replace: nudging a pill four times should not put four entries between
+    // the reader and the dashboard they came from.
+    setSearchParams(url, { replace: true });
+  };
 
   // Only what is actually set travels, so an unnarrowed screen hashes to the
   // same query key the rail's badge uses and the two share one request.
@@ -85,20 +132,45 @@ export default function EscalationQueuePage() {
   } = useEscalations({ params });
 
   function setFilter(f: TypedFilterDef<Ticket>, value: string) {
-    setFilters((prev) => {
-      const next = { ...prev };
-      // `All` is the cleared state and must not ride into the query string —
-      // the API would have to understand a filter value literally named "All".
-      if (value === ALL) delete next[f.id];
-      else next[f.id] = value;
-      return next;
-    });
+    const next = { ...filters };
+    // `All` is the cleared state and must not ride into the query string —
+    // the API would have to understand a filter value literally named "All".
+    if (value === ALL) delete next[f.id];
+    else next[f.id] = value;
+    writeFilters(next);
   }
 
   function clearAll() {
     setQuery("");
-    setFilters({});
+    writeFilters({});
   }
+
+  /* What the dashboard narrowed this to, said out loud.
+     The queue has no control for territory or an intake date range, so without
+     this line those filters would be invisible: a manager would see four rows,
+     have no idea two hundred were being withheld, and reasonably conclude the
+     queue was broken. Naming them and offering the way out is the whole fix. */
+  const inherited = FROM_DASHBOARD.filter((k) => filters[k]);
+  const narrowedNotice = inherited.length ? (
+    <p className="mb-3.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-surface-2 px-3.5 py-2.5 text-xs text-ink-2">
+      <span>
+        Narrowed from the dashboard
+        {filters.dateFrom || filters.dateTo ? " · raised in a date range" : ""}
+        {filters.regionId || filters.stateId ? " · one territory" : ""}
+      </span>
+      <button
+        type="button"
+        className="font-semibold text-brand-400 hover:text-brand-500"
+        onClick={() => {
+          const next = { ...filters };
+          for (const key of FROM_DASHBOARD) delete next[key];
+          writeFilters(next);
+        }}
+      >
+        Show the whole queue
+      </button>
+    </p>
+  ) : null;
 
   const toolbar = (
     <Toolbar
@@ -114,14 +186,12 @@ export default function EscalationQueuePage() {
           <DateRange
             from={filters.slotFrom ?? ""}
             to={filters.slotTo ?? ""}
-            onChange={(key, value) =>
-              setFilters((prev) => {
-                const next = { ...prev };
-                if (value) next[key] = value;
-                else delete next[key];
-                return next;
-              })
-            }
+            onChange={(key, value) => {
+              const next = { ...filters };
+              if (value) next[key] = value;
+              else delete next[key];
+              writeFilters(next);
+            }}
           />
           <RefreshButton
             onRefresh={() => refetch()}
@@ -176,6 +246,11 @@ export default function EscalationQueuePage() {
           search that matches nothing must leave the box you typed into on
           screen, or there is no way back except reloading the page. */}
       {isError ? null : toolbar}
+      {/* Under the toolbar and above the rows: it explains the list, so it
+          belongs beside the list rather than up with the controls. Shown even
+          on the error branch's absence of a toolbar is not needed — a queue
+          that failed to load has nothing to explain. */}
+      {isError ? null : narrowedNotice}
 
       {isError ? (
         <ErrorState

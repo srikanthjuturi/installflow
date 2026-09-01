@@ -80,6 +80,12 @@ interface ComboboxProps {
   className?: string;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
+  /**
+   * The accessible name, for a combobox that has no `<FieldLabel>` beside it —
+   * a filter in a toolbar rather than a field in a form. Where there IS a
+   * label, leave this unset and let the label do its job.
+   */
+  "aria-label"?: string;
 }
 
 export function Combobox({
@@ -102,6 +108,7 @@ export function Combobox({
   className,
   "aria-invalid": ariaInvalid,
   "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
 }: ComboboxProps) {
   /**
    * What was last typed — the search term, NOT the input's displayed text.
@@ -192,6 +199,7 @@ export function Combobox({
           name={name}
           autoComplete={autoComplete}
           placeholder={placeholder}
+          aria-label={ariaLabel}
           aria-invalid={ariaInvalid || undefined}
           aria-describedby={ariaDescribedBy}
           className="h-6 min-w-0 flex-1 border-none bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground md:text-sm"

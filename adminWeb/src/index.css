@@ -44,6 +44,19 @@
     @apply cursor-not-allowed;
   }
 
+  /* `DD-MM-YYYY`, not `dd-mm-yyyy`.
+
+     A date input's hint is drawn by the BROWSER inside its own shadow DOM —
+     there is no placeholder attribute to set and no text node to rewrite, so
+     `text-transform` on the shadow part is the only hook that reaches it.
+     Global rather than per-screen because it is a house convention: the
+     dashboard and the escalation queue both carry date ranges, and a rule
+     living on one of them is a rule the next date field will not inherit.
+     Filled values are digits and separators, so nothing else is affected. */
+  input[type="date"]::-webkit-datetime-edit {
+    text-transform: uppercase;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

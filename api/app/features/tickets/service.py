@@ -41,7 +41,11 @@ from app.core.realtime import (
     publish_ticket_changed,
 )
 from app.core.schemas import ListParams
-from app.core.scope import visible_pincodes
+from app.core.scope import (
+    pincodes_in_regions,
+    pincodes_in_states,
+    visible_pincodes,
+)
 from app.core.sequences import next_code as allocate_code
 from app.core.service_types import SERVICE_TYPES
 from app.core.rules import CANCEL_PENALTY_BANDS, load_rules
@@ -601,6 +605,10 @@ async def list_tickets(
     sla_filter: str | None = None,
     service_type: str | None = None,
     technician_id: uuid.UUID | None = None,
+    region_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -608,6 +616,17 @@ async def list_tickets(
     )
     stmt = await scoped(db, stmt, principal)
     stmt = _apply_search(stmt, params.search)
+    # The dashboard's own four, shared with `dashboard_summary` — see `narrowed`.
+    # The peek table under the tiles reads this endpoint, and a table describing
+    # a different set of tickets from the figures above it is worse than no
+    # table at all.
+    stmt = narrowed(
+        stmt,
+        region_id=region_id,
+        state_id=state_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
     # One technician's work. The company filter above is already in the WHERE,
     # so this rides `ix_tickets_company_technician` rather than scanning — the
@@ -671,8 +690,59 @@ async def list_tickets(
 # ── the dashboard ─────────────────────────────────────────────────────────────
 
 
+def narrowed(
+    stmt: Select,
+    *,
+    region_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+) -> Select:
+    """The dashboard's territory and date filters, for any ticket query.
+
+    Shared by `dashboard_summary` and `list_tickets` so the tiles and the table
+    under them cannot describe different sets of tickets — which is exactly what
+    happened the first time the filters existed on only one of them: a dashboard
+    reading zero everywhere, above six rows.
+
+    ## It NARROWS; it can never widen
+
+    The territory becomes a pincode subquery ANDed with whatever `scoped()` has
+    already applied, so naming somewhere outside your own territory intersects
+    to nothing and reads zero. That is the whole permission story: there is no
+    separate check to keep in step with the picker, and no id here that reveals
+    anything. A state beats a region because it is the narrower of the two,
+    which is what a cascading picker means when both are set.
+
+    ## The dates bound INTAKE
+
+    `created_at`, not the slot. A slot is nullable, so bounding on it would
+    silently drop every ticket nobody has booked a time for yet — precisely the
+    queue the "Slot not confirmed" card exists to count. Every ticket has a
+    creation instant. IST calendar days, half-open at the top, for the reasons
+    `_ist_range` gives: a range somebody picks is a range in their own clock.
+    """
+    if state_id is not None:
+        stmt = stmt.where(Ticket.pincode.in_(pincodes_in_states([state_id])))
+    elif region_id is not None:
+        stmt = stmt.where(Ticket.pincode.in_(pincodes_in_regions([region_id])))
+
+    lower, upper = _ist_range(date_from, date_to)
+    if lower is not None:
+        stmt = stmt.where(Ticket.created_at >= lower)
+    if upper is not None:
+        stmt = stmt.where(Ticket.created_at < upper)
+    return stmt
+
+
 async def dashboard_summary(
-    db: AsyncSession, principal: Principal
+    db: AsyncSession,
+    principal: Principal,
+    *,
+    region_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
 ) -> DashboardSummaryOut:
     """Every figure the console's dashboard draws, counted rather than sampled.
 
@@ -712,10 +782,18 @@ async def dashboard_summary(
     #   0 breach · 1 warn · 2 ok · 3 done (terminal)
     rank = _sla_order_case(rules.sla_warn_at_pct)
 
+    lower, upper = _ist_range(date_from, date_to)
+
     def mine(stmt: Select) -> Select:
-        return stmt.where(
-            Ticket.company_id == principal.company_id,
-            Ticket.deleted_at.is_(None),
+        return narrowed(
+            stmt.where(
+                Ticket.company_id == principal.company_id,
+                Ticket.deleted_at.is_(None),
+            ),
+            region_id=region_id,
+            state_id=state_id,
+            date_from=date_from,
+            date_to=date_to,
         )
 
     def tally(condition) -> object:
@@ -740,6 +818,23 @@ async def dashboard_summary(
         & (Ticket.slot_end >= now)
     )
 
+    # "Closed", against whichever window is in force.
+    #
+    # With NO date range the tile means "closed this week", so it carries its own
+    # rolling 7 days on `customer_confirmed_at` — the instant written in the same
+    # UPDATE that sets the status (see `feedback_service`), and set on a
+    # REJECTION too, which is why the status test is not redundant.
+    #
+    # With a range picked, that 7 days would fight the range: "raised in March
+    # AND closed in the last week" is a question nobody asked. The range wins and
+    # the tile means "of the work raised in this period, how much is now done" —
+    # which is why the console relabels it from "Closed this week" to "Closed".
+    closed_in_window = Ticket.status == "Closed"
+    if lower is None and upper is None:
+        closed_in_window = closed_in_window & (
+            Ticket.customer_confirmed_at >= now - datetime.timedelta(days=7)
+        )
+
     counts = mine(
         select(
             tally(is_open).label("open"),
@@ -750,14 +845,7 @@ async def dashboard_summary(
             tally(Ticket.status == "AI Review").label("ai"),
             tally(Ticket.status == "Slot Pending").label("slot_pending"),
             tally(Ticket.status.in_(("Assigned", "In Progress"))).label("active"),
-            tally(
-                (Ticket.status == "Closed")
-                # `customer_confirmed_at` is written in the same UPDATE that sets
-                # `Closed` (see `feedback_service`), so it is the closure's own
-                # instant. It is also set on a REJECTION, which is why the status
-                # test above is not redundant.
-                & (Ticket.customer_confirmed_at >= now - datetime.timedelta(days=7))
-            ).label("closed_week"),
+            tally(closed_in_window).label("closed_week"),
         ).select_from(Ticket)
     )
     counts = await scoped(db, counts, principal)
@@ -1509,6 +1597,10 @@ async def list_escalations(
     half: str | None = None,
     slot_from: datetime.date | None = None,
     slot_to: datetime.date | None = None,
+    region_id: uuid.UUID | None = None,
+    state_id: uuid.UUID | None = None,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
 ) -> tuple[list[TicketOut], int]:
     """Jobs that reached their escalation window with nobody on them.
 
@@ -1563,6 +1655,17 @@ async def list_escalations(
         Ticket.slot_start.is_not(None),
     )
     stmt = await scoped(db, stmt, principal)
+    # The dashboard's four, so its "Escalations · 2" card opens a queue holding
+    # exactly those two. `date_from`/`date_to` bound INTAKE here, the same as
+    # everywhere else `narrowed` is used — they are a different question from
+    # `slot_from`/`slot_to` below, which bound the day the work was promised.
+    stmt = narrowed(
+        stmt,
+        region_id=region_id,
+        state_id=state_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
     # The same predicate the ticket board searches by — code, customer, phone,
     # pincode, serial — so a manager who found a job on one screen finds it here
     # by typing the same thing. A second, cleverer search would be a second set

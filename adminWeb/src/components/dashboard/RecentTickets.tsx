@@ -1,10 +1,14 @@
 import { Link, useNavigate } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
+import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import { EMPTY, formatSlot } from "@/utils/datetime";
 import type { Ticket } from "@/types";
 
-const columns: Column<Ticket>[] = [
+/* Built from the origin rather than at module scope: the ticket link has to
+   carry it, or Back from a ticket opened here lands on the board — a list this
+   reader chose not to open. */
+const buildColumns = (origin?: NavOrigin): Column<Ticket>[] => [
   {
     id: "ticket",
     header: "Ticket",
@@ -14,6 +18,7 @@ const columns: Column<Ticket>[] = [
             is reachable by keyboard and opens in a new tab. */}
         <Link
           to={`/tickets/${t.id}`}
+          state={origin}
           onClick={(e) => e.stopPropagation()}
           className="font-semibold hover:text-brand-400"
         >
@@ -63,11 +68,14 @@ const columns: Column<Ticket>[] = [
   { id: "sla", header: "SLA", cell: (t) => <SlaBadge state={t.slaState} /> },
 ];
 
+
 interface RecentTicketsProps {
   tickets?: Ticket[];
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
+  /** The board, still narrowed to whatever the dashboard is showing. */
+  ticketsHref: string;
 }
 
 export function RecentTickets({
@@ -75,8 +83,11 @@ export function RecentTickets({
   isLoading,
   error,
   onRetry,
+  ticketsHref,
 }: RecentTicketsProps) {
   const navigate = useNavigate();
+  const origin = useNavOrigin("Back to dashboard");
+  const columns = buildColumns(origin);
 
   return (
     <section>
@@ -85,7 +96,7 @@ export function RecentTickets({
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
         <h2 className="text-sm font-medium">Recent tickets</h2>
         <Link
-          to="/tickets"
+          to={ticketsHref}
           className="text-xs font-semibold text-brand-400 hover:text-brand-500"
         >
           Open ticket list →
@@ -100,7 +111,7 @@ export function RecentTickets({
         isLoading={isLoading}
         error={error}
         onRetry={onRetry}
-        onRowClick={(t) => navigate(`/tickets/${t.id}`)}
+        onRowClick={(t) => navigate(`/tickets/${t.id}`, { state: origin })}
         // A peek, not a workspace — six rows, no search, no paging. The
         // "Open ticket list →" link is the way to the real thing.
         pagination={false}

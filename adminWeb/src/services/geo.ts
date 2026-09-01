@@ -29,13 +29,20 @@ export const IMPORT_ACCEPT = ".xlsx,.csv";
  * guarded by `CompanyPrincipal` and **403s for a superadmin** — so the console
  * screen that maintains geography cannot use it.
  */
-export function listGeoRegions(): Promise<GeoRegion[]> {
-  return apiGet<GeoRegion[]>("/geo/regions");
+export function listGeoRegions(mine = false): Promise<GeoRegion[]> {
+  return apiGet<GeoRegion[]>(`/geo/regions${mine ? "?mine=true" : ""}`);
 }
 
-/** Every state with its region and counts. 36 rows — reference data, cache hard. */
-export function listStates(): Promise<GeoState[]> {
-  return apiGet<GeoState[]>("/geo/states");
+/**
+ * Every state with its region and counts. 36 rows — reference data, cache hard.
+ *
+ * `mine` narrows to the caller's own territory: an area manager's states, or
+ * every state inside a regional head's regions. It is what the dashboard's
+ * territory picker offers, because a menu whose options all return zero is a
+ * menu that teaches people the filter is broken.
+ */
+export function listStates(mine = false): Promise<GeoState[]> {
+  return apiGet<GeoState[]>(`/geo/states${mine ? "?mine=true" : ""}`);
 }
 
 /**

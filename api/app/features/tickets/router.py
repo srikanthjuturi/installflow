@@ -96,6 +96,10 @@ async def list_tickets(
     slaState: Annotated[str | None, Query()] = None,
     serviceType: Annotated[str | None, Query()] = None,
     technicianId: Annotated[uuid.UUID | None, Query()] = None,
+    regionId: Annotated[uuid.UUID | None, Query()] = None,
+    stateId: Annotated[uuid.UUID | None, Query()] = None,
+    dateFrom: Annotated[datetime.date | None, Query()] = None,
+    dateTo: Annotated[datetime.date | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """One page of tickets, most urgent first.
 
@@ -117,14 +121,23 @@ async def list_tickets(
         sla_filter=slaState,
         service_type=serviceType,
         technician_id=technicianId,
+        region_id=regionId,
+        state_id=stateId,
+        date_from=dateFrom,
+        date_to=dateTo,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
 
 @router.get("/summary", response_model=ApiEnvelope[DashboardSummaryOut])
-async def dashboard_summary(db: Db, principal: CanView) -> ApiEnvelope[
-    DashboardSummaryOut
-]:
+async def dashboard_summary(
+    db: Db,
+    principal: CanView,
+    regionId: Annotated[uuid.UUID | None, Query()] = None,
+    stateId: Annotated[uuid.UUID | None, Query()] = None,
+    dateFrom: Annotated[datetime.date | None, Query()] = None,
+    dateTo: Annotated[datetime.date | None, Query()] = None,
+) -> ApiEnvelope[DashboardSummaryOut]:
     """Every number the console's dashboard draws, in one round trip.
 
     Declared ABOVE `/{ticket_id}` for the reason `/escalations` is — Starlette
@@ -137,8 +150,32 @@ async def dashboard_summary(db: Db, principal: CanView) -> ApiEnvelope[
     ticket list may not see counted. It carries no delta and no forecast — see
     `DashboardSummaryOut` on why a movement chip with no history behind it is
     the one thing that does not ship.
+
+    ## The four filters narrow; none of them can widen
+
+    `regionId` / `stateId` are the console's territory picker — a national head
+    drilling from All India into a region, then a state. They need no permission
+    check of their own, and deliberately have none: the pincode subquery they
+    build is ANDed with `scoped()`, so naming somewhere outside your own
+    territory intersects to nothing and reads zero. There is no id here that
+    reveals anything, and no second rule to keep in step with the picker.
+
+    `dateFrom` / `dateTo` are IST calendar dates, inclusive at both ends, and
+    either may be given alone. They bound INTAKE — when the ticket was raised —
+    because every ticket has a `created_at` and only some have a slot; bounding
+    on the slot would silently drop every unbooked ticket, which is precisely
+    what the "Slot not confirmed" card exists to count.
     """
-    return envelope(await service.dashboard_summary(db, principal))
+    return envelope(
+        await service.dashboard_summary(
+            db,
+            principal,
+            region_id=regionId,
+            state_id=stateId,
+            date_from=dateFrom,
+            date_to=dateTo,
+        )
+    )
 
 
 @router.get(
@@ -153,6 +190,10 @@ async def list_escalations(
     half: Annotated[str | None, Query()] = None,
     slotFrom: Annotated[datetime.date | None, Query()] = None,
     slotTo: Annotated[datetime.date | None, Query()] = None,
+    regionId: Annotated[uuid.UUID | None, Query()] = None,
+    stateId: Annotated[uuid.UUID | None, Query()] = None,
+    dateFrom: Annotated[datetime.date | None, Query()] = None,
+    dateTo: Annotated[datetime.date | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """Jobs whose slot is close and that nobody accepted, soonest first.
 
@@ -183,6 +224,14 @@ async def list_escalations(
         half=half,
         slot_from=slotFrom,
         slot_to=slotTo,
+        # The dashboard's four, so its "Escalations" card opens a queue holding
+        # exactly what it counted. `dateFrom`/`dateTo` bound INTAKE and are a
+        # different question from `slotFrom`/`slotTo` above, which bound the day
+        # the work was promised — both may be set, and they compose.
+        region_id=regionId,
+        state_id=stateId,
+        date_from=dateFrom,
+        date_to=dateTo,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
