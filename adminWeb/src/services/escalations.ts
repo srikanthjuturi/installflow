@@ -16,20 +16,26 @@
  * one of them.
  */
 
+import type { Page, ListParams } from "@/types/api";
 import type { Ticket, TicketDetail } from "@/types/ticket";
-import { apiGet, apiPost } from "./http";
+import { apiGetPage, apiPost } from "./http";
 
 /**
- * The whole queue, soonest slot first.
+ * One page of the queue, soonest slot first.
  *
- * Deliberately NOT paginated, and the API agrees — see its own note. The queue
- * renders as cards with no paging affordance and every row is a customer
- * holding a confirmed slot that is counting down, so a row on an invisible
- * page two is a missed appointment. If it ever outgrows a screenful, that is a
- * decision about the screen rather than a page parameter.
+ * Paged, but the screen has no pager: it loads the next page on scroll, so
+ * every row stays reachable. That distinction is the whole reason this stayed
+ * unpaginated for so long — each row is a customer holding a confirmed slot
+ * that is counting down, and a row behind a page number is a missed
+ * appointment.
+ *
+ * The API orders live rows before missed ones, so page one is the half that
+ * can still be rescued. Scrolling only ever reaches further into the past.
  */
-export function listEscalations(): Promise<Ticket[]> {
-  return apiGet<Ticket[]>("/tickets/escalations");
+export function listEscalations(
+  params: ListParams = {}
+): Promise<Page<Ticket>> {
+  return apiGetPage<Ticket>("/tickets/escalations", params);
 }
 
 export interface AddBonusInput {

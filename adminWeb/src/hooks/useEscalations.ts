@@ -1,5 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { addBonusAndRenotify, listEscalations } from "@/services/escalations";
+import { DEFAULT_PAGE_SIZE } from "@/types/api";
 import { ESCALATION_REFETCH_MS } from "./liveness";
 import { dashboardKeys } from "./useDashboard";
 import { technicianKeys } from "./useTechnicians";
@@ -15,10 +20,6 @@ export { escalationKeys };
  * Time-sensitive: every row is counting down to a slot the customer was
  * promised, so this refetches far more eagerly than an ordinary list.
  *
- * No params and no `keepPreviousData`: the queue is a whole-queue read (see
- * `listEscalations`), so there is no page change to hold rows across, and
- * holding stale rows on a countdown screen would be the wrong trade anyway.
- *
  * The sidebar badge reads this same query rather than counting separately, so
  * the rail and the screen can never disagree and the two share one request.
  *
@@ -29,11 +30,24 @@ export { escalationKeys };
  * is gated on `jobs.assign` and a rank floor, so without it every Ops Staff
  * session would fetch a 403 once a minute for a badge it cannot see. The queue
  * page itself is already behind the same feature guard and needs no argument.
+ *
+ * ## Infinite, and what that costs on a polling query
+ *
+ * `refetchInterval` on a `useInfiniteQuery` refetches EVERY loaded page, not
+ * just the first. That is the behaviour this screen wants — a countdown that
+ * only moved above the fold would be worse than one that did not move — but it
+ * means somebody who has scrolled ten pages back through the missed half is
+ * re-fetching ten pages a minute. Acceptable while the queue is small; the
+ * thing to change if it stops being is the interval, not the appending.
  */
 export function useEscalations({ enabled = true } = {}) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: escalationKeys.list(),
-    queryFn: listEscalations,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      listEscalations({ page: pageParam, limit: DEFAULT_PAGE_SIZE }),
+    getNextPageParam: (last) =>
+      last.pagination.hasNextPage ? last.pagination.page + 1 : undefined,
     staleTime: 10_000,
     refetchInterval: ESCALATION_REFETCH_MS,
     refetchOnWindowFocus: true,

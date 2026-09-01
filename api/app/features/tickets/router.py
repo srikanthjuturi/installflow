@@ -121,23 +121,27 @@ async def list_tickets(
 
 @router.get(
     "/escalations",
-    response_model=ApiEnvelope[list[TicketOut]],
+    response_model=PaginatedEnvelope[TicketOut],
     dependencies=[AreaManagerUp],
 )
 async def list_escalations(
-    db: Db, principal: CanAssign
-) -> ApiEnvelope[list[TicketOut]]:
+    db: Db,
+    principal: CanAssign,
+    params: Annotated[ListParams, Depends(list_params)],
+) -> PaginatedEnvelope[TicketOut]:
     """Jobs whose slot is close and that nobody accepted, soonest first.
 
     Declared ABOVE `/{ticket_id}` — Starlette matches in declaration order, and
     a dynamic route sitting first would swallow this as a ticket id and answer
     422 on a valid request.
 
-    Not paginated, deliberately: see `service.list_escalations`. Every row is a
-    customer holding a confirmed slot that is counting down, so a row on an
-    invisible page two is a missed appointment.
+    Paged, but not for a pager: the console loads the next page on scroll, so
+    every row stays reachable without a page number. The missed half only ever
+    grows — see `service.list_escalations` — and it was being sent whole on
+    every poll.
     """
-    return envelope(await service.list_escalations(db, principal))
+    rows, total = await service.list_escalations(db, principal, params)
+    return paginated(rows, page=params.page, limit=params.limit, total=total)
 
 
 @router.post(

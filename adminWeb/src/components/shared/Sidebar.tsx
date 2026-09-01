@@ -57,9 +57,16 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   // Measured against when the rows were READ rather than `Date.now()`: that
   // would be an impure call during render, and it would also drift from the
   // data it is counting.
+  //
+  // The FIRST page is enough, and that is not a shortcut. The API returns
+  // every live row before any missed one, so the live half is either wholly on
+  // page one or larger than a page — and twenty jobs about to be missed is a
+  // number the badge does not need to be precise about. The rail mounts on
+  // every screen; making it load the whole queue to render one integer would
+  // be the most expensive thing on a page that is not the queue.
   const readAt = escalations.dataUpdatedAt;
   const escalationCount =
-    escalations.data?.filter(
+    escalations.data?.pages[0]?.rows.filter(
       (t) => t.slotEnd === null || new Date(t.slotEnd).getTime() >= readAt
     ).length ?? 0;
 

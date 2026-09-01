@@ -1290,15 +1290,20 @@ def _refused(code: str, detail: str) -> AppError:
 
 
 async def list_escalations(
-    db: AsyncSession, principal: Principal
-) -> list[TicketOut]:
+    db: AsyncSession, principal: Principal, params: ListParams
+) -> tuple[list[TicketOut], int]:
     """Jobs that reached their escalation window with nobody on them.
 
-    Deliberately NOT paginated, and that is a decision about the screen rather
-    than an omission. The queue renders as cards with no paging affordance and
-    every row is a customer holding a confirmed slot that is counting down, so a
-    row on an invisible page two is a missed appointment. If it ever outgrows a
-    screenful, that is a conversation about the screen.
+    Paginated, but the console never shows a pager: it loads the next page on
+    scroll, so nothing is ever behind a page number. That distinction is the
+    whole reason this endpoint took a page parameter late — every row is a
+    customer holding a confirmed slot that is counting down, and a row on an
+    invisible page two is a missed appointment. Bounding the RESPONSE is fine;
+    bounding what a manager can reach is not.
+
+    What makes that safe is the ordering below: live rows are page one by
+    construction, so the half that can still be rescued is never the half that
+    needs scrolling to reach.
 
     Territory narrowing is free: it goes through `scoped()`, the same door the
     list and fetch-by-id use, so an Area Manager sees their own states, a
@@ -1326,6 +1331,8 @@ async def list_escalations(
     passed means asking the customer for another one, which is a conversation
     and not a status change. Until that exists this list only grows, which is
     also why the count sits on its own heading rather than in the rail's badge.
+    It is also why paging arrived: an ever-growing list was going to be sent
+    whole on every poll.
     """
     now = _now()
     stmt = select(Ticket).where(
@@ -1338,18 +1345,20 @@ async def list_escalations(
         Ticket.slot_start.is_not(None),
     )
     stmt = await scoped(db, stmt, principal)
-    rows = list(
-        await db.scalars(
-            stmt.order_by(
-                # Live first, missed after — one expression, so the API's order
-                # and the console's heading cannot disagree about which half a
-                # row is in.
-                case((Ticket.slot_end < now, 1), else_=0),
-                Ticket.slot_start.asc(),
-            )
-        )
+    stmt = stmt.order_by(
+        # Live first, missed after — one expression, so the API's order and the
+        # console's heading cannot disagree about which half a row is in. With
+        # paging it does a second job: the live rows fill page one, so the work
+        # that is still savable never sits below a scroll the manager has to
+        # trigger.
+        case((Ticket.slot_end < now, 1), else_=0),
+        Ticket.slot_start.asc(),
+        # A stable tiebreak, or two jobs sharing a slot can swap between pages
+        # and the reader sees one twice and the other never.
+        Ticket.id.asc(),
     )
-    return await _hydrate(db, rows)
+    rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
+    return await _hydrate(db, rows), total
 
 
 async def _load_assignable_technician(

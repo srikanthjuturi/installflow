@@ -133,6 +133,41 @@ export interface DataTableProps<T> {
   pagination?: false | { sizes?: number[]; defaultSize?: number };
 
   /**
+   * Load-on-scroll instead of a pager. Pair with `server` — the meta still
+   * supplies the total, only the footer changes.
+   *
+   * The rows given are every page loaded so far, concatenated. The table does
+   * not accumulate them; a `useInfiniteQuery`'s `data.pages.flatMap` does.
+   *
+   * ⚠ Pass `isFetching` as `isFetching && !isFetchingNextPage`. Otherwise
+   * loading page two dims every row already on screen, which is the opposite
+   * of what an appending list should look like.
+   */
+  infinite?: {
+    hasNextPage?: boolean;
+    isFetchingNextPage?: boolean;
+    fetchNextPage: () => void;
+    /** Plural noun for the button — "transactions". */
+    label: string;
+  };
+
+  /**
+   * Draws a full-width divider row whenever this value changes between
+   * neighbours — a date heading over a ledger, say.
+   *
+   * A run of neighbours, not a bucket: the rows arrive already ordered by the
+   * server, so dividing where the value changes preserves that order exactly.
+   * Bucketing by the value would work today and quietly reorder the moment a
+   * page arrived out of sequence.
+   *
+   * It follows that this is only meaningful when the table is SORTED by
+   * whatever it groups on. Group by day on a list sorted by amount and you get
+   * a divider above nearly every row, which is the honest rendering of a
+   * question that made no sense.
+   */
+  groupBy?: (row: T) => string;
+
+  /**
    * Server-driven mode.
    *
    * When present the table renders exactly the rows it is given and reports

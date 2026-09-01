@@ -1,6 +1,6 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { getLedgerPool, listLedgerEntries } from "@/services/ledger";
-import type { ListParams } from "@/types/api";
+import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
 
 export const ledgerKeys = {
   all: ["ledger"] as const,
@@ -22,12 +22,40 @@ export function useLedgerPool() {
   });
 }
 
+/**
+ * The ledger, a page at a time, appended.
+ *
+ * Infinite rather than paged because of what this list IS: a ledger is read
+ * backwards from the most recent movement, and "how far back does this go"
+ * is answered by scrolling, not by choosing page 4 of 17. Page numbers over a
+ * chronological record ask the reader to convert a date into an ordinal.
+ *
+ * `params` carries the filter and the sort. The page is the cursor and belongs
+ * to the query, so it is stripped below rather than trusted to be absent:
+ * leaving one in the key would mint a fresh infinite query — discarding every
+ * loaded page — each time the cursor moved.
+ *
+ * No `keepPreviousData`. It was there so paging did not blank a table the
+ * reader was comparing rows in; appending never blanks anything, and holding
+ * the previous FILTER's rows while the new filter loads would show a list that
+ * contradicts the control above it.
+ */
 export function useLedgerEntries(params: ListParams = {}) {
-  return useQuery({
-    queryKey: ledgerKeys.entries(params),
-    queryFn: () => listLedgerEntries(params),
+  // `undefined` and absent hash identically, so this really does leave the key
+  // free of the cursor.
+  const key: ListParams = { ...params, page: undefined };
+
+  return useInfiniteQuery({
+    queryKey: ledgerKeys.entries(key),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      listLedgerEntries({
+        ...key,
+        page: pageParam,
+        limit: key.limit ?? DEFAULT_PAGE_SIZE,
+      }),
+    getNextPageParam: (last) =>
+      last.pagination.hasNextPage ? last.pagination.page + 1 : undefined,
     staleTime: 30_000,
-    // Paging a ledger must not blank it — the reader is comparing rows.
-    placeholderData: keepPreviousData,
   });
 }

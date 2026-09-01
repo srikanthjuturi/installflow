@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Download } from "lucide-react";
+import { useNavOrigin } from "@/hooks/useNavOrigin";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { downloadCsv, toCsv } from "@/utils/csv";
@@ -8,7 +9,8 @@ import {
   type Column,
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
-import { formatDateTime } from "@/utils/datetime";
+import { formatTimeOfDay } from "@/utils/datetime";
+import { dayLabel } from "@/lib/dayGroup";
 import { moneyPaise } from "@/utils/money";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LedgerEntry } from "@/types";
@@ -31,15 +33,26 @@ const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
 const ALL = "All";
 
 interface LedgerTableProps {
-  /** One page of entries, already filtered and sorted by the server. */
+  /** Every page loaded so far, already filtered and sorted by the server. */
   entries?: LedgerEntry[];
+  /** The LAST page's meta — `totalRecords` is the whole filtered ledger. */
   meta?: PaginationMeta;
   params: ListParams;
   /** Merges what it is given into the query — see `applyParams` on the page. */
   onParams: (next: ListParams) => void;
   isLoading: boolean;
+  isFetching?: boolean;
   error: unknown;
   onRetry: () => void;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  fetchNextPage: () => void;
+  /**
+   * When the rows were READ, as an epoch. It is what "Today" on a divider is
+   * measured against — `new Date()` here would be an impure call during render
+   * and would also drift from the data it is labelling.
+   */
+  readAt: number;
 }
 
 export function LedgerTable({
@@ -48,20 +61,35 @@ export function LedgerTable({
   params,
   onParams,
   isLoading,
+  isFetching,
   error,
   onRetry,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+  readAt,
 }: LedgerTableProps) {
   const kind = params.filters?.kind ?? ALL;
+  const now = new Date(readAt);
 
-  // The rows in hand — which, now the ledger is paged server-side, is the page
-  // the reader is looking at.
+  /* Both link columns leave the ledger, and both landed on a screen that sent
+     the reader to its own list — a technician row to the roster, a ticket row
+     to the board. Neither is where they were. The origin keeps the query
+     string, so Back also restores the kind filter and the date range. */
+  const origin = useNavOrigin("Back to ledger");
+
+  // The rows in hand — which, on an infinite list, is everything scrolled to
+  // so far rather than one page.
   const visible = entries ?? [];
 
   const columns: Column<LedgerEntry>[] = [
     {
       id: "date",
-      header: "Date",
-      cell: (l) => formatDateTime(l.at),
+      header: "Time",
+      // The TIME only. The date sits on the divider above the run this row
+      // belongs to, and repeating "4 Aug" down forty rows under a heading that
+      // already says "4 Aug" is the noise the divider exists to remove.
+      cell: (l) => formatTimeOfDay(new Date(l.at)),
     },
     {
       id: "kind",
@@ -85,6 +113,7 @@ export function LedgerTable({
       cell: (l) => (
         <Link
           to={`/technicians/${l.technicianId}`}
+          state={origin}
           className="font-semibold text-brand-400 hover:underline"
         >
           {l.technicianName}
@@ -99,6 +128,7 @@ export function LedgerTable({
         // route needs. The mock had only one value and used it for both.
         <Link
           to={`/tickets/${l.ticketId}`}
+          state={origin}
           className="font-mono text-xs font-semibold text-brand-400 hover:underline"
         >
           {l.ticketCode}
@@ -158,14 +188,24 @@ export function LedgerTable({
         columns={columns}
         getRowId={(l) => l.id}
         isLoading={isLoading}
+        isFetching={isFetching}
         error={error}
         onRetry={onRetry}
         filters={filters}
         server={{ meta, params, onParams }}
+        infinite={{
+          hasNextPage,
+          isFetchingNextPage,
+          fetchNextPage,
+          label: "transactions",
+        }}
+        // A ledger is chronological, and the server sorts it that way, so the
+        // days come out as contiguous runs.
+        groupBy={(l) => dayLabel(l.at, now)}
         minWidth="51.25rem"
         toolbarActions={
           /* Exported in the browser — the rows are already here, so this
-             needs no endpoint. It exports the page on screen, which is what
+             needs no endpoint. It exports what has been LOADED, which is what
              the reader can see; a whole-ledger export is an endpoint, not a
              loop over pages. Amounts export as raw signed numbers, not
              money() strings: a spreadsheet has to be able to sum them. */
@@ -177,7 +217,11 @@ export function LedgerTable({
               downloadCsv(
                 "reliancegreentech-ledger.csv",
                 toCsv(
-                  columns.map((c) => c.header),
+                  // Spelled out rather than taken from `columns`. The first
+                  // column's header is "Time" now that the divider carries the
+                  // date, but the export writes the whole instant — a
+                  // spreadsheet wants the date back.
+                  ["When", "Type", "Technician", "Ticket", "Reason", "Amount"],
                   visible.map((e) => [
                     e.at,
                     KIND_LABEL[e.kind],
