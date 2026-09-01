@@ -21,20 +21,31 @@ import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import Select, case, func, or_, select
+from sqlalchemy import Select, case, func, or_, select, update
 from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.coverage import has_cap_room, technicians_covering
 from app.core.deps import Principal
-from app.core.push import announce_pool_job
-from app.core.realtime import publish_pool_changed, publish_ticket_changed
+from app.core.errors import AppError
+from app.core.ledger import (
+    cap_remaining,
+    charged_this_month,
+    entry as ledger_entry,
+)
+from app.core.push import announce_pool_job, send_to_technician
+from app.core.realtime import (
+    publish_job_changed,
+    publish_pool_changed,
+    publish_ticket_changed,
+)
 from app.core.schemas import ListParams
 from app.core.scope import visible_pincodes
 from app.core.sequences import next_code as allocate_code
 from app.core.service_types import SERVICE_TYPES
+from app.core.rules import CANCEL_PENALTY_BANDS, load_rules
 from app.core.tickets import (
-    SLA_WARN_AT,
     SLOT_LEAD_MINUTES,
     SLOT_TIMEZONE_OFFSET_MINUTES,
     SLOT_WINDOWS,
@@ -44,6 +55,7 @@ from app.core.tickets import (
 from app.db.repository import paginate
 from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
+    RenotifyOut,
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
@@ -54,7 +66,12 @@ from app.models.company import Company
 from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
-from app.models.technician import TechnicianProfile
+from app.models.technician import (
+    ACTIVE,
+    TechnicianPincode,
+    TechnicianProfile,
+    TechnicianSubcategory,
+)
 from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
@@ -78,7 +95,9 @@ def _bad_request(detail: str) -> HTTPException:
 # ── SLA ───────────────────────────────────────────────────────────────────────
 
 
-def sla_state(row: Ticket, *, now: datetime.datetime | None = None) -> str:
+def sla_state(
+    row: Ticket, *, warn_at_pct: int, now: datetime.datetime | None = None
+) -> str:
     """ok / warn / breach / done — derived, never stored.
 
     The service level says the slot must START within N hours of the ticket
@@ -88,6 +107,10 @@ def sla_state(row: Ticket, *, now: datetime.datetime | None = None) -> str:
       * a ticket WITHOUT one is judged on the clock, and goes late while the
         customer stays silent. That is the deliberate reading — see
         `app/core/tickets.py`.
+
+    `warn_at_pct` is the ticket's own company's rule and is passed in rather
+    than read here: this is called once per row of a page, and a lookup inside
+    would be the same query a hundred times.
     """
     if row.status in TERMINAL_STATUSES:
         return "done"
@@ -103,17 +126,21 @@ def sla_state(row: Ticket, *, now: datetime.datetime | None = None) -> str:
 
     window = (due - row.created_at).total_seconds()
     remaining = (due - now).total_seconds()
-    if window > 0 and remaining / window <= SLA_WARN_AT:
+    if window > 0 and remaining / window <= warn_at_pct / 100:
         return "warn"
     return "ok"
 
 
-def _sla_order_case():
+def _sla_order_case(warn_at_pct: int):
     """Triage order in SQL, so paging and totals agree with what is rendered.
 
     Mirrors `sla_state`. It has to be expressed twice — once in Python for the
     value a row reports, once here for ordering — because sorting rows the
     database has not selected yet is not something Python can do.
+
+    A scalar rather than a join onto `company_rules`: every caller is already
+    scoped to one company, so there is exactly one value and folding it in keeps
+    this an expression the caller can also filter on.
     """
     now = _now()
     is_terminal = Ticket.status.in_(TERMINAL_STATUSES)
@@ -125,7 +152,7 @@ def _sla_order_case():
         (
             Ticket.sla_due_at
             <= now
-            + (Ticket.sla_due_at - Ticket.created_at) * SLA_WARN_AT,
+            + (Ticket.sla_due_at - Ticket.created_at) * (warn_at_pct / 100),
             1,
         ),
         else_=2,
@@ -437,6 +464,11 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
     )
 
     now = _now()
+    # One lookup for the page, not one per row. Every read here is company-
+    # scoped — `scoped()` puts `company_id` in the WHERE clause of the list and
+    # of fetch-by-id alike — so all these rows share a tenant and therefore one
+    # "Due soon" threshold.
+    warn_at_pct = (await load_rules(db, rows[0].company_id)).sla_warn_at_pct
     out: list[TicketOut] = []
     for t in rows:
         sub_name, cat_name = subs.get(t.subcategory_id, ("", ""))
@@ -475,12 +507,13 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 slotStart=t.slot_start,
                 slotEnd=t.slot_end,
                 slaDueAt=t.sla_due_at,
-                slaState=sla_state(t, now=now),
+                slaState=sla_state(t, warn_at_pct=warn_at_pct, now=now),
                 status=t.status,
                 technicianId=t.technician_id,
                 technicianName=tech_names.get(t.technician_id)
                 if t.technician_id
                 else None,
+                bonusPaise=t.bonus_paise,
                 slotRequestStatus=t.slot_request_status,
                 slotRequestError=t.slot_request_error,
                 slotConfirmedAt=t.slot_confirmed_at,
@@ -590,12 +623,16 @@ async def list_tickets(
     if wanted:
         stmt = stmt.where(Ticket.service_type == wanted)
 
+    # This company's "Due soon" line. Read once and used by both the filter and
+    # the default ordering below, so the two cannot judge a row differently.
+    warn_at_pct = (await load_rules(db, principal.company_id)).sla_warn_at_pct
+
     wanted = _canonical(sla_filter, ("ok", "warn", "breach", "done"))
     if wanted is False:
         return [], 0
     if wanted:
         rank = {"breach": 0, "warn": 1, "ok": 2, "done": 3}[str(wanted)]
-        stmt = stmt.where(_sla_order_case() == rank)
+        stmt = stmt.where(_sla_order_case(warn_at_pct) == rank)
 
     # Default: most urgent first, which is the whole point of the screen.
     #
@@ -619,7 +656,9 @@ async def list_tickets(
         # a stable order across pages rather than swapping between reads.
         stmt = stmt.order_by(direction, Ticket.created_at.desc())
     else:
-        stmt = stmt.order_by(_sla_order_case().asc(), Ticket.created_at.desc())
+        stmt = stmt.order_by(
+            _sla_order_case(warn_at_pct).asc(), Ticket.created_at.desc()
+        )
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     return await _hydrate(db, rows), total
@@ -656,7 +695,31 @@ _EVENT_TITLES = {
     "serial_mismatch": "Serial did not match the order",
     "serial_corrected": "Expected serial corrected",
     "reminded": "Technician reminded",
+    "escalated": "No technician accepted",
+    "bonus_added": "Bonus added and re-notified",
+    # Reads next to "Technician accepted", which is the event it undoes.
+    "released": "Technician cancelled",
+    "no_show": "Nobody turned up",
 }
+
+#: Kinds whose wording depends on WHO caused them, keyed `(kind, actor_kind)`.
+#:
+#: `assigned` is the only one so far, and it is the reason this exists rather
+#: than a second event kind: a job taken out of the pool and a job handed over
+#: by a manager are the same FACT — this technician now owns this slot, and the
+#: daily cap counts both — but they read as opposite stories. "Technician
+#: accepted" over a manager's name is simply false, and adding
+#: `manually_assigned` would fork every query that asks "when was this
+#: assigned", including the one the cap is counted from.
+_EVENT_TITLES_BY_ACTOR = {
+    ("assigned", "staff"): "Assigned by a manager",
+}
+
+
+def _event_title(kind: str, actor_kind: str) -> str:
+    return _EVENT_TITLES_BY_ACTOR.get(
+        (kind, actor_kind), _EVENT_TITLES.get(kind, kind)
+    )
 
 
 async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
@@ -685,7 +748,8 @@ async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
         TimelineEventOut(
             at=e.created_at,
             kind=e.kind,
-            title=_EVENT_TITLES.get(e.kind, e.kind),
+            title=_event_title(e.kind, e.actor_kind),
+            actorKind=e.actor_kind,
             by=e.actor_label,
             note=e.note,
         )
@@ -756,9 +820,20 @@ def clock_range(start: datetime.datetime, end: datetime.datetime) -> str:
     return f"{start_hm} {start_ap}–{end_hm} {end_ap}"
 
 
+def day_label(at: datetime.datetime) -> str:
+    """`Thu 21 Aug` in IST — `when_label` without the clock.
+
+    The day the WORK happens, in the day the technician experiences, which is
+    the same reckoning the daily cap counts by. A UTC rendering would put a
+    05:00 IST job on the previous evening and make the cap's arithmetic look
+    wrong to whoever it refused.
+    """
+    return at.astimezone(IST).strftime("%a %d %b")
+
+
 def when_label(start: datetime.datetime, end: datetime.datetime) -> str:
     """`Thu 21 Aug, 10:00 AM–12:00 PM`, in the customer's own timezone."""
-    return f"{start.astimezone(IST).strftime('%a %d %b')}, {clock_range(start, end)}"
+    return f"{day_label(start)}, {clock_range(start, end)}"
 
 
 async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
@@ -1175,6 +1250,583 @@ async def correct_serial(
         )
     )
     await publish_ticket_changed(db, row)
+    await db.commit()
+    return await get_ticket(db, principal, ticket_id)
+
+
+# ── escalation: nobody accepted, so a manager owns it ────────────────────────
+#
+# Reached by `sweeps.sweep_unaccepted`, which moves an unaccepted job to
+# `Escalated` and takes it out of the pool. There are exactly two ways back out,
+# both below, and both are settled by a guarded UPDATE for the reason
+# `jobs.service.accept` is: a read followed by a write leaves a window, and the
+# thing racing us here is a technician tapping Accept on a card they are still
+# looking at.
+#
+# Every query carries `technician_id IS NULL`. `Escalated` also means "the
+# customer said it was not done", and that one always HAS a technician — telling
+# the two apart by the column rather than by a second status is what keeps the
+# customer-refusal path working unchanged.
+
+
+#: The statuses a manager may assign FROM.
+#:
+#: Not a blanket "anything non-terminal". Past `Assigned` the technician is on
+#: site with proof captured, and moving the job then is a different and messier
+#: operation than this one — it would strand evidence against a person who is no
+#: longer on the ticket. `New` is here because the console's "Re-assign" button
+#: is reachable from an ordinary pooled job, not only from the escalation queue.
+ASSIGNABLE_STATUSES = ("New", "Escalated", "Assigned")
+
+
+def _refused(code: str, detail: str) -> AppError:
+    """A 409 that says which kind of "no" it is.
+
+    Mirrors `jobs.service.JobRefused` rather than importing it — hard rule 4,
+    and the audiences differ anyway: these sentences are read by a manager
+    deciding who to send, not by a technician deciding whether to tap again.
+    """
+    return AppError(http_status.HTTP_409_CONFLICT, code, detail)
+
+
+async def list_escalations(
+    db: AsyncSession, principal: Principal
+) -> list[TicketOut]:
+    """Jobs that reached their escalation window with nobody on them.
+
+    Deliberately NOT paginated, and that is a decision about the screen rather
+    than an omission. The queue renders as cards with no paging affordance and
+    every row is a customer holding a confirmed slot that is counting down, so a
+    row on an invisible page two is a missed appointment. If it ever outgrows a
+    screenful, that is a conversation about the screen.
+
+    Territory narrowing is free: it goes through `scoped()`, the same door the
+    list and fetch-by-id use, so an Area Manager sees their own states, a
+    Regional Head their region, and an all-India role everything. A vendor
+    reaching this is refused by the router's rank floor long before here.
+
+    ## Two lists in one, and the order is what separates them
+
+    Rows whose slot has already CLOSED are still returned — a missed
+    appointment is a customer owed an apology, and a queue that quietly dropped
+    its own failures would be the least honest screen in the product. But they
+    are not the same work as a job that can still be saved, and mixed together
+    they bury it: after a few weeks the live rows are a handful among dozens of
+    dead ones and the screen stops being read.
+
+    So they are ordered LAST and the console draws them under their own
+    heading. `slot_end` is the divider rather than `slot_start` — while the
+    window is open somebody can still be sent.
+
+    Soonest slot first throughout: in the live half that is the job most at
+    risk, and in the missed half it is the customer who has been waiting
+    longest for somebody to ring them.
+
+    ⚠ **Nothing clears the missed half yet.** Re-slotting a job whose time has
+    passed means asking the customer for another one, which is a conversation
+    and not a status change. Until that exists this list only grows, which is
+    also why the count sits on its own heading rather than in the rail's badge.
+    """
+    now = _now()
+    stmt = select(Ticket).where(
+        Ticket.company_id == principal.company_id,
+        Ticket.deleted_at.is_(None),
+        Ticket.status == "Escalated",
+        # The customer-refusal escalation always has a technician. This queue is
+        # about the jobs that have nobody.
+        Ticket.technician_id.is_(None),
+        Ticket.slot_start.is_not(None),
+    )
+    stmt = await scoped(db, stmt, principal)
+    rows = list(
+        await db.scalars(
+            stmt.order_by(
+                # Live first, missed after — one expression, so the API's order
+                # and the console's heading cannot disagree about which half a
+                # row is in.
+                case((Ticket.slot_end < now, 1), else_=0),
+                Ticket.slot_start.asc(),
+            )
+        )
+    )
+    return await _hydrate(db, rows)
+
+
+async def _load_assignable_technician(
+    db: AsyncSession, principal: Principal, row: Ticket, technician_id: uuid.UUID
+) -> TechnicianProfile:
+    """The technician a manager picked, or a refusal that says why not.
+
+    The eligibility rules are `jobs.service.pool_query`'s, minus the two a
+    manager is allowed to overrule:
+
+    * **Coverage and certification are enforced.** Sending somebody to a pincode
+      they do not work, or to a product they are not certified on, is not an
+      override — it is a job that will fail on arrival.
+    * **`status == ACTIVE` is enforced.** Suspension is somebody else's decision
+      about this technician and is not a manager's to route around.
+    * **The daily cap is enforced**, because the shortlist shows capacity and
+      the manager can pick somebody with room. If nobody has room, that is a
+      real staffing problem worth surfacing rather than silently spending.
+    * **`accepting_work` is NOT enforced.** An assignment is a directive, not an
+      offer, and this is the last resort the requirement document reaches for
+      when re-notification has already failed. The console flags who is offline
+      so the choice is made knowingly.
+
+    A technician from another company reads 404, not 403 — hard rule 1: a 403
+    would confirm they exist.
+    """
+    profile = await db.scalar(
+        select(TechnicianProfile).where(
+            TechnicianProfile.id == technician_id,
+            TechnicianProfile.company_id == principal.company_id,
+        )
+    )
+    if profile is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Technician not found",
+        )
+
+    if profile.status != ACTIVE:
+        raise _refused(
+            "TECHNICIAN_SUSPENDED",
+            "This technician is not active and cannot be given work.",
+        )
+
+    covers = await db.scalar(
+        select(TechnicianPincode.id).where(
+            TechnicianPincode.company_id == principal.company_id,
+            TechnicianPincode.technician_id == profile.id,
+            TechnicianPincode.pincode == row.pincode,
+        )
+    )
+    certified = await db.scalar(
+        select(TechnicianSubcategory.id).where(
+            TechnicianSubcategory.company_id == principal.company_id,
+            TechnicianSubcategory.technician_id == profile.id,
+            TechnicianSubcategory.subcategory_id == row.subcategory_id,
+        )
+    )
+    # Named individually. "Ineligible" leaves a manager guessing which of two
+    # masters to go and fix, and both fixes are on different screens.
+    if covers is None:
+        raise _refused(
+            "TECHNICIAN_INELIGIBLE",
+            f"This technician does not cover {row.pincode}. Add it to their "
+            "coverage, or pick somebody who does.",
+        )
+    if certified is None:
+        raise _refused(
+            "TECHNICIAN_INELIGIBLE",
+            "This technician is not certified for this product category.",
+        )
+    return profile
+
+
+async def assign_technician(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    technician_id: uuid.UUID,
+) -> TicketDetailOut:
+    """Hand the job to a named technician. The last resort in §7.
+
+    Writes the same `assigned` event `jobs.service.accept` writes, with
+    `actor_kind="staff"` — one fact, two ways of arriving at it. That matters
+    beyond the timeline: the daily cap counts assignments from those rows, and
+    a job a manager handed over spends the technician's day exactly as one they
+    chose. A second event kind would have forked every query that asks when a
+    ticket was assigned, including the one the cap is counted from.
+
+    Deliberately NO future-slot check. `pool_query` hides a window that has
+    already opened because a technician cannot travel to it — but a manual
+    assignment is precisely the override for that case, and refusing it would
+    disarm the tool in the emergency it exists for.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    if row.status not in ASSIGNABLE_STATUSES:
+        raise _refused(
+            "TICKET_NOT_ASSIGNABLE",
+            f"A ticket in {row.status} cannot be assigned."
+            + (
+                " The work has already started — that needs the technician to "
+                "cancel first."
+                if row.status not in TERMINAL_STATUSES
+                else ""
+            ),
+        )
+    if row.slot_start is None:
+        raise _refused(
+            "NO_SLOT",
+            "This ticket has no confirmed slot yet, so there is no time to send "
+            "anybody to.",
+        )
+
+    profile = await _load_assignable_technician(db, principal, row, technician_id)
+    if profile.id == row.technician_id:
+        # Re-assigning somebody to their own job is a no-op the trail should not
+        # record. Same reasoning as `correct_serial` returning early.
+        return await get_ticket(db, principal, ticket_id)
+
+    was = row.status
+    previous = row.technician_id
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == principal.company_id,
+            Ticket.status.in_(ASSIGNABLE_STATUSES),
+            # Whoever the row named when we read it is who it must still name.
+            # This is what makes two managers assigning at once safe, and what
+            # stops a manager overwriting a technician who accepted from the
+            # pool a second earlier.
+            Ticket.technician_id.is_(None)
+            if previous is None
+            else Ticket.technician_id == previous,
+            # Re-tested here and not only in the read above, because the read is
+            # a read: two managers filling the same technician's day at the same
+            # moment both pass it. Settled in the WHERE clause, Postgres
+            # serialises them and the second matches nothing.
+            has_cap_room(
+                company_id=principal.company_id, technician_id=profile.id
+            ),
+        )
+        .values(technician_id=profile.id, status="Assigned")
+    )
+    if result.rowcount == 0:
+        # Two reasons, and the manager can act on only one. Read the ticket
+        # rather than re-running the cap: if it is still where we left it, the
+        # cap is the only clause that can have failed.
+        unchanged = await db.scalar(
+            select(Ticket.id).where(
+                Ticket.id == ticket_id,
+                Ticket.company_id == principal.company_id,
+                Ticket.status.in_(ASSIGNABLE_STATUSES),
+                Ticket.technician_id.is_(None)
+                if previous is None
+                else Ticket.technician_id == previous,
+            )
+        )
+        if unchanged is not None:
+            raise _refused(
+                "DAILY_CAP_REACHED",
+                f"{profile.code} already has {profile.daily_job_cap} jobs on "
+                f"{day_label(row.slot_start)} — their daily limit. Pick somebody "
+                "with room, or raise their cap first.",
+            )
+        raise _refused(
+            "ALREADY_ASSIGNED",
+            "Somebody moved this ticket while you were choosing. Reload and "
+            "look again.",
+        )
+
+    row.status = "Assigned"
+    row.technician_id = profile.id
+    name = await _technician_name(db, profile)
+    db.add(
+        record_event(
+            row,
+            "assigned",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            from_status=was,
+            to_status="Assigned",
+            note=(
+                f"Assigned to {name}"
+                if previous is None
+                else f"Re-assigned to {name}"
+            ),
+            by_user=principal.user_id,
+        )
+    )
+    # NB no ledger entry here. A funded bonus is paid to whoever FINISHES the
+    # job, in `jobs.service.complete`, and this slice deliberately does not
+    # duplicate that: assigning somebody is not the same as them having done
+    # it, and a manager re-assigning a bonused ticket would otherwise pay for
+    # it twice.
+    #
+    # It does mean a technician a manager hands the job to earns the bonus on
+    # the same terms as one who volunteered. Decided that way on purpose:
+    # withholding it would pay less for the harder version of the same favour.
+    #
+    # It has left the pool (or was never in it), and the technician's own
+    # job list has gained a row. Two different doorbells for two different
+    # audiences, both inside the transaction that made the change true.
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        subcategory_id=row.subcategory_id,
+    )
+    await publish_job_changed(
+        db,
+        company_id=row.company_id,
+        technician_id=profile.id,
+        ticket_id=row.id,
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+
+    # After the commit, like every other outbound side effect here: a push about
+    # an assignment that then rolled back is worse than a late one. They did not
+    # ask for this job, so being told is not optional.
+    assert row.slot_end is not None  # both-or-neither, and the start is set
+    await send_to_technician(
+        db,
+        company_id=row.company_id,
+        technician_id=profile.id,
+        title=f"{row.code} assigned to you",
+        body=f"{row.city} {row.pincode} · {when_label(row.slot_start, row.slot_end)}",
+        data={"type": "job", "ticketId": str(row.id), "code": row.code},
+    )
+    return await get_ticket(db, principal, ticket_id)
+
+
+async def _technician_name(
+    db: AsyncSession, profile: TechnicianProfile
+) -> str:
+    """The person's name, for the trail. Their code if the join comes up empty."""
+    name = await db.scalar(
+        select(User.full_name)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.id == profile.membership_id)
+    )
+    return name or profile.code
+
+
+async def add_bonus_and_renotify(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    amount_paise: int,
+) -> RenotifyOut:
+    """Fund an incentive and put the job back in the pool.
+
+    §7's first remedy, and the one to try before assigning by hand: the slot
+    stays exactly where the customer put it, and the job goes back to every
+    eligible technician with money attached.
+
+    The bonus REPLACES any previous one. The approved button reads "Add ₹400
+    bonus & re-notify", and a second press meaning ₹800 would be a manager
+    spending money they did not think they were spending. Every amount ever
+    funded is still in the trail as its own `bonus_added` row, which is where
+    "what did we pay to fill this" is answerable from.
+
+    `sweeps.sweep_unaccepted` will escalate it again if it is still empty after
+    this company's `renotify_grace_minutes` — the grace exists precisely because
+    the ticket is going back into a window it never left, and without it the
+    next tick five minutes later would take it straight back out.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    if row.status != "Escalated" or row.technician_id is not None:
+        raise _refused(
+            "NOT_ESCALATED",
+            "Only a job that nobody accepted can be re-notified with a bonus. "
+            f"This one is in {row.status}.",
+        )
+    assert row.slot_start is not None  # `Escalated` with no technician implies one
+
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == principal.company_id,
+            Ticket.status == "Escalated",
+            Ticket.technician_id.is_(None),
+        )
+        .values(status="New", bonus_paise=amount_paise)
+    )
+    if result.rowcount == 0:
+        raise _refused(
+            "ALREADY_ASSIGNED",
+            "Somebody moved this ticket while you were choosing. Reload and "
+            "look again.",
+        )
+
+    row.status = "New"
+    row.bonus_paise = amount_paise
+    db.add(
+        record_event(
+            row,
+            "bonus_added",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            from_status="Escalated",
+            to_status="New",
+            note=f"₹{amount_paise // 100:,} bonus · back in the pool",
+            by_user=principal.user_id,
+        )
+    )
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        subcategory_id=row.subcategory_id,
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+
+    # Who it actually reached — read AFTER the commit and with the same
+    # predicate the push uses, so the number the manager is shown is the number
+    # of phones that rang rather than an estimate of it. Zero is a real answer
+    # and an important one: it means no bonus can work here, because nobody
+    # covers this pincode for this product with room on that day.
+    audience = await technicians_covering(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        subcategory_id=row.subcategory_id,
+        slot_start=row.slot_start,
+    )
+    await _push_pool_job(db, row)
+    return RenotifyOut(
+        ticket=await get_ticket(db, principal, ticket_id), notified=len(audience)
+    )
+
+
+async def record_no_show(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    note: str | None = None,
+) -> TicketDetailOut:
+    """Confirm that nobody turned up, charge the band, and free the job.
+
+    `sweeps.sweep_no_shows` finds these and deliberately stops there. This is
+    the other half: a PERSON deciding that the technician really did fail to
+    appear, which is a judgement a clock cannot make. A dead phone and a
+    deliberate no-show look identical in the data, and the no-show band is the
+    most expensive one there is.
+
+    Three things happen together, in one transaction:
+
+    * the technician is released from the job and charged the `No-show` band —
+      the LAST entry of `cancel_penalties_paise`, the one
+      `core.rules.cancel_band_index` can never return;
+    * a `no_show` event records who decided it and why;
+    * the ticket goes to `Escalated` with no technician, which is where a job
+      needing a new slot belongs and where the manager is already working.
+
+    It does NOT re-open the pool. The slot has closed, so there is nothing left
+    to offer — the customer has to be asked for a new time, and that is a
+    conversation rather than a status change.
+
+    The monthly cap applies exactly as it does to a cancellation, and for the
+    same reason: it is a cap on what one technician can be charged in a month,
+    not a cap per kind of failure.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    if row.status != "Assigned" or row.technician_id is None:
+        raise _refused(
+            "NOT_A_NO_SHOW",
+            f"Only a job still assigned and unstarted can be recorded as a "
+            f"no-show. This one is in {row.status}.",
+        )
+    if row.slot_end is None or row.slot_end >= _now():
+        raise _refused(
+            "SLOT_STILL_OPEN",
+            "The slot has not closed yet — until it does they are late, not "
+            "absent.",
+        )
+
+    profile = await db.scalar(
+        select(TechnicianProfile).where(
+            TechnicianProfile.id == row.technician_id,
+            TechnicianProfile.company_id == principal.company_id,
+        )
+    )
+    if profile is None:  # a technician hard-deleted under a live ticket
+        raise _not_found()
+
+    # The same row lock the cancel path takes, for the same reason: the amount
+    # depends on a sum of rows already written, so the read and the write must
+    # not be interleaved with another charge against this technician.
+    await db.refresh(profile, with_for_update=True)
+
+    rules = await load_rules(db, principal.company_id)
+    label = CANCEL_PENALTY_BANDS[-1]
+    band = int(rules.cancel_penalties_paise[-1])
+    already = await charged_this_month(
+        db, company_id=principal.company_id, technician_id=profile.id
+    )
+    remaining = cap_remaining(
+        cap_paise=rules.cancel_penalty_cap_paise, already_charged=already
+    )
+    charge = band if remaining is None else min(band, remaining)
+
+    technician_id = row.technician_id
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == principal.company_id,
+            Ticket.status == "Assigned",
+            Ticket.technician_id == technician_id,
+        )
+        .values(technician_id=None, status="Escalated")
+    )
+    if result.rowcount == 0:
+        raise _refused(
+            "NOT_A_NO_SHOW",
+            "Somebody moved this ticket while you were deciding. Reload and "
+            "look again.",
+        )
+    row.status = "Escalated"
+    row.technician_id = None
+
+    name = await _technician_name(db, profile)
+    db.add(
+        record_event(
+            row,
+            "no_show",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            from_status="Assigned",
+            to_status="Escalated",
+            note=(
+                f"{name} did not attend · {label} · ₹{charge // 100:,}"
+                + (f" · {note.strip()}" if note and note.strip() else "")
+            ),
+            by_user=principal.user_id,
+        )
+    )
+    # Same rule as a cancellation: a technician whose monthly cap is already
+    # spent owes nothing more, and the absence of a charge is written as the
+    # absence of a row rather than as a zero.
+    if charge > 0:
+        db.add(
+            ledger_entry(
+                company_id=principal.company_id,
+                technician_id=profile.id,
+                ticket_id=row.id,
+                kind="penalty",
+                amount_paise=charge,
+                # The band's own words. Every other ledger reason is prefixed
+                # with what happened ("Cancel > 4h before slot"); this band's
+                # label already IS what happened.
+                reason=label,
+                by_user=principal.user_id,
+            )
+        )
+    # It counts against them exactly as a cancellation does. Not turning up is
+    # the worse version of the same failure, and a profile that counted only
+    # the honest ones would flatter whoever stopped cancelling.
+    profile.jobs_cancelled = (profile.jobs_cancelled or 0) + 1
+
+    await publish_ticket_changed(db, row)
+    await publish_job_changed(
+        db,
+        company_id=principal.company_id,
+        technician_id=technician_id,
+        ticket_id=row.id,
+    )
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
 

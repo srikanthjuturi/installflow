@@ -5,6 +5,7 @@ Route order matters: `/invites` and `/me` are declared BEFORE
 answers 422 instead of running the handler.
 """
 
+import datetime
 import uuid
 from typing import Annotated
 
@@ -134,12 +135,19 @@ async def list_technicians(
     pincode: Annotated[str | None, Query(pattern="^[0-9]{6}$")] = None,
     districtId: Annotated[uuid.UUID | None, Query()] = None,
     onboardingMode: Annotated[str | None, Query()] = None,
+    onDay: Annotated[datetime.datetime | None, Query()] = None,
 ) -> PaginatedEnvelope[TechnicianRowOut]:
     """Registered technicians and open invites in one list.
 
     They are one person at two lifecycle stages, so splitting them across two
     endpoints would put the same question — "is this number onboarded?" — in
     two places, and give a page size that is neither list's.
+
+    `onDay` changes which day `bwUsed` counts and nothing else — no row appears
+    or disappears because of it. The assignment shortlist sends the ticket's own
+    slot, so the capacity it shows is capacity on the day the work happens; a
+    Friday job otherwise reports Monday's load and the manager picks somebody
+    the assign call then refuses at cap.
     """
     rows, total = await service.list_technicians(
         db,
@@ -153,6 +161,7 @@ async def list_technicians(
         pincode=pincode,
         district_id=districtId,
         onboarding_mode=onboardingMode,
+        on_day=onDay,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 

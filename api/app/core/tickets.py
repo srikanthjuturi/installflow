@@ -72,8 +72,10 @@ TERMINAL_STATUSES = ("Closed", "Force-Closed", "Cancelled")
 DESCRIPTION_REQUIRED_FOR = ("Tech Visit", "Service")
 
 #: How much of the window has to be left before a ticket stops reading "On
-#: track" and starts reading "Due soon".
-SLA_WARN_AT = 0.25
+#: track" and starts reading "Due soon" is NOT here any more: it is
+#: `company_rules.sla_warn_at_pct`, because where a company draws that line is a
+#: preference, not a fact about a ticket. Everything still in this module is
+#: vocabulary — what a ticket IS — which is exactly why none of it moved.
 
 #: Ordering for the list's default sort. The whole point of the screen is
 #: triage, so the ones already late come first.
@@ -107,6 +109,30 @@ SLOT_WINDOWS = (
 #: to an address in ten minutes, and offering a slot that cannot be served is
 #: how a ticket breaches on the system's own suggestion.
 SLOT_LEAD_MINUTES = 90
+
+#: How long after a window CLOSES before an unstarted job is called a no-show.
+#:
+#: Not a preference, which is why it is here rather than in `company_rules`: it
+#: is the width of the gap between "arrived and is photographing the barcode"
+#: and "did not come". Proof capture is what moves a job to `In Progress`, so a
+#: technician who reaches the door at 11:55 for an 09:00–12:00 slot may not
+#: have captured anything until 12:05 — and flagging them the instant the
+#: window shut would call somebody absent who was standing in the kitchen.
+NO_SHOW_GRACE_MINUTES = 30
+
+#: And how far back the no-show sweep will look at all.
+#:
+#: Two jobs, both load-bearing.
+#:
+#: It stops the FIRST tick after this feature ships raising a bell for every
+#: historical `Assigned` ticket whose slot happens to be in the past — a
+#: backlog that could be months deep, arriving as one burst, about jobs nobody
+#: is going to investigate now.
+#:
+#: And it is the honest boundary anyway. The migration that added the band put
+#: it plainly: charging somebody weeks later for a morning nobody asked them
+#: about at the time is not a penalty, it is an ambush.
+NO_SHOW_LOOKBACK_HOURS = 48
 
 #: Local time for the offered windows. India is the whole market (see
 #: `app/core/phone.py` for the same assumption), and a customer picking "3 PM"

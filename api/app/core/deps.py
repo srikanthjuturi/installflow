@@ -180,6 +180,45 @@ def require_feature(feature_key: str):
     return _guard
 
 
+def require_any_feature(*feature_keys: str):
+    """`require_feature`, but any ONE of several keys admits the caller.
+
+    For a read that several screens need for different reasons, where demanding
+    the key of one of them would lock the others out of their own work.
+
+    `GET /settings/rules` is the case it was written for. Reading the numbers
+    this company operates by is not the same permission as opening the
+    configuration screen: an Area Manager cannot see Rules configuration and
+    should not, but the bonus bands ARE those rules, and the escalation screen
+    where they are spent is theirs. Gated on `settings.view` alone, the one role
+    the requirement document puts escalations in front of could not read the
+    four amounts it is being asked to choose between.
+
+    Deliberately NOT a way to soften a guard in general. Every key listed must
+    be one whose holder genuinely needs this data — an OR is a wider grant than
+    an AND, and the temptation is to keep appending to it. The WRITE stays on a
+    single key.
+    """
+    if not feature_keys:  # a mistake at a route definition, caught at import
+        raise ValueError("require_any_feature needs at least one feature key")
+
+    async def _guard(
+        principal: CompanyPrincipal,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> Principal:
+        features = await effective_features(
+            db, role=principal.role, company_id=principal.company_id
+        )
+        if not any(key in features for key in feature_keys):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing feature: {' or '.join(feature_keys)}",
+            )
+        return principal
+
+    return _guard
+
+
 def require_min_rank(role_key: str):
     """Dependency factory: a seniority floor a per-company override cannot lift.
 

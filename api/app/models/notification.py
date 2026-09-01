@@ -72,6 +72,15 @@ NOTIFICATION_KINDS = (
     #: the invite simply rotted: its status only ever flipped when somebody
     #: happened to try a resend, so nothing told the manager who sent it.
     "invite_expired",
+    #: A technician held a slot, the window closed, and they never started.
+    #: Nobody cancelled and nobody arrived — the customer is the only person
+    #: who found out.
+    #:
+    #: Its own kind rather than an `escalation`, because it asks a different
+    #: question. An escalation asks "who can go?"; this asks "was this really a
+    #: no-show, and should they be charged for it?" — and only a person can
+    #: answer that, which is why nothing is charged until one does.
+    "no_show",
 )
 
 
@@ -113,7 +122,8 @@ class Notification(Base, IdMixin, AuditMixin):
     __table_args__ = (
         CheckConstraint(
             "kind IN ('escalation', 'ai', 'serial_mismatch', 'force_close', "
-            "'slot', 'technician_joined', 'job_started', 'invite_expired')",
+            "'slot', 'technician_joined', 'job_started', 'invite_expired', "
+            "'no_show')",
             name="kind",
         ),
         # The feed: one company's notifications, newest first.

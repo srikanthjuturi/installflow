@@ -237,21 +237,20 @@ class Settings(BaseSettings):
     # ── Scheduled sweeps ──────────────────────────────────────────────────
     #: How often the time-based notifications are swept for. Both Azure workers
     #: wake together; a Postgres advisory lock decides which one actually runs.
+    #:
+    #: The LAST timing value left in this file, and it stays because it is
+    #: infrastructure rather than policy: how often a worker wakes is a property
+    #: of the deployment, identical for every tenant, and it is the resolution
+    #: limit the rules below are subject to — nothing can fire more precisely
+    #: than one tick.
+    #:
+    #: Its five former neighbours — the escalation window, the re-notify grace,
+    #: slot silence, the force-close wait and the slot reminder — are now
+    #: `company_rules` columns. They were `Settings` while this product was
+    #: multi-tenant, which meant one escalation window for every company on the
+    #: server, editable only by changing a file and restarting. See
+    #: `app/core/rules.py`.
     SWEEP_INTERVAL_SECONDS: int = 300
-    #: A job still unassigned this close to its slot reaches the Area Service
-    #: Manager. Matches the cancellation band: under four hours is the point at
-    #: which a CANCELLED job escalates, so it is the point at which an empty
-    #: one should too.
-    ESCALATE_HOURS_BEFORE_SLOT: int = 4
-    #: A customer who has not chosen a time in this long is one somebody has to
-    #: telephone. The ticket cannot enter the pool until they do.
-    SLOT_SILENCE_HOURS: int = 6
-    #: A completed visit the customer never confirmed. Nothing is auto-closed —
-    #: a manager force-closes it with supporting documents.
-    FORCE_CLOSE_HOURS: int = 48
-    #: How long before a slot the technician is reminded. The sweep runs every
-    #: SWEEP_INTERVAL_SECONDS, so the reminder lands within one tick of this.
-    SLOT_REMINDER_MINUTES: int = 60
 
     # ─── Technician onboarding ─────────────────────────────────────────────
     # Where an invite link points. The custom scheme is the DEVELOPMENT default:

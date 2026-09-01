@@ -17,6 +17,7 @@ from app.core import company_code
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.gst import GST_DUPLICATE_COMPANY, assert_gst_not_a_vendor
+from app.core.rules import load_rules
 from app.core.schemas import EmailStatus, ListParams
 from app.core.security import generate_temporary_password, hash_password
 from app.db.repository import paginate
@@ -208,6 +209,12 @@ async def create_company(
     )
     session.add(company)
     await session.flush()  # populate company.id
+
+    # A tenant with no rules row is a tenant the sweeps cannot see — they INNER
+    # JOIN it to find each company's own escalation window. Written here, in the
+    # same transaction as the company, rather than left to the first person who
+    # opens Rules configuration.
+    await load_rules(session, company.id)
 
     # Stays None on the reuse branch: that admin already has a password, and
     # `users` is global, so minting a new one would sign them out of every other

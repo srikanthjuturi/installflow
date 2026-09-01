@@ -101,6 +101,40 @@ EVENT_KINDS = (
     #: question asked after a no-show, and a push receipt is not something this
     #: system keeps.
     "reminded",
+    #: The slot is close and nobody took the job, so it LEFT the pool and became
+    #: a manager's problem. Written by `tickets.sweeps.sweep_unaccepted`, in the
+    #: same transaction as the status it describes.
+    #:
+    #: A ticket can carry more than one: a job re-published with a bonus that
+    #: again goes unaccepted escalates a second time, and the trail has to show
+    #: both attempts or the bonus looks like it worked.
+    "escalated",
+    #: A manager funded a re-notification and put the job back in the pool.
+    #: `note` carries the amount, because "how much did we pay to fill this
+    #: slot" is the question the ledger will be asked and cannot answer from a
+    #: column that only holds the LATEST figure.
+    "bonus_added",
+    #: The technician who held this job gave it up, and it went back to the
+    #: pool with its slot untouched — the customer's time was never the
+    #: technician's to move. §7's other way into an escalation, and the one the
+    #: requirement document actually leads with.
+    #:
+    #: The name this kind was going to have was written down long before it had
+    #: a writer: *"Release belongs here too and will be added by the migration
+    #: that adds the cancel flow."* `note` carries the reason they gave, the
+    #: band, and what it cost them; the money itself is a `ledger_entries` row
+    #: written in the same transaction.
+    "released",
+    #: A manager confirmed that nobody turned up. The slot closed with the job
+    #: still `Assigned` and no proof against it — so the technician neither
+    #: went nor said they weren't going.
+    #:
+    #: Written only when a PERSON confirms it, never by the sweep that finds
+    #: it. The evidence is circumstantial by nature — a dead phone and a
+    #: deliberate no-show look identical from here — and ₹1,200 is too much to
+    #: take on an inference. `note` carries the manager's reason if they gave
+    #: one, and the ledger row is written in the same transaction.
+    "no_show",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -151,7 +185,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "kind IN ('created', 'slot_requested', 'slot_confirmed', "
             "'confirmation_sent', 'status_changed', 'assigned', 'started', "
             "'feedback_requested', 'completed', 'feedback_received', "
-            "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded')",
+            "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
+            "'escalated', 'bonus_added', 'released', 'no_show')",
             name="kind",
         ),
         CheckConstraint(

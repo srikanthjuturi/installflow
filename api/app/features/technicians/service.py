@@ -25,7 +25,7 @@ from sqlalchemy import case, delete, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.coverage import jobs_today_by_technician
+from app.core.coverage import jobs_held_by_technician
 from app.core.deps import Principal
 from app.core.schemas import ListParams
 from app.core.scope import (
@@ -331,9 +331,20 @@ async def _appointers(
 
 
 async def _technicians_out(
-    session: AsyncSession, triples: list[tuple[TechnicianProfile, Membership, User]]
+    session: AsyncSession,
+    triples: list[tuple[TechnicianProfile, Membership, User]],
+    *,
+    on_day: datetime | None = None,
 ) -> list[TechnicianOut]:
-    """Batch-hydrate profiles into responses — one query per collection, never N+1."""
+    """Batch-hydrate profiles into responses — one query per collection, never N+1.
+
+    `on_day` is which day `bwUsed` counts. Default today, which is what the
+    Technicians screen wants: "who is busy right now". A manager assigning an
+    escalated job wants the SLOT's day instead, and the difference is not
+    cosmetic — a shortlist for a Friday job that reports Monday's load offers a
+    technician the assignment call then refuses at cap, which reads as the
+    console and the API disagreeing about the same person.
+    """
     if not triples:
         return []
     ids = [p.id for p, _m, _u in triples]
@@ -364,8 +375,11 @@ async def _technicians_out(
     for profile, _m, _u in triples:
         by_company.setdefault(profile.company_id, []).append(profile.id)
     for company_id, tech_ids in by_company.items():
-        used_today |= await jobs_today_by_technician(
-            session, company_id=company_id, technician_ids=tech_ids
+        used_today |= await jobs_held_by_technician(
+            session,
+            company_id=company_id,
+            technician_ids=tech_ids,
+            on_day=on_day,
         )
 
     out: list[TechnicianOut] = []
@@ -615,6 +629,7 @@ async def list_technicians(
     pincode: str | None = None,
     district_id: uuid.UUID | None = None,
     onboarding_mode: str | None = None,
+    on_day: datetime | None = None,
 ) -> tuple[list, int]:
     """One page of the Technicians screen — registered technicians and open invites.
 
@@ -625,6 +640,12 @@ async def list_technicians(
     The union carries only (kind, id, created_at) — just enough to order and
     slice — and each side is hydrated afterwards, so neither query has to be
     shaped like the other.
+
+    `on_day` moves only `bwUsed`, and filters nothing. It is what the assignment
+    shortlist passes so the capacity column describes the day the job actually
+    happens; leaving it out means today. Deliberately not a filter: a technician
+    who is full that day should still be listed and shown as full, because "why
+    is nobody available" is a question the screen has to be able to answer.
     """
     own_id, own = await own_scope(
         session, user_id=principal.user_id, company_id=principal.company_id
@@ -774,7 +795,9 @@ async def list_technicians(
     )
 
     by_id: dict[uuid.UUID, object] = {}
-    for row in await _technicians_out(session, [tuple(t) for t in triples]):
+    for row in await _technicians_out(
+        session, [tuple(t) for t in triples], on_day=on_day
+    ):
         by_id[row.id] = row
     for row in await _invites_out(session, invites):
         by_id[row.id] = row
@@ -902,7 +925,7 @@ async def set_availability(
     await session.commit()
     await session.refresh(profile)
 
-    held = await jobs_today_by_technician(
+    held = await jobs_held_by_technician(
         session, company_id=profile.company_id, technician_ids=[profile.id]
     )
     return AvailabilityOut(
@@ -953,7 +976,7 @@ async def technician_session(
         onTimePct=profile.on_time_pct,
         acceptingWork=profile.accepting_work,
         jobsToday=(
-            await jobs_today_by_technician(
+            await jobs_held_by_technician(
                 session, company_id=profile.company_id, technician_ids=[profile.id]
             )
         )[profile.id],

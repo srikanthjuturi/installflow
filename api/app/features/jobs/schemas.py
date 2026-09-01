@@ -50,6 +50,14 @@ class JobOfferOut(AppModel):
     #: explicit null rather than omitted so the client renders "—" instead of a
     #: confident ₹0, which would be a claim about money nobody has made.
     payoutPaise: int | None = None
+    #: On top of the payout, when a manager funded a re-notification because
+    #: nobody took this job the first time round. Null on almost every job.
+    #:
+    #: Unlike `payoutPaise` this one is REAL — `tickets.bonus_paise` — and it is
+    #: the only reason a bonus works at all. An incentive the technician cannot
+    #: see on the card they are deciding from incentivises nobody, which is why
+    #: it travels on the masked offer rather than waiting for acceptance.
+    bonusPaise: int | None = None
 
 
 class JobOut(JobOfferOut):
@@ -167,6 +175,42 @@ class ProofSubmitRequest(AppModel):
     #: recorded either way; a mismatch is never a refusal.
     observedSerial: str | None = Field(default=None, max_length=64)
     observedSerialSource: Literal["scanned", "manual"] | None = None
+
+
+class PenaltyBandOut(AppModel):
+    """What giving this job up costs, and whether it lands on a manager.
+
+    Server-side, and that is the change rather than a detail: the app computed
+    this from `hoursToSlot` on the DEVICE, so a phone with a wrong clock could
+    talk itself into a cheaper band. Its own comment said as much.
+
+    Three fields because the approved screen renders exactly three things — the
+    band's name, the figure, and the escalation warning under four hours.
+    """
+
+    #: PAISE, and what will ACTUALLY be charged — not the band's face value.
+    #: A technician who has already met their monthly cap is charged the
+    #: remainder, which can be nothing.
+    amountPaise: int
+    #: The band's own words, e.g. `2–4h before slot`. Sent rather than derived
+    #: on the phone so the label and the amount can never describe different
+    #: rules.
+    label: str
+    #: Under this company's escalation window, so it goes straight to the Area
+    #: Service Manager. Drives the red banner on the cancel screen.
+    escalates: bool
+
+
+class CancelRequest(AppModel):
+    """Why they are giving the job up.
+
+    A free string rather than an enum of the app's five reasons. The list is a
+    presentation choice on one screen — the prototype's five radio buttons —
+    and pinning it here would mean a migration every time somebody edits a
+    label. The trail records what was said; nothing branches on it.
+    """
+
+    reason: str = Field(min_length=2, max_length=120)
 
 
 class ProofImageOut(AppModel):

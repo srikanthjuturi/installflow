@@ -145,6 +145,11 @@ class TicketOut(AppModel):
     technicianId: uuid.UUID | None
     technicianName: str | None
 
+    #: What a manager attached to a re-notification after nobody accepted, in
+    #: PAISE. Null means no bonus was ever funded — a different claim from ₹0,
+    #: and the console renders it as "—" for exactly that reason.
+    bonusPaise: int | None = None
+
     #: not_needed (ops set the slot) | pending | sent | failed.
     slotRequestStatus: str
     #: Meta's own words when it refused, so ops can act rather than guess.
@@ -191,6 +196,15 @@ class TimelineEventOut(AppModel):
     at: datetime.datetime
     kind: str
     title: str
+    #: staff | technician | customer | vendor | system.
+    #:
+    #: WHO caused it, as a value rather than as wording. `title` already says
+    #: it in English — "Technician accepted" against "Assigned by a manager" —
+    #: but a client that needs the distinction elsewhere on the page should not
+    #: have to match on a display string, which is presentation and free to
+    #: change. The console reads this to say how a technician came to hold the
+    #: job on the panel beside the trail.
+    actorKind: str
     #: Null for an event nobody caused — an SLA breach has no actor.
     by: str | None = None
     note: str | None = None
@@ -224,6 +238,58 @@ class TicketProofOut(AppModel):
     #: What the phone reverse-geocoded its position to. Compare it with the
     #: ticket's own pincode when a customer disputes that anybody attended.
     devicePincode: str | None
+
+
+class AssignRequest(AppModel):
+    """Hand an escalated job to a named technician.
+
+    One field, and deliberately no `companyId` or `pincode` beside it: the
+    ticket supplies both, and the technician is re-resolved against the
+    caller's own company before anything is written. An id in a body is an
+    assertion, not a fact.
+    """
+
+    technicianId: uuid.UUID
+
+
+class BonusRequest(AppModel):
+    """Fund a re-notification and put the job back in the pool.
+
+    PAISE, like every other money value that reaches this API (hard rule 9).
+    The console's four approved bands are ₹200/400/600/800, which arrive here
+    as 20000/40000/60000/80000 — but the amount is not constrained to them,
+    because the bands are a design decision about a picker and this is the
+    money boundary. `gt=0` is the real rule: zero is not a smaller incentive,
+    it is the absence of one, and the absence is spelled "do not call this".
+    """
+
+    amountPaise: int = Field(gt=0, le=10_000_00)
+
+
+class RenotifyOut(AppModel):
+    """What a funded re-notification actually did.
+
+    `notified` is a FIELD rather than a line in the envelope's `message`
+    because the console's transport returns `data` and drops `message` — a
+    count nobody can read is a count worth not computing.
+    """
+
+    ticket: TicketDetailOut
+    #: How many eligible technicians the push actually went to. Zero is a real
+    #: and important answer: it means the bonus cannot work, because nobody
+    #: covers this pincode for this subcategory with room on that day.
+    notified: int
+
+
+class NoShowRequest(AppModel):
+    """A manager confirming that nobody turned up.
+
+    The note is optional and worth asking for: "customer says he never called"
+    is the difference between a charge somebody can defend later and one they
+    cannot. Nothing branches on it — it goes onto the trail beside the amount.
+    """
+
+    note: str | None = Field(default=None, max_length=255)
 
 
 class SerialCorrectionRequest(AppModel):
