@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { LinkButton } from "@/components/shared/LinkButton";
-import { useNavOrigin } from "@/hooks/useNavOrigin";
+import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatDate } from "@/utils/datetime";
 import type { Ticket } from "@/types/ticket";
@@ -38,6 +38,7 @@ export function JobHistoryTable({
   total,
   seeAllTo,
   backLabel,
+  backState,
   isLoading = false,
   error,
   onRetry,
@@ -49,12 +50,15 @@ export function JobHistoryTable({
   seeAllTo?: string;
   /** What the ticket's own "Back" button says when opened from this table. */
   backLabel?: string;
+  /** How the page holding this table was itself reached, forwarded so the
+   *  trail survives the hop through a ticket or the full job list. */
+  backState?: NavOrigin;
   isLoading?: boolean;
   error?: unknown;
   onRetry?: () => void;
 }) {
   const navigate = useNavigate();
-  const origin = useNavOrigin(backLabel);
+  const origin = useNavOrigin(backLabel, backState);
   // Nothing to see all of: a link to an empty list is a dead end, and while the
   // peek is still loading we do not yet know which case this is.
   const showSeeAll = Boolean(seeAllTo) && !isLoading && Boolean(jobs?.length);
@@ -105,7 +109,13 @@ export function JobHistoryTable({
       <div className="mb-3.5 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">Recent job history</h2>
         {showSeeAll ? (
-          <LinkButton variant="ghost" size="sm" className="-mr-2" to={seeAllTo!}>
+          <LinkButton
+            variant="ghost"
+            size="sm"
+            className="-mr-2"
+            to={seeAllTo!}
+            state={origin}
+          >
             {/* The count when the server gave one — "See all 23 tickets" says
                 whether following the link is worth it; a bare "See all" does
                 not. */}

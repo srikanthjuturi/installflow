@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
+import type { NavOrigin } from "@/hooks/useNavOrigin";
 import { cn } from "@/lib/utils";
 
 /** The three approved bases for a manager closure (§10). */
@@ -55,12 +56,18 @@ interface ForceCloseFormProps {
   ticketId: string;
   onSubmit: (values: ForceCloseFormValues) => void;
   isSubmitting: boolean;
+  /**
+   * The trail to hand back to the ticket that Cancel returns to, so abandoning
+   * a force-close does not also lose the queue or the ledger behind it.
+   */
+  cancelState?: NavOrigin;
 }
 
 export function ForceCloseForm({
   ticketId,
   onSubmit,
   isSubmitting,
+  cancelState,
 }: ForceCloseFormProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const {
@@ -263,7 +270,13 @@ export function ForceCloseForm({
             written to the audit trail. The tint never carries that alone —
             the icon and the verb do too. */}
         <CardFooter className="justify-end gap-2.5 bg-danger-bg/40">
-          <LinkButton variant="outline" to={`/tickets/${ticketId}`}>
+          {/* The ticket, not wherever Back goes: cancelling abandons this form
+              and the ticket is what the reader was last looking at. */}
+          <LinkButton
+            variant="outline"
+            to={`/tickets/${ticketId}`}
+            state={cancelState}
+          >
             Cancel
           </LinkButton>
           <Button

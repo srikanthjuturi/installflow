@@ -18,7 +18,7 @@ import {
 } from "@/components/tickets/SidePanels";
 import { NoShowDialog } from "@/components/tickets/NoShowDialog";
 import { Timeline } from "@/components/tickets/Timeline";
-import { readNavOrigin } from "@/hooks/useNavOrigin";
+import { readNavOrigin, useNavOrigin } from "@/hooks/useNavOrigin";
 import { useRulesConfig } from "@/hooks/useSettings";
 import { useRecordNoShow, useTicket } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
@@ -59,6 +59,13 @@ export default function TicketDetailPage({
   const origin = readNavOrigin(location.state);
   const backHref = backTo ?? origin?.backTo ?? "/tickets";
   const backText = backLabel ?? origin?.backLabel ?? "Back to tickets";
+
+  /* What this page hands to Force close, Re-assign and Assign manually: come
+     back HERE, and here is how to get back out again. Without the nested
+     `backState`, a trip through an action screen quietly reset the trail, and
+     the second Back landed on the ticket board — a page the reader never
+     opened. */
+  const actionOrigin = useNavOrigin("Back to ticket", origin);
   const {
     data: ticket,
     isLoading,
@@ -128,6 +135,7 @@ export default function TicketDetailPage({
         size="sm"
         className="mb-3.5 -ml-2"
         to={backHref}
+        state={origin?.backState}
       >
         <ArrowLeft data-icon="inline-start" />
         {backText}
@@ -190,10 +198,14 @@ export default function TicketDetailPage({
                           variant="outline"
                           className="hover:border-danger hover:text-danger"
                           to={`/tickets/${ticket.id}/force-close`}
+                          state={actionOrigin}
                         >
                           Force close
                         </LinkButton>
-                        <LinkButton to={`/tickets/${ticket.id}/assign`}>
+                        <LinkButton
+                          to={`/tickets/${ticket.id}/assign`}
+                          state={actionOrigin}
+                        >
                           Re-assign
                         </LinkButton>
                       </div>
@@ -250,6 +262,7 @@ export default function TicketDetailPage({
                     variant="outline"
                     size="sm"
                     to={`/tickets/${ticket.id}/assign`}
+                    state={actionOrigin}
                   >
                     Assign manually
                   </LinkButton>

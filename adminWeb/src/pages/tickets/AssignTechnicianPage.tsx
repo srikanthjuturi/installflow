@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { originFor, readNavOrigin } from "@/hooks/useNavOrigin";
 import { useAssignTicket, useTicket } from "@/hooks/useTickets";
 import { useCandidateTechnicians } from "@/hooks/useTechnicians";
 import { isTerminalTicketStatus } from "@/types";
@@ -32,6 +33,18 @@ import type { Technician } from "@/types/technician";
 export default function AssignTechnicianPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  /* Two ways in, and they want different Backs: the escalation queue, where
+     this is the "assign manually" last resort, and the ticket itself, where it
+     is "Re-assign". The URL is the same either way, so whoever navigated says
+     where they came from. The ticket is the fallback — router state is gone
+     after a reload or on a pasted link, and it is the one destination that is
+     always right for a screen scoped to a ticket. */
+  const origin = readNavOrigin(location.state);
+  const ticketPath = `/tickets/${id}`;
+  const backHref = origin?.backTo ?? ticketPath;
+  const backText = origin?.backLabel ?? "Back to ticket";
 
   const { data: ticket, isLoading, isError, error, refetch } = useTicket(id);
   // Eligibility is a question about THIS ticket — its subcategory, its
@@ -57,7 +70,10 @@ export default function AssignTechnicianPage() {
       {
         onSuccess: () => {
           toast.add({ title: `${tech.name} assigned to ${ticket.code}` });
-          navigate(`/tickets/${ticket.id}`);
+          // The ticket is the right place to land — it shows what just
+          // happened — but it inherits the trail, so a manager who came from
+          // the queue is still one Back from the queue.
+          navigate(ticketPath, { state: originFor(ticketPath, origin) });
         },
         onSettled: () => setPending(null),
       }
@@ -68,7 +84,9 @@ export default function AssignTechnicianPage() {
   // settled ticket has nobody left to send, and the shortlist below would
   // otherwise offer a manager a dozen technicians for a job that is over.
   if (ticket && isTerminalTicketStatus(ticket.status)) {
-    return <Navigate to={`/tickets/${ticket.id}`} replace />;
+    return (
+      <Navigate to={ticketPath} replace state={originFor(ticketPath, origin)} />
+    );
   }
 
   return (
@@ -82,10 +100,11 @@ export default function AssignTechnicianPage() {
         variant="ghost"
         size="sm"
         className="mb-3.5 -ml-2"
-        to={`/tickets/${id}`}
+        to={backHref}
+        state={origin?.backState}
       >
         <ArrowLeft data-icon="inline-start" />
-        Back to ticket
+        {backText}
       </LinkButton>
 
       {isError ? (
