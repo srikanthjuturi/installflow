@@ -47,6 +47,18 @@ export const ticketKeys = {
     ["tickets", "byTechnicianList", technicianId, params] as const,
 };
 
+/**
+ * The escalation queue's own prefix. It lives here rather than in
+ * `useEscalations` because an escalation IS a ticket, and every mutation in
+ * this file has to invalidate it — a manual assignment empties a row out of
+ * that queue. Declaring it in the other file and importing it back would make
+ * the two modules import each other.
+ */
+export const escalationKeys = {
+  all: ["escalations"] as const,
+  list: () => ["escalations", "list"] as const,
+};
+
 export function useTickets(params: ListParams = {}) {
   return useQuery({
     queryKey: ticketKeys.list(params),
@@ -190,6 +202,11 @@ export function useForceCloseTicket() {
  * Invalidates the technician prefix too: who is assigned to what is half of
  * "who has bandwidth left", so leaving that list alone would show the manager
  * a shortlist that still counts the person they just picked as free.
+ *
+ * And the escalation prefix, because assigning is one of the two ways a ticket
+ * LEAVES that queue. Without it the row the manager just dealt with stays on
+ * the rail's badge and on the queue behind them for another ten seconds, which
+ * on a countdown screen reads as the action not having worked.
  */
 export function useAssignTicket() {
   const queryClient = useQueryClient();
@@ -198,6 +215,7 @@ export function useAssignTicket() {
     mutationFn: assignTechnician,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: escalationKeys.all });
       queryClient.invalidateQueries({ queryKey: technicianKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },

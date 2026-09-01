@@ -46,3 +46,24 @@ export const BACKSTOP_REFETCH_MS = 120_000;
  * quiet ten minutes ago.
  */
 export const PRESENCE_REFETCH_MS = 60_000;
+
+/**
+ * The escalation queue, which is the one screen that has to keep moving on its
+ * own.
+ *
+ * Every row prints how long is left before a slot the customer was promised,
+ * and that number is now computed in the browser from the ticket's `slotStart`
+ * — the mock sent a pre-formatted `"2h 40m"`, which was a server's opinion
+ * about the reader's clock and already wrong by the time it arrived.
+ *
+ * A value derived at paint time only changes when something repaints, so
+ * without this the countdowns freeze at whatever they said when the tab was
+ * opened. Refetching is the repaint: one cheap query a minute also brings any
+ * newly escalated row and drops any a colleague has just dealt with, so the
+ * clock and the contents stay honest through the same mechanism rather than
+ * two that could disagree.
+ *
+ * A minute, not a second. Nothing here is precise to the second, and a ticking
+ * clock on a queue of overdue promises is agitation rather than information.
+ */
+export const ESCALATION_REFETCH_MS = 60_000;

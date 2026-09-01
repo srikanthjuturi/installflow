@@ -2,17 +2,18 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { money } from "@/utils/money";
 
-/** The four approved bands. Every one is drawn from the penalty pool. */
-const BONUS_AMOUNTS = [200, 400, 600, 800] as const;
-
 interface BonusPickerProps {
-  amounts?: readonly number[];
+  /**
+   * The bands to offer, in RUPEES, ascending. Served from Rules configuration
+   * rather than defaulted here: a default would be a second declaration of the
+   * amounts, and the one that never gets edited is the one that goes stale.
+   * The API takes paise; the page converts at that boundary, not in here.
+   */
+  amounts: readonly number[];
   /** The band currently funded. */
   value: number;
   onChange: (amount: number) => void;
   disabled?: boolean;
-  /** Nothing above this is payable — the pool is the only source of funds. */
-  max?: number;
 }
 
 /**
@@ -22,13 +23,18 @@ interface BonusPickerProps {
  * prototype's chips are buttons: pressing one immediately re-prices the
  * confirm action in the footer. `aria-pressed` carries the selection, and the
  * chosen chip also shows a tick — the fill alone would signal state by colour.
+ *
+ * No band is disabled. It used to take a `max` and grey out anything above the
+ * "available pool", but §7's pool is funded by collected cancellation
+ * penalties and nothing collects them yet — so the ceiling was a number with
+ * no source, and greying out a real option against an invented limit is worse
+ * than offering all four. The cap comes back with the ledger.
  */
 export function BonusPicker({
-  amounts = BONUS_AMOUNTS,
+  amounts,
   value,
   onChange,
   disabled = false,
-  max,
 }: BonusPickerProps) {
   return (
     <div>
@@ -46,14 +52,13 @@ export function BonusPicker({
       >
         {amounts.map((amount) => {
           const selected = amount === value;
-          const unfunded = typeof max === "number" && amount > max;
 
           return (
             <button
               key={amount}
               type="button"
               aria-pressed={selected}
-              disabled={disabled || unfunded}
+              disabled={disabled}
               onClick={() => onChange(amount)}
               className={cn(
                 "inline-flex h-11 items-center gap-2 rounded-lg border px-5 text-sm font-semibold transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",

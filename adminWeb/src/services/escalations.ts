@@ -1,89 +1,71 @@
-import { mockResponse, notFound } from "./client";
-import type { Escalation } from "@/types";
-
 /**
- * A ticket lands here when it is still unassigned within 4h of its confirmed
- * slot (§7). The pool is funded by collected cancellation penalties and is
- * what pays the bonus that gets someone to pick it up.
- */
-const ESCALATIONS: Escalation[] = [
-  {
-    id: "RGT-INST-0008",
-    customer: "Rajesh Nair",
-    product: "Kelvinator 7kg Front Load",
-    city: "Pimpri",
-    pincode: "411018",
-    slot: "Aug 5, 09:00–11:00",
-    left: "2h 40m",
-    reason: "Technician cancelled · no re-accept",
-    pool: 1800,
-  },
-  {
-    id: "RGT-INST-0010",
-    customer: "Vikram Rane",
-    product: "Reliance GreenTech 253L Direct Cool",
-    city: "Wakad",
-    pincode: "411057",
-    slot: "Aug 5, 12:00–14:00",
-    left: "3h 15m",
-    reason: "Cancelled 2× · unassigned",
-    pool: 2400,
-  },
-  {
-    id: "RGT-INST-0013",
-    customer: "Shalini Rao",
-    product: "Sansui 1T Window AC",
-    city: "Katraj",
-    pincode: "411046",
-    slot: "Aug 5, 08:00–10:00",
-    left: "1h 05m",
-    reason: "No technician accepted",
-    pool: 1500,
-  },
-];
-
-/**
- * Deliberately NOT paginated, unlike the other list endpoints.
+ * Escalation transport — live FastAPI, not the mock client.
  *
- * The queue renders as cards with no paging affordance, and every row is a
- * customer promise counting down. Slicing it server-side would silently hide
- * escalations past the first page — on the one screen where a hidden row is a
- * missed slot. It stays a whole-queue read; if the queue ever grows past a
- * screenful, that is a design decision about the screen, not a page parameter.
+ * A ticket lands here when its confirmed slot came within
+ * `ESCALATE_HOURS_BEFORE_SLOT` (4h) and nobody had accepted it (§7). The sweep
+ * moves it to `Escalated`, which takes it OUT of the job pool: no technician
+ * can take it while a manager owns it, and there are exactly two ways back —
+ * fund a bonus and re-publish, or assign somebody outright.
+ *
+ * Both are territory-scoped and rank-gated on the server: Area Manager and
+ * above, each seeing only the pincodes they cover. Nothing here has to know
+ * that; it is simply what arrives.
+ *
+ * This module used to hold three hardcoded rows keyed by ticket CODE, which is
+ * why the queue could never be reached from a real ticket — a UUID was never
+ * one of them.
  */
-export function listEscalations(): Promise<Escalation[]> {
-  return mockResponse(() => ESCALATIONS);
+
+import type { Ticket, TicketDetail } from "@/types/ticket";
+import { apiGet, apiPost } from "./http";
+
+/**
+ * The whole queue, soonest slot first.
+ *
+ * Deliberately NOT paginated, and the API agrees — see its own note. The queue
+ * renders as cards with no paging affordance and every row is a customer
+ * holding a confirmed slot that is counting down, so a row on an invisible
+ * page two is a missed appointment. If it ever outgrows a screenful, that is a
+ * decision about the screen rather than a page parameter.
+ */
+export function listEscalations(): Promise<Ticket[]> {
+  return apiGet<Ticket[]>("/tickets/escalations");
 }
 
-export function getEscalation(id: string): Promise<Escalation> {
-  return mockResponse(() => {
-    const found = ESCALATIONS.find((e) => e.id === id);
-    if (!found) notFound("Escalation", id);
-    return found;
-  });
-}
-
-/** Re-notifies every eligible technician with a bonus drawn from the pool. */
-export function addBonusAndRenotify(input: {
+export interface AddBonusInput {
   id: string;
-  amount: number;
-}): Promise<{ notified: number; amount: number }> {
-  return mockResponse(() => {
-    const found = ESCALATIONS.find((e) => e.id === input.id);
-    if (!found) notFound("Escalation", input.id);
-    return { notified: 7, amount: input.amount };
-  });
+  /** PAISE. The picker's bands are rupees; the boundary converts. */
+  amountPaise: number;
 }
 
-/** Last resort when re-notification still finds nobody (§7). */
-export function assignTechnician(input: {
-  id: string;
-  techName: string;
-}): Promise<{ id: string; techName: string }> {
-  return mockResponse(() => {
-    const index = ESCALATIONS.findIndex((e) => e.id === input.id);
-    if (index === -1) notFound("Escalation", input.id);
-    ESCALATIONS.splice(index, 1);
-    return input;
-  });
+export interface RenotifyResult {
+  ticket: TicketDetail;
+  /**
+   * How many technicians the push actually reached, counted with the same
+   * predicate the push used — not an estimate.
+   *
+   * **Zero is a real and important answer.** It means no bonus can work here,
+   * because nobody covers this pincode for this product with room on that day,
+   * and the manager should go straight to assigning or to coverage.
+   */
+  notified: number;
+}
+
+/**
+ * Fund an incentive and put the job back in the pool.
+ *
+ * The confirmed slot does not move — only who is being asked to take it, and
+ * for how much. The amount REPLACES any previous bonus rather than adding to
+ * it: the button reads "Add ₹400 bonus & re-notify", and a second press
+ * meaning ₹800 would be a manager spending money they did not think they were.
+ *
+ * **409 `NOT_ESCALATED`** means the job is no longer sitting unaccepted, which
+ * almost always means somebody took it while the manager was choosing a band.
+ * That is the outcome everybody wanted, and the toaster says so.
+ */
+export function addBonusAndRenotify({
+  id,
+  amountPaise,
+}: AddBonusInput): Promise<RenotifyResult> {
+  return apiPost<RenotifyResult>(`/tickets/${id}/bonus`, { amountPaise });
 }

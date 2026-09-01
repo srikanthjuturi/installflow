@@ -22,8 +22,13 @@ export const settingsKeys = {
 };
 
 /**
- * The rules engine. Slow-moving reference data — nothing here changes without
- * someone pressing Save — so it stays fresh far longer than a ticket list.
+ * This company's rules — `GET /settings/rules`, a real row in `company_rules`.
+ *
+ * Slow-moving reference data: nothing changes without somebody pressing Save,
+ * so it stays fresh far longer than a ticket list. Read by more than the screen
+ * that edits it — the AI queue labels rows against the threshold and the bonus
+ * picker draws its chips from the bands — which is why the endpoint admits
+ * `jobs.assign` as well as `settings.view`.
  */
 export function useRulesConfig() {
   return useQuery({
@@ -34,19 +39,27 @@ export function useRulesConfig() {
 }
 
 /**
- * The save now writes to the served config, so it invalidates — the screen
- * must re-read what it saved rather than trusting its own draft. Also
- * invalidates the AI queue, which labels rows against this threshold.
+ * Saves to the database, for this company, permanently.
+ *
+ * Invalidates rather than writing the response into the cache: the server
+ * answers with what is now STORED, and re-reading is what makes a value it
+ * adjusted or refused visible instead of assumed.
+ *
+ * It used to invalidate `["ai"]` as well, so the AI queue would relabel its
+ * rows against a new threshold. That line was doing nothing — TanStack matches
+ * key SEGMENTS and the queue's keys begin `"ai-review"` — and correcting the
+ * key would only have replaced a no-op with a pointless refetch: the queue's
+ * rows do not carry the threshold, `useAiThreshold` reads it from the query
+ * below, and invalidating that is what actually repaints the labels. Removed
+ * rather than fixed.
  */
 export function useSaveRulesConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     meta: { errorTitle: "Couldn't save the rules" },
     mutationFn: saveRulesConfig,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: settingsKeys.rules() });
-      queryClient.invalidateQueries({ queryKey: ["ai"] });
-    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: settingsKeys.rules() }),
   });
 }
 

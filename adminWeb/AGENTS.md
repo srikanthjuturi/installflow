@@ -801,16 +801,26 @@ app is broken:
 
 Blocking or near-blocking. Do not silently pick a side.
 
-1. **Penalty bands contradict the mobile app.** This prototype: **₹300** (>4h) · **₹500** (2–4h) ·
+1. **Penalty bands contradict the mobile app.** This console: **₹300** (>4h) · **₹500** (2–4h) ·
    **₹800** (<2h) · **₹1,200** (no-show), cap ₹5,000/technician/month. `mobileapp/AGENTS.md` and
    the technician app: **₹80** (>8h) · **₹150** (4–8h) · **₹250** (<4h). Different amounts *and*
    different band boundaries — the technician's cancel screen and the ASM's ledger would show
    different money for the same event. **Needs a ruling before either side binds to an API.**
-2. **Bandwidth model contradicts itself.** Rules Config says "Weighted by job type";
-   `mobileapp/AGENTS.md` said a simple 1–12/day cap; the requirement doc leaves it open — and this
-   prototype's own technician records use plain counts (`bwUsed 3 / bwTotal 5`).
-   **Partly settled:** it is a plain count, it is optional (null = no limit, rendered "No limit"),
-   and it has no ceiling. Whether it should ever be WEIGHTED by job type is still open.
+   Still cheap: nothing collects a penalty. It stops being cheap the day the ledger lands.
+   The console's four are now `company_rules.cancel_penalties_paise`, a JSONB array **precisely
+   so the ruling changes a value rather than a set of columns** — three bands cutting at 8h/4h is
+   a different `CANCEL_PENALTY_BANDS` tuple in `api/app/core/rules.py` and an arity CHECK, not a
+   migration that rewrites reads.
+2. **Weighted bandwidth: closed for now, and the control is gone.** Rules Config used to offer
+   "Jobs per day" against "Weighted by job type". Nothing in the product ever read the answer —
+   the API stores a plain `daily_job_cap`, the field app models a plain count, `BandwidthBar`
+   says "never weighted" — and the field was seeded to `weighted`, so the screen asserted
+   something no other surface did. It was also a **read-only display row** in the approved
+   prototype, promoted to a radio by mistake.
+   **Settled:** a plain count, optional (null = no limit, rendered "No limit"), no ceiling.
+   **Still open:** whether capacity should ever be weighted by job type. If it should, the shape
+   is a weight per service type plus a unit cap — a small table — never a two-way switch, which
+   is why nothing was kept as a foundation. There is deliberately **no `bandwidth_model` column**.
 3. **RBAC scoping is undesigned.** Territory defines Region → RSH → ASM → pincodes, but no screen
    shows what an NH sees that an ASM doesn't.
 4. **Dark palette is unapproved** (see Theme).
@@ -819,6 +829,43 @@ Blocking or near-blocking. Do not silently pick a side.
 
 Wait before manager closure **48h** · AI confidence threshold **70%** (slider 50–95) ·
 slot-confirm timeout **6h → auto-escalate**. Treat these as decided; the doc's §11 is stale.
+
+They are also no longer *answers* so much as **defaults**: every one of them is a `company_rules`
+column a company can move on Configuration → Rules Config, seeded to exactly these figures.
+
+### Where a rule lives, and the test for adding one
+
+`GET`/`PUT /settings/rules` over `company_rules` — one row per company, `settings.view` to read
+(or `jobs.assign`, because the bonus bands are spent on the escalation screen) and
+**`settings.edit` to write**. Rupees on the wire, integer paise in the table.
+
+Two settled readings that the word "monthly" and the number `0` do not carry on their own, both
+now stated on the screen and in `api/app/core/rules.py`:
+
+- **The penalty cap is a CALENDAR month in IST**, not a rolling 30 days. The cap exists to stop a
+  bad month turning a technician's earnings negative, and "a bad month" is bounded by the period
+  they are settled over — a rolling window would cap on one clock and pay on another, letting one
+  settlement carry more than the cap. IST matches how the daily job cap already reckons a day.
+  The month boundary is gameable in theory and deliberately not priced for: that is ten
+  cancellations, which `technician.status` answers, not the ledger.
+- **A cap of `0` means NO cap**, not "charge nothing" — a technician who should never be charged
+  is one whose *bands* are zero. It is why the "cap below the largest band" check exempts zero.
+
+**No-show is not a late cancellation**, which is why it is the priciest band rather than merely
+the last one: the other three had somebody able to act, this one was discovered by the customer.
+**Nothing detects one yet** — it is a label and a price until the ledger lands. `ticket_events`
+already holds what that rule will read: a `reminded` with no `started` after it.
+
+A number belongs there when a company could sensibly answer it differently. It does **not** when
+it is vocabulary the system is built from. Two removals make the line concrete:
+
+- **SLA windows** were a read-only card here, naming two service levels ("24 hours from slot
+  confirmation") where the API has four (`SERVICE_LEVEL_HOURS = (12, 24, 36, 48)`) and measures
+  from ticket CREATION — the reading `api/app/core/tickets.py` adopted by name against this
+  screen. A settings page restating a settled rule backwards is worse than one that omits it.
+  The live answer is the ticket list's SLA column and badge.
+- **`SWEEP_INTERVAL_SECONDS`** stays in `Settings`. How often a worker wakes is infrastructure,
+  and it is the resolution limit every timing rule here is subject to.
 
 ## Domain facts that are easy to get wrong
 

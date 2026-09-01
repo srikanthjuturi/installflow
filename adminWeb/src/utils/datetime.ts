@@ -118,6 +118,38 @@ export function formatSlot(
 }
 
 /**
+ * `2h 40m` until an instant — the escalation queue's countdown.
+ *
+ * The forward-facing twin of `lib/relativeTime`, and separate from it because
+ * the two answer opposite questions: that one narrates the past ("4m ago") and
+ * coarsens as it recedes, this one counts down to a promise and must stay
+ * precise right up to it. Merging them would give one function two tenses.
+ *
+ * Past the slot it reads **Slot passed** rather than a negative figure. An
+ * escalated job whose window has closed is still in the queue — nobody was
+ * sent, and the customer was stood up — so hiding it would be worse; but
+ * counting upwards from a missed appointment states the failure as though it
+ * were still a deadline.
+ */
+export function timeUntil(
+  iso: string | null | undefined,
+  now: Date = new Date()
+): string {
+  if (!iso) return EMPTY;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return EMPTY;
+
+  const minutes = Math.floor((then.getTime() - now.getTime()) / 60_000);
+  if (minutes < 0) return "Slot passed";
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  // `40m`, not `4m`, past the first hour: `2h 4m` and `2h 40m` are eight
+  // minutes apart at a glance in a column of monospaced figures.
+  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/**
  * `datetime-local` wants `YYYY-MM-DDTHH:mm` in LOCAL time, not the `Z`-suffixed
  * instant an API returns. Used to seed a slot field when editing.
  */

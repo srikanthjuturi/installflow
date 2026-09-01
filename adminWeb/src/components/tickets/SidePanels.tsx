@@ -170,6 +170,22 @@ export function TechnicianPanel({
 }) {
   // A real null now, not the "—" sentinel the mock used to mean "nobody".
   const assigned = ticket.technicianName !== null;
+  // How they came to hold it. This said "First-accept" unconditionally, on the
+  // reasoning that assignment is first-accept-wins and never allocated by a
+  // manager — which stopped being true when the escalation queue landed: a job
+  // nobody accepted is handed over by hand, and the panel was calling that a
+  // choice the technician made.
+  //
+  // Read off the trail already on this page rather than asking the API for a
+  // field of its own: the `assigned` event records who caused it, so there is
+  // no extra request and no second answer that could disagree with the
+  // timeline three inches away. `actorKind`, not the title — a title is
+  // presentation and free to be reworded.
+  const how = ticket.timeline.some(
+    (e) => e.kind === "assigned" && e.actorKind === "staff"
+  )
+    ? "Assigned by a manager"
+    : "First-accept";
 
   return (
     <Card>
@@ -184,9 +200,8 @@ export function TechnicianPanel({
               <div className="truncate text-sm font-semibold">
                 {ticket.technicianName ?? EMPTY}
               </div>
-              {/* Assignment is first-accept-wins — never allocated by a manager. */}
               <div className="truncate text-xs text-ink-3">
-                First-accept · {ticket.subcategoryName}
+                {how} · {ticket.subcategoryName}
               </div>
             </div>
             <span className="rounded-full bg-ok-bg px-2.25 py-0.75 text-xs font-semibold text-ok">

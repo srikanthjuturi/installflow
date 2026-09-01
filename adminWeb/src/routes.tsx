@@ -33,10 +33,7 @@ const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const AssignTechnicianPage = lazy(
   () => import("@/pages/tickets/AssignTechnicianPage")
 );
-const BonusSetupPage = lazy(() => import("@/pages/escalations/BonusSetupPage"));
-const ManualAssignPage = lazy(
-  () => import("@/pages/escalations/ManualAssignPage")
-);
+const BonusSetupPage = lazy(() => import("@/pages/tickets/BonusSetupPage"));
 const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
 const VendorsPage = lazy(() => import("@/pages/masters/VendorsPage"));
 const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
@@ -72,6 +69,25 @@ const VendorNewTicketPage = lazy(
   () => import("@/pages/vendor/VendorNewTicketPage")
 );
 const VendorUsersPage = lazy(() => import("@/pages/vendor/VendorUsersPage"));
+
+/**
+ * The escalation queue's two action screens moved under `/tickets/:id/…` when
+ * it bound to the API, because their `:id` changed meaning: the mock keyed its
+ * rows by ticket CODE (`RGT-INST-0008`) and these now take the ticket's UUID.
+ *
+ * A redirect rather than a deletion, and hard rule 0a is why: removing a route
+ * does not close a path, it opens one — `RequireFeature` passes anything the
+ * nav table does not name, so an unmatched `/escalations/:id/bonus` would fall
+ * through to the 404 page having been waved past the feature check. It also
+ * keeps a bookmark or a pasted link working, and there is no shape of old id
+ * that is dangerous here: an unknown UUID reads 404 from the API, and a stale
+ * ticket code reads the same.
+ */
+function RedirectToTicket({ to }: { to: "assign" | "bonus" }) {
+  const { pathname } = useLocation();
+  const id = pathname.split("/")[2] ?? "";
+  return <Navigate to={`/tickets/${id}/${to}`} replace />;
+}
 
 function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
@@ -239,15 +255,24 @@ export const routes: RouteObject[] = [
               },
               { path: "tickets/:id", element: <TicketDetailPage /> },
               { path: "tickets/:id/force-close", element: <ForceClosePage /> },
-              // Ticket-scoped, unlike `escalations/:id/assign` below: that one
-              // is still the mock queue's, and its ids are ticket CODES.
+              // Both escalation actions are ticket-scoped: an escalation IS a
+              // ticket, and there is now one assignment screen rather than a
+              // live one here and the mock queue's copy under /escalations.
               {
                 path: "tickets/:id/assign",
                 element: <AssignTechnicianPage />,
               },
+              { path: "tickets/:id/bonus", element: <BonusSetupPage /> },
               { path: "escalations", element: <EscalationQueuePage /> },
-              { path: "escalations/:id/bonus", element: <BonusSetupPage /> },
-              { path: "escalations/:id/assign", element: <ManualAssignPage /> },
+              // Where those two used to live. See `RedirectToTicket`.
+              {
+                path: "escalations/:id/bonus",
+                element: <RedirectToTicket to="bonus" />,
+              },
+              {
+                path: "escalations/:id/assign",
+                element: <RedirectToTicket to="assign" />,
+              },
               { path: "ai-review", element: <AiQueuePage /> },
               { path: "ai-review/:id", element: <AiReviewDetailPage /> },
               { path: "technicians", element: <TechnicianListPage /> },

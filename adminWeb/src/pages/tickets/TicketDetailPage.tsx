@@ -197,11 +197,9 @@ export default function TicketDetailPage({
               // `RequirePortalFeature` denies — a control that could only ever
               // bounce the vendor who pressed it.
               //
-              // It points at `/tickets/:id/assign`, not the escalation
-              // queue's `/escalations/:id/assign`: that screen looks its
-              // subject up in the escalation MOCK, whose three rows are keyed
-              // by ticket CODE, so a real ticket's UUID could only ever come
-              // back as "Escalation <uuid> not found".
+              // `/tickets/:id/assign` is now the only assignment screen; the
+              // escalation queue's old copy at `/escalations/:id/assign`
+              // redirects here.
               //
               // It disappears on a settled ticket for the same reason the pair
               // in the header do: it is the same re-assignment, reached from

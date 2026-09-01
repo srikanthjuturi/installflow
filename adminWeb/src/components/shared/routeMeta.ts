@@ -23,9 +23,12 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Region → Regional Head → Area Manager → pincode",
   },
   "/categories": { title: "Categories & models", subtitle: "Product master" },
+  // The prototype's subtitle read "SLA · penalty · AI · wait period". SLA
+  // windows were a read-only card that has been removed, and the bonus bands
+  // arrived from `BonusPicker` when the rules became a real per-company table.
   "/settings/rules": {
     title: "Rules configuration",
-    subtitle: "SLA · penalty · AI · wait period",
+    subtitle: "Penalty · bonus · AI · timing",
   },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
   /* Net-new — the prototype has no account or notifications screen. */
@@ -50,17 +53,16 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
     /^\/tickets\/[^/]+\/assign$/,
     { title: "Manual assignment", subtitle: "Assign a technician" },
   ],
+  // Both escalation actions are ticket-scoped now. `/escalations/:id/bonus`
+  // and `/escalations/:id/assign` had entries here and no longer need them:
+  // they are redirects, so the topbar reads the meta of wherever they land.
   [
-    /^\/tickets\/[^/]+$/,
-    { title: "Ticket detail", subtitle: "Timeline & audit trail" },
-  ],
-  [
-    /^\/escalations\/[^/]+\/bonus$/,
+    /^\/tickets\/[^/]+\/bonus$/,
     { title: "Bonus setup", subtitle: "Re-notification incentive" },
   ],
   [
-    /^\/escalations\/[^/]+\/assign$/,
-    { title: "Manual assignment", subtitle: "Assign a technician" },
+    /^\/tickets\/[^/]+$/,
+    { title: "Ticket detail", subtitle: "Timeline & audit trail" },
   ],
   [
     /^\/ai-review\/[^/]+$/,

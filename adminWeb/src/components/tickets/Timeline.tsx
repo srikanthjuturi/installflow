@@ -3,6 +3,7 @@ import {
   BellRing,
   Check,
   CheckCheck,
+  Coins,
   Lock,
   MessageSquare,
   PencilLine,
@@ -11,7 +12,9 @@ import {
   RotateCcw,
   RotateCw,
   Star,
+  Undo2,
   UserCheck,
+  UserX,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -53,6 +56,20 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   // Routine and system-sent — the quietest tint here, because a timeline where
   // everything is coloured is one where nothing stands out.
   reminded: { icon: BellRing, tint: "bg-surface-3 text-ink-2" },
+  // Nobody accepted and the slot was close, so the job left the pool. Red with
+  // `reopened` and `serial_mismatch`: a customer is holding a confirmed time
+  // that the system could not fill on its own.
+  escalated: { icon: AlertTriangle, tint: "bg-danger-bg text-danger" },
+  // Money spent to fill it. `ok`-toned rather than red — this is the recovery,
+  // and the row above it is already carrying the alarm.
+  bonus_added: { icon: Coins, tint: "bg-ok-bg text-ok" },
+  // The technician gave the job back. Amber, not red: it costs them and it
+  // costs the customer a wait, but they SAID so, and the whole point of the
+  // penalty bands is that saying so is worth something.
+  released: { icon: Undo2, tint: "bg-warn-bg text-warn" },
+  // Nobody said anything and nobody came. The only row here that describes a
+  // customer who has already been stood up.
+  no_show: { icon: UserX, tint: "bg-danger-bg text-danger" },
 };
 
 /**

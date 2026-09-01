@@ -8,43 +8,25 @@ import {
   type Column,
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
-import { money } from "@/utils/money";
+import { formatDateTime } from "@/utils/datetime";
+import { moneyPaise } from "@/utils/money";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LedgerEntry } from "@/types";
 
 /**
- * Static class strings, one per entry type — an interpolated `bg-${type}-bg`
- * would never be generated.
+ * Static class strings, one per kind — an interpolated `bg-${kind}-bg` would
+ * never be generated.
  */
-const TYPE_CHIP: Record<LedgerEntry["type"], string> = {
-  Penalty: "bg-danger-bg text-danger",
-  Bonus: "bg-ok-bg text-ok",
+const KIND_CHIP: Record<LedgerEntry["kind"], string> = {
+  penalty: "bg-danger-bg text-danger",
+  bonus: "bg-ok-bg text-ok",
 };
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-/**
- * "Aug 4" → a comparable number. Sorting the label itself would file "Aug 2"
- * ahead of "Jul 30", because the collator only sees the letters.
- */
-function dateKey(date: string): number | null {
-  const [month, day] = date.trim().split(/\s+/);
-  const index = MONTHS.indexOf(month);
-  return index === -1 ? null : index * 100 + Number(day ?? 0);
-}
+/** The wire value is lower case; the column prints the approved label. */
+const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
+  penalty: "Penalty",
+  bonus: "Bonus",
+};
 
 const ALL = "All";
 
@@ -69,7 +51,7 @@ export function LedgerTable({
   error,
   onRetry,
 }: LedgerTableProps) {
-  const type = params.filters?.type ?? ALL;
+  const kind = params.filters?.kind ?? ALL;
 
   // The rows in hand — which, now the ledger is paged server-side, is the page
   // the reader is looking at.
@@ -77,43 +59,49 @@ export function LedgerTable({
 
   const columns: Column<LedgerEntry>[] = [
     {
-      id: "id",
-      header: "Entry",
-      cell: (l) => <span className="font-mono text-xs">{l.id}</span>,
-    },
-    {
       id: "date",
       header: "Date",
-      sortValue: (l) => dateKey(l.date),
-      cell: (l) => l.date,
+      cell: (l) => formatDateTime(l.at),
     },
     {
-      id: "type",
+      id: "kind",
       header: "Type",
-      sortValue: (l) => l.type,
       cell: (l) => (
         // The word carries the debit/credit distinction, so the amount's
         // colour is never the only signal.
         <span
           className={cn(
             "inline-block rounded-full px-2.25 py-0.75 text-[11px] font-semibold",
-            TYPE_CHIP[l.type]
+            KIND_CHIP[l.kind]
           )}
         >
-          {l.type}
+          {KIND_LABEL[l.kind]}
         </span>
       ),
     },
-    { id: "tech", header: "Technician", cell: (l) => l.tech },
+    {
+      id: "tech",
+      header: "Technician",
+      cell: (l) => (
+        <Link
+          to={`/technicians/${l.technicianId}`}
+          className="font-semibold text-brand-400 hover:underline"
+        >
+          {l.technicianName}
+        </Link>
+      ),
+    },
     {
       id: "ticket",
       header: "Ticket",
       cell: (l) => (
+        // The CODE is what a person quotes; the UUID beside it is what the
+        // route needs. The mock had only one value and used it for both.
         <Link
-          to={`/tickets/${l.ticket}`}
+          to={`/tickets/${l.ticketId}`}
           className="font-mono text-xs font-semibold text-brand-400 hover:underline"
         >
-          {l.ticket}
+          {l.ticketCode}
         </Link>
       ),
     },
@@ -126,13 +114,14 @@ export function LedgerTable({
       id: "amt",
       header: "Amount",
       align: "right",
-      // The raw signed number, never the money() string — otherwise −₹800
-      // would sort as text and land above ₹400.
-      sortValue: (l) => l.amt,
       cellClassName: "font-mono font-semibold",
+      // The sign is applied HERE and nowhere else. The API stores a magnitude
+      // because a penalty is money IN to the pool and money OUT of the
+      // technician, and this column is the technician's view — so a penalty
+      // reads as a debit. See the note on `LedgerEntry`.
       cell: (l) => (
-        <span className={l.amt < 0 ? "text-danger" : "text-ok"}>
-          {money(l.amt)}
+        <span className={l.kind === "penalty" ? "text-danger" : "text-ok"}>
+          {moneyPaise(l.kind === "penalty" ? -l.amountPaise : l.amountPaise)}
         </span>
       ),
     },
@@ -143,16 +132,16 @@ export function LedgerTable({
   // called while the table is in server mode.
   const filters: TypedFilterDef<LedgerEntry>[] = [
     {
-      id: "type",
+      id: "kind",
       label: "Type",
       variant: "select",
       options: [
-        { value: "Penalty", label: "Penalty" },
-        { value: "Bonus", label: "Bonus" },
+        { value: "penalty", label: "Penalty" },
+        { value: "bonus", label: "Bonus" },
       ],
-      value: type,
+      value: kind,
       // A change, not a whole query — the page merges it in.
-      onChange: (v) => onParams({ page: 1, filters: { type: v } }),
+      onChange: (v) => onParams({ page: 1, filters: { kind: v } }),
       allValue: ALL,
       match: () => true,
     },
@@ -173,7 +162,6 @@ export function LedgerTable({
         onRetry={onRetry}
         filters={filters}
         server={{ meta, params, onParams }}
-        defaultSort={{ columnId: "date", dir: "desc" }}
         minWidth="51.25rem"
         toolbarActions={
           /* Exported in the browser — the rows are already here, so this
@@ -191,13 +179,14 @@ export function LedgerTable({
                 toCsv(
                   columns.map((c) => c.header),
                   visible.map((e) => [
-                    e.id,
-                    e.date,
-                    e.type,
-                    e.tech,
-                    e.ticket,
+                    e.at,
+                    KIND_LABEL[e.kind],
+                    e.technicianName,
+                    e.ticketCode,
                     e.reason,
-                    e.amt,
+                    // Signed RUPEES, not the moneyPaise() string: a
+                    // spreadsheet has to be able to sum the column.
+                    (e.kind === "penalty" ? -e.amountPaise : e.amountPaise) / 100,
                   ])
                 )
               )

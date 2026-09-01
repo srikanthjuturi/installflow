@@ -1,17 +1,16 @@
 /**
- * Technicians — live FastAPI, except the escalation shortlist.
+ * Technicians — live FastAPI, all of it.
  *
- * `listEligibleTechnicians` is the one thing still mocked here: it answers
- * "who could take this escalated ticket", which needs open assignments and free
- * bandwidth, and neither exists until the jobs slice does. It keeps the old
- * `EligibleTechnician` shape so the escalation screens are untouched.
+ * `listEligibleTechnicians` used to sit here as the one mock: it answered "who
+ * could take this escalated ticket" from a hardcoded roster, because "has
+ * bandwidth left" needed a jobs table that did not exist. It does now — the
+ * daily cap counts by slot date — so the question is answered by
+ * `listCandidateTechnicians` below, against the same predicate the assignment
+ * call enforces. Two shortlists for one question was one too many.
  */
 
-import { mockResponse } from "./client";
 import { apiDelete, apiGetPage, apiGet, apiPost, apiPut } from "./http";
-import { TECHNICIANS } from "./mocks/technicians";
 import type { ListParams, Page } from "@/types/api";
-import type { EligibleTechnician } from "@/types";
 import type {
   CreateTechnicianInput,
   DistrictBreakdown,
@@ -92,30 +91,6 @@ export function cancelInvite(id: string): Promise<null> {
 
 /* ------------------------------------------------------- escalation only */
 
-/**
- * Eligible for a given escalated ticket: active, with bandwidth left, and
- * certified for the category.
- *
- * Deliberately NOT paginated. This is the shortlist for one escalated ticket,
- * read inside a card while a manager decides who to hand it to — a page 2 the
- * reader has to go and find would hide candidates at the moment of the choice.
- *
- * Still mock-backed: "has bandwidth left" needs a jobs table that does not
- * exist yet, so answering it against the API would mean inventing the number.
- */
-export function listEligibleTechnicians(
-  category?: string
-): Promise<EligibleTechnician[]> {
-  return mockResponse(() =>
-    TECHNICIANS.filter(
-      (t) =>
-        t.status === "Active" &&
-        t.bwUsed < t.bwTotal &&
-        (!category || t.cats.includes(category))
-    )
-  );
-}
-
 /* ------------------------------------------------- one ticket's shortlist */
 
 /**
@@ -127,10 +102,18 @@ export function listEligibleTechnicians(
  * certified for the ticket's subcategory, covering its pincode, and inside the
  * reader's own territory, because the list is scoped there already.
  *
- * It deliberately does NOT answer "has bandwidth left today". That counts open
- * assignments, and there are none to count until the jobs slice exists — which
- * is why the screen shows the daily CAP, which is real, and claims nothing
- * about today's load, which is not.
+ * `slotStart` moves what `bwUsed` counts to the day the WORK happens, which is
+ * the only day the assignment call cares about — the cap is enforced by slot
+ * date. Without it a shortlist for a Friday job reports each technician's
+ * MONDAY load, the manager picks somebody who looks free, and the assign call
+ * refuses them at cap: the console and the API disagreeing about one person in
+ * the space of a click. Omitted, the server counts today, which is what the
+ * Technicians screen wants.
+ *
+ * It still does not FILTER on capacity. A technician who is full that day
+ * belongs on the list showing as full — "why is nobody available" is a
+ * question the screen has to be able to answer, and an empty table answers it
+ * with silence.
  *
  * One page of 100, the API's ceiling, and unpaginated on screen: this is the
  * shortlist for one subcategory in one pincode, read while a manager decides.
@@ -139,6 +122,7 @@ export function listEligibleTechnicians(
 export function listCandidateTechnicians(input: {
   subcategoryId: string;
   pincode: string;
+  slotStart?: string | null;
 }): Promise<Technician[]> {
   return apiGetPage<TechnicianRow>("/technicians", {
     limit: 100,
@@ -147,6 +131,7 @@ export function listCandidateTechnicians(input: {
       status: "active",
       subcategoryId: input.subcategoryId,
       pincode: input.pincode,
+      ...(input.slotStart ? { onDay: input.slotStart } : {}),
     },
   }).then(({ rows }) => rows.filter((row): row is Technician => row.registered));
 }

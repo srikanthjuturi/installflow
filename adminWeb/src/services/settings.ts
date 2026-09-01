@@ -6,31 +6,20 @@ import {
   notFound,
   sortRows,
 } from "./client";
-import {
-  AI_CONFIDENCE_MAX,
-  AI_CONFIDENCE_MIN,
-  AI_CONFIDENCE_THRESHOLD,
-  CUSTOMER_WAIT_HOURS,
-  ESCALATION_TRIGGER_HOURS,
-} from "./rulesDefaults";
+import { apiGet, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type { Role, User } from "@/types";
 
 /**
  * Settings: the rules engine and console access.
  *
- * Both screens are read-mostly. Every value below is lifted verbatim from the
- * approved prototype's `RULES` / `USERS` objects — see the two ⚠ notes, which
- * are open decisions, not typos to be tidied away.
+ * The rules half is REAL — `GET`/`PUT /settings/rules`, one row per company in
+ * `company_rules`. It was a module-level object that died with the browser tab
+ * until the table existed, which is why this file mixes a live slice with a
+ * mock one: console users are still the prototype's `USERS`.
  */
 
 /* --------------------------------------------------------------- rules types */
-
-/** A named window or trigger. `label` is the rule, `value` is its setting. */
-export interface SlaRule {
-  label: string;
-  value: string;
-}
 
 /**
  * A cancellation penalty band. Amounts are numbers, not the prototype's
@@ -47,136 +36,144 @@ export interface PenaltyBand {
 export interface AiThresholdRule {
   /** Percent. Below this, a verification is flagged for manual ASM review. */
   threshold: number;
+  /** The slider's ends, served rather than hardcoded — `core/rules.LIMITS` on
+   *  the API is the one declaration, and the CHECK constraint reads it too. */
   min: number;
   max: number;
 }
 
 /**
- * Bandwidth accounting. `count` is a plain jobs-per-day cap, which is what
- * the Technician record and the technician app both model; `weighted` is the
- * prototype's wording. Kept as a real choice rather than a display string so
- * the open decision is visible and settleable on this screen.
+ * Everything on this screen is something an admin can CHANGE.
+ *
+ * SLA windows used to sit here as a read-only card and were removed: the
+ * service levels are ticket vocabulary, not policy — `SERVICE_LEVEL_HOURS` in
+ * the API's `core/tickets.py`, beside the statuses and proof kinds — so no
+ * rules endpoint would ever serve them. Carried here they went stale unseen,
+ * ending up naming two levels where there are four and starting the clock at
+ * slot confirmation, which is the reading the backend explicitly rejected.
+ * The per-ticket SLA column and badge are the live answer.
  */
-export type BandwidthModel = "count" | "weighted";
-
 export interface RulesConfig {
-  /** Definitional, not configurable — an SLA type IS its window. */
-  sla: SlaRule[];
   penalty: PenaltyBand[];
   /** Per technician, per month. */
   penaltyCap: number;
+  /**
+   * The escalation bonus chips, in RUPEES, ascending.
+   *
+   * The counterpart to `penalty` and the reason both live here: penalties fund
+   * the pool and the pool funds these, so the money going out belongs beside
+   * the money coming in. The API agrees these are configuration rather than
+   * domain vocabulary — `BonusRequest` enforces only `gt=0` and explicitly
+   * declines to constrain the amount to the four bands, because they are "a
+   * design decision about a picker".
+   *
+   * Rupees, not paise: the bonus page converts at the API boundary, and every
+   * other money figure on this screen is rupees too.
+   */
+  bonusAmounts: number[];
   ai: AiThresholdRule;
+  /** Percent of the SLA window that must remain before a ticket stops reading
+   *  "On track" and starts reading "Due soon". Repaints the ticket list. */
+  slaWarnAtPct: number;
   /** Hours of customer silence before a slot request auto-escalates. */
   slotConfirmTimeoutHours: number;
   /** Hours before a confirmed slot at which an unassigned ticket escalates. */
   escalationTriggerHours: number;
   /** Hours of customer silence before manager closure becomes available. */
   customerWaitHours: number;
-  bandwidthModel: BandwidthModel;
+  /** Minutes a funded re-notification is protected from being escalated again.
+   *  Too short and a bonus is a flicker rather than an offer. */
+  renotifyGraceMinutes: number;
+  /** Minutes before a slot that the technician is pushed a reminder. */
+  slotReminderMinutes: number;
 }
 
-/* ---------------------------------------------------------------- rules data */
+/* ---------------------------------------------------------------- rules API */
 
-const RULES: RulesConfig = {
-  sla: [
-    { label: "24h SLA window", value: "24 hours from slot confirmation" },
-    { label: "48h SLA window", value: "48 hours from slot confirmation" },
-  ],
-
-  /**
-   * ⚠ OPEN DECISION — these contradict the technician app.
-   *
-   * This prototype (and therefore this screen): ₹300 (>4h) · ₹500 (2–4h) ·
-   * ₹800 (<2h) · ₹1,200 (no-show), capped at ₹5,000/technician/month.
-   *
-   * `mobileapp/AGENTS.md` and the technician cancel screen: ₹80 (>8h) ·
-   * ₹150 (4–8h) · ₹250 (<4h). Different amounts *and* different band
-   * boundaries — three bands against four, cutting at 8h/4h instead of
-   * 4h/2h, with no no-show band at all.
-   *
-   * The same cancellation would therefore charge the technician one figure
-   * and credit the ASM's pool another. Rendered faithfully from the approved
-   * web prototype and deliberately NOT reconciled: this needs a business
-   * ruling before either side binds to an API. See adminWeb/AGENTS.md,
-   * "Decisions still open" §1.
-   */
-  penalty: [
-    { band: "> 4h before slot", amount: 300, basis: "flat" },
-    { band: "2–4h before slot", amount: 500, basis: "flat" },
-    { band: "< 2h before slot", amount: 800, basis: "flat" },
-    { band: "No-show", amount: 1200, basis: "flat" },
-  ],
-  penaltyCap: 5000,
-
-  /**
-   * One declaration, two readers: this screen presents the threshold as an
-   * adjustable slider and the AI queue uses it to label rows "below
-   * threshold". Both read `rulesDefaults.ts`, so they cannot drift.
-   */
-  ai: {
-    threshold: AI_CONFIDENCE_THRESHOLD,
-    min: AI_CONFIDENCE_MIN,
-    max: AI_CONFIDENCE_MAX,
-  },
-
-  slotConfirmTimeoutHours: 6,
-  escalationTriggerHours: ESCALATION_TRIGGER_HOURS,
-  customerWaitHours: CUSTOMER_WAIT_HOURS,
-
-  /**
-   * ⚠ OPEN DECISION — "weighted" is the prototype's wording and contradicts
-   * the plain jobs-per-day cap used everywhere else: mobileapp/AGENTS.md
-   * calls bandwidth a simple 1–12/day count, and this prototype's own
-   * technician records store plain counts (bwUsed 3 / bwTotal 5) with no
-   * weight anywhere. Rendered faithfully as the served default; now that it
-   * is a real field, this screen is where the decision gets settled.
-   * See adminWeb/AGENTS.md, "Decisions still open" §2.
-   */
-  bandwidthModel: "weighted",
-};
-
-export function getRulesConfig(): Promise<RulesConfig> {
-  return mockResponse(() => RULES);
-}
-
-export interface RulesConfigDraft {
+/**
+ * What the wire carries. Flat, because that is the shape `PUT` takes and the
+ * shape the form submits; `RulesConfig` groups the AI trio for the slider's
+ * benefit, and `_toConfig` below is the one place the two shapes meet.
+ *
+ * Rupees throughout. The API stores paise (its hard rule 9) and converts at its
+ * own boundary, so nothing on this side ever multiplies by a hundred.
+ */
+interface RulesPayload {
   penalty: Array<{ band: string; amount: number }>;
   penaltyCap: number;
+  bonusAmounts: number[];
   aiThreshold: number;
+  aiThresholdMin: number;
+  aiThresholdMax: number;
+  slaWarnAtPct: number;
   slotConfirmTimeoutHours: number;
   escalationTriggerHours: number;
   customerWaitHours: number;
-  bandwidthModel: BandwidthModel;
+  renotifyGraceMinutes: number;
+  slotReminderMinutes: number;
+}
+
+function _toConfig(r: RulesPayload): RulesConfig {
+  return {
+    // `basis` is not served: all four bands are flat and always have been, so
+    // it is a fact about the shape rather than a value a company sets.
+    penalty: r.penalty.map((b) => ({ ...b, basis: "flat" as const })),
+    penaltyCap: r.penaltyCap,
+    bonusAmounts: r.bonusAmounts,
+    ai: {
+      threshold: r.aiThreshold,
+      min: r.aiThresholdMin,
+      max: r.aiThresholdMax,
+    },
+    slaWarnAtPct: r.slaWarnAtPct,
+    slotConfirmTimeoutHours: r.slotConfirmTimeoutHours,
+    escalationTriggerHours: r.escalationTriggerHours,
+    customerWaitHours: r.customerWaitHours,
+    renotifyGraceMinutes: r.renotifyGraceMinutes,
+    slotReminderMinutes: r.slotReminderMinutes,
+  };
+}
+
+export async function getRulesConfig(): Promise<RulesConfig> {
+  return _toConfig(await apiGet<RulesPayload>("/settings/rules"));
 }
 
 /**
- * Applies the draft to the served config.
+ * A whole replacement, not a patch — `PUT`, and every field required.
  *
- * This persists for the session only — there is no rules API yet. It is a
- * genuine write rather than a no-op so the screen behaves like the real one:
- * saving, then re-reading, returns what you saved.
+ * Two of these rules constrain each other (the escalation trigger has to be
+ * shorter than the slot-confirm timeout), so a partial body would mean
+ * validating a new value against one that might itself be changing in the same
+ * request. One shape in, one shape out.
  *
- * ⚠ Whatever is saved here does NOT reach the technician app. Until the
- * penalty-band contradiction is settled, the two can still disagree about
- * live money — see the note on `penalty` above.
+ * The band LABELS are not sent. They are domain — `core/rules.py` owns them —
+ * and a client that could rename "< 2h before slot" could describe a rule as
+ * something it is not.
  */
-export function saveRulesConfig(draft: RulesConfigDraft): Promise<RulesConfig> {
-  return mockResponse(() => {
-    if (draft.penalty.some((b) => b.amount < 0)) {
-      throw new ApiError("A penalty cannot be negative", 422);
-    }
-    RULES.penalty = draft.penalty.map((b) => ({
-      ...b,
-      basis: "flat" as const,
-    }));
-    RULES.penaltyCap = draft.penaltyCap;
-    RULES.ai = { ...RULES.ai, threshold: draft.aiThreshold };
-    RULES.slotConfirmTimeoutHours = draft.slotConfirmTimeoutHours;
-    RULES.escalationTriggerHours = draft.escalationTriggerHours;
-    RULES.customerWaitHours = draft.customerWaitHours;
-    RULES.bandwidthModel = draft.bandwidthModel;
-    return RULES;
-  });
+export interface RulesConfigDraft {
+  penalty: number[];
+  penaltyCap: number;
+  bonusAmounts: number[];
+  aiThreshold: number;
+  slaWarnAtPct: number;
+  slotConfirmTimeoutHours: number;
+  escalationTriggerHours: number;
+  customerWaitHours: number;
+  renotifyGraceMinutes: number;
+  slotReminderMinutes: number;
+}
+
+/**
+ * Saves to `company_rules`, for this company, permanently.
+ *
+ * Answers with what is now STORED rather than echoing the draft, which is what
+ * lets the screen re-seed its form from the response and notice anything the
+ * server adjusted or refused.
+ */
+export async function saveRulesConfig(
+  draft: RulesConfigDraft
+): Promise<RulesConfig> {
+  return _toConfig(await apiPut<RulesPayload>("/settings/rules", draft));
 }
 
 /* ---------------------------------------------------------------- users data */

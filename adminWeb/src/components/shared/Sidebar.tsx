@@ -6,6 +6,7 @@ import { ROLE_LABEL, useSession } from "@/store/session";
 import { SidebarCollapseToggle } from "@/components/shared/SidebarCollapseToggle";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useFeatureAccess } from "@/hooks/useAuth";
+import { useEscalations } from "@/hooks/useEscalations";
 
 function isActive(pathname: string, to: string, match?: string[]) {
   if (to === "/") return pathname === "/";
@@ -40,8 +41,37 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   //      company. A hidden link is also blocked by the route guard, and the
   //      server refuses the call regardless.
   const { has } = useFeatureAccess();
+
+  // The escalation badge is the only live one. It reads the SAME query the
+  // queue page does, so the rail and the screen share one request and can
+  // never disagree about how many jobs are waiting — and the query only runs
+  // for somebody who can see the entry at all, because the rail is filtered
+  // before this and a 403 would otherwise be fetched on every page load.
+  const canSeeEscalations = has("jobs.assign");
+  const escalations = useEscalations({ enabled: canSeeEscalations });
+  // LIVE rows only. The queue also carries jobs whose slot has already closed
+  // — a customer owed an apology is not something to hide — but a badge that
+  // counted them would climb for ever and stop meaning "this many need you
+  // now", which is the only thing a badge is for.
+  //
+  // Measured against when the rows were READ rather than `Date.now()`: that
+  // would be an impure call during render, and it would also drift from the
+  // data it is counting.
+  const readAt = escalations.dataUpdatedAt;
+  const escalationCount =
+    escalations.data?.filter(
+      (t) => t.slotEnd === null || new Date(t.slotEnd).getTime() >= readAt
+    ).length ?? 0;
+
   const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
-    .map((g) => ({ ...g, items: g.items.filter((i) => has(i.feature)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items
+        .filter((i) => has(i.feature))
+        .map((i) =>
+          i.to === "/escalations" ? { ...i, badge: escalationCount } : i
+        ),
+    }))
     .filter((g) => g.items.length > 0);
 
   return (
