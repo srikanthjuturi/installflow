@@ -157,9 +157,20 @@ export function usePushRegistration(): void {
     const open = (data: Record<string, unknown> | undefined) => {
       // Routing only — the frame carries no customer details, so the screen
       // this lands on fetches the offer through the authenticated API.
-      if (data?.type === 'pool' && typeof data.ticketId === 'string') {
-        router.push(`/pool/${data.ticketId}`);
-      }
+      const id = data?.ticketId;
+      if (typeof id !== 'string') return;
+
+      // `pool` is an OFFER — the job is not theirs yet, so it opens masked and
+      // the accept sheet is the next step. `job` is one they already hold,
+      // either because a manager assigned it after it escalated or because
+      // their slot is about to start, and it opens unlocked.
+      //
+      // Sending both to `/pool/:id` would have been worse than doing nothing:
+      // an assigned job is not in the pool, so that screen 404s on a job the
+      // technician is due to attend. Until now `job` was simply ignored, which
+      // is why the slot reminder has been opening the app on Home.
+      if (data?.type === 'pool') router.push(`/pool/${id}`);
+      else if (data?.type === 'job') router.push(`/job/${id}`);
     };
 
     // A tap that COLD-STARTED the app is not delivered to the listener below —

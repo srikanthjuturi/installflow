@@ -218,6 +218,27 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
           paddingBottom: insets.bottom + 16,
         }}
       >
+        {/* A refusal is the server's sentence, not a generic apology. The one
+            that happens — a manager re-assigned the job while this screen was
+            open — is not fixed by tapping again, and "something went wrong"
+            would send them back to try exactly that. */}
+        {cancel.isError ? (
+          <Text
+            accessibilityRole="alert"
+            style={{
+              fontFamily: 'Roboto_500Medium',
+              fontSize: 12.5,
+              lineHeight: 18,
+              color: color.debit,
+              marginBottom: 10,
+            }}
+          >
+            {cancel.error instanceof Error
+              ? cancel.error.message
+              : "Couldn't cancel this job. Check your connection and try again."}
+          </Text>
+        ) : null}
+
         {/* Blocked state carries the requirement as its label, same as the
             coverage screen — one control, always saying what it needs. */}
         <Button

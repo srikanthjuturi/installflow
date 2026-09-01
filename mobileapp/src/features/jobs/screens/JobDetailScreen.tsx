@@ -281,13 +281,6 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
 
             <CustomerVerdict job={job} />
 
-            {/* "Cancel this job" is deliberately absent, not hidden.
-                `getCancellationPreview` still looks the job up in `mocks/db`
-                and throws on a real ticket id, so the button would take a
-                technician who wants out of a job to an error screen. Rendering
-                it with `display: 'none'` would leave it in the tree and
-                reachable by a screen reader; it returns when the cancel slice
-                is real, alongside the penalty bands it needs. */}
             {escalated ? (
               <View
                 style={{
@@ -383,11 +376,33 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                 ) : null}
               </>
             ) : !done ? (
-              <Button
-                label="Start job & capture proof"
-                leadingIcon="play"
-                onPress={() => router.push(`/job/${jobId}/proof/capture`)}
-              />
+              <>
+                <Button
+                  label="Start job & capture proof"
+                  leadingIcon="play"
+                  onPress={() => router.push(`/job/${jobId}/proof/capture`)}
+                />
+                {/* Back, and reachable at last. It was deliberately ABSENT
+                    rather than hidden while `getCancellationPreview` computed
+                    the band on the device — a control that took a technician
+                    who wanted out of a job to an error screen would have been
+                    worse than none, and `display: 'none'` would have left it
+                    in the tree for a screen reader to find.
+
+                    Only while the job is still `Assigned`. Once proof has been
+                    captured the technician is on site and the job is In
+                    Progress; walking away from that is a different event with
+                    different evidence, and the server refuses this one. */}
+                {stage === 'Assigned' ? (
+                  <View style={{ marginTop: 10 }}>
+                    <Button
+                      label="Cancel this job"
+                      variant="ghost"
+                      onPress={() => router.push(`/job/${jobId}/cancel`)}
+                    />
+                  </View>
+                ) : null}
+              </>
             ) : null}
           </>
         )}

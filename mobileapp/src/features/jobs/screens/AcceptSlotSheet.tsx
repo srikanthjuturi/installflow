@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { Button, Sheet } from '@/components/ui';
-import { isJobTaken } from '@/features/jobs/api/accept';
+import { isJobRefused, isJobTaken } from '@/features/jobs/api/accept';
 import { useAcceptJob } from '@/features/jobs/hooks/useAcceptJob';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
@@ -30,13 +30,21 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
 
   if (accept.isError) {
     const taken = isJobTaken(accept.error);
+    // A refusal is a "no" with a reason the technician can act on: the day is
+    // full, availability is off, or the job escalated to the ASM while they
+    // were reading the card. None of them is a fault, and none of them is
+    // fixed by tapping again — so the body is the SERVER's own sentence, which
+    // names the specific fix, rather than the generic connection advice that
+    // used to swallow all three.
+    const refused = isJobRefused(accept.error) ? accept.error : null;
+    const soft = taken || refused !== null;
 
     return (
       <Sheet onDismiss={dismiss}>
         <IconWell
           icon="warn"
-          fg={taken ? palette.secondary[500] : color.debit}
-          bg={taken ? color.slotBlockBg : color.statusCancelled.bg}
+          fg={soft ? palette.secondary[500] : color.debit}
+          bg={soft ? color.slotBlockBg : color.statusCancelled.bg}
         />
 
         <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary }}>
@@ -55,10 +63,14 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
         >
           {taken
             ? 'Another technician accepted this job while you were deciding. It happens — the pool refreshes automatically.'
-            : 'Something went wrong accepting this job. Check your connection and try again.'}
+            : (refused?.message ??
+              'Something went wrong accepting this job. Check your connection and try again.')}
         </Text>
 
-        {taken ? (
+        {/* "Try again" only where trying again could work. A refusal reproduces
+            itself on every tap, and a button that does nothing twice is worse
+            than one that is not there. */}
+        {soft ? (
           <Button label="Back to pool" onPress={() => router.replace('/pool')} />
         ) : (
           <Button label="Try again" onPress={() => accept.mutate()} />

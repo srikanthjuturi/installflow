@@ -134,6 +134,20 @@ export interface Job {
    * as "—", never ₹0 — a zero is a claim about money nobody has made.
    */
   payoutPaise: number | null;
+  /**
+   * Integer paise, on top of the payout. What a manager attached to this job
+   * after nobody took it the first time and it escalated to the Area Service
+   * Manager (§7).
+   *
+   * **Null on almost every job**, and unlike `payoutPaise` that is because
+   * most jobs never need one — not because nothing measures it. This is real:
+   * `tickets.bonus_paise`, set when a manager funds a re-notification.
+   *
+   * It arrives on the MASKED offer, before acceptance, which is the whole
+   * point. An incentive a technician cannot see on the card they are deciding
+   * from incentivises nobody.
+   */
+  bonusPaise: number | null;
   status: JobStatus;
   /**
    * The server's own status word — `Assigned`, `In Progress`, `Awaiting
@@ -217,10 +231,31 @@ export interface Transaction {
   amountPaise: number;
 }
 
+/** The spans the Earnings screen can be read over. */
+export const EARNINGS_PERIODS = ['day', 'week', 'month'] as const;
+export type EarningsPeriod = (typeof EARNINGS_PERIODS)[number];
+
 export interface EarningsSummary {
-  netPaise: number;
-  earnedPaise: number;
+  /**
+   * **Null on every real account today, and that is the honest answer.**
+   *
+   * Net is earned + bonuses − penalties, and `earnedPaise` below has no
+   * source — nothing prices an install. With one term unknown the sum is
+   * unknown, so this renders "—" rather than a figure.
+   *
+   * Showing bonuses minus penalties instead would not be a smaller truth: a
+   * technician who cancelled once and earned no bonus would see −₹300
+   * presented as their week's pay, having done five installs nothing counted.
+   */
+  netPaise: number | null;
+  /**
+   * What the JOBS paid. Null until `tickets` has a payout column — the same
+   * absence `Job.payoutPaise` has reported since the pool bound.
+   */
+  earnedPaise: number | null;
+  /** Real. Escalation bonuses credited in the period. */
   bonusesPaise: number;
+  /** Real, and positive — a magnitude. The screen signs and colours it. */
   penaltiesPaise: number;
 }
 

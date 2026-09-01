@@ -119,11 +119,31 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
               </Text>
             </View>
 
-            <Text
-              style={{ fontFamily: 'Roboto_900Black', fontSize: 16, color: color.textPrimary }}
-            >
-              {formatPaise(job.payoutPaise)}
-            </Text>
+            {/* The money column. A bonus sits ABOVE the payout rather than
+                beside the SLA pill at the top: the card's whole layout puts
+                the slot and the money on one line because they are the two
+                facts being weighed, and a bonus is money. It is also the only
+                amber thing down here, so it reads at a glance in a list —
+                which is the entire reason a manager funded it. */}
+            <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+              {job.bonusPaise !== null && (
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_700Bold',
+                    fontSize: 12.5,
+                    color: color.bonus,
+                    marginBottom: 1,
+                  }}
+                >
+                  +{formatPaise(job.bonusPaise)} bonus
+                </Text>
+              )}
+              <Text
+                style={{ fontFamily: 'Roboto_900Black', fontSize: 16, color: color.textPrimary }}
+              >
+                {formatPaise(job.payoutPaise)}
+              </Text>
+            </View>
           </View>
         </View>
       )}
