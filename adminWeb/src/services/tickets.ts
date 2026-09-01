@@ -180,3 +180,30 @@ export function assignTechnician({
 }: AssignTechnicianInput): Promise<TicketDetail> {
   return apiPost<TicketDetail>(`/tickets/${id}/assign`, { technicianId });
 }
+
+export interface RecordNoShowInput {
+  id: string;
+  /** Optional, and worth asking for — see the API's own note on the field. */
+  note?: string | null;
+}
+
+/**
+ * Confirm that the technician never turned up, and charge them the band.
+ *
+ * The sweep that finds these deliberately charges nothing: a dead phone and a
+ * deliberate no-show are indistinguishable in the data, and this is the most
+ * expensive band there is. A person decides, and this is where they say so.
+ *
+ * Frees the ticket and moves it to `Escalated` — the slot has closed, so it
+ * needs a new time rather than a new technician.
+ *
+ * **409 `NOT_A_NO_SHOW`** — the job started, was cancelled, or somebody moved
+ * it while the manager was deciding. **409 `SLOT_STILL_OPEN`** — the window has
+ * not closed, so they are late rather than absent. Both surface in the toaster.
+ */
+export function recordNoShow({
+  id,
+  note,
+}: RecordNoShowInput): Promise<TicketDetail> {
+  return apiPost<TicketDetail>(`/tickets/${id}/no-show`, { note: note ?? null });
+}

@@ -53,17 +53,17 @@ makes it a value.
 #: the slot still leaves somebody able to act; this leaves nobody. That is why
 #: it is the most expensive band rather than simply the latest one.
 #:
-#: ⚠ NOTHING DETECTS ONE YET. There is no rule anywhere that says "the slot
-#: ended, the technician never started, mark it a no-show" — this is a label and
-#: a price, and the detection lands with the ledger. `ticket_events` already
-#: carries what that rule would read: `reminded` says the push went out, and its
-#: absence of a following `started` is the no-show.
+#: `tickets.sweeps.sweep_no_shows` detects one — a slot that closed with the job
+#: still `Assigned` and no proof against it — and deliberately charges nothing.
+#: A person confirms it through `tickets.service.record_no_show`, because a dead
+#: phone and a deliberate no-show are indistinguishable from the data and this
+#: is the most expensive band there is.
 #:
-#: ⚠ These four bands contradict the technician app's three (₹80 / ₹150 / ₹250,
-#: cutting at 8h and 4h, with no no-show band at all). Unresolved on purpose —
-#: see adminWeb/AGENTS.md, "Decisions still open" §1. Nothing collects a penalty
-#: yet either way, so the contradiction is still cheap; it stops being cheap the
-#: day the ledger lands.
+#: These four were once contradicted by the technician app's three (₹80 / ₹150 /
+#: ₹250, cutting at 8h and 4h, with no no-show band at all). **Ruled in favour
+#: of these**, on cost of change: they were already here, already per company,
+#: and the technician's cancel screen needed no redesign because it renders
+#: whatever the server sends. See adminWeb/AGENTS.md §1.
 CANCEL_PENALTY_BANDS = (
     "> 4h before slot",
     "2–4h before slot",

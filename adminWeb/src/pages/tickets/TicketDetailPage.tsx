@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -14,9 +16,11 @@ import {
   ProofPanel,
   TechnicianPanel,
 } from "@/components/tickets/SidePanels";
+import { NoShowDialog } from "@/components/tickets/NoShowDialog";
 import { Timeline } from "@/components/tickets/Timeline";
 import { readNavOrigin } from "@/hooks/useNavOrigin";
-import { useTicket } from "@/hooks/useTickets";
+import { useRulesConfig } from "@/hooks/useSettings";
+import { useRecordNoShow, useTicket } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
 import { isTerminalTicketStatus } from "@/types";
 
@@ -64,12 +68,35 @@ export default function TicketDetailPage({
     // `isFetching`, not `isLoading`: this is a re-read of a ticket already on
     // screen, and `isLoading` is only true when there is nothing to show.
     isFetching,
+    dataUpdatedAt,
   } = useTicket(id);
 
   // The one switch between the two surfaces: a caller that named its actions
   // is the portal. Every ops-only control reads this, so a new one cannot be
   // added on the ops side and quietly appear on the vendor's.
   const isOps = actions === undefined;
+
+  /* Confirming a no-show. Offered only when the ticket really is one: still
+     `Assigned` — proof capture would have moved it to In Progress — with a
+     window that has closed. Anything else and the server refuses, so a button
+     there could only ever produce an error.
+
+     The bands come from Rules configuration; an Area Manager can read them
+     (see the API's `ReadRules`). Null while they load, which the dialog
+     renders as no figure rather than a zero.
+
+     "Closed" is measured against when the ticket was READ, not `Date.now()`:
+     that would be an impure call during render, and the backstop refetch keeps
+     it moving. The server re-checks anyway and refuses SLOT_STILL_OPEN. */
+  const [noShowOpen, setNoShowOpen] = useState(false);
+  const recordNoShow = useRecordNoShow();
+  const { data: rules } = useRulesConfig();
+  const noShowAmount = rules?.penalty.at(-1)?.amount ?? null;
+  const canRecordNoShow =
+    isOps &&
+    ticket?.status === "Assigned" &&
+    ticket.slotEnd !== null &&
+    new Date(ticket.slotEnd).getTime() < dataUpdatedAt;
 
   // Into the topbar search's "Recently seen". Recorded here rather than only on
   // a search result, so a ticket opened from the board or from the bell counts
@@ -146,6 +173,19 @@ export default function TicketDetailPage({
                   {isOps ? (
                     canAct ? (
                       <div className="flex flex-wrap gap-2.5">
+                        {/* Beside Force close rather than in the technician
+                            panel: it is a decision about the ticket that also
+                            charges somebody, and it belongs with the other
+                            control that ends a job badly. */}
+                        {canRecordNoShow ? (
+                          <Button
+                            variant="outline"
+                            className="hover:border-danger hover:text-danger"
+                            onClick={() => setNoShowOpen(true)}
+                          >
+                            Record no-show
+                          </Button>
+                        ) : null}
                         <LinkButton
                           variant="outline"
                           className="hover:border-danger hover:text-danger"
@@ -220,6 +260,29 @@ export default function TicketDetailPage({
           </div>
         </div>
       )}
+
+      {/* Outside the loading branch so it survives the refetch its own success
+          triggers — the ticket reloads as `Escalated`, and a dialog unmounted
+          mid-flight would take its closing animation and its pending state
+          with it. */}
+      {ticket ? (
+        <NoShowDialog
+          open={noShowOpen}
+          onOpenChange={setNoShowOpen}
+          technicianName={ticket.technicianName ?? "the technician"}
+          amount={noShowAmount}
+          isPending={recordNoShow.isPending}
+          onConfirm={(note) =>
+            recordNoShow.mutate(
+              { id: ticket.id, note },
+              // Closed only on success. A refusal — somebody moved the ticket
+              // while the manager was deciding — is reported by the toaster,
+              // and closing the dialog under it would hide what was refused.
+              { onSuccess: () => setNoShowOpen(false) }
+            )
+          }
+        />
+      ) : null}
     </>
   );
 }

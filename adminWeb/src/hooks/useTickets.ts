@@ -14,8 +14,10 @@ import {
   listTechnicianJobs,
   listTechnicianTickets,
   listTickets,
+  recordNoShow,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
+import { ledgerKeys } from "./useLedger";
 import { BACKSTOP_REFETCH_MS } from "./liveness";
 import { technicianKeys } from "./useTechnicians";
 import type { ListParams } from "@/types/api";
@@ -217,6 +219,28 @@ export function useAssignTicket() {
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
       queryClient.invalidateQueries({ queryKey: escalationKeys.all });
       queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
+  });
+}
+
+/**
+ * Confirm a no-show and charge the band.
+ *
+ * Invalidates the same four prefixes an assignment does, plus the ledger: this
+ * is the only control in the console that takes money OFF a technician, so the
+ * pool balance and the transaction list are both stale the moment it succeeds.
+ */
+export function useRecordNoShow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't record the no-show" },
+    mutationFn: recordNoShow,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: escalationKeys.all });
+      queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      queryClient.invalidateQueries({ queryKey: ledgerKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });

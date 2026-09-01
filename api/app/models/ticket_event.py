@@ -10,7 +10,8 @@ That absence blocks three things already specified:
   * the **daily job cap** counts jobs assigned to a technician ON A DATE, and no
     date existed;
   * the **cancellation fee** is banded by how long before the slot the
-    cancellation came — ₹80 / ₹150 / ₹250 — which needs the moment it happened;
+    cancellation came, which needs the moment it happened (the amounts are per
+    company in `company_rules`; the boundaries are in `core/rules.py`);
   * **"closed within SLA"** needs the moment it closed.
 
 `_timeline()` used to derive its events from `status` alone. The mock version of
@@ -52,10 +53,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base_class import Base
 from app.db.mixins import AuditMixin, IdMixin
 
-#: What kind of thing happened. Deliberately only what the code writes TODAY.
-#: Release belongs here too and will be added by the migration that adds the
-#: cancel flow — declaring the vocabulary ahead of the rows is how `audit_logs`
-#: ended up a table nothing ever wrote to.
+#: What kind of thing happened. Deliberately only what the code writes TODAY —
+#: declaring the vocabulary ahead of the rows is how `audit_logs` ended up a
+#: table nothing ever wrote to. `released` was named here before it had a
+#: writer, and arrived with the cancel flow exactly as that note predicted.
 EVENT_KINDS = (
     "created",
     "slot_requested",
