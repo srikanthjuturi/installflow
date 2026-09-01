@@ -61,6 +61,7 @@ from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import publish_notification, publish_ticket_changed
 from app.core.tickets import NO_SHOW_GRACE_MINUTES, NO_SHOW_LOOKBACK_HOURS
+from app.features.tickets.service import clock
 from app.models.company_rules import CompanyRules
 from app.models.notification import Notification
 from app.models.ticket import Ticket
@@ -85,6 +86,22 @@ def _hours(column):
 
 def _minutes(column):
     return column * literal_column("interval '1 minute'")
+
+
+def _slot_clock(row: Ticket) -> str:
+    """`2:00 PM` — the slot's start as the technician will read it.
+
+    `f"{row.slot_start:%H:%M}"` shipped here, and it was wrong twice over.
+    `slot_start` is a UTC instant, so a two-o'clock appointment reached the
+    technician's phone as **"starts at 08:30"** — five and a half hours adrift,
+    on the one notification whose whole job is stopping somebody being late.
+    And 24-hour clock is not the house style: every approved screen in both
+    apps reads `2:00 PM`.
+
+    `clock()` is the slice's own formatter and already gets both right.
+    """
+    hm, meridiem = clock(row.slot_start)
+    return f"{hm} {meridiem}"
 
 
 def _already(kind: str) -> select:
@@ -384,7 +401,7 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
                 kind="reminded",
                 actor_kind="system",
                 actor_label="Reminder",
-                note=f"Reminded the technician — slot at {row.slot_start:%H:%M}",
+                note=f"Reminded the technician — slot at {_slot_clock(row)}",
             )
         )
         # The only sweep that raises no notification still has to ring the
@@ -403,7 +420,7 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
             db,
             company_id=row.company_id,
             technician_id=row.technician_id,
-            title=f"{row.code} starts at {row.slot_start:%H:%M}",
+            title=f"{row.code} starts at {_slot_clock(row)}",
             body=f"{row.city} {row.pincode} · {hours_to(row.slot_start)}",
             data={"type": "job", "ticketId": str(row.id), "code": row.code},
         )
@@ -506,8 +523,12 @@ async def sweep_no_shows(db: AsyncSession) -> int:
         db,
         rows,
         kind="no_show",
-        title=lambda r: f"{r.code}: nobody turned up",
+        # Reads beside "{code}: no slot chosen yet" and "{code} ready for force
+        # closure" — the same shape, and a statement of fact rather than an
+        # accusation. Whether it really was a no-show is what the manager is
+        # being asked to decide.
+        title=lambda r: f"{r.code}: technician did not attend",
         detail=lambda r: (
-            f"Slot closed with no proof captured · {r.city} {r.pincode}"
+            f"The slot closed with no proof captured · {r.city} {r.pincode}"
         ),
     )

@@ -56,12 +56,25 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-def hours_to(slot: datetime.datetime | None) -> str:
-    """`2h 40m to slot`, for a title a manager reads at a glance."""
+def time_to_slot(slot: datetime.datetime | None) -> str:
+    """`2h 40m`, or `no slot`. The bare span, with nothing appended.
+
+    Split out from `hours_to` because the two readers need it in different
+    grammar. A notification TITLE wants the suffix — "CA-INST-0087 unassigned
+    — 2h 40m to slot" — while the WhatsApp template's own sentence supplies
+    its own: "the slot is {{4}}". Passing the suffixed form to that produced
+    "the slot is 2h 40m to slot", which shipped.
+    """
     if slot is None:
         return "no slot"
     minutes = max(0, int((slot - _now()).total_seconds() // 60))
-    return f"{minutes // 60}h {minutes % 60:02d}m to slot"
+    return f"{minutes // 60}h {minutes % 60:02d}m"
+
+
+def hours_to(slot: datetime.datetime | None) -> str:
+    """`2h 40m to slot`, for a title a manager reads at a glance."""
+    span = time_to_slot(slot)
+    return span if span == "no slot" else f"{span} to slot"
 
 
 async def escalate(
@@ -180,12 +193,15 @@ async def whatsapp_the_area_manager(db: AsyncSession, row: Ticket) -> None:
             )
             return
         for manager in managers:
+            span = time_to_slot(row.slot_start)
             await whatsapp.send_escalation(
                 manager.phone or "",
                 company or "Reliance GreenTech",
                 row.code,
                 f"{row.city} {row.pincode}",
-                hours_to(row.slot_start),
+                # The template reads "…and the slot is {{4}}", so this has to
+                # complete that sentence rather than repeat the noun.
+                "not set" if span == "no slot" else f"in {span}",
             )
     except Exception:
         log.exception("escalation %s: could not message the area manager", row.code)
