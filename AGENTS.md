@@ -22,9 +22,11 @@ skill in `mobileapp/.claude/skills/`.
 
 The API is real for **auth, companies, users, territory, the product master, technician
 onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation, the
-penalty pool, earnings and Rules configuration**. What is left on typed mock data behind a
-TanStack Query hook is **AI review and the dashboard**, so binding each stays a one-line change
-and we keep loading / empty / error states today.
+penalty pool, earnings, Rules configuration and the console dashboard** (`GET /tickets/summary`
+— counted, territory-scoped, and deliberately carrying no movement deltas, because nothing
+records what a count was yesterday). What is left on typed mock data behind a TanStack Query hook
+is **AI review**, so binding it stays a one-line change and we keep loading / empty / error
+states today.
 
 Two things are real but **not yet priced**, and both render `—` rather than a figure:
 `tickets` has no payout column, so what a job PAYS is unknown — and with it unknown, so is a
@@ -279,13 +281,23 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - Cancelling costs money, banded by lateness: **₹300** (>4h) · **₹500** (2–4h) · **₹800** (<2h) ·
   **₹1,200** (no-show), capped at **₹5,000 per technician per calendar month in IST**. Under four
   hours also escalates to the Area Service Manager.
-  These are **seeded defaults**, not constants — every one is a `company_rules` column a company
-  edits on Configuration → Rules Config. The BOUNDARIES are not: where one band ends is a fact
-  about the clock, and lives in `api/app/core/rules.py`.
+  These are **defaults, not constants** — every one is a `company_rules` column a company edits on
+  Configuration → Rules Config. The BOUNDARIES are not: where one band ends is a fact about the
+  clock, and lives in `api/app/core/rules.py`.
+  The defaults are **in code** (`rules.DEFAULTS`), not seeded rows. A company's row is stamped from
+  them inside `create_company`'s own transaction, and `load_rules` rebuilds a missing one on the
+  next read — so `company_rules` holds a company's OVERRIDES, and emptying the table resets the
+  rules rather than destroying them.
   ⚠ This used to read ₹80 / ₹150 / ₹250 cutting at 8h and 4h, from the technician prototype. The
   console's prototype said something else, and the contradiction was a logged open decision until
   the ledger forced it. **Ruled in favour of the console's four.** The technician's cancel screen
   needed no redesign, because it renders whatever the server sends.
+- **The escalation queue is two lists, and they run in opposite directions.** Jobs whose window is
+  still open sort soonest-first — the one closest to being missed. Jobs whose slot has CLOSED sort
+  newest-first, because what just went wrong is what somebody can still ring a customer about.
+  Nothing clears the second half (re-slotting means asking the customer for another time), so it
+  only ever grows; that is why the console pages it on scroll and why the rail's badge counts the
+  live half alone.
 - **No-show is not a late cancellation**, which is why it is the priciest band rather than merely
   the last. Cancelling after the slot has opened is still `< 2h`: they told somebody, and the gap
   between the two prices is what speaking up is worth. Detected by `sweep_no_shows`, which charges
