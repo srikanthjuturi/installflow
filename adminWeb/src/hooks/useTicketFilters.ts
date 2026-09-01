@@ -11,6 +11,18 @@ const ALL = "All";
 const DEFAULT_SORT_BY = "slaState";
 const DEFAULT_SORT_DIR = "asc";
 
+/**
+ * Narrowing that arrives from the dashboard rather than from this screen's own
+ * controls: a territory, and a range of intake dates.
+ *
+ * The board has no UI for them — they exist so an attention card can open a
+ * list holding exactly what it counted. They pass straight through to the API,
+ * which applies the same `narrowed()` the dashboard's own figures use, and they
+ * survive every other filter change because `setParams` only writes the keys it
+ * owns.
+ */
+const PASSTHROUGH = ["regionId", "stateId", "dateFrom", "dateTo"] as const;
+
 /** One query-string key, its serialised value, and whether it is the default. */
 interface Field {
   key: string;
@@ -66,20 +78,35 @@ export function useTicketFilters() {
   const sortBy = searchParams.get("sortBy") || DEFAULT_SORT_BY;
   const sortDir = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
 
+  // Serialised, so the memo below depends on a value rather than on a fresh
+  // object identity every render.
+  const inherited = PASSTHROUGH.map((k) => searchParams.get(k) ?? "").join("|");
+
   // Stable identity keeps the query key from thrashing on every render.
   const params = useMemo<ListParams>(
     // "All" is a control value, not a status — omitted so it never reaches the
     // API as a filter, and so an unfiltered list has one cache key rather than
     // two. The API tolerates it anyway; this keeps the request honest.
-    () => ({
-      page,
-      limit,
-      search,
-      sortBy,
-      sortDir,
-      ...(status === ALL ? {} : { filters: { status } }),
-    }),
-    [page, limit, search, sortBy, sortDir, status]
+    () => {
+      const extra = Object.fromEntries(
+        PASSTHROUGH.map((k, i) => [k, inherited.split("|")[i]]).filter(
+          ([, v]) => v
+        )
+      );
+      const filters = {
+        ...(status === ALL ? {} : { status }),
+        ...extra,
+      };
+      return {
+        page,
+        limit,
+        search,
+        sortBy,
+        sortDir,
+        ...(Object.keys(filters).length ? { filters } : {}),
+      };
+    },
+    [page, limit, search, sortBy, sortDir, status, inherited]
   );
 
   // Chains writes that land in the same tick. `searchParams` is the URL of the

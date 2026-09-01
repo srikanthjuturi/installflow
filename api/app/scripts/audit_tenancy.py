@@ -95,6 +95,11 @@ TENANT_LINKS = [
     # vendor can read another's tickets INSIDE a company; that is an application
     # invariant this script has no way to see. See api/AGENTS.md.
     ("memberships", "vendor_id", "vendors"),
+    # Money. A penalty charged to one company's technician against another
+    # company's ticket would be the worst row in the database to get wrong: it
+    # is wrong twice, in opposite directions, and it settles.
+    ("ledger_entries", "technician_id", "technician_profiles"),
+    ("ledger_entries", "ticket_id", "tickets"),
 ]
 
 

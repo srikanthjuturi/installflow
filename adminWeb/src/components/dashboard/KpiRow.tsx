@@ -10,14 +10,19 @@ export function KpiRow({ kpis }: { kpis: Kpi[] }) {
           <CardContent className="flex flex-col">
             <div className="flex items-start justify-between gap-2">
               <div className="text-xs font-medium text-ink-2">{k.label}</div>
-              <span
-                className={cn(
-                  "rounded-full px-1.75 py-0.5 text-[11px] font-semibold whitespace-nowrap",
-                  k.good ? "bg-ok-bg text-ok" : "bg-danger-bg text-danger"
-                )}
-              >
-                {k.delta}
-              </span>
+              {/* No chip rather than an empty one: a blank pill reads as a
+                  figure that failed to load. Nothing records what these counts
+                  were yesterday, so there is no movement to show — see `Kpi`. */}
+              {k.delta ? (
+                <span
+                  className={cn(
+                    "rounded-full px-1.75 py-0.5 text-[11px] font-semibold whitespace-nowrap",
+                    k.good ? "bg-ok-bg text-ok" : "bg-danger-bg text-danger"
+                  )}
+                >
+                  {k.delta}
+                </span>
+              ) : null}
             </div>
             <div className="mt-2.5 text-[28px] leading-none font-semibold tracking-tight">
               {k.value}

@@ -155,40 +155,55 @@ export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
 export interface AssignTechnicianInput {
   id: string;
   technicianId: string;
-  /** For the toast and, later, the event's actor label. */
+  /** For the toast. The event's actor label is the MANAGER, server-side. */
   technicianName: string;
 }
 
 /**
- * NOT IMPLEMENTED — deliberately, and loudly, for the same reason as
- * `forceCloseTicket`.
+ * Hand a ticket to a named technician — §7's last resort, after a bonus
+ * re-notification has already failed to find anybody.
  *
- * This used to be the ESCALATION mock's `assignTechnician`, which held three
- * hardcoded rows keyed by ticket code. A real ticket's UUID was never one of
- * them, so pressing "Assign manually" on a ticket died as "Escalation <uuid>
- * not found" — an error about a thing the reader had not mentioned.
+ * `technicianName` is not sent: the server resolves the name itself for the
+ * timeline, because a name a client supplied is a name a client could get
+ * wrong. It travels on the input only so the caller can name them in the toast
+ * without a second lookup.
  *
- * Doing it for real is `POST /tickets/{id}/assign`: move the ticket to
- * Assigned, write the `assigned` event the daily cap is counted from, and
- * refuse a technician who does not cover the pincode or is already at cap.
- * `tickets.technician_id` and the `Assigned` status already exist;
- * `ticket_events.kind` has no `assigned` yet, so it needs a migration. Until
- * that lands this fails where it can be seen — an assignment that appeared to
- * work and moved nothing is the worse outcome.
- *
- * It refuses a ticket in `TERMINAL_STATUSES` with a 409 for the same reason
- * force-closure does, and there is a second one here: the daily cap counts
- * `Closed` jobs, so assigning a settled ticket would spend a technician's
- * bandwidth on a day whose work is already done.
+ * **409 says which kind of "no" it is** — `TICKET_NOT_ASSIGNABLE`, `NO_SLOT`,
+ * `TECHNICIAN_SUSPENDED`, `TECHNICIAN_INELIGIBLE`, `DAILY_CAP_REACHED`,
+ * `ALREADY_ASSIGNED` — and every one carries a sentence saying what to do
+ * instead. The toaster shows that sentence; nothing here has to branch on the
+ * code, and nothing should start to without a reason the message cannot serve.
  */
-export function assignTechnician(input: AssignTechnicianInput): Promise<Ticket> {
-  void input;
-  return Promise.reject(
-    new ApiError(
-      "Assigning a technician isn't wired up yet — this ticket and the " +
-        "shortlist beside it are real, but assignment still needs its own " +
-        "slice. Nothing has been changed.",
-      501
-    )
-  );
+export function assignTechnician({
+  id,
+  technicianId,
+}: AssignTechnicianInput): Promise<TicketDetail> {
+  return apiPost<TicketDetail>(`/tickets/${id}/assign`, { technicianId });
+}
+
+export interface RecordNoShowInput {
+  id: string;
+  /** Optional, and worth asking for — see the API's own note on the field. */
+  note?: string | null;
+}
+
+/**
+ * Confirm that the technician never turned up, and charge them the band.
+ *
+ * The sweep that finds these deliberately charges nothing: a dead phone and a
+ * deliberate no-show are indistinguishable in the data, and this is the most
+ * expensive band there is. A person decides, and this is where they say so.
+ *
+ * Frees the ticket and moves it to `Escalated` — the slot has closed, so it
+ * needs a new time rather than a new technician.
+ *
+ * **409 `NOT_A_NO_SHOW`** — the job started, was cancelled, or somebody moved
+ * it while the manager was deciding. **409 `SLOT_STILL_OPEN`** — the window has
+ * not closed, so they are late rather than absent. Both surface in the toaster.
+ */
+export function recordNoShow({
+  id,
+  note,
+}: RecordNoShowInput): Promise<TicketDetail> {
+  return apiPost<TicketDetail>(`/tickets/${id}/no-show`, { note: note ?? null });
 }

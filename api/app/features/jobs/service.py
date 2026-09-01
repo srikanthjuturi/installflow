@@ -34,12 +34,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.coverage import has_cap_room
 from app.core.errors import AppError
+from app.core.escalation import escalate, whatsapp_the_area_manager
+from app.core.ledger import (
+    cap_remaining,
+    charged_this_month,
+    entry as ledger_entry,
+)
 from app.core.notifications import notify
+from app.core.push import announce_pool_job
 from app.core.realtime import (
     publish_notification,
     publish_pool_changed,
     publish_ticket_changed,
 )
+from app.core.rules import CANCEL_PENALTY_BANDS, cancel_band_index, load_rules
 from app.core.schemas import ListParams
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
@@ -52,6 +60,7 @@ from app.db.repository import paginate
 from app.features.jobs.schemas import (
     JobOfferOut,
     JobOut,
+    PenaltyBandOut,
     ProofArtifactIn,
     ProofImageOut,
 )
@@ -65,6 +74,7 @@ from app.models.technician import (
     TechnicianProfile,
     TechnicianSubcategory,
 )
+from app.models.ledger import LedgerEntry
 from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
@@ -271,6 +281,7 @@ def _offer_out(
         slotEnd=t.slot_end,
         serviceLevelHours=t.service_level_hours,
         maskedCustomer=mask_name(t.customer_name),
+        bonusPaise=t.bonus_paise,
     )
 
 
@@ -541,6 +552,17 @@ async def accept(
             ).where(Ticket.id == ticket_id)
         )
         if taken is not None:
+            # Three ways to leave the pool now, not one, and "somebody was
+            # faster" is only the first. A job that ESCALATED left because
+            # nobody was fast enough — telling this technician a colleague beat
+            # them to it would be false, and would send them looking for the
+            # next card when the honest answer is that a manager now owns this
+            # one.
+            if taken.status == "Escalated" and taken.technician_id is None:
+                raise JobRefused(
+                    "JOB_ESCALATED",
+                    "This job has gone to your Area Service Manager.",
+                )
             raise JobRefused(
                 "JOB_ALREADY_TAKEN", "Another technician accepted this job first"
             )
@@ -618,6 +640,9 @@ async def accept(
             to_status="Assigned",
         )
     )
+    # NB the bonus is NOT paid here. See `complete` — accepting is a promise,
+    # and a promise that can still be cancelled is not something to settle
+    # money against.
     # This job has just LEFT the pool, and every other eligible technician is
     # still being shown it. The same doorbell that announces a new job announces
     # one that is gone — first-accept-wins is only fair if losing is visible
@@ -1058,6 +1083,54 @@ async def complete(
             ),
         )
 
+    # The bonus is settled HERE, and this is the only place it is.
+    #
+    # Not at acceptance, which is where §7's "paid to whoever accepts" reads
+    # like it belongs: an acceptance can still be cancelled, and a bonus paid
+    # against one would have to be clawed back out of an append-only ledger —
+    # or, worse, would be paid twice when the next technician took the same job
+    # with `bonus_paise` still on it. Money settles against work done.
+    #
+    # Not at CLOSURE either, which is the customer's act and may never come.
+    # The technician earned it by turning out at short notice for a job nobody
+    # else would take; whether the customer answers their confirmation link is
+    # not a fact about that.
+    #
+    # In the same transaction as the completion, like every other write here.
+    #
+    # ## Once per TICKET, not once per completion
+    #
+    # `tickets.bonus_paise` is a standing commitment — it says what this job is
+    # worth extra — and it is deliberately never cleared, because "this job
+    # carried a ₹400 bonus" stays true afterwards and the escalation card reads
+    # it back. So it cannot also serve as the "already paid" marker.
+    #
+    # The LEDGER is that marker, which is this codebase's own idiom: the record
+    # IS the marker, so the two cannot disagree. Without it one job could be
+    # paid twice, and the route there is short and entirely ordinary — the
+    # technician completes and is paid, the customer says it was NOT done, the
+    # ticket goes to `Escalated` with the bonus still on it, a manager
+    # re-assigns, and the next completion pays it again out of a pool that
+    # only ever collected for it once.
+    already_paid = await db.scalar(
+        select(LedgerEntry.id).where(
+            LedgerEntry.company_id == company_id,
+            LedgerEntry.ticket_id == ticket_id,
+            LedgerEntry.kind == "bonus",
+        )
+    )
+    if row.bonus_paise and already_paid is None:
+        db.add(
+            ledger_entry(
+                company_id=company_id,
+                technician_id=profile.id,
+                ticket_id=ticket_id,
+                kind="bonus",
+                amount_paise=row.bonus_paise,
+                reason="Escalation pickup",
+            )
+        )
+
     technician = await _technician_name(db, profile)
     db.add(
         _event(
@@ -1191,3 +1264,251 @@ async def list_proof(
         )
         for p in rows
     ]
+
+
+# ── giving a job back ────────────────────────────────────────────────────────
+#
+# §7's other way into an escalation, and the one the requirement document leads
+# with: *"A technician can cancel an accepted ticket... On cancellation, the
+# system first attempts auto-reassignment: the ticket (with its locked slot) is
+# re-notified to other eligible technicians."*
+#
+# Two things follow from "with its locked slot", and both are load-bearing:
+#
+#   * the SLOT never moves. The customer agreed a time before any technician saw
+#     the job, and it was never the technician's to change by leaving.
+#   * the ticket goes back to `New` — the pool — not to `Cancelled`. `Cancelled`
+#     means the work is not happening; this means somebody else is doing it.
+
+
+async def _band_for(
+    db: AsyncSession, row: Ticket, *, technician_id: uuid.UUID
+) -> tuple[int, str, bool]:
+    """What cancelling this job costs right now, after the monthly cap.
+
+    Returns `(charge_paise, label, escalates)`.
+
+    The amounts come from the company's own `cancel_penalties_paise`, the hour
+    boundaries from `core.rules` — amounts are policy and configurable, where
+    one band ends is domain and is not. This used to be computed on the PHONE,
+    which its own comment called the wrong place: `hoursToSlot` came off the
+    device clock, so a wrong clock talked itself into a cheaper penalty.
+
+    `charge_paise` is what will ACTUALLY be taken, which is not always the
+    band: the monthly cap can leave less than it, or nothing at all. The
+    preview and the charge both read this, so the figure a technician confirms
+    is the figure they pay.
+    """
+    rules = await load_rules(db, row.company_id)
+    assert row.slot_start is not None  # an Assigned job always has a slot
+    hours = (row.slot_start - _now()).total_seconds() / 3600
+    index = cancel_band_index(hours)
+    band = int(rules.cancel_penalties_paise[index])
+
+    already = await charged_this_month(
+        db, company_id=row.company_id, technician_id=technician_id
+    )
+    remaining = cap_remaining(
+        cap_paise=rules.cancel_penalty_cap_paise, already_charged=already
+    )
+    charge = band if remaining is None else min(band, remaining)
+
+    # The same threshold the sweep escalates on, so "under four hours" means one
+    # thing across the product. Read from the company's rules rather than
+    # inferred from the band index: a company that moved its escalation window
+    # would otherwise have a screen promising an escalation on a different clock.
+    escalates = hours < rules.escalate_hours_before_slot
+    return charge, CANCEL_PENALTY_BANDS[index], escalates
+
+
+async def cancellation_preview(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> PenaltyBandOut:
+    """What it would cost to give this job up, before committing to it.
+
+    A separate read from the cancel itself, deliberately: the technician has to
+    see the cost BEFORE confirming, and the approved screen prints it twice —
+    once in the banner and once on the button — so it cannot be tapped without
+    having been read.
+
+    A live figure, not a quote. The band moves as the slot approaches, so a
+    screen left open can show one price and charge another; that is the honest
+    behaviour — the charge is what it costs at the moment of cancelling — and
+    the window in which it changes is minutes wide.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    if row.status != "Assigned":
+        raise JobRefused(
+            "JOB_NOT_CANCELLABLE", "This job can no longer be cancelled."
+        )
+    charge, label, escalates = await _band_for(
+        db, row, technician_id=technician_id
+    )
+    return PenaltyBandOut(amountPaise=charge, label=label, escalates=escalates)
+
+
+async def cancel(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+    reason: str,
+) -> PenaltyBandOut:
+    """Give the job back, pay the band, and put it in front of whoever is next.
+
+    **`Assigned` only.** Once proof has been captured the technician is on site
+    and the job is `In Progress`; walking away from that is a different event
+    with different evidence attached, and it is not this one.
+
+    Settled by a guarded UPDATE on `(technician_id = me, status = 'Assigned')`,
+    like every other transition in this slice. `rowcount == 0` means the ticket
+    moved underneath them — a manager re-assigned it, or they tapped twice from
+    two screens — and nothing is charged for a job they no longer hold.
+
+    Three things commit together and must: the release, the ledger row and the
+    trail. A penalty that outlived a rolled-back cancellation would charge
+    somebody for a job they still have.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=profile.id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    if row.status != "Assigned":
+        raise JobRefused(
+            "JOB_NOT_CANCELLABLE", "This job can no longer be cancelled."
+        )
+
+    # ── serialise this technician's own cancellations ────────────────────────
+    #
+    # Everything else in this slice settles its race in a WHERE clause, and the
+    # monthly cap cannot: the amount to charge DEPENDS on the sum of rows that
+    # have already been written, so it is a read followed by a write with a gap
+    # in between. Two cancellations landing in that gap both see the same
+    # remaining cap and both charge it — measured, not theorised: two concurrent
+    # cancellations took ₹300 each against a ₹300 ceiling.
+    #
+    # A row lock on the technician's own profile closes it. It is the narrowest
+    # thing that works — two technicians cancelling at once never wait on each
+    # other, only one technician cancelling twice at once does, which is the
+    # exact case that was wrong — and it is held until this transaction commits,
+    # so the second reader sees the first one's ledger row.
+    #
+    # `refresh` rather than a bare `SELECT ... FOR UPDATE`, because it also
+    # re-reads the row: `jobs_cancelled` is incremented below, and that is a
+    # read-modify-write with a lost-update race of its own.
+    await db.refresh(profile, with_for_update=True)
+
+    charge, label, escalates = await _band_for(db, row, technician_id=profile.id)
+
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == company_id,
+            Ticket.status == "Assigned",
+            Ticket.technician_id == profile.id,
+        )
+        .values(technician_id=None, status="New")
+    )
+    if result.rowcount == 0:
+        raise JobRefused(
+            "JOB_NOT_CANCELLABLE",
+            "This job is no longer assigned to you. Refresh to see your "
+            "current jobs.",
+        )
+    row.status = "New"
+    row.technician_id = None
+
+    name = await _technician_name(db, profile)
+    db.add(
+        _event(
+            row,
+            "released",
+            actor_kind="technician",
+            actor_label=name,
+            from_status="Assigned",
+            to_status="New",
+            note=f"Cancelled: {reason} · {label} · ₹{charge // 100:,}",
+        )
+    )
+    # `amount_paise > 0` is the CHECK on the table, and a technician whose
+    # monthly cap is already spent genuinely owes nothing more — so there is no
+    # row rather than a zero one. The release is still recorded above; only the
+    # money is absent, which is the truth.
+    if charge > 0:
+        db.add(
+            ledger_entry(
+                company_id=company_id,
+                technician_id=profile.id,
+                ticket_id=row.id,
+                kind="penalty",
+                amount_paise=charge,
+                reason=f"Cancel {label}",
+            )
+        )
+    # `jobs_cancelled` has been NULL — "not measured" — since the column was
+    # made nullable, because nothing counted one. Something does now, and the
+    # first cancellation is what turns a profile's "—" into a number.
+    profile.jobs_cancelled = (profile.jobs_cancelled or 0) + 1
+
+    escalated = False
+    if escalates:
+        # "Under 4 hours to the slot - this escalates straight to the Area
+        # Service Manager for urgent reassignment" is the approved sentence the
+        # technician has just read. Straight means now, not on the next
+        # five-minute tick.
+        escalated = await escalate(
+            db,
+            row,
+            note=f"{name} cancelled · {label}",
+            detail=f"Technician cancelled · {row.city} {row.pincode}",
+            actor_kind="technician",
+            actor_label=name,
+        )
+    if not escalated:
+        # Still in the pool, so the pool changed. `escalate` publishes its own
+        # frames when it fires.
+        await publish_pool_changed(
+            db,
+            company_id=company_id,
+            pincode=row.pincode,
+            subcategory_id=row.subcategory_id,
+        )
+        await publish_ticket_changed(db, row)
+    await db.commit()
+
+    # Outbound work, after the commit: neither of these can be rolled back.
+    if escalated:
+        await whatsapp_the_area_manager(db, row)
+    else:
+        # §7: "the system first attempts auto-reassignment: the ticket (with
+        # its locked slot) is re-notified to other eligible technicians."
+        await announce_pool_job(
+            db,
+            company_id=company_id,
+            ticket_id=row.id,
+            code=row.code,
+            pincode=row.pincode,
+            city=row.city,
+            subcategory_id=row.subcategory_id,
+            slot_start=row.slot_start,
+        )
+    return PenaltyBandOut(amountPaise=charge, label=label, escalates=escalates)

@@ -7,6 +7,7 @@ import {
   ScanLine,
   ShieldCheck,
   UserPlus,
+  UserX,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { NotificationKind } from "@/services/notifications";
@@ -29,6 +30,14 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: AlertTriangle,
     wrap: "bg-danger-bg text-danger",
     label: "Escalation",
+  },
+  // Nobody turned up and nobody said so. Red with the escalation: it is the
+  // only row in this feed about a customer who has ALREADY been let down, and
+  // the manager is the only person who can decide whether it was really one.
+  no_show: {
+    icon: UserX,
+    wrap: "bg-danger-bg text-danger",
+    label: "No-show",
   },
   serial_mismatch: {
     icon: ScanLine,

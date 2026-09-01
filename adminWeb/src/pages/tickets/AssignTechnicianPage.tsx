@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
@@ -14,33 +14,49 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { originFor, readNavOrigin } from "@/hooks/useNavOrigin";
 import { useAssignTicket, useTicket } from "@/hooks/useTickets";
 import { useCandidateTechnicians } from "@/hooks/useTechnicians";
 import { isTerminalTicketStatus } from "@/types";
 import type { Technician } from "@/types/technician";
 
 /**
- * Manual assignment, from a REAL ticket.
+ * Manual assignment — §7's last resort, after a bonus re-notification has
+ * already failed to find anybody.
  *
- * The escalation queue has its own copy of this screen at
- * `/escalations/:id/assign`, and it is still the mock's — its rows are three
- * hardcoded escalations keyed by ticket code. The ticket screens used to link
- * there with a ticket UUID, which could only ever answer "Escalation <uuid>
- * not found". This is the ticket-shaped one: the ticket comes from the API and
- * so does the shortlist beside it. The two converge when the escalation queue
- * binds.
+ * The one assignment screen. The escalation queue used to carry a second copy
+ * at `/escalations/:id/assign` over a mock keyed by ticket CODE, so a real
+ * ticket's UUID could only ever answer "Escalation <uuid> not found"; that
+ * path now redirects here. Both the ticket and the shortlist beside it are
+ * real, and so is the assignment.
  */
 export default function AssignTechnicianPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  /* Two ways in, and they want different Backs: the escalation queue, where
+     this is the "assign manually" last resort, and the ticket itself, where it
+     is "Re-assign". The URL is the same either way, so whoever navigated says
+     where they came from. The ticket is the fallback — router state is gone
+     after a reload or on a pasted link, and it is the one destination that is
+     always right for a screen scoped to a ticket. */
+  const origin = readNavOrigin(location.state);
+  const ticketPath = `/tickets/${id}`;
+  const backHref = origin?.backTo ?? ticketPath;
+  const backText = origin?.backLabel ?? "Back to ticket";
 
   const { data: ticket, isLoading, isError, error, refetch } = useTicket(id);
   // Eligibility is a question about THIS ticket — its subcategory, its
   // pincode — so the query waits for the ticket rather than asking early and
-  // showing a list that is not the shortlist.
+  // showing a list that is not the shortlist. The slot goes with them: the
+  // capacity column has to describe the day the WORK happens, or it reports
+  // today's load for a Friday job and the assign call refuses somebody the
+  // screen just showed as free.
   const candidates = useCandidateTechnicians(
     ticket?.subcategoryId,
-    ticket?.pincode
+    ticket?.pincode,
+    ticket?.slotStart
   );
   const assign = useAssignTicket();
 
@@ -52,12 +68,12 @@ export default function AssignTechnicianPage() {
     assign.mutate(
       { id: ticket.id, technicianId: tech.id, technicianName: tech.name },
       {
-        // Assignment is not wired to the API yet, so this never runs — the
-        // rejection is surfaced below and by the global toaster. Kept so the
-        // page needs no rework when the slice lands.
         onSuccess: () => {
           toast.add({ title: `${tech.name} assigned to ${ticket.code}` });
-          navigate(`/tickets/${ticket.id}`);
+          // The ticket is the right place to land — it shows what just
+          // happened — but it inherits the trail, so a manager who came from
+          // the queue is still one Back from the queue.
+          navigate(ticketPath, { state: originFor(ticketPath, origin) });
         },
         onSettled: () => setPending(null),
       }
@@ -68,7 +84,9 @@ export default function AssignTechnicianPage() {
   // settled ticket has nobody left to send, and the shortlist below would
   // otherwise offer a manager a dozen technicians for a job that is over.
   if (ticket && isTerminalTicketStatus(ticket.status)) {
-    return <Navigate to={`/tickets/${ticket.id}`} replace />;
+    return (
+      <Navigate to={ticketPath} replace state={originFor(ticketPath, origin)} />
+    );
   }
 
   return (
@@ -82,10 +100,11 @@ export default function AssignTechnicianPage() {
         variant="ghost"
         size="sm"
         className="mb-3.5 -ml-2"
-        to={`/tickets/${id}`}
+        to={backHref}
+        state={origin?.backState}
       >
         <ArrowLeft data-icon="inline-start" />
-        Back to ticket
+        {backText}
       </LinkButton>
 
       {isError ? (

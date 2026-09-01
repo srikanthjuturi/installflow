@@ -14,8 +14,10 @@ import {
   listTechnicianJobs,
   listTechnicianTickets,
   listTickets,
+  recordNoShow,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
+import { ledgerKeys } from "./useLedger";
 import { BACKSTOP_REFETCH_MS } from "./liveness";
 import { technicianKeys } from "./useTechnicians";
 import type { ListParams } from "@/types/api";
@@ -45,6 +47,27 @@ export const ticketKeys = {
    *  invalidation, but keyed on the whole request the way `list` is. */
   byTechnicianList: (technicianId: string, params: ListParams) =>
     ["tickets", "byTechnicianList", technicianId, params] as const,
+};
+
+/**
+ * The escalation queue's own prefix. It lives here rather than in
+ * `useEscalations` because an escalation IS a ticket, and every mutation in
+ * this file has to invalidate it — a manual assignment empties a row out of
+ * that queue. Declaring it in the other file and importing it back would make
+ * the two modules import each other.
+ */
+export const escalationKeys = {
+  all: ["escalations"] as const,
+  /**
+   * `params` carries the search and the filters, never a page — the page is the
+   * infinite query's cursor.
+   *
+   * An UNFILTERED queue hashes to the same key the rail's badge asks for, so
+   * the two still share one request as long as nothing is narrowed. The moment
+   * a filter goes on they diverge, which is right: the badge counts what needs
+   * a manager now, not what this reader is currently looking for.
+   */
+  list: (params: ListParams = {}) => ["escalations", "list", params] as const,
 };
 
 export function useTickets(params: ListParams = {}) {
@@ -190,6 +213,11 @@ export function useForceCloseTicket() {
  * Invalidates the technician prefix too: who is assigned to what is half of
  * "who has bandwidth left", so leaving that list alone would show the manager
  * a shortlist that still counts the person they just picked as free.
+ *
+ * And the escalation prefix, because assigning is one of the two ways a ticket
+ * LEAVES that queue. Without it the row the manager just dealt with stays on
+ * the rail's badge and on the queue behind them for another ten seconds, which
+ * on a countdown screen reads as the action not having worked.
  */
 export function useAssignTicket() {
   const queryClient = useQueryClient();
@@ -198,7 +226,30 @@ export function useAssignTicket() {
     mutationFn: assignTechnician,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: escalationKeys.all });
       queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
+  });
+}
+
+/**
+ * Confirm a no-show and charge the band.
+ *
+ * Invalidates the same four prefixes an assignment does, plus the ledger: this
+ * is the only control in the console that takes money OFF a technician, so the
+ * pool balance and the transaction list are both stale the moment it succeeds.
+ */
+export function useRecordNoShow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't record the no-show" },
+    mutationFn: recordNoShow,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: escalationKeys.all });
+      queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      queryClient.invalidateQueries({ queryKey: ledgerKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });

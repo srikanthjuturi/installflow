@@ -25,6 +25,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     SmallInteger,
     String,
     Text,
@@ -204,6 +205,23 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: a ticket cannot be hard-deleted out from under its history.
     technician_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
+    #: The re-notification incentive a manager attached after nobody accepted,
+    #: in PAISE — hard rule 9, never a float and never a formatted string.
+    #:
+    #: NULL means no bonus was ever funded, which is a different claim from
+    #: zero: ₹0 would assert somebody decided the job was worth nothing extra.
+    #: Both clients render null as "—", the same way `daily_job_cap` and
+    #: `rating` are read.
+    #:
+    #: It REPLACES rather than accumulates. The approved button reads "Add ₹400
+    #: bonus & re-notify", and a second press meaning ₹800 would be a manager
+    #: spending money they did not think they were spending.
+    #:
+    #: Nothing pays it out yet — the ledger owns that. What it does today is
+    #: reach the technician's pool card, which is the entire point of funding
+    #: one: an incentive nobody can see incentivises nobody.
+    bonus_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     __table_args__ = (
         # Declared on the MODEL, not only in a migration, so the model is the
         # whole truth about the table and `--autogenerate` can see them.
@@ -238,6 +256,12 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             name="slot_request_status",
         ),
         CheckConstraint("source IN ('API', 'Excel', 'Manual')", name="source"),
+        # `> 0`, not `>= 0`. A bonus of zero is not a smaller incentive, it is
+        # the absence of one — and the absence is already spelled NULL. Two ways
+        # to say "no bonus" is one way too many.
+        CheckConstraint(
+            "bonus_paise IS NULL OR bonus_paise > 0", name="bonus_paise"
+        ),
         # The description rule, as a backstop. It is validated in `schemas.py`
         # too, where it can give a per-field message; this is here so the table
         # describes itself and so a future importer that bypasses the request

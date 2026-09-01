@@ -5,7 +5,7 @@ import {
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
-import { useNavOrigin } from "@/hooks/useNavOrigin";
+import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
 import type { SlaState, Ticket } from "@/types";
@@ -49,6 +49,12 @@ interface TicketTableProps {
    * page, with these filters — rather than to the ticket board.
    */
   backLabel?: string;
+  /**
+   * How the page holding this list was itself reached, forwarded so a ticket
+   * opened from a nested list (a technician's jobs) comes back to that list
+   * with the trail behind it intact.
+   */
+  backState?: NavOrigin;
 }
 
 export function TicketTable({
@@ -63,9 +69,10 @@ export function TicketTable({
   onRetry,
   toolbarActions,
   backLabel,
+  backState,
 }: TicketTableProps) {
   const navigate = useNavigate();
-  const origin = useNavOrigin(backLabel);
+  const origin = useNavOrigin(backLabel, backState);
   const status = params.filters?.status ?? "All";
 
   // Anything that changes WHICH rows match sends the reader back to page 1 —

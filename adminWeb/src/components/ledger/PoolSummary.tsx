@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/shared/states";
-import { money } from "@/utils/money";
+import { moneyPaise } from "@/utils/money";
 import type { LedgerPool } from "@/services/ledger";
 
 interface PoolSummaryProps {
@@ -47,8 +47,12 @@ export function PoolSummary({
   }
 
   // Penalties fund bonuses — the balance is what is left of the money that came
-  // in. Only claim the arithmetic when it actually holds.
-  const balances = pool.penaltiesCollected - pool.bonusesPaid === pool.balance;
+  // in. Only claim the arithmetic when it actually holds. It always does now
+  // the API derives the balance rather than storing it, and the guard stays
+  // because a summary that silently stopped adding up would be worse than one
+  // that stops claiming to.
+  const balances =
+    pool.penaltiesCollectedPaise - pool.bonusesPaidPaise === pool.balancePaise;
 
   return (
     <div>
@@ -59,7 +63,7 @@ export function PoolSummary({
               Current pool balance
             </div>
             <div className="mt-2.5 text-[28px] leading-none font-semibold tracking-tight">
-              {money(pool.balance)}
+              {moneyPaise(pool.balancePaise)}
             </div>
             <div className="mt-1.5 text-xs opacity-70">
               Available for escalation bonuses
@@ -70,10 +74,10 @@ export function PoolSummary({
         <Card>
           <CardContent className="flex flex-col">
             <div className="text-xs font-semibold text-danger">
-              Penalties collected · Aug
+              Penalties collected
             </div>
             <div className="mt-2.5 text-[28px] leading-none font-semibold tracking-tight">
-              {money(pool.penaltiesCollected)}
+              {moneyPaise(pool.penaltiesCollectedPaise)}
             </div>
             <div className="mt-1.5 text-xs text-ink-3">
               across {pool.cancellations} cancellations
@@ -84,10 +88,10 @@ export function PoolSummary({
         <Card>
           <CardContent className="flex flex-col">
             <div className="text-xs font-semibold text-ok">
-              Bonuses paid · Aug
+              Bonuses paid
             </div>
             <div className="mt-2.5 text-[28px] leading-none font-semibold tracking-tight">
-              {money(pool.bonusesPaid)}
+              {moneyPaise(pool.bonusesPaidPaise)}
             </div>
             <div className="mt-1.5 text-xs text-ink-3">
               across {pool.pickups} escalation pickups
@@ -102,20 +106,20 @@ export function PoolSummary({
         <p className="mt-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs text-ink-3">
           <span>
             <b className="font-semibold text-ink">
-              {money(pool.penaltiesCollected)}
+              {moneyPaise(pool.penaltiesCollectedPaise)}
             </b>{" "}
-            Penalties collected · Aug
+            Penalties collected
           </span>
           <span aria-hidden="true">−</span>
           <span className="sr-only">minus</span>
           <span>
-            <b className="font-semibold text-ink">{money(pool.bonusesPaid)}</b>{" "}
-            Bonuses paid · Aug
+            <b className="font-semibold text-ink">{moneyPaise(pool.bonusesPaidPaise)}</b>{" "}
+            Bonuses paid
           </span>
           <span aria-hidden="true">=</span>
           <span className="sr-only">equals</span>
           <span>
-            <b className="font-semibold text-ink">{money(pool.balance)}</b>{" "}
+            <b className="font-semibold text-ink">{moneyPaise(pool.balancePaise)}</b>{" "}
             Current pool balance
           </span>
         </p>

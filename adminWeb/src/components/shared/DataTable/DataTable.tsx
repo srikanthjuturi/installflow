@@ -1,7 +1,8 @@
-import { useId } from "react";
+import { Fragment, useId } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadMore } from "@/components/shared/LoadMore";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import {
   HeadTr,
@@ -44,6 +45,8 @@ export function DataTable<T>({
   filters,
   toolbarActions,
   pagination = {},
+  infinite,
+  groupBy,
   defaultSort,
   summary,
   countLabel,
@@ -66,6 +69,11 @@ export function DataTable<T>({
   // In server mode the backend has already filtered, sorted and sliced —
   // running the client pipeline again would page an already-paged page.
   const isServer = Boolean(server);
+  // Load-on-scroll: the rows given are every page so far. There is no page to
+  // jump to and no size to choose, so both controls go — but the count header
+  // stays, because the total is still known and "N results" is still the
+  // honest answer to how much is down there.
+  const isInfinite = Boolean(infinite);
 
   const t = useDataTable<T>({
     data,
@@ -127,7 +135,7 @@ export function DataTable<T>({
       actions={toolbarActions}
       tableId={tableId}
       pageSize={
-        paginated
+        paginated && !isInfinite
           ? { value: pageSize, sizes, onChange: setPageSize }
           : undefined
       }
@@ -284,35 +292,73 @@ export function DataTable<T>({
                         ))}
                       </Tr>
                     ))
-                  : t.rows.map((row) => (
-                      <Tr
-                        key={getRowId(row)}
-                        onClick={onRowClick ? () => onRowClick(row) : undefined}
-                        className={cn(
-                          onRowClick && "cursor-pointer",
-                          rowClassName?.(row)
-                        )}
-                      >
-                        {columns.map((c) => (
-                          <Td
-                            key={c.id}
+                  : t.rows.map((row, i) => {
+                      // A divider above the first row of each run. Compared
+                      // against the PREVIOUS row rather than a set of labels
+                      // already drawn, so a value that recurs later in the list
+                      // gets its own heading again instead of being silently
+                      // swallowed into the first one.
+                      const group = groupBy?.(row);
+                      const opensGroup =
+                        group !== undefined &&
+                        (i === 0 || groupBy!(t.rows[i - 1]) !== group);
+
+                      return (
+                        <Fragment key={getRowId(row)}>
+                          {opensGroup ? (
+                            <Tr className="hover:bg-transparent">
+                              {/* Deliberately NOT sticky, unlike the day
+                                  headings on the escalation queue. A table has
+                                  a column header of its own, and a divider
+                                  pinned to the same edge either covers it or
+                                  fights it for the line. */}
+                              <Td
+                                colSpan={columns.length}
+                                className="bg-surface-2 py-1.5 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase"
+                              >
+                                {group}
+                              </Td>
+                            </Tr>
+                          ) : null}
+
+                          <Tr
+                            onClick={
+                              onRowClick ? () => onRowClick(row) : undefined
+                            }
                             className={cn(
-                              c.align === "right" && "text-right",
-                              c.sticky && "sticky left-0 bg-card",
-                              c.cellClassName
+                              onRowClick && "cursor-pointer",
+                              rowClassName?.(row)
                             )}
                           >
-                            {c.cell(row)}
-                          </Td>
-                        ))}
-                      </Tr>
-                    ))}
+                            {columns.map((c) => (
+                              <Td
+                                key={c.id}
+                                className={cn(
+                                  c.align === "right" && "text-right",
+                                  c.sticky && "sticky left-0 bg-card",
+                                  c.cellClassName
+                                )}
+                              >
+                                {c.cell(row)}
+                              </Td>
+                            ))}
+                          </Tr>
+                        </Fragment>
+                      );
+                    })}
               </TableBody>
             </Table>
           </div>
         )}
 
-        {paginated && !showEmpty ? (
+        {showEmpty ? null : isInfinite ? (
+          <LoadMore
+            hasNextPage={infinite!.hasNextPage}
+            isFetchingNextPage={infinite!.isFetchingNextPage}
+            fetchNextPage={infinite!.fetchNextPage}
+            label={infinite!.label}
+          />
+        ) : paginated ? (
           <Pagination
             page={page}
             pageCount={pageCount}

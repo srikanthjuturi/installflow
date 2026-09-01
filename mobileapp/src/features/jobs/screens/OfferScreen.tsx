@@ -164,6 +164,22 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                   >
                     {formatPaise(job.payoutPaise)}
                   </Text>
+                  {/* Repeated from the pool card on purpose. This is the last
+                      screen before the accept sheet, and a number that changed
+                      the technician's mind on the list must still be in front
+                      of them when they commit. */}
+                  {job.bonusPaise !== null && (
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_700Bold',
+                        fontSize: 12.5,
+                        color: palette.secondary[600],
+                        marginTop: 1,
+                      }}
+                    >
+                      +{formatPaise(job.bonusPaise)} bonus
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>

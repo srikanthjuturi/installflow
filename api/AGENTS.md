@@ -16,8 +16,43 @@ so all four agree by construction. It counts by **SLOT date in IST** — not by 
 accepted, and not from `assigned` events. Five jobs taken tonight for Friday exhaust *Friday*.
 `Closed` and `Force-Closed` still count; only `Cancelled` is exempt.
 
-Still to come: escalations, the ledger, and a technician EDIT screen in the console — the API
-takes `dailyJobCap` on `PUT /technicians/{id}` and no screen calls it.
+**Escalation, cancellation and the penalty pool are live**, which is §7 end to end. A job nobody
+accepts inside its company's window moves to `Escalated` — out of `pool_query` — and a manager
+either assigns somebody or funds a bonus that re-publishes it. A technician can give a job back;
+the slot never moves, the band is charged, and inside the window it escalates immediately.
+`ledger_entries` is the pool both directions run through: `balance = penalties − bonuses`. A
+no-show is detected by a sweep that charges NOTHING and confirmed by a person.
+
+Every operating number is per company in `company_rules`, edited on Configuration → Rules Config.
+The band BOUNDARIES are not, and belong in `core/rules.py`: an amount is policy, but where one
+band ends is a fact about the clock.
+
+**The DEFAULTS live in code, not in seed data.** `rules.DEFAULTS` is the source, and a company gets
+its row stamped from it inside `create_company`'s own transaction; `load_rules` recreates a missing
+one on the next read. So `company_rules` holds a company's OVERRIDES — emptying the table resets
+rules, it does not destroy them, which is what makes it safe to clear with the tenant data it
+belongs to. The reason the self-heal exists: all four sweeps INNER JOIN this table, so a company
+without a row silently stops being swept, and a missing escalation is invisible in exactly the way
+a missing row is.
+
+`GET /tickets/escalations` is **paginated but never pagered** — the console loads on scroll, so
+every row stays reachable. Its ordering does two jobs at once and is one expression so the API and
+the screen's headings cannot disagree: live rows before missed ones (page one is therefore the half
+that can still be rescued), then **live ascending and missed DESCENDING** — soonest-at-risk first
+among the live, most-recent-failure first among the missed. Both halves sort ascending on a single
+signed-epoch key, because ordering `slot_start` twice in opposite directions would need two queries
+and paging could not span them. It takes `search` (the ticket board's own predicate), `half`, and
+an IST `slotFrom`/`slotTo` range on the SLOT — the day the work was promised, not the day the
+ticket was raised.
+
+Still to come: **AI review**, the **dashboard**, **job payouts** — nothing prices an install, so
+`payoutPaise` and a technician's net earnings are null everywhere and render `—` — and a
+technician EDIT screen in the console, since the API takes `dailyJobCap` on
+`PUT /technicians/{id}` and no screen calls it.
+
+Two things nothing clears yet, both deliberate and both needing a product decision rather than
+code: an escalated job whose slot has PASSED stays in the queue for ever (re-slotting means asking
+the customer for another time), and the vendor is never told their customer's slot is at risk.
 
 ---
 
@@ -286,6 +321,26 @@ every technician phone on the way in — it is their identity, and the partial u
 If you `session.add(...)` and then read those rows back before committing, **flush first**. This
 already caused one real bug: a technician self-registered with three pincodes and landed on Home
 showing none, because the response was built from a query that could not see the pending rows.
+
+### 11. A stored instant is UTC. Anything a person reads is IST.
+
+Every timestamp in the database is `timestamptz` in UTC, and India is the whole market — so any
+value that reaches a human eye, or that a calendar day is reckoned from, has to be converted
+first. `SLOT_TIMEZONE_OFFSET_MINUTES` (330) is the one definition; `core/coverage.ist_day_bounds`
+and `tickets/service.clock` are the ways through it.
+
+Both directions have already shipped a bug:
+
+- **Formatting.** The slot reminder built its title as `f"{row.slot_start:%H:%M}"`, so a 2:00 PM
+  appointment reached the technician's phone as *"starts at 08:30"* — five and a half hours wrong,
+  on the one notification whose entire job is stopping somebody being late. Use `clock()`, which
+  also gets the house 12-hour style right.
+- **Comparing.** A bare calendar date has to become a UTC RANGE, never a cast — and the instant you
+  hand `ist_day_bounds` must sit safely inside the intended day. `_ist_range` uses **noon**, not
+  midnight: midnight-UTC on a date is 05:30 IST the same day, correct only by 5½ hours of luck,
+  while a slot at 00:05 IST is 18:35 UTC the day BEFORE and drops out of any range built the naive
+  way. A range also beats a cast because `timezone(text, timestamptz)` is STABLE, not IMMUTABLE, so
+  Postgres will not index through it.
 
 ---
 
@@ -602,3 +657,26 @@ and not fine for real onboarding.
 
 `WHATSAPP_OTP_TEMPLATE_NAME` must be an **AUTHENTICATION**-category template with one body
 parameter and a copy-code button — `_template_payload(otp_button=True)` fills the code into both.
+
+### A registered template's wording is a deployment, not an edit
+
+Every `build_*_payload` has two bodies: the registered template's parameters, and a free-form
+fallback for development. **They are allowed to differ, and one pair deliberately does** — fix the
+fallback and leave a note rather than quietly making them match, because matching them means either
+shipping the wrong words or a days-long Meta re-submission.
+
+Two rules the templates themselves impose, both already paid for:
+
+- **A parameter must complete the sentence around it, not repeat it.** `job_escalation` reads
+  "…and the slot is {{4}}", and {{4}} was fed `hours_to()`, which appends "to slot" — so every
+  escalation Meta ever delivered said *"the slot is 2h 40m to slot"*. Fixed at the CALLER:
+  `core/escalation` now splits `time_to_slot` (bare span) from `hours_to` (suffixed, for a bell
+  title that supplies no suffix of its own).
+- **A body may not start or end with a variable** — subcode `2388299`. It cost a submission on the
+  feedback template, which is why `job_feedback` opens with "Your" and `job_escalation` with
+  "Escalation" rather than with `{{1}}`.
+
+Currently diverging on purpose: the registered `job_escalation` body says "reassign it", which is
+wrong — nothing was ever assigned, so there is nothing to RE-assign, and the word sends a manager
+hunting for a technician to replace. The fallback says "assign a technician". Correct the
+registered body with the next template change, not on its own.

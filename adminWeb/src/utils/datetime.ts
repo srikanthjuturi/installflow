@@ -118,6 +118,117 @@ export function formatSlot(
 }
 
 /**
+ * The countdown to a slot, as a LABEL and a VALUE that agree with each other.
+ *
+ * The forward-facing twin of `lib/relativeTime`, and separate from it because
+ * the two answer opposite questions: that one narrates the past ("4m ago") and
+ * coarsens as it recedes, this one counts down to a promise and must stay
+ * precise right up to it.
+ *
+ * ## Three states, because a slot is a WINDOW and not an instant
+ *
+ * The queue keeps a job in its live half until the window CLOSES — somebody can
+ * still be sent while it is open — so a countdown that only measured to the
+ * START read "Slot passed" for the entire two hours the customer was actually
+ * sitting at home waiting. The most urgent row on the screen looked like a dead
+ * one.
+ *
+ * This returned only a string at first, and that was the second half of the
+ * same mistake. The string changed tense across the three states — `2h 40m`,
+ * then `58m left`, then `Slot passed` — while the heading above it stayed the
+ * fixed words "Time to slot". So a job whose window had opened read "TIME TO
+ * SLOT / 58m left", which is a contradiction: you are IN the slot, and 58m is
+ * what remains of it, not what remains before it. Side by side in a list, one
+ * card carrying a trailing word its neighbours did not also looked like a bug
+ * rather than a different state.
+ *
+ * Moving the tense into the label fixes both. The value is then a bare span in
+ * every state, so the figures line up down the page and mean the same kind of
+ * thing, and the words above say which question the figure answers.
+ *
+ *   before it opens   `TIME TO SLOT` · `2h 40m`   until somebody must be there
+ *   while it is open  `SLOT ENDS IN` · `58m`      what is left of the window
+ *   after it closes   `SLOT CLOSED`  · `1h 20m ago`
+ *
+ * The last one is deliberately not "Slot passed". The missed list only grows
+ * and nothing clears it, so *how long ago* is the one thing separating a job
+ * somebody could still ring the customer about from one three weeks cold.
+ */
+export interface Countdown {
+  label: string;
+  value: string;
+  /** `open` and `closed` are what a caller tones differently. */
+  state: "before" | "open" | "closed" | "unknown";
+}
+
+export function slotCountdown(
+  start: string | null | undefined,
+  end?: string | null,
+  now: Date = new Date()
+): Countdown {
+  if (!start) return { label: "Time to slot", value: EMPTY, state: "unknown" };
+  const opens = new Date(start);
+  if (Number.isNaN(opens.getTime()))
+    return { label: "Time to slot", value: EMPTY, state: "unknown" };
+
+  const toOpen = Math.floor((opens.getTime() - now.getTime()) / 60_000);
+  if (toOpen >= 0)
+    return { label: "Time to slot", value: span(toOpen), state: "before" };
+
+  const closes = end ? new Date(end) : null;
+  if (closes && !Number.isNaN(closes.getTime())) {
+    const left = Math.floor((closes.getTime() - now.getTime()) / 60_000);
+    if (left >= 0)
+      return { label: "Slot ends in", value: span(left), state: "open" };
+    return { label: "Slot closed", value: `${coarse(-left)} ago`, state: "closed" };
+  }
+  // No end recorded, and the start is behind us. Nothing can be said about a
+  // window whose length is unknown beyond the fact that it began.
+  return {
+    label: "Slot started",
+    value: `${coarse(-toOpen)} ago`,
+    state: "closed",
+  };
+}
+
+/**
+ * `2h 59m`, or `45m` under the hour. The PRECISE form, for a slot ahead.
+ *
+ * Precision earns its place in front of the slot and only there: the difference
+ * between 40 minutes and 10 is whether anybody can still get there.
+ */
+function span(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  // `40m`, not `4m`, past the first hour: `2h 4m` and `2h 40m` are eight
+  // minutes apart at a glance in a column of monospaced figures.
+  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+/**
+ * `45m` · `22h` · `3d` · `5w`. The COARSE form, for a slot already closed.
+ *
+ * `span` kept counting in hours for ever, and the missed queue is where that
+ * fell over: a job whose slot closed last month rendered `814h 03m ago`, which
+ * is eleven characters of monospace nobody can read as "about five weeks" and
+ * which wrapped onto a second line in a fixed-width column.
+ *
+ * Nothing downstream of a closed slot needs the minutes. What a manager is
+ * deciding is whether this is a customer to ring now or a fortnight of history,
+ * and one significant figure answers that better than two exact ones.
+ *
+ * Weeks are the last unit on purpose. An escalation still sitting here after a
+ * year is a data problem, and `52w ago` says so more usefully than `1y ago`.
+ */
+function coarse(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return days < 7 ? `${days}d` : `${Math.floor(days / 7)}w`;
+}
+
+/**
  * `datetime-local` wants `YYYY-MM-DDTHH:mm` in LOCAL time, not the `Z`-suffixed
  * instant an API returns. Used to seed a slot field when editing.
  */

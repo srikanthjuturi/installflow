@@ -301,11 +301,30 @@ binding time.
 
 ### Penalty bands
 
+⚠ **Do not hard-code these.** The server sends the band — its label, the amount it will actually
+charge, and whether it escalates — from `GET /jobs/{id}/cancellation`. The screen renders whatever
+comes back. It used to compute the band on the DEVICE from `hoursToSlot`, which meant a phone with
+a wrong clock could talk itself into a cheaper penalty.
+
+The seeded defaults, for orientation only — every one is a `company_rules` column a company edits:
+
 | Time to slot | Penalty | Escalates to ASM |
 |---|---|---|
-| > 8 h | ₹80 | no |
-| 4–8 h | ₹150 | no |
-| < 4 h | ₹250 | **yes** |
+| > 4 h | ₹300 | no |
+| 2–4 h | ₹500 | **yes** |
+| < 2 h | ₹800 | **yes** |
+| *(no-show)* | ₹1,200 | — |
+
+Capped at ₹5,000 per technician per calendar month in IST, so the charge can be **less than the
+band** — which is exactly why the figure must come from the server.
+
+⚠ This prototype's own three bands (₹80 / ₹150 / ₹250 cutting at 8h and 4h) contradicted the
+console's, and the contradiction was a logged open decision until the ledger forced it. **Ruled in
+favour of the console's four.** No screen changed: this one already rendered `band.label` and
+`band.amountPaise`.
+
+**No-show is not reachable from cancelling**, however late. Cancelling after the slot has opened is
+still `< 2h` — they told somebody. A no-show is detected server-side and confirmed by a manager.
 
 ### Proof capture machine
 

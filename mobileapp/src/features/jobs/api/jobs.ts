@@ -34,6 +34,15 @@ interface JobOfferDto {
   maskedCustomer: string;
   /** Always null today — there is no payout column. Renders as "—". */
   payoutPaise: number | null;
+  /**
+   * A re-notification bonus, in paise. Null unless a manager funded one after
+   * this job escalated for want of anybody taking it.
+   *
+   * On the MASKED offer deliberately: it is the number that is supposed to
+   * change the technician's mind, so it has to be on the card they decide
+   * from rather than waiting until they have already accepted.
+   */
+  bonusPaise: number | null;
 }
 
 /** `JobOut`: the offer plus everything that unlocks once the job is ours. */
@@ -157,6 +166,7 @@ function toJob(dto: JobOfferDto): Job {
     // No distanceLabel: nothing stores the customer's coordinates, so there is
     // nothing to measure. The card omits the segment rather than guessing.
     payoutPaise: dto.payoutPaise,
+    bonusPaise: dto.bonusPaise,
     status: 'pool',
     hoursToSlot: hoursUntil(dto.slotStart),
     maskedCustomer: dto.maskedCustomer,

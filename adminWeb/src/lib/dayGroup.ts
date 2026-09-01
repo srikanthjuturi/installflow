@@ -27,11 +27,15 @@ export function dayKey(iso: string): string {
 }
 
 /**
- * `Today` · `Yesterday` · `Mon, 25 Aug` · `25 Aug 2025`.
+ * `Today` · `Tomorrow` · `Yesterday` · `Mon, 25 Aug` · `25 Aug 2025`.
  *
  * The weekday appears from the third day back, where it starts carrying
  * information — nobody needs telling that today is a Friday. The year appears
  * only outside the current one, for the same reason.
+ *
+ * `Tomorrow` is here for the escalation queue, which is the one list that
+ * groups by a FUTURE instant: a confirmed slot rather than something that has
+ * already happened. The notification feed and the ledger never reach it.
  */
 export function dayLabel(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
@@ -43,6 +47,7 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
   const days = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
+  if (days === -1) return "Tomorrow";
 
   return d.toLocaleDateString("en-IN", {
     weekday: "short",

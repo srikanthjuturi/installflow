@@ -131,6 +131,15 @@ export interface Ticket {
   technicianId: string | null;
   technicianName: string | null;
 
+  /**
+   * PAISE. What a manager attached to a re-notification after nobody accepted.
+   *
+   * Null means no bonus was ever funded, which is a different claim from ₹0 —
+   * render it through `moneyPaise`, which says "—". Present on every ticket,
+   * set on almost none.
+   */
+  bonusPaise: number | null;
+
   /** Delivery of the "pick a time" message. `not_needed` when ops set the slot. */
   slotRequestStatus: "not_needed" | "pending" | "sent" | "failed";
   /** WhatsApp's own words when it refused, so ops can act rather than guess. */
@@ -188,8 +197,21 @@ export interface TimelineEvent {
     | "reopened"
     | "serial_mismatch"
     | "serial_corrected"
-    | "reminded";
+    | "reminded"
+    | "escalated"
+    | "bonus_added"
+    | "released"
+    | "no_show";
   title: string;
+  /**
+   * WHO caused it, as a value rather than as wording.
+   *
+   * `title` says the same thing in English — "Technician accepted" against
+   * "Assigned by a manager" — but anything elsewhere on the page that needs
+   * the distinction reads this instead, because a display string is
+   * presentation and free to change.
+   */
+  actorKind: "staff" | "technician" | "customer" | "vendor" | "system";
   /** Both nullable: a system event has no actor, and some have no detail. */
   by: string | null;
   note: string | null;

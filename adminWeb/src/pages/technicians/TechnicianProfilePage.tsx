@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { useParams } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
@@ -13,12 +13,24 @@ import {
   TechStats,
 } from "@/components/technicians/TechProfileHeader";
 import { Skeleton } from "@/components/ui/skeleton";
+import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useTechnician } from "@/hooks/useTechnicians";
 import { useTechnicianJobs } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
 
 export default function TechnicianProfilePage() {
   const { id = "" } = useParams();
+  const location = useLocation();
+
+  /* Three ways in — the roster, a ledger row, the topbar search — and only the
+     first one is `/technicians`. The search has been handing this page an
+     origin since it was built; the page was throwing it away and sending
+     everybody to the roster regardless. The roster stays the fallback: it is
+     where a pasted link, which carries no state, most plausibly belongs. */
+  const origin = readNavOrigin(location.state);
+  const backHref = origin?.backTo ?? "/technicians";
+  const backText = origin?.backLabel ?? "Back to technicians";
+
   const { data: tech, isLoading, isError, error, refetch } = useTechnician(id);
   /* Beside the profile read, not behind it: the two are independent, and
      waiting for the record before asking for the jobs would put a second
@@ -45,10 +57,11 @@ export default function TechnicianProfilePage() {
         variant="ghost"
         size="sm"
         className="mb-3.5 -ml-2"
-        to="/technicians"
+        to={backHref}
+        state={origin?.backState}
       >
         <ArrowLeft data-icon="inline-start" />
-        Back to technicians
+        {backText}
       </LinkButton>
 
       {isError ? (
@@ -98,6 +111,10 @@ export default function TechnicianProfilePage() {
               backLabel={
                 tech ? `Back to ${tech.name}` : "Back to technician"
               }
+              // Forwarded so a ticket opened from here comes back to this
+              // profile, and the profile still knows about the ledger row or
+              // the search that opened IT.
+              backState={origin}
               isLoading={isLoading || jobs.isLoading}
               error={jobs.error}
               onRetry={() => jobs.refetch()}

@@ -17,10 +17,11 @@ export type NotificationKind =
   | "slot"
   | "technician_joined"
   | "job_started"
-  | "invite_expired";
+  | "invite_expired"
+  | "no_show";
 
 /**
- * The same eight, in the order the filter offers them — loudest first.
+ * The same nine, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
  * The last three are the things that merely HAPPENED — a technician arrived,
@@ -33,6 +34,7 @@ export type NotificationKind =
  */
 export const NOTIFICATION_KINDS = [
   "escalation",
+  "no_show",
   "serial_mismatch",
   "ai",
   "force_close",

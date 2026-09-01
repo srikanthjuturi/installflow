@@ -45,19 +45,72 @@ prefilled (`ravi.sharma@reliancegreentech.in` / `demopass`); any 6 digits pass O
 **the geography master** (`/geo/*`, including the Excel importer), the **product master**
 (`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
 
-Still mock, in `src/services/mocks/` behind TanStack Query hooks: tickets, escalations, the
-ledger, AI review, dashboard, vendors, imports and notifications — so binding each stays a
+Tickets, escalations, the ledger, vendors, notifications, search, earnings and Rules config are
+live too. What is still mock is **AI review** (`services/ai.ts`), the bulk **importer**, and two
+functions in `services/settings.ts` (`inviteUser` and its sibling) — so binding each stays a
 one-line change and loading / empty / error states are already there.
+
+**The dashboard is live**, over `GET /tickets/summary`. It sits in the tickets slice rather than
+a `dashboard` one because every figure on it is a ticket count and hard rule 4 forbids a second
+slice importing `scoped()` — a second copy of the visibility rule is the copy that drifts. Two
+things about it are worth knowing before editing:
+
+- **Every count is the SAME predicate as the screen it links to.** The SLA buckets reuse
+  `_sla_order_case`, so a tile and the board rank one ticket the same way; the escalation figure
+  is `list_escalations`' LIVE half, so it equals the red banner on the page it opens. The two
+  sweep-derived cards drop the sweeps' notification de-dupe on purpose — a ticket does not stop
+  needing a manager because a bell already rang for it.
+- **There are no delta chips, and that is not an oversight.** A movement needs the same count as
+  it stood earlier, and nothing records that: no snapshot table, and today's rows cannot answer it
+  because a ticket closed on Tuesday was open on Monday and leaves no trace. `Kpi.delta` is
+  optional and `KpiRow` draws no pill without one. Restore the chips only with a real source
+  behind them.
+- **The filters narrow and can never widen.** `regionId` / `stateId` / `dateFrom` / `dateTo` go
+  through `service.narrowed()`, whose territory clause is a pincode subquery ANDed with
+  `scoped()` — so naming somewhere outside your own territory intersects to nothing and reads
+  zero. There is deliberately **no separate permission check**: one that could drift from the
+  picker is worse than none. Verified per role — a Telangana area manager naming any other region
+  reads 0, never that region's real figures.
+  The picker offers only what the caller may see (`/geo/*?mine=true`); that is presentation, not
+  security. Dates bound **intake** (`created_at`), not the slot: a slot is nullable, so bounding
+  on it would silently drop every unbooked ticket — exactly what the "Slot not confirmed" card
+  counts. Filters live in the query string, so a view is a link.
+- **`list_tickets` takes the same four, and must keep doing so.** The peek table under the tiles
+  reads that endpoint. When only the summary was filtered, a dashboard narrowed to one region
+  read zero everywhere above six rows from another — which is why the narrowing is one shared
+  helper rather than two call sites that agreed on the day they were written.
+- **Zero is a normal state now.** A territory or a date range can legitimately match nothing, so
+  `SlaPanel` draws a filled `bg-chart-empty` bar at a total of 0; three zero-width segments render
+  as a bare strip that reads as a chart that failed to load.
+- **Every card opens a list holding exactly what the card counted.** A count that disagrees with
+  the rows behind it is worse than no count. Two things make it hold, and both must survive:
+  the Escalations card links with **`half=live`** (it counts the savable half; the queue also
+  carries a missed pile that only grows, so the unfiltered link showed seven rows under a card
+  saying two), and every card carries the dashboard's own four filters through `linkTo()`.
+  `list_escalations` and `list_tickets` both accept them and apply the same `narrowed()` the
+  figures came from. Verified across all five roles, unfiltered and narrowed.
+- **A filter the destination cannot show must announce itself.** The escalation queue has no
+  control for territory or intake dates, so arriving with them set would hide rows with nothing
+  on screen to explain it. `NarrowedNotice` names them and offers "Show the whole queue". Its
+  `half` pill, by contrast, needs no notice — it is a visible control that reflects the URL.
+- **The queue's filters live in the query string.** They were `useState`, which is why
+  `?half=live` was ignored and the card's link did nothing. A filter in component state cannot be
+  linked to, and this screen is a link target.
+- **The dashboard's filter bar emits a PATCH, not the whole set.** `onChange({ stateId })` names
+  only what changed, and `setFilters` merges it onto the live URL through `setSearchParams`'
+  functional form. Passing the whole object let two changes in one tick clobber each other —
+  the same hazard `useTicketFilters` solves with its pending ref.
 
 Two seams to know about:
 - `services/client.ts` is the MOCK transport, `services/http.ts` the real one. Both unwrap the
   same envelope, so a slice moves between them without touching its hooks.
-- `listEligibleTechnicians` is deliberately still mocked even though technicians are live: it
-  answers "who has bandwidth left for this ticket", which needs open assignments and therefore
-  the jobs slice. The old flat technician shape survives as `EligibleTechnician` for it alone.
-  Its live sibling, `listCandidateTechnicians`, answers the part that IS knowable — active,
-  certified for the ticket's subcategory, covering its pincode — because `GET /technicians`
-  already filters on both. It shows the daily CAP and says nothing about today's load.
+- `listCandidateTechnicians` is the one shortlist, and it is live: active, certified for the
+  ticket's subcategory, covering its pincode. Pass the ticket's `slotStart` (it travels as `onDay`)
+  and `bwUsed` counts the load on the day the work HAPPENS — without it the shortlist for a Friday
+  job shows Monday's numbers and the manager picks somebody the assign call then refuses at cap.
+  Its mock predecessor `listEligibleTechnicians` is gone, along with the flat `EligibleTechnician`
+  shape it needed. A candidate for a job IS a `Technician`; the parallel type was the reason the
+  queue could never be opened from a real ticket.
 - **A technician cannot be EDITED from the console.** `PUT /technicians/{id}` is live and takes
   everything — name, phone, photo, region, manager, subcategories, pincodes, `dailyJobCap`,
   status — and `useUpdateTechnician` wraps it, but nothing renders it. `TechTable`'s only row
@@ -140,6 +193,12 @@ To browse a repo before adding: `npx skills add <repo-url> --list`.
   child components, and on any "why is this re-rendering" question.
 - `typescript-advanced-types` → the discriminated unions for ticket status and AI outcome.
 - `webapp-testing` → every list screen and every destructive flow (force-close, assign, bonus).
+  ⚠ **Routes are lazy, so the URL changes BEFORE the destination mounts.** React Router swaps the
+  address while the chunk is still loading and leaves the previous screen — including its Back
+  button — in the DOM, and `wait_for_load_state("networkidle")` returns during that window. Wait
+  for a selector only the destination renders before touching any control. Skipping this clicks
+  the page you just left: it reported a broken back button on Force close that was never broken,
+  and mislabelled a passing assertion, twice, before the cause was found.
 - `grill-me` → before committing a slice, to pressure-test the edge cases.
 
 ---
@@ -169,7 +228,9 @@ adminWeb/
                           FactGrid · ProofGrid · ManualEntryForm
       vendor/             VendorShell · PortalNav · portalNav.ts · AddVendorUserDialog
                           — the vendor PORTAL, a third shell. See below.
-      escalations/        EscalationCard · BonusPicker · EligibleTechTable
+      escalations/        EscalationCard · BonusPicker
+                          — `EligibleTechTable` went with the mock queue; the
+                            shortlist is `tickets/CandidateTechTable`
       notfound/           DispatchRadar — the `0` of 404, on-domain rather than stock art
       ai-review/          AiQueueTable · ConfidenceMeter · SerialCompare · ProofLightbox
       technicians/        TechTable · BandwidthBar · TechProfileHeader · JobHistoryTable
@@ -177,13 +238,16 @@ adminWeb/
       settings/           SlaRuleList · PenaltyBandTable · ThresholdSlider
       shared/             AppShell · Sidebar · Topbar · RoleTabs · PageMeta · DataTable
                           EmptyState · ErrorState · TableSkeleton · ConfirmDialog · Money
-                          FilterPills · PaginationControls · ThemeToggle
+                          FilterPills · PaginationControls · ThemeToggle · LoadMore
       ui/                 shadcn/ui primitives (generated — do not hand-edit)
     pages/
       dashboard/DashboardPage.tsx
       tickets/            TicketListPage · TicketDetailPage · ManualEntryPage
                           BulkUploadPage · ValidationResultPage · ForceClosePage
-      escalations/        EscalationQueuePage · BonusSetupPage · ManualAssignPage
+      escalations/        EscalationQueuePage
+                          — `BonusSetupPage` moved to `tickets/`, beside its
+                            assign sibling; `ManualAssignPage` was the mock's
+                            duplicate of it and is gone
       ai-review/          AiQueuePage · AiReviewDetailPage
       technicians/        TechnicianListPage · TechnicianProfilePage
       ledger/LedgerPage.tsx
@@ -409,6 +473,29 @@ confusing screen, not a leak. That is not a reason to be careless with it.
     a value loaded into an edit form, and takes an `enabled` flag to stay quiet while the list is
     loading or the control is disabled. Static, fixed-length selects (status filters, page size,
     SLA type) are exempt — they can never collapse to one.
+11. **"Back" is never hard-coded.** One route has several ways in — the board, the escalation
+    queue, the ledger, a technician's jobs, the topbar search, the portal — so a written-in
+    destination is right only for whichever caller the screen was built against, and silently
+    wrong for every other. Whoever navigates says where they came from: `useNavOrigin(label)` on
+    the way out, `readNavOrigin(location.state)` on the way in, and a fallback for the pasted link
+    that carries no state. All of it is in `src/hooks/useNavOrigin.ts`.
+    - **Every link to a detail route carries the origin** — the row click AND the code link beside
+      it, or one of them lies. A screen that *reads* an origin nobody sends is the same defect as
+      one that hard-codes: the technician profile ignored the origin global search had been
+      handing it since the day it was written.
+    - **An action screen forwards the trail** through `NavOrigin.backState`, so
+      queue → ticket → assign → Back → Back reaches the queue. A trip through an action screen
+      must not reset where the reader came from.
+    - **A success handler uses `originFor(path, origin)`**, which drops an origin pointing AT the
+      page being navigated to — otherwise the reader lands on a page whose Back button offers to
+      take them to the page they are already on.
+    - **Cancel goes where Back goes**, unless cancel means "abandon this form" — then it returns
+      to the record the form belongs to, and only the trail behind it is forwarded.
+
+    It was wrong in six places at once, all of them invisible until somebody pressed Back: the
+    queue's "Assign manually" landed on the ticket, its ticket-code link and the dashboard's
+    recent tickets landed on the board, and both ledger columns landed on the board and the
+    roster. None of it is caught by types or lint — the only test is to walk the trail.
 
 ---
 
@@ -425,10 +512,10 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets/import` | `BulkUploadPage` | dropzone, 8 required columns, max 5,000 rows |
 | `/tickets/import/:batchId` | `ValidationResultPage` | per-row pass/reject **with reason**; rejects never block the file |
 | `/tickets/:id/force-close` | `ForceClosePage` | reason + notes + **mandatory attachments** |
-| `/tickets/:id/assign` | `AssignTechnicianPage` | real ticket + a LIVE shortlist (`subcategoryId` + `pincode`, server-filtered). Assignment itself is a 501 until the jobs slice lands |
-| `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot; time-to-slot + bonus pool |
-| `/escalations/:id/bonus` | `BonusSetupPage` | ₹200/400/600/800 from the pool; slot stays locked |
-| `/escalations/:id/assign` | `ManualAssignPage` | the MOCK queue's copy — its `:id` is a ticket CODE, not a UUID. The ticket screens use `/tickets/:id/assign`; the two converge when escalations bind |
+| `/tickets/:id/assign` | `AssignTechnicianPage` | real ticket + a LIVE shortlist (`subcategoryId` + `pincode`, server-filtered), and a real `POST /tickets/:id/assign` |
+| `/tickets/:id/bonus` | `BonusSetupPage` | bands from Rules config; pool balance shown, not enforced; re-notify reports the technicians actually reached |
+| `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot, in two halves under date dividers; search · Still savable/Missed · slot-date range · Refresh; loads on scroll |
+| `/escalations/:id/bonus` · `/escalations/:id/assign` | — | param-preserving **redirects** to their `/tickets/:id/…` twins. The mock queue owned duplicates of both; deleting a route does not close a path (hard rule 0a) |
 | `/ai-review` | `AiQueuePage` | below-threshold or unreadable |
 | `/ai-review/:id` | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake |
 | `/technicians` | `TechnicianListPage` | |
@@ -481,9 +568,34 @@ Nine of the twenty screens are a filtered table over a domain list. Build **one*
 | Form state | RHF + Zod | manual entry, bulk upload, bonus, force-close, rules config |
 | URL state | React Router | filters, status pill, page, selected id — filters belong in the query string so a view is shareable |
 
-Query keys are tuples: `['tickets', filters]`, `['ticket', id]`, `['escalations']`. Invalidate by
-prefix after every mutation. `staleTime` 30s for lists; escalations and the AI queue are
-time-sensitive — 10s with `refetchOnWindowFocus`.
+Query keys are tuples: `['tickets', filters]`, `['ticket', id]`,
+`['escalations', 'list', params]`. Invalidate by prefix after every mutation. `staleTime` 30s for
+lists; escalations and the AI queue are time-sensitive — 10s with `refetchOnWindowFocus`.
+
+**A key never carries the page on an infinite list.** The page is the query's own cursor, so
+`useLedgerEntries` strips `params.page` before hashing and the escalation queue never puts one in:
+leaving it there mints a fresh `useInfiniteQuery` — discarding every loaded page — each time the
+cursor moves. The corollary is worth knowing too: an UNNARROWED escalation queue hashes to the
+same key the rail's badge asks for, so the two share one request, and they part company the moment
+a filter goes on.
+
+### Lists that load on scroll
+
+`/escalations` and `/ledger` page on scroll rather than through a pager, via `useInfiniteQuery` and
+`shared/LoadMore`. Three rules come with that:
+
+- **Narrowing happens on the SERVER, always.** Filtering the pages that happen to be loaded would
+  make "no match" mean "not in what you have scrolled to" — a lie with a very plausible shape.
+- **`LoadMore` renders a sentinel AND a real button.** The observer is the convenience; the button
+  is what a keyboard reaches, and what somebody gets when the loaded rows are shorter than the
+  viewport.
+- **Pass `isFetching && !isFetchingNextPage`.** `DataTable` dims stale rows; without the second
+  half, appending page two greys out everything already on screen.
+
+`DataTable` takes `infinite` (replaces the pager) and `groupBy` (a full-width divider row wherever
+the value changes between neighbours). `groupBy` divides consecutive RUNS, not buckets, so it
+preserves the server's order — which means it is only meaningful on a list sorted by whatever it
+groups on.
 
 ## API service architecture
 
@@ -801,16 +913,32 @@ app is broken:
 
 Blocking or near-blocking. Do not silently pick a side.
 
-1. **Penalty bands contradict the mobile app.** This prototype: **₹300** (>4h) · **₹500** (2–4h) ·
-   **₹800** (<2h) · **₹1,200** (no-show), cap ₹5,000/technician/month. `mobileapp/AGENTS.md` and
-   the technician app: **₹80** (>8h) · **₹150** (4–8h) · **₹250** (<4h). Different amounts *and*
-   different band boundaries — the technician's cancel screen and the ASM's ledger would show
-   different money for the same event. **Needs a ruling before either side binds to an API.**
-2. **Bandwidth model contradicts itself.** Rules Config says "Weighted by job type";
-   `mobileapp/AGENTS.md` said a simple 1–12/day cap; the requirement doc leaves it open — and this
-   prototype's own technician records use plain counts (`bwUsed 3 / bwTotal 5`).
-   **Partly settled:** it is a plain count, it is optional (null = no limit, rendered "No limit"),
-   and it has no ceiling. Whether it should ever be WEIGHTED by job type is still open.
+1. ~~**Penalty bands contradict the mobile app.**~~ **RULED — this console's four win:**
+   **₹300** (>4h) · **₹500** (2–4h) · **₹800** (<2h) · **₹1,200** (no-show), cap
+   ₹5,000/technician/**calendar month in IST**. The technician app's ₹80 / ₹150 / ₹250 cutting at
+   8h and 4h are gone.
+   Decided on cost of change: these were already in `company_rules`, already editable per company,
+   and already carried the no-show band the other scheme had no place for — while the technician's
+   cancel screen needed no redesign at all, because it renders whatever the server sends. It used
+   to compute the band on the DEVICE, which meant a phone with a wrong clock could talk itself
+   into a cheaper penalty.
+   The amounts are policy and live in the table. The BOUNDARIES are not, and live in
+   `api/app/core/rules.py`: where one band ends is a fact about the clock, and a company that moved
+   the cut to 3h would be showing "2–4h before slot" over a charge made at three.
+   Two consequences worth carrying: **cancelling after the slot has opened is still `< 2h`, not a
+   no-show** — they told somebody, and the gap between ₹800 and ₹1,200 is what speaking up is
+   worth — and the API refuses a penalty list that does not ascend, so no-show can never be
+   cheaper than a late cancellation.
+2. **Weighted bandwidth: closed for now, and the control is gone.** Rules Config used to offer
+   "Jobs per day" against "Weighted by job type". Nothing in the product ever read the answer —
+   the API stores a plain `daily_job_cap`, the field app models a plain count, `BandwidthBar`
+   says "never weighted" — and the field was seeded to `weighted`, so the screen asserted
+   something no other surface did. It was also a **read-only display row** in the approved
+   prototype, promoted to a radio by mistake.
+   **Settled:** a plain count, optional (null = no limit, rendered "No limit"), no ceiling.
+   **Still open:** whether capacity should ever be weighted by job type. If it should, the shape
+   is a weight per service type plus a unit cap — a small table — never a two-way switch, which
+   is why nothing was kept as a foundation. There is deliberately **no `bandwidth_model` column**.
 3. **RBAC scoping is undesigned.** Territory defines Region → RSH → ASM → pincodes, but no screen
    shows what an NH sees that an ASM doesn't.
 4. **Dark palette is unapproved** (see Theme).
@@ -819,6 +947,43 @@ Blocking or near-blocking. Do not silently pick a side.
 
 Wait before manager closure **48h** · AI confidence threshold **70%** (slider 50–95) ·
 slot-confirm timeout **6h → auto-escalate**. Treat these as decided; the doc's §11 is stale.
+
+They are also no longer *answers* so much as **defaults**: every one of them is a `company_rules`
+column a company can move on Configuration → Rules Config, seeded to exactly these figures.
+
+### Where a rule lives, and the test for adding one
+
+`GET`/`PUT /settings/rules` over `company_rules` — one row per company, `settings.view` to read
+(or `jobs.assign`, because the bonus bands are spent on the escalation screen) and
+**`settings.edit` to write**. Rupees on the wire, integer paise in the table.
+
+Two settled readings that the word "monthly" and the number `0` do not carry on their own, both
+now stated on the screen and in `api/app/core/rules.py`:
+
+- **The penalty cap is a CALENDAR month in IST**, not a rolling 30 days. The cap exists to stop a
+  bad month turning a technician's earnings negative, and "a bad month" is bounded by the period
+  they are settled over — a rolling window would cap on one clock and pay on another, letting one
+  settlement carry more than the cap. IST matches how the daily job cap already reckons a day.
+  The month boundary is gameable in theory and deliberately not priced for: that is ten
+  cancellations, which `technician.status` answers, not the ledger.
+- **A cap of `0` means NO cap**, not "charge nothing" — a technician who should never be charged
+  is one whose *bands* are zero. It is why the "cap below the largest band" check exempts zero.
+
+**No-show is not a late cancellation**, which is why it is the priciest band rather than merely
+the last one: the other three had somebody able to act, this one was discovered by the customer.
+**Nothing detects one yet** — it is a label and a price until the ledger lands. `ticket_events`
+already holds what that rule will read: a `reminded` with no `started` after it.
+
+A number belongs there when a company could sensibly answer it differently. It does **not** when
+it is vocabulary the system is built from. Two removals make the line concrete:
+
+- **SLA windows** were a read-only card here, naming two service levels ("24 hours from slot
+  confirmation") where the API has four (`SERVICE_LEVEL_HOURS = (12, 24, 36, 48)`) and measures
+  from ticket CREATION — the reading `api/app/core/tickets.py` adopted by name against this
+  screen. A settings page restating a settled rule backwards is worse than one that omits it.
+  The live answer is the ticket list's SLA column and badge.
+- **`SWEEP_INTERVAL_SECONDS`** stays in `Settings`. How often a worker wakes is infrastructure,
+  and it is the resolution limit every timing rule here is subject to.
 
 ## Domain facts that are easy to get wrong
 

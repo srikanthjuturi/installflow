@@ -19,8 +19,11 @@ import type { GeoState } from "@/types/geo";
 
 export const geoKeys = {
   all: ["geo"] as const,
-  regions: () => ["geo", "regions"] as const,
-  states: () => ["geo", "states"] as const,
+  // `mine` is part of the key: the scoped and unscoped lists are different
+  // answers to different questions, and sharing one entry would serve an area
+  // manager's single state to a screen that wants all 36.
+  regions: (mine = false) => ["geo", "regions", { mine }] as const,
+  states: (mine = false) => ["geo", "states", { mine }] as const,
   districts: (filters: object) => ["geo", "districts", filters] as const,
   pincodes: (params: ListParams, filters: object) =>
     ["geo", "pincodes", params, filters] as const,
@@ -33,10 +36,10 @@ export const geoKeys = {
  * `useRegions()` in `useCompanyUsers` is the company-side one and 403s for a
  * superadmin, which is why the Geography screen uses this instead.
  */
-export function useGeoRegions() {
+export function useGeoRegions(mine = false) {
   return useQuery({
-    queryKey: geoKeys.regions(),
-    queryFn: listGeoRegions,
+    queryKey: geoKeys.regions(mine),
+    queryFn: () => listGeoRegions(mine),
     staleTime: 60 * 60_000,
   });
 }
@@ -46,10 +49,10 @@ export function useGeoRegions() {
  * when a superadmin re-imports, so it is cached for the session like the role
  * and region catalogs.
  */
-export function useStates() {
+export function useStates(mine = false) {
   return useQuery({
-    queryKey: geoKeys.states(),
-    queryFn: listStates,
+    queryKey: geoKeys.states(mine),
+    queryFn: () => listStates(mine),
     staleTime: 60 * 60_000,
   });
 }

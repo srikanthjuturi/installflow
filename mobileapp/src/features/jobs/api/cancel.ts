@@ -1,37 +1,52 @@
-import { getJob } from '@/features/jobs/api/jobs';
+import { ApiError, authedRequest } from '@/lib/api';
 import type { CancellationReason, PenaltyBand } from '@/types/domain';
 
 /**
- * Penalty bands, from the approved prototype. The requirements doc left the
- * exact scale open (Q5); these are the numbers the client has already seen.
+ * Giving a job back — §7's other way into an escalation.
  *
- * Deliberately a separate call from `cancelJob`: the technician must see the
- * cost BEFORE confirming, and the band depends on how close to the slot the
- * cancellation actually lands.
+ *   getCancellationPreview → GET  /jobs/:id/cancellation
+ *   cancelJob              → POST /jobs/:id/cancel
  *
- * ⚠ Still computed on the DEVICE, which is the wrong place. `hoursToSlot` is
- * derived from the phone's clock, so a wrong clock talks itself into a cheaper
- * penalty. It reads the real job now rather than a mock row, so the SLOT is
- * true — but the band must move server-side with the rest of the cancel slice,
- * and until it does the entry point to this screen stays hidden on Job detail.
+ * Both are real. The band used to be computed HERE, from `hoursToSlot` off the
+ * device clock, which this file's own comment called the wrong place: a phone
+ * with a wrong clock talked itself into a cheaper penalty. The server owns it
+ * now, and owns two things the device never could — the company's own
+ * configured amounts, and the technician's monthly cap.
+ *
+ * The preview and the charge read the same code, so the figure on the button
+ * is the figure that is taken. It is a live figure rather than a quote,
+ * though: the band tightens as the slot approaches, so a screen left open for
+ * an hour can be shown one price and charged another. That is the honest
+ * behaviour — the cost is what it is at the moment of cancelling — and the
+ * response to the POST is the receipt.
  */
-export async function getCancellationPreview(id: string): Promise<PenaltyBand> {
-  const job = await getJob(id);
-  return resolveBand(job.hoursToSlot);
+
+/** Mirrors `PenaltyBandOut` in the API. */
+interface PenaltyBandDto {
+  /** What will ACTUALLY be charged, which is not always the band's face
+   *  value — a technician at their monthly cap is charged the remainder. */
+  amountPaise: number;
+  label: string;
+  escalates: boolean;
 }
 
-export function resolveBand(hoursToSlot: number): PenaltyBand {
-  if (hoursToSlot < 4) {
-    return {
-      amountPaise: 25000,
-      label: 'Within 4 hours of slot',
-      escalates: true,
-    };
-  }
-  if (hoursToSlot < 8) {
-    return { amountPaise: 15000, label: '4–8 hours before slot', escalates: false };
-  }
-  return { amountPaise: 8000, label: 'More than 8 hours before slot', escalates: false };
+function toBand(dto: PenaltyBandDto): PenaltyBand {
+  return {
+    amountPaise: dto.amountPaise,
+    label: dto.label,
+    escalates: dto.escalates,
+  };
+}
+
+/**
+ * What it would cost, before committing to it.
+ *
+ * A separate call from `cancelJob` because the technician must see the cost
+ * BEFORE confirming — the approved screen prints it twice, in the banner and
+ * on the button, so it cannot be tapped without having been read.
+ */
+export async function getCancellationPreview(id: string): Promise<PenaltyBand> {
+  return toBand(await authedRequest<PenaltyBandDto>(`/jobs/${id}/cancellation`));
 }
 
 export interface CancelResult {
@@ -39,22 +54,47 @@ export interface CancelResult {
 }
 
 /**
- * Not implemented, and deliberately loud about it.
+ * A refusal that is not a failure: the job is no longer this technician's to
+ * give up, because a manager re-assigned it or they tapped twice.
  *
- * There is no `POST /jobs/:id/cancel`. The previous version mutated a seeded
- * array — it returned a penalty, flipped a mock row back to `pool`, and looked
- * exactly like a working cancellation while the real ticket stayed assigned.
- * That is the worst possible failure for this particular action: a technician
- * would believe they were released from a customer commitment they still hold.
+ * Typed rather than surfaced as a generic error for the same reason
+ * `JobTakenError` is: the screen has to say which happened, and "something
+ * went wrong, try again" is the one message that is never true here — trying
+ * again cannot make the job theirs.
+ */
+export class CancelRefusedError extends Error {
+  readonly code = 'JOB_NOT_CANCELLABLE';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'CancelRefusedError';
+  }
+}
+
+export function isCancelRefused(error: unknown): error is CancelRefusedError {
+  return error instanceof CancelRefusedError;
+}
+
+/**
+ * Give the job back. The slot does not move; the band is charged.
  *
- * Throwing means the screen shows its error state instead. The Job detail entry
- * point is hidden until the slice is real, so this should be unreachable.
+ * Answers with what was ACTUALLY taken, so the caller can report the real
+ * figure rather than the one the preview quoted.
  */
 export async function cancelJob(
   id: string,
   reason: CancellationReason,
 ): Promise<CancelResult> {
-  void id;
-  void reason;
-  throw new Error('Cancelling a job is not available yet.');
+  try {
+    const dto = await authedRequest<PenaltyBandDto>(`/jobs/${id}/cancel`, {
+      method: 'POST',
+      body: { reason },
+    });
+    return { penalty: toBand(dto) };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      throw new CancelRefusedError(error.message);
+    }
+    throw error;
+  }
 }

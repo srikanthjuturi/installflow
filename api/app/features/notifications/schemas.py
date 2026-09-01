@@ -24,6 +24,7 @@ NotificationKind = Literal[
     "technician_joined",
     "job_started",
     "invite_expired",
+    "no_show",
 ]
 
 assert set(get_args(NotificationKind)) == set(NOTIFICATION_KINDS), (

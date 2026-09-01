@@ -12,7 +12,6 @@ import {
   getTechnician,
   inviteTechnician,
   listCandidateTechnicians,
-  listEligibleTechnicians,
   listTechnicians,
   resendInvite,
   updateTechnician,
@@ -24,10 +23,14 @@ export const technicianKeys = {
   all: ["technicians"] as const,
   /** The whole params object — page, search, sort and filters all key the cache. */
   list: (params: ListParams) => ["technicians", "list", params] as const,
-  eligible: (category?: string) =>
-    ["technicians", "eligible", category ?? "any"] as const,
-  candidates: (subcategoryId: string, pincode: string) =>
-    ["technicians", "candidates", subcategoryId, pincode] as const,
+  /**
+   * The slot is part of the key, not just of the request: two tickets in the
+   * same pincode for the same product on DIFFERENT days are two different
+   * shortlists, because the capacity column answers a different day for each.
+   * Leaving it out would serve one from the other's cache.
+   */
+  candidates: (subcategoryId: string, pincode: string, onDay?: string | null) =>
+    ["technicians", "candidates", subcategoryId, pincode, onDay ?? "today"] as const,
   detail: (id: string) => ["technicians", "detail", id] as const,
   districts: (stateId: string) =>
     ["technicians", "districts", stateId] as const,
@@ -115,33 +118,35 @@ export const useResendInvite = () =>
 export const useCancelInvite = () =>
   useTechnicianMutation(cancelInvite, "Couldn't cancel the invite");
 
-/** Unpaginated by design — see `listEligibleTechnicians`. */
-export function useEligibleTechnicians(category?: string) {
-  return useQuery({
-    queryKey: technicianKeys.eligible(category),
-    queryFn: () => listEligibleTechnicians(category),
-  });
-}
-
 /**
  * The shortlist for one ticket — real technicians, filtered by the server.
  *
  * Disabled until both halves are known: a query missing the subcategory or the
  * pincode would ask for "every technician", and a manager reading a shortlist
  * has no way to tell that from "everyone here is eligible".
+ *
+ * `slotStart` is optional and moves only the capacity column — see
+ * `listCandidateTechnicians`. Pass the ticket's own slot wherever the answer
+ * will be acted on, which is both assignment screens.
  */
 export function useCandidateTechnicians(
   subcategoryId: string | undefined,
-  pincode: string | undefined
+  pincode: string | undefined,
+  slotStart?: string | null
 ) {
   return useQuery({
-    queryKey: technicianKeys.candidates(subcategoryId ?? "", pincode ?? ""),
+    queryKey: technicianKeys.candidates(
+      subcategoryId ?? "",
+      pincode ?? "",
+      slotStart
+    ),
     queryFn: () =>
       // Never runs unguarded — `enabled` below is the real check; the
       // fallbacks only satisfy the types.
       listCandidateTechnicians({
         subcategoryId: subcategoryId ?? "",
         pincode: pincode ?? "",
+        slotStart,
       }),
     enabled: Boolean(subcategoryId && pincode),
   });

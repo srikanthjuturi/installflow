@@ -38,8 +38,10 @@ from app.core.schemas import (
 )
 from app.features.jobs import service
 from app.features.jobs.schemas import (
+    CancelRequest,
     JobOfferOut,
     JobOut,
+    PenaltyBandOut,
     ProofImageOut,
     ProofSubmitRequest,
 )
@@ -226,6 +228,66 @@ async def complete_job(
         db, ticket_id, company_id=principal.company_id, profile=profile
     )
     return envelope(job, message="Sent to the customer to confirm")
+
+
+@router.get(
+    "/{ticket_id}/cancellation",
+    response_model=ApiEnvelope[PenaltyBandOut],
+    dependencies=[CanSeePool],
+)
+async def preview_cancellation(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[PenaltyBandOut]:
+    """What cancelling this job would cost, before committing to it.
+
+    A read, so it changes nothing and can be polled while the screen is open —
+    which matters, because the band moves as the slot approaches.
+
+    **409 `JOB_NOT_CANCELLABLE`** once the job is past `Assigned`: proof has
+    been captured and the technician is on site.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.cancellation_preview(
+            db,
+            ticket_id,
+            company_id=principal.company_id,
+            technician_id=profile.id,
+        )
+    )
+
+
+@router.post(
+    "/{ticket_id}/cancel",
+    response_model=ApiEnvelope[PenaltyBandOut],
+    dependencies=[CanSeePool],
+)
+async def cancel_job(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID, body: CancelRequest
+) -> ApiEnvelope[PenaltyBandOut]:
+    """Give the job back. The slot does not move, and the band is charged.
+
+    Answers with what was ACTUALLY charged, which is not always what the
+    preview quoted a minute earlier — the band tightens as the slot approaches,
+    and the monthly cap can leave less than the band. The response is the
+    receipt.
+
+    Under the company's escalation window this also puts the ticket straight in
+    front of the Area Service Manager rather than waiting for the next sweep,
+    which is what the screen promises. Above it, the job simply goes back to
+    the pool and every eligible technician is re-notified.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    band = await service.cancel(
+        db,
+        ticket_id,
+        company_id=principal.company_id,
+        profile=profile,
+        reason=body.reason,
+    )
+    return envelope(band, message="Job cancelled")
 
 
 @router.get(

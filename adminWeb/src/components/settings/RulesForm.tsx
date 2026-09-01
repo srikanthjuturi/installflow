@@ -1,7 +1,6 @@
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { TriangleAlert } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,15 +13,9 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { ThresholdSlider } from "./ThresholdSlider";
-import { SlaRuleList } from "./SlaRuleList";
-import {
-  BANDWIDTH_OPTIONS,
-  rulesSchema,
-  toFormValues,
-  type RulesFormValues,
-} from "./rulesSchema";
-import { money } from "@/utils/money";
+import { rulesSchema, toFormValues, type RulesFormValues } from "./rulesSchema";
 import type { RulesConfig } from "@/services/settings";
 
 interface RulesFormProps {
@@ -32,6 +25,13 @@ interface RulesFormProps {
 }
 
 export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
+  // Two keys, because the API now makes the split: `settings.view` opens this
+  // screen, `settings.edit` changes what the sweeps actually do. They were one
+  // grant while Save wrote to a JavaScript object; they stopped being one the
+  // moment it wrote to a table.
+  const { has } = useFeatureAccess();
+  const canEdit = has("settings.edit");
+
   const {
     control,
     register,
@@ -44,20 +44,14 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
   });
 
   const { fields } = useFieldArray({ control, name: "penalty" });
+  const { fields: bonusFields } = useFieldArray({
+    control,
+    name: "bonusAmounts",
+  });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-        <RuleCard title="SLA windows">
-          {/* Definitional, not configurable: a 24h SLA type IS a 24-hour
-              window. Changing it would redefine the ticket, not a setting. */}
-          <SlaRuleList rules={rules.sla} />
-          <p className="mt-3 text-xs text-ink-3">
-            SLA windows are fixed by the ticket's service level and are not
-            configurable here.
-          </p>
-        </RuleCard>
-
         <RuleCard title="Cancellation penalty bands">
           <FieldSet>
             <FieldLegend className="sr-only">
@@ -118,9 +112,15 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                     {errors.penaltyCap.message}
                   </FieldDescription>
                 ) : (
+                  // Both facts are here because neither is guessable from a
+                  // number in a box: 0 reads as "charge nothing ever" quite as
+                  // easily as "no ceiling", and "monthly" does not say which
+                  // month. It replaced "Currently ₹5,000", which only ever
+                  // restated the input beside it.
                   <FieldDescription id="penalty-cap-hint">
-                    Currently {money(rules.penaltyCap)}. Penalties fund the
-                    escalation bonus pool.
+                    The most one technician can be charged in a calendar month.
+                    Enter <b className="text-ink">0</b> for no cap. Penalties
+                    fund the escalation bonus pool.
                   </FieldDescription>
                 )}
               </Field>
@@ -133,6 +133,122 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
               These bands differ from the technician app's. Saving here does not
               change what a technician is charged.
             </span>
+          </p>
+        </RuleCard>
+
+        {/* "Timing & bandwidth" until the bandwidth half was removed: it
+            offered a plain count against a weighted model, and nothing in the
+            product has ever read the answer — the API stores a plain
+            `daily_job_cap` and weighting is modelled nowhere. Every field here
+            is now a clock the sweeps actually run on. */}
+        <RuleCard title="Timing">
+          <FieldGroup className="gap-3">
+            <SpanField
+              id="slot-timeout"
+              label="Slot-confirm timeout"
+              unit="hours"
+              hint="Customer silence before the slot request auto-escalates."
+              error={errors.slotConfirmTimeoutHours?.message}
+              register={register("slotConfirmTimeoutHours", {
+                valueAsNumber: true,
+              })}
+            />
+            <SpanField
+              id="escalation-trigger"
+              label="Escalation trigger"
+              unit="hours"
+              hint="Hours before the slot at which an unassigned ticket escalates."
+              error={errors.escalationTriggerHours?.message}
+              register={register("escalationTriggerHours", {
+                valueAsNumber: true,
+              })}
+            />
+            <SpanField
+              id="customer-wait"
+              label="Wait before manager closure"
+              unit="hours"
+              hint="Customer silence before force-closure becomes available."
+              error={errors.customerWaitHours?.message}
+              register={register("customerWaitHours", { valueAsNumber: true })}
+            />
+            <SpanField
+              id="renotify-grace"
+              label="Re-notification grace"
+              unit="minutes"
+              hint="How long a funded bonus is protected before the job can escalate again."
+              error={errors.renotifyGraceMinutes?.message}
+              register={register("renotifyGraceMinutes", {
+                valueAsNumber: true,
+              })}
+            />
+            <SpanField
+              id="slot-reminder"
+              label="Technician slot reminder"
+              unit="minutes"
+              hint="How long before a slot the assigned technician is pushed a reminder."
+              error={errors.slotReminderMinutes?.message}
+              register={register("slotReminderMinutes", {
+                valueAsNumber: true,
+              })}
+            />
+            <SpanField
+              id="sla-warn"
+              label={'"Due soon" at'}
+              unit="% of window left"
+              hint="Below this much of the SLA window remaining, a ticket turns amber."
+              error={errors.slaWarnAtPct?.message}
+              register={register("slaWarnAtPct", { valueAsNumber: true })}
+            />
+          </FieldGroup>
+        </RuleCard>
+
+        {/* The bonus bands and the AI threshold share the second row: both are
+            short, and pairing them leaves the two tall cards — the penalty
+            bands and the clocks — level with each other on the first. */}
+        <RuleCard title="Escalation bonus bands">
+          <FieldSet>
+            <FieldLegend className="sr-only">
+              Bonus offered on re-notification
+            </FieldLegend>
+            <FieldGroup className="grid grid-cols-2 gap-3">
+              {bonusFields.map((f, i) => {
+                const err = errors.bonusAmounts?.[i]?.amount?.message;
+                const id = `bonus-${i}`;
+                return (
+                  <Field key={f.id} data-invalid={err ? true : undefined}>
+                    <FieldLabel htmlFor={id}>Band {i + 1}</FieldLabel>
+                    <Input
+                      id={id}
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      aria-invalid={err ? true : undefined}
+                      aria-describedby={err ? `${id}-error` : undefined}
+                      {...register(`bonusAmounts.${i}.amount`, {
+                        valueAsNumber: true,
+                      })}
+                    />
+                    {err ? (
+                      <FieldDescription
+                        id={`${id}-error`}
+                        role="alert"
+                        className="text-danger"
+                      >
+                        {err}
+                      </FieldDescription>
+                    ) : null}
+                  </Field>
+                );
+              })}
+            </FieldGroup>
+          </FieldSet>
+
+          {/* Says where the money comes from, since the penalty card that
+              collects it is no longer the neighbour saying so. */}
+          <p className="mt-3.5 text-xs text-ink-3">
+            The four chips a manager picks from when funding a re-notification
+            on an escalated ticket. Paid to whoever accepts, out of the penalty
+            pool above.
           </p>
         </RuleCard>
 
@@ -151,95 +267,28 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
             )}
           />
         </RuleCard>
-
-        <RuleCard title="Timing & bandwidth">
-          <FieldGroup className="gap-3">
-            <HoursField
-              id="slot-timeout"
-              label="Slot-confirm timeout"
-              hint="Customer silence before the slot request auto-escalates."
-              error={errors.slotConfirmTimeoutHours?.message}
-              register={register("slotConfirmTimeoutHours", {
-                valueAsNumber: true,
-              })}
-            />
-            <HoursField
-              id="escalation-trigger"
-              label="Escalation trigger"
-              hint="Hours before the slot at which an unassigned ticket escalates."
-              error={errors.escalationTriggerHours?.message}
-              register={register("escalationTriggerHours", {
-                valueAsNumber: true,
-              })}
-            />
-            <HoursField
-              id="customer-wait"
-              label="Wait before manager closure"
-              hint="Customer silence before force-closure becomes available."
-              error={errors.customerWaitHours?.message}
-              register={register("customerWaitHours", { valueAsNumber: true })}
-            />
-
-            <FieldSet>
-              <FieldLegend className="text-[13px] font-medium">
-                Bandwidth model
-              </FieldLegend>
-              <Controller
-                name="bandwidthModel"
-                control={control}
-                render={({ field }) => (
-                  <div
-                    className="flex flex-col gap-2"
-                    role="radiogroup"
-                    aria-label="Bandwidth model"
-                  >
-                    {BANDWIDTH_OPTIONS.map((o) => (
-                      <label
-                        key={o.value}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 transition-colors",
-                          field.value === o.value
-                            ? "border-brand-500 bg-brand-100/40"
-                            : "border-line hover:border-brand-400"
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          className="mt-0.5 accent-brand-500"
-                          checked={field.value === o.value}
-                          onChange={() => field.onChange(o.value)}
-                        />
-                        <span>
-                          <span className="block text-[13px] font-semibold">
-                            {o.label}
-                          </span>
-                          <span className="block text-xs text-ink-3">
-                            {o.detail}
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              />
-            </FieldSet>
-          </FieldGroup>
-        </RuleCard>
       </div>
 
       <div className="mt-3.5 flex flex-wrap items-center justify-end gap-2.5">
-        {isDirty ? (
+        {/* The server is the authority — `PUT /settings/rules` carries
+            `settings.edit` — so this only saves somebody a refused round trip
+            and a message they could not have acted on. */}
+        {!canEdit ? (
+          <span className="mr-auto text-xs text-ink-3">
+            You can view these rules but not change them.
+          </span>
+        ) : isDirty ? (
           <span className="mr-auto text-xs text-ink-3">Unsaved changes</span>
         ) : null}
         <Button
           type="button"
           variant="outline"
           onClick={() => reset(toFormValues(rules))}
-          disabled={!isDirty || isSaving}
+          disabled={!isDirty || isSaving || !canEdit}
         >
-          Reset defaults
+          Reset
         </Button>
-        <Button type="submit" disabled={!isDirty || isSaving}>
+        <Button type="submit" disabled={!isDirty || isSaving || !canEdit}>
           {isSaving ? <Spinner data-icon="inline-start" /> : null}
           Save configuration
         </Button>
@@ -248,15 +297,18 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
   );
 }
 
-function HoursField({
+/** A number with its unit spelled beside it — hours, minutes or a percentage. */
+function SpanField({
   id,
   label,
+  unit,
   hint,
   error,
   register,
 }: {
   id: string;
   label: string;
+  unit: string;
   hint: string;
   error?: string;
   register: ReturnType<ReturnType<typeof useForm<RulesFormValues>>["register"]>;
@@ -275,7 +327,7 @@ function HoursField({
           aria-describedby={error ? `${id}-error` : `${id}-hint`}
           {...register}
         />
-        <span className="text-[13px] text-ink-2">hours</span>
+        <span className="text-[13px] text-ink-2">{unit}</span>
       </div>
       {error ? (
         <FieldDescription

@@ -17,8 +17,13 @@ export const qk = {
   job: (id: string) => ['jobs', id] as const,
   cancellationPreview: (id: string) => ['jobs', id, 'cancellation-preview'] as const,
 
-  earningsSummary: () => ['earnings', 'summary'] as const,
-  transactions: () => ['earnings', 'transactions'] as const,
+  // The period is part of the key, not just the request: a week and a month
+  // are two different answers, and sharing one entry would show the reader
+  // last period's figures for a beat every time they switched.
+  earningsSummary: (period: string = 'week') =>
+    ['earnings', 'summary', period] as const,
+  transactions: (period: string = 'week') =>
+    ['earnings', 'transactions', period] as const,
 
   categories: () => ['catalog', 'categories'] as const,
 } as const;

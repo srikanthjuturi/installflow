@@ -114,7 +114,7 @@ def build_invite_payload(phone: str, link: str, company: str) -> dict:
         phone,
         (
             f"You have been invited to join {company} as a service technician.\n\n"
-            f"Install the technician app and register here:\n{link}\n\n"
+            f"Install the technician app and complete your registration:\n{link}\n\n"
             "This link is personal to you. Please do not share it."
         ),
         preview_url=True,
@@ -164,8 +164,8 @@ def build_slot_request_payload(
         phone,
         (
             f"{company}: your {product} visit is ready to be scheduled.\n\n"
-            f"Pick a time that suits you:\n{link}\n\n"
-            "The sooner you choose, the sooner we can assign a technician."
+            f"Please choose a time that suits you:\n{link}\n\n"
+            "We will assign a technician once you have confirmed a time."
         ),
         preview_url=True,
     )
@@ -191,8 +191,8 @@ def build_slot_confirmed_payload(
         phone,
         (
             f"{company}: your {product} visit is confirmed for {when}.\n\n"
-            "Our technician will call before arriving. To change the time, "
-            "reply to this message or call us."
+            "Our technician will call you before arriving. To change the time, "
+            "please contact us."
         ),
     )
 
@@ -357,6 +357,22 @@ def build_escalation_payload(
     Opens with "Escalation" rather than a variable — Meta rejects a body that
     starts or ends with one (subcode 2388299), which cost a submission on the
     feedback template before this one.
+
+    ⚠ **{{4}} must complete "the slot is …", not repeat the noun.** It was fed
+    `hours_to()`, which appends "to slot", so every message this template has
+    ever sent read "the slot is 2h 40m to slot". Fixed at the CALLER — see
+    `core.escalation.whatsapp_the_area_manager`, which now passes "in 2h 40m" —
+    rather than by editing the body, because the body is registered with Meta
+    and re-approval costs days for a wording change the parameter can absorb.
+
+    ⚠ **The fallback below says "assign a technician"; the registered body
+    still says "reassign it".** Deliberate, and not to be "fixed" by making
+    them match: nothing was ever assigned, so there is nothing to RE-assign,
+    and the word sends a manager looking for a technician to replace. The
+    fallback carries the corrected wording; the registered body needs a
+    re-submission to Meta, which is a days-long round trip nobody should
+    trigger for one word in isolation. Correct it with the next template
+    change.
     """
     if settings.WHATSAPP_ESCALATION_TEMPLATE_NAME:
         return _template_payload(
@@ -372,7 +388,7 @@ def build_escalation_payload(
         (
             f"Escalation from {company}: job {code} at {area} still has no "
             f"technician and the slot is {left}.\n\n"
-            "Open the ops console to reassign it or add a bonus."
+            "Open the ops console to assign a technician or add a bonus."
         ),
     )
 

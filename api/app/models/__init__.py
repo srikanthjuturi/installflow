@@ -1,7 +1,9 @@
 """ORM models. Importing this package registers every table on Base.metadata."""
 
 from app.models.company import Company
+from app.models.company_rules import CompanyRules
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
+from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.otp import OtpCode
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
@@ -35,9 +37,11 @@ from app.models.web_push_subscription import WebPushSubscription
 __all__ = [
     "Company",
     "CompanyRoleFeature",
+    "CompanyRules",
     "CompanySequence",
     "District",
     "Feature",
+    "LedgerEntry",
     "Membership",
     "MembershipRegion",
     "MembershipState",

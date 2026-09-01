@@ -48,7 +48,9 @@ Superadmin = Annotated[Principal, Depends(require_superadmin)]
 
 @router.get("/regions", response_model=ApiEnvelope[list[RegionOut]])
 async def list_regions(
-    principal: CurrentPrincipal, db: Db
+    principal: CurrentPrincipal,
+    db: Db,
+    mine: Annotated[bool, Query()] = False,
 ) -> ApiEnvelope[list[RegionOut]]:
     """Regions with their state counts, including any that hold none.
 
@@ -56,16 +58,63 @@ async def list_regions(
     `CompanyPrincipal` and every company client already uses it. That guard
     refuses a superadmin, so the screen that maintains this data needs its own
     door.
+
+    `mine=true` narrows to the caller's own territory, exactly as on
+    `/districts`: it is what the dashboard's territory picker offers, and a
+    picker that listed a region the reader cannot see would be a control whose
+    every option returns zero.
     """
-    return envelope(await service.list_regions(db))
+    region_ids = await _own_regions(db, principal) if mine else None
+    if region_ids == []:
+        return envelope([])
+    return envelope(await service.list_regions(db, region_ids=region_ids))
 
 
 @router.get("/states", response_model=ApiEnvelope[list[StateOut]])
 async def list_states(
-    principal: CurrentPrincipal, db: Db
+    principal: CurrentPrincipal,
+    db: Db,
+    mine: Annotated[bool, Query()] = False,
 ) -> ApiEnvelope[list[StateOut]]:
-    """Every state with its region and counts. 36 rows — deliberately unpaged."""
-    return envelope(await service.list_states(db))
+    """Every state with its region and counts. 36 rows — deliberately unpaged.
+
+    `mine=true` narrows the same way, and by whichever side the caller holds —
+    an area manager's own states, or every state inside a regional head's
+    regions. `StateOut` already carries `regionId`, so one unpaged call is
+    enough for a cascading region → state picker.
+    """
+    if not mine or principal.role in ALL_INDIA_ROLES:
+        return envelope(await service.list_states(db))
+
+    _own_id, own = await own_scope(
+        db, user_id=principal.user_id, company_id=principal.company_id
+    )
+    # States first: an area manager holds those and his regions are DERIVED from
+    # them, so filtering by region would widen his list to colleagues' states.
+    if own.state_ids:
+        return envelope(
+            await service.list_states(db, state_ids=list(own.state_ids))
+        )
+    if own.region_ids:
+        return envelope(
+            await service.list_states(db, region_ids=list(own.region_ids))
+        )
+    return envelope([])
+
+
+async def _own_regions(db, principal: Principal) -> list[uuid.UUID] | None:
+    """The caller's regions, or `None` for a role whose reach is the country.
+
+    An area manager holds states rather than regions, but his regions are
+    derived and stored alongside them — so this answers for him too, with the
+    one or two regions his states sit in.
+    """
+    if principal.role in ALL_INDIA_ROLES:
+        return None
+    _own_id, own = await own_scope(
+        db, user_id=principal.user_id, company_id=principal.company_id
+    )
+    return list(own.region_ids)
 
 
 @router.get("/districts", response_model=ApiEnvelope[list[DistrictOut]])

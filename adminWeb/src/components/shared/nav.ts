@@ -18,7 +18,13 @@ export interface NavItem {
   label: string;
   to: string;
   icon: LucideIcon;
-  /** Live count surfaced on the rail — escalations and AI review only. */
+  /**
+   * A count surfaced on the rail — escalations and AI review only.
+   *
+   * A number here is a PLACEHOLDER, not a fact. `Sidebar` overrides the
+   * escalation badge with the live queue length; AI review's is still the
+   * mock's, and goes the same way when that slice binds.
+   */
   badge?: number;
   /** Child routes that should keep this item lit. */
   match?: string[];
@@ -27,8 +33,7 @@ export interface NavItem {
    * Absent = ungated (shown to every signed-in user).
    *
    * These mirror the server's feature catalog, so the rail can never offer a
-   * screen the API would refuse. Escalations and AI review are deliberately
-   * ungated: the domain puts both in the Area Service Manager's hands.
+   * screen the API would refuse.
    */
   feature?: string;
 }
@@ -70,8 +75,18 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Escalation Queue",
         to: "/escalations",
         icon: AlertTriangle,
-        badge: 3,
+        // Overridden by `Sidebar` with the live queue length. Zero here rather
+        // than the mock's 3: an unloaded badge must not claim there is work.
+        badge: 0,
         match: ["/escalations/"],
+        // Was ungated, on the reasoning that the domain puts escalations in the
+        // Area Service Manager's hands. It does — but "ungated" meant every
+        // signed-in user, several ranks below the ASM included, and this is the
+        // screen that spends money and commits somebody's day. `jobs.assign` is
+        // the key the three endpoints behind it carry, and the API pairs it
+        // with a rank floor of area_manager that no Feature Access override can
+        // lift. Hard rule 8: this hides the link, the server refuses the act.
+        feature: "jobs.assign",
       },
       {
         label: "AI Review",

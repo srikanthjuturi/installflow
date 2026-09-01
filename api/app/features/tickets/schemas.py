@@ -145,6 +145,11 @@ class TicketOut(AppModel):
     technicianId: uuid.UUID | None
     technicianName: str | None
 
+    #: What a manager attached to a re-notification after nobody accepted, in
+    #: PAISE. Null means no bonus was ever funded — a different claim from ₹0,
+    #: and the console renders it as "—" for exactly that reason.
+    bonusPaise: int | None = None
+
     #: not_needed (ops set the slot) | pending | sent | failed.
     slotRequestStatus: str
     #: Meta's own words when it refused, so ops can act rather than guess.
@@ -191,6 +196,15 @@ class TimelineEventOut(AppModel):
     at: datetime.datetime
     kind: str
     title: str
+    #: staff | technician | customer | vendor | system.
+    #:
+    #: WHO caused it, as a value rather than as wording. `title` already says
+    #: it in English — "Technician accepted" against "Assigned by a manager" —
+    #: but a client that needs the distinction elsewhere on the page should not
+    #: have to match on a display string, which is presentation and free to
+    #: change. The console reads this to say how a technician came to hold the
+    #: job on the panel beside the trail.
+    actorKind: str
     #: Null for an event nobody caused — an SLA breach has no actor.
     by: str | None = None
     note: str | None = None
@@ -224,6 +238,151 @@ class TicketProofOut(AppModel):
     #: What the phone reverse-geocoded its position to. Compare it with the
     #: ticket's own pincode when a customer disputes that anybody attended.
     devicePincode: str | None
+
+
+class AssignRequest(AppModel):
+    """Hand an escalated job to a named technician.
+
+    One field, and deliberately no `companyId` or `pincode` beside it: the
+    ticket supplies both, and the technician is re-resolved against the
+    caller's own company before anything is written. An id in a body is an
+    assertion, not a fact.
+    """
+
+    technicianId: uuid.UUID
+
+
+class BonusRequest(AppModel):
+    """Fund a re-notification and put the job back in the pool.
+
+    PAISE, like every other money value that reaches this API (hard rule 9).
+    The console's four approved bands are ₹200/400/600/800, which arrive here
+    as 20000/40000/60000/80000 — but the amount is not constrained to them,
+    because the bands are a design decision about a picker and this is the
+    money boundary. `gt=0` is the real rule: zero is not a smaller incentive,
+    it is the absence of one, and the absence is spelled "do not call this".
+    """
+
+    amountPaise: int = Field(gt=0, le=10_000_00)
+
+
+class RenotifyOut(AppModel):
+    """What a funded re-notification actually did.
+
+    `notified` is a FIELD rather than a line in the envelope's `message`
+    because the console's transport returns `data` and drops `message` — a
+    count nobody can read is a count worth not computing.
+    """
+
+    ticket: TicketDetailOut
+    #: How many eligible technicians the push actually went to. Zero is a real
+    #: and important answer: it means the bonus cannot work, because nobody
+    #: covers this pincode for this subcategory with room on that day.
+    notified: int
+
+
+class NoShowRequest(AppModel):
+    """A manager confirming that nobody turned up.
+
+    The note is optional and worth asking for: "customer says he never called"
+    is the difference between a charge somebody can defend later and one they
+    cannot. Nothing branches on it — it goes onto the trail beside the amount.
+    """
+
+    note: str | None = Field(default=None, max_length=255)
+
+
+class SlaBreakdownOut(AppModel):
+    """How the OPEN tickets are sitting against their windows.
+
+    Terminal tickets are excluded rather than reported as a fourth `done` bucket:
+    the bar is a health reading, and a company with ten thousand closed jobs would
+    otherwise show a sliver of red beside a wall of grey and look permanently
+    fine. `ok + warn + breach` is the whole of it, and it is also `openTickets`.
+    """
+
+    ok: int
+    warn: int
+    breach: int
+
+
+class FunnelOut(AppModel):
+    """Where the open work is sitting, in the order it moves through."""
+
+    #: Raised, and the customer has not picked a time. Invisible to technicians.
+    slotPending: int
+    #: Somebody holds it — `Assigned` or `In Progress`.
+    active: int
+    #: Closed in the last 7 days, measured on `customer_confirmed_at`, which is
+    #: written in the same UPDATE that sets the status. NOT `updated_at`, which
+    #: any later edit would move and which would count a job closed in March
+    #: because somebody corrected its serial yesterday.
+    closedThisWeek: int
+
+
+class AttentionOut(AppModel):
+    """The four queues a manager is meant to clear, as counts.
+
+    Each one is the SAME predicate as the screen or sweep it links to, so the
+    number on the card and the rows behind it can never disagree — which is the
+    single thing that makes a count worth putting on a dashboard.
+    """
+
+    #: `service.list_escalations`' live half.
+    escalations: int
+    #: Tickets sitting in `AI Review`. Nothing sets that status yet, so this is
+    #: a real count that is genuinely 0 rather than a placeholder — and it starts
+    #: reporting the moment AI verification writes its first row.
+    aiReview: int
+    #: `sweeps.sweep_force_close`, minus its notification de-dupe: the manager
+    #: still has to act whether or not the bell was already rung.
+    awaitingForceClose: int
+    #: `sweeps.sweep_silent_slots`, on the same terms.
+    slotNotConfirmed: int
+
+    #: The two windows the counts above were measured with, sent so the card can
+    #: SAY them. Both are `company_rules` columns, so the approved copy's "48h"
+    #: and "6h" are this company's defaults rather than facts — and a card
+    #: reading "No customer response 48h" over a query run at 24 would be the
+    #: screen quietly lying about its own number. Same reasoning, and the same
+    #: fix, as the sweeps quoting the threshold they selected on.
+    forceCloseHours: int
+    slotSilenceHours: int
+
+
+class DashboardSummaryOut(AppModel):
+    """Every figure the console's dashboard draws, in one round trip.
+
+    ## There are no deltas here, and that is deliberate
+
+    The approved design puts a movement chip on each tile ("▲ 4.2%"). A delta
+    needs the same count as it stood at some earlier moment, and nothing in this
+    database records that: there is no snapshot table, and the current rows
+    cannot answer it — a ticket closed on Tuesday was open on Monday and leaves
+    no trace of having been. Shipping a computed-looking percentage over no
+    source is the one thing the house rule forbids outright, so the tiles render
+    without a chip until something real backs one.
+
+    ## Counted, not sampled
+
+    Every figure is a `COUNT` over the caller's own scope — the same `scoped()`
+    door the list and fetch-by-id use — so an Area Manager's dashboard describes
+    their states and a national head's describes the country. A vendor never
+    reaches it: the route carries `jobs.view`, which the portal roles hold, so
+    the scope narrows to that vendor's own tickets, which is the honest answer
+    for a surface they cannot open anyway.
+    """
+
+    #: Not closed, force-closed or cancelled. The denominator of `sla`.
+    openTickets: int
+    #: Of those, already past their window — `sla.breach`, promoted to a tile
+    #: because it is the number that decides whether today is a normal day.
+    breaching: int
+    escalated: int
+    aiFlagged: int
+    sla: SlaBreakdownOut
+    funnel: FunnelOut
+    attention: AttentionOut
 
 
 class SerialCorrectionRequest(AppModel):

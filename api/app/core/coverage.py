@@ -254,17 +254,24 @@ def ist_day_bounds(
     return start, start + datetime.timedelta(days=1)
 
 
-async def jobs_today_by_technician(
+async def jobs_held_by_technician(
     db: AsyncSession,
     *,
     company_id: uuid.UUID,
     technician_ids: list[uuid.UUID],
-    now: datetime.datetime | None = None,
+    on_day: datetime.datetime | None = None,
 ) -> dict[uuid.UUID, int]:
-    """How many jobs each of these technicians holds for today, by SLOT date.
+    """How many jobs each of these technicians holds on a day, by SLOT date.
 
     One grouped query for a whole page — `_technicians_out` hydrates a list and
     its own docstring forbids N+1.
+
+    `on_day` is any instant inside the IST day to count; `None` means today,
+    which is what the Technicians screen asks. A manager assigning an escalated
+    job passes the SLOT instead, because "is this person free" is a question
+    about the day the work happens and not about the day somebody is looking at
+    the screen. It was called `jobs_today_by_technician` while today was the
+    only answer anybody wanted.
 
     Counted by the same rule the cap enforces, deliberately. If the console's
     bandwidth bar and the pool disagreed, one of them would be lying to somebody
@@ -272,7 +279,9 @@ async def jobs_today_by_technician(
     """
     if not technician_ids:
         return {}
-    start, end = ist_day_bounds(now or datetime.datetime.now(datetime.timezone.utc))
+    start, end = ist_day_bounds(
+        on_day or datetime.datetime.now(datetime.timezone.utc)
+    )
     rows = await db.execute(
         select(Ticket.technician_id, func.count())
         .where(

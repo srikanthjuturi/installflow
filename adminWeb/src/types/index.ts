@@ -7,49 +7,21 @@ export * from "./dashboard";
  */
 export type Role = "Admin" | "NH" | "RSH" | "ASM" | "Ops Staff";
 
-/**
- * A candidate on the escalation shortlist.
+/*
+ * `EligibleTechnician` and `Escalation` used to live here.
  *
- * This is NOT the technician master record — that lives in `types/technician.ts`
- * and comes from the API. This shape stays because "who has bandwidth left for
- * this ticket" needs open assignments, and there is no jobs table yet; the
- * escalation screens read it from a mock until there is.
+ * Both were display shapes for a mock — `slot: "Aug 5, 09:00–11:00"`,
+ * `left: "2h 40m"`, `pool: 1800` — and both are gone because their subjects
+ * turned out to be things that already had types. An escalation IS a `Ticket`
+ * (`types/ticket.ts`), and a candidate for one IS a `Technician`
+ * (`types/technician.ts`), which is why the queue could never be opened from a
+ * real ticket: the mock's rows were keyed by ticket CODE and a UUID was never
+ * one of them.
+ *
+ * The pre-formatted strings went with them. `formatSlot` and `slotCountdown` in
+ * `utils/datetime.ts` render the instants the API sends, in the reader's own
+ * clock — a countdown built server-side is already wrong when it arrives.
  */
-export interface EligibleTechnician {
-  id: string;
-  name: string;
-  phone: string;
-  /** Optional profile photo as a data URL. Absent → the initials avatar.
-   *  Client-set today; a real upload endpoint replaces it later. */
-  photoUrl?: string;
-  cats: string[];
-  pincodes: string;
-  /** Bandwidth is a plain jobs-per-day count. The Rules screen calls it
-   *  "weighted by job type" — that contradiction is an open decision. */
-  bwUsed: number;
-  bwTotal: number;
-  rating: number;
-  status: "Active" | "Inactive";
-  jobs: number;
-  cancels: number;
-  penalty: number;
-  bonus: number;
-  joined: string;
-}
-
-export interface Escalation {
-  id: string;
-  customer: string;
-  product: string;
-  city: string;
-  pincode: string;
-  slot: string;
-  /** Time remaining until the confirmed slot. */
-  left: string;
-  reason: string;
-  /** Funded by collected cancellation penalties. */
-  pool: number;
-}
 
 export interface AiFlag {
   id: string;
@@ -64,14 +36,34 @@ export interface AiFlag {
   when: string;
 }
 
+/**
+ * One movement of the penalty pool.
+ *
+ * The mock carried a display shape — `date: "Aug 4"`, `type: "Penalty"`, and a
+ * signed `amt` in rupees. All three are gone for the same reason the
+ * escalation queue's were: the server sends instants, a value, and paise, and
+ * a string built server-side is already somebody's opinion about the reader's
+ * clock and currency formatting.
+ *
+ * **No sign is stored.** A penalty and a bonus point in opposite directions,
+ * but which direction depends on who is looking: to the POOL a penalty is
+ * money in, to the TECHNICIAN it is a debit. The API's own note explains it;
+ * here it means the table applies the technician's sign where it prints one,
+ * out loud, rather than trusting a sign that means two things.
+ */
 export interface LedgerEntry {
   id: string;
-  date: string;
-  type: "Penalty" | "Bonus";
-  tech: string;
-  ticket: string;
-  /** Negative for penalties, positive for bonuses. */
-  amt: number;
+  /** ISO instant. */
+  at: string;
+  kind: "penalty" | "bonus";
+  /** PAISE, always positive. `kind` carries the direction. */
+  amountPaise: number;
+  technicianId: string;
+  technicianName: string;
+  ticketId: string;
+  /** `INST-240912` — what a person quotes. The UUID is beside it for the link. */
+  ticketCode: string;
+  /** As recorded when the money moved, never re-derived. */
   reason: string;
 }
 

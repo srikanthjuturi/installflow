@@ -7,7 +7,9 @@ import type { JobStatus } from '@/types/domain';
 /**
  * Resolves a job's badge itself rather than taking a label + colour, so the
  * "Starting soon" rule (≤4h to the committed slot) lives in exactly one place.
- * That threshold is the same one that drives the ₹250 penalty band.
+ * That threshold is the same one a cancellation escalates on — under it the
+ * job goes straight to the Area Service Manager. The penalty AMOUNT is a
+ * company rule and is never assumed here; the server sends it.
  */
 export interface StatusBadgeProps {
   status: JobStatus;

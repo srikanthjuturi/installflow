@@ -10,8 +10,8 @@ import { money } from "@/utils/money";
  * `RULES.penalty` in `services/settings.ts`; it is an open business decision,
  * so this screen shows the approved web prototype's figures unreconciled.
  *
- * Same shape as `SlaRuleList` — term and definition, no sortable columns — so
- * it is a description list rather than a table, and needs no invented headers.
+ * Term and definition, with no sortable columns, so it is a description list
+ * rather than a table and needs no invented headers.
  */
 
 const ROW =
