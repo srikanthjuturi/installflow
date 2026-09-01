@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { addBonusAndRenotify, listEscalations } from "@/services/escalations";
-import { DEFAULT_PAGE_SIZE } from "@/types/api";
+import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
 import { ESCALATION_REFETCH_MS } from "./liveness";
 import { dashboardKeys } from "./useDashboard";
 import { technicianKeys } from "./useTechnicians";
@@ -21,7 +21,10 @@ export { escalationKeys };
  * promised, so this refetches far more eagerly than an ordinary list.
  *
  * The sidebar badge reads this same query rather than counting separately, so
- * the rail and the screen can never disagree and the two share one request.
+ * the rail and an UNNARROWED screen can never disagree and the two share one
+ * request. They part company the moment a filter or a search goes on, which is
+ * correct — the badge counts what needs a manager now, not what this reader is
+ * currently hunting for.
  *
  * `refetchInterval` is what keeps the countdowns moving — see
  * `ESCALATION_REFETCH_MS`. It is a repaint as much as a refresh.
@@ -40,12 +43,15 @@ export { escalationKeys };
  * re-fetching ten pages a minute. Acceptable while the queue is small; the
  * thing to change if it stops being is the interval, not the appending.
  */
-export function useEscalations({ enabled = true } = {}) {
+export function useEscalations({
+  enabled = true,
+  params = {},
+}: { enabled?: boolean; params?: ListParams } = {}) {
   return useInfiniteQuery({
-    queryKey: escalationKeys.list(),
+    queryKey: escalationKeys.list(params),
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
-      listEscalations({ page: pageParam, limit: DEFAULT_PAGE_SIZE }),
+      listEscalations({ ...params, page: pageParam, limit: DEFAULT_PAGE_SIZE }),
     getNextPageParam: (last) =>
       last.pagination.hasNextPage ? last.pagination.page + 1 : undefined,
     staleTime: 10_000,

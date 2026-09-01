@@ -58,7 +58,16 @@ export const ticketKeys = {
  */
 export const escalationKeys = {
   all: ["escalations"] as const,
-  list: () => ["escalations", "list"] as const,
+  /**
+   * `params` carries the search and the filters, never a page — the page is the
+   * infinite query's cursor.
+   *
+   * An UNFILTERED queue hashes to the same key the rail's badge asks for, so
+   * the two still share one request as long as nothing is narrowed. The moment
+   * a filter goes on they diverge, which is right: the badge counts what needs
+   * a manager now, not what this reader is currently looking for.
+   */
+  list: (params: ListParams = {}) => ["escalations", "list", params] as const,
 };
 
 export function useTickets(params: ListParams = {}) {

@@ -21,6 +21,7 @@ rather than a 422 — the lesson from the vendor list, where a stale bookmark
 carrying `?status=Active` blanked the whole screen.
 """
 
+import datetime
 import uuid
 from typing import Annotated
 
@@ -46,6 +47,7 @@ from app.features.tickets import service
 from app.features.tickets.schemas import (
     AssignRequest,
     BonusRequest,
+    DashboardSummaryOut,
     NoShowRequest,
     RenotifyOut,
     SerialCorrectionRequest,
@@ -119,6 +121,26 @@ async def list_tickets(
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
 
+@router.get("/summary", response_model=ApiEnvelope[DashboardSummaryOut])
+async def dashboard_summary(db: Db, principal: CanView) -> ApiEnvelope[
+    DashboardSummaryOut
+]:
+    """Every number the console's dashboard draws, in one round trip.
+
+    Declared ABOVE `/{ticket_id}` for the reason `/escalations` is — Starlette
+    matches in declaration order, and the dynamic route would otherwise swallow
+    `summary` as a ticket id and answer 422.
+
+    `jobs.view` rather than a rank floor: this is the landing page every staff
+    role opens, and the figures are already narrowed to the caller's own
+    territory by `scoped()`, so there is nothing here a person who may see the
+    ticket list may not see counted. It carries no delta and no forecast — see
+    `DashboardSummaryOut` on why a movement chip with no history behind it is
+    the one thing that does not ship.
+    """
+    return envelope(await service.dashboard_summary(db, principal))
+
+
 @router.get(
     "/escalations",
     response_model=PaginatedEnvelope[TicketOut],
@@ -128,6 +150,9 @@ async def list_escalations(
     db: Db,
     principal: CanAssign,
     params: Annotated[ListParams, Depends(list_params)],
+    half: Annotated[str | None, Query()] = None,
+    slotFrom: Annotated[datetime.date | None, Query()] = None,
+    slotTo: Annotated[datetime.date | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """Jobs whose slot is close and that nobody accepted, soonest first.
 
@@ -139,8 +164,26 @@ async def list_escalations(
     every row stays reachable without a page number. The missed half only ever
     grows — see `service.list_escalations` — and it was being sent whole on
     every poll.
+
+    `search` narrows on code, customer, phone, pincode or serial. `half` is
+    `live` | `missed` and takes the console's `all` sentinel. `slotFrom` /
+    `slotTo` are IST calendar dates bounding the SLOT — the day the work was
+    promised, not the day the ticket was raised — inclusive at both ends, and
+    either may be given alone.
+
+    Every one of them is applied in SQL rather than in the browser, which on an
+    infinite list is the only correct place: filtering the pages that happen to
+    be loaded would answer "does this exist?" with "only if you have already
+    scrolled far enough".
     """
-    rows, total = await service.list_escalations(db, principal, params)
+    rows, total = await service.list_escalations(
+        db,
+        principal,
+        params,
+        half=half,
+        slot_from=slotFrom,
+        slot_to=slotTo,
+    )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
 

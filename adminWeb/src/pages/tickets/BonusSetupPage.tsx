@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Info } from "lucide-react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import { BonusPicker } from "@/components/escalations/BonusPicker";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -11,11 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useAddBonus } from "@/hooks/useEscalations";
+import { originFor, readNavOrigin } from "@/hooks/useNavOrigin";
 import { useLedgerPool } from "@/hooks/useLedger";
 import { useRulesConfig } from "@/hooks/useSettings";
 import { useCandidateTechnicians } from "@/hooks/useTechnicians";
 import { useTicket } from "@/hooks/useTickets";
-import { formatSlot, timeUntil } from "@/utils/datetime";
+import { formatSlot, slotCountdown } from "@/utils/datetime";
 import { money, moneyPaise } from "@/utils/money";
 
 /**
@@ -39,8 +40,32 @@ const DEFAULT_BAND = 1;
 export default function BonusSetupPage() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const { data: ticket, isLoading, isError, error, refetch } = useTicket(id);
+  /* The queue is the only way in today, which is exactly why the destination
+     was written into this screen as a constant — and why its sibling at
+     `/tickets/:id/assign` was wrong the moment the queue started linking to it
+     too. Read the origin like everything else and keep the queue as the
+     fallback: same behaviour on a pasted link, no second screen to fix later. */
+  const origin = readNavOrigin(location.state);
+  const backHref = origin?.backTo ?? "/escalations";
+  const backText = origin?.backLabel ?? "Back to escalations";
+
+  const {
+    data: ticket,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    dataUpdatedAt,
+  } = useTicket(id);
+  // Measured against when the ticket was READ. `new Date()` during render is
+  // impure, and it would also drift from the row it is describing.
+  const countdown = slotCountdown(
+    ticket?.slotStart,
+    ticket?.slotEnd,
+    new Date(dataUpdatedAt)
+  );
   // Eligibility is a question about THIS ticket — its subcategory, its pincode
   // — so the count waits for the ticket rather than asking early and reporting
   // a number that is not the shortlist. `onDay` is the SLOT's day: a bonus is
@@ -100,7 +125,10 @@ export default function BonusSetupPage() {
     !weMovedIt &&
     (ticket.status !== "Escalated" || ticket.technicianId)
   ) {
-    return <Navigate to={`/tickets/${ticket.id}`} replace />;
+    const ticketPath = `/tickets/${ticket.id}`;
+    return (
+      <Navigate to={ticketPath} replace state={originFor(ticketPath, origin)} />
+    );
   }
 
   function confirm() {
@@ -118,7 +146,7 @@ export default function BonusSetupPage() {
               ticket.slotEnd
             )}) stays locked.`,
           });
-          navigate("/escalations");
+          navigate(backHref, { state: origin?.backState });
         },
       }
     );
@@ -135,10 +163,11 @@ export default function BonusSetupPage() {
         variant="ghost"
         size="sm"
         className="mb-3.5 -ml-2"
-        to="/escalations"
+        to={backHref}
+        state={origin?.backState}
       >
         <ArrowLeft data-icon="inline-start" />
-        Back to escalations
+        {backText}
       </LinkButton>
 
       {isError || rulesFailed ? (
@@ -184,10 +213,13 @@ export default function BonusSetupPage() {
                   eligible.isLoading ? null : String(eligible.data?.length ?? 0)
                 }
               />
+              {/* Label and figure come from one call, so this tile cannot say
+                  "Time to slot" over a window that has already opened — see
+                  `slotCountdown`. The queue's cards read the same way. */}
               <Stat
-                label="Time to slot"
-                value={timeUntil(ticket.slotStart, ticket.slotEnd)}
-                tone="danger"
+                label={countdown.label}
+                value={countdown.value}
+                tone={countdown.state === "closed" ? undefined : "danger"}
               />
             </div>
 
@@ -235,7 +267,14 @@ export default function BonusSetupPage() {
                 balance will go negative once it is paid.
               </p>
             ) : null}
-            <LinkButton variant="outline" size="lg" to="/escalations">
+            {/* Cancel goes where Back goes: they are the same retreat, and a
+                pair that disagreed would make one of them a surprise. */}
+            <LinkButton
+              variant="outline"
+              size="lg"
+              to={backHref}
+              state={origin?.backState}
+            >
               Cancel
             </LinkButton>
             <Button size="lg" disabled={addBonus.isPending} onClick={confirm}>

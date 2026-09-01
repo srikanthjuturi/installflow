@@ -18,7 +18,7 @@ export type Role = "Admin" | "NH" | "RSH" | "ASM" | "Ops Staff";
  * real ticket: the mock's rows were keyed by ticket CODE and a UUID was never
  * one of them.
  *
- * The pre-formatted strings went with them. `formatSlot` and `timeUntil` in
+ * The pre-formatted strings went with them. `formatSlot` and `slotCountdown` in
  * `utils/datetime.ts` render the instants the API sends, in the reader's own
  * clock — a countdown built server-side is already wrong when it arrives.
  */

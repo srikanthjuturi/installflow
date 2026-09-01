@@ -31,6 +31,13 @@ import { apiGetPage, apiPost } from "./http";
  *
  * The API orders live rows before missed ones, so page one is the half that
  * can still be rescued. Scrolling only ever reaches further into the past.
+ *
+ * `search` matches code, customer, phone, pincode or serial — the same
+ * predicate the ticket board uses. `filters` carries `half` (`live` | `missed`)
+ * and the `slotFrom` / `slotTo` IST dates, flattened into the query string by
+ * the transport. All of it is applied by the SERVER: narrowing the pages that
+ * happen to be loaded would make "no match" mean "not in what you have
+ * scrolled to", which on an infinite list is a lie with a plausible shape.
  */
 export function listEscalations(
   params: ListParams = {}

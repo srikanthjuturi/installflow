@@ -26,7 +26,7 @@ from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.coverage import has_cap_room, technicians_covering
+from app.core.coverage import has_cap_room, ist_day_bounds, technicians_covering
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.ledger import (
@@ -55,7 +55,11 @@ from app.core.tickets import (
 from app.db.repository import paginate
 from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
+    AttentionOut,
+    DashboardSummaryOut,
+    FunnelOut,
     RenotifyOut,
+    SlaBreakdownOut,
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
@@ -662,6 +666,165 @@ async def list_tickets(
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     return await _hydrate(db, rows), total
+
+
+# ── the dashboard ─────────────────────────────────────────────────────────────
+
+
+async def dashboard_summary(
+    db: AsyncSession, principal: Principal
+) -> DashboardSummaryOut:
+    """Every figure the console's dashboard draws, counted rather than sampled.
+
+    Lives in the tickets slice because every number on that screen IS a ticket
+    count, and hard rule 4 is the rest of the reason: a `dashboard` slice would
+    have to import `scoped`, `_sla_order_case` and `TERMINAL_STATUSES` from here,
+    and a second copy of the visibility rule is how two screens start disagreeing
+    about what a manager can see.
+
+    ## Three queries, and the split is not arbitrary
+
+    The first is one pass with conditional counts — every figure that a ticket's
+    own columns can answer. The other two mirror `sweeps.sweep_force_close` and
+    `sweeps.sweep_silent_slots`, which cannot fold in: both ask "when did we last
+    ASK the customer", which lives in `ticket_events` and needs a correlated
+    subquery. Left inside the big aggregate that subquery would run for every
+    ticket in the company; as their own queries, `status` narrows to a handful
+    first.
+
+    They drop the sweeps' `_already(...)` de-dupe on purpose. A sweep asks "have
+    I rung this bell", which is asked once; a dashboard asks "how much work is
+    waiting", and a ticket does not stop needing a manager because it was
+    announced an hour ago.
+
+    ## The windows come from `load_rules`, not a join
+
+    The sweeps join `company_rules` and do the interval arithmetic in SQL because
+    they run across every tenant in one tick. This runs for exactly one company,
+    so the rules are read once and the cutoff is a plain `timedelta` — the same
+    number, arrived at more simply, and it keeps the comparison on an indexed
+    column rather than inside an expression.
+    """
+    now = _now()
+    rules = await load_rules(db, principal.company_id)
+    # The same expression the list orders and filters by, so a tile and the
+    # board it links to can never rank one ticket two ways.
+    #   0 breach · 1 warn · 2 ok · 3 done (terminal)
+    rank = _sla_order_case(rules.sla_warn_at_pct)
+
+    def mine(stmt: Select) -> Select:
+        return stmt.where(
+            Ticket.company_id == principal.company_id,
+            Ticket.deleted_at.is_(None),
+        )
+
+    def tally(condition) -> object:
+        """Rows matching `condition`, as a column of the one aggregate pass.
+
+        `count`, not `sum`: `count` of a NULL-yielding CASE ignores the misses
+        and returns 0 for an empty table, where `sum` returns NULL and every
+        figure on an empty dashboard would come back as `None`.
+        """
+        return func.count(case((condition, 1)))
+
+    is_open = Ticket.status.not_in(TERMINAL_STATUSES)
+    # The escalation queue's LIVE half, exactly — `slot_end >= now`. The missed
+    # half is deliberately not counted here: it only ever grows (nothing clears
+    # it yet, see `list_escalations`), so folding it in would turn a number that
+    # means "act today" into a number that only ever climbs, and the card's own
+    # words — "unassigned within 4h" — would stop being true of it.
+    is_escalated_live = (
+        (Ticket.status == "Escalated")
+        & Ticket.technician_id.is_(None)
+        & Ticket.slot_start.is_not(None)
+        & (Ticket.slot_end >= now)
+    )
+
+    counts = mine(
+        select(
+            tally(is_open).label("open"),
+            tally(rank == 0).label("breach"),
+            tally(rank == 1).label("warn"),
+            tally(rank == 2).label("ok"),
+            tally(is_escalated_live).label("escalated"),
+            tally(Ticket.status == "AI Review").label("ai"),
+            tally(Ticket.status == "Slot Pending").label("slot_pending"),
+            tally(Ticket.status.in_(("Assigned", "In Progress"))).label("active"),
+            tally(
+                (Ticket.status == "Closed")
+                # `customer_confirmed_at` is written in the same UPDATE that sets
+                # `Closed` (see `feedback_service`), so it is the closure's own
+                # instant. It is also set on a REJECTION, which is why the status
+                # test above is not redundant.
+                & (Ticket.customer_confirmed_at >= now - datetime.timedelta(days=7))
+            ).label("closed_week"),
+        ).select_from(Ticket)
+    )
+    counts = await scoped(db, counts, principal)
+    row = (await db.execute(counts)).one()
+
+    awaiting = mine(
+        select(func.count())
+        .select_from(Ticket)
+        .where(
+            Ticket.status == "Awaiting Customer",
+            Ticket.customer_confirmed_at.is_(None),
+            _last_event_at("feedback_requested").is_not(None),
+            _last_event_at("feedback_requested")
+            <= now - datetime.timedelta(hours=rules.force_close_hours),
+        )
+    )
+    awaiting = await scoped(db, awaiting, principal)
+
+    silent = mine(
+        select(func.count())
+        .select_from(Ticket)
+        .where(
+            Ticket.status == "Slot Pending",
+            Ticket.slot_start.is_(None),
+            _last_event_at("slot_requested").is_not(None),
+            _last_event_at("slot_requested")
+            <= now - datetime.timedelta(hours=rules.slot_silence_hours),
+        )
+    )
+    silent = await scoped(db, silent, principal)
+
+    return DashboardSummaryOut(
+        openTickets=row.open,
+        breaching=row.breach,
+        escalated=row.escalated,
+        aiFlagged=row.ai,
+        sla=SlaBreakdownOut(ok=row.ok, warn=row.warn, breach=row.breach),
+        funnel=FunnelOut(
+            slotPending=row.slot_pending,
+            active=row.active,
+            closedThisWeek=row.closed_week,
+        ),
+        attention=AttentionOut(
+            escalations=row.escalated,
+            aiReview=row.ai,
+            awaitingForceClose=await db.scalar(awaiting) or 0,
+            slotNotConfirmed=await db.scalar(silent) or 0,
+            forceCloseHours=rules.force_close_hours,
+            slotSilenceHours=rules.slot_silence_hours,
+        ),
+    )
+
+
+def _last_event_at(kind: str):
+    """When this ticket last had an event of `kind`, as a correlated subquery.
+
+    `max`, not "the" event: a re-sent slot request writes another, and the
+    silence being measured runs from the most recent ask rather than the first.
+    The same shape the sweeps use, and for the same reason — there is no
+    `slot_requested_at` column and there should not be one, because a ticket's
+    history lives in `ticket_events`.
+    """
+    return (
+        select(func.max(TicketEvent.created_at))
+        .where(TicketEvent.ticket_id == Ticket.id, TicketEvent.kind == kind)
+        .scalar_subquery()
+    )
 
 
 async def get_ticket(
@@ -1289,8 +1452,63 @@ def _refused(code: str, detail: str) -> AppError:
     return AppError(http_status.HTTP_409_CONFLICT, code, detail)
 
 
+#: Which half of the queue to show: the jobs that can still be rescued, or the
+#: record of the ones that were not.
+#:
+#: The only categorical filter here, deliberately. It is the cut that maps onto
+#: the two different sittings the screen gets — working live jobs, and ringing
+#: the customers behind the missed ones — so it changes what a manager DOES.
+#:
+#: Deliberately NOT offered: service type, subcategory, status, and bonus.
+#: Status is fixed (`Escalated`, unassigned) or the row would not be here; the
+#: first two are not on the card, and a filter for something the reader cannot
+#: see the result of is a control that makes a list mysteriously shorter. Bonus
+#: was built, tested and removed: whether money has been spent is already a
+#: figure on every card, so the parameter bought a second row of controls for
+#: something the eye does in one pass.
+ESCALATION_HALVES = ("live", "missed")
+
+
+def _ist_range(
+    start: datetime.date | None, end: datetime.date | None
+) -> tuple[datetime.datetime | None, datetime.datetime | None]:
+    """Two IST calendar dates as a half-open UTC range, both ends inclusive.
+
+    IST because a slot is a promise made in the customer's own clock — the same
+    reckoning the daily cap counts by and the console's dividers group by. A UTC
+    comparison would put a 05:00 IST job on the previous day and quietly drop it
+    out of a range a manager could see it inside of.
+
+    Half-open at the top (`< midnight after `end``) rather than `<=` on the end
+    date, so a slot at 11:59 PM on the last day is included. Written as a range
+    rather than a date cast for the reason `ist_day_bounds` gives: the cast is
+    STABLE, not IMMUTABLE, and Postgres will not use an index through it.
+    """
+    lower = ist_day_bounds(_as_ist_noon(start))[0] if start else None
+    upper = ist_day_bounds(_as_ist_noon(end))[1] if end else None
+    return lower, upper
+
+
+def _as_ist_noon(day: datetime.date) -> datetime.datetime:
+    """A bare date as an instant safely inside that IST day.
+
+    Noon, not midnight: `ist_day_bounds` reads the IST day CONTAINING the
+    instant it is given, and midnight-UTC on the same date is 5:30 AM IST — the
+    same day, but only by 5½ hours of luck. Noon has eleven hours of margin at
+    either end and cannot be pushed into a neighbouring day by any offset this
+    product will ever see.
+    """
+    return datetime.datetime.combine(day, datetime.time(12), tzinfo=IST)
+
+
 async def list_escalations(
-    db: AsyncSession, principal: Principal, params: ListParams
+    db: AsyncSession,
+    principal: Principal,
+    params: ListParams,
+    *,
+    half: str | None = None,
+    slot_from: datetime.date | None = None,
+    slot_to: datetime.date | None = None,
 ) -> tuple[list[TicketOut], int]:
     """Jobs that reached their escalation window with nobody on them.
 
@@ -1345,14 +1563,61 @@ async def list_escalations(
         Ticket.slot_start.is_not(None),
     )
     stmt = await scoped(db, stmt, principal)
+    # The same predicate the ticket board searches by — code, customer, phone,
+    # pincode, serial — so a manager who found a job on one screen finds it here
+    # by typing the same thing. A second, cleverer search would be a second set
+    # of rules to learn.
+    stmt = _apply_search(stmt, params.search)
+
+    wanted = _canonical(half, ESCALATION_HALVES)
+    if wanted is False:
+        return [], 0
+    if wanted == "live":
+        # `slot_end`, not `slot_start`: while the window is open somebody can
+        # still be sent. The same test the ordering below uses, so the filter
+        # and the sections it hides cannot disagree about which half a row is
+        # in.
+        stmt = stmt.where(Ticket.slot_end >= now)
+    elif wanted == "missed":
+        stmt = stmt.where(Ticket.slot_end < now)
+
+    # On SLOT date — when the work was promised — not on when the ticket was
+    # raised. Those two disagree by days on any job booked ahead, and it is the
+    # slot the cards print, the dividers group by and a customer rings about.
+    #
+    # Either end alone is a valid question: "since the 20th" and "up to the
+    # 20th" are both things somebody asks. Only the missed half is really long
+    # enough to need this, but it is not restricted to that half — a range that
+    # silently ignored live rows would be a filter that lies about its own
+    # scope.
+    lower, upper = _ist_range(slot_from, slot_to)
+    if lower is not None:
+        stmt = stmt.where(Ticket.slot_start >= lower)
+    if upper is not None:
+        stmt = stmt.where(Ticket.slot_start < upper)
+
+    # Live first, missed after — one expression, so the API's order and the
+    # console's heading cannot disagree about which half a row is in. With
+    # paging it does a second job: the live rows fill page one, so the work that
+    # is still savable never sits below a scroll the manager has to trigger.
+    is_missed = case((Ticket.slot_end < now, 1), else_=0)
+    # The two halves run in OPPOSITE directions, and each is the useful one for
+    # what its rows are for.
+    #
+    #   live   — soonest slot first: the job closest to being missed.
+    #   missed — most recent first: what just went wrong is what somebody can
+    #            still ring a customer about. Oldest-first buried today's misses
+    #            under every one since the queue began, and since nothing clears
+    #            the missed half, that gap only widens.
+    #
+    # Expressed as a signed epoch so both halves sort ASCENDING on one key.
+    # Ordering by `slot_start` twice with different directions would need the
+    # halves to be separate queries, and then paging could not span them.
+    epoch = func.extract("epoch", Ticket.slot_start)
+    within_half = case((Ticket.slot_end < now, -epoch), else_=epoch)
     stmt = stmt.order_by(
-        # Live first, missed after — one expression, so the API's order and the
-        # console's heading cannot disagree about which half a row is in. With
-        # paging it does a second job: the live rows fill page one, so the work
-        # that is still savable never sits below a scroll the manager has to
-        # trigger.
-        case((Ticket.slot_end < now, 1), else_=0),
-        Ticket.slot_start.asc(),
+        is_missed.asc(),
+        within_half.asc(),
         # A stable tiebreak, or two jobs sharing a slot can swap between pages
         # and the reader sees one twice and the other never.
         Ticket.id.asc(),

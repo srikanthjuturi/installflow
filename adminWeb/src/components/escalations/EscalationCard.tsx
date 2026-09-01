@@ -1,7 +1,8 @@
 import { Link } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatSlot, timeUntil } from "@/utils/datetime";
+import { useNavOrigin } from "@/hooks/useNavOrigin";
+import { formatSlot, slotCountdown } from "@/utils/datetime";
 import { moneyPaise } from "@/utils/money";
 import type { Ticket } from "@/types/ticket";
 
@@ -34,10 +35,29 @@ function reasonFor(ticket: Ticket): string {
 export function EscalationCard({
   ticket,
   missed = false,
+  readAt,
 }: {
   ticket: Ticket;
   missed?: boolean;
+  /**
+   * When the rows were READ, as an epoch. The countdown is measured against it
+   * rather than `new Date()` so this card and the queue's own live/missed split
+   * are reading the same instant — otherwise a card could sit in the live half
+   * saying its slot had closed.
+   */
+  readAt: number;
 }) {
+  /* All three links leave this queue, and all three used to land somewhere that
+     assumed you had come from the ticket board — so Back dropped a manager onto
+     `/tickets`, or worse, onto the very ticket they were still deciding about.
+     The queue is a working list you come back to; say so on the way out. */
+  const origin = useNavOrigin("Back to escalations");
+  const countdown = slotCountdown(
+    ticket.slotStart,
+    ticket.slotEnd,
+    new Date(readAt)
+  );
+
   return (
     <Card className={missed ? undefined : "border-l-3 border-l-danger"}>
       <CardContent className="flex flex-wrap items-center gap-4.5">
@@ -45,6 +65,7 @@ export function EscalationCard({
           <div className="flex flex-wrap items-center gap-2.5">
             <Link
               to={`/tickets/${ticket.id}`}
+              state={origin}
               className="font-mono text-sm font-semibold hover:text-brand-400"
             >
               {ticket.code}
@@ -63,47 +84,62 @@ export function EscalationCard({
           </p>
         </div>
 
-        <div className="px-3.5 text-center">
-          <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
-            Time to slot
+        {/* The two figures, held together and set off from the description by
+            a hairline: the card reads WHAT · WHEN AND HOW MUCH · DO.
+
+            Fixed widths, and that is the point of them. They were `px-3.5`
+            around content, so each column started wherever the previous card's
+            digits happened to end — "58m" and "1h 10m" pushed their headings to
+            different x positions, and a list of cards that should scan as a
+            table came out ragged. */}
+        <div className="flex shrink-0 items-center gap-2 border-l border-line-2 pl-4.5">
+          <div className="w-30 text-center">
+            {/* The label carries the tense, so the figure below can stay a bare
+                span in all three states — see `slotCountdown`. */}
+            <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
+              {countdown.label}
+            </div>
+            {/* Muted once the window has closed. An alarm-red figure on a row
+                nobody can rescue is shouting about something already over. */}
+            <div
+              className={
+                countdown.state === "closed"
+                  ? "font-mono text-xl font-semibold text-ink-3"
+                  : "font-mono text-xl font-semibold text-danger"
+              }
+            >
+              {countdown.value}
+            </div>
           </div>
-          {/* Muted once the window has closed. "Slot passed" in alarm red on
-              a row nobody can rescue is shouting about something already
-              over. */}
-          <div
-            className={
-              missed
-                ? "font-mono text-xl font-semibold text-ink-3"
-                : "font-mono text-xl font-semibold text-danger"
-            }
-          >
-            {timeUntil(ticket.slotStart, ticket.slotEnd)}
+
+          <div className="w-24 text-center">
+            {/* Was "Bonus pool" against a figure the mock invented. Nothing
+                collects penalties yet, so there is no pool to report — this is
+                what has actually been spent on this job, which is real. */}
+            <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
+              Bonus
+            </div>
+            <div
+              className={
+                ticket.bonusPaise === null
+                  ? "text-lg font-semibold text-ink-3"
+                  : "text-lg font-semibold text-ok"
+              }
+            >
+              {moneyPaise(ticket.bonusPaise)}
+            </div>
           </div>
         </div>
 
-        <div className="px-3.5 text-center">
-          {/* Was "Bonus pool" against a figure the mock invented. Nothing
-              collects penalties yet, so there is no pool to report — this is
-              what has actually been spent on this job, which is real. */}
-          <div className="text-[11px] font-semibold tracking-[0.04em] text-ink-3 uppercase">
-            Bonus
-          </div>
-          <div
-            className={
-              ticket.bonusPaise === null
-                ? "text-lg font-semibold text-ink-3"
-                : "text-lg font-semibold text-ok"
-            }
-          >
-            {moneyPaise(ticket.bonusPaise)}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <LinkButton to={`/tickets/${ticket.id}/bonus`}>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <LinkButton to={`/tickets/${ticket.id}/bonus`} state={origin}>
             Add bonus &amp; re-notify
           </LinkButton>
-          <LinkButton variant="outline" to={`/tickets/${ticket.id}/assign`}>
+          <LinkButton
+            variant="outline"
+            to={`/tickets/${ticket.id}/assign`}
+            state={origin}
+          >
             Assign manually
           </LinkButton>
         </div>
