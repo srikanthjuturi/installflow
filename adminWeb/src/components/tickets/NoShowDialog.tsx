@@ -59,8 +59,8 @@ export function NoShowDialog({
           <DialogTitle>Record a no-show?</DialogTitle>
           <DialogDescription>
             The slot closed with {technicianName} still assigned and no proof
-            captured. Recording it charges them the no-show band and frees the
-            job for a new time.
+            captured. Recording a no-show charges the penalty and returns the
+            job so it can be rescheduled.
           </DialogDescription>
         </DialogHeader>
 
@@ -75,8 +75,7 @@ export function NoShowDialog({
             disabled={isPending}
           />
           <FieldDescription>
-            Optional, and worth writing: it is what makes the charge defensible
-            later.
+            Optional. A short note makes the charge easier to justify later.
           </FieldDescription>
         </Field>
 

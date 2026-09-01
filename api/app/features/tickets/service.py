@@ -1391,7 +1391,7 @@ async def _load_assignable_technician(
     if profile.status != ACTIVE:
         raise _refused(
             "TECHNICIAN_SUSPENDED",
-            "This technician is not active and cannot be given work.",
+            "This technician is not active and cannot be assigned work.",
         )
 
     covers = await db.scalar(
@@ -1414,7 +1414,7 @@ async def _load_assignable_technician(
         raise _refused(
             "TECHNICIAN_INELIGIBLE",
             f"This technician does not cover {row.pincode}. Add it to their "
-            "coverage, or pick somebody who does.",
+            "coverage, or choose another technician.",
         )
     if certified is None:
         raise _refused(
@@ -1450,10 +1450,10 @@ async def assign_technician(
     if row.status not in ASSIGNABLE_STATUSES:
         raise _refused(
             "TICKET_NOT_ASSIGNABLE",
-            f"A ticket in {row.status} cannot be assigned."
+            f"This ticket is {row.status} and can no longer be assigned."
             + (
-                " The work has already started — that needs the technician to "
-                "cancel first."
+                " The technician has already started it, so they must cancel "
+                "it first."
                 if row.status not in TERMINAL_STATUSES
                 else ""
             ),
@@ -1461,8 +1461,8 @@ async def assign_technician(
     if row.slot_start is None:
         raise _refused(
             "NO_SLOT",
-            "This ticket has no confirmed slot yet, so there is no time to send "
-            "anybody to.",
+            "This ticket has no confirmed slot yet. Agree a time with the "
+            "customer before assigning anyone.",
         )
 
     profile = await _load_assignable_technician(db, principal, row, technician_id)
@@ -1514,13 +1514,13 @@ async def assign_technician(
             raise _refused(
                 "DAILY_CAP_REACHED",
                 f"{profile.code} already has {profile.daily_job_cap} jobs on "
-                f"{day_label(row.slot_start)} — their daily limit. Pick somebody "
-                "with room, or raise their cap first.",
+                f"{day_label(row.slot_start)}, which is their daily limit. "
+                "Choose another technician, or raise their limit first.",
             )
         raise _refused(
             "ALREADY_ASSIGNED",
-            "Somebody moved this ticket while you were choosing. Reload and "
-            "look again.",
+            "This ticket has already been updated. Reload the page and try "
+            "again.",
         )
 
     row.status = "Assigned"
@@ -1626,8 +1626,8 @@ async def add_bonus_and_renotify(
     if row.status != "Escalated" or row.technician_id is not None:
         raise _refused(
             "NOT_ESCALATED",
-            "Only a job that nobody accepted can be re-notified with a bonus. "
-            f"This one is in {row.status}.",
+            "A bonus can only be added to a job that nobody has accepted. "
+            f"This ticket is {row.status}.",
         )
     assert row.slot_start is not None  # `Escalated` with no technician implies one
 
@@ -1644,8 +1644,8 @@ async def add_bonus_and_renotify(
     if result.rowcount == 0:
         raise _refused(
             "ALREADY_ASSIGNED",
-            "Somebody moved this ticket while you were choosing. Reload and "
-            "look again.",
+            "This ticket has already been updated. Reload the page and try "
+            "again.",
         )
 
     row.status = "New"
@@ -1726,14 +1726,14 @@ async def record_no_show(
     if row.status != "Assigned" or row.technician_id is None:
         raise _refused(
             "NOT_A_NO_SHOW",
-            f"Only a job still assigned and unstarted can be recorded as a "
-            f"no-show. This one is in {row.status}.",
+            "A no-show can only be recorded on an assigned job that was never "
+            f"started. This ticket is {row.status}.",
         )
     if row.slot_end is None or row.slot_end >= _now():
         raise _refused(
             "SLOT_STILL_OPEN",
-            "The slot has not closed yet — until it does they are late, not "
-            "absent.",
+            "The slot has not closed yet. You can record a no-show once it "
+            "ends.",
         )
 
     profile = await db.scalar(
@@ -1775,8 +1775,8 @@ async def record_no_show(
     if result.rowcount == 0:
         raise _refused(
             "NOT_A_NO_SHOW",
-            "Somebody moved this ticket while you were deciding. Reload and "
-            "look again.",
+            "This ticket has already been updated. Reload the page and try "
+            "again.",
         )
     row.status = "Escalated"
     row.technician_id = None

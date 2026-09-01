@@ -94,8 +94,8 @@ export default function EscalationQueuePage() {
                 Missed · {missed.length}
               </h2>
               <p className="mb-3.5 text-xs text-ink-3">
-                The slot closed with nobody assigned. Each of these is a
-                customer who was expecting somebody.
+                The slot closed with no technician assigned. Each one is a
+                customer who was expecting a visit.
               </p>
               <div className="flex flex-col gap-3">
                 {missed.map((ticket) => (

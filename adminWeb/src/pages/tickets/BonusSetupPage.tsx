@@ -186,7 +186,7 @@ export default function BonusSetupPage() {
               />
               <Stat
                 label="Time to slot"
-                value={timeUntil(ticket.slotStart)}
+                value={timeUntil(ticket.slotStart, ticket.slotEnd)}
                 tone="danger"
               />
             </div>
@@ -196,11 +196,11 @@ export default function BonusSetupPage() {
                 to see what is already on the job. */}
             {ticket.bonusPaise !== null ? (
               <p className="mb-4 text-xs text-ink-3">
-                This job already carries a{" "}
+                This job already has a{" "}
                 <b className="font-semibold text-ink">
                   {moneyPaise(ticket.bonusPaise)}
                 </b>{" "}
-                bonus. Choosing an amount replaces it.
+                bonus. Selecting an amount below replaces it.
               </p>
             ) : null}
 
@@ -231,8 +231,8 @@ export default function BonusSetupPage() {
                 way. The balance is a running total, not a budget. */}
             {overdrawn ? (
               <p className="mr-auto text-xs text-warn">
-                More than the pool holds ({moneyPaise(balance)}). It goes
-                negative when this is paid.
+                This is more than the pool holds ({moneyPaise(balance)}). The
+                balance will go negative once it is paid.
               </p>
             ) : null}
             <LinkButton variant="outline" size="lg" to="/escalations">

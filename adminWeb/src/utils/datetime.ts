@@ -125,14 +125,22 @@ export function formatSlot(
  * coarsens as it recedes, this one counts down to a promise and must stay
  * precise right up to it. Merging them would give one function two tenses.
  *
- * Past the slot it reads **Slot passed** rather than a negative figure. An
- * escalated job whose window has closed is still in the queue — nobody was
- * sent, and the customer was stood up — so hiding it would be worse; but
- * counting upwards from a missed appointment states the failure as though it
- * were still a deadline.
+ * ## Three states, because a slot is a WINDOW and not an instant
+ *
+ * Pass `end` and the middle one appears. It has to: the queue keeps a job in
+ * its live half until the window CLOSES — somebody can still be sent while it
+ * is open — so counting only to the start meant a card sitting in the live
+ * queue reading "Slot passed" for the entire two hours the customer was
+ * actually waiting. The most urgent row on the screen looked like a dead one.
+ *
+ *   before it opens   `2h 59m`      how long until somebody must be there
+ *   while it is open  `1h 10m left` how much of the window remains
+ *   after it closes   `Slot passed` nobody went
  */
 export function timeUntil(
   iso: string | null | undefined,
+  /** The slot's END. Omit it and the middle state cannot appear. */
+  end?: string | null,
   now: Date = new Date()
 ): string {
   if (!iso) return EMPTY;
@@ -140,9 +148,21 @@ export function timeUntil(
   if (Number.isNaN(then.getTime())) return EMPTY;
 
   const minutes = Math.floor((then.getTime() - now.getTime()) / 60_000);
-  if (minutes < 0) return "Slot passed";
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes >= 0) return span(minutes);
 
+  // The window has opened. How much of it is left is the number that matters
+  // now — the customer is already at home waiting.
+  const closes = end ? new Date(end) : null;
+  if (closes && !Number.isNaN(closes.getTime())) {
+    const left = Math.floor((closes.getTime() - now.getTime()) / 60_000);
+    if (left >= 0) return `${span(left)} left`;
+  }
+  return "Slot passed";
+}
+
+/** `2h 59m`, or `45m` under the hour. */
+function span(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   // `40m`, not `4m`, past the first hour: `2h 4m` and `2h 40m` are eight
   // minutes apart at a glance in a column of monospaced figures.

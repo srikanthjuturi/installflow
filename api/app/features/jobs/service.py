@@ -1351,7 +1351,7 @@ async def cancellation_preview(
         )
     if row.status != "Assigned":
         raise JobRefused(
-            "JOB_NOT_CANCELLABLE", "This job can't be cancelled any more."
+            "JOB_NOT_CANCELLABLE", "This job can no longer be cancelled."
         )
     charge, label, escalates = await _band_for(
         db, row, technician_id=technician_id
@@ -1393,7 +1393,7 @@ async def cancel(
         )
     if row.status != "Assigned":
         raise JobRefused(
-            "JOB_NOT_CANCELLABLE", "This job can't be cancelled any more."
+            "JOB_NOT_CANCELLABLE", "This job can no longer be cancelled."
         )
 
     # ── serialise this technician's own cancellations ────────────────────────
@@ -1431,7 +1431,8 @@ async def cancel(
     if result.rowcount == 0:
         raise JobRefused(
             "JOB_NOT_CANCELLABLE",
-            "This job is no longer yours to cancel — reload and look again.",
+            "This job is no longer assigned to you. Refresh to see your "
+            "current jobs.",
         )
     row.status = "New"
     row.technician_id = None

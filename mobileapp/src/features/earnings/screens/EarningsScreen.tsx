@@ -148,8 +148,8 @@ export function EarningsScreen() {
                     marginTop: 8,
                   }}
                 >
-                  Job payouts aren&apos;t set up yet. Bonuses and penalties
-                  below are live.
+                  Job payouts are not set up yet. Bonuses and penalties below
+                  are live.
                 </Text>
               ) : null}
 

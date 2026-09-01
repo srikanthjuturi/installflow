@@ -235,7 +235,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
           >
             {cancel.error instanceof Error
               ? cancel.error.message
-              : "Couldn't cancel this job. Check your connection and try again."}
+              : 'Could not cancel this job. Check your connection and try again.'}
           </Text>
         ) : null}
 

@@ -77,7 +77,7 @@ export function EscalationCard({
                 : "font-mono text-xl font-semibold text-danger"
             }
           >
-            {timeUntil(ticket.slotStart)}
+            {timeUntil(ticket.slotStart, ticket.slotEnd)}
           </div>
         </div>
 
