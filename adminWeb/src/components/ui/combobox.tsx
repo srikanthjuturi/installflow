@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -204,18 +204,29 @@ export function Combobox({
           aria-describedby={ariaDescribedBy}
           className="h-6 min-w-0 flex-1 border-none bg-transparent text-base text-ink outline-none placeholder:text-muted-foreground md:text-sm"
         />
-        {/* Spinner and clear share the slot: while a search is in flight there
-            is nothing to clear yet, and once results are in the spinner is
-            gone — so they can never both want the space. */}
+        {/* One slot, three states — they can never want it at the same time.
+            While a search is in flight there is nothing to clear yet; with an
+            answer in the box, clearing it is the only thing left to offer; and
+            empty, the chevron says there is a list behind this.
+
+            That last state is why the chevron exists: standing in a toolbar
+            beside three `Select`s, a combobox with a bare right edge reads as a
+            free-text box rather than as the fourth filter. Same icon, same
+            size, same colour as `select.tsx` draws. */}
         {loading ? (
           <Loader2 className="size-3.5 shrink-0 animate-spin text-ink-3" aria-hidden />
-        ) : (
+        ) : value ? (
           <ComboboxPrimitive.Clear
             aria-label="Clear"
             className="grid size-4 shrink-0 place-items-center rounded text-ink-3 transition-colors hover:text-danger"
           >
             <X className="size-3.5" aria-hidden />
           </ComboboxPrimitive.Clear>
+        ) : (
+          <ChevronDown
+            className="pointer-events-none size-4 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
         )}
       </div>
 

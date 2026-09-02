@@ -38,7 +38,7 @@ export default function UsersRolesPage() {
         error={isError ? error : null}
         onRetry={() => refetch()}
         toolbarActions={
-          <Button className="h-10" onClick={() => setInviting(true)}>
+          <Button size="toolbar" onClick={() => setInviting(true)}>
             <Plus data-icon="inline-start" />
             Invite user
           </Button>

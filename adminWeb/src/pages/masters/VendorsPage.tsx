@@ -73,7 +73,7 @@ export default function VendorsPage() {
           canEdit ? (
             <Button
               type="button"
-              className="h-10"
+              size="toolbar"
               onClick={() => setDialog({ kind: "add" })}
             >
               <Plus data-icon="inline-start" />

@@ -140,7 +140,7 @@ export default function GeographyPage() {
             regional head covers regions, an area manager covers states.
           </p>
         </div>
-        <Button type="button" className="h-10" onClick={() => setImporting(true)}>
+        <Button type="button" size="toolbar" onClick={() => setImporting(true)}>
           <Upload data-icon="inline-start" />
           Import from Excel
         </Button>

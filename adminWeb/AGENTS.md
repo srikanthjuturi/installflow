@@ -111,17 +111,14 @@ Two seams to know about:
   Its mock predecessor `listEligibleTechnicians` is gone, along with the flat `EligibleTechnician`
   shape it needed. A candidate for a job IS a `Technician`; the parallel type was the reason the
   queue could never be opened from a real ticket.
-- **A technician cannot be EDITED from the console.** `PUT /technicians/{id}` is live and takes
-  everything — name, phone, photo, region, manager, subcategories, pincodes, `dailyJobCap`,
-  status — and `useUpdateTechnician` wraps it, but nothing renders it. `TechTable`'s only row
-  actions are Copy link and Resend, both gated on an UNregistered invite, so a registered
-  technician has no actions at all. Consequence worth knowing: coverage is assigned on the invite
-  form and there is currently no screen where a manager can correct it afterwards; the daily job
-  cap can only be set by the technician, in the app. Building it is mostly assembly now —
-  `technicians/CoverageFields` and the sectioned Add dialog are both reusable.
-- **Assignment has no endpoint.** `assignTechnician` in `services/tickets.ts` rejects with a 501
-  the way `forceCloseTicket` does. `tickets.technician_id` and the `Assigned` status exist;
-  `ticket_events.kind` has no `assigned` yet, so the real thing needs a migration.
+- **Force-closure is real.** `POST /tickets/{id}/force-close` behind the `jobs.force_close`
+  feature plus an Area-Manager rank floor; the files go up first through
+  `POST /uploads?kind=attachment` (PRIVATE container, blob names not URLs) and are read back
+  signed from `GET /tickets/{id}/attachments`, which is **staff-only** — see below. Allowed on any
+  non-terminal ticket, because it is the only exit from the live set apart from a customer
+  confirming: nothing writes `Cancelled`, so without it a silent customer leaves an immortal
+  ticket. A `force_closed` event carries who, when and the reason + justification, and the
+  technician is credited (`jobs_completed` counts `Closed` **and** `Force-Closed`).
 
 **Do not fake a number that has a real source.** A null rating renders `—`, not `0`; the
 technician job-history table renders empty rather than inventing rows.
@@ -322,6 +319,33 @@ breakpoints to match the prototype, **not** Tailwind's defaults:
 sm 560px   md 880px (sidebar → drawer)   lg 1000px (search appears)   xl 1360px
 ```
 
+**The `DataTable` toolbar is one row of 40px controls, and they all agree.** Search, filters, the
+Rows picker and the page's action buttons share a height (`h-10`), a fill (`bg-surface`) and an
+edge (`border-input`, the step-darker field colour — see the note beside `--input` in `theme.css`).
+Two rules keep it that way:
+
+- **A toolbar button is `size="toolbar"`, never `className="h-10"`.** The hand-written height
+  raised the box but left `size="default"`'s 10px padding, so eight pages drew a stretched pill.
+  An `outline` button additionally gets a compound variant there, because plain `outline` fills
+  itself with `bg-background` — which IS the page colour, so on a page (rather than in a dialog)
+  it painted itself invisible.
+- **The row is two zones: search on the left, everything else pinned right.** The filters, the
+  Rows picker and the page's buttons live in ONE `grow … justify-end` group. `grow` is what makes
+  it claim the space the search box does not want, so its contents end at the row's right edge and
+  the leftover reads as a deliberate gap. Not `ml-auto`: an auto margin eats free space *before*
+  flex-grow runs, which would freeze the search box at its basis.
+- **The right zone is one flex item, not loose siblings.** That is what holds the alignment at the
+  width where things stop fitting: a `grow` group fills whatever line it lands on, so every line it
+  wraps into stays pinned right. As siblings the row broke wherever the last control fell and
+  dropped the page's buttons to a second line flush *left*, stranded under the search box.
+- **Every filter is `w-40 shrink-0` — one fixed width, select and combobox alike.** Sized for the
+  longest label the console has ("Intake channel: all"). Fixed rather than flexible so a filter's
+  width never depends on how many filters that screen happens to have; `shrink-0` because a filter
+  squeezed too narrow to read its label is worse than one that wraps to the next line.
+- **The search box is `grow basis-40 max-w-80`** — it grows into the gap so its placeholder comes
+  back on a roomy screen, and stops, because an 800px-wide search field is not a better one. Past
+  the cap the right-hand group takes the rest.
+
 **There is no content max-width.** `AppShell`'s `<main>` is fluid and every screen inherits it —
 a console is a work surface, so a wide monitor should buy more table, not more margin. Never add
 `max-w-*` to a page root or a full-width card. (The prototype caps content at 1360px; that is the
@@ -518,8 +542,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/escalations/:id/bonus` · `/escalations/:id/assign` | — | param-preserving **redirects** to their `/tickets/:id/…` twins. The mock queue owned duplicates of both; deleting a route does not close a path (hard rule 0a) |
 | `/ai-review` | `AiQueuePage` | below-threshold or unreadable |
 | `/ai-review/:id` | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake |
-| `/technicians` | `TechnicianListPage` | |
-| `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history |
+| `/technicians` | `TechnicianListPage` | add · invite · **edit** — one `TechnicianFormDialog` for add and edit, pointed by an optional `technician` prop. Edit is `technicians.edit` and offered on REGISTERED rows only: an invite is a phone number and nothing else yet |
+| `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history; "Edit details" opens the same dialog |
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |
 | `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named |
 | `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet; drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link |
@@ -1001,3 +1025,21 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   retake on-site before leaving.
 - Force-closure **requires** attachments and records who, when, and on what basis. Audit is a
   stated requirement, not a nicety.
+- **A force-closure's attachments are staff-only; its proof images are not.** Proof is the work
+  the vendor is billed for and they may see it. The attachments are the OFFICE's justification for
+  closing without the customer, and the vendor is the outside party the decision was taken about —
+  so `list_attachments` refuses a vendor principal with a 404 while `list_proof` does not. The
+  vendor still learns it happened and why: the `force_closed` event is on the timeline they
+  already read. The console renders that panel ops-only too, but that is presentation — hard rule
+  8 is why the refusal is in the service.
+- **Force-close attachments skip the crop dialog**, and that is the one deliberate exception to
+  *Image upload — one flow, everywhere* above. Cropping evidence removes the thing it was attached
+  to prove. Multi-select, straight to upload; the only client-side gate is the content type and
+  size blob storage will accept anyway.
+- **A technician's mobile number is not editable — anywhere.** The phone IS the credential: auth is
+  OTP only, so there is no password to fall back on and moving the number would strand somebody on
+  a login nobody recorded. `PUT /technicians/{id}` does not accept it, and the edit form shows it
+  read-only for the same reason the vendor form shows the login email read-only.
+- **An empty daily-job-cap box means NO LIMIT, never zero.** That is why the edit form's field is a
+  string and the API distinguishes an absent key from an explicit `null` (`model_fields_set`). A cap
+  of 0 would mean "never offer me work", which is what going offline says instead.

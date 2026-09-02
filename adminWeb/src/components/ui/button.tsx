@@ -25,6 +25,18 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        /**
+         * Sits in a `DataTable` toolbar, matching the 40px search box, filter
+         * selects and Rows picker it lines up with.
+         *
+         * A size rather than the `className="h-10"` eight pages used to write:
+         * that raised the box to 40px but left `default`'s 10px side padding,
+         * so every toolbar button read as a stretched pill with its label
+         * jammed against the edges. Height and padding move together or they
+         * do not agree.
+         */
+        toolbar:
+          "h-10 gap-2 px-3.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
         icon: "size-8",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
@@ -33,6 +45,24 @@ const buttonVariants = cva(
         "icon-lg": "size-9",
       },
     },
+    compoundVariants: [
+      {
+        /**
+         * An outline button in a toolbar sits on the PAGE, not on a card — and
+         * `outline`'s `bg-background` is the page colour (`--bg`, #eef0f4). So
+         * it painted itself the exact colour it stood on, edged with `--border`,
+         * the faint separator hairline. Beside a solid primary and four
+         * `--input`-edged filter boxes it stopped reading as a button at all.
+         *
+         * The base variant is left alone: on a dialog, whose surface is white,
+         * that same grey fill is a perfectly good secondary button. It is only
+         * wrong where the surface underneath IS the background.
+         */
+        variant: "outline",
+        size: "toolbar",
+        class: "border-input bg-surface hover:bg-muted",
+      },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",
