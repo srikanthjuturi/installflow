@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Linking } from 'react-native';
 
+import { toWorkingCopy } from '@/lib/images';
+
 /**
  * Picks a profile photo, then hands off to OUR crop screen.
  *
@@ -26,16 +28,33 @@ export function useAvatarPicker() {
     );
   };
 
-  const handle = (result: ImagePicker.ImagePickerResult) => {
+  /**
+   * The crop screen never sees the original file.
+   *
+   * A full-resolution phone photo is more pixels than the 512px avatar can use
+   * and enough to abort the process when the native cropper allocates a second
+   * bitmap beside it — see `toWorkingCopy`. Shrinking here also means the crop
+   * screen's rotate is cheap, and that its dimensions are known integers rather
+   * than whatever the gallery provider felt like reporting.
+   */
+  const handle = async (result: ImagePicker.ImagePickerResult) => {
     const asset = result.canceled ? undefined : result.assets[0];
     if (!asset) return;
+
+    let source;
+    try {
+      source = await toWorkingCopy(asset.uri, asset.width, asset.height);
+    } catch {
+      Alert.alert("Couldn't open that photo", 'Try again, or choose a different picture.');
+      return;
+    }
 
     router.replace({
       pathname: '/crop-photo',
       params: {
-        uri: asset.uri,
-        width: String(asset.width),
-        height: String(asset.height),
+        uri: source.uri,
+        width: String(source.width),
+        height: String(source.height),
       },
     });
   };
@@ -52,7 +71,7 @@ export function useAvatarPicker() {
 
     setBusy(true);
     try {
-      handle(await ImagePicker.launchCameraAsync(options));
+      await handle(await ImagePicker.launchCameraAsync(options));
     } finally {
       setBusy(false);
     }
@@ -64,7 +83,7 @@ export function useAvatarPicker() {
 
     setBusy(true);
     try {
-      handle(await ImagePicker.launchImageLibraryAsync(options));
+      await handle(await ImagePicker.launchImageLibraryAsync(options));
     } finally {
       setBusy(false);
     }
