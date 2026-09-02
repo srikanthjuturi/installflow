@@ -42,6 +42,13 @@ export default function AppLayout() {
         name="accept-slot"
         options={{ presentation: 'transparentModal', animation: 'fade' }}
       />
+      {/* Same treatment, and here rather than at the root for the same reason
+          accept-slot is: it belongs to a signed-in technician, so it inherits
+          this layout's guard. Above `(tabs)`, so it covers the tab bar. */}
+      <Stack.Screen
+        name="earnings-dates"
+        options={{ presentation: 'transparentModal', animation: 'fade' }}
+      />
     </Stack>
   );
 }

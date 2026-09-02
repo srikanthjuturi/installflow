@@ -1,7 +1,7 @@
 import { authedRequest } from '@/lib/api';
 import type {
-  EarningsPeriod,
   EarningsSummary,
+  EarningsWindow,
   Transaction,
   TransactionKind,
 } from '@/types/domain';
@@ -10,7 +10,8 @@ import type {
  * Earnings — real, and honest about the half that does not exist yet.
  *
  *   getEarningsSummary → GET /earnings/summary?period=day|week|month
- *   listTransactions   → GET /earnings/transactions?period=…
+ *                        GET /earnings/summary?dateFrom=…&dateTo=…
+ *   listTransactions   → the same two shapes
  *
  * Both are scoped to the signed-in technician by the server; there is no id to
  * pass and no way to ask about anybody else.
@@ -33,6 +34,13 @@ interface SummaryDto {
   earnedPaise: number | null;
   bonusesPaise: number;
   penaltiesPaise: number;
+  /**
+   * OPTIONAL on the wire, and it has to be: a server that predates the date
+   * range sends neither, and the screen's whole reason for reading them is to
+   * notice exactly that. See `EarningsSummary.covered`.
+   */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 interface TransactionDto {
@@ -46,23 +54,42 @@ interface TransactionDto {
   ticketCode: string;
 }
 
+/**
+ * The query string for a window — and, because it is exactly what makes one
+ * answer different from another, its cache key too.
+ *
+ * Dates are already `YYYY-MM-DD`, which needs no encoding; spelling that out
+ * here so nobody adds a field later that does.
+ */
+export function windowQuery(window: EarningsWindow): string {
+  return window.kind === 'period'
+    ? `period=${window.period}`
+    : `dateFrom=${window.range.from}&dateTo=${window.range.to}`;
+}
+
 export async function getEarningsSummary(
-  period: EarningsPeriod,
+  window: EarningsWindow,
 ): Promise<EarningsSummary> {
-  const dto = await authedRequest<SummaryDto>(`/earnings/summary?period=${period}`);
+  const dto = await authedRequest<SummaryDto>(
+    `/earnings/summary?${windowQuery(window)}`,
+  );
   return {
     netPaise: dto.netPaise,
     earnedPaise: dto.earnedPaise,
     bonusesPaise: dto.bonusesPaise,
     penaltiesPaise: dto.penaltiesPaise,
+    // Both or neither — half an answer is not a span, and treating one end as
+    // a window would caption the money with a date the server never named.
+    covered:
+      dto.dateFrom && dto.dateTo ? { from: dto.dateFrom, to: dto.dateTo } : null,
   };
 }
 
 export async function listTransactions(
-  period: EarningsPeriod,
+  window: EarningsWindow,
 ): Promise<Transaction[]> {
   const rows = await authedRequest<TransactionDto[]>(
-    `/earnings/transactions?period=${period}`,
+    `/earnings/transactions?${windowQuery(window)}`,
   );
   return rows.map((t) => ({
     id: t.id,

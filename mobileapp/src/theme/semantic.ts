@@ -117,6 +117,22 @@ export const color = {
   bonusOnChrome: '#f8d78a',
   debitOnChrome: '#ff9d9d',
 
+  // ── calendar ────────────────────────────────────────────────────────────
+  // The Earnings date-range picker. Its own roles rather than the action
+  // colours reused inline, so a re-skin moves the range highlight with the
+  // rest of the brand instead of leaving it behind.
+  /** The two ends of a picked range — the days the technician actually tapped. */
+  rangeEndBg: palette.primary[500],
+  rangeEndFg: palette.neutral[0],
+  /** Everything between them. A wash rather than a fill, so the ends still
+   *  read as the ends and the span reads as one thing. */
+  rangeSpanBg: palette.primary[75],
+  rangeSpanFg: palette.primary[700],
+  /** A ring on today, for as long as today is not itself an end. */
+  rangeToday: palette.primary[300],
+  /** A day there can be no earnings for — the future. */
+  rangeUnavailable: palette.neutral[300],
+
   // ── verification hero ───────────────────────────────────────────────────
   /** Full-bleed gradient headers on the three AI outcomes. */
   successHero: ['#0f5132', '#16a34a'] as [string, string],

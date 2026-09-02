@@ -47,11 +47,20 @@ def month_start(when: datetime.datetime) -> datetime.datetime:
     return first.astimezone(datetime.timezone.utc)
 
 
-#: The spans a technician may look at their own earnings over.
+#: The named spans a technician may look at their own earnings over.
 #:
 #: Three, and no "all time": the screen leads with a single big figure, and a
 #: lifetime total answers a question nobody standing in a stairwell is asking.
+#: Anything else they want is a `range_bounds` range they pick on the calendar.
 EARNINGS_PERIODS = ("day", "week", "month")
+
+#: The longest span the earnings reads will answer for, in days.
+#:
+#: `earnings.transactions` is unpaginated, and what made that safe was that a
+#: period was a day, a week or a month. A range somebody picks removes that
+#: guarantee, so the bound moves here rather than quietly disappearing. A year
+#: of one technician's own bonuses and penalties is still a short list.
+MAX_RANGE_DAYS = 366
 
 
 def period_bounds(
@@ -98,6 +107,58 @@ def period_bounds(
         start.astimezone(datetime.timezone.utc),
         end.astimezone(datetime.timezone.utc),
     )
+
+
+def _ist_midnight(day: datetime.date) -> datetime.datetime:
+    """Midnight at the start of an IST calendar day, as a UTC instant."""
+    return datetime.datetime.combine(
+        day, datetime.time(0), tzinfo=IST
+    ).astimezone(datetime.timezone.utc)
+
+
+def range_bounds(
+    start: datetime.date, end: datetime.date
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """Two IST calendar dates as a half-open UTC range, inclusive at both ends.
+
+    The sibling of `period_bounds` for a span somebody picked rather than named,
+    and it reckons identically: IST days, because a technician's Monday has to
+    be the same Monday everywhere this product counts one; half-open at the top,
+    so an entry written at 11:59 PM on the last day is inside the range; UTC
+    instants, so the comparison stays on the indexed `created_at` rather than
+    wrapping it in a timezone function Postgres cannot use an index through.
+
+    **Reversed dates are swapped rather than refused.** Two taps on a calendar
+    arrive in whichever order the thumb landed, and "2 Sep to 12 Aug" has one
+    obvious meaning. Erroring would be pedantry on the screen about their money.
+    """
+    if end < start:
+        start, end = end, start
+    return _ist_midnight(start), _ist_midnight(end) + datetime.timedelta(days=1)
+
+
+def range_days(start: datetime.date, end: datetime.date) -> int:
+    """How many calendar days a range covers, counting both ends."""
+    return abs((end - start).days) + 1
+
+
+def window_dates(
+    window: tuple[datetime.datetime, datetime.datetime],
+) -> tuple[datetime.date, datetime.date]:
+    """The IST calendar days a resolved window covers, inclusive at both ends.
+
+    The inverse of `range_bounds`, and it exists so a response can SAY what it
+    answered over. Without that the phone can only caption what it asked for —
+    and a client talking to a server that has not learned `dateFrom` yet would
+    label this week's money with the range somebody picked, silently. A figure
+    whose label came from a different question is the one failure this screen
+    must not have.
+
+    The upper bound is exclusive, so the last day is the midnight before it.
+    """
+    start, end = window
+    last = end - datetime.timedelta(days=1)
+    return start.astimezone(IST).date(), last.astimezone(IST).date()
 
 
 async def charged_this_month(

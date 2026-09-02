@@ -12,6 +12,7 @@ import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { getAccessToken } from '@/store/session.store';
+import type { ImageSource } from '@/lib/images';
 import { qk } from '@/lib/queryKeys';
 import { uploadImage } from '@/lib/uploads';
 import { useProfileStore } from '@/store/profile.store';
@@ -21,6 +22,16 @@ export interface CropScreenProps {
   uri: string;
   width: number;
   height: number;
+}
+
+/**
+ * Route params are strings, so a missing or nonsense dimension arrives as NaN —
+ * and NaN through the crop maths reaches the native cropper as a 0×0 rectangle
+ * it refuses. Never expected now that the picker normalises sizes; cheap enough
+ * to guarantee anyway.
+ */
+function edge(value: number): number {
+  return Number.isFinite(value) && value >= 1 ? Math.floor(value) : 1;
 }
 
 /**
@@ -36,6 +47,10 @@ export interface CropScreenProps {
  * Pan and pinch move the IMAGE under a fixed square frame. Clamping keeps the
  * image covering the frame at all times, so an empty corner can never be
  * committed.
+ *
+ * The photo arriving here has already been shrunk to a working size by
+ * `toWorkingCopy` — the native cropper allocating a second full-resolution
+ * bitmap is what used to abort the process on Done.
  */
 export function CropScreen({ uri, width, height }: CropScreenProps) {
   const router = useRouter();
@@ -45,7 +60,11 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
   const clearAvatar = useProfileStore((s) => s.clearAvatar);
   const queryClient = useQueryClient();
 
-  const [source, setSource] = useState({ uri, width, height });
+  const [source, setSource] = useState<ImageSource>(() => ({
+    uri,
+    width: edge(width),
+    height: edge(height),
+  }));
   const [busy, setBusy] = useState(false);
 
   const FRAME = Math.min(screenW - 48, 320);
@@ -110,6 +129,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
   }));
 
   const rotate = async () => {
+    if (busy) return;
     setBusy(true);
     try {
       // Apply the rotation immediately and work from the result, so the crop
@@ -124,76 +144,95 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
 
       setSource({ uri: saved.uri, width: saved.width, height: saved.height });
       reset();
+    } catch {
+      Alert.alert("Couldn't rotate that photo", 'Try again, or choose a different picture.');
     } finally {
       setBusy(false);
     }
   };
 
+  /**
+   * The framed square, in whole source pixels and guaranteed inside the image.
+   *
+   * One `side` rather than a width and a height: the frame is square and the
+   * result is resized to 512×512, so rounding the two independently could only
+   * ever distort the face. Doing the arithmetic in integers is also what keeps
+   * `originX + side` inside the bitmap — rounding each edge separately can push
+   * it one pixel past, which the native cropper rejects outright.
+   */
+  const squareCrop = () => {
+    // Display pixels per source pixel.
+    const effective = baseScale * scale.value;
+    const cropSize = FRAME / effective;
+
+    const centerX = source.width / 2 - tx.value / effective;
+    const centerY = source.height / 2 - ty.value / effective;
+
+    const side = Math.max(1, Math.min(Math.round(cropSize), source.width, source.height));
+
+    return {
+      originX: Math.min(Math.max(0, Math.round(centerX - side / 2)), source.width - side),
+      originY: Math.min(Math.max(0, Math.round(centerY - side / 2)), source.height - side),
+      width: side,
+      height: side,
+    };
+  };
+
   const confirm = async () => {
+    if (busy) return;
     setBusy(true);
+
+    let cropped;
     try {
-      // Display pixels per source pixel.
-      const effective = baseScale * scale.value;
-      const cropSize = FRAME / effective;
-
-      const centerX = source.width / 2 - tx.value / effective;
-      const centerY = source.height / 2 - ty.value / effective;
-
-      const originX = Math.min(
-        Math.max(0, centerX - cropSize / 2),
-        Math.max(0, source.width - cropSize),
-      );
-      const originY = Math.min(
-        Math.max(0, centerY - cropSize / 2),
-        Math.max(0, source.height - cropSize),
-      );
-
       const context = ImageManipulator.ImageManipulator.manipulate(source.uri);
-      context.crop({
-        originX: Math.round(originX),
-        originY: Math.round(originY),
-        width: Math.round(Math.min(cropSize, source.width)),
-        height: Math.round(Math.min(cropSize, source.height)),
-      });
+      context.crop(squareCrop());
       context.resize({ width: 512, height: 512 });
 
       const rendered = await context.renderAsync();
-      const saved = await rendered.saveAsync({
+      cropped = await rendered.saveAsync({
         format: ImageManipulator.SaveFormat.JPEG,
         compress: 0.85,
       });
-
-      // Shown immediately, from the local file — the upload is what makes it
-      // permanent, not what makes it visible.
-      setAvatar(saved.uri);
-
-      // No session yet means this is the registration flow: the account does
-      // not exist, so there is nothing to attach a photo to and nobody to
-      // authenticate the upload. RegisterVerifyScreen sends it the moment the
-      // technician is signed in.
-      if (getAccessToken()) {
-        try {
-          const url = await uploadImage(saved.uri, 'profile');
-          await saveMyProfilePhoto(url);
-          // Swap the local path for the stored URL, so the photo survives a
-          // reinstall and shows on every other device.
-          setAvatar(url);
-          await queryClient.invalidateQueries({ queryKey: qk.me() });
-        } catch {
-          // Roll the optimistic preview back rather than leave a face on
-          // screen that no other device will ever show.
-          clearAvatar();
-          Alert.alert("Couldn't save your photo", 'Check your connection and try again.');
-        }
-      }
-      // `back()`, not `dismissAll()`: the picker sheet `replace`s itself with
-      // this screen, so exactly one modal is ever on the stack and the two are
-      // identical here — but `back()` also returns correctly when the crop was
-      // opened from the registration flow rather than from Profile.
-      router.back();
-    } finally {
+    } catch {
+      // Say so and stay put. Left unhandled this was an unhandled rejection —
+      // silent in development and fatal in a release build, which is a crash
+      // report nobody can act on for a photo they can simply pick again.
       setBusy(false);
+      Alert.alert("Couldn't crop that photo", 'Try again, or choose a different picture.');
+      return;
     }
+
+    // Shown immediately, from the local file — the upload is what makes it
+    // permanent, not what makes it visible.
+    setAvatar(cropped.uri);
+
+    // No session yet means this is the registration flow: the account does
+    // not exist, so there is nothing to attach a photo to and nobody to
+    // authenticate the upload. RegisterVerifyScreen sends it the moment the
+    // technician is signed in.
+    if (getAccessToken()) {
+      try {
+        const url = await uploadImage(cropped.uri, 'profile');
+        await saveMyProfilePhoto(url);
+        // Swap the local path for the stored URL, so the photo survives a
+        // reinstall and shows on every other device.
+        setAvatar(url);
+        await queryClient.invalidateQueries({ queryKey: qk.me() });
+      } catch {
+        // Roll the optimistic preview back rather than leave a face on
+        // screen that no other device will ever show.
+        clearAvatar();
+        Alert.alert("Couldn't save your photo", 'Check your connection and try again.');
+      }
+    }
+    // `back()`, not `dismissAll()`: the picker sheet `replace`s itself with
+    // this screen, so exactly one modal is ever on the stack and the two are
+    // identical here — but `back()` also returns correctly when the crop was
+    // opened from the registration flow rather than from Profile.
+    //
+    // `busy` is deliberately left set: this screen is about to unmount, and
+    // clearing it afterwards is a state update on a component that is gone.
+    router.back();
   };
 
   const shownW = source.width * baseScale;

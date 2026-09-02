@@ -395,9 +395,22 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     different evidence, and the server refuses this one. */}
                 {stage === 'Assigned' ? (
                   <View style={{ marginTop: 10 }}>
+                    {/* Was plain `ghost`, so the destructive action rendered in
+                        the same grey as body copy and read as disabled text
+                        rather than a control.
+
+                        `dangerOutline` — white with a red border — rather than
+                        the `dangerGhost` the prototype draws here (transparent,
+                        #c81e1e, 46px at radius 12). A DEVIATION from the
+                        approved design, asked for and agreed: a borderless
+                        label is a hover affordance, and there is no hover on a
+                        phone, so it read as text and not as something to press.
+                        Outlined rather than filled deliberately — cancelling
+                        costs this technician ₹300–₹800, and it must not
+                        out-shout the blue CTA above it. */}
                     <Button
                       label="Cancel this job"
-                      variant="ghost"
+                      variant="dangerOutline"
                       onPress={() => router.push(`/job/${jobId}/cancel`)}
                     />
                   </View>
