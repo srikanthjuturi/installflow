@@ -14,7 +14,6 @@ import type {
   TicketDetail,
   TicketProof,
 } from "@/types/ticket";
-import { ApiError } from "./client";
 import { apiGet, apiGetPage, apiPatch, apiPost } from "./http";
 
 /**
@@ -116,40 +115,58 @@ export function createTicket(input: CreateTicketInput): Promise<Ticket> {
   return apiPost<Ticket>("/tickets", input);
 }
 
+/** One already-uploaded file. A blob NAME, never a URL — see `uploads.ts`. */
+export interface ForceCloseAttachment {
+  blobName: string;
+  fileName?: string;
+}
+
 export interface ForceCloseInput {
   id: string;
   reason: string;
   notes: string;
-  attachments: string[];
+  attachments: ForceCloseAttachment[];
 }
 
 /**
- * NOT IMPLEMENTED — deliberately, and loudly.
+ * End a job the customer never closed — §10's manager closure.
  *
- * The mock flipped a status in memory and threw the reason, the notes and the
- * attachments away, while the screen promised they were "recorded for audit".
- * With the list now real, quietly keeping that would mean a force-close that
- * appears to work, changes nothing a colleague can see, and records none of the
- * justification it insisted on collecting.
+ * The files are already in blob storage by the time this runs: the form
+ * uploads each through `POST /uploads?kind=attachment` and sends back the
+ * names. Same two-step as every other image in this console, and the reason
+ * the API refuses a `data:` URL wherever one could appear.
  *
- * So it fails where it can be seen. Force-closure needs a status transition, a
- * real attachment upload and an audit row; it lands with the closure slice.
- *
- * When it does, it must refuse a ticket already in `TERMINAL_STATUSES` with a
- * 409 — `api/app/core/tickets.py`, the same set the detail screen hides its
- * actions on. The client guard is a courtesy, not the rule: it only knows what
- * the last read told it, and a colleague can close a ticket in the seconds
- * between that read and this call.
+ * **409 `ALREADY_SETTLED`** when the ticket is already Closed, Force-Closed or
+ * Cancelled. The detail screen hides its actions on the same set and this page
+ * redirects on it, but neither is the rule: both only know what the last read
+ * told them, and a colleague can settle a ticket in the seconds it takes to
+ * fill the form in. The toaster shows the server's sentence.
  */
-export function forceCloseTicket(input: ForceCloseInput): Promise<Ticket> {
-  void input;
-  return Promise.reject(
-    new ApiError(
-      "Force-closing isn't wired up yet — the ticket list is real now, but " +
-        "closure still needs its own slice. Nothing has been changed.",
-      501
-    )
-  );
+export function forceCloseTicket({
+  id,
+  ...body
+}: ForceCloseInput): Promise<TicketDetail> {
+  return apiPost<TicketDetail>(`/tickets/${id}/force-close`, body);
+}
+
+/** One attachment, as the detail screen reads it back. */
+export interface TicketAttachment {
+  ordinal: number;
+  fileName: string | null;
+  /** Signed and short-lived, minted per read. Null when it cannot be served. */
+  url: string | null;
+  uploadedAt: string;
+}
+
+/**
+ * The evidence behind a force-closure.
+ *
+ * `jobs.view`, not `jobs.force_close` — whoever may see the ticket may see why
+ * it was ended. Its own request rather than a field on the ticket because the
+ * URLs expire: they are minted per read, exactly as proof images are.
+ */
+export function listTicketAttachments(id: string): Promise<TicketAttachment[]> {
+  return apiGet<TicketAttachment[]>(`/tickets/${id}/attachments`);
 }
 
 export interface AssignTechnicianInput {

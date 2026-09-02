@@ -201,7 +201,8 @@ export interface TimelineEvent {
     | "escalated"
     | "bonus_added"
     | "released"
-    | "no_show";
+    | "no_show"
+    | "force_closed";
   title: string;
   /**
    * WHO caused it, as a value rather than as wording.

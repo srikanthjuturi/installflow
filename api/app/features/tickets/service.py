@@ -47,6 +47,7 @@ from app.core.scope import (
     visible_pincodes,
 )
 from app.core.sequences import next_code as allocate_code
+from app.features.tickets.feedback_service import refresh_technician_stats
 from app.core.service_types import SERVICE_TYPES
 from app.core.rules import CANCEL_PENALTY_BANDS, load_rules
 from app.core.tickets import (
@@ -61,9 +62,11 @@ from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
     AttentionOut,
     DashboardSummaryOut,
+    ForceCloseRequest,
     FunnelOut,
     RenotifyOut,
     SlaBreakdownOut,
+    TicketAttachmentOut,
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
@@ -80,7 +83,7 @@ from app.models.technician import (
     TechnicianProfile,
     TechnicianSubcategory,
 )
-from app.models.ticket import Ticket, TicketProof
+from app.models.ticket import Ticket, TicketAttachment, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -820,20 +823,30 @@ async def dashboard_summary(
 
     # "Closed", against whichever window is in force.
     #
+    # BOTH ways a job ends up finished. A force-closure is a manager settling
+    # work the technician really did, and counting only customer-confirmed
+    # closures would show the funnel narrowing every time a customer went quiet
+    # — the opposite of what happened.
+    #
     # With NO date range the tile means "closed this week", so it carries its own
-    # rolling 7 days on `customer_confirmed_at` — the instant written in the same
-    # UPDATE that sets the status (see `feedback_service`), and set on a
-    # REJECTION too, which is why the status test is not redundant.
+    # rolling 7 days. The two statuses date differently and neither instant fits
+    # the other: `customer_confirmed_at` is written in the same UPDATE that sets
+    # `Closed` (see `feedback_service`) and is set on a REJECTION too, which is
+    # why the status test is not redundant; a force-closed ticket has none of
+    # that, so it dates off its own event, the way `awaiting` and `silent` below
+    # already do.
     #
     # With a range picked, that 7 days would fight the range: "raised in March
     # AND closed in the last week" is a question nobody asked. The range wins and
     # the tile means "of the work raised in this period, how much is now done" —
     # which is why the console relabels it from "Closed this week" to "Closed".
-    closed_in_window = Ticket.status == "Closed"
+    confirmed = Ticket.status == "Closed"
+    forced = Ticket.status == "Force-Closed"
     if lower is None and upper is None:
-        closed_in_window = closed_in_window & (
-            Ticket.customer_confirmed_at >= now - datetime.timedelta(days=7)
-        )
+        cutoff = now - datetime.timedelta(days=7)
+        confirmed = confirmed & (Ticket.customer_confirmed_at >= cutoff)
+        forced = forced & (_last_event_at("force_closed") >= cutoff)
+    closed_in_window = confirmed | forced
 
     counts = mine(
         select(
@@ -951,6 +964,11 @@ _EVENT_TITLES = {
     # Reads next to "Technician accepted", which is the event it undoes.
     "released": "Technician cancelled",
     "no_show": "Nobody turned up",
+    # Says who ended it, because that is the whole difference between this row
+    # and "Customer responded" a line above. The `by` field names the manager;
+    # this names the ACT, so a reader scanning the trail sees at once that the
+    # customer never closed this one.
+    "force_closed": "Closed by a manager",
 }
 
 #: Kinds whose wording depends on WHO caused them, keyed `(kind, actor_kind)`.
@@ -2206,6 +2224,202 @@ async def record_no_show(
     )
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
+
+
+#: Where a force-closure attachment lives. Mirrors the `proof/` prefix and
+#: exists for the same reason: a blob name is the only thing a client hands us
+#: here, so the prefix is what makes "this file is ours" checkable.
+_ATTACHMENT_PREFIX = "attachment"
+
+
+async def force_close_ticket(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    body: ForceCloseRequest,
+) -> TicketDetailOut:
+    """End a job the normal closure could not finish, on a manager's authority.
+
+    Only the CUSTOMER closes a job here — deliberately, because the technician's
+    word starts a question rather than settling it, and `Awaiting Customer` is
+    where that question waits. The design has exactly one hole: a customer who
+    says nothing at all. `sweeps.sweep_force_close` finds those and stops, on
+    purpose; this is the other half, a person deciding the job really is done.
+
+    It is also the ONLY exit from the live set other than a customer confirming.
+    Nothing in this codebase writes `Cancelled`, so without this a silent
+    customer leaves a ticket that never settles: the technician is never
+    credited and the SLA clock never stops.
+
+    Allowed on any non-terminal ticket, not only on `Awaiting Customer`. The
+    sweep and the dashboard card both point at the silent-customer case because
+    it is the common one, but a job that can never proceed for some other reason
+    is the same problem, and a manager who cannot end it has no other tool.
+
+    Three things happen together, in one transaction:
+
+    * the ticket goes to `Force-Closed`, keeping its technician — they did the
+      work, and clearing the link would lose who to credit;
+    * a `force_closed` event records who ended it, when, and on what basis;
+    * the supporting files are written as `ticket_attachments` rows.
+
+    **No ledger entry.** `tickets` has no payout column, so what a job pays is
+    unknown — a credit invented here would be a number with no source.
+    """
+    row = await _load(db, principal, ticket_id)
+
+    if row.status in TERMINAL_STATUSES:
+        raise _refused(
+            "ALREADY_SETTLED",
+            f"This ticket is already {row.status}. There is nothing left to "
+            "close.",
+        )
+
+    # A blob name is the only thing the client hands over, so this is the check
+    # that keeps one company's evidence off another company's ticket — the same
+    # belt-and-braces `list_proof` applies before it signs anything.
+    prefix = f"{_ATTACHMENT_PREFIX}/{principal.company_id}/"
+    stray = [a.blobName for a in body.attachments if not a.blobName.startswith(prefix)]
+    if stray:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Those attachments were not uploaded here. Upload them again "
+                "and retry."
+            ),
+        )
+
+    was = row.status
+    technician_id = row.technician_id
+
+    # The concurrency check, and the reason the status test above is not enough:
+    # a colleague can close this ticket in the seconds between that read and
+    # this write. Guarded on the same set rather than on `was`, so a ticket that
+    # moved to any other LIVE status in between still closes — what must not
+    # happen is closing one that has already settled.
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.company_id == principal.company_id,
+            Ticket.status.not_in(TERMINAL_STATUSES),
+        )
+        .values(status="Force-Closed")
+    )
+    if result.rowcount == 0:
+        raise _refused(
+            "ALREADY_SETTLED",
+            "This ticket has already been closed. Reload the page to see how.",
+        )
+    row.status = "Force-Closed"
+
+    reason = body.reason.strip()
+    notes = body.notes.strip()
+    db.add(
+        record_event(
+            row,
+            "force_closed",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            from_status=was,
+            to_status="Force-Closed",
+            # Both, and in this order: the reason says which of the situations
+            # this was, the note says what was actually tried. A trail carrying
+            # only the first is a category with no evidence behind it.
+            note=f"{reason} · {notes}",
+            by_user=principal.user_id,
+        )
+    )
+    for ordinal, attachment in enumerate(body.attachments, start=1):
+        db.add(
+            TicketAttachment(
+                company_id=principal.company_id,
+                ticket_id=row.id,
+                ordinal=ordinal,
+                blob_name=attachment.blobName,
+                file_name=attachment.fileName,
+                created_by=principal.user_id,
+            )
+        )
+
+    await publish_ticket_changed(db, row)
+    if technician_id is not None:
+        await publish_job_changed(
+            db,
+            company_id=principal.company_id,
+            technician_id=technician_id,
+            ticket_id=row.id,
+        )
+    await db.commit()
+
+    if technician_id is not None:
+        # After the commit, both of these. The push tells somebody the job they
+        # were waiting on has been settled without them, and the stats query
+        # has to see the row this transaction just wrote.
+        await send_to_technician(
+            db,
+            company_id=principal.company_id,
+            technician_id=technician_id,
+            title=f"{row.code} closed by the office",
+            body=(
+                "The customer never responded, so a manager closed this job. "
+                "It counts as completed."
+            ),
+            data={"type": "job", "ticketId": str(row.id), "code": row.code},
+        )
+        await refresh_technician_stats(
+            db, company_id=principal.company_id, technician_id=technician_id
+        )
+
+    return await get_ticket(db, principal, ticket_id)
+
+
+async def list_attachments(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
+) -> list[TicketAttachmentOut]:
+    """The evidence behind a force-closure, for the staff who may audit it.
+
+    Entitlement is `_load`'s, exactly as `list_proof` leaves it there — one
+    rule, one place. 404 rather than an empty list when the ticket is not
+    visible: an empty list is an answer, and "this ticket exists but is not
+    yours" is not one we want to give.
+
+    **Staff only**, which is the one place this parts company with `list_proof`.
+    Proof is the work the vendor is being billed for and they are entitled to
+    see it. These files are the OFFICE's justification for closing without the
+    customer — an internal call log, an acknowledgement carrying a customer's
+    signature — and the vendor is the outside party the decision was taken
+    about. They still see that it happened, and why: the `force_closed` event
+    is on the timeline they already read, carrying the reason and the note.
+
+    The console renders this panel only for ops, but that is presentation. Hard
+    rule 8 — hiding UI is never authorization — so the refusal lives here.
+    """
+    if principal.vendor_id is not None:
+        raise _not_found()
+
+    row = await _load(db, principal, ticket_id)
+
+    rows = await db.scalars(
+        select(TicketAttachment)
+        .where(
+            TicketAttachment.company_id == row.company_id,
+            TicketAttachment.ticket_id == row.id,
+        )
+        .order_by(TicketAttachment.ordinal.asc())
+    )
+    # Same guard as `list_proof`: signing is the step that hands the bytes over,
+    # so a name outside this company's prefix is never signed.
+    prefix = f"{_ATTACHMENT_PREFIX}/{row.company_id}/"
+    return [
+        TicketAttachmentOut(
+            ordinal=a.ordinal,
+            fileName=a.file_name,
+            url=blob.signed_url(a.blob_name) if a.blob_name.startswith(prefix) else None,
+            uploadedAt=a.created_at,
+        )
+        for a in rows
+    ]
 
 
 async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:

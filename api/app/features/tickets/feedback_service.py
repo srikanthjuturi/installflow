@@ -233,7 +233,7 @@ async def record_feedback(
         )
 
     if confirmed and row.technician_id is not None:
-        await _refresh_technician_stats(
+        await refresh_technician_stats(
             db, company_id=row.company_id, technician_id=row.technician_id
         )
 
@@ -250,7 +250,7 @@ def _feedback_note(confirmed: bool, rating: int | None, comment: str | None) -> 
     return " · ".join(parts)
 
 
-async def _refresh_technician_stats(
+async def refresh_technician_stats(
     db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
 ) -> None:
     """Recompute this technician's rating and completed count from the tickets.
@@ -263,6 +263,10 @@ async def _refresh_technician_stats(
     writing them**, which is why every technician's profile shows `—`. This is
     their first writer. Null stays null when there is genuinely nothing to say:
     a technician with closed jobs but no ratings gets a count and no score.
+
+    Public because force-closure calls it too — see
+    `service.force_close_ticket`. It was private while the customer was the
+    only one who could end a job.
     """
     closed = (
         select(
@@ -272,7 +276,16 @@ async def _refresh_technician_stats(
         .where(
             Ticket.company_id == company_id,
             Ticket.technician_id == technician_id,
-            Ticket.status == "Closed",
+            # Force-Closed counts. The technician did the work; what failed was
+            # the customer answering, which is not theirs to fix — crediting
+            # only confirmed closures would quietly under-report anybody whose
+            # customers go quiet, and they would show as having neither
+            # completed nor cancelled the job.
+            #
+            # The rating average is untouched by this: a force-closed ticket
+            # carries no `customer_rating`, and SQL `avg` skips nulls. A
+            # technician credited here gains a job, never a score.
+            Ticket.status.in_(("Closed", "Force-Closed")),
             Ticket.deleted_at.is_(None),
         )
     )

@@ -4,6 +4,7 @@ import {
   Check,
   CheckCheck,
   Coins,
+  FileCheck2,
   Lock,
   MessageSquare,
   PencilLine,
@@ -70,6 +71,11 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   // Nobody said anything and nobody came. The only row here that describes a
   // customer who has already been stood up.
   no_show: { icon: UserX, tint: "bg-danger-bg text-danger" },
+  // A manager ended it without the customer. Amber rather than green: the work
+  // is finished and this row settles the ticket, but it settles it on somebody
+  // else's word, and a reader scanning the trail should see that this closure
+  // is not the same thing as "Customer responded".
+  force_closed: { icon: FileCheck2, tint: "bg-warn-bg text-warn" },
 };
 
 /**

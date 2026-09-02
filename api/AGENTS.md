@@ -150,6 +150,13 @@ Hiding a button is presentation. Every endpoint carries `require_feature("...")`
 scoping (`_visible_technicians`, `territory_scope`) narrows what a Regional Head or Area Manager
 can even see. Assume every client is hostile and every id is guessed.
 
+**A key that already exists is not automatically the right key.** `jobs.close` means "close your
+own job" and is seeded to `admin` and `technician`; force-closure needed the opposite audience, so
+it got its own `jobs.force_close` rather than either locking out every manager the screen is for
+or handing technicians an override that skips the customer. Where the decision spends money or
+ends a job, pair the feature with `require_min_rank` — a feature grant is overridable per company
+on Feature Access, and the floor is what makes "Area Manager and above" stick.
+
 ### 3. An area manager may only act inside their own states.
 
 His territory is a set of STATES (`membership_states`, unique on `(company_id, state_id)` — a

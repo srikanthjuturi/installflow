@@ -80,6 +80,10 @@ TENANT_LINKS = [
     # Proof photographs — the inside of a customer's home. Of everything in
     # this list, the row that would hurt most to leak across a tenant boundary.
     ("ticket_proofs", "ticket_id", "tickets"),
+    # The evidence behind a force-closure: call logs, a signed acknowledgement,
+    # a customer's name and signature. The same reasoning as `ticket_proofs`
+    # directly above, and the same private container.
+    ("ticket_attachments", "ticket_id", "tickets"),
     # A notification names a ticket in its title. One pointing across a tenant
     # boundary would put another company's ticket code in somebody's bell.
     ("notifications", "ticket_id", "tickets"),

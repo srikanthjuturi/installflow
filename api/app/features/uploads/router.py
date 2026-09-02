@@ -27,11 +27,16 @@ CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 #: separable later — profile pictures are the ones that might need to move to a
 #: private container with signed URLs.
 #:
-#: `proof` already has. It is the one kind that does NOT go to the public
-#: container: a technician's site photos show the inside of a customer's home
-#: and the serial off their appliance, so they land in a private container and
-#: this endpoint returns a blob NAME rather than a URL. See `upload_private`.
-Kind = Literal["product", "profile", "proof"]
+#: `proof` already has, and `attachment` is born there. Those two are the kinds
+#: that do NOT go to the public container: a technician's site photos show the
+#: inside of a customer's home and the serial off their appliance, and a
+#: force-closure attachment is a call log or a signed acknowledgement carrying a
+#: customer's name and signature. Both land in a private container and this
+#: endpoint returns a blob NAME rather than a URL. See `upload_private`.
+Kind = Literal["product", "profile", "proof", "attachment"]
+
+#: The kinds served through short-lived signed links rather than a public URL.
+PRIVATE_KINDS = ("proof", "attachment")
 
 
 class UploadOut(dict):
@@ -46,9 +51,10 @@ async def upload(
 ) -> ApiEnvelope[dict]:
     """Store an image and return what to persist on the record.
 
-    A public URL for `product` and `profile`; an opaque blob NAME for `proof`,
-    which is read back through a short-lived signed link instead. Both come back
-    in the same `url` field — the caller knows which kind it asked for.
+    A public URL for `product` and `profile`; an opaque blob NAME for `proof`
+    and `attachment`, which are read back through a short-lived signed link
+    instead. Both come back in the same `url` field — the caller knows which
+    kind it asked for.
     """
     if not blob.is_configured():
         raise HTTPException(
@@ -69,9 +75,10 @@ async def upload(
     content_type = (file.content_type or "").split(";")[0].strip().lower()
     company_id = str(principal.company_id or "shared")
 
-    # The only fork: proof is private, everything else is public. Same size and
-    # content-type rules either way — those are enforced in `blob`.
-    store = blob.upload_private if kind == "proof" else blob.upload_image
+    # The only fork: the private kinds go to the private container, everything
+    # else is public. Same size and content-type rules either way — those are
+    # enforced in `blob`.
+    store = blob.upload_private if kind in PRIVATE_KINDS else blob.upload_image
     result = await store(data, content_type, prefix=kind, company_id=company_id)
     if not result.ok:
         raise HTTPException(

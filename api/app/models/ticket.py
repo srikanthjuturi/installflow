@@ -421,3 +421,65 @@ class TicketProof(Base, IdMixin, AuditMixin):
             ondelete="CASCADE",
         ),
     )
+
+
+class TicketAttachment(Base, IdMixin, AuditMixin):
+    """One file a MANAGER attached when force-closing a ticket.
+
+    Deliberately not a fifth `kind` on `ticket_proofs`. That table means "what
+    the technician captured on site" — every row carries a capture time from the
+    phone's own clock and, on a live shot, the coordinates that evidence
+    attendance. None of that is true of a call log a manager uploads from a
+    desk, and folding these in would put office paperwork into the console's
+    proof grid as though a technician had photographed it.
+
+    No `SoftDeleteMixin`, for `ticket_proofs`' reason: this is the evidence for
+    a closure the customer never agreed to, which is precisely the closure
+    somebody argues about later. Deleting it would leave the `force_closed`
+    event asserting a justification nobody can read.
+
+    **`blob_name`, not a URL.** These land in the PRIVATE container — a signed
+    acknowledgement carries a customer's name and signature — and are served
+    through short-lived signed links. A stored URL would embed a token that
+    expires while the file itself is still there.
+    """
+
+    __tablename__ = "ticket_attachments"
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Composite FK in __table_args__ — one company's evidence must never be
+    #: able to attach to another company's ticket.
+    ticket_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+
+    #: Position in the order the manager chose them, so the list reads back the
+    #: way it was assembled. 1-based.
+    ordinal: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    blob_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: What the file was called on the manager's machine.
+    #:
+    #: Kept because it is the only human handle on an opaque UUID blob name, and
+    #: it is frequently the evidence itself — "call-log-9821-Mar-14.jpg" says
+    #: what somebody was trying to show. Never used to fetch anything.
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("ordinal >= 1", name="ordinal"),
+        # The only query this table serves: one ticket's attachments, in the
+        # order they were added. Also the covering index the composite FK needs
+        # — Postgres creates none, and without it deleting a ticket scans the
+        # whole table.
+        Index(
+            "ix_ticket_attachments_company_ticket",
+            "company_id",
+            "ticket_id",
+            "ordinal",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "ticket_id"],
+            ["tickets.company_id", "tickets.id"],
+            name="fk_ticket_attachments_company_ticket",
+            ondelete="CASCADE",
+        ),
+    )

@@ -48,9 +48,11 @@ from app.features.tickets.schemas import (
     AssignRequest,
     BonusRequest,
     DashboardSummaryOut,
+    ForceCloseRequest,
     NoShowRequest,
     RenotifyOut,
     SerialCorrectionRequest,
+    TicketAttachmentOut,
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
@@ -85,6 +87,19 @@ IsVendor = Depends(require_vendor_principal)
 #: staff role, so it can never clear a floor of area manager.
 CanAssign = Annotated[Principal, Depends(require_feature("jobs.assign"))]
 AreaManagerUp = Depends(require_min_rank(AREA_MANAGER))
+
+#: Ending a job on a manager's authority, without the customer.
+#:
+#: Its own feature rather than the `jobs.close` that already exists. That key
+#: belongs to `admin` and `technician` and to nobody in between, because it
+#: means "close your own job" — reusing it would either lock out every manager
+#: this screen is FOR, or hand every technician the override that skips the
+#: customer.
+#:
+#: Paired with the rank floor for the same reason the escalation surface is: the
+#: feature grant is overridable per company on Feature Access, and this one ends
+#: a job the customer never agreed was finished.
+CanForceClose = Annotated[Principal, Depends(require_feature("jobs.force_close"))]
 
 
 @router.get("", response_model=PaginatedEnvelope[TicketOut])
@@ -322,6 +337,60 @@ async def record_no_show(
         await service.record_no_show(db, principal, ticket_id, note=body.note),
         message="No-show recorded",
     )
+
+
+@router.post(
+    "/{ticket_id}/force-close",
+    response_model=ApiEnvelope[TicketDetailOut],
+    dependencies=[AreaManagerUp],
+)
+async def force_close_ticket(
+    ticket_id: uuid.UUID,
+    db: Db,
+    principal: CanForceClose,
+    body: ForceCloseRequest,
+) -> ApiEnvelope[TicketDetailOut]:
+    """End a job the normal closure could not finish.
+
+    Only the customer closes a job here, which leaves one hole: a customer who
+    never answers. `sweeps.sweep_force_close` finds those and raises a
+    notification rather than closing anything — a system that auto-closed on
+    silence would be recording an approval nobody gave. This is where a person
+    takes that decision, and signs it.
+
+    Reason, notes and at least one attachment are all required. §10 asks for
+    supporting documents and a record of who closed it, when and on what basis,
+    and the reason is that this is a closure the CUSTOMER never agreed to — the
+    record has to stand on its own the day somebody disputes it.
+
+    Allowed on any live ticket, not only on `Awaiting Customer`: it is the only
+    exit from the live set apart from a customer confirming, so a manager who
+    cannot use it here has no other tool.
+
+    **409 `ALREADY_SETTLED`** — the ticket is already Closed, Force-Closed or
+    Cancelled, including when a colleague settled it while this manager was
+    filling the form in.
+    """
+    return envelope(
+        await service.force_close_ticket(db, principal, ticket_id, body),
+        message="Ticket force-closed",
+    )
+
+
+@router.get(
+    "/{ticket_id}/attachments",
+    response_model=ApiEnvelope[list[TicketAttachmentOut]],
+)
+async def get_ticket_attachments(
+    ticket_id: uuid.UUID, db: Db, principal: CanView
+) -> ApiEnvelope[list[TicketAttachmentOut]]:
+    """The evidence a manager attached when force-closing this ticket.
+
+    `jobs.view`, not `jobs.force_close`: whoever may look at the ticket may see
+    why it was ended. Making the justification harder to read than the closure
+    itself would defeat the point of collecting it.
+    """
+    return envelope(await service.list_attachments(db, principal, ticket_id))
 
 
 @router.patch("/{ticket_id}/serial", response_model=ApiEnvelope[TicketDetailOut])
