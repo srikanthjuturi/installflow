@@ -1,9 +1,11 @@
-import { ArrowLeft } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import { useLocation, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
+import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import {
   TechOnboardingCard,
   TechOnboardingCardSkeleton,
@@ -12,7 +14,9 @@ import {
   TechProfileHeader,
   TechStats,
 } from "@/components/technicians/TechProfileHeader";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useTechnician } from "@/hooks/useTechnicians";
 import { useTechnicianJobs } from "@/hooks/useTickets";
@@ -21,6 +25,8 @@ import { useRecordRecentlySeen } from "@/store/recentlySeen";
 export default function TechnicianProfilePage() {
   const { id = "" } = useParams();
   const location = useLocation();
+  const [isEditOpen, setEditOpen] = useState(false);
+  const canEdit = useFeatureAccess().has("technicians.edit");
 
   /* Three ways in — the roster, a ledger row, the topbar search — and only the
      first one is `/technicians`. The search has been handing this page an
@@ -53,16 +59,41 @@ export default function TechnicianProfilePage() {
         description="Category, pincode, bandwidth, cancellations and job history."
       />
 
-      <LinkButton
-        variant="ghost"
-        size="sm"
-        className="mb-3.5 -ml-2"
-        to={backHref}
-        state={origin?.backState}
-      >
-        <ArrowLeft data-icon="inline-start" />
-        {backText}
-      </LinkButton>
+      {/* Mounted only once the record has arrived: the form is seeded from it,
+          and an Edit button that opens an empty dialog is worse than no button
+          for the second the read is in flight. */}
+      {tech ? (
+        <TechnicianFormDialog
+          open={isEditOpen}
+          onOpenChange={setEditOpen}
+          technician={tech}
+        />
+      ) : null}
+
+      <div className="mb-3.5 flex items-center justify-between gap-3">
+        <LinkButton
+          variant="ghost"
+          size="sm"
+          className="-ml-2"
+          to={backHref}
+          state={origin?.backState}
+        >
+          <ArrowLeft data-icon="inline-start" />
+          {backText}
+        </LinkButton>
+
+        {tech && canEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setEditOpen(true)}
+          >
+            <Pencil data-icon="inline-start" />
+            Edit details
+          </Button>
+        ) : null}
+      </div>
 
       {isError ? (
         <ErrorState

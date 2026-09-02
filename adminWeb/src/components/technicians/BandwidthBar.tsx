@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TechnicianStatus } from "@/types/technician";
+import { TECH_STATUS_LABEL } from "./technicianSchema";
 
 /**
  * The technician presentation atoms.
@@ -98,12 +99,6 @@ const STATUS_CLASS: Record<TechnicianStatus, string> = {
   suspended: "bg-danger-bg text-danger",
 };
 
-const STATUS_LABEL: Record<TechnicianStatus, string> = {
-  active: "Active",
-  inactive: "Inactive",
-  suspended: "Suspended",
-};
-
 /** Carries the word, not just the tint. */
 export function TechStatusPill({ status }: { status: TechnicianStatus }) {
   return (
@@ -115,7 +110,7 @@ export function TechStatusPill({ status }: { status: TechnicianStatus }) {
         STATUS_CLASS[status]
       )}
     >
-      {STATUS_LABEL[status]}
+      {TECH_STATUS_LABEL[status]}
     </span>
   );
 }

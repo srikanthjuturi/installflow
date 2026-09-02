@@ -133,7 +133,13 @@ export interface UpdateTechnicianInput {
   regionId?: string;
   subcategoryIds?: string[];
   pincodes?: string[];
-  dailyJobCap?: number;
+  /**
+   * Null is a real value — it means NO LIMIT — so this is nullable rather than
+   * merely optional. Omitted leaves the cap alone; `null` clears it. The API
+   * makes the same distinction with `model_fields_set`, and typing it as
+   * `number` alone made the cap one-way: settable but never clearable.
+   */
+  dailyJobCap?: number | null;
   status?: TechnicianStatus;
 }
 

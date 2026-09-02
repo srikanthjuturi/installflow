@@ -17,7 +17,11 @@ import {
 import { useIncrementalOptions } from "@/hooks/useIncrementalOptions";
 import { formatPhone } from "@/utils/phone";
 import type { ListParams, PaginationMeta } from "@/types/api";
-import type { TechnicianInvite, TechnicianRow } from "@/types/technician";
+import type {
+  Technician,
+  TechnicianInvite,
+  TechnicianRow,
+} from "@/types/technician";
 import { AvailabilityPill } from "./AvailabilityPill";
 import { BandwidthBar, CancelCount } from "./BandwidthBar";
 import { OnboardingStatusCell } from "./OnboardingStatusCell";
@@ -63,7 +67,11 @@ interface TechTableProps {
   error: unknown;
   onRetry: () => void;
   toolbarActions?: React.ReactNode;
-  canEdit: boolean;
+  /** `technicians.invite` — resend, copy link, cancel. */
+  canManageInvites: boolean;
+  /** `technicians.edit` — correct a registered technician's record. */
+  canEditTechnician: boolean;
+  onEditTechnician: (technician: Technician) => void;
   onResend: (row: TechnicianRow) => void;
   onCancel: (row: TechnicianRow) => void;
   onCopyLink: (row: TechnicianRow) => void;
@@ -81,7 +89,9 @@ export function TechTable({
   error,
   onRetry,
   toolbarActions,
-  canEdit,
+  canManageInvites,
+  canEditTechnician,
+  onEditTechnician,
   onResend,
   onCancel,
   onCopyLink,
@@ -263,7 +273,31 @@ export function TechTable({
       hideHeader: true,
       align: "right",
       cell: (t) => {
-        if (t.registered || !canEdit || !isResendable(t.status)) return null;
+        /* A registered technician and an open invite are the same person at
+           two lifecycle stages, so this one column carries both sets of verbs.
+           There is nothing to edit on an invite — a phone number is all the
+           record holds until they register — and nothing to resend once they
+           have. */
+        if (t.registered) {
+          if (!canEditTechnician) return null;
+          return (
+            <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+              {/* A button, not a link: it opens a dialog rather than
+                  navigating, and the row click already goes to the profile. */}
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs font-semibold text-brand-400"
+                onClick={() => onEditTechnician(t)}
+              >
+                Edit
+                <span className="sr-only"> {t.name}</span>
+              </Button>
+            </div>
+          );
+        }
+        if (!canManageInvites || !isResendable(t.status)) return null;
         const busy = busyInviteId === t.id;
         return (
           <div

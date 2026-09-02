@@ -29,12 +29,18 @@ export const settingsKeys = {
  * that edits it — the AI queue labels rows against the threshold and the bonus
  * picker draws its chips from the bands — which is why the endpoint admits
  * `jobs.assign` as well as `settings.view`.
+ *
+ * A vendor holds NEITHER key, and the ticket detail page is shared with the
+ * portal — so `enabled` exists to keep the call from being made at all on a
+ * surface whose user would only ever be refused. A 403 there is not an error
+ * worth a toast; it is a question that should not have been asked.
  */
-export function useRulesConfig() {
+export function useRulesConfig({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: settingsKeys.rules(),
     queryFn: getRulesConfig,
     staleTime: 5 * 60_000,
+    enabled,
   });
 }
 

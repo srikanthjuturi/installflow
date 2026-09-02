@@ -11,21 +11,22 @@ import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import { useDistricts } from "@/hooks/useGeo";
 import {
   useCancelInvite,
-  useCreateTechnician,
   useInviteTechnician,
   useResendInvite,
   useTechnicians,
 } from "@/hooks/useTechnicians";
 import { useUrlSeededListParams } from "@/hooks/useListParams";
-import type { TechnicianRow } from "@/types/technician";
+import type { Technician, TechnicianRow } from "@/types/technician";
 import { copyToClipboard } from "@/utils/clipboard";
 import { formatPhone, toE164 } from "@/utils/phone";
 
 export default function TechnicianListPage() {
+  /* One dialog for both verbs. `editing` is what it is pointed at: undefined is
+     the Add form, a technician is that technician's record. */
   const [isFormOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Technician | undefined>(undefined);
   const [isInviteOpen, setInviteOpen] = useState(false);
 
-  const create = useCreateTechnician();
   const invite = useInviteTechnician();
   const resend = useResendInvite();
   const cancel = useCancelInvite();
@@ -33,6 +34,7 @@ export default function TechnicianListPage() {
   const { has } = useFeatureAccess();
   const canCreate = has("technicians.create");
   const canInvite = has("technicians.invite");
+  const canEdit = has("technicians.edit");
   const { regions } = useAssignableRegions();
   // Scoped by the server to the caller's own territory, so the dropdown can
   // never offer a district whose technicians they would not be shown.
@@ -63,32 +65,7 @@ export default function TechnicianListPage() {
       <TechnicianFormDialog
         open={isFormOpen}
         onOpenChange={setFormOpen}
-        isSubmitting={create.isPending}
-        onSubmit={(values) =>
-          create.mutate(
-            {
-              fullName: values.name,
-              phone: toE164(values.phone),
-              regionId: values.regionId,
-              subcategoryIds: values.subcategoryIds,
-              pincodes: values.pincodes,
-              // No dailyJobCap: a new technician starts uncapped and sets
-              // their own in the app.
-              profileImageUrl: values.photo ?? null,
-            },
-            {
-              onSuccess: (technician) => {
-                toast.add({
-                  title: `${technician.name} added`,
-                  description: technician.dailyJobCap
-                    ? `${technician.code} · ${technician.dailyJobCap} jobs/day.`
-                    : `${technician.code} · no daily limit yet.`,
-                });
-                setFormOpen(false);
-              },
-            }
-          )
-        }
+        technician={editing}
       />
 
       <TechnicianInviteDialog
@@ -134,7 +111,12 @@ export default function TechnicianListPage() {
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}
-        canEdit={canInvite}
+        canManageInvites={canInvite}
+        canEditTechnician={canEdit}
+        onEditTechnician={(technician) => {
+          setEditing(technician);
+          setFormOpen(true);
+        }}
         busyInviteId={busyInviteId}
         onResend={(row: TechnicianRow) =>
           resend.mutate(row.id, {
@@ -177,7 +159,7 @@ export default function TechnicianListPage() {
             {canInvite ? (
               <Button
                 variant="outline"
-                className="h-10"
+                size="toolbar"
                 onClick={() => setInviteOpen(true)}
               >
                 <Send data-icon="inline-start" />
@@ -185,7 +167,15 @@ export default function TechnicianListPage() {
               </Button>
             ) : null}
             {canCreate ? (
-              <Button className="h-10" onClick={() => setFormOpen(true)}>
+              <Button
+                size="toolbar"
+                onClick={() => {
+                  // Clear whatever the last Edit pointed the dialog at, or
+                  // "Add technician" would reopen that technician's record.
+                  setEditing(undefined);
+                  setFormOpen(true);
+                }}
+              >
                 <Plus data-icon="inline-start" />
                 Add technician
               </Button>
