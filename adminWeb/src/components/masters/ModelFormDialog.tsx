@@ -209,7 +209,9 @@ function ModelForm({
             optional detail like the two below. */}
         <div className="grid gap-5 sm:grid-cols-2">
           <Field data-invalid={errors.name ? true : undefined}>
-            <FieldLabel htmlFor="model-name">Model name</FieldLabel>
+            <FieldLabel htmlFor="model-name" required>
+              Model name
+            </FieldLabel>
             <Input
               id="model-name"
               placeholder={'e.g. 43" 4K UHD'}
@@ -230,7 +232,9 @@ function ModelForm({
           </Field>
 
           <Field data-invalid={errors.vendorId ? true : undefined}>
-            <FieldLabel htmlFor="model-vendor">Brand</FieldLabel>
+            <FieldLabel htmlFor="model-vendor" required>
+              Brand
+            </FieldLabel>
             <Controller
               name="vendorId"
               control={control}
@@ -519,6 +523,7 @@ function ServiceTypeField({
       aria-invalid={error ? true : undefined}
       aria-describedby={error ? "model-service-error" : "model-service-hint"}
       legend="Service types"
+      required
       hint={
         <FieldDescription id="model-service-hint" className="mt-0">
           What a technician can be sent to do with this model.{" "}

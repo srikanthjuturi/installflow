@@ -6,6 +6,13 @@ import { radius } from '@/theme/spacing';
 
 export interface InputProps {
   label?: string;
+  /**
+   * Draws the red asterisk after the label.
+   *
+   * `textDanger` rather than `debit` — that one means money leaving the
+   * technician's account, and this is a form marker. See `theme/semantic.ts`.
+   */
+  required?: boolean;
   value: string;
   onChangeText: (next: string) => void;
   placeholder?: string;
@@ -20,6 +27,7 @@ export interface InputProps {
 
 export function Input({
   label,
+  required = false,
   value,
   onChangeText,
   placeholder,
@@ -46,6 +54,7 @@ export function Input({
           }}
         >
           {label}
+          {required ? <Text style={{ color: color.textDanger }}> *</Text> : null}
         </Text>
       ) : null}
 
@@ -75,6 +84,12 @@ export function Input({
         ) : null}
 
         <TextInput
+          // React Native does not associate the label Text above with this
+          // box, so the name — and the fact that it is required — has to be
+          // said here or a screen reader announces neither.
+          accessibilityLabel={
+            label ? (required ? `${label}, required` : label) : undefined
+          }
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}

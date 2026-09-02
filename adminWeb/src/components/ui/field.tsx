@@ -21,18 +21,28 @@ function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
 function FieldLegend({
   className,
   variant = "legend",
+  required = false,
+  children,
   ...props
-}: React.ComponentProps<"legend"> & { variant?: "legend" | "label" }) {
+}: React.ComponentProps<"legend"> & {
+  variant?: "legend" | "label";
+  /** For a group that must be answered — "pick at least one" and the like. */
+  required?: boolean;
+}) {
   return (
     <legend
       data-slot="field-legend"
       data-variant={variant}
+      data-required={required || undefined}
       className={cn(
         "mb-1.5 font-medium data-[variant=label]:text-sm data-[variant=legend]:text-base",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {required ? <FieldRequiredMark inline /> : null}
+    </legend>
   );
 }
 
@@ -96,33 +106,83 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
+/**
+ * The red asterisk that marks a required field.
+ *
+ * Hidden from assistive technology and paired with an `sr-only` word, because a
+ * bare "*" is read out as "star" or skipped entirely — colour and punctuation
+ * are never the only thing carrying the meaning, the same rule the SLA bars and
+ * the region legend follow.
+ *
+ * It is `text-destructive`, the token `FieldError` already uses, so the mark and
+ * the message it predicts are the same red in both themes.
+ *
+ * `inline` picks the spacing: a `<legend>` is ordinary text flow and wants a
+ * small left margin, while `FieldLabel` and `FieldTitle` are flex rows whose
+ * `gap-2` has to be cancelled, or the mark floats eight pixels off the last word.
+ */
+function FieldRequiredMark({ inline = false }: { inline?: boolean }) {
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "font-normal text-destructive",
+          inline ? "ml-0.5" : "-ml-1.5"
+        )}
+      >
+        *
+      </span>
+      <span className="sr-only">(required)</span>
+    </>
+  );
+}
+
 function FieldLabel({
   className,
+  required = false,
+  children,
   ...props
-}: React.ComponentProps<typeof Label>) {
+}: React.ComponentProps<typeof Label> & {
+  /** Draws the red asterisk. Mirror the Zod schema — never guess. */
+  required?: boolean;
+}) {
   return (
     <Label
       data-slot="field-label"
+      data-required={required || undefined}
       className={cn(
         "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border *:data-[slot=field]:p-2.5 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {required ? <FieldRequiredMark /> : null}
+    </Label>
   );
 }
 
-function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
+function FieldTitle({
+  className,
+  required = false,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & { required?: boolean }) {
   return (
     <div
       data-slot="field-label"
+      data-required={required || undefined}
       className={cn(
         "flex w-fit items-center gap-2 text-sm font-medium group-data-[disabled=true]/field:opacity-50",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {required ? <FieldRequiredMark /> : null}
+    </div>
   );
 }
 
@@ -229,6 +289,7 @@ export {
   FieldError,
   FieldGroup,
   FieldLegend,
+  FieldRequiredMark,
   FieldSeparator,
   FieldSet,
   FieldContent,

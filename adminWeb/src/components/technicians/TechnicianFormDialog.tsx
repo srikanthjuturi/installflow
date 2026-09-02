@@ -146,7 +146,9 @@ export function TechnicianFormDialog({
                 {/* Paired: two short fields always filled together. */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field data-invalid={err("name") ? true : undefined}>
-                    <FieldLabel htmlFor="tech-name">Full name</FieldLabel>
+                    <FieldLabel htmlFor="tech-name" required>
+                      Full name
+                    </FieldLabel>
                     <Input
                       id="tech-name"
                       autoComplete="name"
@@ -169,7 +171,9 @@ export function TechnicianFormDialog({
                   </Field>
 
                   <Field data-invalid={err("phone") ? true : undefined}>
-                    <FieldLabel htmlFor="tech-phone">Mobile number</FieldLabel>
+                    <FieldLabel htmlFor="tech-phone" required>
+                      Mobile number
+                    </FieldLabel>
                     <Input
                       id="tech-phone"
                       inputMode="tel"
@@ -237,6 +241,7 @@ export function TechnicianFormDialog({
                 list. */}
             <FormSection
               legend="Categories"
+              required
               hint="Only certified categories are offered to this technician."
             >
               <FieldSet

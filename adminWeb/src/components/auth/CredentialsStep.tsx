@@ -74,7 +74,9 @@ export function CredentialsStep({
 
       <FieldGroup className="mt-6.5">
         <Field data-invalid={errors.email ? true : undefined}>
-          <FieldLabel htmlFor="email">Work email</FieldLabel>
+          <FieldLabel htmlFor="email" required>
+            Work email
+          </FieldLabel>
           <Input
             id="email"
             type="email"
@@ -92,7 +94,9 @@ export function CredentialsStep({
         </Field>
 
         <Field data-invalid={errors.password ? true : undefined}>
-          <FieldLabel htmlFor="password">Password</FieldLabel>
+          <FieldLabel htmlFor="password" required>
+            Password
+          </FieldLabel>
           <PasswordInput
             id="password"
             autoComplete="current-password"

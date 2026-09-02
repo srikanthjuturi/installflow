@@ -247,6 +247,7 @@ export function ManualEntryForm({
               <SelectField
                 name="subcategoryId"
                 label="Category"
+                required
                 placeholder={
                   !vendorId
                     ? "Pick a vendor first"
@@ -270,6 +271,7 @@ export function ManualEntryForm({
               <SelectField
                 name="modelId"
                 label="Product model"
+                required
                 placeholder={
                   subcategoryId ? "Select model" : "Pick a category first"
                 }
@@ -286,6 +288,7 @@ export function ManualEntryForm({
               <SelectField
                 name="serviceType"
                 label="Service type"
+                required
                 placeholder={modelId ? "Select type" : "Pick a model first"}
                 groups={serviceTypeGroups}
                 disabled={!modelId}
@@ -301,6 +304,9 @@ export function ManualEntryForm({
                 <TextField
                   name="description"
                   label="What is the problem?"
+                  /* Only rendered for Tech Visit and Service, and required for
+                     exactly those two — the superRefine wants ten characters. */
+                  required
                   placeholder="e.g. Cooling has dropped and the outdoor unit rattles"
                   register={register}
                   error={err("description")}
@@ -309,6 +315,7 @@ export function ManualEntryForm({
               <TextField
                 name="serialNumber"
                 label="Serial number"
+                required
                 placeholder="As printed on the box"
                 className="font-mono"
                 autoComplete="off"
@@ -357,6 +364,7 @@ export function ManualEntryForm({
               <TextField
                 name="customerName"
                 label="Customer name"
+                required
                 placeholder="Full name"
                 autoComplete="name"
                 register={register}
@@ -365,6 +373,7 @@ export function ManualEntryForm({
               <TextField
                 name="customerPhone"
                 label="Mobile number"
+                required
                 placeholder="+91 "
                 inputMode="tel"
                 autoComplete="tel"
@@ -392,6 +401,14 @@ export function ManualEntryForm({
                 city: "Pune",
                 state: "Maharashtra",
               }}
+              /* All four are `min(1)` in `ticketSchema`. Line 2 is not shown
+                 here — this form runs on `lines: 1`. */
+              required={{
+                address: true,
+                city: true,
+                state: true,
+                pincode: true,
+              }}
               errors={{
                 address: err("address"),
                 city: err("city"),
@@ -402,6 +419,7 @@ export function ManualEntryForm({
               <TextField
                 name="expectedDate"
                 label="Expected date"
+                required
                 type="date"
                 // The picker itself refuses a past day, so the common mistake
                 // never reaches validation. The schema and the API still check
@@ -623,12 +641,15 @@ function SlotPicker({
 function TextField({
   name,
   label,
+  required,
   error,
   register,
   ...input
 }: {
   name: keyof TicketFormValues;
   label: string;
+  /** Draws the red mark. Mirrors `ticketSchema` — never guess. */
+  required?: boolean;
   error?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register: any;
@@ -636,7 +657,9 @@ function TextField({
   const id = `field-${name}`;
   return (
     <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} required={required}>
+        {label}
+      </FieldLabel>
       <Input
         id={id}
         aria-invalid={error ? true : undefined}
@@ -660,6 +683,7 @@ function TextField({
 function SelectField({
   name,
   label,
+  required,
   placeholder,
   groups,
   control,
@@ -669,6 +693,7 @@ function SelectField({
 }: {
   name: keyof TicketFormValues;
   label: string;
+  required?: boolean;
   placeholder: string;
   groups: OptionGroup[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -702,7 +727,9 @@ function SelectField({
 
   return (
     <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} required={required}>
+        {label}
+      </FieldLabel>
       <Select value={field.value} onValueChange={select} disabled={disabled}>
         <SelectTrigger
           id={id}

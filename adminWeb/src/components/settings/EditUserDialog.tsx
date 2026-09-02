@@ -136,7 +136,9 @@ function EditUserForm({
             className="sm:col-span-2"
             data-invalid={err("fullName") ? true : undefined}
           >
-            <FieldLabel htmlFor="fullName">Full name</FieldLabel>
+            <FieldLabel htmlFor="fullName" required>
+              Full name
+            </FieldLabel>
             <Input
               id="fullName"
               autoComplete="name"

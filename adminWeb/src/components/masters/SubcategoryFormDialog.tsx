@@ -126,7 +126,9 @@ function SubcategoryForm({
 
       <FieldGroup className="gap-4">
         <Field data-invalid={errors.name ? true : undefined}>
-          <FieldLabel htmlFor="subcategory-name">Subcategory name</FieldLabel>
+          <FieldLabel htmlFor="subcategory-name" required>
+            Subcategory name
+          </FieldLabel>
           <Input
             id="subcategory-name"
             placeholder="e.g. Television"

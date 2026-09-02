@@ -74,7 +74,9 @@ export function TechnicianInviteDialog({
 
           <FieldGroup>
             <Field data-invalid={errors.phone ? true : undefined}>
-              <FieldLabel htmlFor="invite-phone">Mobile number</FieldLabel>
+              <FieldLabel htmlFor="invite-phone" required>
+                Mobile number
+              </FieldLabel>
               <Input
                 id="invite-phone"
                 inputMode="tel"

@@ -77,7 +77,7 @@ export default function ChangePasswordPage() {
           <form onSubmit={handleSubmit(submit)} noValidate>
             <FieldGroup>
               <Field data-invalid={errors.currentPassword ? true : undefined}>
-                <FieldLabel htmlFor="currentPassword">
+                <FieldLabel htmlFor="currentPassword" required>
                   Current password
                 </FieldLabel>
                 <PasswordInput
@@ -101,7 +101,9 @@ export default function ChangePasswordPage() {
               </Field>
 
               <Field data-invalid={errors.newPassword ? true : undefined}>
-                <FieldLabel htmlFor="newPassword">New password</FieldLabel>
+                <FieldLabel htmlFor="newPassword" required>
+                  New password
+                </FieldLabel>
                 <PasswordInput
                   id="newPassword"
                   autoComplete="new-password"
@@ -127,7 +129,7 @@ export default function ChangePasswordPage() {
               </Field>
 
               <Field data-invalid={errors.confirmPassword ? true : undefined}>
-                <FieldLabel htmlFor="confirmPassword">
+                <FieldLabel htmlFor="confirmPassword" required>
                   Repeat new password
                 </FieldLabel>
                 <PasswordInput

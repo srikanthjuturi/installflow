@@ -82,6 +82,12 @@ export interface AddressFieldsProps {
   /** Render the street line as a textarea, keeping line breaks. */
   multiline?: boolean;
   labels?: Partial<Record<Part, string>>;
+  /**
+   * Which boxes draw the red required mark. Per part rather than a single flag,
+   * because the caller's schema is the only thing that knows: line 2 is optional
+   * on every form that shows it, and the other four are not.
+   */
+  required?: Partial<Record<Part, boolean>>;
   placeholders?: Partial<Record<Part, string>>;
   hints?: Partial<Record<Part, string>>;
   /** RHF messages. Rendered the house way — `role="alert"`, pointed at by the control. */
@@ -128,6 +134,7 @@ export function AddressFields({
   lines = 1,
   multiline = false,
   labels,
+  required,
   placeholders,
   hints,
   errors,
@@ -405,7 +412,9 @@ export function AddressFields({
         data-invalid={message ? true : undefined}
         className={extra?.className}
       >
-        <FieldLabel htmlFor={id}>{label(part)}</FieldLabel>
+        <FieldLabel htmlFor={id} required={required?.[part]}>
+          {label(part)}
+        </FieldLabel>
         {multiline && part === "address" ? (
           <Textarea {...shared} rows={2} className="resize-y" />
         ) : (
@@ -462,7 +471,7 @@ export function AddressFields({
             state from the master. Asking for a city first and then overwriting
             it a moment later is the wrong order to put a person through. */}
         <Field data-invalid={pincodeError ? true : undefined}>
-          <FieldLabel htmlFor={`${idPrefix}-pincode`}>
+          <FieldLabel htmlFor={`${idPrefix}-pincode`} required={required?.pincode}>
             {label("pincode")}
           </FieldLabel>
           <Combobox

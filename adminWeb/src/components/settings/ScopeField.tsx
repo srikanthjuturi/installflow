@@ -128,7 +128,9 @@ function RegionalHeadScope({
   return (
     <>
       <Field data-invalid={regionError ? true : undefined}>
-        <FieldLabel htmlFor="regionIds">Regions</FieldLabel>
+        <FieldLabel htmlFor="regionIds" required>
+          Regions
+        </FieldLabel>
         <MultiSelect
           id="regionIds"
           value={regionIds}
@@ -280,7 +282,9 @@ function AreaManagerScope({
   return (
     <>
       <Field data-invalid={stateError ? true : undefined}>
-        <FieldLabel htmlFor="stateIds">States</FieldLabel>
+        <FieldLabel htmlFor="stateIds" required>
+          States
+        </FieldLabel>
         <MultiSelect
           id="stateIds"
           value={stateIds}

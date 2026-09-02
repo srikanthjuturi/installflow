@@ -129,7 +129,11 @@ export function ForceCloseForm({
           </p>
 
           <FieldSet>
-            <FieldLegend variant="label" className="text-[13px] font-medium">
+            <FieldLegend
+              variant="label"
+              required
+              className="text-[13px] font-medium"
+            >
               Reason for force-closure
             </FieldLegend>
             <Controller
@@ -175,7 +179,7 @@ export function ForceCloseForm({
 
           <FieldGroup className="gap-5">
             <Field data-invalid={err("notes") ? true : undefined}>
-              <FieldLabel htmlFor="force-close-notes">
+              <FieldLabel htmlFor="force-close-notes" required>
                 Justification notes
               </FieldLabel>
               <textarea

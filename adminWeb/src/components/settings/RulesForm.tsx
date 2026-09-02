@@ -63,7 +63,12 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                 const id = `penalty-${i}`;
                 return (
                   <Field key={f.id} data-invalid={err ? true : undefined}>
-                    <FieldLabel htmlFor={id}>{f.band}</FieldLabel>
+                    {/* Every box on this screen is required — it is a settings
+                        form of existing values, and clearing one is what the
+                        "Enter an amount" message is for. */}
+                    <FieldLabel htmlFor={id} required>
+                      {f.band}
+                    </FieldLabel>
                     <Input
                       id={id}
                       type="number"
@@ -89,7 +94,7 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
               })}
 
               <Field data-invalid={errors.penaltyCap ? true : undefined}>
-                <FieldLabel htmlFor="penalty-cap">
+                <FieldLabel htmlFor="penalty-cap" required>
                   Monthly cap per technician
                 </FieldLabel>
                 <Input
@@ -216,7 +221,9 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                 const id = `bonus-${i}`;
                 return (
                   <Field key={f.id} data-invalid={err ? true : undefined}>
-                    <FieldLabel htmlFor={id}>Band {i + 1}</FieldLabel>
+                    <FieldLabel htmlFor={id} required>
+                      Band {i + 1}
+                    </FieldLabel>
                     <Input
                       id={id}
                       type="number"
@@ -315,7 +322,9 @@ function SpanField({
 }) {
   return (
     <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} required>
+        {label}
+      </FieldLabel>
       <div className="flex items-center gap-2">
         <Input
           id={id}

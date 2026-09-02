@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
  */
 export function FormSection({
   legend,
+  required = false,
   hint,
   action,
   children,
@@ -37,6 +38,13 @@ export function FormSection({
   ...rest
 }: {
   legend: React.ReactNode;
+  /**
+   * Marks the whole GROUP as required — for a section that is itself one
+   * validated control and must be answered, like "pick at least one service
+   * type". Not for a section that merely contains a required field: that box
+   * carries its own mark.
+   */
+  required?: boolean;
   /**
    * Sits under the heading, above the fields — for guidance that applies to the
    * whole group rather than one field.
@@ -64,6 +72,7 @@ export function FormSection({
         <div className="flex items-center gap-3">
           <FieldLegend
             variant="label"
+            required={required}
             className="mb-0 text-sm font-semibold text-ink"
           >
             {legend}

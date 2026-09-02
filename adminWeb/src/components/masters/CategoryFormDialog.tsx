@@ -113,7 +113,9 @@ function CategoryForm({
 
       <FieldGroup className="gap-4">
         <Field data-invalid={errors.name ? true : undefined}>
-          <FieldLabel htmlFor="category-name">Category name</FieldLabel>
+          <FieldLabel htmlFor="category-name" required>
+            Category name
+          </FieldLabel>
           <Input
             id="category-name"
             placeholder="e.g. Electric"

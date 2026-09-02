@@ -189,6 +189,7 @@ function IntakeChannelField({
     // fields above and below them use.
     <FormSection
       legend="Ticket intake"
+      required
       hint={
         <FieldDescription id="vendor-intake-hint" className="mt-0">
           How this vendor&apos;s tickets reach you. Pick every way that applies.
@@ -433,6 +434,8 @@ function VendorForm({
     name: keyof VendorFormValues,
     label: React.ReactNode,
     opts?: {
+      /** Draws the red asterisk. Mirrors `vendorSchema` — never guess. */
+      required?: boolean;
       hint?: string;
       type?: string;
       placeholder?: string;
@@ -473,7 +476,9 @@ function VendorForm({
         data-invalid={message ? true : undefined}
         className={opts?.className}
       >
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <FieldLabel htmlFor={id} required={opts?.required}>
+          {label}
+        </FieldLabel>
         {opts?.textarea ? (
           <Textarea
             id={id}
@@ -621,6 +626,7 @@ function VendorForm({
       >
         <FieldGroup className={COLS}>
           {renderField("gstNumber", "GSTIN", {
+            required: true,
             mono: true,
             maxLength: 15,
             placeholder: "27AAACV1234A1Z5",
@@ -667,14 +673,17 @@ function VendorForm({
       <FormSection legend="Company">
         <FieldGroup className={COLS}>
           {renderField("name", "Company name", {
+            required: true,
             placeholder: "e.g. Reliance GreenTech Industries",
             hint: "This is the brand shown on every product model you attribute to it.",
           })}
           {renderField("contactPerson", "Contact person", {
+            required: true,
             placeholder: "e.g. Rakesh Mehta",
             hint: "Who ops call about a delivery, a part or a warranty claim.",
           })}
           {renderField("phone", "Mobile number", {
+            required: true,
             type: "tel",
             inputMode: "tel",
             tabular: true,
@@ -689,14 +698,22 @@ function VendorForm({
           {/* The street line takes the whole row: it is the longest value on
               the form, and the only one where a line break carries meaning. */}
           {renderField("address", "Building, street and area", {
+            required: true,
             textarea: true,
             placeholder: "Reliance GreenTech House, 14th Floor\nChakala, Andheri East",
             hint: "Paste it straight off the letterhead — line breaks are kept.",
             className: "sm:col-span-2 lg:col-span-3",
           })}
-          {renderField("city", "City", { placeholder: "Mumbai" })}
-          {renderField("state", "State", { placeholder: "Maharashtra" })}
+          {renderField("city", "City", {
+            required: true,
+            placeholder: "Mumbai",
+          })}
+          {renderField("state", "State", {
+            required: true,
+            placeholder: "Maharashtra",
+          })}
           {renderField("pincode", "Pincode", {
+            required: true,
             inputMode: "numeric",
             tabular: true,
             maxLength: 6,
@@ -720,6 +737,10 @@ function VendorForm({
       <FormSection legend="Portal access">
         <FieldGroup className={COLS}>
           {renderField("loginEmail", "Login email", {
+            // Marked only while it can be typed. On edit the box is read-only —
+            // the identity the account is looked up by — and an asterisk on a
+            // disabled field asks for something the operator cannot give.
+            required: !isEdit,
             type: "email",
             placeholder: "ops@vendor.com",
             // Read-only on edit: this is the identity the account is looked up

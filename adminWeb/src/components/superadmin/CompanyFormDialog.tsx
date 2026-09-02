@@ -255,6 +255,8 @@ function CompanyForm({
     name: keyof CompanyFormValues,
     label: string,
     opts?: {
+      /** Draws the red asterisk. Mirrors `companySchema` — never guess. */
+      required?: boolean;
       hint?: string;
       type?: string;
       placeholder?: string;
@@ -289,7 +291,9 @@ function CompanyForm({
         .join(" ") || undefined;
     return (
       <Field data-invalid={message ? true : undefined} className={opts?.className}>
-        <FieldLabel htmlFor={name}>{label}</FieldLabel>
+        <FieldLabel htmlFor={name} required={opts?.required}>
+          {label}
+        </FieldLabel>
         {opts?.textarea ? (
           <Textarea
             id={name}
@@ -433,6 +437,7 @@ function CompanyForm({
       >
         <FieldGroup className={COLS}>
           {renderField("gstNumber", "GSTIN", {
+            required: true,
             mono: true,
             maxLength: 15,
             placeholder: "29ABCDE1234F1Z5",
@@ -445,12 +450,14 @@ function CompanyForm({
             note: gstNote,
           })}
           {renderField("pan", "PAN", {
+            required: true,
             mono: true,
             maxLength: 10,
             placeholder: "ABCDE1234F",
             hint: "The ten characters inside the GSTIN.",
           })}
           {renderField("gstCompanyStatus", "GST company status", {
+            required: true,
             placeholder: "Active",
             hint: "The registration's standing at the GST portal.",
           })}
@@ -460,10 +467,12 @@ function CompanyForm({
       <FormSection legend="Company">
         <FieldGroup className={COLS}>
           {renderField("name", "Company name", {
+            required: true,
             placeholder: "Acme Installations Pvt Ltd",
             autoComplete: "organization",
           })}
           {renderField("email", "Contact / admin email", {
+            required: true,
             type: "email",
             placeholder: "admin@acme.com",
             autoComplete: "email",
@@ -483,13 +492,21 @@ function CompanyForm({
               longest value here, and a line break in a pasted letterhead
               address carries meaning. Line 2 is gone; this box holds both. */}
           {renderField("addressLine1", "Building, street and area", {
+            required: true,
             textarea: true,
             placeholder: "Acme House, 14th Floor\nChakala, Andheri East",
             className: "sm:col-span-2 lg:col-span-3",
           })}
-          {renderField("city", "City", { autoComplete: "address-level2" })}
-          {renderField("state", "State", { autoComplete: "address-level1" })}
+          {renderField("city", "City", {
+            required: true,
+            autoComplete: "address-level2",
+          })}
+          {renderField("state", "State", {
+            required: true,
+            autoComplete: "address-level1",
+          })}
           {renderField("pincode", "PIN code", {
+            required: true,
             placeholder: "560001",
             autoComplete: "postal-code",
           })}

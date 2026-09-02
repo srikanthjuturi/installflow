@@ -163,7 +163,9 @@ function CorrectSerialForm({
 
       <FieldGroup className="gap-4">
         <Field data-invalid={errors.serialNumber ? true : undefined}>
-          <FieldLabel htmlFor="serial-value">Expected serial</FieldLabel>
+          <FieldLabel htmlFor="serial-value" required>
+            Expected serial
+          </FieldLabel>
           <Input
             id="serial-value"
             autoComplete="off"

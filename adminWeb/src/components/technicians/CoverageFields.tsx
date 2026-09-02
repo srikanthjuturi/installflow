@@ -118,7 +118,11 @@ export function CoverageFields({
   return (
     <FieldGroup className={className ?? "grid gap-4 sm:grid-cols-2"}>
       <Field data-invalid={regionError ? true : undefined}>
-        <FieldLabel htmlFor="coverage-region">Region</FieldLabel>
+        {/* Both boxes are required in both consumers — the add form and the
+            invite — so the mark is unconditional rather than a prop. */}
+        <FieldLabel htmlFor="coverage-region" required>
+          Region
+        </FieldLabel>
         <Select
           value={regionId}
           onValueChange={(v) => onRegionId(v ? String(v) : "")}
@@ -156,7 +160,9 @@ export function CoverageFields({
       </Field>
 
       <Field data-invalid={pincodeError ? true : undefined}>
-        <FieldLabel htmlFor="coverage-pincodes">Service pincodes</FieldLabel>
+        <FieldLabel htmlFor="coverage-pincodes" required>
+          Service pincodes
+        </FieldLabel>
         <MultiSelect
           id="coverage-pincodes"
           value={pincodes}

@@ -59,7 +59,9 @@ export function NewPasswordStep({
 
       <FieldGroup className="mt-6.5">
         <Field data-invalid={errors.newPassword ? true : undefined}>
-          <FieldLabel htmlFor="reset-newPassword">New password</FieldLabel>
+          <FieldLabel htmlFor="reset-newPassword" required>
+            New password
+          </FieldLabel>
           <PasswordInput
             id="reset-newPassword"
             autoComplete="new-password"
@@ -86,7 +88,7 @@ export function NewPasswordStep({
         </Field>
 
         <Field data-invalid={errors.confirmPassword ? true : undefined}>
-          <FieldLabel htmlFor="reset-confirmPassword">
+          <FieldLabel htmlFor="reset-confirmPassword" required>
             Repeat new password
           </FieldLabel>
           <PasswordInput

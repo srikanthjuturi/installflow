@@ -180,7 +180,9 @@ function AddUserForm({
             className="sm:col-span-2"
             data-invalid={err("fullName") ? true : undefined}
           >
-            <FieldLabel htmlFor="fullName">Full name</FieldLabel>
+            <FieldLabel htmlFor="fullName" required>
+              Full name
+            </FieldLabel>
             <Input
               id="fullName"
               placeholder="Full name"
@@ -196,7 +198,9 @@ function AddUserForm({
           </Field>
 
           <Field data-invalid={err("email") ? true : undefined}>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <FieldLabel htmlFor="email" required>
+              Email
+            </FieldLabel>
             <Input
               id="email"
               type="email"
@@ -239,7 +243,9 @@ function AddUserForm({
             className="sm:col-span-2"
             data-invalid={err("role") ? true : undefined}
           >
-          <FieldLabel htmlFor="role">Role</FieldLabel>
+          <FieldLabel htmlFor="role" required>
+            Role
+          </FieldLabel>
           <Controller
             name="role"
             control={control}

@@ -177,6 +177,7 @@ export function RegisterProfileScreen() {
           <View style={{ marginTop: 26 }}>
             <Input
               label="Full name"
+              required
               value={name}
               onChangeText={setName}
               placeholder="As it appears on your ID"

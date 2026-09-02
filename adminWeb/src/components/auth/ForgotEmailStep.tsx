@@ -67,7 +67,9 @@ export function ForgotEmailStep({
 
       <FieldGroup className="mt-6.5">
         <Field data-invalid={errors.email ? true : undefined}>
-          <FieldLabel htmlFor="reset-email">Work email</FieldLabel>
+          <FieldLabel htmlFor="reset-email" required>
+            Work email
+          </FieldLabel>
           <Input
             id="reset-email"
             type="email"

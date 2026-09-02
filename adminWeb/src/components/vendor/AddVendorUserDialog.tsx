@@ -132,7 +132,9 @@ function AddVendorUserForm({
 
       <FieldGroup className="mt-5">
         <Field data-invalid={errors.fullName ? true : undefined}>
-          <FieldLabel htmlFor="vu-name">Full name</FieldLabel>
+          <FieldLabel htmlFor="vu-name" required>
+            Full name
+          </FieldLabel>
           <Input
             id="vu-name"
             autoComplete="off"
@@ -148,7 +150,9 @@ function AddVendorUserForm({
         </Field>
 
         <Field data-invalid={errors.email ? true : undefined}>
-          <FieldLabel htmlFor="vu-email">Email</FieldLabel>
+          <FieldLabel htmlFor="vu-email" required>
+            Email
+          </FieldLabel>
           <Input
             id="vu-email"
             type="email"
