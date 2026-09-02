@@ -85,7 +85,7 @@ export default function CategoriesPage() {
         <div className="mb-3.5 flex justify-end">
           <Button
             type="button"
-            className="h-10"
+            size="toolbar"
             onClick={() => setDialog({ kind: "add-category" })}
           >
             <Plus data-icon="inline-start" />

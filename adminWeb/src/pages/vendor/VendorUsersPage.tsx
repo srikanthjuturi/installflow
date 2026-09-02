@@ -107,7 +107,7 @@ export default function VendorUsersPage() {
         filteredEmptyDescription="Try a different name or email."
         errorTitle="Couldn't load your users"
         toolbarActions={
-          <Button type="button" className="h-10" onClick={() => setAdding(true)}>
+          <Button type="button" size="toolbar" onClick={() => setAdding(true)}>
             <Plus data-icon="inline-start" />
             Add user
           </Button>

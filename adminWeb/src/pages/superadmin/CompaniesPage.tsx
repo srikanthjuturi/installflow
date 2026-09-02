@@ -40,7 +40,7 @@ export default function CompaniesPage() {
         error={isError ? error : null}
         onRetry={() => refetch()}
         toolbarActions={
-          <Button type="button" className="h-10" onClick={() => setAdding(true)}>
+          <Button type="button" size="toolbar" onClick={() => setAdding(true)}>
             <Plus data-icon="inline-start" />
             Add company
           </Button>
