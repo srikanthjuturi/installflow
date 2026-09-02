@@ -47,6 +47,17 @@ class EarningsSummaryOut(AppModel):
     #: them.
     penaltiesPaise: int
 
+    #: The IST calendar days these figures actually cover, inclusive at both
+    #: ends — what the request RESOLVED to, not what it asked for.
+    #:
+    #: Here so the phone can label the money with the span it is the money for.
+    #: `period` and `dateFrom`/`dateTo` are two ways to ask, an unknown period
+    #: falls back to the week, and a client can always be newer than the server
+    #: it is talking to — so "what did you answer over" is a real question with
+    #: a real answer, and the screen should not have to guess it.
+    dateFrom: datetime.date
+    dateTo: datetime.date
+
 
 class TransactionOut(AppModel):
     """One line of a technician's own ledger."""

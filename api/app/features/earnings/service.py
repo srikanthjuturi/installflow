@@ -21,7 +21,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.ledger import period_bounds
+from app.core.ledger import window_dates
 from app.core.rules import CANCEL_PENALTY_BANDS
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.features.earnings.schemas import EarningsSummaryOut, TransactionOut
@@ -30,13 +30,22 @@ from app.models.ticket import Ticket
 
 IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
 
+#: The half-open UTC range to read over, already resolved.
+#:
+#: A resolved range rather than the period's NAME, because there are now two
+#: ways to say what to read — a named period or a range off the calendar — and
+#: the router settles which before either of these runs. That is what keeps the
+#: hero figures and the list under them describing the same span: one decision,
+#: made once, passed to both.
+Window = tuple[datetime.datetime, datetime.datetime]
+
 
 async def summary(
     db: AsyncSession,
     *,
     company_id: uuid.UUID,
     technician_id: uuid.UUID,
-    period: str,
+    window: Window,
 ) -> EarningsSummaryOut:
     """The four hero figures. Two of them are null — see the schema on why.
 
@@ -44,7 +53,7 @@ async def summary(
     same table filtered two ways, and asking twice would let a row written
     between the two reads land in neither total.
     """
-    start, end = period_bounds(period)
+    start, end = window
     rows = await db.execute(
         select(
             LedgerEntry.kind,
@@ -59,6 +68,7 @@ async def summary(
         .group_by(LedgerEntry.kind)
     )
     totals = {kind: int(amount) for kind, amount in rows}
+    covered_from, covered_to = window_dates(window)
     return EarningsSummaryOut(
         # Not `bonuses - penalties`. See the schema: that figure would be a
         # different lie, not a smaller one.
@@ -66,6 +76,10 @@ async def summary(
         earnedPaise=None,
         bonusesPaise=totals.get("bonus", 0),
         penaltiesPaise=totals.get("penalty", 0),
+        # Derived from the SAME window the sums were taken over, one line below
+        # them, so the label and the figures cannot come apart.
+        dateFrom=covered_from,
+        dateTo=covered_to,
     )
 
 
@@ -106,19 +120,19 @@ async def transactions(
     *,
     company_id: uuid.UUID,
     technician_id: uuid.UUID,
-    period: str,
+    window: Window,
 ) -> list[TransactionOut]:
-    """This technician's own ledger for the period, newest first.
+    """This technician's own ledger for the window, newest first.
 
-    Not paginated. A period is a day, a week or a month of one person's work,
-    which is a handful of rows even for somebody having a bad month — and the
-    screen scrolls rather than pages.
+    Not paginated, and `MAX_RANGE_DAYS` is what keeps that honest: a bounded
+    span of one person's work is a handful of rows even for somebody having a
+    bad year — and the screen scrolls rather than pages.
 
     Ordered by `created_at` then `id`, because two entries written in one
     transaction share a timestamp and an unstable sort would reorder them
     between reads of the same list.
     """
-    start, end = period_bounds(period)
+    start, end = window
     rows = list(
         await db.scalars(
             select(LedgerEntry)
@@ -134,11 +148,17 @@ async def transactions(
     if not rows:
         return []
 
+    # `company_id` as well as the ids, and not because the ids could belong to
+    # anyone else — they came off rows already scoped to this company. Hard rule
+    # 0 is that every query on a tenant table carries the filter, so that no
+    # future edit to where `rows` comes from can quietly turn this into the leak
+    # it is one line away from being.
     codes = {
         r[0]: r[1]
         for r in await db.execute(
             select(Ticket.id, Ticket.code).where(
-                Ticket.id.in_({e.ticket_id for e in rows})
+                Ticket.company_id == company_id,
+                Ticket.id.in_({e.ticket_id for e in rows}),
             )
         )
     }

@@ -231,9 +231,33 @@ export interface Transaction {
   amountPaise: number;
 }
 
-/** The spans the Earnings screen can be read over. */
+/** The NAMED spans the Earnings screen can be read over. */
 export const EARNINGS_PERIODS = ['day', 'week', 'month'] as const;
 export type EarningsPeriod = (typeof EARNINGS_PERIODS)[number];
+
+/** An inclusive span of IST calendar days, each `YYYY-MM-DD`. See `utils/date`. */
+export interface DateRange {
+  from: string;
+  to: string;
+}
+
+/**
+ * What the Earnings screen is currently reading over.
+ *
+ * A union rather than a period plus a nullable range, because those are two
+ * fields that can contradict each other and this cannot: the screen is showing
+ * a named period or it is showing a span, never something in between.
+ */
+export type EarningsWindow =
+  | { kind: 'period'; period: EarningsPeriod }
+  | { kind: 'range'; range: DateRange };
+
+/**
+ * The longest span the server will answer for — mirrors `MAX_RANGE_DAYS` in
+ * `api/app/core/ledger.py`, which is where the reason lives. Duplicated rather
+ * than fetched so the calendar can refuse a longer selection before asking.
+ */
+export const MAX_RANGE_DAYS = 366;
 
 export interface EarningsSummary {
   /**
@@ -257,6 +281,17 @@ export interface EarningsSummary {
   bonusesPaise: number;
   /** Real, and positive — a magnitude. The screen signs and colours it. */
   penaltiesPaise: number;
+  /**
+   * The span the SERVER says these figures cover, or null from one too old to
+   * say.
+   *
+   * The screen captions a picked range from this rather than from what it
+   * asked, which is what stops a build talking to an un-updated API from
+   * labelling this week's money with the dates somebody chose. Null means
+   * "cannot tell" — the caption then falls back to the request, which is no
+   * worse than having never asked.
+   */
+  covered: DateRange | null;
 }
 
 /** Cancellation penalty, banded by how close to the committed slot it happens. */

@@ -37,8 +37,10 @@ export function useCancelJob(jobId: string) {
     mutationFn: (reason: CancellationReason) => cancelJob(jobId, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
-      queryClient.invalidateQueries({ queryKey: qk.earningsSummary() });
-      queryClient.invalidateQueries({ queryKey: qk.transactions() });
+      // The PREFIX, not one window. These named a single window before, which
+      // meant a technician reading their month — or any span off the calendar —
+      // cancelled a job and watched the penalty not appear.
+      queryClient.invalidateQueries({ queryKey: qk.earnings() });
     },
   });
 }
