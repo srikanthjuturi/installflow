@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTicketProof } from "@/hooks/useTickets";
+import { useTicketAttachments, useTicketProof } from "@/hooks/useTickets";
 import { describeError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/utils/clipboard";
@@ -438,5 +438,105 @@ function ProofLightbox({
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ------------------------------------------------------ force-closure ----- */
+
+/**
+ * The evidence a manager attached when they ended this job.
+ *
+ * Its own panel rather than extra tiles inside `ProofPanel`, and the reason is
+ * the same one that keeps `ticket_attachments` out of `ticket_proofs`: proof is
+ * what a technician captured on site, this is what an office produced to
+ * justify closing without the customer. Shown together they would read as one
+ * body of evidence with one author, which is exactly the confusion this
+ * closure's audit has to survive.
+ *
+ * Rendered only for a force-closed ticket — the caller decides, because every
+ * other ticket has none and the links here are signed and short-lived.
+ */
+export function ForceClosureEvidence({ ticket }: { ticket: TicketDetail }) {
+  const { data, isLoading, isError, error, refetch } = useTicketAttachments(
+    ticket.id
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Force-closure evidence</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isError ? (
+          <div className="text-[13px] text-ink-2">
+            <p className="text-danger" role="alert">
+              {describeError(error, "Couldn't load the attachments")
+                .description ?? "Couldn't load the attachments"}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2.5"
+              onClick={() => refetch()}
+            >
+              Try again
+            </Button>
+          </div>
+        ) : isLoading ? (
+          <div className="grid grid-cols-2 gap-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="aspect-4/3 rounded-md" />
+            ))}
+          </div>
+        ) : !data?.length ? (
+          /* A force-closure cannot be saved without at least one attachment,
+             so an empty list means the rows are there and the container is
+             not answering. Said plainly — on this panel "nothing here" is
+             itself the finding, exactly as it is for proof. */
+          <p className="text-[13px] text-ink-2">
+            This closure has no attachments on record.
+          </p>
+        ) : (
+          <ul className="grid grid-cols-2 gap-2">
+            {data.map((a) => (
+              <li key={a.ordinal}>
+                <a
+                  href={a.url ?? undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-disabled={a.url ? undefined : true}
+                  className={cn(
+                    "block overflow-hidden rounded-md border border-line bg-surface-2",
+                    a.url
+                      ? "hover:border-brand-400"
+                      : "pointer-events-none opacity-60"
+                  )}
+                >
+                  {a.url ? (
+                    <img
+                      src={a.url}
+                      // Names the file rather than saying "image": a screen
+                      // reader user auditing this needs to know WHICH document
+                      // it is, and the filename is usually the only handle.
+                      alt={a.fileName ?? `Attachment ${a.ordinal}`}
+                      loading="lazy"
+                      decoding="async"
+                      className="aspect-4/3 w-full object-cover"
+                    />
+                  ) : (
+                    <div className="grid aspect-4/3 w-full place-items-center text-xs text-ink-3">
+                      Not available
+                    </div>
+                  )}
+                  <p className="truncate px-2 py-1.5 text-xs text-ink-2">
+                    {a.fileName ?? `Attachment ${a.ordinal}`}
+                  </p>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

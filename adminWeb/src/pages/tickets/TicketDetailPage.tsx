@@ -13,11 +13,13 @@ import { CustomerVerdict } from "@/components/tickets/CustomerVerdict";
 import { SerialMismatchBanner } from "@/components/tickets/SerialMismatch";
 import {
   CustomerPanel,
+  ForceClosureEvidence,
   ProofPanel,
   TechnicianPanel,
 } from "@/components/tickets/SidePanels";
 import { NoShowDialog } from "@/components/tickets/NoShowDialog";
 import { Timeline } from "@/components/tickets/Timeline";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { readNavOrigin, useNavOrigin } from "@/hooks/useNavOrigin";
 import { useRulesConfig } from "@/hooks/useSettings";
 import { useRecordNoShow, useTicket } from "@/hooks/useTickets";
@@ -82,6 +84,7 @@ export default function TicketDetailPage({
   // is the portal. Every ops-only control reads this, so a new one cannot be
   // added on the ops side and quietly appear on the vendor's.
   const isOps = actions === undefined;
+  const { has } = useFeatureAccess();
 
   /* Confirming a no-show. Offered only when the ticket really is one: still
      `Assigned` — proof capture would have moved it to In Progress — with a
@@ -92,12 +95,18 @@ export default function TicketDetailPage({
      (see the API's `ReadRules`). Null while they load, which the dialog
      renders as no figure rather than a zero.
 
+     Asked for on the ops side ONLY. A vendor holds neither `settings.view` nor
+     `jobs.assign`, so on the portal the same call could only come back 403 —
+     and the query cache toasts every failure, which is why opening a ticket in
+     the portal greeted the vendor with "Not allowed". Nothing on that surface
+     reads `rules`: the dialog it feeds is behind `isOps` too.
+
      "Closed" is measured against when the ticket was READ, not `Date.now()`:
      that would be an impure call during render, and the backstop refetch keeps
      it moving. The server re-checks anyway and refuses SLOT_STILL_OPEN. */
   const [noShowOpen, setNoShowOpen] = useState(false);
   const recordNoShow = useRecordNoShow();
-  const { data: rules } = useRulesConfig();
+  const { data: rules } = useRulesConfig({ enabled: isOps });
   const noShowAmount = rules?.penalty.at(-1)?.amount ?? null;
   const canRecordNoShow =
     isOps &&
@@ -122,6 +131,13 @@ export default function TicketDetailPage({
   // than sit there waiting to be pressed and rejected.
   const isSettled = !!ticket && isTerminalTicketStatus(ticket.status);
   const canAct = isOps && !isSettled;
+
+  /* Ending a job without the customer is its own permission, not part of
+     "can act": `jobs.force_close` is granted to the four staff roles and to
+     no technician, where `jobs.close` — the key that already existed — means
+     "close your own job" and belongs to admins and technicians. Hiding the
+     button is presentation; the server refuses the call regardless. */
+  const canForceClose = canAct && has("jobs.force_close");
 
   return (
     <>
@@ -194,14 +210,16 @@ export default function TicketDetailPage({
                             Record no-show
                           </Button>
                         ) : null}
-                        <LinkButton
-                          variant="outline"
-                          className="hover:border-danger hover:text-danger"
-                          to={`/tickets/${ticket.id}/force-close`}
-                          state={actionOrigin}
-                        >
-                          Force close
-                        </LinkButton>
+                        {canForceClose ? (
+                          <LinkButton
+                            variant="outline"
+                            className="hover:border-danger hover:text-danger"
+                            to={`/tickets/${ticket.id}/force-close`}
+                            state={actionOrigin}
+                          >
+                            Force close
+                          </LinkButton>
+                        ) : null}
                         <LinkButton
                           to={`/tickets/${ticket.id}/assign`}
                           state={actionOrigin}
@@ -270,6 +288,12 @@ export default function TicketDetailPage({
               }
             />
             <ProofPanel ticket={ticket} />
+            {/* Only where there is a closure to justify. Ops-only: the whole
+                point of the record is that a colleague can audit the decision,
+                and the vendor is the outside party it was taken about. */}
+            {isOps && ticket.status === "Force-Closed" ? (
+              <ForceClosureEvidence ticket={ticket} />
+            ) : null}
           </div>
         </div>
       )}

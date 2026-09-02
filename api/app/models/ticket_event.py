@@ -136,6 +136,17 @@ EVENT_KINDS = (
     #: take on an inference. `note` carries the manager's reason if they gave
     #: one, and the ledger row is written in the same transaction.
     "no_show",
+    #: A manager ended the job themselves, because the normal closure could not
+    #: happen — most often a customer who never answered the feedback link.
+    #:
+    #: The ONLY writer of `Force-Closed`, and the only exit from the live set
+    #: other than the customer confirming, so without it a silent customer
+    #: leaves a ticket nobody can ever settle. `note` carries the reason and the
+    #: manager's justification; `actor_label` and `created_by` carry who, and
+    #: the supporting files are `ticket_attachments` rows written in the same
+    #: transaction. That combination IS the audit trail §10 asks for — who
+    #: closed it, when, and on what basis.
+    "force_closed",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -187,7 +198,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'confirmation_sent', 'status_changed', 'assigned', 'started', "
             "'feedback_requested', 'completed', 'feedback_received', "
             "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
-            "'escalated', 'bonus_added', 'released', 'no_show')",
+            "'escalated', 'bonus_added', 'released', 'no_show', "
+            "'force_closed')",
             name="kind",
         ),
         CheckConstraint(

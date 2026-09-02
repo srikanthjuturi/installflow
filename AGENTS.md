@@ -21,12 +21,12 @@ skill in `mobileapp/.claude/skills/`.
 ## Phase: partly bound
 
 The API is real for **auth, companies, users, territory, the product master, technician
-onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation, the
-penalty pool, earnings, Rules configuration and the console dashboard** (`GET /tickets/summary`
-— counted, territory-scoped, and deliberately carrying no movement deltas, because nothing
-records what a count was yesterday). What is left on typed mock data behind a TanStack Query hook
-is **AI review**, so binding it stays a one-line change and we keep loading / empty / error
-states today.
+onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation,
+force-closure, the penalty pool, earnings, Rules configuration and the console dashboard**
+(`GET /tickets/summary` — counted, territory-scoped, and deliberately carrying no movement deltas,
+because nothing records what a count was yesterday). What is left on typed mock data behind a
+TanStack Query hook is **AI review**, so binding it stays a one-line change and we keep loading /
+empty / error states today.
 
 Two things are real but **not yet priced**, and both render `—` rather than a figure:
 `tickets` has no payout column, so what a job PAYS is unknown — and with it unknown, so is a
@@ -325,6 +325,15 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   against. Not unique: a service call on a unit installed earlier repeats it.
 - Proof is **four** artifacts: barcode, serial, product photos, geo-tagged live photos.
   Gallery uploads are never accepted.
+- **Only the customer closes a job — except a manager force-closing it.** That is the one hole the
+  feedback design leaves: a customer who says nothing at all. `sweep_force_close` finds those
+  after `company_rules.force_close_hours` and raises a notification; it closes nothing, because a
+  system that auto-closed on silence would record an approval nobody gave. A manager then closes
+  it with a reason, a justification and at least one attachment, all kept for audit. It is also
+  the ONLY exit from the live set apart from a customer confirming — nothing writes `Cancelled` —
+  so a silent customer would otherwise leave a ticket nobody could ever settle.
+  A force-closed job **counts as completed for the technician**: they did the work, and what
+  failed was the customer answering, which was never theirs to fix.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review ·
   unreadable → retake on-site before leaving.
 - Auth is **OTP only** for technicians — the phone IS the credential, so there is no password

@@ -11,6 +11,7 @@ import {
   forceCloseTicket,
   getTicket,
   getTicketProof,
+  listTicketAttachments,
   listTechnicianJobs,
   listTechnicianTickets,
   listTickets,
@@ -35,6 +36,7 @@ export const ticketKeys = {
   list: (params: ListParams) => ["tickets", "list", params] as const,
   detail: (id: string) => ["tickets", "detail", id] as const,
   proof: (id: string) => ["tickets", "proof", id] as const,
+  attachments: (id: string) => ["tickets", "attachments", id] as const,
   /**
    * Under the `tickets` prefix on purpose, even though the screen showing it is
    * a technician's. Every mutation here already invalidates that prefix, and so
@@ -157,6 +159,25 @@ export function useTicketProof(id: string, enabled = true) {
   return useQuery({
     queryKey: ticketKeys.proof(id),
     queryFn: () => getTicketProof(id),
+    enabled: Boolean(id) && enabled,
+    staleTime: 0,
+    gcTime: 60_000,
+  });
+}
+
+/**
+ * The evidence a manager attached when force-closing.
+ *
+ * Same short cache as the proof images directly above, for the same reason:
+ * these links are signed and expire in minutes, so a cached list outlives them
+ * and would render broken thumbnails. `enabled` lets the caller skip the
+ * request entirely on the tickets that were never force-closed, which is
+ * almost all of them.
+ */
+export function useTicketAttachments(id: string, enabled = true) {
+  return useQuery({
+    queryKey: ticketKeys.attachments(id),
+    queryFn: () => listTicketAttachments(id),
     enabled: Boolean(id) && enabled,
     staleTime: 0,
     gcTime: 60_000,

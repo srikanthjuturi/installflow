@@ -292,6 +292,59 @@ class NoShowRequest(AppModel):
     note: str | None = Field(default=None, max_length=255)
 
 
+class ForceCloseAttachmentIn(AppModel):
+    """One supporting file, already in blob storage.
+
+    A NAME, not a URL, and not the bytes. The file went to the private
+    container through `POST /uploads?kind=attachment` before this request was
+    made — the same two-step every image in this system uses, and the reason
+    `core.images` refuses a `data:` URL everywhere it appears.
+    """
+
+    blobName: str = Field(min_length=1, max_length=255)
+    #: What it was called on the manager's machine, for the read-back list.
+    #: Optional because it is a label, never a lookup key.
+    fileName: str | None = Field(default=None, max_length=255)
+
+
+class ForceCloseRequest(AppModel):
+    """A manager ending a job the normal closure could not finish.
+
+    All three fields are required, and that is §10's requirement rather than a
+    form preference: a force-closure is a closure the CUSTOMER never agreed to,
+    so the record has to stand on its own the day somebody disputes it. A reason
+    says which of the three situations this was, the note says what was actually
+    tried, and the attachments are the evidence for both.
+
+    `reason` is free text within a length rather than an enum. The console
+    offers the prototype's three approved lines and nothing else, but pinning
+    them in a CHECK here would mean a migration every time ops want to reword
+    one — and the value is read by people, never branched on by code.
+    """
+
+    reason: str = Field(min_length=1, max_length=160)
+    #: Long enough to say what was tried. The console asks for 10 characters;
+    #: the server agrees rather than trusting it, because "ok" is not a
+    #: justification anybody can act on a year later.
+    notes: str = Field(min_length=10, max_length=2000)
+    #: At least one. An empty list is the one thing that would turn this screen
+    #: into a plain status change with a sentence attached.
+    attachments: list[ForceCloseAttachmentIn] = Field(min_length=1, max_length=10)
+
+
+class TicketAttachmentOut(AppModel):
+    """One force-closure attachment, served through a short-lived link."""
+
+    ordinal: int
+    fileName: str | None
+    #: Signed and short-lived, minted per read — same as `TicketProofOut.url`.
+    #: Null when blob storage is unconfigured, or when a row's name does not
+    #: belong to this company: the record still exists, the file is simply not
+    #: served.
+    url: str | None
+    uploadedAt: datetime.datetime
+
+
 class SlaBreakdownOut(AppModel):
     """How the OPEN tickets are sitting against their windows.
 

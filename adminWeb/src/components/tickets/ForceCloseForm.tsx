@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Paperclip, TriangleAlert, X } from "lucide-react";
@@ -24,6 +24,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import type { NavOrigin } from "@/hooks/useNavOrigin";
+import { MAX_UPLOAD_BYTES } from "@/services/uploads";
 import { cn } from "@/lib/utils";
 
 /** The three approved bases for a manager closure (§10). */
@@ -34,10 +35,24 @@ const REASONS = [
 ] as const;
 
 /**
+ * What blob storage takes. Mirrors `ALLOWED_CONTENT_TYPES` in
+ * `api/app/integrations/blob.py` — refused there too, so this only saves the
+ * round trip and gives the reason in the reader's own words.
+ */
+const ACCEPT = "image/jpeg,image/png,image/webp,image/heic";
+const ACCEPTED_TYPES = ACCEPT.split(",");
+
+/**
  * Attachments are the whole point of this screen: §10 requires supporting
  * documents and images, and records who closed the ticket, when and on what
- * basis. The service rejects an empty list with a 422 — this schema stops it
- * ever getting that far.
+ * basis. The API rejects an empty list with a 422 — this schema stops it ever
+ * getting that far.
+ *
+ * The field holds real `File` objects, not names. It used to hold `file.name`
+ * strings, which meant the form collected evidence and then threw the bytes
+ * away: what reached the (unimplemented) service was a list of filenames. They
+ * are uploaded on submit, and what the API stores is the blob name each upload
+ * returns.
  */
 const forceCloseSchema = z.object({
   reason: z.string().min(1, "Select a reason for force-closure"),
@@ -46,8 +61,9 @@ const forceCloseSchema = z.object({
     .trim()
     .min(10, "Describe the attempts made — the note is kept for audit"),
   attachments: z
-    .array(z.string())
-    .min(1, "At least one supporting document or image is required"),
+    .array(z.instanceof(File))
+    .min(1, "At least one supporting document or image is required")
+    .max(10, "Ten attachments is the most this records"),
 });
 
 export type ForceCloseFormValues = z.infer<typeof forceCloseSchema>;
@@ -70,6 +86,8 @@ export function ForceCloseForm({
   cancelState,
 }: ForceCloseFormProps) {
   const fileRef = useRef<HTMLInputElement>(null);
+  /** Files the picker refused, named so nothing disappears silently. */
+  const [rejected, setRejected] = useState<string[]>([]);
   const {
     control,
     register,
@@ -81,24 +99,35 @@ export function ForceCloseForm({
     defaultValues: { reason: "", notes: "", attachments: [] },
   });
 
-  // Nothing is uploaded in this phase — the form carries filenames, which is
-  // exactly what the mutation records on the audit entry.
   const attachments = useWatch({ control, name: "attachments" });
 
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
-    const names = Array.from(list, (f) => f.name);
-    setValue("attachments", [...new Set([...attachments, ...names])], {
+    const picked = Array.from(list);
+    const ok = picked.filter(
+      (f) => ACCEPTED_TYPES.includes(f.type) && f.size <= MAX_UPLOAD_BYTES
+    );
+    // Named rather than dropped. A file that vanishes on selection reads as a
+    // bug, and the manager would submit believing they had attached it.
+    setRejected(
+      picked.filter((f) => !ok.includes(f)).map((f) => f.name)
+    );
+
+    // De-duped on name AND size, so picking the same file twice adds it once
+    // while two genuinely different files called "photo.jpg" both survive.
+    const seen = new Set(attachments.map((f) => `${f.name}:${f.size}`));
+    const added = ok.filter((f) => !seen.has(`${f.name}:${f.size}`));
+    setValue("attachments", [...attachments, ...added], {
       shouldValidate: true,
     });
     // Let the same file be picked again after it is removed.
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const removeFile = (name: string) =>
+  const removeFile = (file: File) =>
     setValue(
       "attachments",
-      attachments.filter((a) => a !== name),
+      attachments.filter((a) => a !== file),
       { shouldValidate: true }
     );
 
@@ -120,12 +149,21 @@ export function ForceCloseForm({
         </CardHeader>
 
         <CardContent className="flex flex-col gap-5 py-1">
-          {/* The gate on this whole screen: closure is unavailable until the
-              48h customer wait period has elapsed. */}
+          {/* This used to read "Customer has not responded for 52 hours (wait
+              period: 48h). Verification already passed." — three numbers and a
+              claim, none of them measured. It came from the prototype, where
+              every screen had one ticket's invented figures baked in.
+
+              Neither figure is knowable here: the silence would have to be
+              measured from the ticket's own `feedback_requested` event, and
+              nothing on this page reads it. So the banner says what force
+              closure IS, which needs no data to be true, and the wait period
+              lives where it is actually configured — Rules Config. */}
           <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
             <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
-            Customer has not responded for 52 hours (wait period: 48h).
-            Verification already passed.
+            This closes the job without the customer&apos;s confirmation. It
+            cannot be undone, and your name, the reason and these attachments
+            are recorded on the ticket.
           </p>
 
           <FieldSet>
@@ -212,11 +250,19 @@ export function ForceCloseForm({
                 <p className="text-[13px] text-ink-2">
                   Attach call logs, signed acknowledgment, or on-site photos
                 </p>
+                {/* Photograph a document rather than scanning it: blob storage
+                    takes images only, and the same rule refuses an .html or
+                    .svg that would be a stored-XSS vector on our own domain. */}
+                <p className="mt-1 text-xs text-ink-3">
+                  JPG, PNG, WEBP or HEIC · up to{" "}
+                  {MAX_UPLOAD_BYTES / (1024 * 1024)} MB each
+                </p>
                 <input
                   ref={fileRef}
                   id="force-close-files"
                   type="file"
                   multiple
+                  accept={ACCEPT}
                   className="sr-only"
                   aria-invalid={err("attachments") ? true : undefined}
                   aria-describedby={
@@ -228,6 +274,7 @@ export function ForceCloseForm({
                   type="button"
                   variant="outline"
                   className="mt-2.5"
+                  disabled={isSubmitting}
                   onClick={() => fileRef.current?.click()}
                 >
                   Choose files
@@ -236,25 +283,36 @@ export function ForceCloseForm({
 
               {attachments.length ? (
                 <ul className="flex flex-wrap gap-2">
-                  {attachments.map((name) => (
+                  {attachments.map((file) => (
                     <li
-                      key={name}
+                      key={`${file.name}:${file.size}`}
                       className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2.5 py-1.5 text-xs font-medium text-ink-2"
                     >
                       <Paperclip className="size-3.5 shrink-0" aria-hidden />
-                      {name}
+                      {file.name}
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-xs"
-                        aria-label={`Remove ${name}`}
-                        onClick={() => removeFile(name)}
+                        aria-label={`Remove ${file.name}`}
+                        disabled={isSubmitting}
+                        onClick={() => removeFile(file)}
                       >
                         <X aria-hidden />
                       </Button>
                     </li>
                   ))}
                 </ul>
+              ) : null}
+
+              {/* A refusal has to be visible. Silently dropping a PDF the
+                  manager believed they had attached is the one failure that
+                  would send them away thinking the evidence was recorded. */}
+              {rejected.length ? (
+                <FieldDescription role="alert" className="text-danger">
+                  Not attached: {rejected.join(", ")} — images only, up to{" "}
+                  {MAX_UPLOAD_BYTES / (1024 * 1024)} MB each.
+                </FieldDescription>
               ) : null}
 
               {err("attachments") ? (
