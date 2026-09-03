@@ -122,6 +122,11 @@ class CompanyRules(Base, IdMixin, AuditMixin):
     slot_reminder_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("60")
     )
+    #: How long before a slot the CUSTOMER is sent the technician's name and
+    #: number. Independent of the reminder above — see `core.rules.DEFAULTS`.
+    customer_notice_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("60")
+    )
 
     __table_args__ = (
         UniqueConstraint("company_id", name="uq_company_rules_company"),
@@ -135,6 +140,7 @@ class CompanyRules(Base, IdMixin, AuditMixin):
         _between("force_close_hours", "force_close_hours"),
         _between("renotify_grace_minutes", "renotify_grace_minutes"),
         _between("slot_reminder_minutes", "slot_reminder_minutes"),
+        _between("customer_notice_minutes", "customer_notice_minutes"),
         # Escalating before the customer can even be asked to confirm is a
         # contradiction: the slot has to exist before it can go unassigned.
         CheckConstraint(

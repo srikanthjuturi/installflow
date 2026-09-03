@@ -197,6 +197,16 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
               })}
             />
             <SpanField
+              id="customer-notice"
+              label="Technician details to customer"
+              unit="minutes"
+              hint="How long before a slot the customer is WhatsApped the technician's name and number."
+              error={errors.customerNoticeMinutes?.message}
+              register={register("customerNoticeMinutes", {
+                valueAsNumber: true,
+              })}
+            />
+            <SpanField
               id="sla-warn"
               label={'"Due soon" at'}
               unit="% of window left"

@@ -2,10 +2,14 @@
 
 Run by `core.scheduler.ticker`. Each returns how many notifications it wrote.
 
-Five of them now, and one is different in kind: `sweep_no_shows` reports a
+Six of them now, and two are different in kind. `sweep_no_shows` reports a
 FAILURE that has already happened rather than a risk that still can be
-prevented. It deliberately changes nothing and charges nothing — see its own
-note on why a clock must not be allowed to fine anybody.
+prevented; it deliberately changes nothing and charges nothing — see its own
+note on why a clock must not be allowed to fine anybody. And two of the six —
+`sweep_slot_reminders` and `sweep_customer_notice` — raise no notification at
+all: they send a message to the person who needs it, technician and customer
+respectively, and record having done so on the ticket. A routine courtesy in an
+escalation queue is the noise that makes people stop reading it.
 
 ## Idempotency is checked against whatever the sweep already changed
 
@@ -15,11 +19,12 @@ marker — a column that would have to be reset correctly by every path that
 resolves a ticket — each sweep asks whether the thing it does has already been
 done. The record IS the marker, so the two cannot disagree.
 
-For the two that only raise a notification, that record is the notification
-(`_already`). For the two that change something, it is the change: an escalation
-is settled by a guarded UPDATE off `status = 'New'`, and a slot reminder by a
-`reminded` event. Those two are the stronger form, because they also settle the
-race against whatever else is moving the same ticket.
+For the three that only raise a notification, that record is the notification
+(`_already`). For the rest it is the change: an escalation is settled by a
+guarded UPDATE off `status = 'New'`, a slot reminder by a `reminded` event, and
+a customer notice by a `customer_notified` one. The escalation's is the
+strongest form, because it also settles the race against whatever else is
+moving the same ticket.
 
 ## Why the timestamps come from `ticket_events`
 
@@ -30,11 +35,11 @@ moment, and the event is where moments are kept.
 
 ## Every window is the TICKET'S OWN COMPANY'S
 
-These four sweeps run across the whole database at once — one tick, every
-tenant — so the thresholds cannot be Python constants folded into a
-`timedelta` before the query. They were exactly that until `company_rules`
-existed, which is how a multi-tenant product ended up with one escalation
-window for the entire deployment.
+These sweeps run across the whole database at once — one tick, every tenant —
+so the thresholds cannot be Python constants folded into a `timedelta` before
+the query. They were exactly that until `company_rules` existed, which is how a
+multi-tenant product ended up with one escalation window for the entire
+deployment.
 
 Each sweep now JOINs `company_rules` and does the arithmetic in SQL, so the row
 supplies its own company's number and one query still serves every tenant.
@@ -61,11 +66,17 @@ from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import publish_notification, publish_ticket_changed
 from app.core.tickets import NO_SHOW_GRACE_MINUTES, NO_SHOW_LOOKBACK_HOURS
-from app.features.tickets.service import clock
+from app.features.tickets.service import clock, when_label
+from app.integrations import whatsapp
+from app.models.company import Company
 from app.models.company_rules import CompanyRules
+from app.models.membership import Membership
 from app.models.notification import Notification
+from app.models.product import ProductModel
+from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
+from app.models.user import User
 
 
 log = logging.getLogger(__name__)
@@ -424,6 +435,137 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
             body=f"{row.city} {row.pincode} · {hours_to(row.slot_start)}",
             data={"type": "job", "ticketId": str(row.id), "code": row.code},
         )
+    return len(rows)
+
+
+async def sweep_customer_notice(db: AsyncSession) -> int:
+    """Tell the customer who is coming, and on what number to reach them.
+
+    The counterpart to `sweep_slot_reminders`, pointed the other way. That one
+    stops the technician forgetting; this one stops the customer being
+    surprised — until it existed, the last thing anybody told them was "your
+    time is booked", possibly two days earlier, and the next was a stranger at
+    the door introducing himself.
+
+    It also gives the customer a number that is not ours. A five-minute delay
+    they can hear about directly is a five-minute delay; the same delay with
+    nobody to ring becomes a call to the vendor, then a complaint, and
+    occasionally a slot that gets cancelled from the other end.
+
+    ## `Assigned` only, and only while the slot is still ahead
+
+    `In Progress` means proof has already been captured, so the technician is
+    at the door and a message announcing him is a message about the past. And a
+    notice sent after the slot opened tells somebody who is already waiting
+    something they worked out themselves.
+
+    ## Idempotency is a `customer_notified` EVENT
+
+    Same reasoning as the slot reminder's `reminded`, and the same refusal to
+    raise a notification: a routine courtesy in an escalation queue is the
+    noise that stops people reading it. The event is also the honest place for
+    it — "did we tell the customer who was coming" is asked after a complaint,
+    and a WhatsApp receipt is not something this system keeps.
+
+    The event is written whether or not Meta accepted, with the outcome in
+    `note`. A failure that left no row would be retried every tick until the
+    slot opened, and would leave the one question somebody asks later
+    unanswerable.
+    """
+    notified = select(TicketEvent.ticket_id).where(
+        TicketEvent.kind == "customer_notified"
+    )
+    now = _now()
+    # Everything the message needs, in one query rather than five lookups a
+    # row: the company (one WABA sends for every tenant), the product (a
+    # customer may have more than one thing on order), and the technician's
+    # name and number, which live on `users` — a technician profile carries
+    # neither, because the person is the user and the profile is the role.
+    #
+    # Every join is scoped on `company_id` as well as the id. The composite
+    # foreign keys already make a cross-tenant row impossible; saying so in the
+    # query is what keeps it impossible after somebody edits this.
+    rows = (
+        await db.execute(
+            select(Ticket, User.full_name, User.phone, Company.name, ProductModel.name)
+            .join(CompanyRules, CompanyRules.company_id == Ticket.company_id)
+            .join(Company, Company.id == Ticket.company_id)
+            .join(
+                ProductModel,
+                (ProductModel.id == Ticket.model_id)
+                & (ProductModel.company_id == Ticket.company_id),
+            )
+            .join(
+                TechnicianProfile,
+                (TechnicianProfile.id == Ticket.technician_id)
+                & (TechnicianProfile.company_id == Ticket.company_id),
+            )
+            .join(
+                Membership,
+                (Membership.id == TechnicianProfile.membership_id)
+                & (Membership.company_id == Ticket.company_id),
+            )
+            .join(User, User.id == Membership.user_id)
+            .where(
+                Ticket.status == "Assigned",
+                Ticket.deleted_at.is_(None),
+                Ticket.technician_id.is_not(None),
+                Ticket.slot_start.is_not(None),
+                Ticket.slot_end.is_not(None),
+                Ticket.slot_start > now,
+                Ticket.slot_start
+                <= now + _minutes(CompanyRules.customer_notice_minutes),
+                Ticket.id.not_in(notified),
+            )
+        )
+    ).all()
+
+    for row, technician, mobile, company, product in rows:
+        # The send comes BEFORE the event here, unlike the slot reminder above,
+        # because the event records what Meta said and cannot be written until
+        # it has said it. Same order as `tickets.service._send_slot_confirmed`,
+        # and the same trade: a crash between the two re-sends the courtesy on
+        # the next tick, which is a duplicate message rather than a lost one.
+        if not mobile:
+            # A technician's phone IS their credential — they sign in by OTP —
+            # so this is close to unreachable. It is handled rather than
+            # asserted because the alternative is an empty template parameter,
+            # which Meta rejects outright, and a message reading "you can reach
+            # them on ." if it ever got through. The event still goes in, so
+            # the ticket says why nobody was told and the sweep does not retry
+            # this every tick until the slot opens.
+            note = f"Not sent — {technician or 'the technician'} has no phone number"
+        else:
+            result = await whatsapp.send_technician_details(
+                row.customer_phone,
+                company or "Reliance GreenTech Service",
+                product or "your product",
+                when_label(row.slot_start, row.slot_end),
+                # A user row with no name is one nobody completed. Saying "our
+                # technician" is thin; sending "None will be attending" is
+                # worse, and that is the only other option.
+                technician or "Our technician",
+                mobile,
+            )
+            note = (
+                f"Sent {row.customer_name} the technician's details"
+                if result.ok
+                else f"Could not send: {result.error or 'unknown error'}"
+            )
+
+        db.add(
+            TicketEvent(
+                company_id=row.company_id,
+                ticket_id=row.id,
+                kind="customer_notified",
+                actor_kind="system",
+                actor_label="WhatsApp",
+                note=note,
+            )
+        )
+        # A manager with this ticket open should watch the row arrive rather
+        # than find it on the next reload.
+        await publish_ticket_changed(db, row)
     return len(rows)
 
 

@@ -85,6 +85,7 @@ class RulesOut(AppModel):
     customerWaitHours: int
     renotifyGraceMinutes: int
     slotReminderMinutes: int
+    customerNoticeMinutes: int
 
 
 class RulesUpdateRequest(AppModel):
@@ -113,6 +114,7 @@ class RulesUpdateRequest(AppModel):
     customerWaitHours: _bounded("force_close_hours")
     renotifyGraceMinutes: _bounded("renotify_grace_minutes")
     slotReminderMinutes: _bounded("slot_reminder_minutes")
+    customerNoticeMinutes: _bounded("customer_notice_minutes")
 
     @model_validator(mode="after")
     def _check(self) -> "RulesUpdateRequest":

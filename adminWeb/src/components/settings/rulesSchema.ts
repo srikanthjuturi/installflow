@@ -68,6 +68,7 @@ export const rulesSchema = z
     customerWaitHours: hours(240, "Customer wait period"),
     renotifyGraceMinutes: minutes(5, 720, "Re-notification grace"),
     slotReminderMinutes: minutes(5, 1440, "Slot reminder"),
+    customerNoticeMinutes: minutes(5, 1440, "Customer notice"),
   })
   .superRefine((v, ctx) => {
     // A band that charges less the later you cancel would invert the whole
@@ -133,6 +134,7 @@ export function toFormValues(rules: RulesConfig): RulesFormValues {
     customerWaitHours: rules.customerWaitHours,
     renotifyGraceMinutes: rules.renotifyGraceMinutes,
     slotReminderMinutes: rules.slotReminderMinutes,
+    customerNoticeMinutes: rules.customerNoticeMinutes,
   };
 }
 
@@ -157,5 +159,6 @@ export function toDraft(values: RulesFormValues): RulesConfigDraft {
     customerWaitHours: values.customerWaitHours,
     renotifyGraceMinutes: values.renotifyGraceMinutes,
     slotReminderMinutes: values.slotReminderMinutes,
+    customerNoticeMinutes: values.customerNoticeMinutes,
   };
 }

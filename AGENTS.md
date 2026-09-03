@@ -278,6 +278,13 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   fixed time — they never propose one.
 - Assignment is **first-accept-wins**. Losing the race is a normal outcome, not an error.
 - **Customer name, phone and address stay masked until the technician accepts.**
+- **Shortly before the slot, both sides are warned — separately.** The technician gets a push
+  (`company_rules.slot_reminder_minutes`, 60 by default) and the customer gets a WhatsApp naming
+  the technician and their mobile (`customer_notice_minutes`, also 60). Two rules rather than one,
+  because warning your technicians earlier than your customers is a policy a company may hold.
+  Neither raises a notification: a routine courtesy in the escalation queue is the noise that
+  makes people stop reading it, so each records a ticket event (`reminded`, `customer_notified`)
+  and that event is also its dedup marker.
 - Cancelling costs money, banded by lateness: **₹300** (>4h) · **₹500** (2–4h) · **₹800** (<2h) ·
   **₹1,200** (no-show), capped at **₹5,000 per technician per calendar month in IST**. Under four
   hours also escalates to the Area Service Manager.

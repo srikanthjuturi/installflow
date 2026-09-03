@@ -31,9 +31,9 @@ band ends is a fact about the clock.
 its row stamped from it inside `create_company`'s own transaction; `load_rules` recreates a missing
 one on the next read. So `company_rules` holds a company's OVERRIDES — emptying the table resets
 rules, it does not destroy them, which is what makes it safe to clear with the tenant data it
-belongs to. The reason the self-heal exists: all four sweeps INNER JOIN this table, so a company
-without a row silently stops being swept, and a missing escalation is invisible in exactly the way
-a missing row is.
+belongs to. The reason the self-heal exists: every sweep but `sweep_no_shows` INNER JOINs this
+table, so a company without a row silently stops being swept, and a missing escalation is
+invisible in exactly the way a missing row is.
 
 `GET /tickets/escalations` is **paginated but never pagered** — the console loads on scroll, so
 every row stays reachable. Its ordering does two jobs at once and is one expression so the API and
@@ -687,3 +687,22 @@ Currently diverging on purpose: the registered `job_escalation` body says "reass
 wrong — nothing was ever assigned, so there is nothing to RE-assign, and the word sends a manager
 hunting for a technician to replace. The fallback says "assign a technician". Correct the
 registered body with the next template change, not on its own.
+
+### `technician_assigned` is NOT registered yet
+
+`WHATSAPP_TECHNICIAN_TEMPLATE_NAME` is empty in both `.env` files, so
+`sweep_customer_notice` currently falls back to free-form text and reaches nobody outside the
+24-hour window. Everything else about the feature works — the sweep runs, and the ticket's
+`customer_notified` event records Meta's refusal — so what is missing is one UTILITY submission,
+not code. The body to register, five parameters, opening with "Your" for subcode `2388299`:
+
+```
+Your {{2}} visit from {{1}} is today at {{3}}.
+
+{{4}} will be attending. You can reach them on {{5}} if you need to.
+
+Please make sure someone is available at the address.
+```
+
+Parameters in order: company, product, slot, technician, technician's mobile. The company is a
+parameter for the reason it is in every other template here — one WABA sends for every tenant.

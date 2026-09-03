@@ -118,6 +118,12 @@ class Settings(BaseSettings):
     # different set of languages from the scheduling pair.
     WHATSAPP_FEEDBACK_TEMPLATE_NAME: str = ""
     WHATSAPP_FEEDBACK_TEMPLATE_LANG: str = "en_US"
+    # "Your technician today is X, on 98xxx." UTILITY, sent an hour before the
+    # slot — `company_rules.customer_notice_minutes` decides how long. Its own
+    # template because it is the only customer message that carries a person's
+    # NAME AND NUMBER, which Meta reviews on its own terms.
+    WHATSAPP_TECHNICIAN_TEMPLATE_NAME: str = ""
+    WHATSAPP_TECHNICIAN_TEMPLATE_LANG: str = "en_US"
     #: The only message this system sends to its own STAFF. Managers have no
     #: mobile app, so an escalation four hours from a slot cannot wait for
     #: somebody to open a browser tab.

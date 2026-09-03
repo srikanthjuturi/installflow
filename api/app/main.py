@@ -12,6 +12,7 @@ from sqlalchemy import text
 from app.api.router import api_router
 from app.core.scheduler import ticker
 from app.features.tickets.sweeps import (
+    sweep_customer_notice,
     sweep_force_close,
     sweep_silent_slots,
     sweep_no_shows,
@@ -94,6 +95,10 @@ async def lifespan(app: FastAPI):
     ticker.register("slot-silence", sweep_silent_slots)
     ticker.register("force-close", sweep_force_close)
     ticker.register("slot-reminder", sweep_slot_reminders)
+    # The customer's half of the same moment: who is coming, and on what
+    # number. Registered after the technician's reminder so that on a tick
+    # where both are due, the person being announced has already been told.
+    ticker.register("customer-notice", sweep_customer_notice)
     # The only one that reports a failure already committed rather than a
     # risk still preventable. It raises a bell and charges nothing — see
     # its docstring on why a clock must not be allowed to fine anybody.

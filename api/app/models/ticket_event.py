@@ -102,6 +102,14 @@ EVENT_KINDS = (
     #: question asked after a no-show, and a push receipt is not something this
     #: system keeps.
     "reminded",
+    #: We told the CUSTOMER who is coming and on what number to reach them.
+    #:
+    #: Its own kind rather than a second `reminded`: that one records a push to
+    #: the technician and this one records a WhatsApp to a customer, and after a
+    #: complaint that nobody said who was at the door, "which of the two did we
+    #: actually send" is the whole question. `note` carries the outcome, because
+    #: Meta refusing the send is exactly the case somebody will be asking about.
+    "customer_notified",
     #: The slot is close and nobody took the job, so it LEFT the pool and became
     #: a manager's problem. Written by `tickets.sweeps.sweep_unaccepted`, in the
     #: same transaction as the status it describes.
@@ -198,8 +206,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'confirmation_sent', 'status_changed', 'assigned', 'started', "
             "'feedback_requested', 'completed', 'feedback_received', "
             "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
-            "'escalated', 'bonus_added', 'released', 'no_show', "
-            "'force_closed')",
+            "'customer_notified', 'escalated', 'bonus_added', 'released', "
+            "'no_show', 'force_closed')",
             name="kind",
         ),
         CheckConstraint(

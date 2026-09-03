@@ -86,6 +86,10 @@ export interface RulesConfig {
   renotifyGraceMinutes: number;
   /** Minutes before a slot that the technician is pushed a reminder. */
   slotReminderMinutes: number;
+  /** Minutes before a slot that the CUSTOMER is WhatsApped the technician's
+   *  name and number. Independent of the reminder above: warning technicians
+   *  and warning customers at different distances is a policy, not a mistake. */
+  customerNoticeMinutes: number;
 }
 
 /* ---------------------------------------------------------------- rules API */
@@ -111,6 +115,7 @@ interface RulesPayload {
   customerWaitHours: number;
   renotifyGraceMinutes: number;
   slotReminderMinutes: number;
+  customerNoticeMinutes: number;
 }
 
 function _toConfig(r: RulesPayload): RulesConfig {
@@ -131,6 +136,7 @@ function _toConfig(r: RulesPayload): RulesConfig {
     customerWaitHours: r.customerWaitHours,
     renotifyGraceMinutes: r.renotifyGraceMinutes,
     slotReminderMinutes: r.slotReminderMinutes,
+    customerNoticeMinutes: r.customerNoticeMinutes,
   };
 }
 
@@ -161,6 +167,7 @@ export interface RulesConfigDraft {
   customerWaitHours: number;
   renotifyGraceMinutes: number;
   slotReminderMinutes: number;
+  customerNoticeMinutes: number;
 }
 
 /**

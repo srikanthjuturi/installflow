@@ -190,6 +190,17 @@ DEFAULTS: dict[str, object] = {
     # How long before a slot the technician is reminded. The sweep runs every
     # SWEEP_INTERVAL_SECONDS, so the reminder lands within one tick of this.
     "slot_reminder_minutes": 60,
+    # How long before a slot the CUSTOMER is told who is coming and on what
+    # number to reach them.
+    #
+    # Sixty, matching the technician's own reminder rather than deriving from
+    # it. The two messages answer the same "this is about to happen" and
+    # sending them the same distance out means a customer who rings the number
+    # reaches somebody whose phone has just buzzed about the same job. They are
+    # nonetheless two independent rules: a company that wants to warn its
+    # technicians earlier than it warns its customers is expressing a real
+    # policy, not a mistake, so nothing here forces one to bound the other.
+    "customer_notice_minutes": 60,
 }
 
 #: Bounds every writer checks: the API schema, the CHECK constraints on the
@@ -207,6 +218,12 @@ LIMITS: dict[str, tuple[int, int]] = {
     "force_close_hours": (1, 240),
     "renotify_grace_minutes": (5, 720),
     "slot_reminder_minutes": (5, 1440),
+    # A day's ceiling, like the reminder: past that the message stops being
+    # "who is coming today" and becomes a scheduling notice the confirmation
+    # already sent. The floor is five because nothing can fire more precisely
+    # than one sweep tick, so a smaller number would promise what the clock
+    # cannot keep.
+    "customer_notice_minutes": (5, 1440),
     # Money, in paise. The ceiling is "above any plausible figure" rather than a
     # policy: it is there so a typo cannot charge somebody ₹1,00,000.
     "cancel_penalty_paise": (0, 10000000),

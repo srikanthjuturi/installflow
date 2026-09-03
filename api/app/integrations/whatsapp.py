@@ -247,6 +247,60 @@ def build_feedback_payload(
     )
 
 
+def build_technician_details_payload(
+    phone: str, company: str, product: str, when: str, technician: str, mobile: str
+) -> dict:
+    """"Your technician today is X, on 98xxx." Sent shortly before the slot.
+
+    The only message this system sends a customer that names a PERSON and hands
+    over their number. Everything before it is scheduling — pick a time, the
+    time is booked — and by then the customer knows when somebody is coming but
+    not who, which is the gap somebody at the door has to close by explaining
+    themselves.
+
+    Two things follow from that and neither is decoration. A stranger who was
+    announced by name is let in; one who was not is a stranger at the door.
+    And a customer who can ring the technician directly rings the technician
+    rather than the vendor, ops, or nobody — which is how a five-minute delay
+    stops becoming a missed slot and a cancellation band.
+
+    The slot is repeated even though `slot_confirmed` already stated it. That
+    message may be two days old by now, and a reminder that omits the time
+    makes the customer go looking for it.
+
+    Registered as `technician_assigned` (UTILITY, en_US, five body parameters):
+
+        Your {{2}} visit from {{1}} is today at {{3}}.
+
+        {{4}} will be attending. You can reach them on {{5}} if you need to.
+
+        Please make sure someone is available at the address.
+
+    Opens with "Your", not with {{1}}: Meta rejects a body that starts or ends
+    with a variable — subcode 2388299, which has already cost two submissions
+    here. The company is a parameter for the reason it is in every other
+    template: one WABA sends for every tenant on this platform.
+    """
+    if settings.WHATSAPP_TECHNICIAN_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_TECHNICIAN_TEMPLATE_NAME,
+            settings.WHATSAPP_TECHNICIAN_TEMPLATE_LANG,
+            [company, product, when, technician, mobile],
+        )
+    # Development only — see build_invite_payload for why a template is what
+    # makes this actually arrive.
+    return _text_payload(
+        phone,
+        (
+            f"{company}: your {product} visit is today at {when}.\n\n"
+            f"{technician} will be attending. You can reach them on {mobile} "
+            "if you need to.\n\n"
+            "Please make sure someone is available at the address."
+        ),
+    )
+
+
 #: Meta failure codes worth translating, because each one has a different fix
 #: and the raw text names none of them. Anything absent falls through to Meta's
 #: own message rather than being flattened into "something went wrong".
@@ -445,4 +499,22 @@ async def send_feedback_request(
     return await _send(
         build_feedback_payload(phone, link, company, product, technician),
         what="feedback request",
+    )
+
+
+async def send_technician_details(
+    phone: str, company: str, product: str, when: str, technician: str, mobile: str
+) -> SendResult:
+    """Tell the customer who is coming, and how to reach them. Never raises.
+
+    A refusal costs the courtesy, not the visit: the technician still turns up
+    at the time the customer already confirmed. The sweep records what Meta
+    said on the ticket's own trail, which is where somebody asking "why did
+    nobody tell me who was coming" will look.
+    """
+    return await _send(
+        build_technician_details_payload(
+            phone, company, product, when, technician, mobile
+        ),
+        what="technician details",
     )
