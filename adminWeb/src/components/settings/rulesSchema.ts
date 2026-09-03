@@ -25,6 +25,14 @@ const minutes = (min: number, max: number, label: string) =>
     .min(min, `${label} must be at least ${min} minutes`)
     .max(max, `${label} cannot exceed ${max} minutes`);
 
+/** Metres. One rule so far — the radius the proof photo is checked against. */
+const metres = (min: number, max: number, label: string) =>
+  z
+    .number({ error: `${label} is required` })
+    .int(`${label} must be a whole number of metres`)
+    .min(min, `${label} must be at least ${min} metres`)
+    .max(max, `${label} cannot exceed ${max} metres`);
+
 export const rulesSchema = z
   .object({
     penalty: z
@@ -69,6 +77,10 @@ export const rulesSchema = z
     renotifyGraceMinutes: minutes(5, 720, "Re-notification grace"),
     slotReminderMinutes: minutes(5, 1440, "Slot reminder"),
     customerNoticeMinutes: minutes(5, 1440, "Customer notice"),
+    // The floor is 50 because below it the rule refuses honest technicians
+    // more often than dishonest ones — the point on a ticket is a geocoded
+    // building centroid and the phone's fix is tens of metres wide.
+    geoRadiusM: metres(50, 5000, "Proof radius"),
   })
   .superRefine((v, ctx) => {
     // A band that charges less the later you cancel would invert the whole
@@ -135,6 +147,7 @@ export function toFormValues(rules: RulesConfig): RulesFormValues {
     renotifyGraceMinutes: rules.renotifyGraceMinutes,
     slotReminderMinutes: rules.slotReminderMinutes,
     customerNoticeMinutes: rules.customerNoticeMinutes,
+    geoRadiusM: rules.geoRadiusM,
   };
 }
 
@@ -160,5 +173,6 @@ export function toDraft(values: RulesFormValues): RulesConfigDraft {
     renotifyGraceMinutes: values.renotifyGraceMinutes,
     slotReminderMinutes: values.slotReminderMinutes,
     customerNoticeMinutes: values.customerNoticeMinutes,
+    geoRadiusM: values.geoRadiusM,
   };
 }

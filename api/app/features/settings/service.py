@@ -47,6 +47,7 @@ def _out(rules: CompanyRules) -> RulesOut:
         renotifyGraceMinutes=rules.renotify_grace_minutes,
         slotReminderMinutes=rules.slot_reminder_minutes,
         customerNoticeMinutes=rules.customer_notice_minutes,
+        geoRadiusM=rules.geo_radius_m,
     )
 
 
@@ -79,6 +80,7 @@ async def update_rules(
     rules.renotify_grace_minutes = body.renotifyGraceMinutes
     rules.slot_reminder_minutes = body.slotReminderMinutes
     rules.customer_notice_minutes = body.customerNoticeMinutes
+    rules.geo_radius_m = body.geoRadiusM
     rules.updated_by = principal.user_id
 
     # `get_db` yields a session and closes it; it does NOT commit. Every write

@@ -47,6 +47,7 @@ from app.core.realtime import (
     publish_pool_changed,
     publish_ticket_changed,
 )
+from app.core.coordinates import metres_between, metres_label
 from app.core.rules import CANCEL_PENALTY_BANDS, cancel_band_index, load_rules
 from app.core.schemas import ListParams
 from app.core.tickets import (
@@ -298,7 +299,16 @@ def serial_mismatch(t: Ticket) -> bool:
     return t.observed_serial.strip().upper() != t.serial_number.strip().upper()
 
 
-def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
+async def _geo_radius(db: AsyncSession, company_id: uuid.UUID) -> int:
+    """This company's proof radius, in metres.
+
+    One lookup per PAGE, never one per row — every caller's rows share a
+    company, because `mine_query` puts `company_id` in its WHERE clause.
+    """
+    return (await load_rules(db, company_id)).geo_radius_m
+
+
+def _job_out(offer: JobOfferOut, t: Ticket, *, geo_radius_m: int) -> JobOut:
     """The offer, plus everything that unlocks once the job is this technician's.
 
     One builder for all three callers — accept, the detail read and the list —
@@ -311,6 +321,14 @@ def _job_out(offer: JobOfferOut, t: Ticket) -> JobOut:
         customerPhone=t.customer_phone,
         address=t.address,
         state=t.state,
+        # Where the address is, and how far from it the live proof photo may be
+        # taken. Both here rather than on the offer: a coordinate pair IS the
+        # address, stated more exactly than the street line the pool withholds.
+        # The radius travels with the job so the phone blocks its own shutter
+        # on the same number the server will refuse on.
+        latitude=t.latitude,
+        longitude=t.longitude,
+        geoRadiusM=geo_radius_m,
         status=t.status,
         description=t.description,
         serialNumber=t.serial_number,
@@ -373,7 +391,10 @@ async def list_mine(
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     tickets = list(rows)
     offers = await _hydrate(db, tickets)
-    return [_job_out(o, t) for o, t in zip(offers, tickets)], total
+    radius = await _geo_radius(db, company_id)
+    return [
+        _job_out(o, t, geo_radius_m=radius) for o, t in zip(offers, tickets)
+    ], total
 
 
 async def get_job(
@@ -399,7 +420,11 @@ async def get_job(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
-    return _job_out((await _hydrate(db, [row]))[0], row)
+    return _job_out(
+        (await _hydrate(db, [row]))[0],
+        row,
+        geo_radius_m=await _geo_radius(db, company_id),
+    )
 
 
 async def list_today(
@@ -435,7 +460,8 @@ async def list_today(
     )
     tickets = list(rows)
     offers = await _hydrate(db, tickets)
-    return [_job_out(o, t) for o, t in zip(offers, tickets)]
+    radius = await _geo_radius(db, company_id)
+    return [_job_out(o, t, geo_radius_m=radius) for o, t in zip(offers, tickets)]
 
 
 async def list_pool(
@@ -664,7 +690,11 @@ async def accept(
     )
     assert row is not None
     # Now it is theirs, so the masked fields are theirs to see.
-    return _job_out((await _hydrate(db, [row]))[0], row)
+    return _job_out(
+        (await _hydrate(db, [row]))[0],
+        row,
+        geo_radius_m=await _geo_radius(db, company_id),
+    )
 
 
 # ── doing the job ────────────────────────────────────────────────────────────
@@ -753,7 +783,16 @@ async def submit_proof(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
-    _check_live_was_taken_at_the_job(artifacts, ticket=row)
+    # Hoisted out of the check so that check stays a plain predicate over the
+    # request — no session, no await, testable on its own. Safe here and only
+    # here: at this point the session holds no pending writes, so `load_rules`
+    # repairing a missing row can emit at most one INSERT on a table the
+    # guarded UPDATE below never touches. After the `TicketProof` adds it would
+    # flush those early for nothing.
+    rules = await load_rules(db, company_id)
+    metres = _check_live_was_taken_at_the_job(
+        artifacts, ticket=row, geo_radius_m=rules.geo_radius_m
+    )
 
     result = await db.execute(
         update(Ticket)
@@ -803,7 +842,17 @@ async def submit_proof(
             actor_label=started_by,
             note=(
                 f"{len(artifacts)} proof images captured"
-                + ("" if located else " — no location on the live photo")
+                + (
+                    " — no location on the live photo"
+                    if not located
+                    # Only for a ticket that HAS coordinates. On a
+                    # pincode-ruled ticket there is nothing to measure against,
+                    # and a distance from a place we do not know would be a
+                    # fabricated number on a permanent record.
+                    else f" · {metres_label(metres)} from the address"
+                    if metres is not None
+                    else ""
+                )
             ),
             from_status="Assigned",
             to_status="In Progress",
@@ -908,32 +957,69 @@ async def submit_proof(
 
 
 def _check_live_was_taken_at_the_job(
-    artifacts: list[ProofArtifactIn], *, ticket: Ticket
-) -> None:
+    artifacts: list[ProofArtifactIn], *, ticket: Ticket, geo_radius_m: int
+) -> float | None:
     """The live photo must have been taken where the job is.
 
     The app already refuses the shutter on a mismatch, but a client-side rule is
-    a rendering choice — this is the one that holds. Two conditions, and they
-    are not the same condition:
+    a rendering choice — this is the one that holds.
 
-      * the live shot must carry COORDINATES. Without this the block is
-        decorative: turning location off would be the way round it.
-      * if it also carries a postal code, that code must match the ticket's.
+    ## The live shot must carry COORDINATES, under either rule below
 
-    A null postal code with good coordinates is ACCEPTED. Reverse geocoding
+    Without this the block is decorative: turning location off would be the way
+    round it.
+
+    ## Which rule applies is decided by the TICKET, not by the photo
+
+    A ticket whose address was PICKED off a map carries its own coordinates, and
+    then distance is the whole rule — the live shot must be within the company's
+    `geo_radius_m` of it. The pincode is not consulted at all for such a ticket.
+
+    That is deliberate, and it is not an oversight for a later reader to tidy
+    up. A coordinate pair measures where the door is; a postal boundary is a
+    line drawn for the post. A technician two hundred metres from the door but
+    one street into the next pincode is at the customer's house, and the older
+    rule called that a refusal.
+
+    A ticket whose address was TYPED has no coordinates — every ticket that
+    existed before this landed, and everything the Excel and API intake channels
+    will raise — and falls to the pincode-equality rule, unchanged. A null
+    postal code with good coordinates is still ACCEPTED there: reverse geocoding
     needs map data the phone may not have, and refusing it would strand a
-    technician standing at the right door with a working GPS. The coordinates
-    are stored either way, so the position is auditable even where the label is
-    missing.
+    technician standing at the right door with a working GPS.
 
-    This cannot be a complete guarantee, and it is worth being honest about why:
-    nothing in this database maps a coordinate to a pincode, so the server
-    cannot independently verify the label the phone attached. It enforces "if
-    you tell me where you were, it must be here" — the coordinates remain the
-    evidence for anything argued afterwards.
+    ## The phone is given the benefit of the error it reports
+
+    A fix good to ±600m and a fix good to ±5m are not the same evidence, and the
+    pincode rule had an accidental escape hatch this one lacks — it no-ops
+    whenever reverse geocoding fails, which on Android needs a network. Without
+    an equivalent, a technician in a basement car park could not start the job
+    at all, and their only exit would be a cancellation penalty for a GPS
+    problem. So the phone's own reported accuracy is subtracted before
+    comparing.
+
+    Capped at the radius, because otherwise a client claiming ±50km would switch
+    the check off by lying about itself. Credit is not trust: it buys at most
+    one radius of doubt.
+
+    ## What it cannot do
+
+    Nothing in this database maps a coordinate to a pincode, so on the pincode
+    branch the server still cannot verify the label the phone attached — it
+    enforces "if you tell me where you were, it must be here". The coordinates
+    are stored under both rules, and remain the evidence for anything argued
+    afterwards.
+
+    Returns the measured distance in metres, or None when there was nothing to
+    measure — so the trail can record what was measured rather than only that
+    something was checked.
     """
-    live = [a for a in artifacts if a.kind == "live"]
-    for shot in live:
+    at_the_job = ticket.latitude is not None and ticket.longitude is not None
+    measured: float | None = None
+
+    for shot in artifacts:
+        if shot.kind != "live":
+            continue
         if shot.latitude is None or shot.longitude is None:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -942,6 +1028,28 @@ def _check_live_was_taken_at_the_job(
                     "evidences the visit. Turn location on and retake it."
                 ),
             )
+
+        if at_the_job:
+            # Narrowing for the type checker; `at_the_job` is exactly this.
+            assert ticket.latitude is not None and ticket.longitude is not None
+            measured = metres_between(
+                shot.latitude, shot.longitude, ticket.latitude, ticket.longitude
+            )
+            credit = min(shot.accuracyM or 0.0, float(geo_radius_m))
+            if measured - credit > geo_radius_m:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"The live photo was taken {metres_label(measured)} from "
+                        f"the customer's address, and this job allows "
+                        f"{metres_label(geo_radius_m)}. It must be captured at "
+                        "the customer's address."
+                    ),
+                )
+            # The pincode is NOT then checked. See the docstring: for a ticket
+            # that knows where it is, the distance IS the rule.
+            continue
+
         if shot.devicePincode and shot.devicePincode != ticket.pincode:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -951,6 +1059,8 @@ def _check_live_was_taken_at_the_job(
                     "customer's address."
                 ),
             )
+
+    return measured
 
 
 def _check_blobs_are_ours(

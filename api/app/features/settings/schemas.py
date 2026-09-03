@@ -86,6 +86,10 @@ class RulesOut(AppModel):
     renotifyGraceMinutes: int
     slotReminderMinutes: int
     customerNoticeMinutes: int
+    #: Metres. How far from the ticket's own coordinates the live proof photo
+    #: may be taken — for a ticket that HAS coordinates. One whose address was
+    #: typed is verified by pincode and this number never applies to it.
+    geoRadiusM: int
 
 
 class RulesUpdateRequest(AppModel):
@@ -115,6 +119,7 @@ class RulesUpdateRequest(AppModel):
     renotifyGraceMinutes: _bounded("renotify_grace_minutes")
     slotReminderMinutes: _bounded("slot_reminder_minutes")
     customerNoticeMinutes: _bounded("customer_notice_minutes")
+    geoRadiusM: _bounded("geo_radius_m")
 
     @model_validator(mode="after")
     def _check(self) -> "RulesUpdateRequest":

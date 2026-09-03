@@ -89,8 +89,31 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     city: Mapped[str] = mapped_column(String(120), nullable=False)
     state: Mapped[str] = mapped_column(String(120), nullable=False)
     #: Everything routes on this: technician eligibility, area-manager
-    #: visibility, and the geo-check on the proof photo.
+    #: visibility, and — for a ticket with no coordinates below — the geo-check
+    #: on the proof photo.
     pincode: Mapped[str] = mapped_column(String(6), nullable=False)
+    #: Where the address actually is, when somebody PICKED it off the map at
+    #: intake rather than typing it.
+    #:
+    #: Null is not missing data. It is the true statement "this address was
+    #: typed, not picked" — of every ticket raised before these columns
+    #: existed, and of everything the Excel and API intake channels will raise,
+    #: neither of which has a browser to run Places in. That null is what keeps
+    #: the pincode rule alive for them instead of failing them all, so nothing
+    #: should ever backfill these with a guess.
+    #:
+    #: `Float` (double precision), matching `ticket_proofs.latitude` below,
+    #: because the two are compared with each other. Hard rule 9 does not reach
+    #: here: a coordinate is a measurement that arrives with tens of metres of
+    #: error already attached, and `Numeric(9,6)` would quantise it to 11 cm
+    #: while costing `Decimal` arithmetic on the check's read path.
+    #:
+    #: ⚠ There is no address-edit path today — `create_ticket` is the only
+    #: writer. Whoever adds one must null BOTH of these unless a fresh Places
+    #: pick supplied them, or a point describing the old address silently
+    #: becomes the gate for the new one.
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     #: Which intake channel produced this ticket: 'Manual', 'Excel' or 'API' —
     #: the same three words a vendor declares in `intake_channels`.
@@ -278,6 +301,21 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             "(slot_start IS NULL) = (slot_end IS NULL) "
             "AND (slot_end IS NULL OR slot_end > slot_start)",
             name="slot_both_or_neither",
+        ),
+        # Half a point is not a place — the same shape as the slot above.
+        #
+        # Bounded to INDIA rather than to the globe, and that is the useful
+        # half. A ticket at 0,0 passes every range check ever written and sits
+        # in the Gulf of Guinea, where it would refuse every technician who
+        # attended the job, with a message about a distance nobody could make
+        # sense of. The box is what `core.coordinates.IndiaLatitude` states to
+        # pydantic; repeated here because a migration, a script and a psql
+        # session do not go through it.
+        CheckConstraint(
+            "(latitude IS NULL) = (longitude IS NULL) "
+            "AND (latitude IS NULL OR (latitude BETWEEN 6 AND 38 "
+            "AND longitude BETWEEN 68 AND 98))",
+            name="coordinates_both_or_neither",
         ),
         # TOTAL on purpose, unlike the other soft-delete uniques: a ticket
         # number must never be reused, or a deleted ticket and a live one share

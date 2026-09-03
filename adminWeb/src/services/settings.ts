@@ -90,6 +90,10 @@ export interface RulesConfig {
    *  name and number. Independent of the reminder above: warning technicians
    *  and warning customers at different distances is a policy, not a mistake. */
   customerNoticeMinutes: number;
+  /** Metres the technician's live site photo may be from the customer's
+   *  address. Only applies to a ticket whose address was picked off a map; one
+   *  typed by hand is verified against its pincode instead. */
+  geoRadiusM: number;
 }
 
 /* ---------------------------------------------------------------- rules API */
@@ -116,6 +120,7 @@ interface RulesPayload {
   renotifyGraceMinutes: number;
   slotReminderMinutes: number;
   customerNoticeMinutes: number;
+  geoRadiusM: number;
 }
 
 function _toConfig(r: RulesPayload): RulesConfig {
@@ -137,6 +142,7 @@ function _toConfig(r: RulesPayload): RulesConfig {
     renotifyGraceMinutes: r.renotifyGraceMinutes,
     slotReminderMinutes: r.slotReminderMinutes,
     customerNoticeMinutes: r.customerNoticeMinutes,
+    geoRadiusM: r.geoRadiusM,
   };
 }
 
@@ -168,6 +174,7 @@ export interface RulesConfigDraft {
   renotifyGraceMinutes: number;
   slotReminderMinutes: number;
   customerNoticeMinutes: number;
+  geoRadiusM: number;
 }
 
 /**

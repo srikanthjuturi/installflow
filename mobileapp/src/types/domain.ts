@@ -121,11 +121,32 @@ export interface Job {
    */
   sla: SlaType;
   /**
-   * How far the job is. **Optional, and absent on every real job today** —
-   * nothing stores a customer's coordinates, so there is nothing to measure
-   * from. The card omits the segment rather than printing a guess.
+   * How far the job is. **Optional, and still absent on every real job** —
+   * and it stays that way even though `latitude` below now exists.
+   *
+   * Filling it would need the TECHNICIAN's position on a list screen, which is
+   * a different thing from the customer's: it would mean holding a GPS fix
+   * while browsing, and the pool must not locate the customer at all. The card
+   * omits the segment rather than printing a guess.
    */
   distanceLabel?: string;
+  /**
+   * Where the customer's address is, on an ACCEPTED job whose address was
+   * picked off a map at intake. Null otherwise — including on every pool
+   * offer, because a coordinate pair is the address the pool masks.
+   *
+   * Null is not missing data; it selects the other proof rule. See
+   * `features/proof` — with a point the live photo is verified by distance,
+   * without one by pincode.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
+  /**
+   * Metres the live proof photo may be from that point, as this company's
+   * Rules configuration sets it. Null when the server did not send one, which
+   * means the same as a null latitude: use the pincode rule.
+   */
+  geoRadiusM?: number | null;
   /**
    * Integer paise. Never a float — format at the edge.
    *

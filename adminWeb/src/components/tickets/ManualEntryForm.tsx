@@ -98,6 +98,8 @@ export function ManualEntryForm({
       city: "",
       state: "",
       pincode: "",
+      latitude: null,
+      longitude: null,
       expectedDate: "",
       serviceLevelHours: 24,
       slotStart: "",
@@ -124,9 +126,11 @@ export function ManualEntryForm({
   const city = useWatch({ control, name: "city" });
   const state = useWatch({ control, name: "state" });
   const pincode = useWatch({ control, name: "pincode" });
+  const latitude = useWatch({ control, name: "latitude" });
+  const longitude = useWatch({ control, name: "longitude" });
   const addressValue = useMemo<AddressValue>(
-    () => ({ address, addressLine2: "", city, state, pincode }),
-    [address, city, state, pincode]
+    () => ({ address, addressLine2: "", city, state, pincode, latitude, longitude }),
+    [address, city, state, pincode, latitude, longitude]
   );
   const setAddress = useCallback(
     (next: AddressValue) => {
@@ -134,6 +138,12 @@ export function ManualEntryForm({
       setValue("city", next.city, { shouldDirty: true });
       setValue("state", next.state, { shouldDirty: true });
       setValue("pincode", next.pincode, { shouldDirty: true });
+      // Set together with the address they describe, and nulled by
+      // `AddressFields` the moment one of the boxes above is hand-edited — a
+      // point that has stopped matching its address is worse than no point,
+      // because the server enforces it against the technician who turns up.
+      setValue("latitude", next.latitude ?? null, { shouldDirty: true });
+      setValue("longitude", next.longitude ?? null, { shouldDirty: true });
     },
     [setValue]
   );
@@ -219,6 +229,11 @@ export function ManualEntryForm({
       city: values.city,
       state: values.state,
       pincode: values.pincode,
+      // Null when the address was typed. Sending them buys the distance check
+      // on the technician's site photo; not sending them leaves this ticket on
+      // the pincode rule, which is a complete ticket either way.
+      latitude: values.latitude,
+      longitude: values.longitude,
       expectedDate: values.expectedDate,
       serviceLevelHours: values.serviceLevelHours,
       // Already ISO instants — the picker stores the window it offered, so

@@ -128,6 +128,16 @@ class CompanyRules(Base, IdMixin, AuditMixin):
         Integer, nullable=False, server_default=text("60")
     )
 
+    # ── where ────────────────────────────────────────────────────────────────
+
+    #: Metres between the live proof photo and the ticket's own coordinates.
+    #: Consulted only for a ticket that HAS coordinates — a ticket whose
+    #: address was typed is verified by pincode and this number never applies
+    #: to it. See `core.rules.DEFAULTS` for why a kilometre.
+    geo_radius_m: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1000")
+    )
+
     __table_args__ = (
         UniqueConstraint("company_id", name="uq_company_rules_company"),
         _band_list("cancel_penalties_paise", CANCEL_PENALTY_COUNT),
@@ -141,6 +151,7 @@ class CompanyRules(Base, IdMixin, AuditMixin):
         _between("renotify_grace_minutes", "renotify_grace_minutes"),
         _between("slot_reminder_minutes", "slot_reminder_minutes"),
         _between("customer_notice_minutes", "customer_notice_minutes"),
+        _between("geo_radius_m", "geo_radius_m"),
         # Escalating before the customer can even be asked to confirm is a
         # contradiction: the slot has to exist before it can go unassigned.
         CheckConstraint(

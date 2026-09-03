@@ -68,9 +68,22 @@ export interface AddressValue {
   city: string;
   state: string;
   pincode: string;
+  /**
+   * Where the address is, set ONLY by picking it from the search box.
+   *
+   * Null after any hand edit, and that is enforced below rather than left to
+   * each caller. A point that describes the address as it was picked stops
+   * describing it the moment somebody retypes the street line — and the server
+   * ENFORCES this point when verifying the technician's site photo, so a stale
+   * one would refuse a technician standing at the right door. No point is a
+   * supported state; a wrong point is not.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
-type Part = keyof AddressValue;
+/** The text boxes. The coordinates are not one, which is why they are excluded. */
+type Part = Exclude<keyof AddressValue, "latitude" | "longitude">;
 
 export interface AddressFieldsProps {
   value: AddressValue;
@@ -259,7 +272,19 @@ export function AddressFields({
   }, [value.pincode, master]);
 
   const label = (part: Part) => labels?.[part] ?? DEFAULT_LABELS[part];
-  const set = (patch: Partial<AddressValue>) => onChange({ ...value, ...patch });
+  /**
+   * A hand edit to any box, which is also where the map point is thrown away.
+   *
+   * This is the single funnel for typing, so it is the right place for it: the
+   * coordinates describe the address that was PICKED, and the moment a
+   * character is typed they describe something else. Keeping them would hand
+   * the server a point it enforces against the technician who turns up.
+   *
+   * The Places pick and the two pincode auto-fills call `onChange` directly
+   * and so are unaffected — none of the three is somebody retyping an address.
+   */
+  const set = (patch: Partial<AddressValue>) =>
+    onChange({ ...value, ...patch, latitude: null, longitude: null });
 
   const status: AddressStatus = !SIX_DIGITS.test(value.pincode.trim())
     ? "idle"
@@ -333,6 +358,10 @@ export function AddressFields({
       // above replaces it with the master's spelling a moment later.
       state: next.state,
       pincode: next.pincode,
+      // The one moment these are valid: they came back with the address on
+      // this same pick. `set` nulls them again on any hand edit.
+      latitude: next.latitude,
+      longitude: next.longitude,
     });
   }
 

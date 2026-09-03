@@ -169,7 +169,20 @@ export function useAddressAutocomplete(): AddressAutocomplete {
       token.current = null;
       try {
         await place.fetchFields({
-          fields: ["formattedAddress", "addressComponents", "displayName"],
+          // `location` is on the SAME call and the same billed session — it is
+          // a Places field, not the Geocoding API. That distinction is the
+          // whole reason this is safe: see the warning above for what calling
+          // Geocoding did to the SDK. Nothing new has to be enabled on the key.
+          //
+          // It is what lets the proof photo be verified by DISTANCE from the
+          // customer's address instead of by pincode equality, so an address
+          // picked here is worth materially more than one typed by hand.
+          fields: [
+            "formattedAddress",
+            "addressComponents",
+            "displayName",
+            "location",
+          ],
         });
         return partsFromPlace(place);
       } catch {

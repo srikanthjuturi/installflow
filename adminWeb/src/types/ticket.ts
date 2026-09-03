@@ -116,6 +116,18 @@ export interface Ticket {
   city: string;
   state: string;
   pincode: string;
+  /**
+   * Null when the address was typed rather than picked off a map — every
+   * ticket raised before this existed, and everything the Excel and API intake
+   * channels raise.
+   *
+   * Worth surfacing because it decides which rule the technician's proof photo
+   * is judged by: a ticket with a point is verified by distance, one without
+   * by pincode. "Why was this technician refused and that one not" is
+   * otherwise unanswerable from the console.
+   */
+  latitude: number | null;
+  longitude: number | null;
 
   /** ISO date. */
   expectedDate: string;
@@ -267,6 +279,17 @@ export interface CreateTicketInput {
   city: string;
   state: string;
   pincode: string;
+  /**
+   * Where the address is, when it was picked from the search box rather than
+   * typed. Both or neither — the API refuses one without the other.
+   *
+   * Omitting them is normal, not a degraded ticket: it is what the Excel and
+   * API intake channels will always do. What they buy is the proof check —
+   * with a point, the technician's site photo is verified by DISTANCE from it;
+   * without one, by pincode equality, which passes from the wrong street.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
   expectedDate: string;
   serviceLevelHours: ServiceLevelHours;
   slotStart?: string | null;
