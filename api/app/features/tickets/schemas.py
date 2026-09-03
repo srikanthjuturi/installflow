@@ -18,6 +18,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.core.coordinates import IndiaLatitude, IndiaLongitude
 from app.core.phone import Phone
 from app.core.schemas import AppModel
 from app.core.service_types import SERVICE_TYPES
@@ -55,6 +56,19 @@ class TicketCreateRequest(BaseModel):
     city: CityState
     state: CityState
     pincode: Pincode
+    #: Where the address is, when the client resolved it through a map rather
+    #: than the user typing it. Optional, and both or neither.
+    #:
+    #: Sending them buys a real proof check — the live site photo is then
+    #: verified by DISTANCE from this point instead of by pincode equality. Not
+    #: sending them is not a degraded ticket; it is what the Excel and API
+    #: intake channels will always do, and those tickets keep the pincode rule.
+    #:
+    #: Bounded to India, unlike the phone's own position on a proof artifact: a
+    #: customer address outside the country is a bug in the client, and storing
+    #: one would silently refuse every technician who ever attends the job.
+    latitude: IndiaLatitude = None
+    longitude: IndiaLongitude = None
 
     expectedDate: datetime.date
     serviceLevelHours: ServiceLevelHours = DEFAULT_SERVICE_LEVEL_HOURS
@@ -93,6 +107,12 @@ class TicketCreateRequest(BaseModel):
             )
         self.description = text or None
 
+        # Half a point is not a place — the same rule the table states as a
+        # CHECK. A latitude alone would be stored and then silently never
+        # consulted, which is worse than refusing it.
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("A map position needs both a latitude and a longitude")
+
         if (self.slotStart is None) != (self.slotEnd is None):
             raise ValueError("A slot needs both a start and an end")
         if self.slotStart and self.slotEnd and self.slotEnd <= self.slotStart:
@@ -130,6 +150,12 @@ class TicketOut(AppModel):
     city: str
     state: str
     pincode: str
+    #: Null when the address was typed rather than picked off a map. Exposed
+    #: because it decides which rule the proof photo is judged by, and "why was
+    #: this technician refused and that one not" is otherwise unanswerable from
+    #: the console.
+    latitude: float | None
+    longitude: float | None
 
     expectedDate: datetime.date
     serviceLevelHours: int

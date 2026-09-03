@@ -45,6 +45,17 @@ export const ticketSchema = z
       .string()
       .trim()
       .regex(/^\d{6}$/, "Pincode must be 6 digits"),
+    /**
+     * Where the address is, when it was PICKED from the search box rather than
+     * typed. Never entered by hand and never shown — `AddressFields` sets the
+     * pair on a pick and nulls it on any edit.
+     *
+     * Not required, and no message: an address typed by hand is a complete
+     * ticket. What it costs is the proof check — the technician's site photo
+     * is then verified against the pincode instead of against this point.
+     */
+    latitude: z.number().nullable(),
+    longitude: z.number().nullable(),
 
     expectedDate: z.string().min(1, "Expected date is required"),
     /* A literal union rather than `z.coerce.number()`: coercion makes the

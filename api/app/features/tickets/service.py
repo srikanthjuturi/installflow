@@ -513,6 +513,8 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 city=t.city,
                 state=t.state,
                 pincode=t.pincode,
+                latitude=t.latitude,
+                longitude=t.longitude,
                 expectedDate=t.expected_date,
                 serviceLevelHours=t.service_level_hours,
                 slotStart=t.slot_start,
@@ -1309,6 +1311,11 @@ async def create_ticket(
         city=body.city,
         state=body.state,
         pincode=body.pincode,
+        # Null unless the client resolved the address through a map. That null
+        # is what puts this ticket on the pincode rule at proof time rather
+        # than the distance one — see `jobs.service`.
+        latitude=body.latitude,
+        longitude=body.longitude,
         expected_date=body.expectedDate,
         service_level_hours=body.serviceLevelHours,
         slot_start=body.slotStart,
