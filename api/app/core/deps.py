@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.features import effective_features
 from app.core.security import decode_token
+from app.models.company import Company
 from app.models.membership import Membership
 from app.models.role import (
     ROLE_LABELS,
@@ -72,6 +73,25 @@ def _unauthorized(detail: str = "Not authenticated") -> HTTPException:
     )
 
 
+async def _why_refused(
+    db: AsyncSession, company_id: uuid.UUID
+) -> str:
+    """Why the caller cannot act here — the company, or their membership in it.
+
+    One extra query, on the REFUSAL path only, so it costs nothing in the normal
+    case. Worth it there: "no active membership" is simply untrue when a
+    superadmin suspended the whole company, and somebody told the wrong reason
+    goes looking in the wrong place — they ask an admin to re-add them to a
+    company that is not accepting anyone.
+    """
+    company = await db.scalar(select(Company).where(Company.id == company_id))
+    if company is None or company.deleted_at is not None:
+        return "This company no longer exists"
+    if not company.is_active:
+        return "This company is suspended"
+    return "No active membership in the selected company"
+
+
 async def get_current_principal(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -110,17 +130,28 @@ async def get_current_principal(
         except (ValueError, TypeError):
             raise _unauthorized("Invalid company in token") from None
         membership = await db.scalar(
-            select(Membership).where(
+            select(Membership)
+            .join(Company, Company.id == Membership.company_id)
+            .where(
                 Membership.user_id == user.id,
                 Membership.company_id == company_id,
                 Membership.is_active.is_(True),
                 Membership.deleted_at.is_(None),
+                # The COMPANY has to still be open, not just the membership.
+                # Neither suspending nor deleting a company touches its
+                # memberships — by design, because suspension is reversible — so
+                # without these two the rows stay live and everyone ALREADY
+                # signed in kept working in a tenant that had just been shut. The
+                # same pair already guards `_active_memberships`, which is why a
+                # fresh login was refused while an open session was not.
+                Company.is_active.is_(True),
+                Company.deleted_at.is_(None),
             )
         )
         if membership is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="No active membership in the selected company",
+                detail=await _why_refused(db, company_id),
             )
         # The membership was loaded to prove the caller belongs here; keep the
         # one field the portal needs rather than querying for it again.

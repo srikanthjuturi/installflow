@@ -8,7 +8,7 @@ import {
   type MasterAction,
 } from "@/components/masters/CategoryTree";
 import { masterNodeId } from "@/components/masters/nodeIds";
-import { ConfirmDeleteDialog } from "@/components/masters/ConfirmDeleteDialog";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { SubcategoryFormDialog } from "@/components/masters/SubcategoryFormDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -145,7 +145,7 @@ export default function CategoriesPage() {
       ) : null}
 
       {dialog?.kind === "delete-category" ? (
-        <ConfirmDeleteDialog
+        <ConfirmDialog
           open
           onOpenChange={(next) => !next && close()}
           title={`Remove ${dialog.category.name}?`}
@@ -161,7 +161,7 @@ export default function CategoriesPage() {
       ) : null}
 
       {dialog?.kind === "delete-subcategory" ? (
-        <ConfirmDeleteDialog
+        <ConfirmDialog
           open
           onOpenChange={(next) => !next && close()}
           title={`Remove ${dialog.subcategory.name}?`}
@@ -177,7 +177,7 @@ export default function CategoriesPage() {
       ) : null}
 
       {dialog?.kind === "delete-model" ? (
-        <ConfirmDeleteDialog
+        <ConfirmDialog
           open
           onOpenChange={(next) => !next && close()}
           title={`Remove ${dialog.model.name}?`}

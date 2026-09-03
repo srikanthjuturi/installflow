@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Bell,
   BellOff,
@@ -7,6 +8,7 @@ import {
   VolumeX,
 } from "lucide-react";
 
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWebPush, type WebPushState } from "@/hooks/useWebPush";
@@ -78,6 +80,7 @@ export function AlertSettings() {
   const { state, isLoading, isBusy, enable, disable } = useWebPush();
   const soundOn = useSession((s) => s.notificationSound);
   const setSound = useSession((s) => s.setNotificationSound);
+  const [disabling, setDisabling] = useState(false);
 
   const copy = COPY[state];
   const Icon = ICON[state];
@@ -136,8 +139,10 @@ export function AlertSettings() {
                     "border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
                 )}
                 disabled={isBusy}
+                // Turning them ON is constructive and fires straight through.
+                // Turning them OFF deletes the device server-side, so it asks.
                 onClick={() =>
-                  copy.action === "enable" ? enable() : disable()
+                  copy.action === "enable" ? enable() : setDisabling(true)
                 }
               >
                 {isBusy ? (
@@ -155,6 +160,17 @@ export function AlertSettings() {
           }
         />
       )}
+
+      <ConfirmDialog
+        open={disabling}
+        onOpenChange={setDisabling}
+        title="Turn off desktop alerts?"
+        description="Escalations stop reaching this computer when the console is closed. You will still see them here while it is open, and you can turn alerts back on any time."
+        confirmLabel="Turn off"
+        cancelLabel="Keep them on"
+        isPending={isBusy}
+        onConfirm={() => disable(undefined, { onSuccess: () => setDisabling(false) })}
+      />
     </div>
   );
 }

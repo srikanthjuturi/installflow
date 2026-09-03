@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -65,6 +66,8 @@ export function UsersTable({
     undefined
   );
   const [reissueOpen, setReissueOpen] = useState(false);
+  // Only the SUSPEND direction confirms. Activating is constructive.
+  const [suspending, setSuspending] = useState<CompanyUser | null>(null);
 
   const write = useParamsWriter(params, onParams);
   const update = useUpdateUser();
@@ -73,14 +76,20 @@ export function UsersTable({
   const rankOf = (roleKey: string) =>
     roles?.find((r) => r.key === roleKey)?.rank ?? -Infinity;
 
-  function toggleStatus(u: CompanyUser) {
+  /**
+   * `onDone` runs on SUCCESS only, so a failed suspend leaves the confirmation
+   * standing over the toast rather than dismissing as though it had worked.
+   */
+  function toggleStatus(u: CompanyUser, onDone?: () => void) {
     update.mutate(
       { id: u.membershipId, input: { isActive: !u.isActive } },
       {
-        onSuccess: (saved) =>
+        onSuccess: (saved) => {
           toast.add({
             title: `${saved.fullName ?? saved.email} ${saved.isActive ? "activated" : "suspended"}`,
-          }),
+          });
+          onDone?.();
+        },
         onError: (e) =>
           toast.add({
             title: "Couldn't change status",
@@ -214,9 +223,12 @@ export function UsersTable({
               size="sm"
               className="h-auto p-0 text-xs font-semibold text-ink-2"
               disabled={update.isPending}
-              onClick={() => toggleStatus(u)}
+              onClick={() =>
+                u.isActive ? setSuspending(u) : toggleStatus(u)
+              }
             >
               {u.isActive ? "Suspend" : "Activate"}
+              <span className="sr-only"> {u.fullName ?? u.email}</span>
             </Button>
             <Button
               type="button"
@@ -286,6 +298,17 @@ export function UsersTable({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         user={pendingDelete}
+      />
+      <ConfirmDialog
+        open={suspending !== null}
+        onOpenChange={(open) => !open && setSuspending(null)}
+        title={`Suspend ${suspending?.fullName ?? suspending?.email ?? "user"}?`}
+        description="They can't sign in to this company until you activate them again. Their role and access are kept."
+        confirmLabel="Suspend user"
+        isPending={update.isPending}
+        onConfirm={() =>
+          suspending && toggleStatus(suspending, () => setSuspending(null))
+        }
       />
     </>
   );

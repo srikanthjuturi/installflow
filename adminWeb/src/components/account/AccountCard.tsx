@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Check, KeyRound, LogOut, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -45,6 +47,8 @@ export function AccountCard({
   // The picker uploads the crop; this only persists the URL it hands back.
   const avatarUrl = useSession((s) => s.avatarUrl);
   const updatePhoto = useUpdateMyPhoto();
+  // Removing persists straight away (`PATCH /auth/me`), so it asks first.
+  const [removingPhoto, setRemovingPhoto] = useState(false);
 
   const facts: Array<[string, string]> = [
     ["Email", user.email],
@@ -69,7 +73,7 @@ export function AccountCard({
             {avatarUrl ? (
               <button
                 type="button"
-                onClick={() => updatePhoto.mutate(null)}
+                onClick={() => setRemovingPhoto(true)}
                 disabled={updatePhoto.isPending}
                 className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger disabled:opacity-50"
               >
@@ -153,6 +157,20 @@ export function AccountCard({
             </Button>
           </div>
         </div>
+
+        <ConfirmDialog
+          open={removingPhoto}
+          onOpenChange={setRemovingPhoto}
+          title="Remove your photo?"
+          description="Your initials show instead. You can upload a new one any time."
+          confirmLabel="Remove photo"
+          isPending={updatePhoto.isPending}
+          onConfirm={() =>
+            updatePhoto.mutate(null, {
+              onSuccess: () => setRemovingPhoto(false),
+            })
+          }
+        />
       </CardContent>
     </Card>
   );

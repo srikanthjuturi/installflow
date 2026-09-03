@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, Send } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { TechnicianInviteDialog } from "@/components/technicians/TechnicianInviteDialog";
@@ -26,6 +27,7 @@ export default function TechnicianListPage() {
   const [isFormOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Technician | undefined>(undefined);
   const [isInviteOpen, setInviteOpen] = useState(false);
+  const [cancelling, setCancelling] = useState<TechnicianRow | null>(null);
 
   const invite = useInviteTechnician();
   const resend = useResendInvite();
@@ -133,14 +135,9 @@ export default function TechnicianListPage() {
               }),
           })
         }
-        onCancel={(row: TechnicianRow) =>
-          cancel.mutate(row.id, {
-            onSuccess: () =>
-              toast.add({
-                title: `Invite to ${formatPhone(row.phone)} cancelled`,
-              }),
-          })
-        }
+        /* Cancelling an invite is a DELETE, so it asks first — the row sits
+           beside Resend and Copy link, both harmless. */
+        onCancel={(row: TechnicianRow) => setCancelling(row)}
         onCopyLink={(row: TechnicianRow) => {
           if (row.registered) return;
           void copyToClipboard(row.inviteLink).then((copied) =>
@@ -182,6 +179,32 @@ export default function TechnicianListPage() {
             ) : null}
           </div>
         }
+      />
+
+      <ConfirmDialog
+        open={cancelling !== null}
+        onOpenChange={(open) => !open && setCancelling(null)}
+        title={
+          cancelling
+            ? `Cancel the invite to ${formatPhone(cancelling.phone)}?`
+            : "Cancel this invite?"
+        }
+        description="The link stops working. You can invite this number again afterwards."
+        confirmLabel="Cancel invite"
+        cancelLabel="Keep it"
+        isPending={cancel.isPending}
+        onConfirm={() => {
+          if (!cancelling) return;
+          const row = cancelling;
+          cancel.mutate(row.id, {
+            onSuccess: () => {
+              toast.add({
+                title: `Invite to ${formatPhone(row.phone)} cancelled`,
+              });
+              setCancelling(null);
+            },
+          });
+        }}
       />
     </>
   );

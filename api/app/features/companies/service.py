@@ -20,6 +20,7 @@ from app.core.gst import GST_DUPLICATE_COMPANY, assert_gst_not_a_vendor
 from app.core.rules import load_rules
 from app.core.schemas import EmailStatus, ListParams
 from app.core.security import generate_temporary_password, hash_password
+from app.core.sessions import revoke_refresh_tokens
 from app.db.repository import paginate
 from app.emails import send_temporary_password
 from app.features.companies.schemas import (
@@ -40,12 +41,19 @@ def _slugify(name: str) -> str:
 
 
 async def _unique_slug(session: AsyncSession, name: str) -> str:
+    """The first free slug, ignoring soft-deleted companies.
+
+    `deleted_at IS NULL` matches `uq_companies_slug_lower` (partial since
+    `4c8f1b7d2e93`). Without it a deleted `acme` pushed every later Acme on to
+    `acme-2` for good — no error, just a worse slug nobody could account for.
+    """
     base = _slugify(name)
     candidate = base
     n = 2
     while await session.scalar(
         select(func.count()).select_from(Company).where(
-            func.lower(Company.slug) == candidate
+            Company.deleted_at.is_(None),
+            func.lower(Company.slug) == candidate,
         )
     ):
         candidate = f"{base}-{n}"
@@ -73,11 +81,16 @@ async def _unique_code(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=problem
             )
 
+    # `deleted_at IS NULL` matches `uq_companies_code_lower`, which
+    # `b1c4e77a9d20` created partial precisely so a retired company does not keep
+    # its code reserved forever. A deleted RGT therefore neither refuses a typed
+    # RGT nor pushes a derived one on to RGT2.
     async def taken(candidate: str) -> bool:
         return bool(
             await session.scalar(
                 select(func.count()).select_from(Company).where(
-                    func.lower(Company.code) == candidate.lower()
+                    Company.deleted_at.is_(None),
+                    func.lower(Company.code) == candidate.lower(),
                 )
             )
         )
@@ -101,24 +114,33 @@ async def _unique_code(
 async def _ensure_gst_unique(
     session: AsyncSession, gst_number: str, *, exclude_id: uuid.UUID | None = None
 ) -> None:
-    """409 if any company uses this GSTIN, soft-deleted ones INCLUDED.
+    """409 if a LIVE company uses this GSTIN.
 
-    ⚠ That is stricter than `uq_companies_gst_lower`, which `4c8f1b7d2e93` made
-    partial on `deleted_at IS NULL`. So a soft-deleted company still blocks its
-    GSTIN here even though the database would now allow it — and the blocking
-    row is invisible on every screen, which makes the 409 unexplainable. Left
-    alone deliberately; reconciling the two is its own change.
+    `deleted_at IS NULL` matches `uq_companies_gst_lower`, which `4c8f1b7d2e93`
+    made partial for the reason every unique on a soft-deleted table is: removing
+    a company frees its GSTIN rather than poisoning it forever. This check used to
+    count deleted rows too, so retiring a company and registering it again refused
+    with a 409 raised by a row invisible on every screen — nothing in the console
+    could explain it, because `list_companies` and `_load_company` both hide it.
+
+    Selects the NAME rather than counting, so the refusal can say whose number it
+    is; `assert_gst_not_the_company` does the same, for the same reason. Naming it
+    leaks nothing — every caller is a superadmin, who can already list every
+    company on the platform. The vendor twin withholds other tenants' names
+    because ITS caller is a company admin, which is a different question.
     """
-    stmt = select(func.count()).select_from(Company).where(
-        func.lower(Company.gst_number) == gst_number.lower()
+    stmt = select(Company.name).where(
+        Company.deleted_at.is_(None),
+        func.lower(Company.gst_number) == gst_number.lower(),
     )
     if exclude_id is not None:
         stmt = stmt.where(Company.id != exclude_id)
-    if await session.scalar(stmt):
+    clash = await session.scalar(stmt)
+    if clash is not None:
         raise AppError(
             status.HTTP_409_CONFLICT,
             GST_DUPLICATE_COMPANY,
-            "GST number already registered",
+            f"{clash} is already registered under GSTIN {gst_number}",
         )
 
 
@@ -357,12 +379,45 @@ async def update_company(
     )
 
 
+async def _end_sessions(session: AsyncSession, company_id: uuid.UUID) -> None:
+    """Sign out everyone who belongs to this company.
+
+    `get_current_principal` refuses a shut company on the next request, so this
+    is not what enforces the closure — it closes the SEVEN-DAY half. A refresh
+    token outlives the 30-minute access token by a week, and both clients renew
+    on a 401 without showing anybody a login screen; revoking here means the
+    renewal fails now rather than whenever the last token happens to lapse.
+
+    Refresh tokens are not company-scoped (`refresh_tokens` carries a user, no
+    company), so someone who administers two companies is signed out of both.
+    One re-login, and they come back with only the companies still open —
+    `delete_vendor` accepts exactly the same trade for the same reason.
+
+    Does not commit: the caller owns the transaction, so the revocation lands
+    with the suspension that caused it or not at all.
+    """
+    user_ids = (
+        await session.scalars(
+            select(Membership.user_id).where(
+                Membership.company_id == company_id,
+                Membership.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    for user_id in set(user_ids):
+        await revoke_refresh_tokens(session, user_id)
+
+
 async def set_status(
     session: AsyncSession, company_id: uuid.UUID, is_active: bool, principal: Principal
 ) -> CompanyOut:
     company = await _load_company(session, company_id)
     company.is_active = is_active
     company.updated_by = principal.user_id
+    # Only on the way DOWN. Activating is constructive, and there is no session
+    # left to end — suspending already took them.
+    if not is_active:
+        await _end_sessions(session, company_id)
     await session.commit()
     await session.refresh(company)
     return _company_out(company)
@@ -375,4 +430,9 @@ async def delete_company(
     company.deleted_at = datetime.now(timezone.utc)
     company.is_active = False
     company.updated_by = principal.user_id
+    # The memberships are deliberately left alone — the console promises
+    # "existing user identities are kept", and they are what a restore would need
+    # to put the company back. Nothing depends on them any more: every door now
+    # checks the COMPANY.
+    await _end_sessions(session, company_id)
     await session.commit()

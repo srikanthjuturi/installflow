@@ -581,6 +581,23 @@ Three tiers. Promote downward only when a third consumer appears — two usages 
 Nine of the twenty screens are a filtered table over a domain list. Build **one** `DataTable`
 (column defs, sort, empty/loading slots) and configure it; do not write nine tables.
 
+**Nothing deletes or suspends on a single click.** Every destructive action goes through
+`shared/ConfirmDialog`, whose title NAMES the row it is about ("Suspend Sunil Pawar?") and whose
+description says what follows and how to undo it. Three details of it are load-bearing:
+
+- **It does not close itself on confirm.** The caller closes in the mutation's `onSuccess`, so a
+  failure leaves the dialog standing over the toast instead of dismissing as though it had worked.
+- **A backdrop click does not dismiss it** — inherited from `Dialog`'s `disablePointerDismissal`.
+- **Only the destructive DIRECTION asks.** Suspend confirms; Activate fires straight through. The
+  branch belongs on the direction, never on the button.
+
+Two things are deliberately exempt. A **form save** is already two deliberate steps (you picked
+"Paused", then you pressed Save), so `EditUserDialog` and the four master form dialogs are not
+intercepted. **Sign out** is fully reversible, and a modal on the shell's most-used button is
+friction with no payoff. `ReissuePasswordDialog` and `ReissueVendorPasswordDialog` stay hand-rolled
+because they render a temporary-password panel *after* success — that is a two-phase dialog, not a
+confirm, and a primitive should not own result rendering.
+
 ---
 
 ## State management

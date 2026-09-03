@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { ConfirmDeleteDialog } from "@/components/masters/ConfirmDeleteDialog";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { VendorFormDialog } from "@/components/masters/VendorFormDialog";
 import { ReissueVendorPasswordDialog } from "@/components/masters/ReissueVendorPasswordDialog";
 import { VendorTable } from "@/components/masters/VendorTable";
@@ -97,7 +97,7 @@ export default function VendorsPage() {
         vendor={dialog?.kind === "reissue" ? dialog.vendor : undefined}
       />
 
-      <ConfirmDeleteDialog
+      <ConfirmDialog
         open={dialog?.kind === "delete"}
         onOpenChange={(open) => !open && setDialog(null)}
         title={`Remove ${dialog?.kind === "delete" ? dialog.vendor.name : "vendor"}?`}

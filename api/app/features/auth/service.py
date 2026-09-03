@@ -380,10 +380,32 @@ async def refresh_tokens(session: AsyncSession, raw_token: str) -> RefreshRespon
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User is inactive"
         )
 
+    # `last_active_company_id` is a POINTER, not a permission — it keeps naming a
+    # company after that company is suspended or deleted, and nothing here used to
+    # look. A refresh therefore minted a fresh 30-minute token for a shut tenant,
+    # every 30 minutes, for the seven days the refresh token lived: the console
+    # and the app both renew silently on a 401, so nobody ever saw a login screen
+    # and the suspension only bit a week late.
+    #
+    # Re-resolve it against the live set instead. Ending the session is the honest
+    # answer rather than quietly switching them to another of their companies: the
+    # clients cache the active company alongside the token, so a swapped claim
+    # would show one company's data under another's name.
+    company_id: uuid.UUID | None = None
+    if user.role != SUPERADMIN:
+        memberships = await _active_memberships(session, user)
+        company_id = _resolve_active_company(user, memberships)
+        if user.last_active_company_id is not None and (
+            company_id != user.last_active_company_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your access to that company has ended. Sign in again.",
+            )
+
     # Rotate: revoke the presented token, issue a fresh pair.
     row.revoked_at = now
     new_refresh = await _issue_refresh_token(session, user)
-    company_id = user.last_active_company_id if user.role != SUPERADMIN else None
     access = create_access_token(
         user.id, company_id=str(company_id) if company_id else None
     )

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import {
   DataTable,
   type Column,
@@ -51,18 +52,26 @@ export function CompanyTable({
     undefined
   );
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // Only the SUSPEND direction confirms. Activating is constructive.
+  const [suspending, setSuspending] = useState<Company | null>(null);
 
   const write = useParamsWriter(params, onParams);
   const setStatus = useSetCompanyStatus();
 
-  function toggleStatus(company: Company) {
+  /**
+   * `onDone` runs on SUCCESS only, so a failed suspend leaves the confirmation
+   * standing over the toast rather than dismissing as though it had worked.
+   */
+  function toggleStatus(company: Company, onDone?: () => void) {
     setStatus.mutate(
       { id: company.id, isActive: !company.isActive },
       {
-        onSuccess: (saved) =>
+        onSuccess: (saved) => {
           toast.add({
             title: `${saved.name} ${saved.isActive ? "activated" : "suspended"}`,
-          }),
+          });
+          onDone?.();
+        },
         onError: (err) =>
           toast.add({
             title: "Couldn't change status",
@@ -160,9 +169,10 @@ export function CompanyTable({
             size="sm"
             className="h-auto p-0 text-xs font-semibold text-ink-2"
             disabled={setStatus.isPending}
-            onClick={() => toggleStatus(c)}
+            onClick={() => (c.isActive ? setSuspending(c) : toggleStatus(c))}
           >
             {c.isActive ? "Suspend" : "Activate"}
+            <span className="sr-only"> {c.name}</span>
           </Button>
           <Button
             type="button"
@@ -217,6 +227,17 @@ export function CompanyTable({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         company={pendingDelete}
+      />
+      <ConfirmDialog
+        open={suspending !== null}
+        onOpenChange={(open) => !open && setSuspending(null)}
+        title={`Suspend ${suspending?.name ?? "company"}?`}
+        description="Everyone in this company loses access until you activate it again. Nothing is deleted."
+        confirmLabel="Suspend company"
+        isPending={setStatus.isPending}
+        onConfirm={() =>
+          suspending && toggleStatus(suspending, () => setSuspending(null))
+        }
       />
     </>
   );

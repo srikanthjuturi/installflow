@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import { ConfirmDeleteDialog } from "@/components/masters/ConfirmDeleteDialog";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { DataTable } from "@/components/shared/DataTable";
 import type { Column } from "@/components/shared/DataTable/types";
@@ -116,7 +116,7 @@ export default function VendorUsersPage() {
 
       <AddVendorUserDialog open={adding} onOpenChange={setAdding} />
 
-      <ConfirmDeleteDialog
+      <ConfirmDialog
         open={removing !== null}
         onOpenChange={(open) => !open && setRemoving(null)}
         title={`Remove ${removing?.fullName ?? "user"}?`}

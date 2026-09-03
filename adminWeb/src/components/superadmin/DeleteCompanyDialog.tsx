@@ -1,22 +1,11 @@
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { toast } from "@/components/ui/toast";
 import { useDeleteCompany } from "@/hooks/useCompanies";
 import type { Company } from "@/types/company";
 
 /**
- * Confirm-before-delete. The codebase has no shared confirm primitive, so this
- * composes one from the dialog with a destructive action. Delete is a
- * soft-delete server-side (the company is retired, not purged).
+ * Confirm-before-delete. Delete is a soft-delete server-side (the company is
+ * retired, not purged), which is what the copy promises.
  */
 export function DeleteCompanyDialog({
   open,
@@ -29,44 +18,24 @@ export function DeleteCompanyDialog({
 }) {
   const del = useDeleteCompany();
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        {company ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>Delete {company.name}?</DialogTitle>
-              <DialogDescription>
-                This retires the company and revokes its members' access to it.
-                Existing user identities are kept, but they lose this company.
-              </DialogDescription>
-            </DialogHeader>
+  if (!company) return null;
 
-            {/* The failure is reported in the toaster (App.tsx), not here. */}
-            <DialogFooter>
-              <DialogClose render={<Button type="button" variant="outline" />}>
-                Cancel
-              </DialogClose>
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={del.isPending}
-                onClick={() =>
-                  del.mutate(company.id, {
-                    onSuccess: () => {
-                      toast.add({ title: `${company.name} deleted` });
-                      onOpenChange(false);
-                    },
-                  })
-                }
-              >
-                {del.isPending ? <Spinner data-icon="inline-start" /> : null}
-                Delete company
-              </Button>
-            </DialogFooter>
-          </>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Delete ${company.name}?`}
+      description="This retires the company and revokes its members' access to it. Existing user identities are kept, but they lose this company."
+      confirmLabel="Delete company"
+      isPending={del.isPending}
+      onConfirm={() =>
+        del.mutate(company.id, {
+          onSuccess: () => {
+            toast.add({ title: `${company.name} deleted` });
+            onOpenChange(false);
+          },
+        })
+      }
+    />
   );
 }
