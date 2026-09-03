@@ -77,8 +77,10 @@ export function ModelFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Wider than it was: the photo strip is five 64px tiles plus an Add
           tile, which wrapped to a second row at the old 32rem and made a
-          half-filled gallery look broken. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+          half-filled gallery look broken. Sized with the other two-column form
+          dialogs (Add user, Add technician) so the paired fields line up the
+          same way across the console. */}
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
         <ModelForm
           subcategory={subcategory}
           model={model}
@@ -546,7 +548,11 @@ function ServiceTypeField({
       }
     >
 
-      <div className="grid gap-2">
+      {/* Three across on a wide dialog: the options are alternatives to weigh
+          against each other, and a row compares them at a glance where a stack
+          reads as a checklist. Grid, not flex, so the cards match height
+          however unevenly the hints wrap. Stacked on narrow screens. */}
+      <div className="grid gap-2 sm:grid-cols-3">
         {SERVICE_TYPES.map((type) => {
           const checked = value.includes(type);
           return (
