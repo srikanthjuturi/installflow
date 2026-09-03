@@ -284,6 +284,27 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
             )}
           />
         </RuleCard>
+
+        {/* Its own card rather than a ninth row in "Timing", which measures
+            every one of its values in hours or minutes. This one is metres. */}
+        <RuleCard title="Proof location">
+          <FieldGroup className="gap-3">
+            <SpanField
+              id="geo-radius"
+              label="Site photo must be within"
+              unit="metres"
+              hint="How far from the customer's address the technician's live site photo may be taken."
+              error={errors.geoRadiusM?.message}
+              register={register("geoRadiusM", { valueAsNumber: true })}
+            />
+          </FieldGroup>
+          <p className="mt-3.5 text-xs text-ink-3">
+            Only applies to a ticket whose address was picked from the map at
+            intake; one typed by hand is checked against its pincode instead.
+            Keep this generous — the map pin is the building, not the door, and
+            can sit a few hundred metres out on a large complex or a rural plot.
+          </p>
+        </RuleCard>
       </div>
 
       <div className="mt-3.5 flex flex-wrap items-center justify-end gap-2.5">

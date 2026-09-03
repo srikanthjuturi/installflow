@@ -201,6 +201,20 @@ DEFAULTS: dict[str, object] = {
     # technicians earlier than it warns its customers is expressing a real
     # policy, not a mistake, so nothing here forces one to bound the other.
     "customer_notice_minutes": 60,
+    # Metres. How far the live proof photo may be from the ticket's OWN
+    # coordinates.
+    #
+    # A kilometre, and it is deliberately loose. The point on a ticket is a
+    # geocoded one — Google returns the plot or building centroid, not the door
+    # — and for an apartment complex, a gated layout or a rural plot that sits
+    # a hundred to three hundred metres off, systematically rather than
+    # randomly. The phone's own fix adds tens of metres more. A kilometre is
+    # tight enough that a photograph from the next suburb fails and loose
+    # enough that a technician in the right stairwell does not.
+    #
+    # Consulted ONLY for a ticket that carries coordinates. One whose address
+    # was typed is on the pincode rule, and this number does not apply to it.
+    "geo_radius_m": 1000,
 }
 
 #: Bounds every writer checks: the API schema, the CHECK constraints on the
@@ -224,6 +238,14 @@ LIMITS: dict[str, tuple[int, int]] = {
     # than one sweep tick, so a smaller number would promise what the clock
     # cannot keep.
     "customer_notice_minutes": (5, 1440),
+    # Metres. The floor is fifty because below it the rule refuses honest
+    # technicians more often than dishonest ones: a consumer GPS fix and a
+    # geocoded plot centroid are each tens of metres wide on their own, and a
+    # check nobody can pass is not a check. The ceiling catches the ten-times
+    # typo on the default — past five kilometres this stops meaning "at the
+    # customer's address" and starts meaning "in the city", which is what the
+    # pincode rule already did, worse.
+    "geo_radius_m": (50, 5000),
     # Money, in paise. The ceiling is "above any plausible figure" rather than a
     # policy: it is there so a typo cannot charge somebody ₹1,00,000.
     "cancel_penalty_paise": (0, 10000000),
