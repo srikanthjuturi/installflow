@@ -101,7 +101,7 @@ function windowCaption(
 
 /** Each ledger kind gets its own icon and tint — a penalty must never skim as a payout. */
 const KIND_STYLE: Record<TransactionKind, { icon: IconName; fg: string; bg: string }> = {
-  install: { icon: 'card', fg: color.statusCompleted.fg, bg: color.statusCompleted.bg },
+  payout: { icon: 'card', fg: color.statusCompleted.fg, bg: color.statusCompleted.bg },
   bonus: { icon: 'gift', fg: palette.secondary[600], bg: palette.secondary[100] },
   penalty: { icon: 'warn', fg: color.statusCancelled.fg, bg: color.statusCancelled.bg },
 };
@@ -237,29 +237,6 @@ export function EarningsScreen() {
                 Net payout after penalties
               </Text>
 
-              {/* The dash needs a reason, or it reads as a broken screen.
-                  Nothing prices an install yet, so `net` and `earned` have no
-                  source — and inventing one from bonuses minus penalties
-                  would show a technician who cancelled once a NEGATIVE week's
-                  pay for work nobody has counted.
-
-                  New copy: the prototype never had to say this, because its
-                  numbers were made up. It goes when payouts land. */}
-              {summary.data.netPaise === null ? (
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_400Regular',
-                    fontSize: 11.5,
-                    lineHeight: 16,
-                    color: color.textOnChrome,
-                    marginTop: 8,
-                  }}
-                >
-                  Job payouts are not set up yet. Bonuses and penalties below
-                  are live.
-                </Text>
-              ) : null}
-
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <ChromeTile
                   label="Earned"
@@ -321,11 +298,10 @@ export function EarningsScreen() {
           ) : ledger.isError ? (
             <ErrorState onRetry={() => ledger.refetch()} />
           ) : ledger.data.length === 0 ? (
-            /* The approved body read "Completed jobs will appear here." It
-               cannot say that while nothing prices an install — it would
-               contradict the line in the hero directly above it, and promise
-               a technician that finishing work would show up here when it
-               will not. New copy; the original returns with payouts. */
+            /* The approved body is back. It was replaced while nothing priced
+               an install — promising that finishing work would show up here
+               would have contradicted the hero directly above it — and payouts
+               now land in this list, so it is true again. */
             /* "Yet" is about a period still running, so a span they picked out
                of the past needs its own line — otherwise picking 12–15 August
                reports that nothing has happened there so far. */
@@ -339,7 +315,7 @@ export function EarningsScreen() {
               <EmptyState
                 icon="wallet"
                 title="No transactions yet"
-                body="Bonuses and penalties will appear here."
+                body="Completed jobs will appear here."
               />
             )
           ) : (

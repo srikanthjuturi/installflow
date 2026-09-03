@@ -7,7 +7,7 @@ import type {
 } from '@/types/domain';
 
 /**
- * Earnings — real, and honest about the half that does not exist yet.
+ * Earnings — all four figures real.
  *
  *   getEarningsSummary → GET /earnings/summary?period=day|week|month
  *                        GET /earnings/summary?dateFrom=…&dateTo=…
@@ -16,22 +16,25 @@ import type {
  * Both are scoped to the signed-in technician by the server; there is no id to
  * pass and no way to ask about anybody else.
  *
- * ## `net` and `earned` come back NULL, on purpose
+ * ## The arithmetic
  *
- * Nothing prices an install. `tickets` has no payout column, so what the JOBS
- * pay is unknown — and with it unknown, so is the net. `formatPaise` renders
- * both as "—", which is the same thing `payoutPaise` has done on every job
- * card since the pool bound.
+ *   net = earned + bonuses − penalties
  *
- * The tempting substitute is bonuses minus penalties. It would be worse than
- * a dash: a technician who cancelled once and earned no bonus would open this
- * screen to −₹300 presented as their week's pay, having done five installs
- * nothing has counted.
+ * All four are summed from `ledger_entries` in ONE grouped query over one
+ * window, so the three tiles and the big number above them can never be read
+ * from different moments. Penalties arrive POSITIVE — a magnitude, with `kind`
+ * carrying the direction — and this screen applies the sign where it can be
+ * seen.
+ *
+ * `net` and `earned` were null until installs were priced, and this comment
+ * used to explain why. The refusal is still worth remembering: substituting
+ * bonuses minus penalties in the meantime would have shown a technician who
+ * cancelled once and did five unpriced installs −₹300 as their week's pay.
  */
 
 interface SummaryDto {
-  netPaise: number | null;
-  earnedPaise: number | null;
+  netPaise: number;
+  earnedPaise: number;
   bonusesPaise: number;
   penaltiesPaise: number;
   /**

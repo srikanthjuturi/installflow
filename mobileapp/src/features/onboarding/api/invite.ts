@@ -52,6 +52,14 @@ export interface SelfRegisterBody {
   profileImageUrl?: string | null;
   subcategoryIds: string[];
   pincodes: string[];
+  /**
+   * Where earnings should be paid — a UPI VPA. Optional, and normally omitted:
+   * somebody joining on their phone may not have their UPI handle to hand, and
+   * refusing to create the account over it would strand them on a form after
+   * they have already proved their number. They add it later on
+   * Profile → Payout account.
+   */
+  upiId?: string | null;
 }
 
 export function resolveInvite(token: string): Promise<InviteDetails> {

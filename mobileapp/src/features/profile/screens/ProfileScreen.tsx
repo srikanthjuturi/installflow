@@ -22,12 +22,12 @@ import { palette } from '@/theme/tokens';
  */
 const SETTINGS: { label: string; value: string; icon: IconName }[] = [
   // English is a fact about this build — there is no i18n and no language
-  // setting to read. The payout account is NOT: those digits were invented,
-  // and a technician reading them would believe their money is going to an
-  // account ending 4432. There is no payout account anywhere in the schema
-  // yet, so this renders the same dash every unknown value does.
+  // setting to read, so this row stays a value rather than becoming a link.
+  //
+  // Payout account left this list when `technician_profiles.upi_id` landed:
+  // it is now a real, editable field, so it is a navigable row beside
+  // Availability & bandwidth rather than a static one showing a dash.
   { label: 'Language', value: 'English', icon: 'globe' },
-  { label: 'Payout account', value: '—', icon: 'wallet' },
 ];
 
 /**
@@ -235,6 +235,56 @@ export function ProfileScreen() {
                     }}
                   >
                     Availability &amp; bandwidth
+                  </Text>
+                  <Icon name="chevronRight" size={19} color={color.textMuted} />
+                </View>
+              )}
+            </Pressable>
+
+            {/* Where their money goes. A link rather than a value, because it
+                is theirs to change — the one place a technician can set it
+                without asking a manager. The VPA itself is shown beside the
+                chevron so the common question ("is it the right account?") is
+                answered without opening the screen. */}
+            <Pressable
+              onPress={() => router.push('/payout-account')}
+              accessibilityRole="button"
+              accessibilityLabel="Payout account"
+            >
+              {({ pressed }) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 13,
+                    paddingVertical: 15,
+                    paddingHorizontal: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: palette.neutral[100],
+                    backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
+                  }}
+                >
+                  <Icon name="wallet" size={21} color={color.textLabel} strokeWidth={1.7} />
+                  <Text
+                    style={{
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 14.5,
+                      color: color.textPrimary,
+                    }}
+                  >
+                    Payout account
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      textAlign: 'right',
+                      fontFamily: 'Roboto_400Regular',
+                      fontSize: 13,
+                      color: color.textMuted,
+                    }}
+                  >
+                    {me?.upiId ?? '—'}
                   </Text>
                   <Icon name="chevronRight" size={19} color={color.textMuted} />
                 </View>

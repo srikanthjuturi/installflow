@@ -57,6 +57,15 @@ export interface TechnicianSession {
   /** Null means no limit — the default until they set one. */
   dailyJobCap: number | null;
   /**
+   * Where their earnings are paid — a UPI VPA, `name@bank`.
+   *
+   * Null means they have not given one, which is the normal state for a new
+   * technician: neither onboarding mode requires it. Profile → Payout account
+   * shows "—" and lets them set it. It costs only the ability to be PAID; the
+   * ledger credits them either way.
+   */
+  upiId: string | null;
+  /**
    * Jobs already held for TODAY, counted the way the cap is enforced.
    *
    * Not derived from `/jobs/today`: that list drops closed jobs, so it reads
@@ -150,11 +159,17 @@ export interface Job {
   /**
    * Integer paise. Never a float — format at the edge.
    *
-   * **Null on every real job today.** There is no payout column on `tickets`;
-   * what a job pays belongs to the ledger, which does not exist yet. Renders
-   * as "—", never ₹0 — a zero is a claim about money nobody has made.
+   * What this job pays, stamped onto the ticket at intake from the product
+   * model — so a repricing next month never changes what somebody was offered.
+   *
+   * NOT nullable: `product_models` cannot hold an unpriced row, so the ticket
+   * column is NOT NULL and "—" is not a state this can reach.
+   *
+   * There is deliberately no vendor price here. What the vendor is charged is
+   * not part of what a technician is shown, and the server's job shapes carry
+   * no such field to leak.
    */
-  payoutPaise: number | null;
+  payoutPaise: number;
   /**
    * Integer paise, on top of the payout. What a manager attached to this job
    * after nobody took it the first time and it escalated to the Area Service
@@ -241,7 +256,15 @@ export interface Technician {
 
 
 
-export type TransactionKind = 'install' | 'bonus' | 'penalty';
+/**
+ * `payout` was `install` until installs were priced and the ledger grew a
+ * writer for them. Renamed to match the server's `LEDGER_KINDS`, and because a
+ * Tech Visit or a Service call pays through the same row without being an
+ * install. The ROW'S TITLE still reads "Install · <model>" for an
+ * installation — that is the approved prototype's own wording and it comes
+ * from the server, which stored it when the money moved.
+ */
+export type TransactionKind = 'payout' | 'bonus' | 'penalty';
 
 export interface Transaction {
   id: string;
@@ -282,22 +305,15 @@ export const MAX_RANGE_DAYS = 366;
 
 export interface EarningsSummary {
   /**
-   * **Null on every real account today, and that is the honest answer.**
+   * Earned + bonuses − penalties, in paise.
    *
-   * Net is earned + bonuses − penalties, and `earnedPaise` below has no
-   * source — nothing prices an install. With one term unknown the sum is
-   * unknown, so this renders "—" rather than a figure.
-   *
-   * Showing bonuses minus penalties instead would not be a smaller truth: a
-   * technician who cancelled once and earned no bonus would see −₹300
-   * presented as their week's pay, having done five installs nothing counted.
+   * MAY BE NEGATIVE, in a week of heavy cancellation and little work — that is
+   * a true thing to say, and `formatPaise` renders the minus. The monthly
+   * penalty cap is what stops it running away.
    */
-  netPaise: number | null;
-  /**
-   * What the JOBS paid. Null until `tickets` has a payout column — the same
-   * absence `Job.payoutPaise` has reported since the pool bound.
-   */
-  earnedPaise: number | null;
+  netPaise: number;
+  /** What the JOBS paid — `payout` ledger entries, written at closure. */
+  earnedPaise: number;
   /** Real. Escalation bonuses credited in the period. */
   bonusesPaise: number;
   /** Real, and positive — a magnitude. The screen signs and colours it. */

@@ -32,8 +32,16 @@ interface JobOfferDto {
   slotEnd: string;
   serviceLevelHours: number;
   maskedCustomer: string;
-  /** Always null today — there is no payout column. Renders as "—". */
-  payoutPaise: number | null;
+  /**
+   * What this job pays, in paise — stamped onto the ticket at intake from the
+   * product model, so a repricing never changes what somebody was offered.
+   *
+   * Not nullable: `product_models` cannot hold an unpriced row, so the ticket
+   * column is NOT NULL too. There is no vendor price on this shape and there
+   * must never be one — what the vendor is charged is not the technician's
+   * business, and the server's job schemas carry no such field.
+   */
+  payoutPaise: number;
   /**
    * A re-notification bonus, in paise. Null unless a manager funded one after
    * this job escalated for want of anybody taking it.

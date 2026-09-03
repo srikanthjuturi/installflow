@@ -91,6 +91,12 @@ export function RegisterVerifyScreen() {
         profileImageUrl: null,
         subcategoryIds: draft.subcategoryIds,
         pincodes: draft.pincodes,
+        // Empty means "not given", which is the common answer — sent as null so
+        // the server stores no account rather than an empty string. A draft
+        // persisted before this field existed has no `upiId` at all, hence the
+        // fallback; bumping the persist version instead would have discarded
+        // every registration already in flight.
+        upiId: draft.upiId?.trim() || null,
       });
 
       if (!result.technicianProfile) {
