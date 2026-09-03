@@ -40,6 +40,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
+import { paiseToRupeeInput as toRupeeInput } from "@/utils/money";
 import { useCreateModel, useUpdateModel } from "@/hooks/useProductMaster";
 import { useVendorOptions } from "@/hooks/useVendors";
 import type { VendorOption } from "@/types/vendor";
@@ -127,6 +128,10 @@ function ModelForm({
         model?.warrantyMonths === null || model?.warrantyMonths === undefined
           ? ""
           : String(model.warrantyMonths),
+      // Paise on the wire, rupees in the box. Blank on a new model rather than
+      // a suggested figure: a price nobody chose is a price nobody checked.
+      technicianPayoutPaise: toRupeeInput(model?.technicianPayoutPaise),
+      vendorPricePaise: toRupeeInput(model?.vendorPricePaise),
       imageUrls: model?.imageUrls ?? [],
       status: statusOf(model?.isActive ?? true),
     },
@@ -174,6 +179,12 @@ function ModelForm({
       warrantyMonths: values.warrantyMonths.trim()
         ? Number(values.warrantyMonths)
         : null,
+      // Rupees in the box, paise on the wire — hard rule 9, and the same
+      // convention `tickets.bonusPaise` uses. (The Rules screen sends rupees
+      // and converts server-side; that difference is deliberate and recorded
+      // in `api/app/features/settings/schemas.py`.)
+      technicianPayoutPaise: Number(values.technicianPayoutPaise) * 100,
+      vendorPricePaise: Number(values.vendorPricePaise) * 100,
       imageUrls: values.imageUrls,
       isActive: values.status === "Active",
     };
@@ -339,6 +350,76 @@ function ModelForm({
             ) : (
               <FieldDescription id="model-warranty-hint">
                 Optional. Months, not years.
+              </FieldDescription>
+            )}
+          </Field>
+        </FieldGroup>
+
+        <FieldSeparator />
+
+        {/* Side by side because they are the two halves of one decision — what
+            this job is worth — and the margin between them is only legible
+            when both are on screen at once.
+
+            Neither party sees the other's figure. The vendor's intake form
+            shows what it costs them; the technician's app shows what they
+            earn. The server withholds each from the other, so this pair is the
+            one place both numbers appear together. */}
+        <FieldGroup className="grid gap-5 sm:grid-cols-2">
+          <Field data-invalid={errors.technicianPayoutPaise ? true : undefined}>
+            <FieldLabel htmlFor="model-payout">Paid to technician (₹)</FieldLabel>
+            <Input
+              id="model-payout"
+              inputMode="numeric"
+              placeholder="e.g. 450"
+              aria-invalid={errors.technicianPayoutPaise ? true : undefined}
+              aria-describedby={
+                errors.technicianPayoutPaise
+                  ? "model-payout-error"
+                  : "model-payout-hint"
+              }
+              {...register("technicianPayoutPaise")}
+            />
+            {errors.technicianPayoutPaise ? (
+              <FieldDescription
+                id="model-payout-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.technicianPayoutPaise.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-payout-hint">
+                Required. What a technician earns for one job on this model.
+              </FieldDescription>
+            )}
+          </Field>
+
+          <Field data-invalid={errors.vendorPricePaise ? true : undefined}>
+            <FieldLabel htmlFor="model-price">Charged to vendor (₹)</FieldLabel>
+            <Input
+              id="model-price"
+              inputMode="numeric"
+              placeholder="e.g. 1200"
+              aria-invalid={errors.vendorPricePaise ? true : undefined}
+              aria-describedby={
+                errors.vendorPricePaise
+                  ? "model-price-error"
+                  : "model-price-hint"
+              }
+              {...register("vendorPricePaise")}
+            />
+            {errors.vendorPricePaise ? (
+              <FieldDescription
+                id="model-price-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.vendorPricePaise.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-price-hint">
+                Required. What the vendor pays to raise one of these tickets.
               </FieldDescription>
             )}
           </Field>

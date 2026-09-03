@@ -41,6 +41,17 @@ export interface ProductModel {
   /** 0–240. Null means nobody has recorded it yet, not "no warranty". */
   warrantyMonths: number | null;
   /**
+   * What a technician earns for one job on this model, in PAISE.
+   *
+   * `null` NEVER means unpriced — the column is NOT NULL. It means the caller
+   * is a **vendor**, and the server withholds this from them: what we pay a
+   * technician is not part of what a vendor bought. Ops always get a number.
+   */
+  technicianPayoutPaise: number | null;
+  /** What the vendor is charged to raise one of these, in PAISE. Everyone who
+   *  can see the model sees this — including the vendor, whose price it is. */
+  vendorPricePaise: number;
+  /**
    * Up to five http(s) URLs into blob storage, ordered — the first is the
    * thumbnail. The API rejects `data:` on purpose: a base64 photo in every list
    * response is expensive, so the file is uploaded and only its URL stored.
@@ -111,6 +122,10 @@ export interface CreateModelInput {
   serviceTypes: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
+  /** Both REQUIRED, in paise. The API columns are NOT NULL, so a model saved
+   *  without them is one no ticket could be raised against. */
+  technicianPayoutPaise: number;
+  vendorPricePaise: number;
   imageUrls?: string[];
   isActive: boolean;
 }
@@ -124,6 +139,10 @@ export interface UpdateModelInput {
   serviceTypes?: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
+  /** Repricing is allowed; UNpricing is not, so omit to leave alone — there is
+   *  no null that clears these, the way there is for `capacity`. */
+  technicianPayoutPaise?: number;
+  vendorPricePaise?: number;
   /** Sent whole — an empty array clears the gallery. */
   imageUrls?: string[];
   isActive?: boolean;

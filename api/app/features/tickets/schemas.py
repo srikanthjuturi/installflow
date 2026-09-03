@@ -261,6 +261,21 @@ class TimelineEventOut(AppModel):
 class TicketDetailOut(TicketOut):
     timeline: list[TimelineEventOut] = []
 
+    #: What the technician was ACTUALLY credited for this job, in paise.
+    #:
+    #: Read from `ledger_entries`, not stored on the ticket, and that is the
+    #: point: the ledger is where money lives, and a column here could drift
+    #: from it. Normally equal to `technicianPayoutPaise`, but a force-closure
+    #: credits an amount the manager chose — often less, sometimes nothing.
+    #:
+    #: Null means nothing has been credited yet, which is every open ticket and
+    #: also a force-closure the manager paid nothing for. Both render "—";
+    #: neither is ₹0, which would assert a payment of zero was made.
+    #:
+    #: Withheld from a vendor, exactly as `technicianPayoutPaise` is — it is the
+    #: same fact, one step later.
+    technicianCreditedPaise: int | None = None
+
 
 class TicketProofOut(AppModel):
     """One proof image, as ops and the vendor see it.

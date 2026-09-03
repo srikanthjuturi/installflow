@@ -115,6 +115,15 @@ export default function ForceClosePage() {
         reason: values.reason,
         notes: values.notes,
         attachments,
+        // Rupees in the box, paise on the wire. An empty box means "credit
+        // nothing", which the API writes as no ledger row at all — so 0 and
+        // omitted say the same thing, deliberately.
+        //
+        // Only sent when somebody holds the job; with no technician there is
+        // nobody to pay and the field was never rendered.
+        technicianPayoutPaise: current.technicianId
+          ? Number(values.technicianPayout || 0) * 100
+          : undefined,
       },
       {
         onSuccess: () => {
@@ -181,6 +190,17 @@ export default function ForceClosePage() {
             ticketId={ticket.id}
             cancelState={originFor(ticketPath, origin)}
             isSubmitting={busy}
+            /* Null when nobody holds the job — the form then asks nothing
+               about payment. `technicianPayoutPaise` is non-null for any
+               staff caller, and only staff reach this route. */
+            technician={
+              ticket.technicianId && ticket.technicianPayoutPaise !== null
+                ? {
+                    name: ticket.technicianName ?? "the technician",
+                    payoutPaise: ticket.technicianPayoutPaise,
+                  }
+                : null
+            }
             onSubmit={(values) => void submit(ticket, values)}
           />
         </>

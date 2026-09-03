@@ -62,6 +62,14 @@ export interface Technician {
 
   /** Null = no limit. */
   dailyJobCap: number | null;
+  /**
+   * Where their earnings are paid — a UPI VPA, `name@bank`.
+   *
+   * Null means they have not given one, which is the normal state for a new
+   * technician: neither onboarding mode requires it. Render "—". It costs only
+   * the ability to be PAID; the ledger credits them either way.
+   */
+  upiId: string | null;
   /** Jobs held for TODAY, by slot date — the rule the daily cap is enforced on. */
   bwUsed: number;
   /** The technician's own decision: are they taking work at all. */
@@ -124,6 +132,8 @@ export interface CreateTechnicianInput {
   pincodes: string[];
   /** Omit to take the API's own default, exactly as an invite does. */
   dailyJobCap?: number;
+  /** Optional — a manager often does not have it. Null or omitted means none. */
+  upiId?: string | null;
 }
 
 export interface UpdateTechnicianInput {
@@ -140,6 +150,9 @@ export interface UpdateTechnicianInput {
    * `number` alone made the cap one-way: settable but never clearable.
    */
   dailyJobCap?: number | null;
+  /** Nullable for the same reason as the cap: `null` REMOVES a payout account
+   *  that was typed wrong, which omitting it could never do. */
+  upiId?: string | null;
   status?: TechnicianStatus;
 }
 

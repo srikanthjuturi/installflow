@@ -33,6 +33,17 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
         </>
       ),
     ],
+    // Where their earnings go. "—" when they have not given one — the normal
+    // state for a new technician, and the thing a manager needs to see before
+    // wondering why somebody has not been paid.
+    [
+      "UPI ID",
+      tech.upiId ? (
+        <span className="font-mono text-[12px] break-all">{tech.upiId}</span>
+      ) : (
+        "—"
+      ),
+    ],
   ];
 
   return (

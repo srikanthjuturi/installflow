@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { moneyPaise } from "@/utils/money";
 import type {
   ProductCategory,
   ProductModel,
@@ -325,6 +326,13 @@ function ModelChip({
     // a chip's width, and this is a detail you go looking for once the brand
     // and size have told you which model you are looking at.
     model.serviceTypes.length ? model.serviceTypes.join(", ") : null,
+    // Both prices, together, because the margin between them is the thing worth
+    // reading and neither number means much alone. `technicianPayoutPaise` is
+    // null only for a vendor caller — who never sees this screen — so the dash
+    // should not appear here; it is left to `moneyPaise` rather than special
+    // cased, because inventing a figure would be worse than showing one.
+    `${moneyPaise(model.technicianPayoutPaise)} to technician`,
+    `${moneyPaise(model.vendorPricePaise)} from vendor`,
   ].filter(Boolean);
 
   const body = (

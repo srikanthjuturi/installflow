@@ -25,3 +25,19 @@ export function moneyPaise(paise: number | null | undefined): string {
   if (paise === null || paise === undefined) return "—";
   return money(paise / 100);
 }
+
+/**
+ * A paise figure as the bare rupee digits a form field holds — `45000` → `"450"`.
+ *
+ * Unformatted on purpose: this is the inverse of the `Number(value) * 100` a
+ * form does on submit, so it must round-trip. `moneyPaise` would put a ₹ and a
+ * thousands separator into an `<input>` that then fails its own numeric
+ * validation on the next save.
+ *
+ * Empty string for null, because that is what an untouched required field
+ * holds and what its "is required" message is keyed on.
+ */
+export function paiseToRupeeInput(paise: number | null | undefined): string {
+  if (paise === null || paise === undefined) return "";
+  return String(paise / 100);
+}

@@ -95,6 +95,26 @@ export const technicianSchema = z.object({
       (v) => v === "" || (/^\d+$/.test(v) && Number(v) >= 1),
       "Enter 1 or more, or leave it blank for no limit"
     ),
+  /**
+   * Where their money goes — a UPI VPA, `name@bank`.
+   *
+   * Optional on BOTH add and edit, and it has to stay that way: a manager
+   * onboarding somebody usually does not have their UPI handle, and refusing to
+   * save a technician over it would block the whole roster on a detail only the
+   * technician knows. They add it themselves in the app, on Profile → Payout
+   * account. Blank means "not given yet", which the API stores as null.
+   *
+   * The shape is checked here only to catch the obvious mistake — an email
+   * address, or a bare name with no bank. The server validates the same rule in
+   * `app/core/upi.py`; this one exists so the message lands on the field.
+   */
+  upiId: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === "" || /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}@[a-zA-Z][a-zA-Z0-9]{1,29}$/.test(v),
+      "Enter a UPI ID like name@bank, or leave it blank",
+    ),
   /** EDIT ONLY. Only an Active technician is offered work — see the dialog. */
   status: z.enum(TECHNICIAN_STATUSES),
 });

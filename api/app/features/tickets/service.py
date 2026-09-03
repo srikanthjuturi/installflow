@@ -75,6 +75,7 @@ from app.features.tickets.schemas import (
     TimelineEventOut,
 )
 from app.models.company import Company
+from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.product import ProductCategory, ProductModel, ProductSubcategory
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
@@ -955,8 +956,25 @@ async def get_ticket(
 ) -> TicketDetailOut:
     row = await _load(db, principal, ticket_id)
     base = (await _hydrate(db, principal, [row]))[0]
+    # What was actually paid, from the ledger rather than from a column — the
+    # ledger is where money lives, and a second copy on the ticket is the copy
+    # that drifts. One row at most per ticket, so `scalar` is the whole query.
+    #
+    # Not fetched for a vendor: it is the same withheld fact as the payout, one
+    # step later, and asking for it would be a query run purely to throw away.
+    credited = None
+    if not principal.is_vendor:
+        credited = await db.scalar(
+            select(LedgerEntry.amount_paise).where(
+                LedgerEntry.company_id == principal.company_id,
+                LedgerEntry.ticket_id == row.id,
+                LedgerEntry.kind == "payout",
+            )
+        )
     return TicketDetailOut(
-        **base.model_dump(), timeline=await _timeline(db, row)
+        **base.model_dump(),
+        technicianCreditedPaise=credited,
+        timeline=await _timeline(db, row),
     )
 
 

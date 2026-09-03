@@ -117,6 +117,7 @@ function TechnicianForm({
       pincodes: technician?.pincodes ?? [],
       photo: technician?.profileImageUrl ?? undefined,
       dailyJobCap: capOf(technician?.dailyJobCap ?? null),
+      upiId: technician?.upiId ?? "",
       status: technician?.status ?? "active",
     },
   });
@@ -140,6 +141,9 @@ function TechnicianForm({
           profileImageUrl: values.photo ?? null,
           dailyJobCap:
             values.dailyJobCap === "" ? null : Number(values.dailyJobCap),
+          // Same rule again: an empty box means "no payout account", sent as an
+          // explicit null so a manager can REMOVE one that was typed wrong.
+          upiId: values.upiId.trim() || null,
           regionId: values.regionId,
           subcategoryIds: values.subcategoryIds,
           pincodes: values.pincodes,
@@ -170,6 +174,11 @@ function TechnicianForm({
         // No dailyJobCap: a new technician starts uncapped and sets their own
         // in the app. It becomes editable here once there is a day's work to
         // base a number on.
+        //
+        // The UPI id IS offered at add, unlike the cap: it is a fact about the
+        // person that a manager may already have, not a number nobody has a
+        // basis for yet. Omitted when blank, which is the common case.
+        upiId: values.upiId.trim() || null,
         profileImageUrl: values.photo ?? null,
       },
       {
@@ -314,6 +323,42 @@ function TechnicianForm({
                 </Field>
               )}
             </div>
+
+            {/* Optional on both add and edit. A manager usually does not have
+                this when onboarding somebody, and blocking the whole record
+                over a detail only the technician knows would be the wrong
+                trade — they add it themselves in the app. Full width rather
+                than paired: a VPA is long, and there is nothing to read it
+                against. */}
+            <Field data-invalid={err("upiId") ? true : undefined}>
+              <FieldLabel htmlFor="tech-upi">UPI ID</FieldLabel>
+              <Input
+                id="tech-upi"
+                inputMode="email"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="e.g. 9822066301@ybl"
+                aria-invalid={err("upiId") ? true : undefined}
+                aria-describedby={
+                  err("upiId") ? "tech-upi-error" : "tech-upi-hint"
+                }
+                {...register("upiId")}
+              />
+              {err("upiId") ? (
+                <FieldDescription
+                  id="tech-upi-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {err("upiId")}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="tech-upi-hint">
+                  Optional — where their earnings are paid. They can add or
+                  change it themselves in the app.
+                </FieldDescription>
+              )}
+            </Field>
           </FieldGroup>
         </FormSection>
 

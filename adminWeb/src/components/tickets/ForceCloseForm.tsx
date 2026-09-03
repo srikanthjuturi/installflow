@@ -21,11 +21,13 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import type { NavOrigin } from "@/hooks/useNavOrigin";
 import { MAX_UPLOAD_BYTES } from "@/services/uploads";
 import { cn } from "@/lib/utils";
+import { moneyPaise } from "@/utils/money";
 
 /** The three approved bases for a manager closure (§10). */
 const REASONS = [
@@ -64,6 +66,17 @@ const forceCloseSchema = z.object({
     .array(z.instanceof(File))
     .min(1, "At least one supporting document or image is required")
     .max(10, "Ten attachments is the most this records"),
+  /**
+   * What to credit the technician, in whole RUPEES as typed. Empty means
+   * nothing — which is a real answer here, not a skipped field.
+   *
+   * Only shown when a technician is actually assigned; the schema keeps the key
+   * unconditionally so the form's type does not change shape between renders.
+   */
+  technicianPayout: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d{1,7}$/.test(v), "Enter a whole number of rupees"),
 });
 
 export type ForceCloseFormValues = z.infer<typeof forceCloseSchema>;
@@ -72,6 +85,12 @@ interface ForceCloseFormProps {
   ticketId: string;
   onSubmit: (values: ForceCloseFormValues) => void;
   isSubmitting: boolean;
+  /**
+   * Who is being credited and what the job was priced at, or null when nobody
+   * is assigned — a ticket whose customer never confirmed a slot had no
+   * technician attend, so there is nobody to pay and the field is not shown.
+   */
+  technician: { name: string; payoutPaise: number } | null;
   /**
    * The trail to hand back to the ticket that Cancel returns to, so abandoning
    * a force-close does not also lose the queue or the ledger behind it.
@@ -83,6 +102,7 @@ export function ForceCloseForm({
   ticketId,
   onSubmit,
   isSubmitting,
+  technician,
   cancelState,
 }: ForceCloseFormProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,7 +116,15 @@ export function ForceCloseForm({
     formState: { errors },
   } = useForm<ForceCloseFormValues>({
     resolver: zodResolver(forceCloseSchema),
-    defaultValues: { reason: "", notes: "", attachments: [] },
+    defaultValues: {
+      reason: "",
+      notes: "",
+      attachments: [],
+      // Prefilled with the full payout, because the common case reaching this
+      // screen is a technician who DID the work and a customer who went quiet.
+      // Editable down to nothing for the case where nobody attended.
+      technicianPayout: technician ? String(technician.payoutPaise / 100) : "",
+    },
   });
 
   const attachments = useWatch({ control, name: "attachments" });
@@ -241,6 +269,44 @@ export function ForceCloseForm({
                 </FieldDescription>
               ) : null}
             </Field>
+
+            {/* Only when somebody actually holds the job. A ticket whose
+                customer never confirmed a slot has no technician, so there is
+                nobody to pay and asking would be a question with no answer. */}
+            {technician ? (
+              <Field data-invalid={err("technicianPayout") ? true : undefined}>
+                <FieldLabel htmlFor="force-close-payout">
+                  Credit {technician.name} (₹)
+                </FieldLabel>
+                <Input
+                  id="force-close-payout"
+                  inputMode="numeric"
+                  placeholder="0"
+                  aria-invalid={err("technicianPayout") ? true : undefined}
+                  aria-describedby={
+                    err("technicianPayout")
+                      ? "force-close-payout-error"
+                      : "force-close-payout-hint"
+                  }
+                  {...register("technicianPayout")}
+                />
+                {err("technicianPayout") ? (
+                  <FieldDescription
+                    id="force-close-payout-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {err("technicianPayout")}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription id="force-close-payout-hint">
+                    This job pays {moneyPaise(technician.payoutPaise)}. Lower it
+                    if they attended but could not finish, or clear it to credit
+                    nothing.
+                  </FieldDescription>
+                )}
+              </Field>
+            ) : null}
 
             <Field data-invalid={err("attachments") ? true : undefined}>
               <FieldLabel htmlFor="force-close-files">

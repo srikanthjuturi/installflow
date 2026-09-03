@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { moneyPaise } from "@/utils/money";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useCategoryTree } from "@/hooks/useProductMaster";
 import { cn } from "@/lib/utils";
@@ -311,6 +312,26 @@ export function ManualEntryForm({
                 error={err("serviceType")}
               />
             </FieldGroup>
+
+            {/* What this ticket will cost, shown before it is raised rather
+                than discovered on an invoice. It appears the moment a model is
+                picked, because the price belongs to the model — the service
+                type does not change it.
+
+                `vendorPricePaise` only. The model also carries what the
+                technician is paid, and the server sends that as null to a
+                vendor; this deliberately does not read it, so the number a
+                vendor must never see is not even referenced on the one form
+                they use most. */}
+            {model ? (
+              <p className="text-sm text-ink-2">
+                Raising this ticket will be billed at{" "}
+                <span className="font-semibold text-ink">
+                  {moneyPaise(model.vendorPricePaise)}
+                </span>
+                .
+              </p>
+            ) : null}
 
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               {/* Only the two service types that describe a fault. Rendering it

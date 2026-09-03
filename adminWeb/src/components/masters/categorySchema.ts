@@ -55,6 +55,29 @@ export const SERVICE_TYPE_HINT: Record<ServiceType, string> = {
   Service: "Maintenance on a unit that is already installed.",
 };
 
+/** The ceiling, in rupees. Ten lakh is no install anybody does; it is here to
+ *  catch a paise figure typed into a rupee box, which is the mistake these two
+ *  fields invite and the one nobody would notice on a list screen. */
+const MAX_RUPEES = 1_000_000;
+
+/**
+ * A required whole-rupee amount, typed as a string.
+ *
+ * `> 0` rather than `>= 0`, matching the CHECK on both tables: a free job is
+ * not a cheap job, it is a missing price.
+ */
+const rupees = (missing: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, missing)
+    .refine((v) => /^\d{1,7}$/.test(v), "Enter a whole number of rupees")
+    .refine((v) => Number(v) > 0, "Enter an amount above ₹0")
+    .refine(
+      (v) => Number(v) <= MAX_RUPEES,
+      "That looks like paise — enter the amount in rupees",
+    );
+
 export const modelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
   /** The brand. Required — a model with no maker names nothing a technician
@@ -79,6 +102,19 @@ export const modelSchema = z.object({
       (v) => v === "" || Number(v) <= 240,
       "That looks like years — enter the number of months",
     ),
+  /** What the job is worth to each side, in whole RUPEES as typed.
+   *
+   *  Required, unlike everything above them: the API columns are NOT NULL and a
+   *  ticket stamps both at intake, so a model saved without them is one no
+   *  ticket could ever be raised against. Better to refuse the save here, where
+   *  the person can fix it, than to accept a row that fails on a vendor's
+   *  intake form next week.
+   *
+   *  Strings, then coerced at submit — the `warrantyMonths` precedent directly
+   *  above. `valueAsNumber` on an empty box yields NaN, which zod reports as
+   *  "expected number, received nan" and nobody can act on. */
+  technicianPayoutPaise: rupees("What the technician is paid is required"),
+  vendorPricePaise: rupees("What the vendor is charged is required"),
   imageUrls: z
     .array(
       z

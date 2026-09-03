@@ -126,6 +126,16 @@ export interface ForceCloseInput {
   reason: string;
   notes: string;
   attachments: ForceCloseAttachment[];
+  /**
+   * PAISE to credit the technician for a job the customer never confirmed.
+   *
+   * The manager's number, not the ticket's: somebody who travelled and found
+   * nobody home is owed something but rarely the full fee, and a ticket whose
+   * customer never confirmed a slot is owed nothing. `0` and omitted both mean
+   * "credit nothing" and write no ledger row; the API caps it at what the job
+   * was priced at. Omit entirely when no technician is assigned.
+   */
+  technicianPayoutPaise?: number;
 }
 
 /**

@@ -152,6 +152,26 @@ export interface Ticket {
    */
   bonusPaise: number | null;
 
+  /**
+   * PAISE. What the vendor is charged for this job, stamped at intake from the
+   * product model — so a later repricing never restates an old ticket.
+   *
+   * Everyone who can see the ticket sees this, the vendor included: it is their
+   * own price, and there is nothing to hide from the party paying it.
+   */
+  vendorPricePaise: number;
+  /**
+   * PAISE. What the technician is paid, stamped at intake.
+   *
+   * `null` NEVER means unpriced — the column is NOT NULL. It means the caller
+   * is a **vendor**: the server withholds this from them, because what we pay a
+   * technician is not part of what the vendor bought. Ops always get a number.
+   *
+   * So a `null` check here is "did the server send it", not a permission
+   * decision — that is enforced server-side (hard rule 8).
+   */
+  technicianPayoutPaise: number | null;
+
   /** Delivery of the "pick a time" message. `not_needed` when ops set the slot. */
   slotRequestStatus: "not_needed" | "pending" | "sent" | "failed";
   /** WhatsApp's own words when it refused, so ops can act rather than guess. */
@@ -232,6 +252,19 @@ export interface TimelineEvent {
 
 export interface TicketDetail extends Ticket {
   timeline: TimelineEvent[];
+  /**
+   * PAISE. What the technician was ACTUALLY credited, read from the ledger.
+   *
+   * Usually equal to `technicianPayoutPaise`, but a force-closure credits an
+   * amount the manager chose — often less than the job's price, sometimes
+   * nothing at all.
+   *
+   * Null means nothing has been credited yet: every open ticket, and also a
+   * force-closure paid at zero. Render through `moneyPaise` — "—", never ₹0,
+   * which would assert a payment of zero was made. Withheld from a vendor, the
+   * same as the payout it settles.
+   */
+  technicianCreditedPaise: number | null;
 }
 
 /**
