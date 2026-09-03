@@ -164,6 +164,21 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     image_urls: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
+    #: What this job is worth, in PAISE — never a float, never a formatted
+    #: string. Two amounts because a job has two sides and they are different
+    #: numbers: `technician_payout_paise` is what the technician earns for doing
+    #: it, `vendor_price_paise` is what the vendor is charged for asking. The
+    #: margin between them is the company's, and neither party is ever shown the
+    #: other's figure — the masking is in `masters.get_tree` and
+    #: `tickets._hydrate`, and the technician's `JobOfferOut` simply has no
+    #: vendor-price field to leak.
+    #:
+    #: Both are NOT NULL and both CHECK `> 0`. A model nobody has priced is one
+    #: no ticket can be costed against, and the alternative — nullable, refused
+    #: at intake — leaves the Excel importer and the vendor API channel free to
+    #: write a priceless row that only fails much later.
+    technician_payout_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    vendor_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
@@ -176,6 +191,10 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             "warranty_months IS NULL OR (warranty_months >= 0 AND warranty_months <= 240)",
             name="warranty_months",
         ),
+        # `> 0` rather than `>= 0`: a free job is not a cheap job, it is a
+        # missing price. Same reading as `ledger_entries.amount_paise`.
+        CheckConstraint("technician_payout_paise > 0", name="technician_payout_paise"),
+        CheckConstraint("vendor_price_paise > 0", name="vendor_price_paise"),
         CheckConstraint(
             "jsonb_typeof(service_types) = 'array' "
             "AND jsonb_array_length(service_types) >= 1 "

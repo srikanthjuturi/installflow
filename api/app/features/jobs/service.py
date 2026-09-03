@@ -282,6 +282,7 @@ def _offer_out(
         slotEnd=t.slot_end,
         serviceLevelHours=t.service_level_hours,
         maskedCustomer=mask_name(t.customer_name),
+        payoutPaise=t.technician_payout_paise,
         bonusPaise=t.bonus_paise,
     )
 

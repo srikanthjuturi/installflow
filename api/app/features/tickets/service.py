@@ -33,6 +33,7 @@ from app.core.ledger import (
     cap_remaining,
     charged_this_month,
     entry as ledger_entry,
+    payout_reason,
 )
 from app.core.push import announce_pool_job, send_to_technician
 from app.core.realtime import (
@@ -427,8 +428,17 @@ async def next_code(db: AsyncSession, company_id: uuid.UUID) -> str:
 # ── hydration ─────────────────────────────────────────────────────────────────
 
 
-async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
-    """Resolve names for a page of tickets — one query per relation, never N+1."""
+async def _hydrate(
+    db: AsyncSession, principal: Principal, rows: list[Ticket]
+) -> list[TicketOut]:
+    """Resolve names for a page of tickets — one query per relation, never N+1.
+
+    Takes the principal for ONE reason: `technicianPayoutPaise` is withheld from
+    a vendor. It is the only field on this shape whose value depends on who is
+    asking, and putting that decision here rather than at the four call sites is
+    what stops one of them forgetting — `scoped()` already settles WHICH tickets
+    a caller sees, and this settles which COLUMNS.
+    """
     if not rows:
         return []
 
@@ -527,6 +537,16 @@ async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[TicketOut]:
                 if t.technician_id
                 else None,
                 bonusPaise=t.bonus_paise,
+                # Their own price — the vendor is the one paying it.
+                vendorPricePaise=t.vendor_price_paise,
+                # THE masking point for the technician's rate on a ticket.
+                # Withheld from a vendor: what we pay a technician is not part
+                # of what the vendor bought, and the margin between the two
+                # columns is nobody's business but the company's. Staff always
+                # get it. See the field's note in `schemas.py`.
+                technicianPayoutPaise=(
+                    None if principal.is_vendor else t.technician_payout_paise
+                ),
                 slotRequestStatus=t.slot_request_status,
                 slotRequestError=t.slot_request_error,
                 slotConfirmedAt=t.slot_confirmed_at,
@@ -689,7 +709,7 @@ async def list_tickets(
         )
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
-    return await _hydrate(db, rows), total
+    return await _hydrate(db, principal, rows), total
 
 
 # ── the dashboard ─────────────────────────────────────────────────────────────
@@ -934,7 +954,7 @@ async def get_ticket(
     db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
 ) -> TicketDetailOut:
     row = await _load(db, principal, ticket_id)
-    base = (await _hydrate(db, [row]))[0]
+    base = (await _hydrate(db, principal, [row]))[0]
     return TicketDetailOut(
         **base.model_dump(), timeline=await _timeline(db, row)
     )
@@ -1304,6 +1324,15 @@ async def create_ticket(
         model_id=model.id,
         service_type=body.serviceType,
         description=body.description,
+        # STAMPED from the model, not joined at read time. A model repriced next
+        # quarter must not restate what this ticket was worth: a technician who
+        # accepted a ₹450 job is owed ₹450, and a vendor quoted ₹1,200 is billed
+        # ₹1,200, whatever the catalogue says afterwards.
+        #
+        # No "is it priced?" check is needed — `product_models` cannot hold an
+        # unpriced row, so both of these are NOT NULL at the source.
+        technician_payout_paise=model.technician_payout_paise,
+        vendor_price_paise=model.vendor_price_paise,
         serial_number=(body.serialNumber or "").strip() or None,
         customer_name=body.customerName.strip(),
         customer_phone=body.customerPhone,
@@ -1432,7 +1461,7 @@ async def create_ticket(
         await publish_ticket_changed(db, row)
         await db.commit()
 
-    return (await _hydrate(db, [row]))[0]
+    return (await _hydrate(db, principal, [row]))[0]
 
 
 async def list_proof(
@@ -1751,7 +1780,7 @@ async def list_escalations(
         Ticket.id.asc(),
     )
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
-    return await _hydrate(db, rows), total
+    return await _hydrate(db, principal, rows), total
 
 
 async def _load_assignable_technician(
@@ -2263,15 +2292,24 @@ async def force_close_ticket(
     it is the common one, but a job that can never proceed for some other reason
     is the same problem, and a manager who cannot end it has no other tool.
 
-    Three things happen together, in one transaction:
+    Four things happen together, in one transaction:
 
     * the ticket goes to `Force-Closed`, keeping its technician — they did the
       work, and clearing the link would lose who to credit;
     * a `force_closed` event records who ended it, when, and on what basis;
-    * the supporting files are written as `ticket_attachments` rows.
+    * the supporting files are written as `ticket_attachments` rows;
+    * the technician is credited a `payout` ledger entry, IF the manager said
+      to. This used to say "no ledger entry, because `tickets` has no payout
+      column" — it has one now, but the ticket's price is deliberately not what
+      gets paid here.
 
-    **No ledger entry.** `tickets` has no payout column, so what a job pays is
-    unknown — a credit invented here would be a number with no source.
+    **The credit is the manager's number, not the ticket's.** Two situations
+    reach this function and they are owed different amounts. A technician who
+    travelled to the address and found nobody home did real work and should be
+    paid something; a ticket whose customer never confirmed a slot had nobody
+    attend and is owed nothing at all. Only the person closing it knows which
+    this was, and they are already writing a reason and a justification. Zero or
+    omitted writes no row — the absence of a movement is spelled "no row".
     """
     row = await _load(db, principal, ticket_id)
 
@@ -2346,6 +2384,36 @@ async def force_close_ticket(
                 blob_name=attachment.blobName,
                 file_name=attachment.fileName,
                 created_by=principal.user_id,
+            )
+        )
+
+    # What the technician is credited, if anything. See `ForceCloseRequest` for
+    # why the manager sets it rather than it being the ticket's full payout.
+    #
+    # Capped at what the job was ever worth: the amount arrives in a request
+    # body, and a body is an assertion. Silently clamping rather than refusing,
+    # because the console prefills this field FROM that payout — a value above
+    # it is a typo in a number nobody was asked to invent, not an attack, and
+    # refusing the whole force-closure over it would leave the ticket open.
+    credited = min(body.technicianPayoutPaise or 0, row.technician_payout_paise)
+    if technician_id is not None and credited > 0:
+        model_name = await db.scalar(
+            select(ProductModel.name).where(
+                ProductModel.company_id == principal.company_id,
+                ProductModel.id == row.model_id,
+            )
+        )
+        db.add(
+            ledger_entry(
+                company_id=principal.company_id,
+                technician_id=technician_id,
+                ticket_id=row.id,
+                kind="payout",
+                amount_paise=credited,
+                reason=payout_reason(
+                    service_type=row.service_type, model_name=model_name or "—"
+                ),
+                by_user=principal.user_id,
             )
         )
 

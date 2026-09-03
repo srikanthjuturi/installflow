@@ -24,7 +24,7 @@ from app.core.ledger import pool as pool_totals
 from app.core.schemas import ListParams
 from app.db.repository import paginate
 from app.features.ledger.schemas import LedgerEntryOut, LedgerPoolOut
-from app.models.ledger import LedgerEntry
+from app.models.ledger import POOL_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
@@ -42,8 +42,23 @@ def _entries_query(*, company_id: uuid.UUID, kind: str | None) -> Select:
     transaction share a timestamp — a cancellation's penalty and, on another
     ticket, a completion's bonus can land in the same tick — and an unstable
     sort makes a page boundary drop or repeat a row.
+
+    **Restricted to `POOL_KINDS`, and that is not a filter you may drop.** This
+    screen is the penalty POOL: its heading is a balance, its two columns are
+    what was collected and what was paid out of it, and every row is expected to
+    be one side of that circuit. A job payout shares this table — same person,
+    same ticket, and the technician's own Earnings screen reads all three as one
+    list — but it is not pool money: it is the company paying for work, funded
+    from outside. Left unfiltered it would list ordinary wages under a balance
+    it is not part of, and the totals beside it would not add up to the rows.
+
+    Technician earnings are `features/earnings`, which reads the same table from
+    the other end and deliberately does NOT filter by kind.
     """
-    stmt = select(LedgerEntry).where(LedgerEntry.company_id == company_id)
+    stmt = select(LedgerEntry).where(
+        LedgerEntry.company_id == company_id,
+        LedgerEntry.kind.in_(POOL_KINDS),
+    )
     if kind is not None:
         stmt = stmt.where(LedgerEntry.kind == kind)
     return stmt.order_by(desc(LedgerEntry.created_at), desc(LedgerEntry.id))

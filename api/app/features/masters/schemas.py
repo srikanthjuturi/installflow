@@ -105,6 +105,13 @@ class SubcategoryUpdateRequest(BaseModel):
 Capacity = Annotated[str | None, Field(default=None, max_length=64)]
 #: 0–240 months. The ceiling catches a year count typed into a months field.
 WarrantyMonths = Annotated[int | None, Field(default=None, ge=0, le=240)]
+#: An amount of money, in PAISE — hard rule 9, never a float.
+#:
+#: `gt=0` because a free job is not a cheap job, it is a missing price; the same
+#: CHECK sits on both tables. The ceiling is ₹10,00,000, which no install is,
+#: and it is here to catch the mistake this field invites: rupees typed into a
+#: paise box. Both clients send paise and convert at the form edge.
+PricePaise = Annotated[int, Field(gt=0, le=100_000_000)]
 
 
 class ModelCreateRequest(BaseModel):
@@ -126,6 +133,13 @@ class ModelCreateRequest(BaseModel):
     )
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
+    #: What the job is worth to each side. REQUIRED, unlike everything else a
+    #: half-known model may leave out: a ticket stamps both at intake and the
+    #: columns are NOT NULL, so a model saved without them is one no ticket
+    #: could ever be raised against. Better to refuse the save than to accept a
+    #: row that fails on somebody else's screen a week later.
+    technicianPayoutPaise: PricePaise
+    vendorPricePaise: PricePaise
     imageUrls: ImageUrls = Field(default_factory=list)
     isActive: bool = True
 
@@ -140,6 +154,10 @@ class ModelUpdateRequest(BaseModel):
     serviceTypes: ServiceTypes | None = None
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
+    #: Repricing is allowed; UNpricing is not, so these are optional rather than
+    #: clearable — the same shape `vendorId` takes and for the same reason.
+    technicianPayoutPaise: PricePaise | None = None
+    vendorPricePaise: PricePaise | None = None
     #: Sent whole, never patched entry by entry — an empty list clears the
     #: gallery, and omitting the key leaves it alone.
     imageUrls: ImageUrls | None = None
@@ -163,6 +181,18 @@ class ProductModelOut(AppModel):
     serviceTypes: list[str]
     capacity: str | None
     warrantyMonths: int | None
+    #: What this job is worth to each side, in paise.
+    #:
+    #: `technicianPayoutPaise` is `int | None` only because it is **withheld
+    #: from a vendor** — the column itself is NOT NULL. `get_tree` sends null
+    #: for a vendor principal, and a vendor calls that endpoint every time they
+    #: open the intake form, so this is the field that would otherwise put the
+    #: technician's rate in their network tab.
+    #:
+    #: `vendorPricePaise` goes to everyone: it is what the vendor is being
+    #: charged, and hiding somebody's own price from them serves nothing.
+    technicianPayoutPaise: int | None
+    vendorPricePaise: int
     #: Ordered; the first is the thumbnail. Empty when no photo was uploaded.
     imageUrls: list[str]
     isActive: bool

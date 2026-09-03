@@ -69,13 +69,22 @@ async def summary(
     )
     totals = {kind: int(amount) for kind, amount in rows}
     covered_from, covered_to = window_dates(window)
+    earned = totals.get("payout", 0)
+    bonuses = totals.get("bonus", 0)
+    penalties = totals.get("penalty", 0)
     return EarningsSummaryOut(
-        # Not `bonuses - penalties`. See the schema: that figure would be a
-        # different lie, not a smaller one.
-        netPaise=None,
-        earnedPaise=None,
-        bonusesPaise=totals.get("bonus", 0),
-        penaltiesPaise=totals.get("penalty", 0),
+        # The whole arithmetic of the screen, in one line and in one place.
+        # Bonuses add, penalties subtract — `penalties` is a magnitude, because
+        # `kind` carries the direction (see `models/ledger.py`).
+        #
+        # It can go negative, in a week with heavy cancellations and little
+        # work. That is a true statement about a bad week and the phone renders
+        # the minus; the monthly cap is what stops it running away. This used to
+        # return None for both this and `earned`, when nothing priced an install.
+        netPaise=earned + bonuses - penalties,
+        earnedPaise=earned,
+        bonusesPaise=bonuses,
+        penaltiesPaise=penalties,
         # Derived from the SAME window the sums were taken over, one line below
         # them, so the label and the figures cannot come apart.
         dateFrom=covered_from,
@@ -89,6 +98,12 @@ async def summary(
 #: band is a server fact. The two cancellation titles are the approved
 #: prototype's own words; the no-show one is new (see AGENTS.md rule 6).
 def _title(kind: str, reason: str) -> str:
+    # A payout's title was decided when it was paid and stored in `reason` —
+    # "Install · Reliance GreenTech 55\" QLED". It has to be, because it names
+    # the MODEL, which is not on the ledger row; and because a model renamed
+    # next year must not retitle money already paid. See `ledger.payout_reason`.
+    if kind == "payout":
+        return reason
     if kind == "bonus":
         return "Reassignment bonus"
     # `record_no_show` writes the band label verbatim as its reason, while a

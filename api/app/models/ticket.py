@@ -245,6 +245,28 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: one: an incentive nobody can see incentivises nobody.
     bonus_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    #: What this job is worth to each side, in PAISE — hard rule 9.
+    #:
+    #: STAMPED AT INTAKE from `product_models`, not joined at read time. A model
+    #: repriced in March must not restate what a January ticket was worth: these
+    #: two are what was agreed when the job was raised, and a technician who
+    #: accepted a ₹450 job is owed ₹450 whatever the catalogue says later.
+    #:
+    #: NOT NULL, because `product_models` cannot hold an unpriced row — so there
+    #: is no path by which a ticket arrives without both. That is what lets the
+    #: technician's `payoutPaise` stop being nullable all the way to the phone,
+    #: and removes "—" as a reachable state on the job screens.
+    #:
+    #: They are never shown to each other's party. `tickets._hydrate` omits
+    #: `technicianPayoutPaise` for a vendor principal — omits, not blanks, per
+    #: the doctrine in `features/jobs/schemas.py` — and the technician's job
+    #: shapes have no vendor-price field at all.
+    #:
+    #: What was actually PAID is not here: it is the `payout` ledger entry,
+    #: which a force-closure can set to less than this. One number in one place.
+    technician_payout_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    vendor_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+
     __table_args__ = (
         # Declared on the MODEL, not only in a migration, so the model is the
         # whole truth about the table and `--autogenerate` can see them.
@@ -285,6 +307,10 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         CheckConstraint(
             "bonus_paise IS NULL OR bonus_paise > 0", name="bonus_paise"
         ),
+        # Same `> 0` reading as `bonus_paise`, minus the NULL arm: these two are
+        # NOT NULL, so "no price" is not a state a ticket can be in.
+        CheckConstraint("technician_payout_paise > 0", name="technician_payout_paise"),
+        CheckConstraint("vendor_price_paise > 0", name="vendor_price_paise"),
         # The description rule, as a backstop. It is validated in `schemas.py`
         # too, where it can give a per-field message; this is here so the table
         # describes itself and so a future importer that bypasses the request

@@ -46,11 +46,18 @@ class JobOfferOut(AppModel):
     serviceLevelHours: int
     #: `R•••• M••••`. Enough to know a real person is waiting.
     maskedCustomer: str
-    #: **Always null today.** There is no payout column on `tickets` — what a
-    #: job pays belongs to the ledger, which does not exist yet. Sent as an
-    #: explicit null rather than omitted so the client renders "—" instead of a
-    #: confident ₹0, which would be a claim about money nobody has made.
-    payoutPaise: int | None = None
+    #: What this job pays the technician, in paise — `tickets.payout` as stamped
+    #: at intake from the product model, so a later repricing never changes what
+    #: somebody was offered.
+    #:
+    #: NOT nullable. The ticket column is NOT NULL because `product_models`
+    #: cannot hold an unpriced row, so "—" is not a state this can reach and the
+    #: phone's `Job.payoutPaise` is a plain number all the way through.
+    #:
+    #: This shape carries no vendor price and must never grow one: the margin
+    #: between what the vendor pays and what the technician earns is the
+    #: company's, and this is the schema a technician receives.
+    payoutPaise: int
     #: On top of the payout, when a manager funded a re-notification because
     #: nobody took this job the first time round. Null on almost every job.
     #:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.core.images import ImageUrl
 from app.core.schemas import AppModel
+from app.core.upi import UpiId
 from app.features.masters.schemas import ProductCategoryOut
 
 Pincode = Annotated[str, Field(pattern=r"^[0-9]{6}$")]
@@ -62,4 +63,10 @@ class SelfRegisterRequest(BaseModel):
     #: Availability screen. Kept accepted (and unbounded above) so a client that
     #: does offer it is not refused, and null keeps whatever the invite held.
     dailyJobCap: int | None = Field(default=None, ge=1)
+    #: Where their money should go. OPTIONAL, and it must stay optional: this is
+    #: the last screen of a joining flow, and refusing to create the account
+    #: because somebody does not have their UPI handle to hand would strand them
+    #: on a form after they have already proved their phone. Left blank, they
+    #: add it later on Profile → Payout account.
+    upiId: UpiId = None
 

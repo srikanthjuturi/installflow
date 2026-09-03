@@ -296,6 +296,20 @@ async def get_tree(
                 serviceTypes=list(m.service_types or []),
                 capacity=m.capacity,
                 warrantyMonths=m.warranty_months,
+                # THE masking point for the technician's rate.
+                #
+                # A vendor calls this endpoint — `masters.view` is granted so
+                # their intake form has a product tree — so without this line
+                # every vendor could read what we pay technicians straight out
+                # of the network tab. Withheld the same way the caller's own
+                # `vendor_id` is forced twelve lines up: the branch is already
+                # here, and this is the same fact it is branching on.
+                #
+                # Their own price is not withheld. It is what they are charged.
+                technicianPayoutPaise=(
+                    None if principal.is_vendor else m.technician_payout_paise
+                ),
+                vendorPricePaise=m.vendor_price_paise,
                 imageUrls=list(m.image_urls or []),
                 isActive=m.is_active,
                 sortOrder=m.sort_order,
@@ -579,6 +593,8 @@ async def create_model(
             service_types=list(body.serviceTypes),
             capacity=(body.capacity or "").strip() or None,
             warranty_months=body.warrantyMonths,
+            technician_payout_paise=body.technicianPayoutPaise,
+            vendor_price_paise=body.vendorPricePaise,
             image_urls=list(body.imageUrls),
             is_active=body.isActive,
             sort_order=sort_order,
@@ -624,6 +640,13 @@ async def update_model(
         row.capacity = (body.capacity or "").strip() or None
     if "warrantyMonths" in body.model_fields_set:
         row.warranty_months = body.warrantyMonths
+    # Not clearable, so these test `is not None` like `vendorId` rather than
+    # presence like the three above: an explicit null must NOT unprice a model,
+    # because the ticket columns that copy these are NOT NULL.
+    if body.technicianPayoutPaise is not None:
+        row.technician_payout_paise = body.technicianPayoutPaise
+    if body.vendorPricePaise is not None:
+        row.vendor_price_paise = body.vendorPricePaise
     if body.isActive is not None:
         row.is_active = body.isActive
     if body.sortOrder is not None:

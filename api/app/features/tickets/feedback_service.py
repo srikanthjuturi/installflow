@@ -14,6 +14,7 @@ from fastapi import HTTPException, status as http_status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ledger import entry as ledger_entry, payout_reason
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import (
@@ -22,6 +23,7 @@ from app.core.realtime import (
     publish_ticket_changed,
 )
 from app.models.membership import Membership
+from app.models.product import ProductModel
 from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
@@ -146,6 +148,38 @@ async def record_feedback(
             to_status=to_status,
         )
     )
+    if confirmed and row.technician_id is not None:
+        # The technician gets paid, and this is the moment: the customer has
+        # said the work is done, which is the only thing that settles it.
+        #
+        # In the SAME transaction as the guarded UPDATE above, exactly as a
+        # penalty commits with the cancellation it charges for. A credit that
+        # survived a rolled-back closure would pay for work still outstanding.
+        #
+        # Paid once, and the burn is the UPDATE's own `customer_confirmed_at IS
+        # NULL` predicate rather than a second lookup: we only reach here on the
+        # read that changed the row, and `Closed` is terminal, so there is no
+        # second closure to double-pay. (`complete` needs its `already_paid`
+        # check because a bonus is paid at a NON-terminal step that can repeat.)
+        model_name = await db.scalar(
+            select(ProductModel.name).where(
+                ProductModel.company_id == row.company_id,
+                ProductModel.id == row.model_id,
+            )
+        )
+        db.add(
+            ledger_entry(
+                company_id=row.company_id,
+                technician_id=row.technician_id,
+                ticket_id=row.id,
+                kind="payout",
+                amount_paise=row.technician_payout_paise,
+                reason=payout_reason(
+                    service_type=row.service_type, model_name=model_name or "—"
+                ),
+            )
+        )
+
     if not confirmed:
         db.add(
             TicketEvent(

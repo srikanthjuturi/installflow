@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from app.core.images import ImageUrl
 from app.core.phone import Phone
 from app.core.schemas import AppModel
+from app.core.upi import UpiId
 
 Pincode = Annotated[str, Field(pattern=r"^[0-9]{6}$")]
 #: Jobs per day. No ceiling — a technician may take as many as they will — and
@@ -49,6 +50,10 @@ class TechnicianCreateRequest(BaseModel):
     #: invented at intake is a number nobody has a basis for yet — the
     #: technician sets their own in the app, and a manager can change it later.
     dailyJobCap: DailyJobCap | None = None
+    #: Where their money goes. Optional, and normally absent for the same reason
+    #: as the cap: a manager onboarding somebody usually does not have it. The
+    #: technician adds it themselves on Profile → Payout account.
+    upiId: UpiId = None
 
 
 class TechnicianUpdateRequest(BaseModel):
@@ -61,6 +66,10 @@ class TechnicianUpdateRequest(BaseModel):
     subcategoryIds: list[uuid.UUID] | None = None
     pincodes: list[Pincode] | None = None
     dailyJobCap: DailyJobCap | None = None
+    #: CLEARABLE, so the service tests presence in the payload rather than
+    #: `is not None` — an explicit null means "remove the account I typed
+    #: wrong", which the other test would read as "leave it alone".
+    upiId: UpiId = None
     status: TechnicianStatus | None = None
 
 
@@ -122,6 +131,10 @@ class TechnicianOut(AppModel):
 
     #: Null means no limit, and both clients render it as "Unlimited".
     dailyJobCap: int | None
+    #: Where their money goes. Null means they have not given one — the normal
+    #: state for a new technician, rendered "—". It costs only the ability to be
+    #: PAID; the ledger credits them either way.
+    upiId: str | None
     #: Jobs held for TODAY, by slot date — the same rule the daily cap is
     #: enforced with, so the bandwidth bar and the technician's own pool can
     #: never disagree about a day.
@@ -197,6 +210,11 @@ class TechnicianSessionOut(AppModel):
     subcategories: list[SubcategoryRef]
     pincodes: list[str]
     dailyJobCap: int | None
+    #: What Profile → Payout account shows, and what the redeem flow will need.
+    #: Null renders "—", the same dash that row has always shown; the difference
+    #: is that it is now a fact about this technician rather than about the
+    #: schema not having the column.
+    upiId: str | None
     status: TechnicianStatus
     #: The three figures the Profile tab shows in its chrome header. Null
     #: rating means no closed jobs yet — the app renders a dash, because 0
@@ -260,6 +278,32 @@ class AvailabilityOut(AppModel):
     #: deriving it from `/jobs/today` — that list excludes closed jobs and would
     #: give a smaller number than the cap is actually enforced with.
     jobsToday: int
+
+
+class PayoutAccountRequest(AppModel):
+    """The technician setting their OWN payout account.
+
+    Its own route rather than a field on `AvailabilityRequest`, even though both
+    are "the technician edits one thing about themselves". Availability is a
+    toggle and a cap that the app saves as you move them; a payout account is a
+    credential you type once and check twice, and a request named for
+    availability is the wrong place to carry it.
+
+    It cannot go through `PUT /technicians/{id}`: that needs `technicians.edit`,
+    which the seeded technician role deliberately does not hold — the same
+    reason `PATCH /technicians/me/availability` exists at all.
+
+    `upiId` is nullable here so a technician can REMOVE an account they typed
+    wrong, rather than being stuck with it until a manager intervenes.
+    """
+
+    upiId: UpiId = None
+
+
+class PayoutAccountOut(AppModel):
+    """What the payout screen renders after a save."""
+
+    upiId: str | None
 
 
 class DistrictTechnicianCount(AppModel):

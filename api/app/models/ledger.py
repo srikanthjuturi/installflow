@@ -9,6 +9,19 @@ question anybody asks of them:
 
     balance = SUM(penalty) - SUM(bonus)
 
+## The third kind is not part of that sum
+
+`payout` — what a technician earned for finishing a job — lives in this same
+table because it is money moving to the same person, about the same ticket, and
+the technician's Earnings screen reads all three as one list. It is deliberately
+NOT in the balance above: the pool is a closed circuit funded by cancellations,
+while a payout is the company paying for work from outside it. Adding payouts to
+`balance` would report the pool as massively overdrawn and stop the bonus screen
+from ever offering one.
+
+Everything that reads the pool names its kinds explicitly rather than summing
+the table — see `POOL_KINDS` below.
+
 ## Why the amount is unsigned
 
 A penalty and a bonus point in opposite directions — but WHICH direction
@@ -51,10 +64,21 @@ from app.db.mixins import AuditMixin, IdMixin
 
 #: What the entry is.
 #:
-#: Only two, and deliberately no `adjustment` or `payout` alongside them: those
-#: are the ledger's next questions and neither has a writer yet. Hard rule 8 —
+#: `payout` joined the other two when installs became priced, and it arrived
+#: WITH its writers — `feedback_service.record_feedback` on a customer-confirmed
+#: closure and `tickets.force_close_ticket` on a manager's. Hard rule 8:
 #: `audit_logs` shipped a vocabulary ahead of its rows and stayed empty.
-LEDGER_KINDS = ("penalty", "bonus")
+#: `adjustment` is still absent for exactly that reason.
+#:
+#: ⚠ A payout is NOT pool money. The pool is the penalty/bonus circuit — money
+#: in equals money out — and a payout is the company paying for work done, from
+#: outside it. `core.ledger.pool` and `earnings.summary` are safe by
+#: construction (both read `totals.get("penalty")` / `("bonus")` by name), but
+#: `features/ledger` had to be taught to exclude it explicitly.
+LEDGER_KINDS = ("penalty", "bonus", "payout")
+
+#: The two that net against each other in the pool balance.
+POOL_KINDS = ("penalty", "bonus")
 
 
 class LedgerEntry(Base, IdMixin, AuditMixin):
@@ -88,7 +112,7 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
     reason: Mapped[str] = mapped_column(String(160), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("kind IN ('penalty', 'bonus')", name="kind"),
+        CheckConstraint("kind IN ('penalty', 'bonus', 'payout')", name="kind"),
         # `> 0`, not `>= 0`. A zero-rupee entry is not a smaller movement, it is
         # the absence of one, and the absence is spelled "write no row". The one
         # place that could produce a zero — a technician whose monthly cap is

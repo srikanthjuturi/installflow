@@ -28,7 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
-from app.models.ledger import LedgerEntry
+from app.models.ledger import POOL_KINDS, LedgerEntry
 
 IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
 
@@ -188,6 +188,29 @@ def cap_remaining(*, cap_paise: int, already_charged: int) -> int | None:
     return max(0, cap_paise - already_charged)
 
 
+#: The one service type whose display name is not its stored name.
+#:
+#: The approved prototype's earnings row reads `Install · Reliance GreenTech 55"
+#: QLED`, and "Install" is what `Installation + Demo` is called there — the
+#: prototype was drawn when installation was the only job this product did.
+#: `Tech Visit` and `Service` are already short enough to print as stored.
+_PAYOUT_LABELS = {"Installation + Demo": "Install"}
+
+
+def payout_reason(*, service_type: str, model_name: str) -> str:
+    """What a payout row is called on the technician's Earnings screen.
+
+    Written into `reason` at closure rather than derived at read time, for the
+    reason that column exists: a model can be renamed and a service type
+    re-worded, and a record of money says what was true when it was paid.
+
+    The slice is a guard, not an expectation — a 120-character model name plus
+    the longest label is 141, comfortably inside the column's 160.
+    """
+    label = _PAYOUT_LABELS.get(service_type, service_type)
+    return f"{label} · {model_name}"[:160]
+
+
 def entry(
     *,
     company_id: uuid.UUID,
@@ -228,13 +251,21 @@ async def pool(db: AsyncSession, *, company_id: uuid.UUID) -> dict[str, int]:
     ticket cancelled twice is two penalties, which is exactly what the pool
     collected.
     """
+    # Scoped to POOL_KINDS explicitly. Reading `totals.get("penalty")` and
+    # `("bonus")` out of the grouped result already made this safe when `payout`
+    # was added — a third kind simply went unread — but safe-by-accident is a
+    # property one refactor away from being lost, and a reader here should not
+    # have to check what else is in the table before trusting the balance.
     rows = await db.execute(
         select(
             LedgerEntry.kind,
             func.coalesce(func.sum(LedgerEntry.amount_paise), 0),
             func.count(),
         )
-        .where(LedgerEntry.company_id == company_id)
+        .where(
+            LedgerEntry.company_id == company_id,
+            LedgerEntry.kind.in_(POOL_KINDS),
+        )
         .group_by(LedgerEntry.kind)
     )
     totals = {kind: (int(amount), int(count)) for kind, amount, count in rows}

@@ -260,6 +260,24 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Uuid, ForeignKey("technician_invites.id", ondelete="SET NULL"), nullable=True
     )
 
+    #: Where this technician's money goes — a UPI VPA, `name@handle`.
+    #:
+    #: Here rather than on `users` because it is a per-COMPANY payment fact: one
+    #: person may work for two companies and be paid by each into a different
+    #: account. It is also what `ledger_entries.technician_id` already points at,
+    #: so the money and the destination hang off the same row.
+    #:
+    #: Nullable, and null is a real state rather than an oversight: neither
+    #: onboarding mode asks for it up front, a manager may not know it, and a
+    #: technician can add it themselves later on Profile → Payout account. What
+    #: null costs is only the ability to redeem — never the ability to earn, so
+    #: the ledger keeps crediting a technician who has not filled this in.
+    #:
+    #: NOT unique. A shared family VPA is somebody else's policy question, and a
+    #: unique index here would refuse a legitimate second technician with no
+    #: screen able to explain why.
+    upi_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
     # ── stats: NULL until the jobs slice measures them ───────────────────────
     #
     # All four nullable, and null means "not measured yet" — not zero. They
@@ -306,6 +324,15 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         CheckConstraint(
             "daily_job_cap IS NULL OR daily_job_cap >= 1",
             name="daily_job_cap",
+        ),
+        # A backstop, not the validator. The real VPA shape is enforced in
+        # `schemas.py`, where it can name the field and say what is wrong; this
+        # only rules out the shapes that are obviously not an address at all, so
+        # an importer that bypasses the request layer cannot store a bare name.
+        CheckConstraint(
+            "upi_id IS NULL OR (position('@' in upi_id) > 1 "
+            "AND upi_id !~ '\\s' AND length(upi_id) >= 3)",
+            name="upi_id",
         ),
         CheckConstraint(
             "onboarding_mode IN ('invite','direct')",

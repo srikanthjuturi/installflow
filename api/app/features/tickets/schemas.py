@@ -176,6 +176,28 @@ class TicketOut(AppModel):
     #: and the console renders it as "—" for exactly that reason.
     bonusPaise: int | None = None
 
+    #: What the vendor is charged for this job, in paise. Stamped at intake.
+    #: Everyone who can see the ticket sees this, the vendor included — it is
+    #: their own price, and there is nothing to hide from the person paying it.
+    vendorPricePaise: int
+
+    #: What the technician is paid for this job, in paise. Stamped at intake.
+    #:
+    #: **NULL for a vendor principal, always.** `_hydrate` never populates it
+    #: for one, so the wire carries `null` — not the figure, and not a masked
+    #: rendering of the figure either. That is the substance of the rule in
+    #: `features/jobs/schemas.py`: what a vendor must not be able to do is read
+    #: our technician rates out of their own network tab, and an absent value
+    #: gives them nothing to read. (It is `null` rather than a missing key only
+    #: because the envelope serialises with `exclude_unset=False`; making the
+    #: key vanish would need `response_model_exclude_unset` on the route, which
+    #: would also drop every other legitimately-null field and break clients
+    #: that read `bonusPaise: null`.)
+    #:
+    #: The column itself is NOT NULL, so a null here is never "unpriced" — it is
+    #: only ever "not yours to see". Staff always get the number.
+    technicianPayoutPaise: int | None = None
+
     #: not_needed (ops set the slot) | pending | sent | failed.
     slotRequestStatus: str
     #: Meta's own words when it refused, so ops can act rather than guess.
@@ -356,6 +378,25 @@ class ForceCloseRequest(AppModel):
     #: At least one. An empty list is the one thing that would turn this screen
     #: into a plain status change with a sentence attached.
     attachments: list[ForceCloseAttachmentIn] = Field(min_length=1, max_length=10)
+
+    #: What to credit the technician for a job the customer never confirmed, in
+    #: paise. The manager decides, because only they know which of two very
+    #: different situations this is.
+    #:
+    #: A technician who travelled to the address and found nobody home did real
+    #: work and is owed something — rarely the full install fee, which is why
+    #: this is not simply `technician_payout_paise`. A ticket whose customer
+    #: never even confirmed a slot had nobody attend, and is owed nothing.
+    #:
+    #: `0` and omitted both mean "credit nothing", and both write NO ledger row
+    #: — `amount_paise > 0` is a CHECK, and the absence of a movement is spelled
+    #: "no row" rather than a zero one. Ignored entirely when the ticket has no
+    #: technician: there would be nobody to pay.
+    #:
+    #: The ceiling is the ticket's own payout, enforced in the service where the
+    #: ticket is in hand: a force-closure is a manager settling work, not a
+    #: route to paying more than the job was ever worth.
+    technicianPayoutPaise: int | None = Field(default=None, ge=0)
 
 
 class TicketAttachmentOut(AppModel):

@@ -13,34 +13,27 @@ from app.core.schemas import AppModel
 class EarningsSummaryOut(AppModel):
     """The four figures on the Earnings hero, for one period.
 
-    ## Two of them are NULL, and that is the honest answer
+    All four are real, and all four come out of `ledger_entries` in one grouped
+    query — so the three tiles and the big number above them can never be read
+    from different moments:
 
-    `earnedPaise` is what the JOBS themselves pay, and there is no source for
-    it: `tickets` has no payout column, and nothing anywhere prices an install.
-    `jobs.schemas.JobOfferOut.payoutPaise` has said so since it was written —
-    *"sent as an explicit null rather than omitted so the client renders '—'
-    instead of a confident ₹0, which would be a claim about money nobody has
-    made"*.
+        net = earned + bonuses − penalties
 
-    `netPaise` is null for a consequence of that, and this is the important
-    one. Net is earned + bonuses − penalties. With `earned` unknown the sum is
-    unknown, and the tempting substitute — showing bonuses minus penalties — is
-    not a smaller truth, it is a different and alarming lie: a technician who
-    cancelled one job and earned no bonus would open this screen to
-    **−₹300**, presented as their net pay for the week, having actually done
-    five installs that nothing has priced yet.
-
-    Both become real the day payouts do, and nothing on the phone changes: the
-    screen already renders null as "—".
-
-    The other two are real now, out of `ledger_entries`.
+    `earnedPaise` and `netPaise` were `None` until installs were priced, and the
+    screen printed a dash under a line apologising for it. The refusal to
+    substitute `bonuses − penalties` in the meantime is worth remembering now
+    that it is gone: it would have shown a technician who cancelled one job and
+    did five unpriced installs a net of **−₹300** for the week. Not a smaller
+    truth than a dash — a different and alarming lie.
     """
 
-    #: Null until installs are priced — see above. Never zero.
-    netPaise: int | None
-    #: Null for the same reason.
-    earnedPaise: int | None
-    #: Real. Escalation bonuses credited to this technician in the period.
+    #: Earned + bonuses − penalties. May be NEGATIVE in a week of heavy
+    #: cancellation and little work, which is a true thing to say; the phone
+    #: renders the minus. The monthly penalty cap bounds how far it can go.
+    netPaise: int
+    #: What the JOBS paid — `payout` entries, written at closure.
+    earnedPaise: int
+    #: Escalation bonuses credited to this technician in the period.
     bonusesPaise: int
     #: Real, and POSITIVE — a magnitude, not a debit. The screen colours it and
     #: signs it; the API does not decide how somebody's own money reads to
@@ -64,7 +57,8 @@ class TransactionOut(AppModel):
 
     id: uuid.UUID
     at: datetime.datetime
-    #: `bonus` | `penalty`. The phone picks the icon and the sign from this.
+    #: `payout` | `bonus` | `penalty`. The phone picks the icon and the sign
+    #: from this — `payout` and `bonus` are credits, `penalty` is a debit.
     kind: str
     #: PAISE, always positive. See `models/ledger.py` on why no sign is stored.
     amountPaise: int

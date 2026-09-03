@@ -26,6 +26,8 @@ from app.features.technicians import service
 from app.features.technicians.schemas import (
     AvailabilityOut,
     AvailabilityRequest,
+    PayoutAccountOut,
+    PayoutAccountRequest,
     DistrictBreakdownOut,
     InviteCreateRequest,
     TechnicianCreateRequest,
@@ -84,6 +86,32 @@ async def set_my_availability(
     return envelope(
         await service.set_availability(db, principal, body),
         message="Availability updated",
+    )
+
+
+@router.patch("/me/payout-account", response_model=ApiEnvelope[PayoutAccountOut])
+async def set_my_payout_account(
+    db: Db, principal: CompanyPrincipal, body: PayoutAccountRequest
+) -> ApiEnvelope[PayoutAccountOut]:
+    """A technician setting where their money goes.
+
+    Profile → Payout account. Its own route rather than a field on the
+    availability PATCH: they are saved from different screens, and a request
+    named for availability is the wrong envelope for a payment credential.
+
+    No feature guard, for the same reason `/me` and `/me/availability` have
+    none — `PUT /technicians/{id}` requires `technicians.edit`, which the seeded
+    technician role does not hold, so a guard here would 403 every technician
+    against their own payout account.
+
+    Only the caller's own row is reachable: the profile is resolved from the
+    bearer token and there is no id in the path to guess at. That is load-bearing
+    here in a way it is not on availability — this field decides where cash
+    lands, so "you can only write your own" has to be structural.
+    """
+    return envelope(
+        await service.set_payout_account(db, principal, body),
+        message="Payout account updated",
     )
 
 

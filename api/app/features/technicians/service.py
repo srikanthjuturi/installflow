@@ -45,6 +45,8 @@ from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
     AvailabilityOut,
     AvailabilityRequest,
+    PayoutAccountOut,
+    PayoutAccountRequest,
     DistrictBreakdownOut,
     DistrictTechnicianCount,
     InviteCreateRequest,
@@ -401,6 +403,7 @@ async def _technicians_out(
                 subcategories=subs.get(profile.id, []),
                 pincodes=pins.get(profile.id, []),
                 dailyJobCap=profile.daily_job_cap,
+                upiId=profile.upi_id,
                 bwUsed=used_today.get(profile.id, 0),
                 acceptingWork=profile.accepting_work,
                 online=is_online(profile),
@@ -936,6 +939,57 @@ async def set_availability(
     )
 
 
+async def set_payout_account(
+    session: AsyncSession, principal: Principal, body: PayoutAccountRequest
+) -> PayoutAccountOut:
+    """The technician's own payout account.
+
+    Scoped to the profile behind the bearer token, exactly as `set_availability`
+    is — there is no id in the request, so there is no path here to anybody
+    else's money. That matters more on this route than on that one: a UPI ID is
+    where cash actually lands.
+
+    A separate route rather than a field on the availability PATCH; see
+    `PayoutAccountRequest` for why.
+
+    An explicit null CLEARS it, and that is the point of allowing null at all: a
+    technician who mistyped their VPA needs to be able to take it off without
+    finding a manager. `model_fields_set` distinguishes that from a body that
+    never mentioned the field — which a PATCH is entitled to send and which must
+    not silently wipe the account.
+
+    Nothing is published to the console. Unlike availability, this changes no
+    fact a manager's screen is showing live; it is read where it is needed.
+    """
+    if principal.role != TECHNICIAN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not a technician account"
+        )
+    if "upiId" not in body.model_fields_set:
+        # Same rule as `set_availability`: a PATCH that changes nothing must not
+        # answer 200, or the app reports a save that never happened.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Nothing to update",
+        )
+    profile = await session.scalar(
+        select(TechnicianProfile)
+        .join(Membership, Membership.id == TechnicianProfile.membership_id)
+        .where(
+            Membership.user_id == principal.user_id,
+            TechnicianProfile.company_id == principal.company_id,
+            Membership.deleted_at.is_(None),
+        )
+    )
+    if profile is None:
+        raise _not_found("Technician profile")
+
+    profile.upi_id = body.upiId
+    profile.updated_by = principal.user_id
+    await session.commit()
+    return PayoutAccountOut(upiId=profile.upi_id)
+
+
 async def technician_session(
     session: AsyncSession,
     profile: TechnicianProfile,
@@ -970,6 +1024,7 @@ async def technician_session(
         subcategories=subs,
         pincodes=pins,
         dailyJobCap=profile.daily_job_cap,
+        upiId=profile.upi_id,
         status=profile.status,
         rating=float(profile.rating) if profile.rating is not None else None,
         jobsCompleted=profile.jobs_completed,
@@ -1251,6 +1306,7 @@ async def create_technician(
             code=await next_code(session, principal.company_id),
             region_id=region.id,
             daily_job_cap=body.dailyJobCap,
+            upi_id=body.upiId,
             status=ACTIVE,
             onboarding_mode=MODE_DIRECT,
             appointed_by_user_id=principal.user_id,
@@ -1264,6 +1320,7 @@ async def create_technician(
     else:
         profile.region_id = region.id
         profile.daily_job_cap = body.dailyJobCap
+        profile.upi_id = body.upiId
         profile.status = ACTIVE
         profile.updated_by = principal.user_id
     await session.flush()
@@ -1364,6 +1421,10 @@ async def update_technician(
     # but never clearable. Same reasoning as `profileImageUrl` above.
     if "dailyJobCap" in body.model_fields_set:
         profile.daily_job_cap = body.dailyJobCap
+    # Same reasoning again: null means "clear the payout account", which a
+    # manager needs when somebody's VPA was typed wrong and money is bouncing.
+    if "upiId" in body.model_fields_set:
+        profile.upi_id = body.upiId
     if body.status is not None:
         profile.status = body.status
 
