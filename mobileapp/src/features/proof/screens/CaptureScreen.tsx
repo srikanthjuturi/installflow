@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 
 import { Icon } from '@/components/icons/Icon';
+import { isTooFar, metresBetween, metresLabel } from '@/lib/coordinates';
 import { ScreenStatusBar, useKeyboardHeight } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
@@ -278,8 +279,34 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
   // The technician can retry rather than being stuck: `Retry location` clears
   // the fix and re-runs the effect.
   const jobPincode = job?.pincode ?? '';
+
+  // How far the phone is from the customer's address, when BOTH ends have a
+  // position. Null means there is nothing to measure — the ticket's address
+  // was typed rather than picked, or this job predates the columns — and the
+  // pincode compare below is then the rule, exactly as before.
+  const distanceM = useMemo(() => {
+    if (!coords || job?.latitude == null || job?.longitude == null) return null;
+    return metresBetween(
+      coords.latitude,
+      coords.longitude,
+      job.latitude,
+      job.longitude,
+    );
+  }, [coords, job?.latitude, job?.longitude]);
+
+  // The radius the SERVER will enforce, sent with the job. Never defaulted to
+  // a number: a guess here would block captures the server would have taken.
+  const radiusM = job?.geoRadiusM ?? null;
+
+  // Two rules, and which one applies is decided by the ticket — the same fork
+  // the server makes in `_check_live_was_taken_at_the_job`. A job that knows
+  // where it is is judged by distance and its pincode is not consulted, so a
+  // technician at the door but across a postal boundary is no longer refused.
   const elsewhere =
-    !!coords?.pincode && !!jobPincode && coords.pincode !== jobPincode;
+    distanceM !== null && radiusM !== null
+      ? isTooFar(distanceM, coords?.accuracy ?? null, radiusM)
+      : !!coords?.pincode && !!jobPincode && coords.pincode !== jobPincode;
+
   const geoBlocked =
     step === 'live' && (geo === 'acquiring' || geo === 'unavailable' || elsewhere);
 
@@ -495,6 +522,11 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
               coords ? `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}` : null
             }
             accuracyM={coords?.accuracy ?? null}
+            // The verdict, not the inputs to it. The badge used to work this
+            // out again from the two pincodes, which is how a badge ends up
+            // contradicting the shutter beside it.
+            elsewhere={elsewhere}
+            distanceLabel={distanceM !== null ? metresLabel(distanceM) : null}
           />
 
           {/* Hint sits INSIDE the viewfinder, over the feed — the technician is
@@ -582,7 +614,9 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
                   }}
                 >
                   {elsewhere
-                    ? `You are at ${coords?.pincode} — this job is at ${jobPincode}. The live photo must be taken at the customer's address.`
+                    ? distanceM !== null
+                      ? `You are ${metresLabel(distanceM)} from this job. The live photo must be taken at the customer's address.`
+                      : `You are at ${coords?.pincode} — this job is at ${jobPincode}. The live photo must be taken at the customer's address.`
                     : geo === 'acquiring'
                       ? 'Finding your location before the live photo…'
                       : blocker === 'permission-settings'

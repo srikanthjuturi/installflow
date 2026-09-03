@@ -21,6 +21,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from app.core.coordinates import Latitude, Longitude
 from app.core.schemas import AppModel
 
 
@@ -75,6 +76,23 @@ class JobOut(JobOfferOut):
     #: The full street line needs its state as well as its city — a technician
     #: navigating there is given the address as the customer wrote it.
     state: str
+
+    #: Where the address actually is, when somebody picked it off a map at
+    #: intake. Null for a typed address, and for every ticket raised before
+    #: these existed — and the app must read that null as "fall back to the
+    #: pincode", never as 0,0, which is in the Gulf of Guinea.
+    #:
+    #: On `JobOut` and deliberately NOT on `JobOfferOut`, per this module's
+    #: docstring: a coordinate pair IS the customer's address, stated more
+    #: exactly than the street line the pool already withholds.
+    latitude: float | None
+    longitude: float | None
+    #: Metres. How far from that point the live proof photo may be taken — this
+    #: company's `geo_radius_m`, sent with the job so the phone blocks its own
+    #: shutter on the SAME number the server will refuse on. A client left to
+    #: guess would refuse captures the server would have taken, or worse, allow
+    #: ones it will not.
+    geoRadiusM: int
 
     #: The ticket's own status word (`Assigned`, `In Progress`, `Closed`…), not
     #: a client-side guess. The pool could omit it because everything in the
@@ -149,14 +167,19 @@ class ProofArtifactIn(AppModel):
     #: attendance. Null is accepted and recorded rather than refused: a denied
     #: permission or a lost fix is a fact about the proof, and blocking the
     #: upload over it would strand a technician who has finished the work.
-    latitude: float | None = Field(default=None, ge=-90, le=90)
-    longitude: float | None = Field(default=None, ge=-180, le=180)
+    latitude: Latitude = None
+    longitude: Longitude = None
+    #: Metres of error the phone reports on its own fix. Not decoration: the
+    #: distance check subtracts it before comparing, so a technician whose
+    #: phone admits it is unsure is not refused for the phone's uncertainty.
     accuracyM: float | None = Field(default=None, ge=0)
-    #: The postal code the phone reverse-geocoded from those coordinates. The
-    #: server refuses a `live` artifact whose code disagrees with the ticket's.
-    #: Null is accepted — geocoding can fail while the fix is good — but the
-    #: coordinates are then mandatory, so a live photo can never carry no
-    #: location at all.
+    #: The postal code the phone reverse-geocoded from those coordinates.
+    #:
+    #: Consulted ONLY for a ticket that has no coordinates of its own; one that
+    #: does is judged by distance and this is ignored. Null is accepted —
+    #: geocoding can fail while the fix is good — but the coordinates above are
+    #: mandatory under both rules, so a live photo can never carry no location
+    #: at all.
     devicePincode: str | None = Field(default=None, max_length=6)
 
 

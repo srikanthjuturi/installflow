@@ -65,6 +65,24 @@ export interface JobDto extends JobOfferDto {
   customerConfirmedAt: string | null;
   /** They answered, and the answer was "not finished". */
   customerRefused: boolean;
+
+  /**
+   * Where the customer's address is, when ops picked it off a map at intake.
+   *
+   * Null for a typed address, and null on every ticket raised before the
+   * server had these columns. Null MEANS "verify the live photo by pincode
+   * instead" — it is never 0, which is a real point in the Gulf of Guinea.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
+  /**
+   * Metres the live proof photo may be from that point — this company's rule.
+   *
+   * Optional because an older API does not send it. Undefined means the same
+   * as a null latitude: fall back to the pincode compare. Never default it to
+   * a number, or the app would block on a radius the server is not enforcing.
+   */
+  geoRadiusM?: number;
 }
 
 /**
@@ -200,6 +218,13 @@ export function toAcceptedJob(dto: JobDto): Job {
     customerFeedback: dto.customerFeedback,
     customerConfirmedAt: dto.customerConfirmedAt,
     customerRefused: dto.customerRefused,
+    // Only on an accepted job, like the address itself — the pool masks where
+    // the customer lives, and a coordinate pair is that, stated exactly.
+    // `?? null` collapses an older API's missing field onto the same "no point"
+    // the typed-address case already means.
+    latitude: dto.latitude ?? null,
+    longitude: dto.longitude ?? null,
+    geoRadiusM: dto.geoRadiusM ?? null,
   };
 }
 

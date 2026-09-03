@@ -35,6 +35,19 @@ export interface CaptureOverlayProps {
   /** `16.20341, 80.11235` — shown when there is no postal code to name. */
   coords?: string | null;
   accuracyM?: number | null;
+  /**
+   * Whether the phone is somewhere this job is not — DECIDED by the screen,
+   * not worked out again here.
+   *
+   * This badge used to recompute the pincode comparison itself, which made two
+   * copies of one rule; when the rule became "distance, unless the ticket has
+   * no coordinates" the copies would have drifted apart and the badge would
+   * have contradicted the shutter. The screen owns the decision because it is
+   * the thing that also has to enforce it.
+   */
+  elsewhere?: boolean;
+  /** `420 m` / `4.2 km` from the job, when there was a point to measure to. */
+  distanceLabel?: string | null;
 }
 
 /** Framing guides drawn over the live camera. Prototype insets everything 11%. */
@@ -48,6 +61,8 @@ export function CaptureOverlay({
   devicePincode = null,
   coords = null,
   accuracyM = null,
+  elsewhere = false,
+  distanceLabel = null,
 }: CaptureOverlayProps) {
   return (
     <View style={{ flex: 1 }} pointerEvents="none">
@@ -63,6 +78,8 @@ export function CaptureOverlay({
           coords={coords}
           accuracyM={accuracyM}
           geo={geo}
+          elsewhere={elsewhere}
+          distanceLabel={distanceLabel}
         />
       ) : null}
     </View>
@@ -300,19 +317,21 @@ function GeoLock({
   coords,
   accuracyM,
   geo,
+  elsewhere: away,
+  distanceLabel,
 }: {
   jobPincode: string;
   devicePincode: string | null;
   coords: string | null;
   accuracyM: number | null;
   geo: NonNullable<CaptureOverlayProps['geo']>;
+  elsewhere: boolean;
+  distanceLabel: string | null;
 }) {
-  // The technician is somewhere the job is not. Not a refusal — pincode
-  // boundaries are fuzzy and reverse geocoding is approximate — but the one
-  // fact this badge exists to surface, so it is said plainly rather than
-  // dressed as a confirmation.
-  const elsewhere =
-    geo === 'locked' && !!devicePincode && !!jobPincode && devicePincode !== jobPincode;
+  // The technician is somewhere the job is not — the SCREEN's verdict, so the
+  // badge and the shutter can never disagree about it. Only shown once there
+  // is a fix to have a verdict about.
+  const elsewhere = geo === 'locked' && away;
 
   const label =
     geo === 'acquiring'
@@ -320,13 +339,19 @@ function GeoLock({
       : geo === 'unavailable'
         ? 'Location unavailable'
         : elsewhere
-          ? `You are at ${devicePincode} · job is ${jobPincode}`
-          : devicePincode
-            ? `Location locked · ${devicePincode}` +
-              (accuracyM ? ` (±${Math.round(accuracyM)}m)` : '')
-            : coords
-              ? `Location locked · ${coords}`
-              : 'Location locked';
+          ? // Distance when the job has a point to measure to; the two pincodes
+            // when it does not. Same fork the shutter's banner makes.
+            distanceLabel
+            ? `${distanceLabel} from the job`
+            : `You are at ${devicePincode} · job is ${jobPincode}`
+          : distanceLabel
+            ? `Location locked · ${distanceLabel} from the job`
+            : devicePincode
+              ? `Location locked · ${devicePincode}` +
+                (accuracyM ? ` (±${Math.round(accuracyM)}m)` : '')
+              : coords
+                ? `Location locked · ${coords}`
+                : 'Location locked';
   return (
     <>
       <View
