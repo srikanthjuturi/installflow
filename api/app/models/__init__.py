@@ -32,6 +32,7 @@ from app.models.ticket_event import TicketEvent
 from app.models.token import RefreshToken
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.vendor_address_search import VendorAddressSearch
 from app.models.web_push_subscription import WebPushSubscription
 
 __all__ = [
@@ -68,5 +69,6 @@ __all__ = [
     "TicketEvent",
     "User",
     "Vendor",
+    "VendorAddressSearch",
     "WebPushSubscription",
 ]

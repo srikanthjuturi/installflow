@@ -114,7 +114,7 @@ class CompanyOut(AppModel):
     name: str
     slug: str
     email: str
-    phone: str | None
+    phone: str
     isActive: bool
 
 
@@ -193,6 +193,10 @@ class MeVendorOut(AppModel):
     name: str
     #: Which entry screens the portal offers this vendor.
     intakeChannels: list[str]
+    #: Whether the ticket form offers the address search. The count of searches
+    #: made is deliberately NOT here — that is a console figure, and the portal
+    #: has no reason to show a vendor what they are costing.
+    addressSearchEnabled: bool
 
 
 class ChangePasswordRequest(BaseModel):

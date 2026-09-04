@@ -87,3 +87,18 @@ export function updateVendor({ id, ...body }: UpdateVendorInput): Promise<Vendor
 export function deleteVendor(id: string): Promise<null> {
   return apiDelete<null>(`/vendors/${id}`);
 }
+
+/**
+ * Tell the server this vendor's portal just ran one address-search session.
+ *
+ * Google Places is called straight from the browser, so nothing else would ever
+ * record it — without this call the console has no source for what a vendor is
+ * costing. `sessionId` is the client's id for the session, and the server's
+ * UNIQUE on it makes a repeat harmless.
+ *
+ * The vendor is NOT sent. It comes from the session, like everything else the
+ * portal may call.
+ */
+export function recordAddressSearch(sessionId: string): Promise<null> {
+  return apiPost<null>("/vendors/me/address-searches", { sessionId });
+}

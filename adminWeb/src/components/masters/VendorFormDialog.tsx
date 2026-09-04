@@ -40,6 +40,7 @@ import type {
   Vendor,
 } from "@/types/vendor";
 import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
+import { AddressSearchField } from "./AddressSearchField";
 import { StatusField } from "./StatusField";
 import {
   CHANNEL_HINT,
@@ -47,6 +48,7 @@ import {
   GSTIN_RE,
   INTAKE_CHANNELS,
   LOCAL_AVAILABLE,
+  addressSearchOf,
   statusOf,
   addVendorSchema,
   editVendorSchema,
@@ -303,6 +305,11 @@ function VendorForm({
       // can always type a ticket in.
       intakeChannels: vendor?.intakeChannels ?? ["Manual"],
       status: statusOf(vendor?.isActive ?? true),
+      // On by default, like Active — and for a reason worth knowing before
+      // anybody turns it off. Only a picked search result puts coordinates on a
+      // ticket, and without them a technician's live photo is checked against
+      // the pincode rather than the metres. Off is a real decision, not a saving.
+      addressSearch: addressSearchOf(vendor?.addressSearchEnabled ?? true),
     },
   });
 
@@ -559,6 +566,7 @@ function VendorForm({
       pincode: values.pincode,
       intakeChannels: values.intakeChannels,
       isActive: values.status === "Active",
+      addressSearchEnabled: values.addressSearch === "On",
     };
     const done = (saved: Vendor) => {
       // On ADD the reply is a CreatedVendor and may carry an undelivered
@@ -752,6 +760,23 @@ function VendorForm({
               : "We email a temporary password here. They sign in with it and raise their own tickets.",
           })}
         </FieldGroup>
+
+        {/* Here rather than beside Status, and rather than with Ticket intake.
+            This section means "what this vendor's portal IS"; intake channels
+            are how tickets ARRIVE, and Status is the brand's lifecycle. This
+            is about the intake form itself. */}
+        <Controller
+          name="addressSearch"
+          control={control}
+          render={({ field }) => (
+            <AddressSearchField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.addressSearch?.message}
+              errorId="vendor-address-search-error"
+            />
+          )}
+        />
       </FormSection>
 
       <Controller

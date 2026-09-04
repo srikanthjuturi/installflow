@@ -56,6 +56,17 @@ export interface Vendor {
   /** How this vendor's tickets reach us. One or more, in the order picked. */
   intakeChannels: IntakeChannel[];
   isActive: boolean;
+  /** Whether this vendor's portal offers the Google address search. */
+  addressSearchEnabled: boolean;
+  /**
+   * Address searches this vendor and their staff have run, ever. A real COUNT
+   * over one row per billed Google session.
+   *
+   * LIFETIME, and independent of the switch — turning a vendor off does not
+   * erase what they already spent, so a non-zero figure beside an Off vendor
+   * is correct rather than a bug.
+   */
+  addressSearchCount: number;
   /** Live product models carrying this brand. A real COUNT, not seed data. */
   modelCount: number;
   /** The address this vendor signs in with. */
@@ -103,6 +114,7 @@ export interface CreateVendorInput {
   pincode: string;
   intakeChannels: IntakeChannel[];
   isActive: boolean;
+  addressSearchEnabled: boolean;
 }
 
 export interface UpdateVendorInput {
@@ -122,4 +134,5 @@ export interface UpdateVendorInput {
   /** Sent whole — omit to leave the channels alone; an empty array is refused. */
   intakeChannels?: IntakeChannel[];
   isActive?: boolean;
+  addressSearchEnabled?: boolean;
 }

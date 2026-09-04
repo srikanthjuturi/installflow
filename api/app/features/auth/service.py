@@ -471,6 +471,7 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
                 id=row.id,
                 name=row.name,
                 intakeChannels=list(row.intake_channels or []),
+                addressSearchEnabled=row.address_search_enabled,
             )
 
     return MeResponse(

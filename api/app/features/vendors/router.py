@@ -24,7 +24,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import Principal, require_feature, require_min_rank
+from app.core.deps import (
+    Principal,
+    require_feature,
+    require_min_rank,
+    require_vendor_principal,
+)
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -36,6 +41,7 @@ from app.core.schemas import (
 from app.features.vendors import service
 from app.core.gst_lookup import GstinLookupOut, GstinLookupRequest, lookup_gstin_service
 from app.features.vendors.schemas import (
+    AddressSearchRequest,
     IntakeChannelOut,
     VendorCreateRequest,
     VendorCreatedOut,
@@ -75,6 +81,10 @@ CanEdit = Annotated[Principal, Depends(require_feature("vendors.edit"))]
 #: The brand picker on the product model form — see `list_vendor_options`.
 CanPickBrand = Annotated[Principal, Depends(require_feature("masters.view"))]
 NationalHeadUp = Depends(require_min_rank(NATIONAL_HEAD))
+#: The portal's own caller — see `record_address_search`, the one route here
+#: whose caller is a vendor rather than company staff.
+CanRaiseTicket = Annotated[Principal, Depends(require_feature("jobs.create"))]
+IsVendor = Depends(require_vendor_principal)
 
 
 @router.get(
@@ -165,6 +175,52 @@ async def lookup_gstin(
     """
     data = await lookup_gstin_service(db, principal.company_id, body.gstin)
     return envelope(data, message=_LOOKUP_MESSAGE[data.outcome])
+
+
+@router.post(
+    "/me/address-searches",
+    response_model=ApiEnvelope[None],
+    dependencies=[IsVendor],
+)
+async def record_address_search(
+    body: AddressSearchRequest, db: Db, principal: CanRaiseTicket
+) -> ApiEnvelope[None]:
+    """The portal reporting one Google address-search session.
+
+    Google Places is called straight from the browser, so no search reaches this
+    API on its own. Without this route the console could never say what a vendor
+    is costing, because there would be nothing anywhere to count.
+
+    ## `/me`, and the guards
+
+    `me` rather than `/{vendor_id}`: hard rule 0 — anything a vendor calls pins
+    the vendor server-side, and the only source is `principal.vendor_id`,
+    re-derived from the membership this request already loaded. Declared BEFORE
+    `/{vendor_id}` or FastAPI matches the literal against `uuid.UUID` and 422s,
+    the trap this module's docstring already names for `/channels`.
+
+    `jobs.create` rather than a vendors feature, and **deliberately without**
+    `NationalHeadUp`: this is the one route in this file whose caller is a
+    vendor, not staff, so the seniority floor every other route needs would be
+    exactly backwards here. The search box exists only on the raise-a-ticket
+    form, so whoever may raise a ticket may search for its address — and
+    `IsVendor` on top, for the reason `POST /tickets` carries it: a feature
+    grant is overridable per company, so on the key alone "vendor-only" lasts
+    until somebody flips a row.
+
+    ## Always 200, and `data` is null
+
+    Deliberately not a running total. Returning one would invite the portal to
+    show it, and how much a vendor has spent is a CONSOLE figure — which is why
+    `MeVendorOut` carries the switch but never the count, and `VendorOut`
+    carries the count behind National-Head-and-above.
+
+    200 rather than 201 or 202: nothing is addressable afterwards so there is no
+    `Location`, the row is written before this returns so `Accepted` would be a
+    lie, and a duplicate `sessionId` is a no-op that is equally a success.
+    """
+    await service.record_address_search(db, principal, body)
+    return envelope(None, message="Recorded")
 
 
 @router.get(

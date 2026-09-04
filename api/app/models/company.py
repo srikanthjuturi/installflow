@@ -20,7 +20,10 @@ class Company(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: rows spelling a prefix it no longer uses. See `app.core.company_code`.
     code: Mapped[str] = mapped_column(String(6), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    #: Mandatory, like `vendors.phone` — a tenant nobody can ring is a tenant
+    #: whose only contact route is the admin mailbox. Stored E.164, normalised
+    #: by `app.core.phone.Phone` on the way in.
+    phone: Mapped[str] = mapped_column(String(32), nullable=False)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )

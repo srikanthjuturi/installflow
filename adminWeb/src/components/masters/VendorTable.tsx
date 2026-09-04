@@ -162,6 +162,23 @@ export function VendorTable({
       cell: (v) => v.ticketCount,
     },
     {
+      id: "addressSearches",
+      header: "Address searches",
+      cellClassName: "tabular-nums",
+      /*
+       * A real COUNT, one row per billed Google session, LIFETIME.
+       *
+       * Always a number, never a dash: zero is a fact, and a vendor switched
+       * off yesterday still ran the 412 searches it ran. The figure does not
+       * move when the switch does, so a non-zero count beside an Off vendor is
+       * correct rather than a bug.
+       *
+       * It is a floor, not an audit. The portal reports each session
+       * fire-and-forget, so a dropped request is one search nobody ever counts.
+       */
+      cell: (v) => v.addressSearchCount,
+    },
+    {
       id: "status",
       header: "Status",
       cell: (v) => {
@@ -257,7 +274,7 @@ export function VendorTable({
   return (
     <DataTable
       errorTitle="Couldn't load vendors"
-      caption="Vendors, with their GSTIN, contact person, city, how their tickets arrive, how many product models carry the brand, lifetime ticket volume and status"
+      caption="Vendors, with their GSTIN, contact person, city, how their tickets arrive, how many product models carry the brand, lifetime ticket volume, lifetime address searches and status"
       data={vendors}
       columns={columns}
       getRowId={(v) => v.id}
@@ -272,7 +289,9 @@ export function VendorTable({
       filters={filters}
       server={{ meta, params, onParams }}
       toolbarActions={toolbarActions}
-      minWidth="72rem"
+      /* Raised from 72rem with the address-search column: a tenth column would
+         otherwise squeeze the sticky-scroll container. */
+      minWidth="80rem"
       emptyTitle="No vendors yet"
       emptyDescription="Add the companies whose products you install. Each one becomes a brand you can pick when adding a product model."
       filteredEmptyTitle="No vendors match those filters"

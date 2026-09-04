@@ -112,6 +112,23 @@ export interface AddressFieldsProps {
    */
   autoFill?: boolean;
   disabled?: boolean;
+  /**
+   * Whether the Google-backed search is offered, and where to report a session.
+   *
+   * A PROP, never read from the session here. This control is `shared/` — the
+   * caller owns the values and this owns the behaviour — and a component that
+   * looked up `me` itself could not be reused on a staff or superadmin form.
+   * It also could not tell the two meanings of `me.vendor === null` apart: for
+   * a staff caller it means "not a vendor" (search on), for a broken portal
+   * account it means "no vendor" (off). The caller knows which it is.
+   *
+   * Omit for search-on and record-nothing, which is the right default for any
+   * form that is not a vendor's.
+   */
+  addressSearch?: {
+    enabled: boolean;
+    onSearch: (sessionId: string) => void;
+  };
   /** Grid class for the field group holding all five boxes. */
   grid?: string;
   /** Column span for the street line inside that grid. */
@@ -154,11 +171,19 @@ export function AddressFields({
   onStatusChange,
   autoFill = true,
   disabled,
+  addressSearch,
   grid,
   addressClassName,
   children,
 }: AddressFieldsProps) {
-  const places = useAddressAutocomplete();
+  // Passed INTO the hook rather than used to hide the box below, so a vendor
+  // switched off never fetches the Maps SDK either. `available` covers both
+  // reasons the search can be absent — no key, or not offered to this vendor —
+  // and the render branch stays the single condition it already was.
+  const places = useAddressAutocomplete({
+    enabled: addressSearch?.enabled,
+    onSearch: addressSearch?.onSearch,
+  });
   const [picked, setPicked] = React.useState<ComboboxOption | null>(null);
   /**
    * The last pick came back without a postal code.

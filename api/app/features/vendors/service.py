@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
@@ -32,6 +33,7 @@ from app.core.schemas import EmailStatus, ListParams
 from app.db.repository import paginate
 from app.emails import send_temporary_password
 from app.features.vendors.schemas import (
+    AddressSearchRequest,
     IntakeChannelOut,
     VendorCreateRequest,
     VendorCreatedOut,
@@ -48,6 +50,7 @@ from app.models.role import ROLE_LABELS, VENDOR, VENDOR_ROLES
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.vendor_address_search import VendorAddressSearch
 
 SORTABLE = {
     "name": Vendor.name,
@@ -244,11 +247,39 @@ async def _login_emails(
     return {vendor_id: email for vendor_id, email in rows if email}
 
 
+async def _address_search_counts(
+    db: AsyncSession, company_id: uuid.UUID, vendor_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Address searches per vendor — one grouped query, never N+1.
+
+    LIFETIME. No date filter, and no `deleted_at` filter either: the table has
+    no soft delete, because a record of what was spent is never edited.
+
+    Read live rather than kept in a column on `vendors`, per hard rule 8 —
+    `technician_profiles.jobs_completed` was a `NOT NULL DEFAULT 0` counter
+    nothing measured, and every profile asserted a zero it had never taken.
+    """
+    if not vendor_ids:
+        return {}
+    rows = await db.execute(
+        select(
+            VendorAddressSearch.vendor_id, func.count(VendorAddressSearch.id)
+        )
+        .where(
+            VendorAddressSearch.company_id == company_id,
+            VendorAddressSearch.vendor_id.in_(vendor_ids),
+        )
+        .group_by(VendorAddressSearch.vendor_id)
+    )
+    return {vendor_id: count for vendor_id, count in rows}
+
+
 def _to_out(
     row: Vendor,
     model_count: int,
     ticket_count: int = 0,
     login_email: str | None = None,
+    address_search_count: int = 0,
 ) -> VendorOut:
     return VendorOut(
         id=row.id,
@@ -265,6 +296,8 @@ def _to_out(
         pincode=row.pincode,
         intakeChannels=list(row.intake_channels or []),
         isActive=row.is_active,
+        addressSearchEnabled=row.address_search_enabled,
+        addressSearchCount=address_search_count,
         modelCount=model_count,
         ticketCount=ticket_count,
         loginEmail=login_email,
@@ -275,13 +308,20 @@ def _to_out(
 async def _hydrate(
     db: AsyncSession, company_id: uuid.UUID, rows: list[Vendor]
 ) -> list[VendorOut]:
-    """Resolve the three derived figures for a page — three queries, not 3N."""
+    """Resolve the four derived figures for a page — four queries, not 4N."""
     ids = [r.id for r in rows]
     models = await _model_counts(db, ids)
     tickets = await _ticket_counts(db, company_id, ids)
     logins = await _login_emails(db, company_id, ids)
+    searches = await _address_search_counts(db, company_id, ids)
     return [
-        _to_out(r, models.get(r.id, 0), tickets.get(r.id, 0), logins.get(r.id))
+        _to_out(
+            r,
+            models.get(r.id, 0),
+            tickets.get(r.id, 0),
+            logins.get(r.id),
+            searches.get(r.id, 0),
+        )
         for r in rows
     ]
 
@@ -445,6 +485,7 @@ async def create_vendor(
         pincode=body.pincode,
         intake_channels=list(body.intakeChannels),
         is_active=body.isActive,
+        address_search_enabled=body.addressSearchEnabled,
         created_by=principal.user_id,
     )
     db.add(row)
@@ -628,6 +669,8 @@ async def update_vendor(
         row.intake_channels = list(body.intakeChannels)
     if body.isActive is not None:
         row.is_active = body.isActive
+    if body.addressSearchEnabled is not None:
+        row.address_search_enabled = body.addressSearchEnabled
     row.updated_by = principal.user_id
 
     await db.commit()
@@ -674,4 +717,64 @@ async def delete_vendor(
         membership.updated_by = principal.user_id
         await revoke_refresh_tokens(db, membership.user_id)
 
+    await db.commit()
+
+
+# ── usage ─────────────────────────────────────────────────────────────────────
+
+
+async def record_address_search(
+    db: AsyncSession, principal: Principal, body: AddressSearchRequest
+) -> None:
+    """Record one Google autocomplete session the portal just ran.
+
+    Google is called straight from the browser, so nothing reaches this API on
+    its own and a search cannot be counted after the fact. This is the portal
+    saying it happened.
+
+    ## One statement, and no SELECT
+
+    Called on a keystroke — the first one of a session, once the suggestions
+    come back — so it does the least a write can do. The composite FK already
+    proves `(company_id, vendor_id)` is a real pair, and `require_vendor_principal`
+    already refused a portal account whose membership names no vendor, so there
+    is nothing left worth reading first.
+
+    ## Why ON CONFLICT DO NOTHING rather than a plain insert
+
+    A duplicate must be a silent no-op. `app.core.errors` turns an
+    `IntegrityError` into a 409, and a vendor typing a customer's address is the
+    last person who should see one. The UNIQUE plus this clause is what makes a
+    retried request, a double-fired debounce and a replay after a token refresh
+    all land on the row that is already there.
+
+    ## It does NOT check `address_search_enabled`
+
+    Deliberate. A call arriving while the flag is off is either a tab opened
+    before somebody switched it — a real Google session we were really billed
+    for — or a forgery. Refusing would drop the honest one and under-report
+    exactly when a person is investigating what the vendor is costing.
+
+    ## The forgery it accepts
+
+    A vendor can inflate its OWN number by posting in a loop. Accepted, because
+    the purpose is visibility, not billing and not enforcement. What it cannot
+    do is the part that matters: it cannot deflate the count (append-only, and
+    no route deletes), cannot touch another vendor's (`principal.vendor_id` is
+    server-side, never a field), and cannot spend money — recording a search is
+    not making one. The cost of abuse is rows. If that ever matters, the answer
+    is a ceiling that still answers 200, never a 429 the client can read and
+    never a stored counter.
+    """
+    stmt = (
+        pg_insert(VendorAddressSearch)
+        .values(
+            company_id=principal.company_id,
+            vendor_id=principal.vendor_id,
+            search_session_id=body.sessionId,
+            created_by=principal.user_id,
+        )
+        .on_conflict_do_nothing(constraint="uq_vendor_address_searches_session")
+    )
+    await db.execute(stmt)
     await db.commit()

@@ -69,6 +69,18 @@ interface ManualEntryFormProps {
    * company. A vendor must neither need it nor see its result.
    */
   vendor: VendorOption;
+  /**
+   * Whether this vendor is offered the address search, and where to report a
+   * session so the console can count it.
+   *
+   * REQUIRED, for the same reason `vendor` is: the capability belongs to a
+   * vendor, this form is only ever a vendor's, and a caller that inherited a
+   * default would be spending somebody's Google quota without deciding to.
+   */
+  addressSearch: {
+    enabled: boolean;
+    onSearch: (sessionId: string) => void;
+  };
 }
 
 export function ManualEntryForm({
@@ -76,6 +88,7 @@ export function ManualEntryForm({
   onCancel,
   isSubmitting,
   vendor,
+  addressSearch,
 }: ManualEntryFormProps) {
 
   const {
@@ -427,6 +440,7 @@ export function ManualEntryForm({
               value={addressValue}
               onChange={setAddress}
               onStatusChange={setAddressStatus}
+              addressSearch={addressSearch}
               grid="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
               addressClassName="sm:col-span-2 xl:col-span-4"
               /* No pincode placeholder: it is a search over the geography

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.core.phone import OptionalPhone
+from app.core.phone import Phone
 from app.core.schemas import AppModel, EmailOutcome
 
 # Normalise-then-validate field types. They live in app/core/statutory.py because
@@ -28,7 +28,10 @@ class CompanyCreateRequest(BaseModel):
     #: afterwards, because tickets store the assembled string.
     code: str | None = Field(default=None, max_length=6)
     email: EmailStr  # becomes the admin's login email
-    phone: OptionalPhone = None
+    #: Mandatory, like a vendor's. `Phone` rather than `OptionalPhone` is what
+    #: refuses the empty string a form sends for a box left blank — the whole
+    #: point of the distinction between the two types.
+    phone: Phone
     #: No password: the server mints a temporary one and emails it to `email`.
     adminName: str | None = Field(default=None, max_length=255)
     # Statutory identity (mandatory; the GST API will auto-fill these later).
@@ -46,7 +49,9 @@ class CompanyCreateRequest(BaseModel):
 class CompanyUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     email: EmailStr | None = None
-    phone: OptionalPhone = None
+    #: Omitted means unchanged; there is no longer a way to clear it. Same
+    #: shape as `VendorUpdateRequest.phone`, and for the same reason.
+    phone: Phone | None = None
     gstNumber: GstNumber | None = None
     pan: Pan | None = None
     gstCompanyStatus: GstStatus | None = None
@@ -66,7 +71,7 @@ class CompanyOut(AppModel):
     slug: str
     code: str
     email: str
-    phone: str | None
+    phone: str
     isActive: bool
     gstNumber: str
     pan: str

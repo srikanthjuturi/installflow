@@ -124,7 +124,7 @@ function CompanyForm({
       ? {
           name: company.name,
           email: company.email,
-          phone: company.phone ?? "",
+          phone: company.phone,
           gstNumber: company.gstNumber,
           pan: company.pan,
           gstCompanyStatus: company.gstCompanyStatus,
@@ -354,7 +354,8 @@ function CompanyForm({
     const shared = {
       name: values.name.trim(),
       email: values.email.trim(),
-      phone: values.phone.trim() || null,
+      // Already squashed by the schema, and mandatory — never `|| null`.
+      phone: values.phone,
       gstNumber: values.gstNumber.trim().toUpperCase(),
       pan: values.pan.trim().toUpperCase(),
       gstCompanyStatus: values.gstCompanyStatus.trim(),
@@ -479,8 +480,11 @@ function CompanyForm({
             hint: isEdit ? undefined : "Becomes the admin's login email.",
           })}
           {renderField("phone", "Phone", {
-            placeholder: "+91 90000 00000",
+            required: true,
+            type: "tel",
+            placeholder: "98200 11001",
             autoComplete: "tel",
+            hint: "10 digits. Spaces and a +91 are fine.",
           })}
         </FieldGroup>
       </FormSection>

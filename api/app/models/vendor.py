@@ -104,6 +104,26 @@ class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Boolean, nullable=False, server_default=text("true")
     )
 
+    #: Whether this vendor's portal offers the Google-backed address search on
+    #: the ticket form. Off means they type the address in by hand, which is the
+    #: same path taken when no Maps key is configured at all.
+    #:
+    #: Named for the CAPABILITY, not the provider — swapping Places for another
+    #: geocoder must not be a migration.
+    #:
+    #: Defaults ON, unlike a metered capability's usual instinct, because
+    #: switching it off costs more than money: coordinates reach a ticket only
+    #: from a picked search result, and `jobs.service` verifies a technician's
+    #: live photo by DISTANCE only when the ticket has them. An off vendor's
+    #: jobs fall back to comparing pincodes, which can span kilometres.
+    #:
+    #: It is a UI capability, not a spend control. The Maps key ships in the
+    #: client bundle by design, so this hides the box rather than closing the
+    #: door. Capping spend is a per-key quota in Google Cloud.
+    address_search_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+
     __table_args__ = (
         CheckConstraint(
             "jsonb_typeof(intake_channels) = 'array' "

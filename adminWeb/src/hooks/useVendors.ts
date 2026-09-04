@@ -6,6 +6,7 @@ import {
   listIntakeChannels,
   listVendorOptions,
   listVendors,
+  recordAddressSearch,
   updateVendor,
 } from "@/services/vendors";
 import type { ListParams } from "@/types/api";
@@ -113,3 +114,29 @@ export const useUpdateVendor = () =>
   useVendorMutation(updateVendor, "Couldn't save the vendor");
 export const useDeleteVendor = () =>
   useVendorMutation(deleteVendor, "Couldn't remove the vendor");
+
+/**
+ * Report one address-search session, and forget about it.
+ *
+ * A bare `useMutation`, deliberately NOT `useVendorMutation`: that helper
+ * invalidates `vendorKeys.all` and the product master, which would make a
+ * keystroke in the vendor portal evict console caches and refetch
+ * `GET /vendors` — a 403 for the vendor doing the typing.
+ *
+ * `suppressErrorToast` is mandatory here rather than stylistic. Every other API
+ * failure in this console is toasted; a vendor filling in a customer's address
+ * must never be interrupted by "Couldn't record the search". The failure is
+ * ours, the consequence is one uncounted search, and both are invisible by
+ * design — which is why the console's figure is a floor, not an audit.
+ *
+ * No retry: the session id makes a repeat SAFE, not useful, and a retry storm
+ * on a keystroke path buys a number nobody bills on.
+ */
+export function useRecordAddressSearch() {
+  return useMutation({
+    mutationFn: (sessionId: string) => recordAddressSearch(sessionId),
+    retry: false,
+    gcTime: 0,
+    meta: { suppressErrorToast: true },
+  });
+}

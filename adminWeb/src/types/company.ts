@@ -14,7 +14,8 @@ export interface Company {
    *  Assigned at creation and immutable: tickets store the assembled string. */
   code: string;
   email: string;
-  phone: string | null;
+  /** Mandatory. Stored E.164 — the API normalises whatever the form sends. */
+  phone: string;
   isActive: boolean;
   gstNumber: string;
   pan: string;
@@ -41,7 +42,7 @@ export interface CreateCompanyInput {
   code?: string;
   name: string;
   email: string;
-  phone?: string | null;
+  phone: string;
   adminName?: string | null;
   gstNumber: string;
   pan: string;

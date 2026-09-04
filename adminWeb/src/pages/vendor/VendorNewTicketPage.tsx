@@ -6,6 +6,7 @@ import { ManualEntryForm } from "@/components/tickets/ManualEntryForm";
 import { toast } from "@/components/ui/toast";
 import { useMe } from "@/hooks/useAuth";
 import { useCreateTicket } from "@/hooks/useTickets";
+import { useRecordAddressSearch } from "@/hooks/useVendors";
 
 /**
  * Raise a ticket, with the vendor already known.
@@ -19,6 +20,7 @@ export default function VendorNewTicketPage() {
   const navigate = useNavigate();
   const { data: me, isPending, isError, error, refetch } = useMe();
   const create = useCreateTicket();
+  const recordSearch = useRecordAddressSearch();
 
   if (isPending) return <PageSkeleton />;
   if (isError) {
@@ -53,6 +55,16 @@ export default function VendorNewTicketPage() {
 
       <ManualEntryForm
         vendor={{ id: me.vendor.id, name: me.vendor.name }}
+        /* The capability is decided here, not inside the shared address
+           control: this is the one component that knows the caller is a vendor
+           and which vendor it is. `me` is cached for five minutes, so flipping
+           the switch in the console reaches an open tab on its next refetch
+           rather than instantly — fine, because this is a preference and not a
+           permission. */
+        addressSearch={{
+          enabled: me.vendor.addressSearchEnabled,
+          onSearch: (sessionId) => recordSearch.mutate(sessionId),
+        }}
         isSubmitting={create.isPending}
         onCancel={() => navigate("/portal/tickets")}
         onSubmit={(values) =>

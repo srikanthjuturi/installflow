@@ -191,7 +191,8 @@ export interface ActiveCompany {
   name: string;
   slug: string;
   email: string;
-  phone: string | null;
+  /** Mandatory since `f4b28d1a67c3` — every company has one. */
+  phone: string;
   isActive: boolean;
 }
 
@@ -233,4 +234,12 @@ export interface MeVendor {
   name: string;
   /** Which entry screens the portal offers — see components/vendor/portalNav.ts. */
   intakeChannels: IntakeChannel[];
+  /**
+   * Whether the ticket form offers the Google-backed address search.
+   *
+   * How many searches this vendor has made is deliberately NOT here. That is a
+   * console figure, and the portal has no reason to show a vendor what they
+   * cost — the server keeps it off this payload for the same reason.
+   */
+  addressSearchEnabled: boolean;
 }

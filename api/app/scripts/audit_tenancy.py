@@ -104,6 +104,9 @@ TENANT_LINKS = [
     # is wrong twice, in opposite directions, and it settles.
     ("ledger_entries", "technician_id", "technician_profiles"),
     ("ledger_entries", "ticket_id", "tickets"),
+    # Usage. A search counted against another company's vendor would put one
+    # tenant's activity on a second tenant's bill review.
+    ("vendor_address_searches", "vendor_id", "vendors"),
 ]
 
 

@@ -96,6 +96,12 @@ class VendorCreateRequest(BaseModel):
         default_factory=lambda: list(DEFAULT_INTAKE_CHANNELS)
     )
     isActive: bool = True
+    #: Whether the portal offers this vendor the address search on the ticket
+    #: form. Defaults ON, unlike a metered capability's usual instinct, because
+    #: off costs more than money: only a picked search result puts coordinates
+    #: on a ticket, and without them a technician's live photo is verified by
+    #: pincode instead of by distance. See the column comment on the model.
+    addressSearchEnabled: bool = True
 
     #: The vendor's login. REQUIRED, because only a vendor can raise a ticket —
     #: a vendor without an account would be a brand nobody could ever raise one
@@ -129,6 +135,7 @@ class VendorUpdateRequest(BaseModel):
     #: channels alone, and an empty list is refused rather than clearing them.
     intakeChannels: IntakeChannels | None = None
     isActive: bool | None = None
+    addressSearchEnabled: bool | None = None
     #: NB: no password. Reissuing one is now `POST /vendors/{id}/reissue-password`
     #: — it takes no body, because the password is the server's to choose.
     #:
@@ -156,6 +163,17 @@ class VendorOut(AppModel):
     pincode: str
     intakeChannels: list[str]
     isActive: bool
+    addressSearchEnabled: bool
+    #: How many address searches this vendor and their staff have run, ever.
+    #:
+    #: A real COUNT over `vendor_address_searches`, one row per billed Google
+    #: session — never a stored counter. LIFETIME and unbounded: there is no
+    #: date filter, and the index behind it carries no `created_at`, so a
+    #: "this month" figure needs that column added before it needs a query.
+    #:
+    #: It does not move when the switch does. Turning a vendor off is a decision
+    #: about tomorrow, not a way to erase what they already spent.
+    addressSearchCount: int = 0
     #: How many live product models carry this vendor as their brand. A real
     #: COUNT — it is what the delete confirmation quotes back at the user.
     modelCount: int
@@ -170,6 +188,21 @@ class VendorOut(AppModel):
 
 class VendorCreatedOut(VendorOut, EmailOutcome):
     """`POST /vendors` and the reissue — see `UserCreatedOut` for why a subclass."""
+
+
+class AddressSearchRequest(BaseModel):
+    """The portal reporting one Google autocomplete session.
+
+    `sessionId` is the CLIENT's uuid for that session, and it is the whole
+    idempotency story: the UNIQUE on `(company_id, search_session_id)` plus
+    `ON CONFLICT DO NOTHING` means a retried request, a double-fired debounce or
+    a replay after a token refresh all land on the row already there.
+
+    There is deliberately no vendor id. It comes from the principal, like
+    everything else a vendor may call — hard rule 0.
+    """
+
+    sessionId: uuid.UUID
 
 
 class VendorOptionOut(AppModel):

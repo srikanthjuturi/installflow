@@ -99,6 +99,19 @@ export type VendorStatus = (typeof VENDOR_STATUSES)[number];
 export const statusOf = (isActive: boolean): VendorStatus =>
   isActive ? "Active" : "Paused";
 
+/**
+ * Whether this vendor's portal offers the Google address search.
+ *
+ * A string pair rather than a boolean for the same reason `status` is one: the
+ * form renders two labelled cards, and a control whose two states carry no
+ * visible word would be colour alone.
+ */
+export const ADDRESS_SEARCH = ["On", "Off"] as const;
+export type AddressSearch = (typeof ADDRESS_SEARCH)[number];
+
+export const addressSearchOf = (enabled: boolean): AddressSearch =>
+  enabled ? "On" : "Off";
+
 const upper = (v: string) => v.trim().toUpperCase();
 const squash = (v: string) => v.replace(/\s+/g, "");
 
@@ -172,6 +185,7 @@ export const vendorSchema = z.object({
     .array(z.enum(INTAKE_CHANNELS))
     .min(1, "Pick at least one way tickets arrive"),
   status: z.enum(VENDOR_STATUSES),
+  addressSearch: z.enum(ADDRESS_SEARCH),
 });
 
 export type VendorFormValues = z.infer<typeof vendorSchema>;
