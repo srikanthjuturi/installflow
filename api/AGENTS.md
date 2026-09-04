@@ -45,10 +45,29 @@ and paging could not span them. It takes `search` (the ticket board's own predic
 an IST `slotFrom`/`slotTo` range on the SLOT — the day the work was promised, not the day the
 ticket was raised.
 
-Still to come: **AI review**, the **dashboard**, **job payouts** — nothing prices an install, so
-`payoutPaise` and a technician's net earnings are null everywhere and render `—` — and a
-technician EDIT screen in the console, since the API takes `dailyJobCap` on
-`PUT /technicians/{id}` and no screen calls it.
+**Job payouts are live.** `product_models` carries `technician_payout_paise` and
+`vendor_price_paise` (both NOT NULL — an unpriced model is not a state, so intake needs no check
+for one), `tickets` stamps both at intake, and closure writes a third `LEDGER_KINDS` value,
+`payout`. Two writers, and they shipped with the kind (hard rule 8): `feedback_service` on a
+customer-confirmed closure credits the full amount, `force_close_ticket` credits what the manager
+entered, clamped to the ticket's price and writing no row at zero.
+
+Three things about it are load-bearing:
+
+- **The masking is by principal, in the serializer.** `masters.get_tree` and `tickets._hydrate`
+  both null `technicianPayoutPaise` for a vendor — `_hydrate` takes `principal` for that one
+  reason, so the decision lives in one place rather than at its four call sites. The jobs slice
+  needs no such branch: `JobOfferOut` has no vendor-price field, and must never grow one.
+- **A payout is not pool money.** `core.ledger.pool` and `features/ledger._entries_query` both
+  restrict to `POOL_KINDS`; `features/earnings` reads the same table unfiltered, because the
+  technician's own list is all three kinds. Left unfiltered, the console's pool screen would list
+  wages under a balance they are not part of.
+- **`net = earned + bonuses − penalties`**, in one grouped query in `earnings.summary`, so the
+  three tiles and the hero figure cannot come from different reads. It may be negative.
+
+Still to come: **AI review**, the **dashboard**, and the **redeem-cash flow** — a technician's
+`upi_id` is collected (console add/edit, the joining flow, and `PATCH /technicians/me/payout-account`)
+but nothing spends against it yet.
 
 Two things nothing clears yet, both deliberate and both needing a product decision rather than
 code: an escalated job whose slot has PASSED stays in the queue for ever (re-slotting means asking

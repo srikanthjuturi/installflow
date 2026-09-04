@@ -28,9 +28,26 @@ because nothing records what a count was yesterday). What is left on typed mock 
 TanStack Query hook is **AI review**, so binding it stays a one-line change and we keep loading /
 empty / error states today.
 
-Two things are real but **not yet priced**, and both render `—` rather than a figure:
-`tickets` has no payout column, so what a job PAYS is unknown — and with it unknown, so is a
-technician's net. Bonuses and penalties are real money in `ledger_entries`.
+**A job is priced.** A product model carries two amounts — `technician_payout_paise` and
+`vendor_price_paise`, both NOT NULL — and a ticket STAMPS both at intake, so a repricing never
+restates what an old job was worth. On closure the technician's half becomes a `payout` entry in
+`ledger_entries`, which is where the Earnings screen's `earned` comes from and why `net` is now a
+real number: `earned + bonuses − penalties`.
+
+**Neither party ever sees the other's figure**, and it is enforced server-side in three places:
+`masters.get_tree` nulls `technicianPayoutPaise` for a vendor principal (a vendor calls it on every
+intake form), `tickets._hydrate` does the same on `TicketOut`, and the technician's job shapes
+(`JobOfferOut` / `JobOut`) carry no vendor-price field at all. Never add one.
+
+**A payout is not pool money.** `ledger_entries` holds all three kinds, but the penalty pool is a
+closed circuit — `balance = penalties − bonuses` — funded by cancellations, while a payout is the
+company paying for work from outside it. `features/ledger` (the console's pool screen) filters to
+`POOL_KINDS`; `features/earnings` (the technician's own) deliberately does not.
+
+What is still unpriced: nothing. What a **force-closure** pays is the manager's own number, entered
+on the force-close form and capped at the job's price — a technician who travelled and found nobody
+home is owed something, one whose customer never confirmed a slot is owed nothing, and only the
+person closing it knows which.
 
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.
