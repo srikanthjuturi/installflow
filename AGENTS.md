@@ -39,6 +39,13 @@ real number: `earned + bonuses − penalties`.
 intake form), `tickets._hydrate` does the same on `TicketOut`, and the technician's job shapes
 (`JobOfferOut` / `JobOut`) carry no vendor-price field at all. Never add one.
 
+**One thing the API deliberately does not do: call Google.** The address search on the vendor's
+ticket form runs entirely in the browser, against the Maps JS SDK, with a key that ships in the
+bundle. That is not an oversight — `places.googleapis.com` does not reliably send CORS headers,
+and only the JS SDK supports the session tokens that make a whole search bill once instead of per
+keystroke. The consequence to remember is that **the server learns nothing unless the client tells
+it**, which is why counting searches needed an endpoint of its own rather than a middleware.
+
 **A payout is not pool money.** `ledger_entries` holds all three kinds, but the penalty pool is a
 closed circuit — `balance = penalties − bonuses` — funded by cancellations, while a payout is the
 company paying for work from outside it. `features/ledger` (the console's pool screen) filters to
@@ -291,6 +298,31 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   nobody could ever raise a ticket against.
 - A vendor's **`intake_channels` decide which entry screens its portal offers.** Manual today;
   Excel appears when the bulk importer exists; API is somebody else's application calling ours.
+- A vendor's **`address_search_enabled` decides whether its ticket form offers the Google address
+  search.** Off means they type the address by hand, which is the same path taken when no Maps key
+  is configured — so `AddressFields` needed no new branch, only a reason for `available` to be
+  false.
+  It **defaults ON**, which is the opposite of the instinct for a metered third-party capability,
+  and the reason is not cost: a ticket gets `latitude`/`longitude` ONLY from a picked search
+  result, and `jobs.service` verifies a technician's live photo by DISTANCE only when the ticket
+  has them. Switch a vendor off and every job they raise falls back to comparing pincodes, which
+  can span kilometres. Off is a decision about proof, not a saving.
+  ⚠ It is a **UI capability, not a spend control.** The Maps key ships in the client bundle by
+  design, so this hides the box rather than closing the door. Capping spend is a per-key quota and
+  a budget alert in Google Cloud — nothing in this database can do it.
+- **Address searches are counted, one row per BILLED session.** Google is called straight from the
+  browser, so nothing reaches the API on its own and a search cannot be counted after the fact —
+  the portal reports each one to `POST /vendors/me/address-searches`, and `vendor_address_searches`
+  is where it lands. A session, not a keystroke and not a picked address: the portal holds one
+  session token across every keystroke up to a selection, so per-keystroke would multiply the
+  number and per-pick would miss every lookup somebody abandoned after Google had already been
+  paid. The client mints the session id and a UNIQUE on it makes a repeat a no-op, so a retry or a
+  double-fired debounce cannot inflate the count.
+  The console's figure is a live `COUNT`, never a stored counter — see `technician_profiles`
+  in `api/AGENTS.md` for what that mistake looks like. It is **lifetime and independent of the
+  switch**: turning a vendor off never erases what they already spent, so a non-zero count beside
+  an Off vendor is correct. And it is a **floor, not an audit** — reporting is fire-and-forget, so
+  a dropped request is one search nobody ever counts.
 - The **customer confirms the slot before any technician sees the job**. A technician accepts a
   fixed time — they never propose one.
 - Assignment is **first-accept-wins**. Losing the race is a normal outcome, not an error.
@@ -370,6 +402,16 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   a phone or an email, never both — so both inherit one pepper, one TTL and one set of throttles.
   Technicians are refused: there is no password to reset. See `api/AGENTS.md` → Forgotten
   passwords.
+- **A company's phone is mandatory**, on the same footing as a vendor's, and stored E.164 like
+  every other number here. It was the one optional box on the superadmin's create form and the
+  only contact route left when the admin mailbox bounces.
+  `f4b28d1a67c3` has **no backfill**, and that is the interesting part: every other retrofit in
+  that directory could derive its column from something already stored — a vendor's PAN is
+  literally characters 3-12 of its GSTIN — but a phone number has no such source, and
+  `+910000000000` would be a number somebody eventually dials. So the migration **refuses to run**
+  while any company lacks one and names the rows. Reach for that shape whenever a NOT NULL has no
+  honest default; inventing one is the worse half of "do not fake a number that has a real
+  source".
 - **Nobody types a password when creating an account.** The server generates a temporary one and
   emails it. If that email cannot be sent the account is still created and the password comes
   back in the response for the manager to hand over — and `POST /users/{id}/reissue-password`

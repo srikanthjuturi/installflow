@@ -234,6 +234,19 @@ added by `op.create_check_constraint` in a migration, so the model is the whole 
 table and autogenerate can see it. Name them WITHOUT the `ck_<table>_` prefix — the naming
 convention adds it, and passing it too produced `ck_tickets_ck_tickets_status`.
 
+⚠ **A UNIQUE is named the other way round, and the rule above is exactly why people get it
+wrong.** Look at `NAMING_CONVENTION` in `db/base_class.py`: `ck` is
+`ck_%(table_name)s_%(constraint_name)s`, so a CHECK's given name is INTERPOLATED into a prefix.
+`uq` is `uq_%(table_name)s_%(column_0_name)s` and contains no `%(constraint_name)s` at all, so an
+explicit name is taken **verbatim** — nothing is prepended. Spell a UNIQUE with its full
+`uq_<table>_...` name, the way `uq_vendors_company_id_id` already does.
+
+Written bare, `UniqueConstraint(..., name="vendor_address_searches_session")` compiled to exactly
+that while the migration's `op.f("uq_vendor_address_searches_session")` put the prefixed name in
+the database. Nothing failed loudly: the table was created, the tests passed, and `alembic check`
+simply reported a drop-and-recreate of that constraint on every run, for ever. It would also have
+broken the `on_conflict_do_nothing(constraint=...)` that names it. Caught in `c1a7f30d92b8`.
+
 **A UNIQUE on a soft-deleted table is PARTIAL on `deleted_at IS NULL`.** Otherwise a hidden row
 keeps its name forever: `uq_memberships_user_company` was total, so removing a technician from a
 company — which soft-deletes the membership — made re-adding that person a permanent 409, caused

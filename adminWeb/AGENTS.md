@@ -545,7 +545,7 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/technicians` | `TechnicianListPage` | add · invite · **edit** — one `TechnicianFormDialog` for add and edit, pointed by an optional `technician` prop. Edit is `technicians.edit` and offered on REGISTERED rows only: an invite is a phone number and nothing else yet |
 | `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history; "Edit details" opens the same dialog |
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |
-| `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named |
+| `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named. The vendor row carries an **Address searches** column — a lifetime COUNT, always a number and never a dash, and independent of the switch that produced it |
 | `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet; drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link |
 | `/settings/rules` · `/settings/users` | settings | |
 | `*` | `NotFoundPage` | every unmatched URL. Renders — it does not redirect |
@@ -756,6 +756,15 @@ not "image". Contrast is verified against WCAG AA in **both** themes — `--ink-
 `--surface-2` is borderline; it is for de-emphasised metadata only, never body copy. All Framer
 Motion animation respects `prefers-reduced-motion`.
 
+**A boolean is TWO LABELLED CARDS, not a switch.** There is deliberately no `Switch` in
+`components/ui/`, and adding one would be the first. Every boolean in this console — Active/Paused
+on a category, a subcategory, a model and a vendor, On/Off for a vendor's address search — is a
+two-option `RadioGroup` of bordered cards, because a switch's two states carry no visible word and
+"never colour alone" applies to a control as much as to a badge. `StatusField.tsx` and
+`AddressSearchField.tsx` are the two shapes; copy whichever fits. They are deliberately NOT one
+generic component: `StatusField` is typed to `CategoryStatus` and belongs to the product master,
+and the habit here is to promote a shared control on the **third** consumer, not the second.
+
 ## Performance plan
 
 Route-based code splitting via `React.lazy` + `Suspense`, with the skeleton for that screen as
@@ -834,6 +843,16 @@ moment later is the wrong order to put a person through.
    request is our problem, not the customer's address).
 4. **Manual entry always works.** No key, no network, no matching result — every
    path ends at the same editable fields.
+5. **The search is per-vendor, and the flag arrives as a PROP.** Pass
+   `addressSearch={{ enabled, onSearch }}`; omit it for search-on and
+   record-nothing, which is right for any form that is not a vendor's. This
+   control must never read `useMe()` itself — it is `shared/`, so a component
+   that looked up the session could not be reused on a staff form, and it could
+   not tell the two meanings of `me.vendor === null` apart (staff → search on;
+   a broken portal account → off). `VendorNewTicketPage` knows which it is.
+   `enabled` goes INTO the hook rather than hiding the box at render, so a
+   switched-off vendor never fetches the ~100 KB SDK. And it gates exactly one
+   `<Field>` — the **pincode** combobox is ours, not Google's, and keeps working.
 
 **The caller gates its own submit.** `zodResolver` wipes a manually-set RHF error
 on the next validation pass, so `setError` will not hold. Take `onStatusChange`,
@@ -854,7 +873,27 @@ Two things worth knowing before changing any of it:
 
 The key is `VITE_GOOGLE_MAPS_API_KEY` in `adminWeb/.env` (gitignored). Any
 `VITE_*` value is inlined into the bundle, so it is public by design and only
-safe while it stays **HTTP-referrer restricted** in Google Cloud.
+safe while it stays **HTTP-referrer restricted** in Google Cloud. That is also
+why the per-vendor switch is a UI capability and **not a spend control** —
+anyone with devtools has the key regardless.
+
+**Reporting a search.** `useAddressAutocomplete` fires `onSearch(sessionId)` once
+per Google session, after Google answers — not on mint (a session Google never
+answered was never billed) and before the stale-response guard (a response
+superseded by faster typing was still paid for). `VendorNewTicketPage` owns the
+mutation. Two details that are load-bearing rather than stylistic:
+
+- **A bare `useMutation`, never `useVendorMutation`.** That helper invalidates
+  `vendorKeys.all`, which would make a keystroke in the portal evict console
+  caches and refetch `GET /vendors` — a 403 for the vendor doing the typing.
+- **`meta: { suppressErrorToast: true }` is mandatory here.** Hard rule 9 toasts
+  every API failure; a vendor filling in a customer's address must never see
+  "Couldn't record the search". The cost of a failure is one uncounted search,
+  which is why the console's figure is a floor and not an audit.
+
+`crypto.randomUUID` needs a secure context — fine on https and localhost, absent
+on a LAN-IP origin, which this repo does use. It is guarded: no id means no
+report, never a thrown search box.
 
 ## Images
 
