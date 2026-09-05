@@ -1,15 +1,9 @@
 import { Map } from "lucide-react";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { TerritoryPerson, TerritoryRegion } from "@/types/territory";
-
-/** "Ravi Sharma" → "RS". Derived, so no initials field has to be stored. */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const letters = (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "");
-  return letters.toUpperCase() || "?";
-}
 
 /**
  * The hierarchy is carried by real nesting — `ul > li > ul > li > ul > li` —
@@ -135,18 +129,20 @@ function PersonRow({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md px-3 py-2.75 transition-colors hover:bg-surface-2">
-      <span
+      {/* The photo when there is one. The tint is the INITIALS state's — a
+          photo overrides both, so the head of a region no longer reads as the
+          senior row by colour alone. The role is on the line beside it, which
+          is where it was already being read from. */}
+      <UserAvatar
+        name={person.name}
+        src={person.profileImageUrl}
         className={cn(
-          "grid size-7.5 shrink-0 place-items-center rounded-full text-[11px] font-semibold",
-          // The head of a region reads as the senior row at a glance.
+          "size-7.5 text-[11px]",
           states
             ? "bg-status-assigned-bg text-brand-400"
             : "bg-brand-500 text-white"
         )}
-        aria-hidden
-      >
-        {initialsOf(person.name)}
-      </span>
+      />
       <div className="min-w-37.5">
         <h3 className="text-[13px] font-semibold">{person.name}</h3>
         <p className="text-[11px] text-ink-3">

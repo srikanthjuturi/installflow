@@ -9,6 +9,9 @@ export interface TerritoryPerson {
   membershipId: string;
   name: string;
   email: string;
+  /** Their photo, or null for the initials fallback — which is permanent for
+   *  an admin, who carries no profile image at all. */
+  profileImageUrl: string | null;
   isActive: boolean;
 }
 

@@ -195,7 +195,11 @@ export function TechnicianPanel({
       <CardContent>
         {assigned ? (
           <div className="flex items-center gap-3">
-            <UserAvatar name={ticket.technicianName ?? EMPTY} className="size-11 text-base" />
+            <UserAvatar
+              name={ticket.technicianName ?? EMPTY}
+              src={ticket.technicianPhotoUrl}
+              className="size-11 text-base"
+            />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">
                 {ticket.technicianName ?? EMPTY}

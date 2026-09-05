@@ -146,6 +146,8 @@ export interface Ticket {
   /** Null until a technician accepts — first-accept-wins. */
   technicianId: string | null;
   technicianName: string | null;
+  /** Their photo, for the assigned panel's disc. Null falls back to initials. */
+  technicianPhotoUrl: string | null;
 
   /**
    * PAISE. What a manager attached to a re-notification after nobody accepted.

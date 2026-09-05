@@ -182,6 +182,11 @@ class TicketOut(AppModel):
     status: str
     technicianId: uuid.UUID | None
     technicianName: str | None
+    #: Their photo, resolved from the same two-hop join that resolves the name,
+    #: so the assigned-technician panel shows a face rather than initials. Null
+    #: until they upload one — the client falls back to initials, never to a
+    #: broken image.
+    technicianPhotoUrl: str | None = None
 
     #: What a manager attached to a re-notification after nobody accepted, in
     #: PAISE. Null means no bonus was ever funded — a different claim from ₹0,

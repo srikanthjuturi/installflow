@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import {
@@ -15,25 +16,6 @@ import type { CompanyUser } from "@/types/user";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { EditUserDialog } from "./EditUserDialog";
 import { ReissuePasswordDialog } from "./ReissuePasswordDialog";
-
-function initialsOf(user: CompanyUser): string {
-  const base = user.fullName?.trim() || user.email;
-  const parts = base.split(/[\s@._-]+/).filter(Boolean);
-  const letters = (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "");
-  return letters.toUpperCase();
-}
-
-// Avatar photos will come from blob storage later; initials stand in for now.
-function Avatar({ user }: { user: CompanyUser }) {
-  return (
-    <div
-      aria-hidden
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-semibold text-brand-500"
-    >
-      {initialsOf(user)}
-    </div>
-  );
-}
 
 interface UsersTableProps {
   users?: CompanyUser[];
@@ -105,7 +87,16 @@ export function UsersTable({
       header: "User",
       cell: (u) => (
         <div className="flex items-center gap-2.5">
-          <Avatar user={u} />
+          {/* The same disc the rail and the account card draw, so the photo
+              somebody uploads on Account shows up on the screen where their
+              colleagues actually look them up. Falls back to initials, which
+              is the permanent state for an admin — `ROLES_WITHOUT_PROFILE_IMAGE`
+              means that role carries no picture to show. */}
+          <UserAvatar
+            name={u.fullName?.trim() || u.email}
+            src={u.profileImageUrl}
+            className="size-8 bg-brand-100 text-[11px] text-brand-500"
+          />
           <div className="leading-tight">
             <p className="font-medium text-ink">{u.fullName ?? "—"}</p>
             <p className="text-[11px] text-ink-3">{u.email}</p>

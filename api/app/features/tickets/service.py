@@ -473,12 +473,14 @@ async def _hydrate(
 
     # A technician's name is not on their profile — it is on the User the
     # membership points at, so this is a two-hop join rather than a lookup.
+    # The photo rides along on the same join: it lives on the same row, so
+    # showing a face beside the name costs no extra query.
     tech_ids = {t.technician_id for t in rows if t.technician_id}
-    tech_names = (
+    tech_people = (
         {
-            r[0]: r[1]
+            r[0]: (r[1], r[2])
             for r in await db.execute(
-                select(TechnicianProfile.id, User.full_name)
+                select(TechnicianProfile.id, User.full_name, User.profile_image_url)
                 .join(Membership, Membership.id == TechnicianProfile.membership_id)
                 .join(User, User.id == Membership.user_id)
                 .where(TechnicianProfile.id.in_(tech_ids))
@@ -540,7 +542,10 @@ async def _hydrate(
                 slaState=sla_state(t, warn_at_pct=warn_at_pct, now=now),
                 status=t.status,
                 technicianId=t.technician_id,
-                technicianName=tech_names.get(t.technician_id)
+                technicianName=tech_people.get(t.technician_id, (None, None))[0]
+                if t.technician_id
+                else None,
+                technicianPhotoUrl=tech_people.get(t.technician_id, (None, None))[1]
                 if t.technician_id
                 else None,
                 bonusPaise=t.bonus_paise,

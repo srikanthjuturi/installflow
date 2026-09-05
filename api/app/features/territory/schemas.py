@@ -12,6 +12,11 @@ class TerritoryPerson(AppModel):
     #: have an email, but `users.email` is nullable now and a 500 here would be
     #: a whole screen lost to one bad row.
     email: str | None
+    #: Their photo, so the tree draws the same face the rest of the console
+    #: does. Null is the normal case — an admin and a superadmin carry no
+    #: image at all (`ROLES_WITHOUT_PROFILE_IMAGE`), and nobody else has one
+    #: until they upload it — and the client falls back to initials.
+    profileImageUrl: str | None
     isActive: bool
 
 

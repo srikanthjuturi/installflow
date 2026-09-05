@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
@@ -47,6 +47,11 @@ function initialsOf(name: string) {
  * Reads the profile store when no `uri` is passed, so the Home header and the
  * Profile screen can never drift out of sync — set the photo once and it
  * appears everywhere the technician sees themselves.
+ *
+ * A photo that will not load — a blob deleted behind the record, a stale URL
+ * seeded from the server — falls back to the initials rather than leaving an
+ * empty box where a face should be. The failure is remembered against the URL
+ * that caused it, so picking a new photo gets its own chance.
  */
 export function Avatar({
   name,
@@ -58,7 +63,9 @@ export function Avatar({
   onBadgePress,
 }: AvatarProps) {
   const stored = useProfileStore((s) => s.avatarUri);
-  const photo = uri === undefined ? stored : uri;
+  const [failed, setFailed] = useState<string | null>(null);
+  const source = uri === undefined ? stored : uri;
+  const photo = source && source !== failed ? source : null;
   const corner = radius ?? Math.round(size * 0.3);
 
   const badgeSize = Math.max(22, Math.round(size * 0.38));
@@ -70,6 +77,7 @@ export function Avatar({
           source={{ uri: photo }}
           style={{ width: size, height: size, borderRadius: corner }}
           contentFit="cover"
+          onError={() => setFailed(photo)}
         />
       ) : (
         <View

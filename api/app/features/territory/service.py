@@ -122,6 +122,7 @@ async def get_territory(
             membershipId=membership.id,
             name=user.full_name or user.email,
             email=user.email,
+            profileImageUrl=user.profile_image_url,
             isActive=membership.is_active,
         )
         for state in scopes[membership.id].states:
@@ -142,6 +143,7 @@ async def get_territory(
                         membershipId=membership.id,
                         name=user.full_name or user.email,
                         email=user.email,
+                        profileImageUrl=user.profile_image_url,
                         isActive=membership.is_active,
                     )
                 )
@@ -154,6 +156,7 @@ async def get_territory(
                         membershipId=membership.id,
                         name=user.full_name or user.email,
                         email=user.email,
+                        profileImageUrl=user.profile_image_url,
                         isActive=membership.is_active,
                         states=[s.name for s in here],
                     )
