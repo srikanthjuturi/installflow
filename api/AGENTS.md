@@ -8,7 +8,7 @@ territory, **the geography master and its spreadsheet importer**, the product ma
 onboarding in both modes, **vendor accounts and their sub-users**, and tickets (vendor intake,
 the list, and the customer's own slot confirmation).
 The **job pool** is real too: a confirmed ticket (`status = 'New'`) is offered through
-`/jobs/pool` to the technicians whose `technician_pincodes` and `technician_subcategories`
+`/jobs/pool` to the technicians whose `technician_pincodes` and `technician_nodes`
 match it, and taken by a guarded UPDATE whose rowcount settles first-accept-wins.
 The **daily job cap** is enforced, in `core/coverage.py` and nowhere else: one predicate used by
 `pool_query`, by the guarded UPDATE in `accept`, by push targeting and by the console's `bwUsed`,
@@ -23,17 +23,37 @@ the slot never moves, the band is charged, and inside the window it escalates im
 `ledger_entries` is the pool both directions run through: `balance = penalties − bonuses`. A
 no-show is detected by a sweep that charges NOTHING and confirmed by a person.
 
-Every operating number is per company in `company_rules`, edited on Configuration → Rules Config.
-The band BOUNDARIES are not, and belong in `core/rules.py`: an amount is policy, but where one
-band ends is a fact about the clock.
+Every operating number is per company in `company_rules`, edited on Configuration → Rules Config,
+**and any catalogue node may override any of them** in `product_node_rules` (every column
+nullable; null means inherit). The band BOUNDARIES are not, and belong in `core/rules.py`: an
+amount is policy, but where one band ends is a fact about the clock.
 
 **The DEFAULTS live in code, not in seed data.** `rules.DEFAULTS` is the source, and a company gets
 its row stamped from it inside `create_company`'s own transaction; `load_rules` recreates a missing
 one on the next read. So `company_rules` holds a company's OVERRIDES — emptying the table resets
 rules, it does not destroy them, which is what makes it safe to clear with the tenant data it
-belongs to. The reason the self-heal exists: every sweep but `sweep_no_shows` INNER JOINs this
-table, so a company without a row silently stops being swept, and a missing escalation is
-invisible in exactly the way a missing row is.
+belongs to.
+
+**`resolve_rules(db, company_id, node_id)` is the only place the layering happens** —
+`DEFAULTS → company_rules → ancestors root-first → the node` — and `create_ticket` calls it ONCE,
+stamping the answer on `tickets.rules_snapshot` beside the two prices. Three consequences worth
+knowing before touching any of it:
+
+- **No sweep joins `company_rules` any more.** They read the ticket's own snapshot, which made
+  every one of them simpler than it was — a JOIN disappeared from each. The self-heal in
+  `load_rules` therefore no longer protects the sweeps; it protects Rules Config and intake.
+- **Never index a snapshot with a bare `[]`.** A ticket raised before a rule existed has no key
+  for it. Read through `rules.snapshot_value` / `snapshot_int` (and in SQL,
+  `COALESCE((rules_snapshot->>'x')::int, <default>)`), so adding a thirteenth rule stays a code
+  change rather than a data migration.
+- **Cross-field invariants are validated on the RESOLVED set, not the submitted one.** A node that
+  overrides only `slot_silence_hours` can contradict a company-level `escalate_hours_before_slot`
+  it never mentions, and no CHECK can see that. `validate_resolved` is called on every write, a
+  node write re-validates its descendants, and a company write re-validates every node that has an
+  override row.
+
+`cancel_penalty_cap_paise` is deliberately absent from `NODE_OVERRIDABLE_KEYS`: it caps a
+technician's calendar month across all their jobs, so it cannot have a per-ticket answer.
 
 `GET /tickets/escalations` is **paginated but never pagered** — the console loads on scroll, so
 every row stays reachable. Its ordering does two jobs at once and is one expression so the API and
@@ -106,9 +126,9 @@ __table_args__ = (
 **Every read and every write filters on `principal.company_id`.** Load-by-id included: a caller
 who guesses another company's UUID must get **404, not 403** — a 403 confirms the row exists.
 
-**Never trust a client-supplied id.** Resolve it through a scoped loader (`_load_subcategory`,
-`_load`, `_load_invite`) that already has `company_id` in its WHERE clause. An id that arrives in
-a request body is an assertion, not a fact.
+**Never trust a client-supplied id.** Resolve it through a scoped loader (`_load_node`,
+`_load_model`, `_load`, `_load_invite`) that already has `company_id` in its WHERE clause. An id
+that arrives in a request body is an assertion, not a fact.
 
 **Run the audit after ANY schema change:**
 
@@ -217,6 +237,15 @@ python -m alembic downgrade <previous>
 python -m alembic upgrade head      # the one people skip
 ```
 
+⚠ **That round trip proves the SCHEMA reverses. It does not prove the DATA survived**, and the
+difference is not academic — it destroyed a real row in the dev database. `a7c93f5e2b18`'s
+downgrade ran `DELETE FROM product_nodes WHERE parent_id IS NULL` while the self-referencing
+foreign key (`ON DELETE CASCADE`, pointing at the same table) was still in place. It did not
+delete the roots; it deleted the **whole tree**, silently, and all three commands above still
+exited 0 because the DDL was perfectly reversible. The fix was one line moved — drop the FK
+first. The lesson is in the test: seed a row, walk the trip, and compare **ids on the way out with
+the ids that went in**.
+
 **Audit columns go LAST.** `id`, `created_at`, `updated_at`, `created_by`, `updated_by`,
 `deleted_at` sit at the end of every table, after the columns that say what the row *is*. You do
 not have to remember this: the mixins in `app/db/mixins.py` use `declared_attr`, so they are
@@ -233,6 +262,11 @@ since is a normal incremental migration on top.
 added by `op.create_check_constraint` in a migration, so the model is the whole truth about the
 table and autogenerate can see it. Name them WITHOUT the `ck_<table>_` prefix — the naming
 convention adds it, and passing it too produced `ck_tickets_ck_tickets_status`.
+
+That applies to **`op.drop_constraint` as well as `create_check_constraint`**, which is the half
+that surprises people: the convention is applied on the way out too, so a downgrade passing the
+full name goes looking for `ck_product_models_ck_product_models_parameters` and fails on a
+constraint that is plainly there. Pass the bare name in both directions.
 
 ⚠ **A UNIQUE is named the other way round, and the rule above is exactly why people get it
 wrong.** Look at `NAMING_CONVENTION` in `db/base_class.py`: `ck` is
@@ -382,6 +416,82 @@ Both directions have already shipped a bug:
   Postgres will not index through it.
 
 ---
+
+## The product master is one recursive table
+
+`product_categories` and `product_subcategories` are gone. `product_nodes` replaced both, and
+`product_models` still holds the priced, vendor-owned leaf rows that hang off a node.
+
+```
+product_nodes
+  parent_id      NULL = a root category. Self composite FK on (company_id, parent_id).
+  depth          SMALLINT, CHECK 0..5, denormalised
+  ancestor_ids   UUID[] root-first, excluding self. GIN indexed.
+  is_leaf        "This is the last sub-category" — only a leaf takes products
+  parameters     JSONB — the leaf's field TEMPLATE (value optional)
+  icon_key       nullable at every level; the nearest ancestor's is used
+
+product_models
+  node_id        renamed from subcategory_id, same UUIDs
+  parameters     JSONB — this product's specs (value REQUIRED)
+  notes          TEXT
+```
+
+**`ancestor_ids` is what makes everything else cheap.** Inheritance, technician eligibility and
+the breadcrumb are one array test instead of a recursive CTE. It is safe to denormalise only
+because **`parentId` is create-only and not patchable** — the array and `depth` are written once
+from the parent (`parent.ancestor_ids || parent.id`, `parent.depth + 1`) and cycles are therefore
+unreachable. The price of that is **no move/re-parent operation**; see the root `AGENTS.md`.
+
+Four CHECKs guard it — `depth` in range, no self-parent, `NOT (id = ANY(ancestor_ids))`, and
+`depth = coalesce(array_length(ancestor_ids, 1), 0)` so the array cannot disagree with the number.
+The `parameters` CHECK can only assert `jsonb_typeof(...) = 'array'` and a length cap: walking the
+entries needs a set-returning function, which Postgres refuses inside a CHECK, so entry shape and
+name uniqueness are schema-layer. And **assign a new list to change it** — SQLAlchemy does not
+track JSONB mutation in place.
+
+Two traps that already bit:
+
+- **Root name uniqueness needs `COALESCE(parent_id, <zero uuid>)`.** Postgres treats NULLs as
+  DISTINCT in a unique index, so the natural `(company_id, parent_id, lower(name))` would happily
+  accept two roots both called "Electronics". Partial on `deleted_at IS NULL`, hand-written, and
+  autogenerate will want to drop it every time (hard rule 8).
+- **A null JSONB column needs `JSONB(none_as_null=True)`.** Without it psycopg writes Python
+  `None` as JSON `null`, which is not what the CHECK means by "unset" — it fails.
+
+### The wire names did NOT change with the columns
+
+`mobileapp` ships as an APK on people's phones, so renaming `subcategoryId` / `subcategoryName` /
+`subcategoryIds` on the wire would break every installed build. **The DB columns are `node_id`;
+the JSON field names stay as they were.** This is the "wire names differ from columns" divergence
+warned about elsewhere in this file, adopted deliberately here — `nodePath` was added alongside
+rather than replacing anything. `categoryName` still means the ROOT and `subcategoryName` still
+means the node's own name, which is why a product must hang off a node at depth ≥ 1: at depth 0
+the two would collapse to the same string.
+
+### Certification sits at exactly one level
+
+`CERTIFY_DEPTH = 1` in `core/product_tree.py` — a MAIN sub-category, the direct child of a root.
+`validate_subcategories` enforces it, and all three writers go through it: add a technician, edit
+one, and the technician's own self-registration from an invite. The console picker
+(`useCertifiableNodeOptions`) and `onboarding/_flatten_for_invite` both narrow to the same level,
+so nothing offers what the API would refuse.
+
+Narrowing the list the phone is SENT, rather than teaching the phone to filter, is the point of
+doing it in `_flatten_for_invite`: `mobileapp` ships as an APK, and the coverage screen draws
+whatever arrives. An installed build picked this change up with no rebuild.
+
+The reach is unchanged — one tick still covers every descendant — so this only removes the two
+answers that were worse: a root ("send them anything, for ever", one accidental tick away) and a
+deeper node (goes stale the moment a sibling is added, silently). The rest of the reasoning is in
+the constant's own docstring.
+
+Eligibility is the same substitution in four places — `pool_query`, the assign guard, push
+targeting and `jobs/ws.py`: the technician's certified node id tested against the ticket's stamped
+`node_path_ids`. ⚠ `node_path_ids` is an array COLUMN, so `func.any(...)` is right there; when the
+path comes from a SUBQUERY instead, `func.any()` renders `= ANY((SELECT …))` and Postgres reads it
+as `uuid = uuid[]`. Use `IN (SELECT unnest(...))`. That one 500s at runtime and typechecks
+perfectly — it was found by executing the query, not by reading it.
 
 ## Layout
 

@@ -231,11 +231,17 @@ adminWeb/
       notfound/           DispatchRadar — the `0` of 404, on-domain rather than stock art
       ai-review/          AiQueueTable · ConfidenceMeter · SerialCompare · ProofLightbox
       technicians/        TechTable · BandwidthBar · TechProfileHeader · JobHistoryTable
-      masters/            VendorTable · TerritoryTree · CategoryCard · UserTable
+      masters/            VendorTable · TerritoryTree · CategoryTree · UserTable
+                          NodeFormDialog · ModelFormDialog · ParameterFields
+                          — one dialog for every catalogue level; the tree is
+                            recursive and `CategoryFormDialog`/`SubcategoryFormDialog`
+                            merged into `NodeFormDialog` when depth stopped being fixed
       settings/           SlaRuleList · PenaltyBandTable · ThresholdSlider
+                          RulesForm (company) · NodeRulesForm (a category's overrides)
       shared/             AppShell · Sidebar · Topbar · RoleTabs · PageMeta · DataTable
                           EmptyState · ErrorState · TableSkeleton · ConfirmDialog · Money
                           FilterPills · PaginationControls · ThemeToggle · LoadMore
+                          FieldGrid — see the hard rule under "Reusable components"
       ui/                 shadcn/ui primitives (generated — do not hand-edit)
     pages/
       dashboard/DashboardPage.tsx
@@ -575,7 +581,8 @@ Three tiers. Promote downward only when a third consumer appears — two usages 
 
 - **`ui/`** — shadcn primitives, generated, never hand-edited.
 - **`shared/`** — cross-slice: `AppShell`, `DataTable`, `EmptyState`, `ErrorState`,
-  `TableSkeleton`, `ConfirmDialog`, `PageMeta`, `Money`, `StatusBadge`, `FilterPills`.
+  `TableSkeleton`, `ConfirmDialog`, `PageMeta`, `Money`, `StatusBadge`, `FilterPills`,
+  `FieldGrid`.
 - **`<slice>/`** — everything else, private to its feature.
 
 Nine of the twenty screens are a filtered table over a domain list. Build **one** `DataTable`
@@ -597,6 +604,44 @@ intercepted. **Sign out** is fully reversible, and a modal on the shell's most-u
 friction with no payoff. `ReissuePasswordDialog` and `ReissueVendorPasswordDialog` stay hand-rolled
 because they render a temporary-password panel *after* success — that is a two-phase dialog, not a
 confirm, and a primitive should not own result rendering.
+
+### ⚠ A grid of fields is `shared/FieldGrid`, never `<FieldGroup className="grid …">`
+
+`FieldGroup` carries `@container/field-group`, i.e. `container-type: inline-size`. Overriding its
+display to `grid` makes the query container and the grid **the same element**, and Chrome then
+fails to re-run that element's layout when a **sibling is inserted next to it**. The grid keeps
+zero tracks and every control inside collapses to height 0 — still in the DOM, `offsetParent`
+null, invisible, with no error anywhere and nothing in the console.
+
+It is not theoretical, and it does not show on first paint. Ticket intake hit it the moment a
+product was picked: choosing one inserts the "billed at ₹1,200" line beside the grid, and the
+whole *Vendor & product* row vanished. It looked exactly like a bug in the drill-down logic.
+Measured rather than guessed — `container-type: normal` did not fix it, `content-visibility:
+visible` did not fix it, but touching *any* style property on the container, or resizing the
+window by one pixel, restored it instantly. The content was always fine; only the layout pass was
+missing.
+
+`components/ui` is generated and must never be hand-edited, so the fix is `shared/FieldGrid` —
+**a plain div** carrying the grid classes and nothing else.
+
+⚠ **Wrapping the grid in a `FieldGroup` is NOT enough**, which is the counter-intuitive part and
+was tried first: `<FieldGroup><div className="grid …">` reproduced the collapse on the intake form
+exactly — nine controls at height 0 the moment a category was picked. A query container anywhere
+above the grid inside the section is sufficient to trigger it, so `FieldGrid` renders no container
+at all.
+
+It does keep `data-slot="field-group"`, because the attribute and the class are separate concerns
+and only the class makes a container: the attribute is read solely by an enclosing group's
+`*:data-[slot=field-group]:gap-4`, and dropping it would shift spacing wherever these nest. The
+cost is that `Field orientation="responsive"` — which queries `@md/field-group` — does not respond
+inside a `FieldGrid`. Nothing in `src/` uses that variant, and a grid is already deciding the
+columns; if one is ever needed, put it in a real `FieldGroup` beside the grid, not in it.
+
+Twenty call sites were converted at once. Grep before adding another:
+
+```bash
+grep -rn 'FieldGroup className=' src/ | grep -Ei 'grid|COLS'   # should find nothing
+```
 
 ---
 
@@ -894,6 +939,71 @@ mutation. Two details that are load-bearing rather than stylistic:
 `crypto.randomUUID` needs a secure context — fine on https and localhost, absent
 on a LAN-IP origin, which this repo does use. It is guarded: no id means no
 report, never a thrown search box.
+
+## Ticket intake drills down; it does not flatten
+
+`ManualEntryForm` asks for the vendor, then **one dropdown per catalogue level** — each filled
+from the pick above it, stopping at the node marked as the last sub-category, then the product.
+A flattened `Television › Android TV › OLED` select reads fine with six products and badly with
+sixty, and it also hides which branch a name belongs to when two branches share one.
+
+`useAutoSelectSingle` (hard rule 10) applies per level, so a shallow branch still costs no clicks.
+Changing a level clears everything below it — `resolveChain` recomputes the whole path rather than
+patching it, because a stale deeper pick is a ticket raised against the wrong product.
+
+The product's own specs render under the billing line, read live from the model rather than
+stamped: a spec is descriptive and no money moves when it changes.
+
+## Repeating rows — the Add-field pattern
+
+`masters/ParameterFields` is the one growable list in the app: an **Add field** button appends an
+empty *Name / Value* row, `×` removes one. Two consumers today (`NodeFormDialog`'s template and
+`ModelFormDialog`'s product specs), so it stays in `masters/` until a third appears.
+
+`useFieldArray` had existed in exactly one place before this (`settings/RulesForm`) and was
+**fixed length** — `append` and `remove` were never called anywhere in `src/`. Two things about
+using it properly:
+
+- **Rows are objects, never bare strings.** `{ name, value }`, keyed on `field.id`, because RHF
+  remounts a row keyed by index and the input loses focus on every keystroke.
+- **`useWatch`, not `watch()`.** The React Compiler is on; `watch()` returns a new value each
+  render and drives a re-render loop.
+
+The same schema builds both editors from one factory, `parameterRows(requireValue)`, because the
+two differ in exactly one rule: **a template's value is optional and a product's is required.**
+That is the point of the template — the leaf says which fields a product HAS, and the product
+says what they are.
+
+**A field added to the category after a product was saved is OFFERED, never merged.** Pass
+`templateNames` (the model dialog does, on edit only) and `ParameterFields` shows a notice naming
+what the category gained, with one button that appends those rows. Three details are the whole
+design:
+
+- **An offer, because the value is mandatory.** Merging an empty row in would make an untouched
+  product invalid and stop somebody who opened the dialog to change the price.
+- **Frozen at mount.** The list is computed from the values the form opened with. Recomputed
+  live, deleting a row would make the notice reappear offering it straight back — and "this
+  product has no Beta" is a legitimate answer.
+- **Not passed when ADDING.** A new product already starts from the whole template, so the only
+  thing the notice could do there is nag.
+
+## Rules Config has a scope: the company, or one category
+
+`RulesConfigPage` renders `RulesForm` (the company baseline, every field required) or
+`NodeRulesForm` (one category's overrides, every field optional). One page in two modes beats a
+second copy of six cards.
+
+In node mode an empty box means *inherit*, and the inherited value is the placeholder with a
+"from **Television**" hint beside it — so the screen distinguishes "not set" from "set to the same
+number", which a plain empty field cannot. Clearing a box goes back to inheriting; `DELETE` drops
+the override row entirely.
+
+The masters tree only shows a **badge** on nodes that override something, deep-linking to
+`settings/rules?node=<id>`. Rules are edited where rules live.
+
+⚠ `BonusSetupPage` reads the **ticket's** `bonusBandsPaise`, not `GET /settings/rules`. Bands are
+per-node now, and a screen that spends money must read the figure the ticket was stamped with —
+otherwise per-category bonus config silently does nothing on the one screen that uses it.
 
 ## Images
 

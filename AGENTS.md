@@ -348,6 +348,24 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   console's prototype said something else, and the contradiction was a logged open decision until
   the ledger forced it. **Ruled in favour of the console's four.** The technician's cancel screen
   needed no redesign, because it renders whatever the server sends.
+- **A rule can also belong to a category, and the ticket is what remembers which.** A penalty that
+  is right for a 32" TV is wrong for a rooftop solar install, so any node may override any rule in
+  `product_node_rules`, every column nullable, null meaning inherit. They resolve
+  `rules.DEFAULTS → company_rules → ancestors root-first → the node itself`, deepest non-null
+  winning, and Rules Config gained a scope selector to edit either end of that.
+  **`cancel_penalty_cap_paise` is the one exception** and stays company-only: it caps a
+  technician's calendar month across *all* their jobs, so it cannot have a different answer per
+  ticket.
+  `create_ticket` resolves the set **once and stamps it** on `tickets.rules_snapshot`, beside the
+  two prices and for the same reason — a later edit must never restate a job somebody already
+  accepted, and the cancellation preview and the actual charge must read one number. Everything
+  downstream reads the ticket, which is why **no sweep joins `company_rules` any more**. Read a
+  snapshot through `rules.snapshot_value` / `snapshot_int`, never with a bare `[]`: a ticket
+  raised before a rule existed simply has no key, and the helper falls back to `DEFAULTS` so
+  adding a rule never becomes a data migration.
+  Cross-field invariants (escalate < silence, and the rest) cannot be a CHECK here — either
+  column may be null — so both writers validate the **resolved** set, and a company-level write
+  re-validates every node.
 - **The escalation queue is two lists, and they run in opposite directions.** Jobs whose window is
   still open sort soonest-first — the one closest to being missed. Jobs whose slot has CLOSED sort
   newest-first, because what just went wrong is what somebody can still ring a customer about.
@@ -426,6 +444,13 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **Invite**: a manager supplies only a phone number; the technician self-registers their name,
   photo, subcategories and coverage from the deep link. Nothing is written until they prove the
   phone by OTP, and then it all commits in one transaction.
+- **A ticket's pincode is checked against the master at intake**, not just in the browser.
+  `Pincode` in `core/statutory.py` is only a SHAPE (`^[0-9]{6}$`), and "999999" passes it. A
+  ticket outside the master fails **silently and completely**: staff visibility resolves the
+  pincode to a district, a state and a region (`core.scope.visible_pincodes`), and so does
+  technician eligibility — six digits nobody holds match nothing, so only an all-India role ever
+  sees the row and no screen says why. The console's `AddressFields` does check, but a browser
+  control cannot be the only guard when the Excel and API intake channels go straight past it.
 - **Geography is a loaded master, not free text.** `regions → states → districts → pincodes`,
   global (no `company_id` — India is the same for every company), imported from a spreadsheet by
   a superadmin on **Super Admin → Geography**. 36 states, 754 districts, 19,496 pincodes.
@@ -443,10 +468,49 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **Technicians share pincodes; area managers do not share states.** `membership_states` is unique
   on `(company_id, state_id)`; `technician_pincodes` is deliberately not unique. Two technicians on
   the same street is the normal case, which is why they are separate tables.
-- A technician certifies on a **subcategory** (Television), not a category (Electric). The
-  product master is category → subcategory → model, company-scoped, with an icon on the first two
-  levels and **up to five photo URLs** on the model — ordered, the first being the thumbnail every
-  list draws.
+- **The product master is a tree of any depth, and only its last floor holds products.**
+  `product_nodes` is one recursive, company-scoped table — *Electronics → Television → Android TV
+  → OLED* is four levels and so is anything deeper, capped at five. A node carries an optional
+  icon (the nearest ancestor's is used when it has none) and a `parent_id`; **`parentId` is
+  create-only**, because `depth` and the `ancestor_ids` array are written from the parent once and
+  never recomputed. There is deliberately **no move/re-parent** — fix a mis-parented node by
+  recreating it while it is still empty.
+  Products (`product_models`) hang off a node and keep **up to five photo URLs** — ordered, the
+  first being the thumbnail every list draws.
+- **A node is the last sub-category because somebody ticked the box, not because it is empty.**
+  `is_leaf` is explicit — "This is the last sub-category" — and only a leaf accepts products. It
+  was tempting to derive it from "has products", but an EMPTY node is then ambiguous (unfinished,
+  or ready for stock?) and the console has to know which button to draw before either has been
+  used. Two service guards stop it drifting: it cannot be unticked while products hang on it, nor
+  ticked while sub-categories do.
+- A technician certifies on a **MAIN sub-category** — *Television* under *Electronics*, a direct
+  child of a root and nothing else — **and that covers everything beneath it**, at any depth,
+  including nodes created later. Matched by testing the certified id against the ticket's stamped
+  `node_path_ids`, so it is one array test rather than a recursive walk.
+  The level is `CERTIFY_DEPTH` in `api/app/core/product_tree.py`, enforced in
+  `validate_subcategories` — which covers all three writers (add, edit, self-registration) — and
+  mirrored by the console picker and by what the invite endpoint sends the phone.
+  **It is a narrowing of the CHOICE, not of the reach**, and the two alternatives are both worse:
+  a root would mean "send them anything for ever", one accidental tick away with nothing on screen
+  saying how much it covers; a deeper node goes stale in silence, because a sibling added next
+  month is work that technician quietly stops being offered. A main sub-category is also how the
+  skill is actually described — somebody is a TV person, not a "32 inch OLED" person.
+  It can never leave a job uncoverable, and that is structural: `leaf_below_root` forbids a root
+  from holding products, so every model sits at depth ≥ 1 and every ticket path therefore contains
+  exactly one node at this level.
+- **Free-text specs are name/value pairs, and a leaf holds the template.** A last sub-category
+  carries a list of field names with optional values; adding a product there pre-fills them, and
+  on the product **every value is required** — a spec nobody filled in is worse than no spec. Both
+  live in a JSONB `parameters` array (max 20), the same call `image_urls` already makes.
+  **A template, not inheritance** — the product owns what it saved, so editing the category later
+  changes what the NEXT product starts from and never rewrites an existing one. Nothing is locked
+  either: any row seeded from the template can be renamed, given a different value, or removed.
+  A field added to the category AFTER a product was saved is therefore **offered, not merged** —
+  the product's edit dialog shows *"Beta was added to this category after this product was saved.
+  [Add it]"*. It has to be an offer: a value is mandatory here, so a silent merge would make a
+  saved product invalid and block somebody who opened the dialog to change the price. Ignoring the
+  notice saves exactly as before. It is computed once at open, so deleting the row does not make
+  it reappear offering the field straight back.
 - **Images are uploaded, never embedded.** The file goes to blob storage via `POST /uploads`; the
   record stores its URL. The API refuses a `data:` URL and a local `file://` path in every slice
   that takes one — see `api/app/core/images.py`. A signed-in principal is required, which is why a
