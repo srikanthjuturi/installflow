@@ -77,7 +77,8 @@ export interface CreateUserInput {
   email: string;
   role: string;
   fullName?: string | null;
-  phone?: string | null;
+  /** Required — the server refuses a create without one. */
+  phone: string;
   managerId?: string | null;
   /** Territory. A regional head sends `regionIds`; an area manager sends
    *  `stateIds` ONLY — his region is derived from them server-side. */

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.core.phone import OptionalPhone
+from app.core.phone import OptionalPhone, Phone
 from app.core.images import ImageUrl
 from app.core.schemas import AppModel, EmailOutcome
 
@@ -19,7 +19,14 @@ class UserCreateRequest(BaseModel):
     email: EmailStr
     role: str
     fullName: str | None = Field(default=None, max_length=255)
-    phone: OptionalPhone = None
+    #: REQUIRED, like a company's and a vendor's. It is the only way to reach a
+    #: console user when the mailbox they sign in with bounces — which is
+    #: exactly when somebody needs reaching — and the console form cannot be the
+    #: only guard, since this endpoint takes a body from anywhere.
+    #:
+    #: Not unique, and deliberately: `uq_users_phone_technician` is partial on
+    #: `role = 'technician'`, because only a technician's phone is an identity.
+    phone: Phone
     profileImageUrl: ImageUrl = None
     managerId: uuid.UUID | None = None  # a membership id in the same company
     # Territory. Which of these is required depends on the role — see the
@@ -35,6 +42,10 @@ class UserCreateRequest(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     fullName: str | None = Field(default=None, max_length=255)
+    #: Optional here where create requires it, because None means "leave it
+    #: alone" on a partial update — and that is also what stops an edit
+    #: UNSETTING the number create insisted on: the service only assigns when
+    #: this is not None, so there is no request that empties the column.
     phone: OptionalPhone = None
     profileImageUrl: ImageUrl = None
     isActive: bool | None = None

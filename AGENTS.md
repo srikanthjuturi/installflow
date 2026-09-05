@@ -468,6 +468,16 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   while any company lacks one and names the rows. Reach for that shape whenever a NOT NULL has no
   honest default; inventing one is the worse half of "do not fake a number that has a real
   source".
+- **A console user's phone is mandatory too** — required by `POST /users`, not merely by the
+  Users & roles form, because that endpoint takes a body from anywhere. Same reason as the two
+  above: it is the only way to reach somebody when the mailbox they SIGN IN with is the thing
+  that has gone wrong, which is exactly when a manager is reissuing their password.
+  The **column** stays nullable, and must: a technician has no email and a phone, a console user
+  now has both, and one table holds both. So there is no migration and no backfill — a member
+  created before this rule keeps their empty phone until somebody edits them, and the edit form
+  requires one at that point.
+  It is **not unique**. `uq_users_phone_technician` is partial on `role = 'technician'` because
+  only a technician's phone is an identity; two managers sharing a desk phone is not a conflict.
 - **Nobody types a password when creating an account.** The server generates a temporary one and
   emails it. If that email cannot be sent the account is still created and the password comes
   back in the response for the manager to hand over — and `POST /users/{id}/reissue-password`

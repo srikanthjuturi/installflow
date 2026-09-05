@@ -26,6 +26,37 @@ export const AREA_MANAGER = "area_manager";
 export const PINCODE_RE = /^[0-9]{6}$/;
 
 /**
+ * 10 digits, optionally behind a `+91` or a `0` — the same rule the company and
+ * vendor forms use, because it is the same kind of value and the API normalises
+ * all three through `app.core.phone`. Spaces are squashed first, so a number
+ * typed as "98200 11001" is the number somebody meant rather than a rejection.
+ */
+const PHONE_RE = /^(?:\+?91|0)?[6-9][0-9]{9}$/;
+
+const squash = (v: string) => v.replace(/\s+/g, "");
+
+/**
+ * Required on BOTH forms, and the server requires it on create too.
+ *
+ * It is the only way to reach a console user when the mailbox they sign in with
+ * bounces — which is exactly the moment somebody needs reaching — so it is
+ * mandatory here for the same reason a company's and a vendor's are.
+ *
+ * A user created before this became mandatory has none, so the first edit of
+ * that row has to supply one. That is deliberate: the alternative is a form
+ * that shows a required field it will silently let you leave empty.
+ */
+const phoneField = z
+  .string()
+  .transform(squash)
+  .pipe(
+    z
+      .string()
+      .min(1, "Phone is required")
+      .regex(PHONE_RE, "Enter a 10-digit Indian mobile number")
+  );
+
+/**
  * Does this role carry a territory at all?
  *
  * Mirrors what `ScopeField` renders — a national head shows "All India", the
@@ -78,7 +109,7 @@ export function createUserSchema(assignableKeys: string[]) {
         .trim()
         .min(1, "Email is required")
         .pipe(z.email("Enter a valid email")),
-      phone: z.string().trim().max(32),
+      phone: phoneField,
       role: z
         .string()
         .refine((v) => assignableKeys.includes(v), "Select a role"),
@@ -107,7 +138,7 @@ export function editUserSchema(role: string) {
   return z
     .object({
       fullName: z.string().trim().min(2, "Full name is required").max(255),
-      phone: z.string().trim().max(32),
+      phone: phoneField,
       isActive: z.boolean(),
       regionIds: z.array(z.string()),
       stateIds: z.array(z.string()),

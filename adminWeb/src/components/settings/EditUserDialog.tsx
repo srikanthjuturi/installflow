@@ -99,7 +99,9 @@ function EditUserForm({
         id: user.membershipId,
         input: {
           fullName: values.fullName.trim(),
-          phone: values.phone.trim() || null,
+          // Never blank now — a member created before the phone was mandatory
+          // has to be given one the first time somebody edits them.
+          phone: values.phone,
           isActive: values.isActive,
           // An area manager's regions are DERIVED from his states, and the
           // server refuses a request that sends both. Sending the regions we
@@ -153,7 +155,9 @@ function EditUserForm({
           </Field>
 
           <Field data-invalid={err("phone") ? true : undefined}>
-            <FieldLabel htmlFor="phone">Phone</FieldLabel>
+            <FieldLabel htmlFor="phone" required>
+              Phone
+            </FieldLabel>
             <Input
               id="phone"
               placeholder="+91 90000 00000"

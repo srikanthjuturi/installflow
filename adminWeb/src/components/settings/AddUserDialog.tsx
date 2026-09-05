@@ -137,7 +137,9 @@ function AddUserForm({
         email: values.email.trim(),
         role: values.role,
         fullName: values.fullName.trim(),
-        phone: values.phone.trim() || null,
+        // Already squashed by the schema, and never blank — the server rejects
+        // a create without one.
+        phone: values.phone,
         regionIds: values.regionIds,
         stateIds: values.stateIds,
       },
@@ -217,7 +219,9 @@ function AddUserForm({
           </Field>
 
           <Field data-invalid={err("phone") ? true : undefined}>
-            <FieldLabel htmlFor="phone">Phone</FieldLabel>
+            <FieldLabel htmlFor="phone" required>
+              Phone
+            </FieldLabel>
             <Input
               id="phone"
               placeholder="+91 90000 00000"
