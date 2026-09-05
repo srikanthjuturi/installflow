@@ -12,7 +12,6 @@ import {
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
   FieldSet,
 } from "@/components/ui/field";
@@ -24,6 +23,7 @@ import { useUpdateUser } from "@/hooks/useCompanyUsers";
 import { cn } from "@/lib/utils";
 import type { CompanyUser } from "@/types/user";
 import { ScopeField } from "./ScopeField";
+import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import {
   AREA_MANAGER,
@@ -130,7 +130,7 @@ function EditUserForm({
       </DialogHeader>
 
       <FormSection legend="Person">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {/* Spans the row so Phone sits beneath it rather than beside a gap. */}
           <Field
             className="sm:col-span-2"
@@ -167,13 +167,13 @@ function EditUserForm({
               </FieldDescription>
             ) : null}
           </Field>
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       {/* Only when the role carries one — see the invite dialog. */}
       {roleHasTerritory(user.role) ? (
         <FormSection legend="Territory">
-          <FieldGroup className="grid gap-4">
+          <FieldGrid className="grid gap-4">
             <ScopeField
               role={user.role}
               regionIds={regionIds}
@@ -187,7 +187,7 @@ function EditUserForm({
               regionError={err("regionIds")}
               stateError={err("stateIds")}
             />
-          </FieldGroup>
+          </FieldGrid>
         </FormSection>
       ) : null}
 

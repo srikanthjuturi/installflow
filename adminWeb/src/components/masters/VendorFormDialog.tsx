@@ -15,9 +15,9 @@ import {
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { useFieldConflict } from "@/components/shared/useFieldConflict";
 import { Input } from "@/components/ui/input";
@@ -632,7 +632,7 @@ function VendorForm({
         legend="Statutory identity"
         hint="As printed on the GST certificate. The GSTIN and CIN are stored in upper case."
       >
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {renderField("gstNumber", "GSTIN", {
             required: true,
             mono: true,
@@ -675,11 +675,11 @@ function VendorForm({
               hint: "Only an MCA-registered company has one.",
             }
           )}
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       <FormSection legend="Company">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {renderField("name", "Company name", {
             required: true,
             placeholder: "e.g. Reliance GreenTech Industries",
@@ -698,11 +698,11 @@ function VendorForm({
             placeholder: "98200 11001",
             hint: "10 digits. Spaces and a +91 are fine.",
           })}
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       <FormSection legend="Registered address">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {/* The street line takes the whole row: it is the longest value on
               the form, and the only one where a line break carries meaning. */}
           {renderField("address", "Building, street and area", {
@@ -727,7 +727,7 @@ function VendorForm({
             maxLength: 6,
             placeholder: "400099",
           })}
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       <Controller
@@ -743,7 +743,7 @@ function VendorForm({
       />
 
       <FormSection legend="Portal access">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {renderField("loginEmail", "Login email", {
             // Marked only while it can be typed. On edit the box is read-only —
             // the identity the account is looked up by — and an asterisk on a
@@ -759,7 +759,7 @@ function VendorForm({
               ? "The address this vendor signs in with. Use Reset password on the vendor row to email a new one."
               : "We email a temporary password here. They sign in with it and raise their own tickets.",
           })}
-        </FieldGroup>
+        </FieldGrid>
 
         {/* Here rather than beside Status, and rather than with Ticket intake.
             This section means "what this vendor's portal IS"; intake channels

@@ -5,7 +5,6 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -13,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useInfinitePincodes, usePincodeLookup } from "@/hooks/useGeo";
 import { flatten } from "@/lib/placeAddress";
 import { cn } from "@/lib/utils";
+import { FieldGrid } from "./FieldGrid";
 import { useAddressAutocomplete } from "./useAddressAutocomplete";
 
 /**
@@ -517,7 +517,7 @@ export function AddressFields({
         </Field>
       ) : null}
 
-      <FieldGroup className={grid ?? DEFAULT_GRID}>
+      <FieldGrid className={grid ?? DEFAULT_GRID}>
         {box("address", { className: addressClassName })}
         {lines === 2 ? box("addressLine2") : null}
         {/* Pincode leads the row, ahead of City and State, because it now
@@ -599,7 +599,7 @@ export function AddressFields({
           readOnly: status === "ok",
         })}
         {children}
-      </FieldGroup>
+      </FieldGrid>
     </div>
   );
 }

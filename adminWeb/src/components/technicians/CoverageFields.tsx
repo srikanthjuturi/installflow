@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { FieldGrid } from "@/components/shared/FieldGrid";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { useMe } from "@/hooks/useAuth";
 import { useAssignableRegions } from "@/hooks/useCompanyUsers";
@@ -116,7 +117,7 @@ export function CoverageFields({
   }, [regionId, onPincodes]);
 
   return (
-    <FieldGroup className={className ?? "grid gap-4 sm:grid-cols-2"}>
+    <FieldGrid className={className ?? "grid gap-4 sm:grid-cols-2"}>
       <Field data-invalid={regionError ? true : undefined}>
         {/* Both boxes are required in both consumers — the add form and the
             invite — so the mark is unconditional rather than a prop. */}
@@ -207,6 +208,6 @@ export function CoverageFields({
           </FieldDescription>
         )}
       </Field>
-    </FieldGroup>
+    </FieldGrid>
   );
 }

@@ -13,7 +13,6 @@ import {
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -27,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
@@ -173,7 +173,7 @@ function AddUserForm({
       </DialogHeader>
 
       <FormSection legend="Person">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {/* Spans the row so Email and Phone pair up beneath it — three fields
               in two columns otherwise leaves a ragged empty cell. */}
           <Field
@@ -231,11 +231,11 @@ function AddUserForm({
               </FieldDescription>
             ) : null}
           </Field>
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       <FormSection legend="Access">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {/* Spans the row: it is the only field in this section now that the
               password is the server's, and a lone control in a two-column grid
               leaves exactly the ragged cell the comments above warn about. */}
@@ -302,7 +302,7 @@ function AddUserForm({
               </FieldDescription>
             ) : null}
           </Field>
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       {/* Only when the role actually has one — a Territory heading over an
@@ -310,7 +310,7 @@ function AddUserForm({
           than two columns: a regional head's states run to thirteen chips. */}
       {roleHasTerritory(role) ? (
         <FormSection legend="Territory">
-          <FieldGroup className="grid gap-4">
+          <FieldGrid className="grid gap-4">
             <ScopeField
               role={role}
               regionIds={regionIds}
@@ -324,7 +324,7 @@ function AddUserForm({
               regionError={err("regionIds")}
               stateError={err("stateIds")}
             />
-          </FieldGroup>
+          </FieldGrid>
         </FormSection>
       ) : null}
 

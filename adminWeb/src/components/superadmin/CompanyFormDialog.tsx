@@ -13,9 +13,9 @@ import {
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { useFieldConflict } from "@/components/shared/useFieldConflict";
 import { Input } from "@/components/ui/input";
@@ -436,7 +436,7 @@ function CompanyForm({
         legend="Statutory identity"
         hint="As printed on the GST certificate."
       >
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {renderField("gstNumber", "GSTIN", {
             required: true,
             mono: true,
@@ -462,11 +462,11 @@ function CompanyForm({
             placeholder: "Active",
             hint: "The registration's standing at the GST portal.",
           })}
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       <FormSection legend="Company">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {renderField("name", "Company name", {
             required: true,
             placeholder: "Acme Installations Pvt Ltd",
@@ -486,11 +486,11 @@ function CompanyForm({
             autoComplete: "tel",
             hint: "10 digits. Spaces and a +91 are fine.",
           })}
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       <FormSection legend="Registered address">
-        <FieldGroup className={COLS}>
+        <FieldGrid className={COLS}>
           {/* The street line takes the whole row, as a textarea — the same
               control the vendor form uses, and for the same reasons: it is the
               longest value here, and a line break in a pasted letterhead
@@ -514,17 +514,17 @@ function CompanyForm({
             placeholder: "560001",
             autoComplete: "postal-code",
           })}
-        </FieldGroup>
+        </FieldGrid>
       </FormSection>
 
       {isEdit ? null : (
         <FormSection legend="Admin login">
-          <FieldGroup className={COLS}>
+          <FieldGrid className={COLS}>
             {renderField("adminName", "Admin name", {
               placeholder: "Full name",
               autoComplete: "name",
             })}
-          </FieldGroup>
+          </FieldGrid>
         </FormSection>
       )}
 

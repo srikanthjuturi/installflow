@@ -1,6 +1,7 @@
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { TriangleAlert } from "lucide-react";
+import { FieldGrid } from "@/components/shared/FieldGrid";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -225,7 +226,7 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
             <FieldLegend className="sr-only">
               Bonus offered on re-notification
             </FieldLegend>
-            <FieldGroup className="grid grid-cols-2 gap-3">
+            <FieldGrid className="grid grid-cols-2 gap-3">
               {bonusFields.map((f, i) => {
                 const err = errors.bonusAmounts?.[i]?.amount?.message;
                 const id = `bonus-${i}`;
@@ -257,7 +258,7 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
                   </Field>
                 );
               })}
-            </FieldGroup>
+            </FieldGrid>
           </FieldSet>
 
           {/* Says where the money comes from, since the penalty card that
@@ -384,7 +385,9 @@ function SpanField({
   );
 }
 
-function RuleCard({
+/** Exported for `NodeRulesForm`, which renders the same six cards in override
+ *  mode. Two consumers, so it stays here rather than moving to `shared/`. */
+export function RuleCard({
   title,
   children,
 }: {
