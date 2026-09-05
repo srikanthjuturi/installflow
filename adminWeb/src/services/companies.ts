@@ -21,18 +21,27 @@ export function listCompanies(params: ListParams = {}): Promise<Page<Company>> {
 }
 
 /**
- * What the GST registry says about a GSTIN — the company form's autofill.
+ * What we know about a GSTIN — the company form's autofill.
  *
  * The superadmin twin of `lookupGstin` in `services/vendors.ts`. Same registry,
  * same answer, one shared implementation on the server; the routes differ only
  * because a superadmin holds no membership and no company feature, so the
- * vendors route refuses them outright.
+ * vendors route refuses them outright — and because the "do we already hold
+ * this?" half asks platform-wide here and only within one tenant there.
  *
- * Answers 200 for a GSTIN that is not registered and for a portal that could
- * not be reached — read `outcome`, do not rely on a rejection.
+ * `excludeId` is the company being EDITED. Without it the server reports that
+ * company's own GSTIN as already taken by itself; it is also how the server
+ * knows whose vendors to check the number against.
+ *
+ * Answers 200 for a GSTIN we already hold, for one that is not registered, and
+ * for a portal that could not be reached — read `outcome`, do not rely on a
+ * rejection.
  */
-export function lookupCompanyGstin(gstin: string): Promise<GstinLookup> {
-  return apiPost<GstinLookup>("/companies/gstin-lookup", { gstin });
+export function lookupCompanyGstin(
+  gstin: string,
+  excludeId?: string
+): Promise<GstinLookup> {
+  return apiPost<GstinLookup>("/companies/gstin-lookup", { gstin, excludeId });
 }
 
 export function getCompany(id: string): Promise<Company> {

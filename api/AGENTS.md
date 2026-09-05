@@ -637,13 +637,14 @@ is the provider's contract.
 **`status` and `valid` answer different questions, and conflating them is the bug to avoid.**
 `valid: false` is about the GSTIN — not registered, and the console blocks the save.
 `status: 0` is about **us** — the subscription is spent or lapsed — and blocks nothing at all.
-Three outcomes, never two:
+With the local check below that makes **four** outcomes, never two:
 
-| `outcome` | Means | Console |
-|---|---|---|
-| `found` | registered | fills the form |
-| `not_registered` | a real refusal | blocks the save |
-| `unavailable` | we could not ask | blocks **nothing** — everything stays typeable |
+| `outcome` | Means | Reached the registry? | Console |
+|---|---|---|---|
+| `found` | registered | yes | fills the form |
+| `already_registered` | **we** hold it | **no** | blocks the save |
+| `not_registered` | a real refusal | yes | blocks the save |
+| `unavailable` | we could not ask | tried | blocks **nothing** — everything stays typeable |
 
 Same degradation rule as WhatsApp and ACS: **leave `GSTZEN_TOKEN` empty and nothing 500s.** The
 lookup reports itself unavailable and the form is typed by hand, exactly as before it existed.
@@ -651,11 +652,34 @@ Which also means a deploy that forgets the variable looks like a working build w
 has quietly stopped filling itself in — set it in the Azure App Service settings, not only in
 `api/.env`.
 
-**Every call spends a unit of a metered subscription.** Hence the two guards worth keeping: the
+**Every call spends a unit of a metered subscription.** Hence four guards worth keeping. The
 request is refused with a 422 before it leaves this process unless the GSTIN is well-formed
-(`GstNumber`, shared with companies), and the console holds each answer with
-`staleTime: Infinity` under its own `gstin-lookup` query key — deliberately outside the
-`vendors` prefix, so saving a vendor does not evict what the registry said and buy it again.
+(`GstNumber`, shared with companies). The console holds each answer with `staleTime: Infinity`
+under its own `gstin-lookup` query key — deliberately outside the `vendors` prefix, so saving a
+vendor does not evict what the registry said and buy it again. On an EDIT the console does not
+ask at all until the number differs from the saved one: the autofill only ever fills empty boxes,
+so opening a vendor to change its phone would buy an answer with nothing to do. And, first of all:
+
+**Our own tables are asked before the registry is.** A GSTIN we already hold cannot be saved —
+`assert_gstin_free_for_*` 409s on it — so buying the registry's opinion of it spends a unit on an
+answer nobody can act on, and the operator finds out only after filling the whole form in.
+`app/core/gst.py` answers "who holds this?" and, when somebody does, the lookup returns
+`already_registered` **without calling out at all**. It carries the same `code` and the same
+sentence the 409 would, because that module writes both — the pre-check and the save can no longer
+word the same refusal differently. The 409 stays as the backstop for a race and for anything
+calling the endpoint directly; this is a spend and a courtesy, not the guard.
+
+Two things about that check are not interchangeable, and `app/core/gst.py` argues both:
+
+- **The two surfaces have different SCOPE.** `/vendors/gstin-lookup` asks only within the caller's
+  own tenant — this company's vendors, and this company's own number. It must never ask
+  platform-wide, because naming another tenant would tell a company admin which companies exist.
+  `/companies/gstin-lookup` does ask platform-wide, and naming the holder leaks nothing: its caller
+  is a superadmin, who can already list every company.
+- **`excludeId` is the row being EDITED**, and without it every edit dialog refuses its own GSTIN
+  and names the row on screen. A vendor id on the vendors route, a company id on the companies
+  route — on the latter it doubles as the answer to "whose vendors?", which is why a company being
+  *created* skips that half entirely (it has none).
 
 **A subscription failure emails this company's National and Regional Heads**, at most once a day
 (`vendors/service._alert_heads` → `emails/alerts.py`). Nothing else would tell them: from the

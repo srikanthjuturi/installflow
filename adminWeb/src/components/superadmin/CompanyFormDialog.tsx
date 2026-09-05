@@ -151,16 +151,29 @@ function CompanyForm({
    *
    * The superadmin twin of the vendor dialog's, and deliberately identical in
    * behaviour: gated on a COMPLETE GSTIN so no partial value is ever asked
-   * about, debounced so pasting and typing both cost one call, and cached by
-   * the hook so the same number is never bought twice.
+   * about, not asked at all on an edit until the number differs from the saved
+   * one, debounced so pasting and typing both cost one call, and cached by the
+   * hook so the same number is never bought twice.
    *
-   * It calls `/companies/gstin-lookup` rather than the vendors route only
-   * because a superadmin holds no membership and no company feature.
+   * It calls `/companies/gstin-lookup` rather than the vendors route because a
+   * superadmin holds no membership and no company feature — and because the
+   * "do we already hold this?" half of the answer is platform-wide here, where
+   * the vendor route may only ever ask within one tenant.
    */
+  const savedGstin = (company?.gstNumber ?? "").trim().toUpperCase();
   const gstin = (gstValue ?? "").trim().toUpperCase();
   const debouncedGstin = useDebouncedValue(gstin, 400);
-  const gstinComplete = GSTIN_RE.test(debouncedGstin);
-  const gstLookup = useGstinLookup(debouncedGstin, gstinComplete, "company");
+  const gstinAsked =
+    GSTIN_RE.test(debouncedGstin) && debouncedGstin !== savedGstin;
+  // `company.id` excluded, so this company's own number is not reported as a
+  // clash with itself. It is also how the server knows whose vendors to check
+  // the number against — the other edge of the same rule.
+  const gstLookup = useGstinLookup(
+    debouncedGstin,
+    gstinAsked,
+    "company",
+    company?.id
+  );
 
   /** The GSTIN already filled from — without it this fights the user's typing. */
   const filledFrom = useRef<string | null>(null);
@@ -203,9 +216,18 @@ function CompanyForm({
     fill("pincode", found.pincode);
   }, [gstLookup.data, debouncedGstin, isEdit, getValues, setValue]);
 
+  /**
+   * We already hold it — another company on the platform, or, when editing,
+   * one of this company's own vendors. Answered from our own tables without
+   * spending a lookup, and it blocks the save the same way the 409 behind it
+   * would; `reason` is the sentence that 409 carries, so the two read alike.
+   */
+  const gstAlreadyRegistered =
+    gstinAsked && gstLookup.data?.outcome === "already_registered";
+
   /** A real answer about the GSTIN: it is not registered. Blocks the save. */
   const gstNotRegistered =
-    gstinComplete && gstLookup.data?.outcome === "not_registered";
+    gstinAsked && gstLookup.data?.outcome === "not_registered";
 
   /**
    * We could not ask — our subscription, or the portal. **Blocks nothing.**
@@ -213,14 +235,34 @@ function CompanyForm({
    * person filling the form in.
    */
   const gstUnavailable =
-    gstinComplete &&
+    gstinAsked &&
     (gstLookup.isError || gstLookup.data?.outcome === "unavailable");
+
+  /** Every reason the GSTIN box refuses before the save is even attempted. */
+  const gstRefusal = gstAlreadyRegistered || gstNotRegistered;
+
+  /**
+   * What goes on the GSTIN box. A refusal the lookup just made beats a 409 kept
+   * from an earlier save: it is about the value in the box right now. The two
+   * refusals cannot both be true — a number we hold is never asked about
+   * upstream at all.
+   */
+  const gstError = (() => {
+    if (gstAlreadyRegistered)
+      return gstLookup.data?.reason ?? "That GSTIN is already registered";
+    if (gstNotRegistered)
+      return gstLookup.data?.reason ?? "That GSTIN is not registered";
+    return gstConflict.messageFor(gstValue);
+  })();
 
   /** The line under the GSTIN: what the registry said, or why it did not. */
   const gstNote = (() => {
-    if (!gstinComplete) return null;
+    if (!gstinAsked) return null;
     if (gstLookup.isFetching)
-      return { tone: "muted" as const, text: "Checking with the GST portal…" };
+      // Not "checking with the GST portal" any more: the first half of this
+      // request asks our own records, and a number we already hold never
+      // reaches the portal at all.
+      return { tone: "muted" as const, text: "Checking this GSTIN…" };
     if (gstUnavailable)
       return {
         tone: "warn" as const,
@@ -349,7 +391,7 @@ function CompanyForm({
   function submit(values: CompanyFormValues) {
     // The disabled button is not the guard — a form still submits on Enter.
     // Only a REFUSAL stops it; a lookup we could not make never does.
-    if (gstNotRegistered) return;
+    if (gstRefusal) return;
 
     const shared = {
       name: values.name.trim(),
@@ -443,11 +485,7 @@ function CompanyForm({
             maxLength: 15,
             placeholder: "29ABCDE1234F1Z5",
             hint: "15-character GST number.",
-            // An unregistered number comes first: "already registered" would
-            // be a strange thing to say about a GSTIN that does not exist.
-            error: gstNotRegistered
-              ? (gstLookup.data?.reason ?? "That GSTIN is not registered")
-              : gstConflict.messageFor(gstValue),
+            error: gstError,
             note: gstNote,
           })}
           {renderField("pan", "PAN", {
@@ -533,7 +571,7 @@ function CompanyForm({
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
         </DialogClose>
-        <Button type="submit" disabled={isSubmitting || gstNotRegistered}>
+        <Button type="submit" disabled={isSubmitting || gstRefusal}>
           {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
           {isEdit ? "Save changes" : "Create company"}
         </Button>

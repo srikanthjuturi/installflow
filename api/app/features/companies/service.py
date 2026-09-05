@@ -15,8 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import company_code
 from app.core.deps import Principal
-from app.core.errors import AppError
-from app.core.gst import GST_DUPLICATE_COMPANY, assert_gst_not_a_vendor
+from app.core.gst import assert_gstin_free_for_company
 from app.core.rules import load_rules
 from app.core.schemas import EmailStatus, ListParams
 from app.core.security import generate_temporary_password, hash_password
@@ -111,39 +110,6 @@ async def _unique_code(
     return candidate
 
 
-async def _ensure_gst_unique(
-    session: AsyncSession, gst_number: str, *, exclude_id: uuid.UUID | None = None
-) -> None:
-    """409 if a LIVE company uses this GSTIN.
-
-    `deleted_at IS NULL` matches `uq_companies_gst_lower`, which `4c8f1b7d2e93`
-    made partial for the reason every unique on a soft-deleted table is: removing
-    a company frees its GSTIN rather than poisoning it forever. This check used to
-    count deleted rows too, so retiring a company and registering it again refused
-    with a 409 raised by a row invisible on every screen — nothing in the console
-    could explain it, because `list_companies` and `_load_company` both hide it.
-
-    Selects the NAME rather than counting, so the refusal can say whose number it
-    is; `assert_gst_not_the_company` does the same, for the same reason. Naming it
-    leaks nothing — every caller is a superadmin, who can already list every
-    company on the platform. The vendor twin withholds other tenants' names
-    because ITS caller is a company admin, which is a different question.
-    """
-    stmt = select(Company.name).where(
-        Company.deleted_at.is_(None),
-        func.lower(Company.gst_number) == gst_number.lower(),
-    )
-    if exclude_id is not None:
-        stmt = stmt.where(Company.id != exclude_id)
-    clash = await session.scalar(stmt)
-    if clash is not None:
-        raise AppError(
-            status.HTTP_409_CONFLICT,
-            GST_DUPLICATE_COMPANY,
-            f"{clash} is already registered under GSTIN {gst_number}",
-        )
-
-
 def _company_out(
     company: Company, *, admin_email: str | None = None, user_count: int | None = None
 ) -> CompanyOut:
@@ -210,7 +176,9 @@ async def _user_count(session: AsyncSession, company_id: uuid.UUID) -> int:
 async def create_company(
     session: AsyncSession, principal: Principal, body: CompanyCreateRequest
 ) -> CompanyCreatedOut:
-    await _ensure_gst_unique(session, body.gstNumber)
+    # No `exclude_id`, which also means the vendor half of the check is skipped:
+    # a company being created has no vendors, so it could not return a row.
+    await assert_gstin_free_for_company(session, body.gstNumber)
     slug = await _unique_slug(session, body.name)
     code = await _unique_code(session, body.name, body.code)
     company = Company(
@@ -350,12 +318,14 @@ async def update_company(
     if body.phone is not None:
         company.phone = body.phone
     if body.gstNumber is not None and body.gstNumber.lower() != company.gst_number.lower():
-        await _ensure_gst_unique(session, body.gstNumber, exclude_id=company.id)
-        # The other edge of the same rule the vendor form enforces: a company
-        # and one of its own vendors cannot share a GST number. Only asked on
-        # UPDATE — a company being created has no vendors yet, so the query
-        # could not return a row.
-        await assert_gst_not_a_vendor(session, company.id, body.gstNumber)
+        # Both edges of the rule: no other company may hold it, and neither may
+        # one of THIS company's own vendors — a company and its vendor are
+        # different legal entities by definition. `exclude_id` is the company
+        # being edited on both counts; `app.core.gst` owns the pair, so the
+        # GSTIN box refuses the same number in the same words before the save.
+        await assert_gstin_free_for_company(
+            session, body.gstNumber, exclude_id=company.id
+        )
         company.gst_number = body.gstNumber
     if body.pan is not None:
         company.pan = body.pan

@@ -21,8 +21,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
-from app.core.errors import AppError
-from app.core.gst import GST_DUPLICATE_VENDOR, assert_gst_not_the_company
+from app.core.gst import assert_gstin_free_for_vendor
 from app.core.intake import (
     CHANNEL_DESCRIPTION,
     INTAKE_CHANNELS,
@@ -153,32 +152,6 @@ async def _resolve_login_identity(
     if clash is not None:
         raise _conflict(f"{email} is already the login for another vendor here")
     return existing
-
-
-async def _assert_gst_free(
-    db: AsyncSession,
-    company_id: uuid.UUID,
-    gst_number: str,
-    *,
-    exclude_id: uuid.UUID | None = None,
-) -> None:
-    stmt = select(Vendor.name).where(
-        Vendor.company_id == company_id,
-        Vendor.deleted_at.is_(None),
-        func.lower(Vendor.gst_number) == gst_number.lower(),
-    )
-    if exclude_id is not None:
-        stmt = stmt.where(Vendor.id != exclude_id)
-    clash = await db.scalar(stmt)
-    if clash is not None:
-        # Coded, because the GSTIN box on the vendor form has to be able to tell
-        # this 409 from the one that says the number is the COMPANY's own — and
-        # from the name and login-email 409s the same endpoint raises.
-        raise AppError(
-            status.HTTP_409_CONFLICT,
-            GST_DUPLICATE_VENDOR,
-            f"{clash} is already registered under GSTIN {gst_number}",
-        )
 
 
 # ── hydration ─────────────────────────────────────────────────────────────────
@@ -463,11 +436,11 @@ async def create_vendor(
     company_id = principal.company_id
     name = body.name.strip()
     await _assert_name_free(db, company_id, name)
-    await _assert_gst_free(db, company_id, body.gstNumber)
-    # A vendor is an outside party, so it cannot be registered under the GSTIN
-    # of the company it supplies. Asked after the vendor-vs-vendor check because
-    # a duplicate of an existing vendor is the likelier mistake of the two.
-    await assert_gst_not_the_company(db, company_id, body.gstNumber)
+    # Another vendor here, or the company's own number — a vendor is an outside
+    # party, so it cannot be registered under the GSTIN of the company it
+    # supplies. `app.core.gst` owns both, in that order, and the vendor form's
+    # GSTIN box refuses the same number in the same words before the save.
+    await assert_gstin_free_for_vendor(db, company_id, body.gstNumber)
     identity = await _resolve_login_identity(db, company_id, str(body.loginEmail))
 
     contact = body.contactPerson.strip()
@@ -641,10 +614,9 @@ async def update_vendor(
     # every other edit to a vendor that already holds a GSTIN it should not —
     # a row this rule was never meant to freeze, only to stop being created.
     if body.gstNumber is not None and body.gstNumber.lower() != row.gst_number.lower():
-        await _assert_gst_free(
+        await assert_gstin_free_for_vendor(
             db, principal.company_id, body.gstNumber, exclude_id=vendor_id
         )
-        await assert_gst_not_the_company(db, principal.company_id, body.gstNumber)
         row.gst_number = body.gstNumber
     # The clearable fields: an explicit null means "empty this", where omitting
     # the key means "leave it alone". Truthiness cannot tell those apart.

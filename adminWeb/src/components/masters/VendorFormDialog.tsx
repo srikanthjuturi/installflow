@@ -123,6 +123,14 @@ export function VendorFormDialog({
  */
 const COLS = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
+/**
+ * Two columns, for the rows that pair a two-card boolean with something else.
+ * Half of this dialog, not a third: each `ChoiceCards` holds two bordered cards
+ * side by side plus a sentence of explanation, and a third of the width squeezes
+ * both. Also written out in full for the same reason `COLS` is.
+ */
+const PAIR = "grid gap-4 sm:grid-cols-2";
+
 /** Says "optional" once, in the label, rather than in prose under every box. */
 function OptionalTag() {
   return (
@@ -332,15 +340,31 @@ function VendorForm({
    * company, so the name, the PAN, the registration's standing and the
    * registered address are all answerable from it.
    *
-   * Two things keep the spend honest. The call is gated on a COMPLETE GSTIN,
-   * so no partial value is ever asked about; and it is debounced, so pasting
-   * one and typing one both cost exactly one call. The hook then holds the
-   * answer for the session — see `useGstinLookup`.
+   * Three things keep the spend honest. The call is gated on a COMPLETE GSTIN,
+   * so no partial value is ever asked about; it is debounced, so pasting one
+   * and typing one both cost exactly one call; and on an EDIT it does not fire
+   * until the number actually differs from the saved one — opening a vendor to
+   * change its phone would otherwise buy the registry's opinion of a GSTIN
+   * whose name, PAN and status we already store, and the autofill only ever
+   * fills empty boxes, so it would have nothing to do with the answer. The hook
+   * then holds it for the session — see `useGstinLookup`.
    */
+  const savedGstin = (vendor?.gstNumber ?? "").trim().toUpperCase();
   const gstin = (gstValue ?? "").trim().toUpperCase();
   const debouncedGstin = useDebouncedValue(gstin, 400);
-  const gstinComplete = GSTIN_RE.test(debouncedGstin);
-  const gstLookup = useGstinLookup(debouncedGstin, gstinComplete);
+  const gstinAsked =
+    GSTIN_RE.test(debouncedGstin) && debouncedGstin !== savedGstin;
+  // `vendor.id` excluded, so the server does not report this vendor's own
+  // number as a clash with itself. Belt and braces alongside the gate above,
+  // which already stops the unchanged value being asked about: the two guard
+  // different things, and only this one survives somebody typing the number
+  // out again character by character.
+  const gstLookup = useGstinLookup(
+    debouncedGstin,
+    gstinAsked,
+    "vendor",
+    vendor?.id
+  );
 
   /** The GSTIN already filled from — without it this fights the user's typing. */
   const filledFrom = useRef<string | null>(null);
@@ -386,12 +410,21 @@ function VendorForm({
   }, [gstLookup.data, debouncedGstin, isEdit, getValues, setValue]);
 
   /**
+   * We already hold it — another vendor here, or the company's own number.
+   * Answered from our own tables without spending a lookup, and it blocks the
+   * save the same way the 409 behind it would; `reason` is the sentence that
+   * 409 carries, so the two paths read identically.
+   */
+  const gstAlreadyRegistered =
+    gstinAsked && gstLookup.data?.outcome === "already_registered";
+
+  /**
    * A real answer about the GSTIN: it is not registered. Blocks the save — a
    * vendor is a party we invoice against, and an unregistered number is
    * cheaper to refuse now than to find at invoicing.
    */
   const gstNotRegistered =
-    gstinComplete && gstLookup.data?.outcome === "not_registered";
+    gstinAsked && gstLookup.data?.outcome === "not_registered";
 
   /**
    * We could not ask — our subscription, or the portal. **Blocks nothing.**
@@ -399,14 +432,36 @@ function VendorForm({
    * said so) are one thing to the person filling the form in.
    */
   const gstUnavailable =
-    gstinComplete &&
+    gstinAsked &&
     (gstLookup.isError || gstLookup.data?.outcome === "unavailable");
+
+  /** Every reason the GSTIN box refuses before the save is even attempted. */
+  const gstRefusal = gstAlreadyRegistered || gstNotRegistered;
+
+  /**
+   * What goes on the GSTIN box. A refusal the lookup just made beats a 409 kept
+   * from an earlier save: it is about the value in the box right now.
+   *
+   * "Already registered" comes before "not registered" only for tidiness —
+   * they cannot both be true, since a number we hold is never asked about
+   * upstream at all.
+   */
+  const gstError = (() => {
+    if (gstAlreadyRegistered)
+      return gstLookup.data?.reason ?? "That GSTIN is already registered here";
+    if (gstNotRegistered)
+      return gstLookup.data?.reason ?? "That GSTIN is not registered";
+    return gstConflict.messageFor(gstValue);
+  })();
 
   /** The line under the GSTIN: what the registry said, or why it did not. */
   const gstNote = (() => {
-    if (!gstinComplete) return null;
+    if (!gstinAsked) return null;
     if (gstLookup.isFetching)
-      return { tone: "muted" as const, text: "Checking with the GST portal…" };
+      // Not "checking with the GST portal" any more: the first half of this
+      // request asks our own records, and a number we already hold never
+      // reaches the portal at all.
+      return { tone: "muted" as const, text: "Checking this GSTIN…" };
     if (gstUnavailable)
       return {
         tone: "warn" as const,
@@ -553,7 +608,7 @@ function VendorForm({
   function submit(values: VendorFormValues) {
     // The disabled button is not the guard — a form still submits on Enter.
     // Only a REFUSAL stops it; a lookup we could not make never does.
-    if (gstNotRegistered) return;
+    if (gstRefusal) return;
 
     const body = {
       name: values.name,
@@ -645,13 +700,7 @@ function VendorForm({
             mono: true,
             maxLength: 15,
             placeholder: "27AAACV1234A1Z5",
-            // An unregistered number comes first: "already registered to
-            // vendor Y" would be a strange thing to say about a GSTIN that
-            // does not exist. In practice they cannot both be live — a save
-            // only 409s for a number the registry accepted.
-            error: gstNotRegistered
-              ? (gstLookup.data?.reason ?? "That GSTIN is not registered")
-              : gstConflict.messageFor(gstValue),
+            error: gstError,
             note: gstNote,
           })}
           {/* Beside the GSTIN because it IS the GSTIN: characters 3–12 of one
@@ -750,7 +799,11 @@ function VendorForm({
       />
 
       <FormSection legend="Portal access">
-        <FieldGrid className={COLS}>
+        {/* The email and the address search share one row of two. Both are
+            answers about this vendor's portal — the address the portal is
+            reached at, and what its ticket form offers — and the email alone in
+            a row of three left two empty columns under a dialog this long. */}
+        <FieldGrid className={PAIR}>
           {renderField("loginEmail", "Login email", {
             // Marked only while it can be typed. On edit the box is read-only —
             // the identity the account is looked up by — and an asterisk on a
@@ -766,30 +819,32 @@ function VendorForm({
               ? "The address this vendor signs in with. Use Reset password on the vendor row to email a new one."
               : "We email a temporary password here. They sign in with it and raise their own tickets.",
           })}
+          {/* Here rather than beside Status, and rather than with Ticket
+              intake. This section means "what this vendor's portal IS"; intake
+              channels are how tickets ARRIVE, and Status is the brand's
+              lifecycle. This is about the intake form itself. */}
+          <Controller
+            name="addressSearch"
+            control={control}
+            render={({ field }) => (
+              <AddressSearchField
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.addressSearch?.message}
+                errorId="vendor-address-search-error"
+              />
+            )}
+          />
         </FieldGrid>
-
-        {/* Here rather than beside Status, and rather than with Ticket intake.
-            This section means "what this vendor's portal IS"; intake channels
-            are how tickets ARRIVE, and Status is the brand's lifecycle. This
-            is about the intake form itself. */}
-        <Controller
-          name="addressSearch"
-          control={control}
-          render={({ field }) => (
-            <AddressSearchField
-              value={field.value}
-              onChange={field.onChange}
-              error={errors.addressSearch?.message}
-              errorId="vendor-address-search-error"
-            />
-          )}
-        />
       </FormSection>
 
-      {/* Its own section, NOT under Portal access. That one means "what this
-          vendor's portal is"; this is about how a technician's proof is
-          verified out on site, which the vendor never sees. */}
-      <FormSection legend="Proof verification">
+      {/* The last two booleans share a row rather than stacking full width, and
+          neither keeps a section heading of its own — each `ChoiceCards` legend
+          already names its question, and a heading over a single control only
+          repeats it. They stay two different questions: the left one is how a
+          technician's proof is verified out on site, which the vendor never
+          sees; the right one is the brand's lifecycle in this console. */}
+      <FieldGrid className={PAIR}>
         <Controller
           name="locationCheck"
           control={control}
@@ -802,28 +857,28 @@ function VendorForm({
             />
           )}
         />
-      </FormSection>
 
-      <Controller
-        name="status"
-        control={control}
-        render={({ field }) => (
-          <StatusField
-            value={field.value}
-            onChange={field.onChange}
-            description="Paused vendors stay out of the brand picker. Models already carrying the brand keep it."
-            error={errors.status?.message}
-            errorId="vendor-status-error"
-          />
-        )}
-      />
+        <Controller
+          name="status"
+          control={control}
+          render={({ field }) => (
+            <StatusField
+              value={field.value}
+              onChange={field.onChange}
+              description="Paused vendors stay out of the brand picker. Models already carrying the brand keep it."
+              error={errors.status?.message}
+              errorId="vendor-status-error"
+            />
+          )}
+        />
+      </FieldGrid>
 
       {/* The failure is reported in the toaster (App.tsx), not here. */}
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
         </DialogClose>
-        <Button type="submit" disabled={pending || gstNotRegistered}>
+        <Button type="submit" disabled={pending || gstRefusal}>
           {pending ? <Spinner data-icon="inline-start" /> : null}
           {isEdit ? "Save changes" : "Add vendor"}
         </Button>

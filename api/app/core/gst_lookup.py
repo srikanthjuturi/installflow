@@ -18,6 +18,13 @@ gated on the people who can act on the answer rather than on anyone signed in.
 The transport and the mapping are `app.integrations.gstzen`; this is the part
 that has a database and a principal, so the alert below can find somebody to
 tell when the subscription stops answering.
+
+**Our own data is asked first.** A GSTIN we already hold cannot be saved — the
+save 409s on it — so buying the registry's opinion of it is a unit spent on an
+answer nobody can act on, and the operator finds out only after filling the
+whole form in. `app.core.gst` answers "who holds this?" and, when somebody does,
+this returns `already_registered` without calling out at all. The 409 stays as
+the backstop: this is a spend and a courtesy, not the guard.
 """
 
 from __future__ import annotations
@@ -25,11 +32,13 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.gst import gstin_holder_for_company, gstin_holder_for_vendor
 from app.core.schemas import AppModel
 from app.core.statutory import GstNumber
 from app.emails import send_gstin_lookup_unavailable
@@ -41,6 +50,10 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
+#: Which form is asking. It decides the SCOPE of the "do we already hold this?"
+#: check, and the two scopes are not interchangeable — see `app.core.gst`.
+Surface = Literal["vendor", "company"]
+
 
 class GstinLookupRequest(BaseModel):
     """Ask the GST registry about one GSTIN.
@@ -51,6 +64,14 @@ class GstinLookupRequest(BaseModel):
     """
 
     gstin: GstNumber
+    #: The row being EDITED, so it is not reported as its own clash. A vendor id
+    #: on `/vendors/gstin-lookup`, a company id on `/companies/gstin-lookup` —
+    #: the routes differ in who may call them and in what they are about, so the
+    #: field means whatever the route it arrives on is for.
+    #:
+    #: Omitted when adding. Wrong or from another tenant simply excludes
+    #: nothing, because every query it reaches is already scoped.
+    excludeId: uuid.UUID | None = None
 
 
 class GstinLookupOut(AppModel):
@@ -65,6 +86,8 @@ class GstinLookupOut(AppModel):
     `outcome` is the discriminator:
 
     * `found` — every field below may be filled.
+    * `already_registered` — WE hold it. Answered without asking the registry,
+      so none of the fields below are filled. The console blocks the save.
     * `not_registered` — a real answer. The console blocks the save.
     * `unavailable` — we could not ask. The console blocks NOTHING.
 
@@ -75,6 +98,11 @@ class GstinLookupOut(AppModel):
     outcome: str
     #: Why, when `outcome` is not `found`. Null otherwise.
     reason: str | None = None
+    #: Which clash, on `already_registered` — one of the four codes in
+    #: `app.core.gst`, the same ones the save's 409 carries. Null otherwise.
+    #: The message is in `reason`; this is for a caller that wants to tell the
+    #: clashes apart without reading prose.
+    code: str | None = None
 
     #: The trading name, falling back to the legal name — what goes in the box.
     name: str | None = None
@@ -196,18 +224,65 @@ async def _alert_heads(
         logger.exception("Could not alert the heads about the GSTIN lookup")
 
 
-async def lookup_gstin_service(
-    db: AsyncSession, company_id: uuid.UUID | None, gstin: str
-) -> GstinLookupOut:
-    """What the GST registry says about a GSTIN — the forms' autofill.
+async def _already_ours(
+    db: AsyncSession,
+    surface: Surface,
+    company_id: uuid.UUID | None,
+    gstin: str,
+    exclude_id: uuid.UUID | None,
+) -> GstinLookupOut | None:
+    """The refusal to answer with instead of calling the registry, or None.
 
-    Reads a public registry rather than our own data, so there is no tenancy
-    question in the answer; `company_id` is here only so a subscription failure
-    can reach somebody, and is None for a superadmin.
+    The two surfaces ask different questions and the difference is a tenancy
+    boundary, not a convenience — `app.core.gst` is where that is argued. A
+    vendor principal is guaranteed by the route (`CompanyPrincipal`), but if a
+    company id ever went missing the honest fallback is to ask the registry
+    rather than to answer from a check that could not run.
+    """
+    if surface == "company":
+        holder = await gstin_holder_for_company(db, gstin, exclude_id=exclude_id)
+    elif company_id is not None:
+        holder = await gstin_holder_for_vendor(
+            db, company_id, gstin, exclude_id=exclude_id
+        )
+    else:
+        return None
+
+    if holder is None:
+        return None
+    return GstinLookupOut(
+        outcome="already_registered", reason=holder.message, code=holder.code
+    )
+
+
+async def lookup_gstin_service(
+    db: AsyncSession,
+    company_id: uuid.UUID | None,
+    gstin: str,
+    *,
+    surface: Surface,
+    exclude_id: uuid.UUID | None = None,
+) -> GstinLookupOut:
+    """What we know about a GSTIN — ours first, then the registry's autofill.
+
+    `company_id` does two jobs and they are worth telling apart: it scopes the
+    "do we already hold this?" check on the vendor surface, and it is who a
+    subscription failure gets emailed to. It is None for a superadmin, who has
+    no tenant on either count.
+
+    The registry half reads a public record, so there is no tenancy question in
+    what comes BACK; the half above it reads our own tables, so there is, and
+    `surface` is what settles it.
 
     Never raises for an upstream failure — see `app.integrations.gstzen`. Only
     the returned FIELDS cross this boundary; the provider's payload does not.
     """
+    # Before the metered call, never after: a GSTIN we hold cannot be saved, so
+    # the registry's opinion of it is a unit spent on an answer nobody can use.
+    ours = await _already_ours(db, surface, company_id, gstin, exclude_id)
+    if ours is not None:
+        return ours
+
     result = await gstzen.lookup(gstin)
 
     # The subscription being spent or lapsed is invisible from the console — the

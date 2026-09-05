@@ -44,18 +44,26 @@ export function listIntakeChannels(): Promise<IntakeChannelOption[]> {
 }
 
 /**
- * What the GST registry says about a GSTIN — the vendor form's autofill.
+ * What we know about a GSTIN — the vendor form's autofill.
  *
  * A POST because the API is one: it matches the provider, and it keeps a GSTIN
- * out of access logs and proxy caches. Every call spends a unit of a metered
- * subscription, so the hook that wraps this holds the answer for the session
- * rather than asking twice for the same number.
+ * out of access logs and proxy caches. A call that reaches the registry spends
+ * a unit of a metered subscription, so the hook that wraps this holds the
+ * answer for the session rather than asking twice for the same number.
  *
- * Answers 200 for a GSTIN that is not registered and for a portal that could
- * not be reached — read `outcome`, do not rely on a rejection.
+ * `excludeId` is the vendor being EDITED. Without it the server reports that
+ * vendor's own GSTIN as already registered — to itself — and the form refuses
+ * a row nobody changed.
+ *
+ * Answers 200 for a GSTIN we already hold, for one that is not registered, and
+ * for a portal that could not be reached — read `outcome`, do not rely on a
+ * rejection.
  */
-export function lookupGstin(gstin: string): Promise<GstinLookup> {
-  return apiPost<GstinLookup>("/vendors/gstin-lookup", { gstin });
+export function lookupGstin(
+  gstin: string,
+  excludeId?: string
+): Promise<GstinLookup> {
+  return apiPost<GstinLookup>("/vendors/gstin-lookup", { gstin, excludeId });
 }
 
 export function getVendor(id: string): Promise<Vendor> {

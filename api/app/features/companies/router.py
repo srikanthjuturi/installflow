@@ -43,10 +43,11 @@ _CREATED_MESSAGE = {
     "failed": "Company created, but the admin's password email did not go out",
 }
 
-#: Keyed on what the GST registry said. The console reads `data.outcome`; these
+#: Keyed on what the lookup found. The console reads `data.outcome`; these
 #: serve API consumers, Swagger and the logs. Same wording as the vendor twin.
 _LOOKUP_MESSAGE = {
     "found": "GSTIN found",
+    "already_registered": "That GSTIN is already registered",
     "not_registered": "That GSTIN is not registered",
     "unavailable": "The GST portal could not be reached",
 }
@@ -71,22 +72,38 @@ async def create_company(
 async def lookup_gstin(
     body: GstinLookupRequest, principal: Superadmin, db: Db
 ) -> ApiEnvelope[GstinLookupOut]:
-    """What the GST registry says about a GSTIN — the company form's autofill.
+    """What we know about a GSTIN — the company form's autofill.
 
     The superadmin twin of `POST /vendors/gstin-lookup`. Same registry, same
-    answer, same `app.core.gst_lookup` behind both; only the gate differs, and
-    it has to — a superadmin holds no membership and no company feature, so the
-    vendors route refuses them outright.
+    answer, same `app.core.gst_lookup` behind both; only the gate and the SCOPE
+    of the "do we already hold it?" check differ. The gate has to — a superadmin
+    holds no membership and no company feature, so the vendors route refuses
+    them outright — and the scope has to as well: this one asks platform-wide,
+    because a superadmin can already list every company, where the vendor twin
+    may only ever ask about the caller's own tenant.
 
-    **Always 200.** `data.outcome` is `found`, `not_registered` (a real answer:
-    block the save) or `unavailable` (we could not ask: block nothing).
+    **Always 200.** `data.outcome` is `found`, `already_registered` (another
+    company, or on an edit one of this company's own vendors, already has it:
+    block the save), `not_registered` (a real answer: block the save) or
+    `unavailable` (we could not ask: block nothing).
+
+    `already_registered` never reaches the registry, so it costs no
+    subscription unit. Send `excludeId` — the company being edited — or
+    reopening any company refuses its own GSTIN; it is also what answers "whose
+    vendors?" for the second half of the check.
 
     Declared BEFORE `/{company_id}`, or FastAPI parses the literal as a UUID and
     422s. `company_id` is None for a superadmin, so a subscription failure is
     logged rather than emailed: there is no tenant to tell, and the person who
     renews the subscription is the one reading this screen.
     """
-    data = await lookup_gstin_service(db, principal.company_id, body.gstin)
+    data = await lookup_gstin_service(
+        db,
+        principal.company_id,
+        body.gstin,
+        surface="company",
+        exclude_id=body.excludeId,
+    )
     return envelope(data, message=_LOOKUP_MESSAGE[data.outcome])
 
 

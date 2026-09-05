@@ -59,10 +59,12 @@ _ADDED_MESSAGE = {
     "failed": "Vendor added, but the password email did not go out",
 }
 
-#: Keyed on what the GST registry said. The console reads `data.outcome`; these
-#: serve API consumers, Swagger and the logs.
+#: Keyed on what the lookup found. The console reads `data.outcome`; these
+#: serve API consumers, Swagger and the logs. `already_registered` is the one
+#: answered from our own tables, so it names no portal.
 _LOOKUP_MESSAGE = {
     "found": "GSTIN found",
+    "already_registered": "That GSTIN is already registered here",
     "not_registered": "That GSTIN is not registered",
     "unavailable": "The GST portal could not be reached",
 }
@@ -151,11 +153,18 @@ async def list_vendor_options(
 async def lookup_gstin(
     body: GstinLookupRequest, db: Db, principal: CanEdit
 ) -> ApiEnvelope[GstinLookupOut]:
-    """What the GST registry says about a GSTIN — the vendor form's autofill.
+    """What we know about a GSTIN — the vendor form's autofill.
 
-    **Always 200.** `data.outcome` is `found`, `not_registered` (a real answer:
-    block the save) or `unavailable` (we could not ask: block nothing). See
-    `GstinLookupOut` for why an upstream failure is not an HTTP error here.
+    **Always 200.** `data.outcome` is `found`, `already_registered` (this
+    company or one of its vendors already has it: block the save),
+    `not_registered` (a real answer: block the save) or `unavailable` (we could
+    not ask: block nothing). See `GstinLookupOut` for why an upstream failure is
+    not an HTTP error here.
+
+    `already_registered` is answered from our own tables and **never reaches the
+    registry**, so it costs nothing and says the same sentence the save's 409
+    would. Send `excludeId` — the vendor being edited — or reopening any saved
+    vendor refuses its own GSTIN and names the row on screen.
 
     `CanEdit` rather than `CanView`: it reads a public registry, but each call
     spends a unit of a metered subscription, so it belongs behind the people who
@@ -173,7 +182,13 @@ async def lookup_gstin(
     company form asks the same question of the same registry; only WHO may ask
     differs, and that is what stays here.
     """
-    data = await lookup_gstin_service(db, principal.company_id, body.gstin)
+    data = await lookup_gstin_service(
+        db,
+        principal.company_id,
+        body.gstin,
+        surface="vendor",
+        exclude_id=body.excludeId,
+    )
     return envelope(data, message=_LOOKUP_MESSAGE[data.outcome])
 
 
