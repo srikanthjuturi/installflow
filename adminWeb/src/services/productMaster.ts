@@ -1,99 +1,74 @@
 /**
  * Product master transport — live FastAPI, not the mock client.
  *
- * Every write returns the affected category with its whole subtree, so the
+ * Every write returns the affected ROOT branch with its whole subtree, so the
  * console re-renders from one authoritative response instead of patching a
- * local tree and hoping it matches what the server did.
+ * local tree and hoping it matches what the server did. That matters more now
+ * that a change at any depth can move an inherited icon, an inherited parameter
+ * or a technician count several levels below it.
+ *
+ * `/categories` and `/subcategories` were two halves of the same idea and are
+ * now one `/nodes`. A node's level is its `depth`, not which URL created it.
  */
 
 import type {
-  CreateCategoryInput,
   CreateModelInput,
-  CreateSubcategoryInput,
-  ProductCategory,
-  UpdateCategoryInput,
+  CreateNodeInput,
+  ProductNode,
   UpdateModelInput,
-  UpdateSubcategoryInput,
+  UpdateNodeInput,
 } from "@/types/product";
 import { apiDelete, apiGet, apiPost, apiPut } from "./http";
 
 /**
- * The catalogue, whole or narrowed to one brand.
+ * The catalogue, whole or narrowed to one brand. Roots, nested downward.
  *
- * `vendorId` returns only that vendor's models and only the levels above them
- * that still hold any — ticket intake picks the vendor first, so its category
- * and model pickers must not offer a path that dead-ends.
+ * `vendorId` returns only that vendor's models and only the branches that still
+ * hold any — ticket intake picks the vendor first, so its category and model
+ * pickers must not offer a path that dead-ends.
  */
-export function listCategoryTree(
+export function listNodeTree(
   includeInactive = false,
   vendorId?: string
-): Promise<ProductCategory[]> {
+): Promise<ProductNode[]> {
   const query = new URLSearchParams();
   if (includeInactive) query.set("includeInactive", "true");
   if (vendorId) query.set("vendorId", vendorId);
   const qs = query.toString();
-  return apiGet<ProductCategory[]>(`/masters/categories${qs ? `?${qs}` : ""}`);
+  return apiGet<ProductNode[]>(`/masters/nodes${qs ? `?${qs}` : ""}`);
 }
 
-/* -------------------------------------------------------------- categories */
+/* --------------------------------------------------------------- categories */
 
-export function createCategory(
-  input: CreateCategoryInput
-): Promise<ProductCategory> {
-  return apiPost<ProductCategory>("/masters/categories", input);
+export function createNode(input: CreateNodeInput): Promise<ProductNode> {
+  return apiPost<ProductNode>("/masters/nodes", input);
 }
 
-export function updateCategory({
+export function updateNode({
   id,
   ...body
-}: UpdateCategoryInput): Promise<ProductCategory> {
-  return apiPut<ProductCategory>(`/masters/categories/${id}`, body);
+}: UpdateNodeInput): Promise<ProductNode> {
+  return apiPut<ProductNode>(`/masters/nodes/${id}`, body);
 }
 
-export function deleteCategory(id: string): Promise<null> {
-  return apiDelete<null>(`/masters/categories/${id}`);
-}
-
-/* ----------------------------------------------------------- subcategories */
-
-export function createSubcategory({
-  categoryId,
-  ...body
-}: CreateSubcategoryInput): Promise<ProductCategory> {
-  return apiPost<ProductCategory>(
-    `/masters/categories/${categoryId}/subcategories`,
-    body
-  );
-}
-
-export function updateSubcategory({
-  id,
-  ...body
-}: UpdateSubcategoryInput): Promise<ProductCategory> {
-  return apiPut<ProductCategory>(`/masters/subcategories/${id}`, body);
-}
-
-export function deleteSubcategory(id: string): Promise<null> {
-  return apiDelete<null>(`/masters/subcategories/${id}`);
+export function deleteNode(id: string): Promise<null> {
+  return apiDelete<null>(`/masters/nodes/${id}`);
 }
 
 /* ------------------------------------------------------------------ models */
 
 export function createModel({
-  subcategoryId,
+  nodeId,
   ...body
-}: CreateModelInput): Promise<ProductCategory> {
-  return apiPost<ProductCategory>(
-    `/masters/subcategories/${subcategoryId}/models`,
-    body
-  );
+}: CreateModelInput): Promise<ProductNode> {
+  return apiPost<ProductNode>(`/masters/nodes/${nodeId}/models`, body);
 }
 
 export function updateModel({
   id,
   ...body
-}: UpdateModelInput): Promise<ProductCategory> {
-  return apiPut<ProductCategory>(`/masters/models/${id}`, body);
+}: UpdateModelInput): Promise<ProductNode> {
+  return apiPut<ProductNode>(`/masters/models/${id}`, body);
 }
 
 export function deleteModel(id: string): Promise<null> {

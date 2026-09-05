@@ -6,7 +6,7 @@ import {
   notFound,
   sortRows,
 } from "./client";
-import { apiGet, apiPut } from "./http";
+import { apiDelete, apiGet, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type { Role, User } from "@/types";
 
@@ -148,6 +148,95 @@ function _toConfig(r: RulesPayload): RulesConfig {
 
 export async function getRulesConfig(): Promise<RulesConfig> {
   return _toConfig(await apiGet<RulesPayload>("/settings/rules"));
+}
+
+/* --------------------------------------------------- per-category overrides */
+
+/**
+ * One catalogue node's overrides. **Every field is nullable, and null means
+ * inherit** — that is the whole mechanism.
+ *
+ * `penaltyCap` is deliberately absent. A monthly cap bounds a TECHNICIAN across
+ * every job they took, so it cannot have a different answer per product; it
+ * stays company-wide. See `core.rules.NODE_OVERRIDABLE_KEYS`.
+ */
+export interface NodeRuleValues {
+  /** All four bands or none — a list is overridden whole. */
+  penalty: number[] | null;
+  bonusAmounts: number[] | null;
+  aiThreshold: number | null;
+  slaWarnAtPct: number | null;
+  slotConfirmTimeoutHours: number | null;
+  escalationTriggerHours: number | null;
+  customerWaitHours: number | null;
+  renotifyGraceMinutes: number | null;
+  slotReminderMinutes: number | null;
+  customerNoticeMinutes: number | null;
+  geoRadiusM: number | null;
+}
+
+/** The wire names of everything a node may override. */
+export type NodeRuleField = keyof NodeRuleValues;
+
+export interface NodeRulesConfig {
+  nodeId: string;
+  /** Root first, including the node itself — what the scope selector prints. */
+  path: string[];
+  /** What this node sets. Every null is a field it inherits. */
+  own: NodeRuleValues;
+  /** What a ticket raised on this node would actually be stamped with. The
+   *  placeholders in every empty box. */
+  effective: RulesConfig;
+  /** Per field, the ancestor that supplied the effective value. Absent when it
+   *  came from the company baseline — which is what the form says instead. */
+  inheritedFrom: Partial<Record<NodeRuleField, string>>;
+}
+
+interface NodeRulesPayload {
+  nodeId: string;
+  path: string[];
+  own: NodeRuleValues;
+  effective: RulesPayload;
+  inheritedFrom: Partial<Record<NodeRuleField, string>>;
+}
+
+function _toNodeConfig(r: NodeRulesPayload): NodeRulesConfig {
+  return { ...r, effective: _toConfig(r.effective) };
+}
+
+export async function getNodeRules(nodeId: string): Promise<NodeRulesConfig> {
+  return _toNodeConfig(
+    await apiGet<NodeRulesPayload>(`/settings/rules/nodes/${nodeId}`)
+  );
+}
+
+/**
+ * Replace this node's overrides. A body of all nulls deletes the row.
+ *
+ * *Reset to inherited* does NOT come through here — it sends the DELETE below.
+ * The two ends up in the same place, and this comment used to claim the button
+ * sent an all-null body, which mattered: the all-null branch validated and the
+ * DELETE did not, so the sentence described the safe path while the button took
+ * the other one.
+ *
+ * The server validates the RESOLVED set — this node's and every other node
+ * carrying an override — so a value that is fine on its own but inverts an
+ * inherited window comes back as a 400 naming the category. Nothing on this
+ * side can check that: the form only holds one node's worth of the answer.
+ */
+export async function saveNodeRules(
+  nodeId: string,
+  values: NodeRuleValues
+): Promise<NodeRulesConfig> {
+  return _toNodeConfig(
+    await apiPut<NodeRulesPayload>(`/settings/rules/nodes/${nodeId}`, values)
+  );
+}
+
+export async function clearNodeRules(nodeId: string): Promise<NodeRulesConfig> {
+  return _toNodeConfig(
+    await apiDelete<NodeRulesPayload>(`/settings/rules/nodes/${nodeId}`)
+  );
 }
 
 /**

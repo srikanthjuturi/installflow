@@ -13,7 +13,6 @@ import { toast } from "@/components/ui/toast";
 import { useAddBonus } from "@/hooks/useEscalations";
 import { originFor, readNavOrigin } from "@/hooks/useNavOrigin";
 import { useLedgerPool } from "@/hooks/useLedger";
-import { useRulesConfig } from "@/hooks/useSettings";
 import { useCandidateTechnicians } from "@/hooks/useTechnicians";
 import { useTicket } from "@/hooks/useTickets";
 import { formatSlot, slotCountdown } from "@/utils/datetime";
@@ -75,16 +74,16 @@ export default function BonusSetupPage() {
     ticket?.pincode,
     ticket?.slotStart
   );
-  // The chips are configuration, not a constant in the picker — this screen
-  // needs them as much as it needs the ticket, because without them there is
-  // nothing to choose from.
-  const {
-    data: rules,
-    isError: rulesFailed,
-    error: rulesError,
-    refetch: refetchRules,
-  } = useRulesConfig();
-  const bands = rules?.bonusAmounts;
+  /* The chips come off the TICKET, not off Rules configuration.
+     `bonus_bands_paise` is one of the rules a product category may override,
+     and the ticket froze its resolved set at intake — so a job on a category
+     that prices incentives differently offers ITS amounts here. Reading the
+     company config instead would have compiled, rendered four plausible
+     numbers, and quietly ignored every category-level bonus anybody set.
+
+     Rupees, because that is what the picker and every other figure on this
+     screen speak; the ticket carries paise like the rest of its money. */
+  const bands = ticket?.bonusBandsPaise.map((paise) => paise / 100);
   // What is left in the pool a bonus is drawn against. Shown, not enforced:
   // the API does not refuse a bonus that overdraws it, because a manager
   // choosing to commit more than the cancellations have funded is a decision
@@ -170,17 +169,15 @@ export default function BonusSetupPage() {
         {backText}
       </LinkButton>
 
-      {isError || rulesFailed ? (
+      {/* One source now: the bands ride on the ticket, so there is no second
+          request that can fail on its own. */}
+      {isError ? (
         <ErrorState
-          title={
-            isError
-              ? "Couldn't load this ticket"
-              : "Couldn't load the bonus bands"
-          }
-          error={isError ? error : rulesError}
-          onRetry={() => (isError ? refetch() : refetchRules())}
+          title="Couldn't load this ticket"
+          error={error}
+          onRetry={() => refetch()}
         />
-      ) : isLoading || !ticket || !bands ? (
+      ) : isLoading || !ticket || !bands?.length ? (
         <BonusSetupSkeleton />
       ) : (
         <Card className="max-w-190 gap-0 py-0">

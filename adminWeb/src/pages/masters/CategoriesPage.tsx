@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import { useSearchParams } from "react-router";
-import { CategoryFormDialog } from "@/components/masters/CategoryFormDialog";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   CategoryTree,
   CategoryTreeSkeleton,
@@ -10,33 +9,35 @@ import {
 import { masterNodeId } from "@/components/masters/nodeIds";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
-import { SubcategoryFormDialog } from "@/components/masters/SubcategoryFormDialog";
+import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import {
-  useCategoryTree,
-  useDeleteCategory,
   useDeleteModel,
-  useDeleteSubcategory,
+  useDeleteNode,
+  useNodeTree,
 } from "@/hooks/useProductMaster";
 
 /** The one dialog that is open, if any. `null` is "none". */
-type OpenDialog = MasterAction | { kind: "add-category" } | null;
+type OpenDialog = MasterAction | null;
 
 export default function CategoriesPage() {
   // Inactive rows are shown here and nowhere else: this is the screen where a
   // paused category is un-paused, so hiding it would strand it.
-  const { data, isLoading, isError, error, refetch } = useCategoryTree(true);
+  const { data, isLoading, isError, error, refetch } = useNodeTree(true);
   const [dialog, setDialog] = useState<OpenDialog>(null);
+  const navigate = useNavigate();
 
   const { has } = useFeatureAccess();
   const canEdit = has("masters.edit");
+  // Reading the rules is a different grant from editing the catalogue — an Area
+  // Manager holds `jobs.assign` and can read them; see the API's `ReadRules`.
+  const canSeeRules = has("settings.view") || has("jobs.assign");
 
-  const deleteCategory = useDeleteCategory();
-  const deleteSubcategory = useDeleteSubcategory();
+  const deleteNode = useDeleteNode();
   const deleteModel = useDeleteModel();
 
   /**
@@ -79,14 +80,14 @@ export default function CategoriesPage() {
 
   return (
     <>
-      <PageMeta title="Categories & models" description="Product master" />
+      <PageMeta title="Categories & products" description="Product master" />
 
       {canEdit ? (
         <div className="mb-3.5 flex justify-end">
           <Button
             type="button"
             size="toolbar"
-            onClick={() => setDialog({ kind: "add-category" })}
+            onClick={() => setDialog({ kind: "add-node", parent: null })}
           >
             <Plus data-icon="inline-start" />
             Add category
@@ -105,33 +106,39 @@ export default function CategoriesPage() {
       ) : !data?.length ? (
         <EmptyState
           title="No categories yet"
-          description="Product categories appear here with their subcategories, models and certified technicians."
+          description="Product categories appear here with their sub-categories, products and certified technicians. Nest them as deep as your catalogue needs."
         />
       ) : (
         <CategoryTree
-          categories={data}
+          nodes={data}
           canEdit={canEdit}
           onAction={setDialog}
+          // The rules themselves live on one screen, scoped by a picker — one
+          // form in two modes beats a second copy of it in a dialog here.
+          onOpenRules={
+            canSeeRules
+              ? (node) => navigate(`/settings/rules?node=${node.id}`)
+              : undefined
+          }
         />
       )}
 
       {/* One dialog is mounted at a time, driven by the same value the tree
           emits — so no two can be open at once and none can be left holding a
           stale row. */}
-      <CategoryFormDialog
-        open={dialog?.kind === "add-category" || dialog?.kind === "edit-category"}
-        onOpenChange={(next) => !next && close()}
-        category={dialog?.kind === "edit-category" ? dialog.category : undefined}
-      />
-
-      {dialog?.kind === "add-subcategory" || dialog?.kind === "edit-subcategory" ? (
-        <SubcategoryFormDialog
+      {dialog?.kind === "add-node" || dialog?.kind === "edit-node" ? (
+        <NodeFormDialog
           open
           onOpenChange={(next) => !next && close()}
-          category={dialog.category}
-          subcategory={
-            dialog.kind === "edit-subcategory" ? dialog.subcategory : undefined
+          parent={
+            dialog.kind === "add-node"
+              ? dialog.parent
+              : // On an edit the parent is context, not a choice — a node
+                // cannot move. Found by walking the tree rather than stored on
+                // the action, so it is always the current row.
+                findParent(data, dialog.node.parentId)
           }
+          node={dialog.kind === "edit-node" ? dialog.node : undefined}
         />
       ) : null}
 
@@ -139,38 +146,22 @@ export default function CategoriesPage() {
         <ModelFormDialog
           open
           onOpenChange={(next) => !next && close()}
-          subcategory={dialog.subcategory}
+          node={dialog.node}
           model={dialog.kind === "edit-model" ? dialog.model : undefined}
         />
       ) : null}
 
-      {dialog?.kind === "delete-category" ? (
+      {dialog?.kind === "delete-node" ? (
         <ConfirmDialog
           open
           onOpenChange={(next) => !next && close()}
-          title={`Remove ${dialog.category.name}?`}
-          description="Tickets already filed under this category keep it. It stops appearing in new ticket entry and in technician onboarding."
+          title={`Remove ${dialog.node.name}?`}
+          description="Tickets already filed under it keep it. It stops appearing in new ticket entry and in technician onboarding. Anything nested underneath has to be removed first."
           confirmLabel="Remove category"
-          isPending={deleteCategory.isPending}
+          isPending={deleteNode.isPending}
           onConfirm={() =>
-            deleteCategory.mutate(dialog.category.id, {
-              onSuccess: removed(dialog.category.name),
-            })
-          }
-        />
-      ) : null}
-
-      {dialog?.kind === "delete-subcategory" ? (
-        <ConfirmDialog
-          open
-          onOpenChange={(next) => !next && close()}
-          title={`Remove ${dialog.subcategory.name}?`}
-          description="No technician can be certified for it afterwards. Tickets already filed under it keep it."
-          confirmLabel="Remove subcategory"
-          isPending={deleteSubcategory.isPending}
-          onConfirm={() =>
-            deleteSubcategory.mutate(dialog.subcategory.id, {
-              onSuccess: removed(dialog.subcategory.name),
+            deleteNode.mutate(dialog.node.id, {
+              onSuccess: removed(dialog.node.name),
             })
           }
         />
@@ -182,7 +173,7 @@ export default function CategoriesPage() {
           onOpenChange={(next) => !next && close()}
           title={`Remove ${dialog.model.name}?`}
           description="It stops appearing in ticket entry. Tickets that already name it are unaffected."
-          confirmLabel="Remove model"
+          confirmLabel="Remove product"
           isPending={deleteModel.isPending}
           onConfirm={() =>
             deleteModel.mutate(dialog.model.id, {
@@ -193,4 +184,19 @@ export default function CategoriesPage() {
       ) : null}
     </>
   );
+}
+
+/** The node with this id, anywhere in the tree. Null for a root's parent. */
+function findParent(
+  tree: Parameters<typeof CategoryTree>[0]["nodes"] | undefined,
+  parentId: string | null
+) {
+  if (!parentId) return null;
+  const stack = [...(tree ?? [])];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.id === parentId) return node;
+    stack.push(...node.children);
+  }
+  return null;
 }

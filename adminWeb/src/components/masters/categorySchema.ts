@@ -11,16 +11,92 @@ const iconKey = z.enum(ICON_KEYS as [IconKey, ...IconKey[]]);
 
 const status = z.enum(CATEGORY_STATUSES);
 
-export const categorySchema = z.object({
-  name: z.string().trim().min(2, "Category name is required"),
-  iconKey,
-  status,
-});
+/** Fields per row. Mirrors MAX_PARAMETERS in `app/core/product_tree.py`. */
+export const MAX_PARAMETERS = 20;
 
-export const subcategorySchema = z.object({
-  name: z.string().trim().min(2, "Subcategory name is required"),
-  /** Empty means "inherit the parent category's icon". */
+/**
+ * The repeatable name/value rows — the "Add field" control on both dialogs.
+ *
+ * Wrapped in an object rather than a bare pair because `useFieldArray` keys on
+ * one, which is also what stops the inputs losing focus on every re-render —
+ * the same reason `rulesSchema` wraps its bonus amounts.
+ *
+ * Blank rows are allowed through validation and dropped at submit: somebody who
+ * clicks Add and changes their mind should not have to find the × to save.
+ * A row with a value and NO name is a mistake worth naming, though — it would
+ * silently vanish.
+ */
+const parameterRows = (requireValue: boolean) =>
+  z
+    .array(
+      z.object({
+        name: z.string().trim().max(64, "Keep the field name short"),
+        value: z.string().trim().max(255, "Keep the value short"),
+      })
+    )
+    .max(MAX_PARAMETERS, `Up to ${MAX_PARAMETERS} fields`)
+    .superRefine((rows, ctx) => {
+      const seen = new Map<string, number>();
+      rows.forEach((row, i) => {
+        const name = row.name.trim();
+        if (!name) {
+          if (row.value.trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [i, "name"],
+              message: "Name this field, or clear the value",
+            });
+          }
+          return;
+        }
+        if (requireValue && !row.value.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [i, "value"],
+            message: "Give it a value, or remove the field",
+          });
+        }
+        const key = name.toLowerCase();
+        const first = seen.get(key);
+        if (first === undefined) {
+          seen.set(key, i);
+        } else {
+          // Case-insensitive, matching the server: RAM and ram are one field to
+          // everybody except a dictionary, and keeping the last silently would
+          // hide the typo.
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [i, "name"],
+            message: `${name} is already listed above`,
+          });
+        }
+      });
+    });
+
+/**
+ * The last sub-category's field TEMPLATE. Names matter; a value is an optional
+ * default the product form starts from.
+ */
+export const templateSchema = parameterRows(false);
+
+/**
+ * A PRODUCT's fields. Every one needs a value — this is the answer, not the
+ * question, and a named field left blank reaches a technician as a blank line.
+ */
+export const parametersSchema = parameterRows(true);
+
+export const nodeSchema = z.object({
+  name: z.string().trim().min(2, "Category name is required"),
+  /** Empty means "inherit the nearest ancestor's icon". A root has no ancestor,
+   *  so its own is what everything below it falls back to — but it is still
+   *  optional, and an unset one resolves to the default glyph. */
   iconKey: iconKey.nullable(),
+  /** "This is the last sub-category" — products hang off it instead of more
+   *  levels. Never offered on a root; the dialog hides the box there. */
+  isLeaf: z.boolean(),
+  /** Only collected when `isLeaf` is ticked; the dialog hides the control
+   *  otherwise and the submit sends an empty list. */
+  parameters: templateSchema,
   status,
 });
 
@@ -127,12 +203,26 @@ export const modelSchema = z.object({
         .refine((v) => v.length <= 2048, "That photo link is too long")
     )
     .max(MAX_MODEL_IMAGES, `Up to ${MAX_MODEL_IMAGES} photos per model`),
+  /** Prose about this product. Not a parameter — it has no name to inherit
+   *  under, and it is read as a sentence rather than looked up. */
+  notes: z.string().trim().max(2000, "Keep the note under 2,000 characters"),
+  parameters: parametersSchema,
   status,
 });
 
-export type CategoryFormValues = z.infer<typeof categorySchema>;
-export type SubcategoryFormValues = z.infer<typeof subcategorySchema>;
+export type NodeFormValues = z.infer<typeof nodeSchema>;
 export type ModelFormValues = z.infer<typeof modelSchema>;
+export type ParameterRow = z.infer<typeof parametersSchema>[number];
+
+/** Drop the blank rows a user added and abandoned. */
+export function cleanParameters(rows: ParameterRow[]) {
+  return rows
+    .map((row) => ({ name: row.name.trim(), value: row.value.trim() }))
+    .filter((row) => row.name.length > 0);
+}
+
+/** The same, for a TEMPLATE — where a row with no value is the normal case. */
+export const cleanTemplate = cleanParameters;
 
 export const statusOf = (isActive: boolean): CategoryStatus =>
   isActive ? "Active" : "Paused";

@@ -4,6 +4,7 @@ import {
   type AddressStatus,
   type AddressValue,
 } from "@/components/shared/AddressFields";
+import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { Link } from "react-router";
 import type { Control } from "react-hook-form";
@@ -15,7 +16,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -32,11 +32,12 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { moneyPaise } from "@/utils/money";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
-import { useCategoryTree } from "@/hooks/useProductMaster";
+import { useNodeTree } from "@/hooks/useProductMaster";
 import { cn } from "@/lib/utils";
 import { istToday, offeredSlots, type OfferedSlot } from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
 import type { CreateTicketInput } from "@/types/ticket";
+import type { ProductNode } from "@/types/product";
 import {
   SERVICE_LEVEL_OPTIONS,
   ticketSchema,
@@ -121,11 +122,24 @@ export function ManualEntryForm({
     },
   });
 
+  /**
+   * The category drill-down's answer so far — one node id per level.
+   *
+   * Local rather than form state, and deliberately: the intermediate levels are
+   * how somebody reached the product, not part of the ticket. Only the final
+   * leaf lands in `subcategoryId`, which is the single id the API takes.
+   *
+   * It cannot go stale: `vendorId` is fixed for the life of this form (the
+   * vendor is a read-only box, not a picker), so the tree it indexes into never
+   * changes underneath it. `resolveChain` still truncates on a miss rather than
+   * trusting that.
+   */
+  const [picked, setPicked] = useState<string[]>([]);
+
   // Models belong to a subcategory, so the second select depends on the first.
   // useWatch subscribes to just this field — watch() re-renders on every
   // keystroke anywhere in the form and isn't memoization-safe.
   const vendorId = useWatch({ control, name: "vendorId" });
-  const subcategoryId = useWatch({ control, name: "subcategoryId" });
   const modelId = useWatch({ control, name: "modelId" });
   const serviceType = useWatch({ control, name: "serviceType" });
   const slotStart = useWatch({ control, name: "slotStart" });
@@ -175,35 +189,68 @@ export function ManualEntryForm({
      the ones that vendor actually makes something in. Narrowing on the server
      rather than filtering here means the empty case is a fact the API states,
      not something the form has to infer from an empty array. */
-  const { data: tree, isPending: treePending } = useCategoryTree(
-    false,
-    vendorId
-  );
+  const { data: tree, isPending: treePending } = useNodeTree(false, vendorId);
   const vendorName = vendor.name;
   // A vendor with nothing to install is a gap in the master, not a dead end for
   // the person keying in a ticket — so it is named, with somewhere to go.
   const vendorHasNothing =
     Boolean(vendorId) && !treePending && (tree ?? []).length === 0;
 
-  /* The master is three levels deep but the approved form has one Category
-     field, so the parent becomes the dropdown's group heading rather than a
-     fifth control. A technician is certified for subcategories, so this is
-     also the level the ticket has to record. */
-  const categoryGroups: OptionGroup[] = (tree ?? []).map((category) => ({
-    label: category.name,
-    options: category.subcategories.map((s) => ({
-      value: s.id,
-      label: s.name,
-    })),
-  }));
+  /* The category picker is a DRILL-DOWN: one dropdown per level, each filled
+     from what was chosen above it.
 
-  const subcategory = (tree ?? [])
-    .flatMap((c) => c.subcategories)
-    .find((s) => s.id === subcategoryId);
+     It was briefly one flattened select labelled with breadcrumbs. That reads
+     fine with six products and badly with sixty — the list becomes every leaf
+     in the catalogue at once, and the person keying a ticket has to recognise
+     `TV › Android TV › 32 inch` rather than answer three easy questions. Going
+     level by level also means each list is short enough to scan, and a single
+     option fills itself (hard rule 10), so a shallow branch costs no clicks.
+
+     The number of dropdowns is data, not layout: it grows as somebody drills
+     and stops at the level marked as the last sub-category. Everything on offer
+     leads somewhere, because the server already pruned every branch holding
+     none of THIS vendor's products.
+
+     `picked` is local rather than form state — the intermediate levels are how
+     you got to the answer, not the answer. Only the final leaf reaches
+     `subcategoryId`, which is what the API takes. */
+  const chain = resolveChain(tree, picked);
+  const levels: { parentId: string; options: ProductNode[]; value: string }[] = [];
+  {
+    let pool: ProductNode[] = tree ?? [];
+    for (let i = 0; ; i += 1) {
+      const node = chain[i];
+      levels.push({
+        parentId: i === 0 ? "root" : chain[i - 1].id,
+        options: pool,
+        value: node?.id ?? "",
+      });
+      // Stop at an unanswered level, at the last sub-category, or at a branch
+      // with nothing under it (which pruning should already have removed).
+      if (!node || node.isLeaf || node.children.length === 0) break;
+      pool = node.children;
+    }
+  }
+
+  // Products hang off the level marked as the last sub-category, and only that
+  // one — so until the drill-down reaches one there is nothing to pick from.
+  const last = chain.at(-1);
+  const chosen = last?.isLeaf ? last : undefined;
+
+  function pickLevel(level: number, id: string) {
+    // Truncate: choosing a different TV throws away the Android TV under it.
+    setPicked((prev) => [...prev.slice(0, level), id]);
+    const node = levels[level]?.options.find((n) => n.id === id);
+    // Only a leaf is an answer. Anything above it leaves the field empty, so
+    // submitting mid-drill fails validation on the box that is still blank.
+    setValue("subcategoryId", node?.isLeaf ? id : "", { shouldValidate: false });
+    setValue("modelId", "", { shouldValidate: false });
+    setValue("serviceType", "Installation + Demo", { shouldValidate: false });
+  }
 
   const modelGroups: OptionGroup[] = [
     {
-      options: (subcategory?.models ?? []).map((m) => ({
+      options: (chosen?.models ?? []).map((m) => ({
         value: m.id,
         label: m.name,
       })),
@@ -214,7 +261,7 @@ export function ManualEntryForm({
      supports — a microwave that only does installation must not be raised as a
      Tech Visit. The server enforces the same rule; this stops the user finding
      out after they submit. */
-  const model = subcategory?.models.find((m) => m.id === modelId);
+  const model = chosen?.models.find((m) => m.id === modelId);
   const serviceTypeGroups: OptionGroup[] = [
     { options: (model?.serviceTypes ?? []).map((t) => ({ value: t, label: t })) },
   ];
@@ -262,7 +309,11 @@ export function ManualEntryForm({
       <Card>
         <CardContent className="flex flex-col gap-6">
           <FormSection legend={<>Vendor &amp; product</>}>
-            <FieldGroup className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* `FieldGrid`, not `<FieldGroup className="grid …">` — this is the
+                form that found the Chrome bug that component exists to avoid.
+                The billing line below is the sibling whose insertion collapsed
+                every control here to height 0. */}
+            <FieldGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {/* Read-only rather than a one-option select: there is nothing
                   to choose, and a disabled dropdown invites a click that does
                   nothing. Same treatment `ScopeField` gives a National Head's
@@ -273,39 +324,50 @@ export function ManualEntryForm({
                 <FieldLabel htmlFor="vendor-name">Company / vendor</FieldLabel>
                 <Input id="vendor-name" value={vendor.name} readOnly disabled />
               </Field>
-              <SelectField
-                name="subcategoryId"
-                label="Category"
-                required
-                placeholder={
-                  !vendorId
-                    ? "Pick a vendor first"
-                    : vendorHasNothing
-                      ? `${vendorName} has no product models yet`
-                      : "Select category"
-                }
-                groups={categoryGroups}
-                disabled={!vendorId || vendorHasNothing}
-                control={control}
-                error={err("subcategoryId")}
-                onChanged={() => {
-                  // Both depend on the category: a model from the old one, and
-                  // a service type the new model may not even support.
-                  setValue("modelId", "", { shouldValidate: false });
-                  setValue("serviceType", "Installation + Demo", {
-                    shouldValidate: false,
-                  });
-                }}
-              />
+              {/* One box per level, appearing as the previous one is answered.
+                  Keyed on the PARENT, not the index: picking a different TV
+                  replaces the list below it, and an index key would leave the
+                  old selection sitting in a box that now lists other things. */}
+              {levels.map((level, i) => (
+                <SelectShell
+                  key={level.parentId}
+                  id={`field-node-${i}`}
+                  label={i === 0 ? "Category" : "Sub-category"}
+                  required
+                  placeholder={
+                    i > 0
+                      ? "Select sub-category"
+                      : !vendorId
+                        ? "Pick a vendor first"
+                        : vendorHasNothing
+                          ? `${vendorName} has no product models yet`
+                          : "Select category"
+                  }
+                  groups={[
+                    {
+                      options: level.options.map((n) => ({
+                        value: n.id,
+                        label: n.name,
+                      })),
+                    },
+                  ]}
+                  value={level.value}
+                  onChange={(id) => pickLevel(i, id)}
+                  disabled={!vendorId || vendorHasNothing}
+                  /* The chain's error belongs on the LAST box — that is where
+                     the missing choice actually is. */
+                  error={i === levels.length - 1 ? err("subcategoryId") : undefined}
+                />
+              ))}
               <SelectField
                 name="modelId"
                 label="Product model"
                 required
                 placeholder={
-                  subcategoryId ? "Select model" : "Pick a category first"
+                  chosen ? "Select model" : "Pick a category first"
                 }
                 groups={modelGroups}
-                disabled={!subcategoryId}
+                disabled={!chosen}
                 control={control}
                 error={err("modelId")}
                 onChanged={() =>
@@ -324,7 +386,7 @@ export function ManualEntryForm({
                 control={control}
                 error={err("serviceType")}
               />
-            </FieldGroup>
+            </FieldGrid>
 
             {/* What this ticket will cost, shown before it is raised rather
                 than discovered on an invoice. It appears the moment a model is
@@ -337,16 +399,44 @@ export function ManualEntryForm({
                 vendor must never see is not even referenced on the one form
                 they use most. */}
             {model ? (
-              <p className="text-sm text-ink-2">
-                Raising this ticket will be billed at{" "}
-                <span className="font-semibold text-ink">
-                  {moneyPaise(model.vendorPricePaise)}
-                </span>
-                .
-              </p>
+              <div className="flex flex-col gap-2.5">
+                <p className="text-sm text-ink-2">
+                  Raising this ticket will be billed at{" "}
+                  <span className="font-semibold text-ink">
+                    {moneyPaise(model.vendorPricePaise)}
+                  </span>
+                  .
+                </p>
+
+                {/* The product's own specs, so the vendor can confirm they
+                    picked the right unit BEFORE raising the ticket — which is
+                    the only moment anybody can still cheaply change their mind.
+                    They were saved and editable but visible nowhere except the
+                    tooltip of a chip on the masters screen.
+
+                    Free to show here: the tree this form already fetched
+                    carries them, so there is no extra request. */}
+                {model.parameters.length ? (
+                  <dl className="flex flex-wrap gap-x-5 gap-y-1.5">
+                    {model.parameters.map((p) => (
+                      <div key={p.name} className="flex items-baseline gap-1.5">
+                        <dt className="text-xs text-ink-3">{p.name}</dt>
+                        <dd className="text-xs font-medium text-ink-2">
+                          {p.value || "—"}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : null}
+
+                {/* Prose rather than a spec, so it reads as a sentence. */}
+                {model.notes ? (
+                  <p className="text-xs text-ink-3">{model.notes}</p>
+                ) : null}
+              </div>
             ) : null}
 
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGrid className="grid gap-4 sm:grid-cols-2">
               {/* Only the two service types that describe a fault. Rendering it
                   always would invite a description the API then refuses. */}
               {needsProblem ? (
@@ -373,7 +463,7 @@ export function ManualEntryForm({
                 register={register}
                 error={err("serialNumber")}
               />
-            </FieldGroup>
+            </FieldGrid>
             {/* Said once, here, because "which serial?" is the obvious question
                 and the answer decides whether AI review can do its job. */}
             <FieldDescription>
@@ -409,7 +499,7 @@ export function ManualEntryForm({
           ) : null}
 
           <FormSection legend="Customer">
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGrid className="grid gap-4 sm:grid-cols-2">
               <TextField
                 name="customerName"
                 label="Customer name"
@@ -429,7 +519,7 @@ export function ManualEntryForm({
                 register={register}
                 error={err("customerPhone")}
               />
-            </FieldGroup>
+            </FieldGrid>
 
             {/* The address is new. Without it the technician has a pincode and
                 a name, which is enough to be dispatched and not enough to
@@ -534,17 +624,23 @@ export function ManualEntryForm({
               what was actually entered, rather than always promising a request. */}
           <p className="flex items-start gap-2.5 rounded-md bg-info-bg px-3.5 py-3 text-xs leading-relaxed text-info">
             <Info className="mt-px size-4 shrink-0" aria-hidden />
+            {/* A `<span>` around each sentence, not a fragment. This `<p>` is a
+                flex row, and a fragment's children become SEPARATE anonymous
+                flex items — so the `<b>` below split one sentence into three
+                columns that wrapped independently. The two sibling banners in
+                this file already wrap theirs; this one did not, and only the
+                branch containing the `<b>` showed it. */}
             {slotStart ? (
-              <>
+              <span>
                 The slot is locked to the ticket and it goes straight to
                 eligible technicians. A technician accepts that fixed time — they
                 never propose one.
-              </>
+              </span>
             ) : (
-              <>
+              <span>
                 With no slot the ticket waits as <b>Slot Pending</b>. No
                 technician is told it exists until a time is confirmed.
-              </>
+              </span>
             )}
           </p>
         </CardContent>
@@ -730,16 +826,19 @@ function TextField({
   );
 }
 
+/**
+ * A select bound to a FORM field.
+ *
+ * A thin wrapper over `SelectShell`, which carries the markup and the
+ * auto-fill. The split exists because the category drill-down renders a box per
+ * level and only its LAST one is a form field — the levels above it are how you
+ * reached the answer, not the answer, so they have nothing to bind to.
+ */
 function SelectField({
   name,
-  label,
-  required,
-  placeholder,
-  groups,
   control,
-  error,
-  disabled,
   onChanged,
+  ...rest
 }: {
   name: keyof TicketFormValues;
   label: string;
@@ -752,35 +851,71 @@ function SelectField({
   disabled?: boolean;
   onChanged?: () => void;
 }) {
-  const id = `field-${name}`;
   const { field } = useController({ name, control });
+  return (
+    <SelectShell
+      {...rest}
+      id={`field-${name}`}
+      value={field.value}
+      onChange={(v) => {
+        field.onChange(v);
+        onChanged?.();
+      }}
+    />
+  );
+}
 
+function SelectShell({
+  id,
+  label,
+  required,
+  placeholder,
+  groups,
+  value,
+  onChange,
+  error,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  placeholder: string;
+  groups: OptionGroup[];
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  disabled?: boolean;
+}) {
   const options = groups.flatMap((g) => g.options);
 
-  const select = (v: string) => {
-    field.onChange(v);
-    onChanged?.();
-  };
+  // The base control types its value as nullable (clearing a select). Nothing
+  // here clears one, so a null is folded to "" — the empty value every caller
+  // already stores.
+  const select = (v: string | null) => onChange(v ?? "");
 
   // A dropdown with a single choice fills itself — but not while it's disabled
   // (the model select before a category is picked) or its list is empty. The
   // values are what the control stores, so ids here, not labels.
+  //
+  // On the drill-down this CASCADES, which is the point: a branch with one
+  // sub-category at each level resolves itself down to the products in one
+  // click rather than three identical ones.
   useAutoSelectSingle(
     options.map((o) => o.value),
-    field.value,
+    value,
     select,
     !disabled
   );
 
   // The trigger holds the id, so the label has to be looked up to display it.
-  const selected = options.find((o) => o.value === field.value);
+  const selected = options.find((o) => o.value === value);
 
   return (
     <Field data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={id} required={required}>
         {label}
       </FieldLabel>
-      <Select value={field.value} onValueChange={select} disabled={disabled}>
+      <Select value={value} onValueChange={select} disabled={disabled}>
         <SelectTrigger
           id={id}
           className="w-full"
@@ -817,4 +952,28 @@ function SelectField({
       ) : null}
     </Field>
   );
+}
+
+/**
+ * The nodes behind a list of picked ids, one level at a time.
+ *
+ * Each id has to be a child of the one before it, so an id that no longer
+ * belongs at its level simply ends the chain — the boxes below it disappear
+ * rather than showing a stale selection against a list that no longer contains
+ * it.
+ */
+function resolveChain(
+  tree: ProductNode[] | undefined,
+  picked: string[]
+): ProductNode[] {
+  const chain: ProductNode[] = [];
+  let pool: ProductNode[] = tree ?? [];
+  for (const id of picked) {
+    const node = pool.find((n) => n.id === id);
+    if (!node) break;
+    chain.push(node);
+    if (node.isLeaf) break;
+    pool = node.children;
+  }
+  return chain;
 }

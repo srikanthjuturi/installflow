@@ -1,8 +1,10 @@
-import { FormSection } from "@/components/shared/FormSection";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Trash2 } from "lucide-react";
+import { Info, Trash2 } from "lucide-react";
+import { Link } from "react-router";
 import { AvatarPicker } from "@/components/shared/AvatarPicker";
+import { FieldGrid } from "@/components/shared/FieldGrid";
+import { FormSection } from "@/components/shared/FormSection";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -27,10 +29,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CoverageFields } from "./CoverageFields";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useCategoryTree } from "@/hooks/useProductMaster";
+import { useCertifiableNodeOptions } from "@/hooks/useProductMaster";
 import { useCreateTechnician, useUpdateTechnician } from "@/hooks/useTechnicians";
 import { cn } from "@/lib/utils";
 import type { Technician } from "@/types/technician";
+import type { NodeOption } from "@/types/product";
 import { formatPhone, toE164 } from "@/utils/phone";
 import {
   TECHNICIAN_STATUSES,
@@ -93,7 +96,8 @@ function TechnicianForm({
   onDone: () => void;
 }) {
   const isEdit = technician !== undefined;
-  const { data: tree, isLoading: loadingCategories } = useCategoryTree();
+  const { options: nodeOptions, isLoading: loadingCategories } =
+    useCertifiableNodeOptions();
   const create = useCreateTechnician();
   const update = useUpdateTechnician();
   const pending = create.isPending || update.isPending;
@@ -402,7 +406,7 @@ function TechnicianForm({
         <FormSection
           legend="Categories"
           required
-          hint="Only certified categories are offered to this technician."
+          hint="Pick the main sub-categories this technician works on. Ticking one covers everything nested under it, including sub-categories added later."
         >
           <FieldSet
             data-invalid={err("subcategoryIds") ? true : undefined}
@@ -413,42 +417,72 @@ function TechnicianForm({
           >
             {loadingCategories ? (
               <FieldDescription>Loading categories…</FieldDescription>
+            ) : nodeOptions.length === 0 ? (
+              /* A dead end with a way out of it, the same shape ticket intake
+                 uses when a vendor has no models. Without it this section is an
+                 empty box under the words "Pick the main sub-categories", and
+                 submitting answers "Select at least one category" — an
+                 instruction nobody can follow.
+
+                 Not a rare state: a company certifies on MAIN sub-categories,
+                 so a catalogue of nothing but root categories offers none, and
+                 that is exactly how a freshly set-up company starts. */
+              <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+                <Info className="mt-px size-4 shrink-0" aria-hidden />
+                <span>
+                  There are no sub-categories to certify anybody on yet. A
+                  technician is certified on a sub-category — Television under
+                  Electronics — not on a top-level category.{" "}
+                  <Link
+                    to="/categories"
+                    className="font-semibold underline underline-offset-2"
+                  >
+                    Add one in Product Master
+                  </Link>
+                  , then come back.
+                </span>
+              </p>
             ) : (
               <Controller
                 name="subcategoryIds"
                 control={control}
                 render={({ field }) => (
                   <div className="grid gap-3.5">
-                    {(tree ?? []).map((category) => (
-                      <div key={category.id}>
+                    {/* Grouped by ROOT, one box per MAIN sub-category. Bare
+                        names are safe: every box under a heading is a sibling
+                        of the others, so the `TV › Android TV` breadcrumb that
+                        told two identically-named nodes apart is not needed —
+                        and there is nothing deeper here to need it for. */}
+                    {groupByRoot(nodeOptions).map(([rootName, options]) => (
+                      <div key={rootName}>
                         <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-                          {category.name}
+                          {rootName}
                         </p>
-                        <FieldGroup className="grid gap-2.5 sm:grid-cols-3">
-                          {category.subcategories.map((sub) => {
-                            const id = `tech-cat-${sub.id}`;
+                        <FieldGrid className="grid gap-2.5 sm:grid-cols-3">
+                          {options.map((option) => {
+                            const id = `tech-cat-${option.id}`;
                             return (
-                              <Field key={sub.id} orientation="horizontal">
+                              <Field key={option.id} orientation="horizontal">
                                 <Checkbox
                                   id={id}
-                                  checked={field.value.includes(sub.id)}
+                                  checked={field.value.includes(option.id)}
                                   onCheckedChange={(next) =>
                                     field.onChange(
                                       next
-                                        ? [...field.value, sub.id]
+                                        ? [...field.value, option.id]
                                         : field.value.filter(
-                                            (v) => v !== sub.id
+                                            (v) => v !== option.id
                                           )
                                     )
                                   }
                                 />
                                 <FieldLabel htmlFor={id} className="font-normal">
-                                  {sub.name}
+                                  {option.name}
                                 </FieldLabel>
                               </Field>
                             );
                           })}
-                        </FieldGroup>
+                        </FieldGrid>
                       </div>
                     ))}
                   </div>
@@ -477,7 +511,7 @@ function TechnicianForm({
             legend="Bandwidth & status"
             hint="What this technician can take on, and whether they are taking anything at all."
           >
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGrid className="grid gap-4 sm:grid-cols-2">
               <Field data-invalid={err("dailyJobCap") ? true : undefined}>
                 <FieldLabel htmlFor="tech-cap">Jobs per day</FieldLabel>
                 <Input
@@ -547,7 +581,7 @@ function TechnicianForm({
                   the pool.
                 </FieldDescription>
               </FieldSet>
-            </FieldGroup>
+            </FieldGrid>
           </FormSection>
         ) : null}
       </div>
@@ -564,4 +598,24 @@ function TechnicianForm({
       </DialogFooter>
     </form>
   );
+}
+
+/**
+ * The flat option list back into "one heading per root, its main sub-categories
+ * under it".
+ *
+ * Order is preserved from `flattenNodes`, which walks depth-first — so a
+ * heading's boxes read in catalogue order.
+ *
+ * A root with no children yet produces no heading at all, which is right: there
+ * is nothing to certify on there, because a root cannot hold products either.
+ */
+function groupByRoot(options: NodeOption[]): [string, NodeOption[]][] {
+  const groups = new Map<string, NodeOption[]>();
+  options.forEach((option) => {
+    const existing = groups.get(option.rootName);
+    if (existing) existing.push(option);
+    else groups.set(option.rootName, [option]);
+  });
+  return [...groups.entries()];
 }

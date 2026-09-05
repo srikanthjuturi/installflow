@@ -5,17 +5,24 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  clearNodeRules,
+  getNodeRules,
   getRulesConfig,
   inviteUser,
   listUsers,
+  saveNodeRules,
   saveRulesConfig,
   updateUserAccess,
 } from "@/services/settings";
+import type { NodeRuleValues } from "@/services/settings";
 import type { ListParams } from "@/types/api";
 
 export const settingsKeys = {
   all: ["settings"] as const,
   rules: () => ["settings", "rules"] as const,
+  /** Under the `rules` prefix on purpose: saving the company baseline changes
+   *  what every node RESOLVES to, so one invalidation has to catch both. */
+  nodeRules: (nodeId: string) => ["settings", "rules", "node", nodeId] as const,
   /** Prefix — invalidating this catches every page and filter combination. */
   users: () => ["settings", "users"] as const,
   userPage: (params: ListParams) => ["settings", "users", params] as const,
@@ -66,6 +73,44 @@ export function useSaveRulesConfig() {
     mutationFn: saveRulesConfig,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: settingsKeys.rules() }),
+  });
+}
+
+/**
+ * One category's overrides, what it resolves to, and where each value came
+ * from — `GET /settings/rules/nodes/{id}`.
+ *
+ * Three answers in one request because the form needs all three at once: the
+ * boxes bind to `own`, the placeholders come from `effective`, and the
+ * "from *TV*" hint beside each comes from `inheritedFrom`.
+ */
+export function useNodeRules(nodeId: string | null) {
+  return useQuery({
+    queryKey: settingsKeys.nodeRules(nodeId ?? ""),
+    queryFn: () => getNodeRules(nodeId!),
+    staleTime: 5 * 60_000,
+    enabled: Boolean(nodeId),
+  });
+}
+
+/**
+ * Save or clear one category's overrides.
+ *
+ * Invalidates the whole `rules` prefix, not just this node: a node inherits
+ * from its ancestors, so saving one changes what its descendants resolve to —
+ * and the tree's "Custom rules" badge lives in a different query again, which
+ * is why `product-master` is invalidated too.
+ */
+export function useSaveNodeRules(nodeId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't save the category rules" },
+    mutationFn: (values: NodeRuleValues | null) =>
+      values === null ? clearNodeRules(nodeId) : saveNodeRules(nodeId, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: settingsKeys.rules() });
+      queryClient.invalidateQueries({ queryKey: ["product-master"] });
+    },
   });
 }
 

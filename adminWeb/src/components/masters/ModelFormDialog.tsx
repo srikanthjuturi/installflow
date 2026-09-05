@@ -1,8 +1,9 @@
-import { FormSection } from "@/components/shared/FormSection";
 import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ImagePlus, X } from "lucide-react";
+import { FieldGrid } from "@/components/shared/FieldGrid";
+import { FormSection } from "@/components/shared/FormSection";
 import { ImageCropDialog } from "@/components/shared/ImageCropDialog";
 import {
   useImagePicker,
@@ -29,6 +30,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -44,17 +46,14 @@ import { paiseToRupeeInput as toRupeeInput } from "@/utils/money";
 import { useCreateModel, useUpdateModel } from "@/hooks/useProductMaster";
 import { useVendorOptions } from "@/hooks/useVendors";
 import type { VendorOption } from "@/types/vendor";
-import type {
-  ProductCategory,
-  ProductModel,
-  ProductSubcategory,
-  ServiceType,
-} from "@/types/product";
+import type { ProductModel, ProductNode, ServiceType } from "@/types/product";
+import { ParameterFields } from "./ParameterFields";
 import { StatusField } from "./StatusField";
 import {
   MAX_MODEL_IMAGES,
   SERVICE_TYPES,
   SERVICE_TYPE_HINT,
+  cleanParameters,
   modelSchema,
   statusOf,
   type ModelFormValues,
@@ -63,7 +62,8 @@ import {
 interface ModelFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  subcategory: ProductSubcategory;
+  /** The catalogue node this product hangs off. Always at depth >= 1. */
+  node: ProductNode;
   /** Omit to add. Pass a model to edit it in place. */
   model?: ProductModel;
 }
@@ -71,7 +71,7 @@ interface ModelFormDialogProps {
 export function ModelFormDialog({
   open,
   onOpenChange,
-  subcategory,
+  node,
   model,
 }: ModelFormDialogProps) {
   return (
@@ -83,7 +83,7 @@ export function ModelFormDialog({
           same way across the console. */}
       <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
         <ModelForm
-          subcategory={subcategory}
+          node={node}
           model={model}
           onDone={() => onOpenChange(false)}
         />
@@ -93,11 +93,11 @@ export function ModelFormDialog({
 }
 
 function ModelForm({
-  subcategory,
+  node,
   model,
   onDone,
 }: {
-  subcategory: ProductSubcategory;
+  node: ProductNode;
   model?: ProductModel;
   onDone: () => void;
 }) {
@@ -133,6 +133,14 @@ function ModelForm({
       technicianPayoutPaise: toRupeeInput(model?.technicianPayoutPaise),
       vendorPricePaise: toRupeeInput(model?.vendorPricePaise),
       imageUrls: model?.imageUrls ?? [],
+      notes: model?.notes ?? "",
+      // A NEW product starts from the last sub-category's template — the field
+      // names, plus whatever default it suggested. An EDIT shows what the
+      // product itself saved: the template describes what a new one should ask,
+      // not what an old one said.
+      parameters:
+        model?.parameters ??
+        node.parameters.map((p) => ({ name: p.name, value: p.value })),
       status: statusOf(model?.isActive ?? true),
     },
   });
@@ -186,22 +194,21 @@ function ModelForm({
       technicianPayoutPaise: Number(values.technicianPayoutPaise) * 100,
       vendorPricePaise: Number(values.vendorPricePaise) * 100,
       imageUrls: values.imageUrls,
+      // Same "blank means not recorded" rule as `capacity` directly above.
+      notes: values.notes.trim() || null,
+      parameters: cleanParameters(values.parameters),
       isActive: values.status === "Active",
     };
-    const done = (saved: ProductCategory) => {
+    const done = () => {
       toast.add({
         title: `${values.name} ${isEdit ? "updated" : "added"}`,
-        description: `In ${saved.name} · ${subcategory.name}.`,
+        description: `In ${node.path.join(" › ")}.`,
       });
       onDone();
     };
 
     if (isEdit) update.mutate({ id: model.id, ...body }, { onSuccess: done });
-    else
-      create.mutate(
-        { subcategoryId: subcategory.id, ...body },
-        { onSuccess: done }
-      );
+    else create.mutate({ nodeId: node.id, ...body }, { onSuccess: done });
   }
 
   return (
@@ -211,7 +218,7 @@ function ModelForm({
           {isEdit ? "Edit product model" : "Add product model"}
         </DialogTitle>
         <DialogDescription>
-          In {subcategory.name}. Ticket intake picks a model from this list.
+          In {node.path.join(" › ")}. Ticket intake picks a model from this list.
         </DialogDescription>
       </DialogHeader>
 
@@ -298,7 +305,7 @@ function ModelForm({
 
         {/* Both optional, and side by side because they are read together —
             "43 inch, 24 months" is one thought about the unit. */}
-        <FieldGroup className="grid gap-5 sm:grid-cols-2">
+        <FieldGrid className="grid gap-5 sm:grid-cols-2">
           <Field data-invalid={errors.capacity ? true : undefined}>
             <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
             <Input
@@ -353,7 +360,7 @@ function ModelForm({
               </FieldDescription>
             )}
           </Field>
-        </FieldGroup>
+        </FieldGrid>
 
         <FieldSeparator />
 
@@ -365,7 +372,7 @@ function ModelForm({
             shows what it costs them; the technician's app shows what they
             earn. The server withholds each from the other, so this pair is the
             one place both numbers appear together. */}
-        <FieldGroup className="grid gap-5 sm:grid-cols-2">
+        <FieldGrid className="grid gap-5 sm:grid-cols-2">
           <Field data-invalid={errors.technicianPayoutPaise ? true : undefined}>
             <FieldLabel htmlFor="model-payout">Paid to technician (₹)</FieldLabel>
             <Input
@@ -423,7 +430,7 @@ function ModelForm({
               </FieldDescription>
             )}
           </Field>
-        </FieldGroup>
+        </FieldGrid>
 
         <FieldSeparator />
 
@@ -534,6 +541,52 @@ function ModelForm({
           saveLabel="Add photo"
           onSave={handleCropped}
         />
+
+        <FieldSeparator />
+
+        <ParameterFields
+          control={control}
+          register={register}
+          name="parameters"
+          errors={errors}
+          idPrefix="model"
+          requireValue
+          // Only when EDITING. A new product already opens from the whole
+          // template, so there is never anything to offer — and offering
+          // something the user has just deleted would be a nag.
+          templateNames={
+            model ? node.parameters.map((p) => p.name) : undefined
+          }
+          hint="Specs for this product — every field needs a value, because this is what the vendor and the technician will read."
+        />
+
+        <Field data-invalid={errors.notes ? true : undefined}>
+          <FieldLabel htmlFor="model-notes">Notes (optional)</FieldLabel>
+          <Textarea
+            id="model-notes"
+            rows={3}
+            placeholder="e.g. Check the wall bracket rating before drilling."
+            aria-invalid={errors.notes ? true : undefined}
+            aria-describedby={
+              errors.notes ? "model-notes-error" : "model-notes-hint"
+            }
+            {...register("notes")}
+          />
+          {errors.notes ? (
+            <FieldDescription
+              id="model-notes-error"
+              role="alert"
+              className="text-danger"
+            >
+              {errors.notes.message}
+            </FieldDescription>
+          ) : (
+            <FieldDescription id="model-notes-hint">
+              Anything about this product that is not a spec — prose, so it has
+              no field name to inherit under.
+            </FieldDescription>
+          )}
+        </Field>
 
         <FieldSeparator />
 

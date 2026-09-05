@@ -84,6 +84,10 @@ export interface Ticket {
   /** The parent category — the level the console groups the column by. */
   categoryName: string;
   subcategoryName: string;
+  /** The whole breadcrumb, root first — `["Electronics", "TV", "Android TV"]`.
+   *  `categoryName` is its first entry and `subcategoryName` its last; this is
+   *  what a deep catalogue puts in between. */
+  nodePath: string[];
   modelId: string;
   modelName: string;
 
@@ -151,6 +155,16 @@ export interface Ticket {
    * set on almost none.
    */
   bonusPaise: number | null;
+  /**
+   * The four chips Bonus Setup offers, in PAISE and ascending — **this
+   * ticket's**, frozen at intake.
+   *
+   * Not the company's. `bonus_bands_paise` is one of the rules a product
+   * category may override, and this is the one screen that spends them; read
+   * from `GET /settings/rules` it would show the company figures and
+   * configuring a category would silently do nothing.
+   */
+  bonusBandsPaise: number[];
 
   /**
    * PAISE. What the vendor is charged for this job, stamped at intake from the
