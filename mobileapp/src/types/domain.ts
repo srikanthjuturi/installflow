@@ -299,6 +299,17 @@ export interface Transaction {
   subtitle: string;
   /** Signed integer paise: credits positive, penalties negative. */
   amountPaise: number;
+  /**
+   * The job this money is about, when the technician can still open it — null
+   * otherwise, and the row is then not a link.
+   *
+   * Not derivable from `kind`, which is why the server decides it. A penalty
+   * is charged for cancelling, and cancelling hands the ticket back to the
+   * pool, so the job detail 404s for the person who was charged. A payout's
+   * ticket is still theirs. `null` also covers a server that predates the
+   * field — the row simply does not navigate.
+   */
+  ticketId: string | null;
 }
 
 /** The NAMED spans the Earnings screen can be read over. */

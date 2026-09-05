@@ -21,6 +21,7 @@ import {
   type DateRange,
   type EarningsPeriod,
   type EarningsWindow,
+  type Transaction,
   type TransactionKind,
 } from '@/types/domain';
 import { formatRange, spanDays } from '@/utils/date';
@@ -123,13 +124,23 @@ export function EarningsScreen() {
   // The query string IS the cache key — see `qk.earningsSummary`. Two windows
   // that ask the server the same thing are the same answer by construction.
   const key = windowQuery(showing);
+  // `refetchOnWindowFocus` is off by default (`app/_layout.tsx`) and turned on
+  // per query; `useAppStateFocus` maps it to "the app came back from the
+  // background", which is the whole life of this screen — somebody closes the
+  // app after a job and reopens it later to see whether the money landed.
+  // Until now nothing here refetched on that, so a payout written while the
+  // phone was in a pocket only appeared once the 30s stale window had passed
+  // AND the screen was remounted. The socket's own reconnect covers this too;
+  // this is what covers the technician whose socket has not come back.
   const summary = useQuery({
     queryKey: qk.earningsSummary(key),
     queryFn: () => getEarningsSummary(showing),
+    refetchOnWindowFocus: true,
   });
   const ledger = useQuery({
     queryKey: qk.transactions(key),
     queryFn: () => listTransactions(showing),
+    refetchOnWindowFocus: true,
   });
 
   return (
@@ -328,70 +339,126 @@ export function EarningsScreen() {
                 overflow: 'hidden',
               }}
             >
-              {ledger.data.map((txn, i) => {
-                const style = KIND_STYLE[txn.kind];
-
-                return (
-                  <View
-                    key={txn.id}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                      paddingVertical: 14,
-                      paddingHorizontal: 15,
-                      borderTopWidth: i === 0 ? 0 : 1,
-                      borderTopColor: palette.neutral[100],
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 11,
-                        backgroundColor: style.bg,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Icon name={style.icon} size={20} color={style.fg} />
-                    </View>
-
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text
-                        style={{
-                          fontFamily: 'Roboto_700Bold',
-                          fontSize: 14,
-                          color: color.textPrimary,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {txn.title}
-                      </Text>
-                      <Text
-                        style={{
-                          fontFamily: 'Roboto_400Regular',
-                          fontSize: 11.5,
-                          color: color.textMuted,
-                        }}
-                      >
-                        {txn.subtitle}
-                      </Text>
-                    </View>
-
-                    <Text
-                      style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: style.fg }}
-                    >
-                      {formatSignedPaise(txn.amountPaise)}
-                    </Text>
-                  </View>
-                );
-              })}
+              {ledger.data.map((txn, i) => (
+                <LedgerRow
+                  key={txn.id}
+                  txn={txn}
+                  first={i === 0}
+                  onOpen={
+                    txn.ticketId ? () => router.push(`/job/${txn.ticketId}`) : undefined
+                  }
+                />
+              ))}
             </View>
           )}
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * One line of the ledger — and, when the job behind it is still theirs, a way
+ * into it.
+ *
+ * A technician reading "Install · Samsung 55" OLED · ₹450" and wanting to know
+ * WHICH job that was had no route from here: the code is in the subtitle, and
+ * finding it meant going to Jobs and scrolling. The row is the obvious thing to
+ * press, so it now is one.
+ *
+ * `onOpen` is undefined rather than a no-op for a row that cannot navigate, and
+ * that is the whole guard: no `Pressable` is rendered at all, so there is no
+ * press feedback and no chevron promising a screen that would 404. Whether a
+ * row qualifies is the server's answer, not a test on `kind` — see
+ * `Transaction.ticketId`.
+ */
+function LedgerRow({
+  txn,
+  first,
+  onOpen,
+}: {
+  txn: Transaction;
+  first: boolean;
+  onOpen?: () => void;
+}) {
+  const style = KIND_STYLE[txn.kind];
+
+  const body = (pressed: boolean) => (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 14,
+        paddingHorizontal: 15,
+        borderTopWidth: first ? 0 : 1,
+        borderTopColor: palette.neutral[100],
+        backgroundColor: pressed ? palette.neutral[50] : color.surfaceRaised,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          backgroundColor: style.bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Icon name={style.icon} size={20} color={style.fg} />
+      </View>
+
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          style={{
+            fontFamily: 'Roboto_700Bold',
+            fontSize: 14,
+            color: color.textPrimary,
+          }}
+          numberOfLines={1}
+        >
+          {txn.title}
+        </Text>
+        <Text
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 11.5,
+            color: color.textMuted,
+          }}
+        >
+          {txn.subtitle}
+        </Text>
+      </View>
+
+      <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: style.fg }}>
+        {formatSignedPaise(txn.amountPaise)}
+      </Text>
+
+      {/* The affordance. Only on rows that go somewhere — a chevron on every
+          line would make the ones that do not look broken when pressed. */}
+      {onOpen ? (
+        <Icon name="chevronRight" size={16} color={palette.neutral[400]} />
+      ) : null}
+    </View>
+  );
+
+  if (!onOpen) return body(false);
+
+  return (
+    <Pressable
+      onPress={onOpen}
+      accessibilityRole="button"
+      // The amount is read out too. A screen reader user pressing a row is
+      // choosing between amounts as much as between job codes, and the visible
+      // line already says all three.
+      accessibilityLabel={`${txn.title}. ${txn.subtitle}. ${formatSignedPaise(
+        txn.amountPaise,
+      )}`}
+      accessibilityHint="Opens this job"
+    >
+      {({ pressed }) => body(pressed)}
+    </Pressable>
   );
 }
 

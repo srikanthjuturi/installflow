@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
@@ -6,6 +7,7 @@ import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 
 import { authedRequest } from '@/lib/api';
+import { qk } from '@/lib/queryKeys';
 import { usePushPrefs } from '@/store/pushPrefs.store';
 import { useSessionStatus } from '@/store/session.store';
 
@@ -55,6 +57,7 @@ Notifications.setNotificationHandler({
 export function usePushRegistration(): void {
   const status = useSessionStatus();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const enabled = usePushPrefs((s) => s.enabled);
   const token = usePushPrefs((s) => s.token);
   const hydrated = usePushPrefs((s) => s.hydrated);
@@ -149,6 +152,31 @@ export function usePushRegistration(): void {
       }
     })();
   }, [status, enabled, token, hydrated, setToken]);
+
+  // ── one arriving while the app is open ───────────────────────────────────
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+
+    // A notification about a job the technician holds means that job moved, and
+    // if it moved to closed the ledger moved with it. `usePoolStream` normally
+    // says so first and this changes nothing; the case it exists for is a
+    // socket that has silently died — a NAT table that forgot the connection,
+    // a network that dropped without a FIN — where the app looks connected,
+    // `job.changed` never arrives, and the push is the only thing that gets
+    // through. Leaving it as routing-only is why a technician could read
+    // "TKT-1042 closed" on a banner and still see the pre-payout figure
+    // underneath it.
+    //
+    // The banner still shows. Invalidation only refetches queries that are
+    // mounted, so this costs a request for the screen in front of them.
+    const sub = Notifications.addNotificationReceivedListener((n) => {
+      if (n.request.content.data?.type !== 'job') return;
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      void queryClient.invalidateQueries({ queryKey: qk.earnings() });
+      void queryClient.invalidateQueries({ queryKey: qk.me() });
+    });
+    return () => sub.remove();
+  }, [status, queryClient]);
 
   // ── tapping one ──────────────────────────────────────────────────────────
   useEffect(() => {

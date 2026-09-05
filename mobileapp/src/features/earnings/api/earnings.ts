@@ -55,6 +55,13 @@ interface TransactionDto {
   title: string;
   subtitle: string;
   ticketCode: string;
+  /**
+   * OPTIONAL on the wire, like `dateFrom` above and for the same reason — a
+   * server that predates it sends nothing, and a row that cannot name a job
+   * must not pretend to link to one. The server also sends null deliberately,
+   * for a ticket this technician no longer holds; both arrive here as null.
+   */
+  ticketId?: string | null;
 }
 
 /**
@@ -104,5 +111,8 @@ export async function listTransactions(
     // because the same row is money IN to the company's pool — see the API's
     // note on `ledger_entries`.
     amountPaise: t.kind === 'penalty' ? -t.amountPaise : t.amountPaise,
+    // Absent and null collapse to null: the screen asks one question of this —
+    // "can I open the job?" — and undefined is not a third answer.
+    ticketId: t.ticketId ?? null,
   }));
 }

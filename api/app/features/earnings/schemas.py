@@ -69,3 +69,16 @@ class TransactionOut(AppModel):
     subtitle: str
     #: `INST-240912`, so a technician can quote it when they disagree.
     ticketCode: str
+    #: The job to OPEN when the row is tapped — or null, which is not an
+    #: oversight but the answer.
+    #:
+    #: Every entry has a `ticket_id` (it is NOT NULL), but only some of those
+    #: tickets are still this technician's: cancelling CLEARS `technician_id`
+    #: and hands the job back to the pool, so `GET /jobs/{id}` 404s on exactly
+    #: the ticket the penalty beside it was charged for. Sending the id anyway
+    #: would give the phone a link that is broken by design.
+    #:
+    #: So this is populated only while the ticket is still assigned here — the
+    #: same fact the detail endpoint checks, resolved once rather than guessed
+    #: from `kind`. A payout is tappable; a penalty for a released job is not.
+    ticketId: uuid.UUID | None = None

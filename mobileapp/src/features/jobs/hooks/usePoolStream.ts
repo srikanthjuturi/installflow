@@ -180,6 +180,12 @@ export function usePoolStream(): void {
             // queries that are actually mounted, so the breadth costs a request
             // for the screen in front of the technician and nothing else.
             void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+            // The money too, for the same reason. A closure that landed while
+            // this phone was in a tunnel — or, far more often, backgrounded,
+            // since the socket is torn down there — paid the technician, and
+            // earnings opt out of refetch-on-focus. Without this the reconnect
+            // left a correct job list beside a figure from before the payout.
+            void queryClient.invalidateQueries({ queryKey: qk.earnings() });
             break;
           case 'pool.changed':
             // Dropped while offline. This is where "Not receiving offers"
@@ -199,6 +205,23 @@ export function usePoolStream(): void {
             void queryClient.invalidateQueries({
               queryKey: [...qk.myJobs('all'), 'today'],
             });
+            // A closure MOVES MONEY, and this frame is the only warning of it
+            // the app gets. Both closers write the payout in the same
+            // transaction as the transition — the customer confirming, and a
+            // manager force-closing for the amount they credited — so the
+            // ledger has changed by the time this arrives. The push landed
+            // instantly and the figure did not, because nothing invalidated
+            // earnings outside `useCancelJob`.
+            //
+            // The PREFIX, for `qk.earnings()`'s own reason: a payout lands in
+            // the day AND the week AND whatever span the technician is looking
+            // at, so naming one window leaves the others showing the old total.
+            void queryClient.invalidateQueries({ queryKey: qk.earnings() });
+            // And the profile, which the same closure just rewrote: the server
+            // recomputes the rating and the completed count on the way out
+            // (`refresh_technician_stats`), so leaving `me` alone would show a
+            // technician a job they finished missing from their own total.
+            void queryClient.invalidateQueries({ queryKey: qk.me() });
             break;
           }
           // 'ping' needs no reply. It exists so a dead connection fails

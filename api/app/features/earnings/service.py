@@ -168,16 +168,25 @@ async def transactions(
     # 0 is that every query on a tenant table carries the filter, so that no
     # future edit to where `rows` comes from can quietly turn this into the leak
     # it is one line away from being.
-    codes = {
-        r[0]: r[1]
+    # `technician_id` comes back with the code because the phone links these
+    # rows to the job detail, and a link has to be one that opens. See
+    # `TransactionOut.ticketId`: a cancellation clears the column, so the
+    # penalty's own ticket is no longer readable by the person being charged.
+    tickets = {
+        r.id: r
         for r in await db.execute(
-            select(Ticket.id, Ticket.code).where(
+            select(Ticket.id, Ticket.code, Ticket.technician_id).where(
                 Ticket.company_id == company_id,
                 Ticket.id.in_({e.ticket_id for e in rows}),
             )
         )
     }
     now = datetime.datetime.now(datetime.timezone.utc)
+
+    def _openable(ticket_id: uuid.UUID) -> uuid.UUID | None:
+        t = tickets.get(ticket_id)
+        return t.id if t is not None and t.technician_id == technician_id else None
+
     return [
         TransactionOut(
             id=e.id,
@@ -185,8 +194,14 @@ async def transactions(
             kind=e.kind,
             amountPaise=e.amount_paise,
             title=_title(e.kind, e.reason),
-            subtitle=f"{_when(e.created_at, now)} · {codes.get(e.ticket_id, '—')}",
-            ticketCode=codes.get(e.ticket_id) or "—",
+            subtitle=(
+                f"{_when(e.created_at, now)} · "
+                f"{tickets[e.ticket_id].code if e.ticket_id in tickets else '—'}"
+            ),
+            ticketCode=(
+                tickets[e.ticket_id].code if e.ticket_id in tickets else "—"
+            ),
+            ticketId=_openable(e.ticket_id),
         )
         for e in rows
     ]
