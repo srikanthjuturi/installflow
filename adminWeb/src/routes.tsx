@@ -53,10 +53,12 @@ const TechnicianProfilePage = lazy(
 const TechnicianJobsPage = lazy(
   () => import("@/pages/technicians/TechnicianJobsPage")
 );
-const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
-const AiReviewDetailPage = lazy(
-  () => import("@/pages/ai-review/AiReviewDetailPage")
-);
+/* AI review is hidden until the slice is built — see `nav.ts`. Commented, not
+   deleted: the pages match the approved prototype and come straight back. */
+// const AiQueuePage = lazy(() => import("@/pages/ai-review/AiQueuePage"));
+// const AiReviewDetailPage = lazy(
+//   () => import("@/pages/ai-review/AiReviewDetailPage")
+// );
 const CompaniesPage = lazy(() => import("@/pages/superadmin/CompaniesPage"));
 const GeographyPage = lazy(() => import("@/pages/superadmin/GeographyPage"));
 const ChangePasswordPage = lazy(
@@ -98,8 +100,8 @@ function RequireAuth() {
   if (superadmin) return <Navigate to="/companies" replace />;
   // And so is the vendor portal. Bouncing HERE, before `AppShell` mounts, is
   // what keeps a vendor away from the ungated ops screens: `has(undefined)` is
-  // true, so `/`, `/escalations`, `/ai-review`, `/notifications` and `/account`
-  // would all wave one through if they were ever reached. They never are.
+  // true, so `/`, `/escalations`, `/notifications` and `/account` would all
+  // wave one through if they were ever reached. They never are.
   if (portal) return <Navigate to="/portal" replace />;
   return <Outlet />;
 }
@@ -273,8 +275,12 @@ export const routes: RouteObject[] = [
                 path: "escalations/:id/assign",
                 element: <RedirectToTicket to="assign" />,
               },
-              { path: "ai-review", element: <AiQueuePage /> },
-              { path: "ai-review/:id", element: <AiReviewDetailPage /> },
+              /* Hidden with the rail entry. Unlike the escalation paths above,
+                 these need no redirect: the screens were never gated by a
+                 feature key, so removing them opens nothing — `/ai-review`
+                 simply falls through to the 404 page, which is the truth. */
+              // { path: "ai-review", element: <AiQueuePage /> },
+              // { path: "ai-review/:id", element: <AiReviewDetailPage /> },
               { path: "technicians", element: <TechnicianListPage /> },
               { path: "technicians/:id", element: <TechnicianProfilePage /> },
               {

@@ -50,6 +50,40 @@ live too. What is still mock is **AI review** (`services/ai.ts`), the bulk **imp
 functions in `services/settings.ts` (`inviteUser` and its sibling) — so binding each stays a
 one-line change and loading / empty / error states are already there.
 
+⚠ **AI review is HIDDEN, not deleted — and the hiding is UI-ONLY.** The slice was never built —
+nothing writes the `AI Review` status and `services/ai.ts` invents its rows — so every surface that
+mentions it is **commented out** rather than removed. Nothing under `services/` stopped asking for
+it, no schema moved, and no wire field was dropped: the API still sends `aiFlagged` and
+`attention.aiReview`, `company_rules.ai_confidence_threshold` is still read and still written, and
+`AI Review` is still one of the nine `TICKET_STATUSES`.
+
+Eight places, all restored by uncommenting, starting from the note in `components/shared/nav.ts`:
+
+| Where | What is commented |
+| --- | --- |
+| `components/shared/nav.ts` | the **AI Review** rail entry (and its invented badge of 4) |
+| `routes.tsx` | `/ai-review` and `/ai-review/:id`, plus their two lazy imports |
+| `components/shared/routeMeta.ts` | the static and the dynamic page-header entries |
+| `services/dashboard.ts` | the **AI flagged** KPI tile and the **AI verification** attention card |
+| `components/settings/RulesForm.tsx` | the **AI verification threshold** card (`ThresholdSlider`) |
+| `components/settings/NodeRulesForm.tsx` | the per-category **AI confidence threshold** override |
+| `components/tickets/statusChips.ts` | the `AI Review` filter chip |
+
+`/ai-review` falls through to the 404 page, which is the truth; it needed no redirect because the
+screens carried no feature key, so closing them opens nothing (contrast the escalation redirects
+below). Being lazy-loaded, the pages now leave the bundle entirely — `vite build` emits no
+`AiQueuePage` chunk.
+
+Two consequences worth keeping straight. **The threshold still saves.** `aiThreshold` stays in
+`rulesSchema` and in both `toFormValues`/`toDraft` pairs, and RHF's `shouldUnregister` is false
+everywhere here, so an unregistered field keeps its `defaultValues` entry and round-trips the
+server's own number untouched — saving Rules Config never silently rewrites a rule nobody can see.
+**`KpiRow` now sizes itself**, off a static `COLS` map keyed on `kpis.length`; the old hard-wired
+`xl:grid-cols-4` left a fourth empty seat the moment a tile went away, and uncommenting the tile
+widens the row back on its own. `StatusBadge` keeps its `AI Review` tint for the same reason the
+status stays in the union: both mirror the database's CHECK constraint, and a status the schema
+allows must still render if one ever arrives.
+
 **The dashboard is live**, over `GET /tickets/summary`. It sits in the tickets slice rather than
 a `dashboard` one because every figure on it is a ticket count and hard rule 4 forbids a second
 slice importing `scoped()` — a second copy of the visibility rule is the copy that drifts. Two
@@ -452,11 +486,10 @@ place they are ranked; the two guards, the login redirect and the catch-all all 
 five call sites deciding independently is how they stop agreeing.
 
 **The portal is a top-level branch, not routes under `AppShell`, and that is a security decision.**
-`useFeatureAccess().has(undefined)` returns **true**, so eight ops paths are ungated — `/`, the
-three escalation routes, the two AI-review ones, `/notifications` and `/account`. Nested, each
-would be a per-screen decision to get right; bounced in `RequireAuth` before `AppShell` mounts, a
-vendor never reaches the guard that would have to decide. Escalations, AI Review and Notifications
-are still MOCKED, so the alternative is an outside party reading fabricated internal data.
+`useFeatureAccess().has(undefined)` returns **true**, so six ops paths are ungated — `/`, the
+three escalation routes, `/notifications` and `/account`. (It was eight while the two AI-review
+routes existed.) Nested, each would be a per-screen decision to get right; bounced in `RequireAuth`
+before `AppShell` mounts, a vendor never reaches the guard that would have to decide.
 
 `RequirePortalFeature` therefore runs the **opposite polarity** to `RequireFeature`: an unrecognised
 path is DENIED, and the two genuinely open paths are an explicit allow-list in `portalNav.ts`.
@@ -546,8 +579,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets/:id/bonus` | `BonusSetupPage` | bands from Rules config; pool balance shown, not enforced; re-notify reports the technicians actually reached |
 | `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot, in two halves under date dividers; search · Still savable/Missed · slot-date range · Refresh; loads on scroll |
 | `/escalations/:id/bonus` · `/escalations/:id/assign` | — | param-preserving **redirects** to their `/tickets/:id/…` twins. The mock queue owned duplicates of both; deleting a route does not close a path (hard rule 0a) |
-| `/ai-review` | `AiQueuePage` | below-threshold or unreadable |
-| `/ai-review/:id` | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake |
+| ~~`/ai-review`~~ | `AiQueuePage` | below-threshold or unreadable. **Route commented out** — the page exists, nothing reaches it |
+| ~~`/ai-review/:id`~~ | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake. **Commented out** with the queue |
 | `/technicians` | `TechnicianListPage` | add · invite · **edit** — one `TechnicianFormDialog` for add and edit, pointed by an optional `technician` prop. Edit is `technicians.edit` and offered on REGISTERED rows only: an invite is a phone number and nothing else yet |
 | `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history; "Edit details" opens the same dialog |
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |

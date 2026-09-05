@@ -123,12 +123,16 @@ export async function getDashboard(
         value: String(s.escalated),
         sub: "within 4h of slot",
       },
-      {
-        key: "ai",
-        label: "AI flagged",
-        value: String(s.aiFlagged),
-        sub: "awaiting review",
-      },
+      /* AI flagged — hidden with the queue. `s.aiFlagged` counts tickets in the
+         `AI Review` status and nothing writes it, so the tile could only ever
+         read 0 under a heading for a feature that does not exist. The server
+         still sends it; `KpiRow` lays out whatever it is given. */
+      // {
+      //   key: "ai",
+      //   label: "AI flagged",
+      //   value: String(s.aiFlagged),
+      //   sub: "awaiting review",
+      // },
     ],
     // Where "View all" and "Open ticket list" go — the board, still carrying
     // whatever this dashboard is narrowed to. A link that widened the scope on
@@ -156,15 +160,18 @@ export async function getDashboard(
         to: linkTo("/escalations", { half: "live" }),
         tone: "danger",
       },
-      {
-        // Still mock, and still zero — no filters to carry until it binds.
-        key: "ai",
-        title: "AI verification",
-        sub: "Flagged serial / image",
-        count: String(a.aiReview),
-        to: "/ai-review",
-        tone: "ai",
-      },
+      /* AI verification — hidden with the queue it opens (see `nav.ts`). A
+         card is a link, so leaving it would land the reader on the 404 page.
+         `attention.aiReview` still arrives on the wire and is still counted
+         server-side; nothing on the board reads it while this is commented. */
+      // {
+      //   key: "ai",
+      //   title: "AI verification",
+      //   sub: "Flagged serial / image",
+      //   count: String(a.aiReview),
+      //   to: "/ai-review",
+      //   tone: "ai",
+      // },
       {
         // The queue, not one ticket. This pointed at `/tickets/INST-240970` —
         // a ticket CODE, from when the list was mock and keyed by them.

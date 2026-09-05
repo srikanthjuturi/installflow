@@ -2,9 +2,31 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Kpi } from "@/types";
 
+/**
+ * Static per-count classes — an interpolated `xl:grid-cols-${n}` is never
+ * generated and the row would collapse to one column.
+ *
+ * Keyed on how many tiles arrive rather than hard-wired to four, because the
+ * count is now a decision `services/dashboard.ts` makes: the AI-flagged tile is
+ * commented out while that slice is unbuilt, and a fixed `xl:grid-cols-4` left
+ * a fourth empty seat on every wide screen. Uncommenting it widens the row
+ * back on its own.
+ */
+const COLS: Record<number, string> = {
+  1: "xl:grid-cols-1",
+  2: "xl:grid-cols-2",
+  3: "xl:grid-cols-3",
+  4: "xl:grid-cols-4",
+};
+
 export function KpiRow({ kpis }: { kpis: Kpi[] }) {
   return (
-    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-3.5 sm:grid-cols-2",
+        COLS[kpis.length] ?? "xl:grid-cols-4"
+      )}
+    >
       {kpis.map((k) => (
         <Card key={k.key}>
           <CardContent className="flex flex-col">

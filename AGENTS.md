@@ -28,6 +28,21 @@ because nothing records what a count was yesterday). What is left on typed mock 
 TanStack Query hook is **AI review**, so binding it stays a one-line change and we keep loading /
 empty / error states today.
 
+**AI verification is HIDDEN in both clients — the screens are kept, nothing routes to them, and
+the hiding is UI-ONLY.** Not built means not shown: a queue whose rows are invented, a KPI that can
+only read 0, and a threshold slider for a check nobody runs are all worse on screen than absent. In
+the console eight surfaces are **commented out** — the rail entry, both `/ai-review` routes and
+their `routeMeta`, the dashboard's AI KPI tile and attention card, the company and per-category AI
+threshold fields, and the `AI Review` filter chip (`adminWeb/AGENTS.md` tabulates all eight). In
+the app, Review submits straight to `POST /jobs/:id/proof` and `VerifyingScreen` / `ResultScreen`
+are unwired, as their own headers say.
+
+Nothing below the UI moved: the API still sends `aiFlagged`, `company_rules.ai_confidence_threshold`
+is still read and still written — the hidden field round-trips the server's own value rather than
+clearing it — and `AI Review` is still one of the nine ticket statuses. Everything comes back by
+uncommenting; the copy is signed off, so deleting it would mean rebuilding it from the prototype
+bundle later.
+
 **A job is priced.** A product model carries two amounts — `technician_payout_paise` and
 `vendor_price_paise`, both NOT NULL — and a ticket STAMPS both at intake, so a repricing never
 restates what an old job was worth. On closure the technician's half becomes a `payout` entry in

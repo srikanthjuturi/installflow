@@ -11,7 +11,8 @@ const STATIC: Record<string, Meta> = {
     title: "Escalation queue",
     subtitle: "Unassigned within 4h of slot",
   },
-  "/ai-review": { title: "AI review queue", subtitle: "Flagged verifications" },
+  // Hidden with the route — see `nav.ts`.
+  // "/ai-review": { title: "AI review queue", subtitle: "Flagged verifications" },
   "/technicians": { title: "Technicians", subtitle: "Technician master list" },
   "/ledger": { title: "Penalty & bonus pool", subtitle: "Financial ledger" },
   "/vendors": {
@@ -64,10 +65,10 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
     /^\/tickets\/[^/]+$/,
     { title: "Ticket detail", subtitle: "Timeline & audit trail" },
   ],
-  [
-    /^\/ai-review\/[^/]+$/,
-    { title: "AI review", subtitle: "Image & serial comparison" },
-  ],
+  // [
+  //   /^\/ai-review\/[^/]+$/,
+  //   { title: "AI review", subtitle: "Image & serial comparison" },
+  // ],
   [
     /^\/technicians\/[^/]+$/,
     { title: "Technician profile", subtitle: "Category · pincode · bandwidth" },

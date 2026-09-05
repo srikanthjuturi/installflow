@@ -1,4 +1,4 @@
-import { Controller, useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { TriangleAlert } from "lucide-react";
 import { FieldGrid } from "@/components/shared/FieldGrid";
@@ -15,7 +15,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useFeatureAccess } from "@/hooks/useAuth";
-import { ThresholdSlider } from "./ThresholdSlider";
+// Hidden with the AI card below; put `Controller` back in the react-hook-form
+// import above when it returns.
+// import { ThresholdSlider } from "./ThresholdSlider";
 import { rulesSchema, toFormValues, type RulesFormValues } from "./rulesSchema";
 import type { RulesConfig } from "@/services/settings";
 
@@ -270,7 +272,13 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
           </p>
         </RuleCard>
 
-        <RuleCard title="AI verification threshold">
+        {/* AI verification threshold — hidden while the AI slice is not built.
+            UI only: `aiThreshold` is a real `company_rules` column the API
+            still requires on save, so the field stays in the schema and in
+            `toFormValues`/`toDraft`. Unregistered but present in
+            `defaultValues`, it round-trips the server's own value untouched —
+            saving this form never silently rewrites a rule nobody can see. */}
+        {/* <RuleCard title="AI verification threshold">
           <Controller
             name="aiThreshold"
             control={control}
@@ -284,7 +292,7 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
               />
             )}
           />
-        </RuleCard>
+        </RuleCard> */}
 
         {/* Its own card rather than a ninth row in "Timing", which measures
             every one of its values in hours or minutes. This one is metres. */}
