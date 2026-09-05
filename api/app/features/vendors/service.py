@@ -297,6 +297,7 @@ def _to_out(
         intakeChannels=list(row.intake_channels or []),
         isActive=row.is_active,
         addressSearchEnabled=row.address_search_enabled,
+        locationCheckEnabled=row.location_check_enabled,
         addressSearchCount=address_search_count,
         modelCount=model_count,
         ticketCount=ticket_count,
@@ -486,6 +487,7 @@ async def create_vendor(
         intake_channels=list(body.intakeChannels),
         is_active=body.isActive,
         address_search_enabled=body.addressSearchEnabled,
+        location_check_enabled=body.locationCheckEnabled,
         created_by=principal.user_id,
     )
     db.add(row)
@@ -671,6 +673,8 @@ async def update_vendor(
         row.is_active = body.isActive
     if body.addressSearchEnabled is not None:
         row.address_search_enabled = body.addressSearchEnabled
+    if body.locationCheckEnabled is not None:
+        row.location_check_enabled = body.locationCheckEnabled
     row.updated_by = principal.user_id
 
     await db.commit()

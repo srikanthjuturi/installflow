@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   ListFilter,
   Map,
-  ScanLine,
   SlidersHorizontal,
   Tags,
   UserCog,
@@ -19,11 +18,10 @@ export interface NavItem {
   to: string;
   icon: LucideIcon;
   /**
-   * A count surfaced on the rail — escalations and AI review only.
+   * A count surfaced on the rail — the escalation queue only.
    *
-   * A number here is a PLACEHOLDER, not a fact. `Sidebar` overrides the
-   * escalation badge with the live queue length; AI review's is still the
-   * mock's, and goes the same way when that slice binds.
+   * A number here is a PLACEHOLDER, not a fact: `Sidebar` overrides the
+   * escalation badge with the live queue length.
    */
   badge?: number;
   /** Child routes that should keep this item lit. */
@@ -88,13 +86,20 @@ export const NAV_GROUPS: NavGroup[] = [
         // lift. Hard rule 8: this hides the link, the server refuses the act.
         feature: "jobs.assign",
       },
-      {
-        label: "AI Review",
-        to: "/ai-review",
-        icon: ScanLine,
-        badge: 4,
-        match: ["/ai-review/"],
-      },
+      /* AI Review — hidden for now, not deleted. The slice is not built:
+         nothing writes the `AI Review` status and `services/ai.ts` is still
+         mock, so the rail would offer a queue that can only ever be empty
+         under a badge of 4 invented rows. Uncomment this entry, the two routes
+         in `routes.tsx`, the two `routeMeta` entries and the dashboard's
+         attention card when verification actually ships — and put `ScanLine`
+         back in the lucide import above, which lint drops while it is unused. */
+      // {
+      //   label: "AI Review",
+      //   to: "/ai-review",
+      //   icon: ScanLine,
+      //   badge: 4,
+      //   match: ["/ai-review/"],
+      // },
     ],
   },
   {

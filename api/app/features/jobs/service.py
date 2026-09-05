@@ -89,6 +89,7 @@ from app.models.ledger import LedgerEntry
 from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
+from app.models.vendor import Vendor
 
 log = logging.getLogger(__name__)
 
@@ -319,6 +320,31 @@ async def _hydrate(
     return [_offer_out(t, sub_names, models) for t in rows], models
 
 
+async def _location_checks(
+    db: AsyncSession, rows: list[Ticket]
+) -> dict[uuid.UUID, bool]:
+    """vendor_id → whether that vendor's jobs are location-gated. One query.
+
+    Deliberately NOT folded into `_hydrate`. That runs on the pool path too,
+    where `JobOfferOut` carries no such field and would pay for a read it never
+    uses — and the pool is the hottest query in this module.
+
+    A vendor that does not come back resolves to True at the call site. Fail
+    closed: an unreadable switch is not an open one.
+    """
+    if not rows:
+        return {}
+
+    return {
+        r[0]: r[1]
+        for r in await db.execute(
+            select(Vendor.id, Vendor.location_check_enabled).where(
+                Vendor.id.in_({t.vendor_id for t in rows})
+            )
+        )
+    }
+
+
 def _offer_out(
     t: Ticket,
     sub_names: dict[uuid.UUID, str],
@@ -364,6 +390,7 @@ def _job_out(
     offer: JobOfferOut,
     t: Ticket,
     models: dict[uuid.UUID, tuple[str, list[dict], str | None]],
+    location_checks: dict[uuid.UUID, bool],
 ) -> JobOut:
     """The offer, plus everything that unlocks once the job is this technician's.
 
@@ -397,6 +424,10 @@ def _job_out(
         # job is not photographed from the same distance a set-top box is,
         # and `geo_radius_m` is one of the rules a product node may override.
         geoRadiusM=snapshot_value(t.rules_snapshot, "geo_radius_m"),
+        # The VENDOR's switch, and the one job term read live rather than
+        # stamped — it has to be usable while somebody is standing on the site.
+        # Absent means enforced: an unreadable switch is not an open one.
+        locationCheckEnabled=location_checks.get(t.vendor_id, True),
         status=t.status,
         description=t.description,
         serialNumber=t.serial_number,
@@ -468,8 +499,9 @@ async def list_mine(
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     tickets = list(rows)
     offers, models = await _hydrate(db, tickets)
+    checks = await _location_checks(db, tickets)
     return [
-        _job_out(o, t, models) for o, t in zip(offers, tickets)
+        _job_out(o, t, models, checks) for o, t in zip(offers, tickets)
     ], total
 
 
@@ -497,7 +529,7 @@ async def get_job(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
     offers, models = await _hydrate(db, [row])
-    return _job_out(offers[0], row, models)
+    return _job_out(offers[0], row, models, await _location_checks(db, [row]))
 
 
 async def list_today(
@@ -533,7 +565,8 @@ async def list_today(
     )
     tickets = list(rows)
     offers, models = await _hydrate(db, tickets)
-    return [_job_out(o, t, models) for o, t in zip(offers, tickets)]
+    checks = await _location_checks(db, tickets)
+    return [_job_out(o, t, models, checks) for o, t in zip(offers, tickets)]
 
 
 async def list_pool(
@@ -798,7 +831,7 @@ async def accept(
 
     # Now it is theirs, so the masked fields are theirs to see.
     offers, models = await _hydrate(db, [row])
-    return _job_out(offers[0], row, models)
+    return _job_out(offers[0], row, models, await _location_checks(db, [row]))
 
 
 async def _announce_acceptance(
@@ -1015,6 +1048,10 @@ async def submit_proof(
     # repairing a missing row can emit at most one INSERT on a table the
     # guarded UPDATE below never touches. After the `TicketProof` adds it would
     # flush those early for nothing.
+    # The vendor's switch, read NOW rather than off the ticket, which is the one
+    # job term that is allowed to move after a job was accepted — see the column
+    # comment. Absent resolves to enforced.
+    enforce_location = (await _location_checks(db, [row])).get(row.vendor_id, True)
     metres = _check_live_was_taken_at_the_job(
         artifacts,
         ticket=row,
@@ -1022,6 +1059,7 @@ async def submit_proof(
         # so the shutter the app blocked and the upload the server refuses agree
         # by construction.
         geo_radius_m=snapshot_value(row.rules_snapshot, "geo_radius_m"),
+        enforce=enforce_location,
     )
 
     result = await db.execute(
@@ -1064,6 +1102,16 @@ async def submit_proof(
 
     located = sum(1 for a in artifacts if a.latitude is not None)
     started_by = await _technician_name(db, profile)
+    where = (
+        " — no location on the live photo"
+        if not located
+        # Only for a ticket that HAS coordinates. On a pincode-ruled ticket
+        # there is nothing to measure against, and a distance from a place we
+        # do not know would be a fabricated number on a permanent record.
+        else f" · {metres_label(metres)} from the address"
+        if metres is not None
+        else ""
+    )
     db.add(
         _event(
             row,
@@ -1072,17 +1120,12 @@ async def submit_proof(
             actor_label=started_by,
             note=(
                 f"{len(artifacts)} proof images captured"
-                + (
-                    " — no location on the live photo"
-                    if not located
-                    # Only for a ticket that HAS coordinates. On a
-                    # pincode-ruled ticket there is nothing to measure against,
-                    # and a distance from a place we do not know would be a
-                    # fabricated number on a permanent record.
-                    else f" · {metres_label(metres)} from the address"
-                    if metres is not None
-                    else ""
-                )
+                + where
+                # Says the gate was OPEN — not that the photo passed one. A
+                # reader months later has to be able to tell a distance that
+                # was checked from one that was merely recorded, and the two
+                # notes are otherwise identical.
+                + ("" if enforce_location else " · location check off for this vendor")
             ),
             from_status="Assigned",
             to_status="In Progress",
@@ -1187,17 +1230,38 @@ async def submit_proof(
 
 
 def _check_live_was_taken_at_the_job(
-    artifacts: list[ProofArtifactIn], *, ticket: Ticket, geo_radius_m: int
+    artifacts: list[ProofArtifactIn],
+    *,
+    ticket: Ticket,
+    geo_radius_m: int,
+    enforce: bool,
 ) -> float | None:
     """The live photo must have been taken where the job is.
 
     The app already refuses the shutter on a mismatch, but a client-side rule is
     a rendering choice — this is the one that holds.
 
+    ## Unless the vendor has switched the gate off
+
+    `enforce` is `vendors.location_check_enabled` for whoever raised the ticket,
+    and False makes every refusal below a no-op. It exists for sites that cannot
+    produce a fix at all — a basement plant room, a rural dead spot — where the
+    alternative is a technician who cannot start a job they are standing at, and
+    whose only exit is a cancellation penalty for a GPS problem.
+
+    It does NOT make this function blind. The distance is still measured
+    whenever both ends have a point, and the caller still writes it to the
+    ticket's `started` event, so a photo taken four kilometres away becomes a
+    fact on a permanent record rather than a refusal nobody can act on. Losing
+    the measurement as well as the gate would be the version that hides things.
+
     ## The live shot must carry COORDINATES, under either rule below
 
-    Without this the block is decorative: turning location off would be the way
-    round it.
+    Without this the block is decorative: turning location off on the PHONE
+    would otherwise be the way round it. It is the one refusal a switched-off
+    vendor also drops, because a site that cannot produce a fix cannot produce
+    one for this either — and half a gate would refuse exactly the technician
+    the switch was flipped for.
 
     ## Which rule applies is decided by the TICKET, not by the photo
 
@@ -1242,7 +1306,9 @@ def _check_live_was_taken_at_the_job(
 
     Returns the measured distance in metres, or None when there was nothing to
     measure — so the trail can record what was measured rather than only that
-    something was checked.
+    something was checked. That return is the same either way: what `enforce`
+    changes is whether a bad answer stops the submission, never whether the
+    question was asked.
     """
     at_the_job = ticket.latitude is not None and ticket.longitude is not None
     measured: float | None = None
@@ -1251,13 +1317,18 @@ def _check_live_was_taken_at_the_job(
         if shot.kind != "live":
             continue
         if shot.latitude is None or shot.longitude is None:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "The live site photo must carry a location — it is what "
-                    "evidences the visit. Turn location on and retake it."
-                ),
-            )
+            if enforce:
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "The live site photo must carry a location — it is what "
+                        "evidences the visit. Turn location on and retake it."
+                    ),
+                )
+            # Nothing to measure and nothing to refuse. The caller's `located`
+            # count already turns this into "no location on the live photo" on
+            # the ticket's trail.
+            continue
 
         if at_the_job:
             # Narrowing for the type checker; `at_the_job` is exactly this.
@@ -1266,7 +1337,7 @@ def _check_live_was_taken_at_the_job(
                 shot.latitude, shot.longitude, ticket.latitude, ticket.longitude
             )
             credit = min(shot.accuracyM or 0.0, float(geo_radius_m))
-            if measured - credit > geo_radius_m:
+            if enforce and measured - credit > geo_radius_m:
                 raise HTTPException(
                     status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail=(
@@ -1280,7 +1351,7 @@ def _check_live_was_taken_at_the_job(
             # that knows where it is, the distance IS the rule.
             continue
 
-        if shot.devicePincode and shot.devicePincode != ticket.pincode:
+        if enforce and shot.devicePincode and shot.devicePincode != ticket.pincode:
             raise HTTPException(
                 status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail=(

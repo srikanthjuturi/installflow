@@ -307,7 +307,11 @@ export function NodeRulesForm({
 
         <RuleCard title="Verification">
           <FieldGroup className="gap-3">
-            <SpanField
+            {/* AI confidence threshold — hidden with the company-level slider
+                in `RulesForm`. The override still resolves and still saves:
+                unregistered, its `defaultValues` entry carries this node's own
+                value (or "" for inherit) straight back through `toNodeDraft`. */}
+            {/* <SpanField
               id="node-ai-threshold"
               label="AI confidence threshold"
               unit="percent"
@@ -316,7 +320,7 @@ export function NodeRulesForm({
               error={errors.aiThreshold?.message}
               disabled={!canEdit}
               {...register("aiThreshold")}
-            />
+            /> */}
             <SpanField
               id="node-geo-radius"
               label="Proof radius"

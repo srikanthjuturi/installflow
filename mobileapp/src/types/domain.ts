@@ -169,6 +169,16 @@ export interface Job {
    */
   geoRadiusM?: number | null;
   /**
+   * Whether either of those rules is ENFORCED, set per VENDOR by a manager in
+   * the console. Absent reads as true — see `features/jobs/api/jobs.ts` for why
+   * this one defaults the opposite way to the three fields above it.
+   *
+   * False does not stop the capture screen asking for a location; it stops it
+   * blocking. The photo still carries whatever fix the phone got, because the
+   * server still records it and still measures the distance on the trail.
+   */
+  locationCheckEnabled?: boolean;
+  /**
    * Integer paise. Never a float — format at the edge.
    *
    * What this job pays, stamped onto the ticket at intake from the product

@@ -1,6 +1,4 @@
-import { FieldDescription, FieldLegend, FieldSet } from "@/components/ui/field";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { cn } from "@/lib/utils";
+import { ChoiceCards } from "@/components/shared/ChoiceCards";
 import { CATEGORY_STATUSES, type CategoryStatus } from "./categorySchema";
 
 interface StatusFieldProps {
@@ -13,11 +11,12 @@ interface StatusFieldProps {
 }
 
 /**
- * Active / Paused, shared by all three product-master forms.
+ * Active / Paused, shared by all three product-master forms and the vendor one.
  *
- * Extracted because the same two-card radio appears at every level of the tree
- * and only its description differs — three copies would drift the moment one of
- * them gained a state.
+ * A thin wrapper over `shared/ChoiceCards` since the third two-card boolean
+ * landed. It stays its own component rather than becoming a call site, because
+ * it is typed to `CategoryStatus` — that is what stops a form putting a vendor's
+ * On/Off where a status goes.
  */
 export function StatusField({
   value,
@@ -27,39 +26,14 @@ export function StatusField({
   errorId,
 }: StatusFieldProps) {
   return (
-    <FieldSet data-invalid={error ? true : undefined}>
-      <FieldLegend variant="label" className="text-sm font-medium">
-        Status
-      </FieldLegend>
-      <RadioGroup
-        aria-label="Status"
-        value={value}
-        onValueChange={(next) => onChange(next as CategoryStatus)}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        className="grid grid-cols-2 gap-2.5"
-      >
-        {CATEGORY_STATUSES.map((s) => (
-          <label
-            key={s}
-            className={cn(
-              "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
-              value === s
-                ? "border-brand-500 bg-brand-100/40"
-                : "border-line hover:border-brand-400"
-            )}
-          >
-            <RadioGroupItem value={s} />
-            <span>{s}</span>
-          </label>
-        ))}
-      </RadioGroup>
-      <FieldDescription>{description}</FieldDescription>
-      {error ? (
-        <FieldDescription id={errorId} role="alert" className="text-danger">
-          {error}
-        </FieldDescription>
-      ) : null}
-    </FieldSet>
+    <ChoiceCards
+      legend="Status"
+      options={CATEGORY_STATUSES}
+      value={value}
+      onChange={onChange}
+      description={description}
+      error={error}
+      errorId={errorId}
+    />
   );
 }

@@ -124,6 +124,29 @@ class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Boolean, nullable=False, server_default=text("true")
     )
 
+    #: Whether a technician's live site photo is location-GATED on this vendor's
+    #: jobs. Off does not stop the phone recording where it was — it stops
+    #: `jobs.service._check_live_was_taken_at_the_job` refusing anything.
+    #:
+    #: Its neighbour above chooses which rule applies (distance if the address
+    #: was picked, pincode if it was typed); this one chooses whether either is
+    #: enforced at all. They are separate questions, which is why they are
+    #: separate columns.
+    #:
+    #: Defaults ON, so nothing changes for a vendor nobody touches. Off exists
+    #: for sites where a fix is simply unobtainable — a basement plant room, a
+    #: steel-clad warehouse, a rural dead spot — where the alternative is a
+    #: technician who cannot start the job at all and whose only exit is a
+    #: cancellation penalty for a GPS problem.
+    #:
+    #: Read LIVE at proof-submit time, not stamped on the ticket like the two
+    #: prices and `rules_snapshot`. That is deliberate and it is the one job
+    #: term that can move after a job was accepted: the switch has to work as an
+    #: incident control, which a value frozen at intake could not do.
+    location_check_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+
     __table_args__ = (
         CheckConstraint(
             "jsonb_typeof(intake_channels) = 'array' "

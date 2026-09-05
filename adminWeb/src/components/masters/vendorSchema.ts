@@ -112,6 +112,20 @@ export type AddressSearch = (typeof ADDRESS_SEARCH)[number];
 export const addressSearchOf = (enabled: boolean): AddressSearch =>
   enabled ? "On" : "Off";
 
+/**
+ * Whether a technician's live site photo is location-gated on this vendor's
+ * jobs.
+ *
+ * Its own union rather than a shared On/Off alias: the two switches happen to
+ * read the same today, and a shared type would let a form put one where the
+ * other goes with nothing to catch it.
+ */
+export const LOCATION_CHECK = ["On", "Off"] as const;
+export type LocationCheck = (typeof LOCATION_CHECK)[number];
+
+export const locationCheckOf = (enabled: boolean): LocationCheck =>
+  enabled ? "On" : "Off";
+
 const upper = (v: string) => v.trim().toUpperCase();
 const squash = (v: string) => v.replace(/\s+/g, "");
 
@@ -186,6 +200,7 @@ export const vendorSchema = z.object({
     .min(1, "Pick at least one way tickets arrive"),
   status: z.enum(VENDOR_STATUSES),
   addressSearch: z.enum(ADDRESS_SEARCH),
+  locationCheck: z.enum(LOCATION_CHECK),
 });
 
 export type VendorFormValues = z.infer<typeof vendorSchema>;

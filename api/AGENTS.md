@@ -55,6 +55,21 @@ knowing before touching any of it:
 `cancel_penalty_cap_paise` is deliberately absent from `NODE_OVERRIDABLE_KEYS`: it caps a
 technician's calendar month across all their jobs, so it cannot have a per-ticket answer.
 
+**One job term is deliberately NOT snapshotted: `vendors.location_check_enabled`.** It switches off
+every refusal in `_check_live_was_taken_at_the_job` for the vendor who raised the ticket, and
+`submit_proof` reads it at the moment proof arrives rather than off `rules_snapshot`. That breaks
+the rule the snapshot exists for, on purpose: the switch is what a manager reaches for while a
+technician is standing on a site that cannot produce a GPS fix, and a value frozen at intake could
+never do that job. The cost is real and is the thing to weigh before copying the pattern — flipping
+it changes jobs already accepted, in both directions.
+
+Three things keep it honest. `_location_checks` is one indexed query, kept out of `_hydrate`
+because that also serves the pool, where `JobOfferOut` has no such field. A vendor that does not
+come back resolves to **True** — an unreadable switch is not an open one. And off never stops the
+measuring: the distance is still computed and still written to the `started` event, with
+*"location check off for this vendor"* appended, because a trail that cannot distinguish "checked"
+from "not checked" is worse than one that says neither.
+
 `GET /tickets/escalations` is **paginated but never pagered** — the console loads on scroll, so
 every row stays reachable. Its ordering does two jobs at once and is one expression so the API and
 the screen's headings cannot disagree: live rows before missed ones (page one is therefore the half
