@@ -111,6 +111,19 @@ export interface JobDto extends JobOfferDto {
    * a number, or the app would block on a radius the server is not enforcing.
    */
   geoRadiusM?: number;
+  /**
+   * Whether either location rule is ENFORCED on this job — the vendor's own
+   * switch, read live by the server rather than stamped on the ticket.
+   *
+   * Optional because an older API does not send it, and absent must read as
+   * TRUE: this app's whole job here is to refuse a capture the server would
+   * refuse, so guessing "off" would let through work the upload then rejects.
+   *
+   * False does not mean "stop asking for a location". Keep requesting a fix and
+   * keep attaching whatever arrives — the server stores it either way, and the
+   * distance still lands on the ticket's trail. What stops is the blocking.
+   */
+  locationCheckEnabled?: boolean;
 
   /**
    * The product's own specs, as ops recorded them against the model.
@@ -292,6 +305,10 @@ export function toAcceptedJob(dto: JobDto): Job {
     latitude: dto.latitude ?? null,
     longitude: dto.longitude ?? null,
     geoRadiusM: dto.geoRadiusM ?? null,
+    // Missing reads as ENFORCED, unlike the three above. Their null selects a
+    // different rule; this one would switch the gate off, and an old API that
+    // simply never mentions it must not do that.
+    locationCheckEnabled: dto.locationCheckEnabled ?? true,
     // Blank rather than undefined, so every screen can map over it without a
     // guard. An older API sending nothing reads as "none recorded".
     modelParameters: dto.modelParameters ?? [],

@@ -280,6 +280,19 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
   // the fix and re-runs the effect.
   const jobPincode = job?.pincode ?? '';
 
+  // …unless the vendor who raised this job has the gate switched off, which a
+  // manager does in the console for sites that cannot produce a fix at all — a
+  // basement plant room, a rural dead spot. The server then refuses nothing,
+  // so blocking here would refuse a capture it would happily have taken.
+  //
+  // `!== false` rather than a truthiness test: absent means enforced, and an
+  // API that has never heard of the field must keep today's behaviour.
+  //
+  // Everything below this line still runs. The permission ask, the fix, the
+  // badge and the coordinates attached to the shot are unchanged — what stops
+  // is the refusal, not the recording.
+  const enforced = job?.locationCheckEnabled !== false;
+
   // How far the phone is from the customer's address, when BOTH ends have a
   // position. Null means there is nothing to measure — the ticket's address
   // was typed rather than picked, or this job predates the columns — and the
@@ -303,12 +316,15 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
   // where it is is judged by distance and its pincode is not consulted, so a
   // technician at the door but across a postal boundary is no longer refused.
   const elsewhere =
-    distanceM !== null && radiusM !== null
+    enforced &&
+    (distanceM !== null && radiusM !== null
       ? isTooFar(distanceM, coords?.accuracy ?? null, radiusM)
-      : !!coords?.pincode && !!jobPincode && coords.pincode !== jobPincode;
+      : !!coords?.pincode && !!jobPincode && coords.pincode !== jobPincode);
 
   const geoBlocked =
-    step === 'live' && (geo === 'acquiring' || geo === 'unavailable' || elsewhere);
+    step === 'live' &&
+    enforced &&
+    (geo === 'acquiring' || geo === 'unavailable' || elsewhere);
 
   /**
    * The header chevron walks BACK through the steps, and only leaves the flow
