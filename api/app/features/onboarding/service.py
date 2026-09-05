@@ -37,7 +37,9 @@ from app.features.masters.service import get_tree
 from app.models.role import AREA_MANAGER
 from app.models.membership import Membership
 from app.features.onboarding.schemas import (
+    InviteCategoryOut,
     InviteResolveOut,
+    InviteSubcategoryOut,
     RegistrationTokenOut,
     SelfRegisterRequest,
 )
@@ -103,6 +105,47 @@ async def _assert_usable(session: AsyncSession, invite: TechnicianInvite) -> Non
         raise _gone("This invite has expired — ask your manager for a new link")
 
 
+def _flatten_for_invite(roots) -> list[InviteCategoryOut]:
+    """A tree of any depth, as the two levels the coverage screen draws.
+
+    A root becomes a heading and its DIRECT children become the tiles under it —
+    nothing deeper. That is the level a technician certifies on (`CERTIFY_DEPTH`
+    in `core.product_tree`, where the reasoning lives), and ticking one still
+    covers every node beneath it.
+
+    It used to flatten every descendant into that list, which put six tiles
+    under one heading for a single branch and asked a technician to choose
+    between "Television" and "Television › Android TV" — two answers that meant
+    almost the same thing, one of which silently stops covering new work.
+
+    Bare names are safe here in a way they were not then: names are unique among
+    SIBLINGS, and every tile in a heading is now a sibling of the others. The
+    `parent › name` composition that told two identically-named tiles apart is
+    gone with the levels that needed it.
+
+    This is a server-side reshape on purpose. `mobileapp` ships as an APK on
+    people's phones, so narrowing the list here reaches an installed build with
+    no rebuild and no reinstall — the screen draws whatever it is sent.
+    """
+    return [
+        InviteCategoryOut(
+            id=root.id,
+            name=root.name,
+            iconKey=root.iconKey,
+            subcategories=[
+                InviteSubcategoryOut(
+                    id=child.id,
+                    name=child.name,
+                    iconKey=child.iconKey,
+                    isActive=child.isActive,
+                )
+                for child in root.children
+            ],
+        )
+        for root in roots
+    ]
+
+
 async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
     invite = await _load_invite(session, token)
     await _assert_usable(session, invite)
@@ -117,8 +160,9 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
         else None
     )
 
-    # The catalogue, read with the inviting company's scope rather than a
-    # caller's — there is no caller here.
+    # The catalogue, flattened to the two levels the coverage screen draws —
+    # see `_flatten_for_invite`. Read with the inviting company's scope rather
+    # than a caller's, because there is no caller here.
     #
     # Every attribute `get_tree` touches has to be present: this is a duck-typed
     # stand-in, so anything the real Principal grows and this does not is an
@@ -131,7 +175,9 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
         is_vendor = False
         vendor_id = None
 
-    categories = await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]
+    categories = _flatten_for_invite(
+        await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]
+    )
     assigned = await tech_service.invite_pincodes(session, invite.id)
     if not assigned:
         # Invites created before coverage moved onto them carry none, and a

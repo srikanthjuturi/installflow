@@ -13,11 +13,18 @@ copy, or the second one drifts.
 ## It must agree with `pool_query`, and that is the whole risk
 
 A technician pushed about a job the pool will not show them opens the app to
-nothing. The two predicates that decide it — covers the pincode, certified for
-the subcategory — are duplicated here rather than shared, because the two
-queries are shaped differently: one correlates against `Ticket` columns, this
-one against literals. If a THIRD condition is ever added to pool eligibility,
-it belongs in both, and this note is where whoever adds it should look.
+nothing. The two predicates that decide it — covers the pincode, certified
+anywhere on the job's catalogue path — are duplicated here rather than shared,
+because the two queries are shaped differently: one correlates against `Ticket`
+columns, this one against literals. If a THIRD condition is ever added to pool
+eligibility, it belongs in both, and this note is where whoever adds it should
+look.
+
+Certification covers a whole SUBTREE, so both sides test membership of the
+ticket's stamped `node_path_ids` rather than equality with one id. There are
+four copies of that test in all — here, `pool_query`, the guarded UPDATE in
+`accept`, and the assign guard — and they agree because they are all one array
+containment against the same column.
 """
 
 import datetime
@@ -33,9 +40,9 @@ from app.models.membership import Membership
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_ROLES
 from app.models.technician import (
     ACTIVE,
+    TechnicianNode,
     TechnicianPincode,
     TechnicianProfile,
-    TechnicianSubcategory,
 )
 from app.models.territory import MembershipRegion, MembershipState, Pincode, State
 from app.models.ticket import Ticket
@@ -66,10 +73,16 @@ async def technicians_covering(
     *,
     company_id: uuid.UUID,
     pincode: str,
-    subcategory_id: uuid.UUID,
+    node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
     slot_start: datetime.datetime | None = None,
 ) -> list[uuid.UUID]:
     """Technician profile ids eligible to be offered this job.
+
+    `node_path_ids` is the ticket's stamped catalogue path — the node it names
+    and every ancestor. Certification is descendant-aware, so a technician
+    certified on *TV* matches an *Android TV* job; passing only the leaf would
+    push about a job to nobody but the people certified at exactly that level,
+    while the REST pool went on offering it to everybody above them.
 
     Only technicians who are ONLINE. Going offline is the app's way of saying
     "do not offer me work", and a push that ignored it would make the toggle a
@@ -94,11 +107,11 @@ async def technicians_covering(
         .exists()
     )
     certified_for = (
-        select(TechnicianSubcategory.id)
+        select(TechnicianNode.id)
         .where(
-            TechnicianSubcategory.company_id == company_id,
-            TechnicianSubcategory.technician_id == TechnicianProfile.id,
-            TechnicianSubcategory.subcategory_id == subcategory_id,
+            TechnicianNode.company_id == company_id,
+            TechnicianNode.technician_id == TechnicianProfile.id,
+            TechnicianNode.node_id.in_(list(node_path_ids)),
         )
         .exists()
     )

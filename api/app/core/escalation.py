@@ -154,7 +154,7 @@ async def escalate(
         db,
         company_id=row.company_id,
         pincode=row.pincode,
-        subcategory_id=row.subcategory_id,
+        node_path_ids=row.node_path_ids,
     )
     await publish_ticket_changed(db, row)
     return True

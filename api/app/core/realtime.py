@@ -29,7 +29,7 @@ anybody's phone, and we did not have to write a line to make that true.
 
 As little as possible. The event is a **doorbell, not a delivery van** —
 
-    {"kind": "pool.changed", "company_id": ..., "pincode": ..., "subcategory_id": ...}
+    {"kind": "pool.changed", "company_id": ..., "pincode": ..., "node_path_ids": [...]}
 
 — three routing facts and no customer data. The client is told only that
 something it can see has changed; it then re-reads the pool through the normal
@@ -37,10 +37,11 @@ authenticated REST endpoint, which already masks the customer and already scopes
 to the tenant. So this file adds no new place for a name or a phone number to
 escape, and hard rule 0 is enforced where it already was.
 
-`pincode` and `subcategory_id` are in the payload so a listening socket can
+`pincode` and `node_path_ids` are in the payload so a listening socket can
 decide *without a query* whether its technician cares. They are not secrets:
 they are the two facts the technician's own coverage is already defined by, and
-a socket only ever sees them for its own company.
+a socket only ever sees them for its own company. The path rather than the leaf,
+because certification covers a whole subtree — see `PoolChanged`.
 
 ## The 8000-byte wall
 
@@ -85,11 +86,22 @@ _MAILBOX_MAX = 64
 
 @dataclass(frozen=True, slots=True)
 class PoolChanged:
-    """Something entered the pool for one company."""
+    """Something entered the pool for one company.
+
+    Carries the ticket's whole catalogue PATH, not just the node it names.
+    Certification is descendant-aware — somebody certified on *TV* is eligible
+    for an *Android TV* job — so a socket holding only its technician's own
+    certified ids has to be able to intersect. Sending the leaf alone would make
+    every listener miss the jobs they are most likely to be offered, silently,
+    with the REST pool still showing them a minute later.
+
+    Six ids at most (`MAX_NODE_DEPTH` + 1), so a few hundred bytes against the
+    8000-byte cap.
+    """
 
     company_id: uuid.UUID
     pincode: str
-    subcategory_id: uuid.UUID
+    node_path_ids: tuple[uuid.UUID, ...]
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -97,7 +109,7 @@ class PoolChanged:
                 "kind": "pool.changed",
                 "company_id": str(self.company_id),
                 "pincode": self.pincode,
-                "subcategory_id": str(self.subcategory_id),
+                "node_path_ids": [str(n) for n in self.node_path_ids],
             },
             separators=(",", ":"),
         )
@@ -107,10 +119,13 @@ class PoolChanged:
         if raw.get("kind") != "pool.changed":
             return None
         try:
+            path = raw["node_path_ids"]
+            if not isinstance(path, list):
+                raise TypeError("node_path_ids must be a list")
             return PoolChanged(
                 company_id=uuid.UUID(str(raw["company_id"])),
                 pincode=str(raw["pincode"]),
-                subcategory_id=uuid.UUID(str(raw["subcategory_id"])),
+                node_path_ids=tuple(uuid.UUID(str(n)) for n in path),
             )
         except (KeyError, ValueError, TypeError):
             # A malformed payload is a bug on the publishing side, not something
@@ -433,7 +448,11 @@ async def publish_job_changed(
 
 
 async def publish_pool_changed(
-    db: AsyncSession, *, company_id: uuid.UUID, pincode: str, subcategory_id: uuid.UUID
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    pincode: str,
+    node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
 ) -> None:
     """Ring the doorbell **when this transaction commits**.
 
@@ -448,7 +467,7 @@ async def publish_pool_changed(
     it would be an injection rather than a bug.
     """
     event = PoolChanged(
-        company_id=company_id, pincode=pincode, subcategory_id=subcategory_id
+        company_id=company_id, pincode=pincode, node_path_ids=tuple(node_path_ids)
     )
     await db.execute(
         text("SELECT pg_notify(:channel, :payload)"),

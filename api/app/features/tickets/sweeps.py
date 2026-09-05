@@ -33,7 +33,7 @@ should not be: this codebase's rule is that a ticket's history lives in
 `ticket_events`, not in its status column. "When did we ask the customer" is a
 moment, and the event is where moments are kept.
 
-## Every window is the TICKET'S OWN COMPANY'S
+## Every window is the TICKET'S OWN
 
 These sweeps run across the whole database at once — one tick, every tenant —
 so the thresholds cannot be Python constants folded into a `timedelta` before
@@ -41,27 +41,41 @@ the query. They were exactly that until `company_rules` existed, which is how a
 multi-tenant product ended up with one escalation window for the entire
 deployment.
 
-Each sweep now JOINs `company_rules` and does the arithmetic in SQL, so the row
-supplies its own company's number and one query still serves every tenant.
-`INTERVAL '1 hour' * rules.column` is the Postgres spelling; multiplying an
-interval by an integer column is exact, and it keeps the comparison on the
-indexed `slot_start` rather than wrapping it in a function.
+They then JOINed `company_rules`. They no longer join anything: a ticket
+**stamps its resolved rules at intake**, so every threshold is a value on the
+row already being scanned. `INTERVAL '1 hour' * <expression>` is the Postgres
+spelling; multiplying an interval by an integer is exact, and it keeps the
+comparison on the indexed `slot_start` rather than wrapping it in a function.
 
-The join is INNER on purpose: a company with no rules row would silently drop
-out of every sweep, and a missed escalation looks like nothing at all. Three
-things keep the row there — the migration backfilled every company,
-`companies.service.create_company` writes one, and `core.rules.load_rules`
-repairs it on the next read.
+Two things that bought:
+
+* **Per PRODUCT, not just per tenant.** A category may override any of these
+  windows, and a sweep reading the ticket gets that for free — there was no
+  join that could have expressed "this company's rules, unless this ticket's
+  category says otherwise, unless one of its ancestors does".
+* **The INNER-join hazard is gone.** A company with no rules row used to drop
+  silently out of every sweep, and a missed escalation looks like nothing at
+  all. Nothing can drop out now; a ticket cannot exist without a snapshot.
+
+⚠ Read the snapshot through `core.rules.snapshot_int`, never with a bare
+`->>`. It supplies the `DEFAULTS` fallback, so a ticket stamped before a rule
+existed still sweeps instead of comparing against NULL — which is neither true
+nor false, and would quietly exclude the row for ever.
 """
 
 import datetime
 import logging
 import uuid
 
-from sqlalchemy import func, literal_column, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.escalation import escalate, hours_to, whatsapp_the_area_manager
+from app.core.rules import (
+    interval_hours as _hours,
+    interval_minutes as _minutes,
+    snapshot_int,
+)
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import publish_notification, publish_ticket_changed
@@ -69,7 +83,6 @@ from app.core.tickets import NO_SHOW_GRACE_MINUTES, NO_SHOW_LOOKBACK_HOURS
 from app.features.tickets.service import clock, when_label
 from app.integrations import whatsapp
 from app.models.company import Company
-from app.models.company_rules import CompanyRules
 from app.models.membership import Membership
 from app.models.notification import Notification
 from app.models.product import ProductModel
@@ -86,17 +99,9 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-#: A rule column as a time span, for date arithmetic in SQL.
-#:
-#: `interval '1 hour' * <int column>` rather than `make_interval(hours => ...)`:
-#: multiplication by an integer column is exact, reads as what it is, and does
-#: not depend on SQLAlchemy rendering Postgres's named-argument notation.
-def _hours(column):
-    return column * literal_column("interval '1 hour'")
-
-
-def _minutes(column):
-    return column * literal_column("interval '1 minute'")
+#: A rule out of the ticket's own snapshot, with the `DEFAULTS` fallback.
+def _rule(key: str):
+    return snapshot_int(Ticket.rules_snapshot, key)
 
 
 def _slot_clock(row: Ticket) -> str:
@@ -210,7 +215,6 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
     candidates = list(
         await db.scalars(
             select(Ticket)
-            .join(CompanyRules, CompanyRules.company_id == Ticket.company_id)
             .where(
                 Ticket.status == "New",
                 Ticket.technician_id.is_(None),
@@ -221,14 +225,14 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
                 Ticket.slot_start > now,
                 # This company's own window, not the deployment's.
                 Ticket.slot_start
-                <= now + _hours(CompanyRules.escalate_hours_before_slot),
+                <= now + _hours(_rule("escalate_hours_before_slot")),
                 # NULL means never re-notified, which is the common case and
                 # must pass — hence the explicit IS NULL rather than relying on
                 # a comparison against NULL, which is neither true nor false.
                 or_(
                     renotified.is_(None),
                     renotified
-                    <= now - _minutes(CompanyRules.renotify_grace_minutes),
+                    <= now - _minutes(_rule("renotify_grace_minutes")),
                 ),
             )
         )
@@ -283,20 +287,20 @@ async def sweep_silent_slots(db: AsyncSession) -> int:
         )
         .scalar_subquery()
     )
-    # The company's own threshold comes back WITH the row, because the message
-    # quotes it — "has not picked a time in 6h" is the sentence, and reading the
-    # number from anywhere but the row that was selected on it is how the text
-    # and the query start disagreeing.
+    # The threshold comes back WITH the row, because the message quotes it —
+    # "has not picked a time in 6h" is the sentence, and reading the number from
+    # anywhere but the row that was selected on it is how the text and the query
+    # start disagreeing. It is per TICKET now, so two tickets in one sweep can
+    # legitimately quote different numbers.
     pairs = (
         await db.execute(
-            select(Ticket, CompanyRules.slot_silence_hours)
-            .join(CompanyRules, CompanyRules.company_id == Ticket.company_id)
+            select(Ticket, _rule("slot_silence_hours"))
             .where(
                 Ticket.status == "Slot Pending",
                 Ticket.deleted_at.is_(None),
                 Ticket.slot_start.is_(None),
                 asked.is_not(None),
-                asked <= now - _hours(CompanyRules.slot_silence_hours),
+                asked <= now - _hours(_rule("slot_silence_hours")),
                 Ticket.id.not_in(_already("slot")),
             )
         )
@@ -338,14 +342,13 @@ async def sweep_force_close(db: AsyncSession) -> int:
     )
     pairs = (
         await db.execute(
-            select(Ticket, CompanyRules.force_close_hours)
-            .join(CompanyRules, CompanyRules.company_id == Ticket.company_id)
+            select(Ticket, _rule("force_close_hours"))
             .where(
                 Ticket.status == "Awaiting Customer",
                 Ticket.deleted_at.is_(None),
                 Ticket.customer_confirmed_at.is_(None),
                 asked.is_not(None),
-                asked <= now - _hours(CompanyRules.force_close_hours),
+                asked <= now - _hours(_rule("force_close_hours")),
                 Ticket.id.not_in(_already("force_close")),
             )
         )
@@ -388,7 +391,6 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
     rows = list(
         await db.scalars(
             select(Ticket)
-            .join(CompanyRules, CompanyRules.company_id == Ticket.company_id)
             .where(
                 Ticket.status == "Assigned",
                 Ticket.deleted_at.is_(None),
@@ -398,7 +400,7 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
                 # reminder, it is an accusation.
                 Ticket.slot_start > now,
                 Ticket.slot_start
-                <= now + _minutes(CompanyRules.slot_reminder_minutes),
+                <= now + _minutes(_rule("slot_reminder_minutes")),
                 Ticket.id.not_in(reminded),
             )
         )
@@ -488,7 +490,6 @@ async def sweep_customer_notice(db: AsyncSession) -> int:
     rows = (
         await db.execute(
             select(Ticket, User.full_name, User.phone, Company.name, ProductModel.name)
-            .join(CompanyRules, CompanyRules.company_id == Ticket.company_id)
             .join(Company, Company.id == Ticket.company_id)
             .join(
                 ProductModel,
@@ -514,7 +515,7 @@ async def sweep_customer_notice(db: AsyncSession) -> int:
                 Ticket.slot_end.is_not(None),
                 Ticket.slot_start > now,
                 Ticket.slot_start
-                <= now + _minutes(CompanyRules.customer_notice_minutes),
+                <= now + _minutes(_rule("customer_notice_minutes")),
                 Ticket.id.not_in(notified),
             )
         )

@@ -7,6 +7,7 @@ object — the moment it writes to a table, "can see the escalation window" and
 "can move it" stop being the same question.
 """
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -16,7 +17,12 @@ from app.core.database import get_db
 from app.core.deps import Principal, require_any_feature, require_feature
 from app.core.schemas import ApiEnvelope, envelope
 from app.features.settings import service
-from app.features.settings.schemas import RulesOut, RulesUpdateRequest
+from app.features.settings.schemas import (
+    NodeRulesOut,
+    NodeRulesUpdateRequest,
+    RulesOut,
+    RulesUpdateRequest,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -53,4 +59,42 @@ async def update_rules(
     return envelope(
         await service.update_rules(db, principal, body),
         message="Rules configuration saved",
+    )
+
+
+@router.get("/rules/nodes/{node_id}", response_model=ApiEnvelope[NodeRulesOut])
+async def get_node_rules(
+    node_id: uuid.UUID, principal: ReadRules, db: Db
+) -> ApiEnvelope[NodeRulesOut]:
+    """One category's overrides, what it resolves to, and where each came from.
+
+    Three things rather than one, because the screen needs all three at once:
+    the boxes bind to `own`, the placeholders come from `effective`, and the
+    "from *TV*" hint beside each comes from `inheritedFrom`.
+    """
+    return envelope(await service.get_node_rules(db, principal, node_id))
+
+
+@router.put("/rules/nodes/{node_id}", response_model=ApiEnvelope[NodeRulesOut])
+async def update_node_rules(
+    node_id: uuid.UUID,
+    body: NodeRulesUpdateRequest,
+    principal: EditSettings,
+    db: Db,
+) -> ApiEnvelope[NodeRulesOut]:
+    """Replace this category's overrides. Null anywhere means inherit."""
+    return envelope(
+        await service.update_node_rules(db, principal, node_id, body),
+        message="Category rules saved",
+    )
+
+
+@router.delete("/rules/nodes/{node_id}", response_model=ApiEnvelope[NodeRulesOut])
+async def clear_node_rules(
+    node_id: uuid.UUID, principal: EditSettings, db: Db
+) -> ApiEnvelope[NodeRulesOut]:
+    """Drop every override, so this category inherits everything again."""
+    return envelope(
+        await service.clear_node_rules(db, principal, node_id),
+        message="Category rules reset",
     )

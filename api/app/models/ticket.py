@@ -33,6 +33,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
@@ -52,8 +53,34 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     # ── what, and whose ────────────────────────────────────────────────────
     #: All three are COMPOSITE FKs — see __table_args__.
     vendor_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    subcategory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: The catalogue node this job sits under. Renamed from `subcategory_id`
+    #: when the product tree merged into one recursive table; the values never
+    #: changed, so nothing had to be re-keyed.
+    #:
+    #: On the WIRE this is still `subcategoryId`, and `TicketOut` still sends
+    #: `categoryName` (the root) and `subcategoryName` (this node's own name).
+    #: That divergence is deliberate: `mobileapp` ships as an APK on people's
+    #: phones, so renaming a JSON field breaks every installed build and forces
+    #: a coordinated reinstall. The column is honest; the contract is stable.
+    node_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     model_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+
+    #: `node_id`'s ancestors AND itself, root first — stamped at intake from
+    #: `product_nodes.ancestor_ids`.
+    #:
+    #: This is what makes descendant-aware certification cost nothing. A
+    #: technician certified on *TV* is eligible for an *Android TV* job because
+    #: `technician_nodes.node_id = ANY(node_path_ids)` — no join to the tree, no
+    #: recursive CTE, in the one query that runs for every technician against
+    #: every open job. `core.coverage`, the assign guard and the pool socket use
+    #: the same test, so all four agree by construction.
+    #:
+    #: Stamped rather than resolved, for the reason the price is: it is what the
+    #: job was OFFERED as. Re-parenting the catalogue later does not retroactively
+    #: change who was eligible for a job somebody already accepted.
+    node_path_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(Uuid), nullable=False
+    )
 
     #: One of `app.core.service_types.SERVICE_TYPES`, and it must be one the
     #: chosen model DECLARES it supports — checked in the service, because the
@@ -267,6 +294,28 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     technician_payout_paise: Mapped[int] = mapped_column(Integer, nullable=False)
     vendor_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    #: The operating rules this job runs under, resolved ONCE at intake.
+    #:
+    #: `core.rules.resolve_rules` folds `DEFAULTS` → `company_rules` → each
+    #: ancestor node's overrides, root first → the node's own, and the answer
+    #: lands here. Everything downstream reads this column: the six sweeps, the
+    #: cancellation band, the geo radius, the SLA colouring. None of them joins
+    #: `company_rules` any more.
+    #:
+    #: Frozen for the same reason the two prices are frozen. A technician who
+    #: accepted a job under a ₹300 late-cancellation band is charged ₹300, even
+    #: if somebody edits the rule that afternoon — and the preview they were
+    #: shown and the charge they take come from one number, so they cannot
+    #: disagree.
+    #:
+    #: ⚠ **Read it through `core.rules.snapshot_value`, never with a bare
+    #: subscript.** A ticket stamped before a new rule existed simply has no key
+    #: for it, and the helper falls back to `DEFAULTS`. In SQL the same job is
+    #: done by `COALESCE((rules_snapshot->>'x')::int, <default>)`. Without that,
+    #: adding a twelfth-and-first rule would be a data migration over every
+    #: ticket ever raised.
+    rules_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
     __table_args__ = (
         # Declared on the MODEL, not only in a migration, so the model is the
         # whole truth about the table and `--autogenerate` can see them.
@@ -362,10 +411,10 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_tickets_company_sla_due_at", "company_id", "sla_due_at"),
         Index("ix_tickets_technician_id", "technician_id"),
         # One per composite FK below. Without these, deleting a vendor — or a
-        # model, or a subcategory — seq-scans every ticket in the database to
+        # model, or a node — seq-scans every ticket in the database to
         # prove the RESTRICT holds, and "tickets for this vendor" does the same.
         Index("ix_tickets_company_vendor", "company_id", "vendor_id"),
-        Index("ix_tickets_company_subcategory", "company_id", "subcategory_id"),
+        Index("ix_tickets_company_node", "company_id", "node_id"),
         Index("ix_tickets_company_model", "company_id", "model_id"),
         Index("ix_tickets_company_technician", "company_id", "technician_id"),
         # A vendor USER's list is "my vendor, and raised by me". `created_by`
@@ -373,7 +422,7 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # FK-coverage query that catches this class of miss would never ask for
         # it — and without it every page of that list is a sequential scan.
         Index("ix_tickets_created_by", "created_by"),
-        # RESTRICT on all three masters: a vendor, subcategory or model a ticket
+        # RESTRICT on all three masters: a vendor, node or model a ticket
         # names must not be able to disappear from under it. The services
         # already refuse to delete one that is referenced; this is the backstop.
         ForeignKeyConstraint(
@@ -383,9 +432,9 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
-            ["company_id", "subcategory_id"],
-            ["product_subcategories.company_id", "product_subcategories.id"],
-            name="fk_tickets_company_subcategory",
+            ["company_id", "node_id"],
+            ["product_nodes.company_id", "product_nodes.id"],
+            name="fk_tickets_company_node",
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(

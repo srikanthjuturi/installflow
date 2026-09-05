@@ -11,8 +11,10 @@ routing:
 
   * **pincode** — `technician_pincodes`, the table whose own docstring says the
     routing lookup is "who covers 400067 in this company";
-  * **subcategory** — `technician_subcategories`, whose docstring calls it "the
-    level a job offer matches on".
+  * **the catalogue node** — `technician_nodes`, whose docstring calls it "the
+    level a job offer matches on". A certification covers the whole SUBTREE
+    beneath it, so the test is membership of the ticket's stamped
+    `node_path_ids` rather than equality with one id.
 
 Both are enforced HERE, in SQL, and nowhere else. The app filters nothing: a
 client-side filter over a list the server already sent is not a permission
@@ -28,7 +30,7 @@ import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -48,7 +50,12 @@ from app.core.realtime import (
     publish_ticket_changed,
 )
 from app.core.coordinates import metres_between, metres_label
-from app.core.rules import CANCEL_PENALTY_BANDS, cancel_band_index, load_rules
+from app.core.rules import (
+    CANCEL_PENALTY_BANDS,
+    cancel_band_index,
+    load_rules,
+    snapshot_value,
+)
 from app.core.schemas import ListParams
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
@@ -62,18 +69,19 @@ from app.features.jobs.schemas import (
     JobOfferOut,
     JobOut,
     PenaltyBandOut,
+    ProductParameterOut,
     ProofArtifactIn,
     ProofImageOut,
 )
 from app.integrations import blob, whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
-from app.models.product import ProductModel, ProductSubcategory
+from app.models.product import ProductModel, ProductNode
 from app.models.technician import (
     ACTIVE,
+    TechnicianNode,
     TechnicianPincode,
     TechnicianProfile,
-    TechnicianSubcategory,
 )
 from app.models.ledger import LedgerEntry
 from app.models.ticket import Ticket, TicketProof
@@ -157,16 +165,22 @@ def pool_query(
         .exists()
     )
     certified_for = (
-        select(TechnicianSubcategory.id)
+        select(TechnicianNode.id)
         .where(
             # `company_id` is on both tables and is filtered on both, even
             # though `technician_id` alone would already be unambiguous. Hard
             # rule 0: every query filters on the principal's company, and a
             # join that is only accidentally tenant-safe is one refactor away
             # from not being.
-            TechnicianSubcategory.company_id == company_id,
-            TechnicianSubcategory.technician_id == technician_id,
-            TechnicianSubcategory.subcategory_id == Ticket.subcategory_id,
+            TechnicianNode.company_id == company_id,
+            TechnicianNode.technician_id == technician_id,
+            # ANYWHERE on the job's catalogue path, not just the node it names:
+            # certification covers a subtree, so somebody certified on *TV* is
+            # eligible for an *Android TV* job. `node_path_ids` was stamped on
+            # the ticket at intake precisely so this stays one array containment
+            # in the hottest query in the product — no join to the tree, no
+            # recursive CTE, and nothing that gets slower as the catalogue deepens.
+            TechnicianNode.node_id == func.any(Ticket.node_path_ids),
         )
         .exists()
     )
@@ -237,35 +251,42 @@ def pool_query(
     )
 
 
-async def _hydrate(db: AsyncSession, rows: list[Ticket]) -> list[JobOfferOut]:
+async def _hydrate(
+    db: AsyncSession, rows: list[Ticket]
+) -> tuple[list[JobOfferOut], dict[uuid.UUID, tuple[str, list[dict], str | None]]]:
     """Resolve the two names an offer shows — one query each, never N+1."""
     if not rows:
-        return []
+        return [], {}
 
     sub_names = {
         r[0]: r[1]
         for r in await db.execute(
-            select(ProductSubcategory.id, ProductSubcategory.name).where(
-                ProductSubcategory.id.in_({t.subcategory_id for t in rows})
+            select(ProductNode.id, ProductNode.name).where(
+                ProductNode.id.in_({t.node_id for t in rows})
             )
         )
     }
-    model_names = {
-        r[0]: r[1]
+    # Name, specs and notes in ONE query — the same one that already fetched the
+    # name. A second query per page would be an N+1 waiting to be written.
+    models = {
+        r[0]: (r[1], r[2], r[3])
         for r in await db.execute(
-            select(ProductModel.id, ProductModel.name).where(
-                ProductModel.id.in_({t.model_id for t in rows})
-            )
+            select(
+                ProductModel.id,
+                ProductModel.name,
+                ProductModel.parameters,
+                ProductModel.notes,
+            ).where(ProductModel.id.in_({t.model_id for t in rows}))
         )
     }
 
-    return [_offer_out(t, sub_names, model_names) for t in rows]
+    return [_offer_out(t, sub_names, models) for t in rows], models
 
 
 def _offer_out(
     t: Ticket,
     sub_names: dict[uuid.UUID, str],
-    model_names: dict[uuid.UUID, str],
+    models: dict[uuid.UUID, tuple[str, list[dict], str | None]],
 ) -> JobOfferOut:
     # `slot_start`/`slot_end` are non-null by the query's own predicate; the
     # asserts are for the type checker rather than for runtime.
@@ -273,8 +294,8 @@ def _offer_out(
     return JobOfferOut(
         id=t.id,
         code=t.code,
-        subcategoryName=sub_names.get(t.subcategory_id, "—"),
-        modelName=model_names.get(t.model_id, "—"),
+        subcategoryName=sub_names.get(t.node_id, "—"),
+        modelName=models.get(t.model_id, ("—", [], None))[0],
         serviceType=t.service_type,
         city=t.city,
         pincode=t.pincode,
@@ -300,16 +321,11 @@ def serial_mismatch(t: Ticket) -> bool:
     return t.observed_serial.strip().upper() != t.serial_number.strip().upper()
 
 
-async def _geo_radius(db: AsyncSession, company_id: uuid.UUID) -> int:
-    """This company's proof radius, in metres.
-
-    One lookup per PAGE, never one per row — every caller's rows share a
-    company, because `mine_query` puts `company_id` in its WHERE clause.
-    """
-    return (await load_rules(db, company_id)).geo_radius_m
-
-
-def _job_out(offer: JobOfferOut, t: Ticket, *, geo_radius_m: int) -> JobOut:
+def _job_out(
+    offer: JobOfferOut,
+    t: Ticket,
+    models: dict[uuid.UUID, tuple[str, list[dict], str | None]],
+) -> JobOut:
     """The offer, plus everything that unlocks once the job is this technician's.
 
     One builder for all three callers — accept, the detail read and the list —
@@ -329,7 +345,19 @@ def _job_out(offer: JobOfferOut, t: Ticket, *, geo_radius_m: int) -> JobOut:
         # on the same number the server will refuse on.
         latitude=t.latitude,
         longitude=t.longitude,
-        geoRadiusM=geo_radius_m,
+        # The product's own specs, read LIVE rather than stamped: correcting a
+        # spec should fix every job that names the product, because the unit on
+        # the wall never changed and the old value was simply wrong. Money and
+        # policy are the opposite, and are frozen on the ticket.
+        modelParameters=[
+            ProductParameterOut(name=p.get("name", ""), value=p.get("value", ""))
+            for p in (models.get(t.model_id, ("", [], None))[1] or [])
+        ],
+        modelNotes=models.get(t.model_id, ("", [], None))[2],
+        # This TICKET's radius, out of its stamped rules — a rooftop solar
+        # job is not photographed from the same distance a set-top box is,
+        # and `geo_radius_m` is one of the rules a product node may override.
+        geoRadiusM=snapshot_value(t.rules_snapshot, "geo_radius_m"),
         status=t.status,
         description=t.description,
         serialNumber=t.serial_number,
@@ -391,10 +419,9 @@ async def list_mine(
         stmt = stmt.where(Ticket.status.in_(statuses))
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     tickets = list(rows)
-    offers = await _hydrate(db, tickets)
-    radius = await _geo_radius(db, company_id)
+    offers, models = await _hydrate(db, tickets)
     return [
-        _job_out(o, t, geo_radius_m=radius) for o, t in zip(offers, tickets)
+        _job_out(o, t, models) for o, t in zip(offers, tickets)
     ], total
 
 
@@ -421,11 +448,8 @@ async def get_job(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
-    return _job_out(
-        (await _hydrate(db, [row]))[0],
-        row,
-        geo_radius_m=await _geo_radius(db, company_id),
-    )
+    offers, models = await _hydrate(db, [row])
+    return _job_out(offers[0], row, models)
 
 
 async def list_today(
@@ -460,9 +484,8 @@ async def list_today(
         )
     )
     tickets = list(rows)
-    offers = await _hydrate(db, tickets)
-    radius = await _geo_radius(db, company_id)
-    return [_job_out(o, t, geo_radius_m=radius) for o, t in zip(offers, tickets)]
+    offers, models = await _hydrate(db, tickets)
+    return [_job_out(o, t, models) for o, t in zip(offers, tickets)]
 
 
 async def list_pool(
@@ -474,7 +497,8 @@ async def list_pool(
 ) -> tuple[list[JobOfferOut], int]:
     stmt = pool_query(company_id=company_id, technician_id=technician_id)
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
-    return await _hydrate(db, list(rows)), total
+    offers, _ = await _hydrate(db, list(rows))
+    return offers, total
 
 
 async def get_offer(
@@ -505,7 +529,8 @@ async def get_offer(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
-    return (await _hydrate(db, [row]))[0]
+    offers, _ = await _hydrate(db, [row])
+    return offers[0]
 
 
 def JobRefused(code: str, detail: str) -> AppError:
@@ -681,7 +706,7 @@ async def accept(
         db,
         company_id=company_id,
         pincode=offered.pincode,
-        subcategory_id=offered.subcategory_id,
+        node_path_ids=offered.node_path_ids,
     )
     await publish_ticket_changed(db, offered)
     await db.commit()
@@ -691,11 +716,8 @@ async def accept(
     )
     assert row is not None
     # Now it is theirs, so the masked fields are theirs to see.
-    return _job_out(
-        (await _hydrate(db, [row]))[0],
-        row,
-        geo_radius_m=await _geo_radius(db, company_id),
-    )
+    offers, models = await _hydrate(db, [row])
+    return _job_out(offers[0], row, models)
 
 
 # ── doing the job ────────────────────────────────────────────────────────────
@@ -790,9 +812,13 @@ async def submit_proof(
     # repairing a missing row can emit at most one INSERT on a table the
     # guarded UPDATE below never touches. After the `TicketProof` adds it would
     # flush those early for nothing.
-    rules = await load_rules(db, company_id)
     metres = _check_live_was_taken_at_the_job(
-        artifacts, ticket=row, geo_radius_m=rules.geo_radius_m
+        artifacts,
+        ticket=row,
+        # The ticket's own radius — the SAME number `_job_out` sent the phone,
+        # so the shutter the app blocked and the upload the server refuses agree
+        # by construction.
+        geo_radius_m=snapshot_value(row.rules_snapshot, "geo_radius_m"),
     )
 
     result = await db.execute(
@@ -1399,11 +1425,21 @@ async def _band_for(
 
     Returns `(charge_paise, label, escalates)`.
 
-    The amounts come from the company's own `cancel_penalties_paise`, the hour
-    boundaries from `core.rules` — amounts are policy and configurable, where
-    one band ends is domain and is not. This used to be computed on the PHONE,
-    which its own comment called the wrong place: `hoursToSlot` came off the
-    device clock, so a wrong clock talked itself into a cheaper penalty.
+    The amounts come from the TICKET'S OWN stamped `cancel_penalties_paise`,
+    the hour boundaries from `core.rules` — amounts are policy and configurable
+    per product, where one band ends is domain and is not. This used to be
+    computed on the PHONE, which its own comment called the wrong place:
+    `hoursToSlot` came off the device clock, so a wrong clock talked itself into
+    a cheaper penalty.
+
+    Reading the snapshot rather than the live rules is what makes the quote
+    honest: a technician who accepted a job under a ₹300 band is charged ₹300
+    even if somebody re-prices the category that afternoon.
+
+    **The monthly cap is the exception, and comes from the company.** It bounds
+    what one technician pays across every job they took that month, so it cannot
+    be a property of any single one of them — which is why it is the one rule a
+    node may not override.
 
     `charge_paise` is what will ACTUALLY be taken, which is not always the
     band: the monthly cap can leave less than it, or nothing at all. The
@@ -1414,7 +1450,7 @@ async def _band_for(
     assert row.slot_start is not None  # an Assigned job always has a slot
     hours = (row.slot_start - _now()).total_seconds() / 3600
     index = cancel_band_index(hours)
-    band = int(rules.cancel_penalties_paise[index])
+    band = int(snapshot_value(row.rules_snapshot, "cancel_penalties_paise")[index])
 
     already = await charged_this_month(
         db, company_id=row.company_id, technician_id=technician_id
@@ -1425,10 +1461,11 @@ async def _band_for(
     charge = band if remaining is None else min(band, remaining)
 
     # The same threshold the sweep escalates on, so "under four hours" means one
-    # thing across the product. Read from the company's rules rather than
-    # inferred from the band index: a company that moved its escalation window
-    # would otherwise have a screen promising an escalation on a different clock.
-    escalates = hours < rules.escalate_hours_before_slot
+    # thing for this job across the product. From the ticket's own rules rather
+    # than inferred from the band index: a category that moved its escalation
+    # window would otherwise have a screen promising an escalation on a
+    # different clock from the sweep's.
+    escalates = hours < snapshot_value(row.rules_snapshot, "escalate_hours_before_slot")
     return charge, CANCEL_PENALTY_BANDS[index], escalates
 
 
@@ -1601,7 +1638,7 @@ async def cancel(
             db,
             company_id=company_id,
             pincode=row.pincode,
-            subcategory_id=row.subcategory_id,
+            node_path_ids=row.node_path_ids,
         )
         await publish_ticket_changed(db, row)
     await db.commit()
@@ -1619,7 +1656,7 @@ async def cancel(
             code=row.code,
             pincode=row.pincode,
             city=row.city,
-            subcategory_id=row.subcategory_id,
+            node_path_ids=row.node_path_ids,
             slot_start=row.slot_start,
         )
     return PenaltyBandOut(amountPaise=charge, label=label, escalates=escalates)

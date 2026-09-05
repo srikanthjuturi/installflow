@@ -16,6 +16,7 @@ field is an amount already spent on a specific job — a fact — and it is read
 straight off the ticket by two clients. These are configuration.
 """
 
+import uuid
 from typing import Annotated
 
 from pydantic import Field, model_validator
@@ -165,3 +166,81 @@ class RulesUpdateRequest(AppModel):
                 "chosen a time."
             )
         return self
+
+
+# ── per-category overrides ────────────────────────────────────────────────────
+#
+# Everything below scopes the same rules to one catalogue node. Two differences
+# from the company shape above, and both follow from "null means inherit":
+#
+#   * every field is optional, and
+#   * NONE of the cross-field checks live here.
+#
+# The second is the important one. A node overriding `slotConfirmTimeoutHours`
+# alone can invert an escalation window it never mentioned, so the invariants
+# have to be tested against the RESOLVED set — which this schema cannot see. The
+# service does it, for the node and for every other node carrying an override,
+# through `core.rules.validate_resolved`.
+#
+# `penaltyCap` is absent on purpose: a monthly cap bounds a technician across
+# every job they took, so it cannot be a property of one product. See
+# `core.rules.NODE_OVERRIDABLE_KEYS`.
+
+
+def _optional(key: str):
+    """`_bounded`, but nullable — an omitted override is not an invalid one."""
+    low, high = LIMITS[key]
+    return Annotated[int | None, Field(default=None, ge=low, le=high)]
+
+
+class NodeRuleValues(AppModel):
+    """One node's own overrides, in rupees. Null anywhere means "inherit"."""
+
+    #: All four bands or none — a list is overridden whole, because inheriting
+    #: the first two and overriding the third would make
+    #: `cancel_penalties_paise[2]` mean different things at different depths.
+    penalty: Annotated[
+        list[PenaltyRupees] | None,
+        Field(
+            default=None,
+            min_length=CANCEL_PENALTY_COUNT,
+            max_length=CANCEL_PENALTY_COUNT,
+        ),
+    ] = None
+    bonusAmounts: Annotated[
+        list[BonusRupees] | None,
+        Field(default=None, min_length=BONUS_BAND_COUNT, max_length=BONUS_BAND_COUNT),
+    ] = None
+    aiThreshold: _optional("ai_confidence_threshold")
+    slaWarnAtPct: _optional("sla_warn_at_pct")
+    slotConfirmTimeoutHours: _optional("slot_silence_hours")
+    escalationTriggerHours: _optional("escalate_hours_before_slot")
+    customerWaitHours: _optional("force_close_hours")
+    renotifyGraceMinutes: _optional("renotify_grace_minutes")
+    slotReminderMinutes: _optional("slot_reminder_minutes")
+    customerNoticeMinutes: _optional("customer_notice_minutes")
+    geoRadiusM: _optional("geo_radius_m")
+
+
+class NodeRulesUpdateRequest(NodeRuleValues):
+    """A whole replacement of this node's overrides, not a patch.
+
+    Same reasoning as the company shape: the screen submits the complete form,
+    so an absent field means "this node does not override it" rather than
+    "leave whatever was there". Clearing every field is how the console's
+    *Reset to inherited* is spelled, and it deletes the row.
+    """
+
+
+class NodeRulesOut(AppModel):
+    nodeId: uuid.UUID
+    #: Root first, including the node itself — what the scope selector prints.
+    path: list[str]
+    #: What this node itself sets. Every null is a field it inherits.
+    own: NodeRuleValues
+    #: What a ticket raised on this node would actually be stamped with.
+    effective: RulesOut
+    #: Per field, the node that supplied the effective value — absent when it
+    #: came from the company baseline. Keyed by the wire names above, so the
+    #: console can print "from TV" beside the box without matching anything up.
+    inheritedFrom: dict[str, str] = {}

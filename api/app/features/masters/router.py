@@ -1,8 +1,14 @@
-"""Product master endpoints — the category → subcategory → model catalogue.
+"""Product master endpoints — the recursive category tree and its products.
 
 Reads are gated on `masters.view`, writes on `masters.edit`. Every write returns
-the affected category with its whole subtree, so the console re-renders from one
-authoritative response instead of patching a local tree and hoping it matches.
+the affected ROOT branch with its whole subtree, so the console re-renders from
+one authoritative response instead of patching a local tree and hoping it
+matches — which matters more now that a change at any depth can move an
+inherited icon, an inherited parameter or a technician count several levels
+below it.
+
+`/categories` and `/subcategories` were two halves of the same idea and are now
+one `/nodes`. A node's level is `depth`, not which URL created it.
 """
 
 import uuid
@@ -17,13 +23,11 @@ from app.core.icons import PRODUCT_ICON_KEYS
 from app.core.schemas import ApiEnvelope, envelope
 from app.features.masters import service
 from app.features.masters.schemas import (
-    CategoryCreateRequest,
-    CategoryUpdateRequest,
     ModelCreateRequest,
     ModelUpdateRequest,
-    ProductCategoryOut,
-    SubcategoryCreateRequest,
-    SubcategoryUpdateRequest,
+    NodeCreateRequest,
+    NodeUpdateRequest,
+    ProductNodeOut,
 )
 
 router = APIRouter(prefix="/masters", tags=["masters"])
@@ -44,18 +48,18 @@ async def list_icons(principal: CanView) -> ApiEnvelope[list[str]]:
     return envelope(list(PRODUCT_ICON_KEYS))
 
 
-@router.get("/categories", response_model=ApiEnvelope[list[ProductCategoryOut]])
-async def get_categories(
+@router.get("/nodes", response_model=ApiEnvelope[list[ProductNodeOut]])
+async def get_nodes(
     db: Db,
     principal: CanView,
     includeInactive: Annotated[bool, Query()] = False,
     vendorId: Annotated[uuid.UUID | None, Query()] = None,
-) -> ApiEnvelope[list[ProductCategoryOut]]:
-    """The catalogue, whole or narrowed to one brand.
+) -> ApiEnvelope[list[ProductNodeOut]]:
+    """The catalogue, whole or narrowed to one brand. Roots, nested downward.
 
-    `vendorId` returns only that vendor's models, and only the subcategories and
-    categories left holding any — ticket intake picks a vendor first, and the
-    pickers under it must not offer a path that dead-ends.
+    `vendorId` returns only that vendor's models, and only the branches left
+    holding any — ticket intake picks a vendor first, and the pickers under it
+    must not offer a path that dead-ends.
     """
     data = await service.get_tree(
         db, principal, include_inactive=includeInactive, vendor_id=vendorId
@@ -63,81 +67,53 @@ async def get_categories(
     return envelope(data)
 
 
-@router.post(
-    "/categories", response_model=ApiEnvelope[ProductCategoryOut], status_code=201
-)
-async def create_category(
-    body: CategoryCreateRequest, db: Db, principal: CanEdit
-) -> ApiEnvelope[ProductCategoryOut]:
-    data = await service.create_category(db, principal, body)
+@router.post("/nodes", response_model=ApiEnvelope[ProductNodeOut], status_code=201)
+async def create_node(
+    body: NodeCreateRequest, db: Db, principal: CanEdit
+) -> ApiEnvelope[ProductNodeOut]:
+    """Add a category. `parentId` omitted makes it a root."""
+    data = await service.create_node(db, principal, body)
     return envelope(data, message="Category added", status_code=201)
 
 
-@router.put("/categories/{category_id}", response_model=ApiEnvelope[ProductCategoryOut])
-async def update_category(
-    category_id: uuid.UUID, body: CategoryUpdateRequest, db: Db, principal: CanEdit
-) -> ApiEnvelope[ProductCategoryOut]:
-    data = await service.update_category(db, principal, category_id, body)
+@router.put("/nodes/{node_id}", response_model=ApiEnvelope[ProductNodeOut])
+async def update_node(
+    node_id: uuid.UUID, body: NodeUpdateRequest, db: Db, principal: CanEdit
+) -> ApiEnvelope[ProductNodeOut]:
+    """Rename, re-icon, pause or re-field a category.
+
+    Deliberately cannot move it: `NodeUpdateRequest` has no `parentId`, because
+    `ancestor_ids` is derived at create time and a move would mean rewriting the
+    whole subtree.
+    """
+    data = await service.update_node(db, principal, node_id, body)
     return envelope(data, message="Category updated")
 
 
-@router.delete("/categories/{category_id}", response_model=ApiEnvelope[None])
-async def delete_category(
-    category_id: uuid.UUID, db: Db, principal: CanEdit
+@router.delete("/nodes/{node_id}", response_model=ApiEnvelope[None])
+async def delete_node(
+    node_id: uuid.UUID, db: Db, principal: CanEdit
 ) -> ApiEnvelope[None]:
-    await service.delete_category(db, principal, category_id)
+    await service.delete_node(db, principal, node_id)
     return envelope(None, message="Category removed")
 
 
 @router.post(
-    "/categories/{category_id}/subcategories",
-    response_model=ApiEnvelope[ProductCategoryOut],
-    status_code=201,
-)
-async def create_subcategory(
-    category_id: uuid.UUID, body: SubcategoryCreateRequest, db: Db, principal: CanEdit
-) -> ApiEnvelope[ProductCategoryOut]:
-    data = await service.create_subcategory(db, principal, category_id, body)
-    return envelope(data, message="Subcategory added", status_code=201)
-
-
-@router.put(
-    "/subcategories/{subcategory_id}", response_model=ApiEnvelope[ProductCategoryOut]
-)
-async def update_subcategory(
-    subcategory_id: uuid.UUID,
-    body: SubcategoryUpdateRequest,
-    db: Db,
-    principal: CanEdit,
-) -> ApiEnvelope[ProductCategoryOut]:
-    data = await service.update_subcategory(db, principal, subcategory_id, body)
-    return envelope(data, message="Subcategory updated")
-
-
-@router.delete("/subcategories/{subcategory_id}", response_model=ApiEnvelope[None])
-async def delete_subcategory(
-    subcategory_id: uuid.UUID, db: Db, principal: CanEdit
-) -> ApiEnvelope[None]:
-    await service.delete_subcategory(db, principal, subcategory_id)
-    return envelope(None, message="Subcategory removed")
-
-
-@router.post(
-    "/subcategories/{subcategory_id}/models",
-    response_model=ApiEnvelope[ProductCategoryOut],
+    "/nodes/{node_id}/models",
+    response_model=ApiEnvelope[ProductNodeOut],
     status_code=201,
 )
 async def create_model(
-    subcategory_id: uuid.UUID, body: ModelCreateRequest, db: Db, principal: CanEdit
-) -> ApiEnvelope[ProductCategoryOut]:
-    data = await service.create_model(db, principal, subcategory_id, body)
+    node_id: uuid.UUID, body: ModelCreateRequest, db: Db, principal: CanEdit
+) -> ApiEnvelope[ProductNodeOut]:
+    data = await service.create_model(db, principal, node_id, body)
     return envelope(data, message="Product model added", status_code=201)
 
 
-@router.put("/models/{model_id}", response_model=ApiEnvelope[ProductCategoryOut])
+@router.put("/models/{model_id}", response_model=ApiEnvelope[ProductNodeOut])
 async def update_model(
     model_id: uuid.UUID, body: ModelUpdateRequest, db: Db, principal: CanEdit
-) -> ApiEnvelope[ProductCategoryOut]:
+) -> ApiEnvelope[ProductNodeOut]:
     data = await service.update_model(db, principal, model_id, body)
     return envelope(data, message="Product model updated")
 

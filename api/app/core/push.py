@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.coverage import technicians_covering
-from app.models.product import ProductSubcategory
+from app.models.product import ProductNode
 from app.models.push_token import PushToken
 
 log = logging.getLogger(__name__)
@@ -262,7 +262,7 @@ async def announce_pool_job(
     code: str,
     pincode: str,
     city: str,
-    subcategory_id: uuid.UUID,
+    node_path_ids: list[uuid.UUID],
     slot_start: datetime.datetime | None = None,
 ) -> int:
     """A job entered the pool — tell the phones that could take it.
@@ -290,7 +290,7 @@ async def announce_pool_job(
         db,
         company_id=company_id,
         pincode=pincode,
-        subcategory_id=subcategory_id,
+        node_path_ids=node_path_ids,
         slot_start=slot_start,
     )
     if not technician_ids:
@@ -299,9 +299,12 @@ async def announce_pool_job(
     # One indexed lookup for the name. A notification saying only "a job" is one
     # a technician has to open the app to evaluate, which is most of what the
     # notification was for.
+    # The LEAF of the path — the most specific thing this job is about, which
+    # is what a technician reading a lock screen wants. `node_path_ids` is
+    # root-first, so the last entry is the node the ticket actually names.
     what = await db.scalar(
-        select(ProductSubcategory.name).where(ProductSubcategory.id == subcategory_id)
-    )
+        select(ProductNode.name).where(ProductNode.id == node_path_ids[-1])
+    ) if node_path_ids else None
 
     return await send_to_technicians(
         db,

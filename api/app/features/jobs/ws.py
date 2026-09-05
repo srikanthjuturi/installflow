@@ -56,9 +56,9 @@ from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import TECHNICIAN
 from app.models.technician import (
+    TechnicianNode,
     TechnicianPincode,
     TechnicianProfile,
-    TechnicianSubcategory,
 )
 from app.models.user import User
 
@@ -93,11 +93,16 @@ _CLOSE_NOT_TECHNICIAN = 4403
 class _Coverage:
     """The two sets a pool event is matched against, cached with a TTL."""
 
-    __slots__ = ("pincodes", "subcategories", "_loaded_at")
+    __slots__ = ("pincodes", "nodes", "_loaded_at")
 
     def __init__(self) -> None:
         self.pincodes: set[str] = set()
-        self.subcategories: set[uuid.UUID] = set()
+        #: The nodes this technician is certified on — at whatever depth each
+        #: was granted. NOT expanded to their descendants: the event carries the
+        #: job's whole path instead, so the match is an intersection and the
+        #: cache stays the size of the certifications rather than the size of
+        #: the subtree they cover.
+        self.nodes: set[uuid.UUID] = set()
         self._loaded_at = 0.0
 
     @property
@@ -113,20 +118,28 @@ class _Coverage:
                 TechnicianPincode.technician_id == technician_id,
             )
         )
-        subcategories = await db.scalars(
-            select(TechnicianSubcategory.subcategory_id).where(
-                TechnicianSubcategory.company_id == company_id,
-                TechnicianSubcategory.technician_id == technician_id,
+        nodes = await db.scalars(
+            select(TechnicianNode.node_id).where(
+                TechnicianNode.company_id == company_id,
+                TechnicianNode.technician_id == technician_id,
             )
         )
         self.pincodes = set(pincodes)
-        self.subcategories = set(subcategories)
+        self.nodes = set(nodes)
         self._loaded_at = time.monotonic()
 
     def matches(self, event: PoolChanged) -> bool:
-        return (
-            event.pincode in self.pincodes
-            and event.subcategory_id in self.subcategories
+        """Certified ANYWHERE on the job's path, and covering its pincode.
+
+        The set intersection is what makes certification descendant-aware here:
+        a technician holding only *TV* matches an *Android TV* job because *TV*
+        is in that job's `node_path_ids`. Equality against the leaf — which is
+        what this was before the catalogue had depth — would have gone on
+        compiling and silently stopped ringing for exactly the technicians whose
+        certification is broadest.
+        """
+        return event.pincode in self.pincodes and not self.nodes.isdisjoint(
+            event.node_path_ids
         )
 
 

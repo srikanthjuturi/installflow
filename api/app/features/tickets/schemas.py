@@ -125,11 +125,23 @@ class TicketOut(AppModel):
     code: str
 
     vendorId: uuid.UUID
+    #: The catalogue node this job names. Still `subcategoryId` on the wire
+    #: though the column is `node_id`, and deliberately so: `mobileapp` ships as
+    #: an APK on people's phones, so renaming a JSON field breaks every
+    #: installed build and forces a coordinated reinstall. See
+    #: `models/ticket.py`.
     vendorName: str
     subcategoryId: uuid.UUID
-    #: The parent category name — the tree level the console groups by.
+    #: The ROOT of this job's branch — the tree level the console groups by.
     categoryName: str
+    #: The node's OWN name. With a deep catalogue these two are the ends of the
+    #: path and the middle is in `nodePath`; with the two-level catalogue they
+    #: described, they mean exactly what they always did, which is why a dozen
+    #: renderers in both clients needed no change.
     subcategoryName: str
+    #: The whole breadcrumb, root first — `["Electronics", "TV", "Android TV"]`.
+    #: Additive: anything wanting the middle of a deep path reads this.
+    nodePath: list[str] = []
     modelId: uuid.UUID
     modelName: str
 
@@ -175,6 +187,15 @@ class TicketOut(AppModel):
     #: PAISE. Null means no bonus was ever funded — a different claim from ₹0,
     #: and the console renders it as "—" for exactly that reason.
     bonusPaise: int | None = None
+
+    #: The four chips the escalation screen offers when funding a bonus, in
+    #: PAISE and ascending — **this ticket's**, out of its stamped rules.
+    #:
+    #: It has to come from the ticket. `bonus_bands_paise` is one of the rules a
+    #: product node may override, and Bonus Setup is the one screen that spends
+    #: them; left reading `GET /settings/rules` it would show the company's
+    #: numbers and configuring a category would silently do nothing.
+    bonusBandsPaise: list[int] = []
 
     #: What the vendor is charged for this job, in paise. Stamped at intake.
     #: Everyone who can see the ticket sees this, the vendor included — it is

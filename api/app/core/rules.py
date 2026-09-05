@@ -26,6 +26,14 @@ Hard rule 9, and the reason the two band lists are not the rupee figures the
 console shows. The console converts at its own transport boundary, exactly as
 `tickets.bonus_paise` is already handled.
 
+## A rule is per COMPANY here and per PRODUCT in `product_node_rules`
+
+This module holds the baseline and the defaults. A catalogue node may override
+any of `NODE_OVERRIDABLE_KEYS`, inheriting whatever it does not name, and
+`resolve_rules` folds the chain. A ticket stamps the answer at intake, so
+nothing downstream resolves anything at request time — read it back with
+`snapshot_value` (Python) or `snapshot_int` (SQL).
+
 ## The two band lists are JSONB
 
 Same reasoning as `product_models.image_urls` and `service_types`: bounded,
@@ -35,6 +43,8 @@ and the technician app three cutting at 8h/4h, and whichever wins changes the
 LENGTH of that list. Four columns would make that a migration; a JSONB array
 makes it a value.
 """
+
+from sqlalchemy import Integer, cast, func, literal, literal_column
 
 #: What a cancellation costs, by how close to the confirmed slot it came.
 #:
@@ -255,6 +265,185 @@ LIMITS: dict[str, tuple[int, int]] = {
     # fund a bonus".
     "bonus_band_paise": (1, 10000000),
 }
+
+
+#: Every rule, in `DEFAULTS` order. The one list `resolve_rules`, the snapshot
+#: and the settings schema all iterate, so none of them can quietly miss one.
+RULE_KEYS: tuple[str, ...] = tuple(DEFAULTS)
+
+#: The rules a product node may override. Everything except the cap.
+#:
+#: `cancel_penalty_cap_paise` is the only rule here that is not a property of a
+#: JOB. It caps what one TECHNICIAN can be charged across a calendar month, over
+#: every job they took — so if their TV ticket said ₹5,000 and their AC ticket
+#: said ₹3,000 there would be no answer to which applies. It stays company-wide.
+NODE_OVERRIDABLE_KEYS: tuple[str, ...] = tuple(
+    key for key in RULE_KEYS if key != "cancel_penalty_cap_paise"
+)
+
+
+def snapshot_value(snapshot: dict | None, key: str):
+    """One rule out of a ticket's `rules_snapshot`, falling back to `DEFAULTS`.
+
+    **Always read a snapshot through this, never with a bare subscript.** A
+    ticket stamped before a rule existed simply has no key for it, and a
+    `KeyError` on a sweep is a sweep that stops running for everybody. The
+    fallback is what makes adding a rule a deploy rather than a data migration
+    over every ticket ever raised.
+
+    The SQL half of the same guarantee is `snapshot_int`.
+    """
+    if snapshot:
+        value = snapshot.get(key)
+        if value is not None:
+            return value
+    return DEFAULTS[key]
+
+
+def snapshot_int(column, key: str):
+    """`COALESCE((rules_snapshot->>'key')::int, <default>)`, for the sweeps.
+
+    The set-based twin of `snapshot_value`. The sweeps do their arithmetic in
+    SQL — they compare a slot against an interval built from a rule — so they
+    need the fallback as an expression rather than as a Python value.
+    """
+    return func.coalesce(
+        cast(column.op("->>")(literal(key)), Integer), literal(int(DEFAULTS[key]))
+    )
+
+
+#: A rule value as a time span, for date arithmetic in SQL.
+#:
+#: `interval '1 hour' * <int expression>` rather than `make_interval(hours =>
+#: ...)`: multiplication by an integer is exact, reads as what it is, and does
+#: not depend on SQLAlchemy rendering Postgres's named-argument notation.
+#:
+#: Here rather than in `tickets/sweeps.py`, where they started, because
+#: `tickets/service.py` needs them too and `sweeps` already imports FROM
+#: `service` — the other direction would be a cycle. They belong beside
+#: `snapshot_int` anyway: all three turn a rule into an expression.
+def interval_hours(expression):
+    return expression * literal_column("interval '1 hour'")
+
+
+def interval_minutes(expression):
+    return expression * literal_column("interval '1 minute'")
+
+
+def validate_resolved(resolved: dict) -> str | None:
+    """The cross-field invariants, checked on a RESOLVED set. None if it holds.
+
+    These live here rather than as CHECK constraints on `product_node_rules`
+    because that table is all-nullable: a node overriding `slot_silence_hours`
+    alone can invert an escalation window it never mentioned, and no constraint
+    on the row it wrote can see the row it inherited from.
+
+    So every writer resolves first and calls this — `PUT /settings/rules/nodes`
+    for the node and each of its DESCENDANTS (loosening a parent can break a
+    child), and `PUT /settings/rules` for every node in the company.
+    """
+    penalties = list(resolved["cancel_penalties_paise"])
+    if any(b < a for a, b in zip(penalties, penalties[1:])):
+        return (
+            "Cancellation penalties must not decrease as the slot gets closer — "
+            f"{CANCEL_PENALTY_BANDS[0]} cannot cost more than {CANCEL_PENALTY_BANDS[-1]}."
+        )
+
+    bonuses = list(resolved["bonus_bands_paise"])
+    if any(b <= a for a, b in zip(bonuses, bonuses[1:])):
+        return "Each bonus band must be larger than the one before it."
+
+    cap = int(resolved["cancel_penalty_cap_paise"])
+    if cap and cap < max(penalties):
+        return (
+            "The monthly cap is below the largest cancellation penalty, so that "
+            "penalty could never be charged in full."
+        )
+
+    if resolved["escalate_hours_before_slot"] >= resolved["slot_silence_hours"]:
+        return (
+            "Escalation must trigger closer to the slot than the confirmation "
+            "timeout — a job cannot go unassigned before a slot exists."
+        )
+    return None
+
+
+async def resolve_rules_with_sources(
+    db, company_id, node_id
+) -> tuple[dict, dict[str, str | None]]:
+    """The rules in force for a job on `node_id`, and where each one came from.
+
+    Four layers, each overriding the last, so the DEEPEST setting wins:
+
+        DEFAULTS  ->  company_rules  ->  ancestors, root first  ->  the node
+
+    The second return value maps a rule key to the NAME of the node that
+    supplied it, or `None` when nothing below the company did. That is what lets
+    the console print "300, from TV" beside an empty box instead of leaving
+    somebody to guess which ancestor they are looking at.
+
+    Two round trips beyond `load_rules`, because `ancestor_ids` means the whole
+    chain is fetched by `IN (...)` rather than walked. `create_ticket` calls
+    this once and stamps the result on the ticket; nothing reads it per request
+    afterwards.
+
+    An unknown or foreign `node_id` yields the company's rules rather than
+    raising — the caller has already resolved the node through a scoped loader,
+    and a missing one here means the catalogue changed under a read, which is
+    not worth failing a ticket over.
+
+    Imported lazily for the reason `load_rules` is: `models.product_node_rules`
+    imports `LIMITS` from this module, and at module level the two would cycle.
+    """
+    from sqlalchemy import select
+
+    from app.models.product import ProductNode
+    from app.models.product_node_rules import ProductNodeRules
+
+    resolved: dict = dict(DEFAULTS)
+    sources: dict[str, str | None] = {key: None for key in RULE_KEYS}
+
+    company = await load_rules(db, company_id)
+    for key in RULE_KEYS:
+        value = getattr(company, key, None)
+        if value is not None:
+            resolved[key] = value
+
+    node = await db.scalar(
+        select(ProductNode).where(
+            ProductNode.id == node_id,
+            ProductNode.company_id == company_id,
+        )
+    )
+    if node is None:
+        return resolved, sources
+
+    rows = (
+        await db.execute(
+            select(ProductNodeRules, ProductNode.name)
+            .join(ProductNode, ProductNode.id == ProductNodeRules.node_id)
+            .where(
+                ProductNodeRules.company_id == company_id,
+                ProductNodeRules.node_id.in_([*node.ancestor_ids, node.id]),
+            )
+            # Root first, so a child's override lands on top of its parent's.
+            .order_by(ProductNode.depth)
+        )
+    ).all()
+
+    for override, name in rows:
+        for key in NODE_OVERRIDABLE_KEYS:
+            value = getattr(override, key)
+            if value is not None:
+                resolved[key] = value
+                sources[key] = name
+    return resolved, sources
+
+
+async def resolve_rules(db, company_id, node_id) -> dict:
+    """`resolve_rules_with_sources` without the provenance. See there."""
+    resolved, _ = await resolve_rules_with_sources(db, company_id, node_id)
+    return resolved
 
 
 async def load_rules(db, company_id):

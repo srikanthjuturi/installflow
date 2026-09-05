@@ -349,8 +349,29 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     )
 
 
-class TechnicianSubcategory(Base, IdMixin, AuditMixin):
-    """What this technician is certified for — the level a job offer matches on.
+class TechnicianNode(Base, IdMixin, AuditMixin):
+    """What this technician is certified for — and everything beneath it.
+
+    A certification names ONE node and **covers its whole subtree**: certify
+    somebody on *TV* and they are offered *Android TV* and *OLED* jobs too,
+    including levels added to the catalogue afterwards. The alternative —
+    exact-node matching — silently decertifies every TV technician the day
+    somebody splits *TV* into two children, with nothing on any screen to
+    explain why the pool emptied.
+
+    The node is always a MAIN sub-category — `CERTIFY_DEPTH` in
+    `core.product_tree`, which is where the reasoning lives. This column could
+    hold any node and the FKs would be satisfied; the rule is enforced in
+    `validate_subcategories`, through which all three writers pass. There is
+    deliberately no CHECK, because depth is a property of the node rather than
+    of this row and a constraint here could only duplicate it — but that does
+    mean a fourth writer added later would bypass the rule silently, so add one
+    through `set_certifications` and nowhere else.
+
+    Nothing recurses to test that. A ticket stamps its own `node_path_ids` at
+    intake, so eligibility is `node_id = ANY(ticket.node_path_ids)` — one array
+    membership test, in `pool_query`, `core.coverage`, the assign guard and the
+    pool socket alike.
 
     `company_id` is here so BOTH ends of the link can be checked by the
     database: a technician from company A being certified for company B's
@@ -358,44 +379,40 @@ class TechnicianSubcategory(Base, IdMixin, AuditMixin):
     a race or a future refactor could slip past.
     """
 
-    __tablename__ = "technician_subcategories"
+    __tablename__ = "technician_nodes"
 
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
     #: Both FKs are COMPOSITE — see __table_args__.
     technician_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    subcategory_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: Renamed from `subcategory_id` when the tree merged; the values never
+    #: changed, because a subcategory became a node keeping its id.
+    node_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint(
-            "technician_id", "subcategory_id", name="uq_technician_subcategory"
-        ),
-        Index("ix_technician_subcategories_subcategory_id", "subcategory_id"),
+        UniqueConstraint("technician_id", "node_id", name="uq_technician_node"),
+        Index("ix_technician_nodes_node_id", "node_id"),
         # One per composite FK. The RESTRICT below is checked on every attempt
-        # to delete a subcategory, so it wants an index it can actually use.
+        # to delete a node, so it wants an index it can actually use.
         Index(
-            "ix_technician_subcategories_company_technician",
+            "ix_technician_nodes_company_technician",
             "company_id",
             "technician_id",
         ),
-        Index(
-            "ix_technician_subcategories_company_subcategory",
-            "company_id",
-            "subcategory_id",
-        ),
+        Index("ix_technician_nodes_company_node", "company_id", "node_id"),
         ForeignKeyConstraint(
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],
-            name="fk_technician_subcategories_company_technician",
+            name="fk_technician_nodes_company_technician",
             ondelete="CASCADE",
         ),
-        # RESTRICT: removing a subcategory somebody is certified for must be
-        # refused with a message, not silently decertify them.
+        # RESTRICT: removing a node somebody is certified for must be refused
+        # with a message, not silently decertify them.
         ForeignKeyConstraint(
-            ["company_id", "subcategory_id"],
-            ["product_subcategories.company_id", "product_subcategories.id"],
-            name="fk_technician_subcategories_company_subcategory",
+            ["company_id", "node_id"],
+            ["product_nodes.company_id", "product_nodes.id"],
+            name="fk_technician_nodes_company_node",
             ondelete="RESTRICT",
         ),
     )

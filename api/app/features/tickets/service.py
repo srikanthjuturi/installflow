@@ -50,7 +50,14 @@ from app.core.scope import (
 from app.core.sequences import next_code as allocate_code
 from app.features.tickets.feedback_service import refresh_technician_stats
 from app.core.service_types import SERVICE_TYPES
-from app.core.rules import CANCEL_PENALTY_BANDS, load_rules
+from app.core.rules import (
+    CANCEL_PENALTY_BANDS,
+    interval_hours as _hours,
+    load_rules,
+    resolve_rules,
+    snapshot_int,
+    snapshot_value,
+)
 from app.core.tickets import (
     SLOT_LEAD_MINUTES,
     SLOT_TIMEZONE_OFFSET_MINUTES,
@@ -77,13 +84,14 @@ from app.features.tickets.schemas import (
 from app.models.company import Company
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
-from app.models.product import ProductCategory, ProductModel, ProductSubcategory
+from app.models.product import ProductModel, ProductNode
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
+from app.models.territory import Pincode
 from app.models.technician import (
     ACTIVE,
+    TechnicianNode,
     TechnicianPincode,
     TechnicianProfile,
-    TechnicianSubcategory,
 )
 from app.models.ticket import Ticket, TicketAttachment, TicketProof
 from app.models.ticket_event import TicketEvent
@@ -121,9 +129,12 @@ def sla_state(
         customer stays silent. That is the deliberate reading — see
         `app/core/tickets.py`.
 
-    `warn_at_pct` is the ticket's own company's rule and is passed in rather
-    than read here: this is called once per row of a page, and a lookup inside
-    would be the same query a hundred times.
+    `warn_at_pct` is the ticket's OWN rule — `snapshot_value(row.rules_snapshot,
+    "sla_warn_at_pct")` — and is passed in rather than read here so the caller
+    can hand the same number to the SQL ordering. It used to be one value for a
+    whole page, read from `company_rules`; it is per ticket now because a
+    product node may override it, and a same-day TV install and a week-long
+    solar job do not go amber at the same point.
     """
     if row.status in TERMINAL_STATUSES:
         return "done"
@@ -144,20 +155,23 @@ def sla_state(
     return "ok"
 
 
-def _sla_order_case(warn_at_pct: int):
+def _sla_order_case():
     """Triage order in SQL, so paging and totals agree with what is rendered.
 
     Mirrors `sla_state`. It has to be expressed twice — once in Python for the
     value a row reports, once here for ordering — because sorting rows the
     database has not selected yet is not something Python can do.
 
-    A scalar rather than a join onto `company_rules`: every caller is already
-    scoped to one company, so there is exactly one value and folding it in keeps
-    this an expression the caller can also filter on.
+    It used to take the company's `warn_at_pct` as a scalar and fold it in.
+    Now it reads each ticket's OWN stamped threshold out of `rules_snapshot`,
+    because a product node may override it and a page can hold tickets from
+    several nodes. `snapshot_int` supplies the `DEFAULTS` fallback, so a ticket
+    stamped before the rule existed still sorts rather than erroring.
     """
     now = _now()
     is_terminal = Ticket.status.in_(TERMINAL_STATUSES)
     has_slot = Ticket.slot_start.is_not(None)
+    warn_at_pct = snapshot_int(Ticket.rules_snapshot, "sla_warn_at_pct")
     return case(
         (is_terminal, 3),
         (has_slot, case((Ticket.slot_start > Ticket.sla_due_at, 0), else_=2)),
@@ -165,7 +179,7 @@ def _sla_order_case(warn_at_pct: int):
         (
             Ticket.sla_due_at
             <= now
-            + (Ticket.sla_due_at - Ticket.created_at) * (warn_at_pct / 100),
+            + (Ticket.sla_due_at - Ticket.created_at) * (warn_at_pct / 100.0),
             1,
         ),
         else_=2,
@@ -337,7 +351,7 @@ async def _load(
 
 async def _resolve_product(
     db: AsyncSession, principal: Principal, body: TicketCreateRequest
-) -> tuple[Vendor, ProductSubcategory, ProductModel]:
+) -> tuple[Vendor, ProductNode, ProductModel]:
     company_id = principal.company_id
 
     # The caller's OWN vendor, from the principal — never from the body. A
@@ -359,16 +373,34 @@ async def _resolve_product(
             "reactivate it before raising tickets."
         )
 
-    subcategory = await db.scalar(
-        select(ProductSubcategory).where(
-            ProductSubcategory.id == body.subcategoryId,
-            ProductSubcategory.company_id == company_id,
-            ProductSubcategory.is_active.is_(True),
-            ProductSubcategory.deleted_at.is_(None),
+    node = await db.scalar(
+        select(ProductNode).where(
+            ProductNode.id == body.subcategoryId,
+            ProductNode.company_id == company_id,
+            ProductNode.is_active.is_(True),
+            ProductNode.deleted_at.is_(None),
         )
     )
-    if subcategory is None:
+    if node is None:
         raise _bad_request("Unknown or inactive category")
+
+    # The whole PATH has to be live, not just the node named. Pausing *TV* is
+    # meant to stop *Android TV* too, and the tree read hides the branch so no
+    # form offers it — but a stale tab or a crafted request still arrives here,
+    # and before the catalogue had depth this check had nothing to walk.
+    if node.ancestor_ids:
+        paused = await db.scalar(
+            select(ProductNode.name).where(
+                ProductNode.id.in_(list(node.ancestor_ids)),
+                ProductNode.company_id == company_id,
+                or_(
+                    ProductNode.is_active.is_(False),
+                    ProductNode.deleted_at.is_not(None),
+                ),
+            )
+        )
+        if paused is not None:
+            raise _bad_request(f"{paused} is paused, so {node.name} cannot be used")
 
     model = await db.scalar(
         select(ProductModel).where(
@@ -384,9 +416,9 @@ async def _resolve_product(
     # The pair has to agree, or a ticket says "Television" and names a
     # microwave. Both ids came from the same request and neither vouches for
     # the other.
-    if model.subcategory_id != subcategory.id:
+    if model.node_id != node.id:
         raise _bad_request(
-            f"{model.name} is not a {subcategory.name} — pick a model from the "
+            f"{model.name} is not a {node.name} — pick a model from the "
             "chosen category"
         )
 
@@ -406,7 +438,7 @@ async def _resolve_product(
             f"It supports {', '.join(supported) or 'nothing yet'}."
         )
 
-    return vendor, subcategory, model
+    return vendor, node, model
 
 
 async def next_code(db: AsyncSession, company_id: uuid.UUID) -> str:
@@ -459,14 +491,23 @@ async def _hydrate(
             )
         )
     }
-    # Subcategory carries its parent's name too, because the console groups the
-    # category column by it.
-    sub_rows = await db.execute(
-        select(ProductSubcategory.id, ProductSubcategory.name, ProductCategory.name)
-        .join(ProductCategory, ProductCategory.id == ProductSubcategory.category_id)
-        .where(ProductSubcategory.id.in_({t.subcategory_id for t in rows}))
-    )
-    subs = {r[0]: (r[1], r[2]) for r in sub_rows}
+    # The breadcrumb. Every id on every ticket's path in ONE query — the ticket
+    # stamped its own `node_path_ids`, so there is nothing to walk and no
+    # recursive CTE, however deep the catalogue goes.
+    #
+    # `categoryName` stays the ROOT and `subcategoryName` the node's own name,
+    # exactly as before the tree had depth. Both clients render them side by
+    # side in a dozen places and neither needed to change; anything wanting the
+    # middle of a deep path reads `nodePath`.
+    path_ids = {node_id for t in rows for node_id in (t.node_path_ids or [])}
+    node_names = {
+        r[0]: r[1]
+        for r in await db.execute(
+            select(ProductNode.id, ProductNode.name).where(
+                ProductNode.id.in_(path_ids)
+            )
+        )
+    } if path_ids else {}
 
     # A technician's name is not on their profile — it is on the User the
     # membership points at, so this is a two-hop join rather than a lookup.
@@ -486,23 +527,26 @@ async def _hydrate(
     )
 
     now = _now()
-    # One lookup for the page, not one per row. Every read here is company-
-    # scoped — `scoped()` puts `company_id` in the WHERE clause of the list and
-    # of fetch-by-id alike — so all these rows share a tenant and therefore one
-    # "Due soon" threshold.
-    warn_at_pct = (await load_rules(db, rows[0].company_id)).sla_warn_at_pct
     out: list[TicketOut] = []
     for t in rows:
-        sub_name, cat_name = subs.get(t.subcategory_id, ("", ""))
+        # Per TICKET now, not once per page: the SLA threshold is one of the
+        # rules a product node may override, so a TV ticket and a solar ticket
+        # can legitimately start reading "Due soon" at different points. It
+        # costs nothing — the value was stamped at intake and travels with the
+        # row, which is why the page-wide `load_rules` lookup could go.
+        warn_at_pct = snapshot_value(t.rules_snapshot, "sla_warn_at_pct")
+        path = [node_names.get(n, "") for n in (t.node_path_ids or [])]
+        path = [name for name in path if name]
         out.append(
             TicketOut(
                 id=t.id,
                 code=t.code,
                 vendorId=t.vendor_id,
                 vendorName=vendor_names.get(t.vendor_id, ""),
-                subcategoryId=t.subcategory_id,
-                categoryName=cat_name,
-                subcategoryName=sub_name,
+                subcategoryId=t.node_id,
+                categoryName=path[0] if path else "",
+                subcategoryName=path[-1] if path else "",
+                nodePath=path,
                 modelId=t.model_id,
                 modelName=model_names.get(t.model_id, ""),
                 serviceType=t.service_type,
@@ -538,6 +582,11 @@ async def _hydrate(
                 if t.technician_id
                 else None,
                 bonusPaise=t.bonus_paise,
+                # This ticket's own chips, so funding a bonus spends the
+                # category's configured amounts rather than the company's.
+                bonusBandsPaise=list(
+                    snapshot_value(t.rules_snapshot, "bonus_bands_paise")
+                ),
                 # Their own price — the vendor is the one paying it.
                 vendorPricePaise=t.vendor_price_paise,
                 # THE masking point for the technician's rate on a ticket.
@@ -672,16 +721,16 @@ async def list_tickets(
     if wanted:
         stmt = stmt.where(Ticket.service_type == wanted)
 
-    # This company's "Due soon" line. Read once and used by both the filter and
-    # the default ordering below, so the two cannot judge a row differently.
-    warn_at_pct = (await load_rules(db, principal.company_id)).sla_warn_at_pct
-
+    # Each ticket's own "Due soon" line, out of its stamped rules. One
+    # expression serves both the filter and the default ordering below, so the
+    # two cannot judge a row differently — and it agrees with `sla_state`,
+    # which reads the same snapshot key per row in `_hydrate`.
     wanted = _canonical(sla_filter, ("ok", "warn", "breach", "done"))
     if wanted is False:
         return [], 0
     if wanted:
         rank = {"breach": 0, "warn": 1, "ok": 2, "done": 3}[str(wanted)]
-        stmt = stmt.where(_sla_order_case(warn_at_pct) == rank)
+        stmt = stmt.where(_sla_order_case() == rank)
 
     # Default: most urgent first, which is the whole point of the screen.
     #
@@ -705,9 +754,7 @@ async def list_tickets(
         # a stable order across pages rather than swapping between reads.
         stmt = stmt.order_by(direction, Ticket.created_at.desc())
     else:
-        stmt = stmt.order_by(
-            _sla_order_case(warn_at_pct).asc(), Ticket.created_at.desc()
-        )
+        stmt = stmt.order_by(_sla_order_case().asc(), Ticket.created_at.desc())
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     return await _hydrate(db, principal, rows), total
@@ -793,20 +840,24 @@ async def dashboard_summary(
     waiting", and a ticket does not stop needing a manager because it was
     announced an hour ago.
 
-    ## The windows come from `load_rules`, not a join
+    ## The windows come from each TICKET, and the headline numbers from the company
 
-    The sweeps join `company_rules` and do the interval arithmetic in SQL because
-    they run across every tenant in one tick. This runs for exactly one company,
-    so the rules are read once and the cutoff is a plain `timedelta` — the same
-    number, arrived at more simply, and it keeps the comparison on an indexed
-    column rather than inside an expression.
+    Two different questions, so two different sources. Whether a particular
+    ticket is overdue for force-closure depends on ITS rules, which a product
+    node may have overridden, so the count reads `rules_snapshot` per row — the
+    same interval arithmetic the sweeps do, on the same column.
+
+    The `forceCloseHours` / `slotSilenceHours` the response carries are a
+    different thing: the console prints them as "we wait N hours" beside the
+    tile. Per node there is no single N, so those stay the COMPANY's numbers and
+    are labelled as its default.
     """
     now = _now()
     rules = await load_rules(db, principal.company_id)
     # The same expression the list orders and filters by, so a tile and the
     # board it links to can never rank one ticket two ways.
     #   0 breach · 1 warn · 2 ok · 3 done (terminal)
-    rank = _sla_order_case(rules.sla_warn_at_pct)
+    rank = _sla_order_case()
 
     lower, upper = _ist_range(date_from, date_to)
 
@@ -894,8 +945,12 @@ async def dashboard_summary(
             Ticket.status == "Awaiting Customer",
             Ticket.customer_confirmed_at.is_(None),
             _last_event_at("feedback_requested").is_not(None),
+            # Per ticket, out of its own stamped rules — the same shape the
+            # sweep uses, so the tile counts exactly the rows the sweep will act
+            # on rather than an approximation of them.
             _last_event_at("feedback_requested")
-            <= now - datetime.timedelta(hours=rules.force_close_hours),
+            <= now
+            - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
         )
     )
     awaiting = await scoped(db, awaiting, principal)
@@ -908,7 +963,8 @@ async def dashboard_summary(
             Ticket.slot_start.is_(None),
             _last_event_at("slot_requested").is_not(None),
             _last_event_at("slot_requested")
-            <= now - datetime.timedelta(hours=rules.slot_silence_hours),
+            <= now
+            - _hours(snapshot_int(Ticket.rules_snapshot, "slot_silence_hours")),
         )
     )
     silent = await scoped(db, silent, principal)
@@ -1296,7 +1352,7 @@ async def confirm_slot(
         db,
         company_id=row.company_id,
         pincode=row.pincode,
-        subcategory_id=row.subcategory_id,
+        node_path_ids=row.node_path_ids,
     )
     await publish_ticket_changed(db, row)
     await db.commit()
@@ -1320,10 +1376,39 @@ async def confirm_slot(
 # ── write ─────────────────────────────────────────────────────────────────────
 
 
+async def _assert_pincode_known(db: AsyncSession, code: str) -> None:
+    """The customer's pincode must be one the geography master holds.
+
+    ⚠ **A ticket outside the master is a ticket nobody can see or serve**, and
+    it fails silently, which is why this is worth a query. Staff visibility
+    routes entirely off the pincode (`core.scope.visible_pincodes` resolves it
+    to a district, a state and a region), and so does technician eligibility. Six
+    digits the master does not hold resolve to nothing: no regional head, no area
+    manager and no technician matches it. Only an all-India role ever sees the
+    row, and no screen says why.
+
+    `Pincode` in `core.statutory` is a SHAPE — `^[0-9]{6}$` — and "999999" passes
+    it. The console's `AddressFields` does check the master, but a browser
+    control cannot be the only guard on a value this load-bearing: the Excel and
+    API intake channels a vendor may be given both go straight past it.
+    """
+    known = await db.scalar(
+        select(Pincode.code).where(
+            Pincode.code == code, Pincode.is_active.is_(True)
+        )
+    )
+    if known is None:
+        raise _bad_request(
+            f"{code} is not a pincode we cover — check it, or ask for it to be "
+            "added to the geography master."
+        )
+
+
 async def create_ticket(
     db: AsyncSession, principal: Principal, body: TicketCreateRequest
 ) -> TicketOut:
-    vendor, subcategory, model = await _resolve_product(db, principal, body)
+    vendor, node, model = await _resolve_product(db, principal, body)
+    await _assert_pincode_known(db, body.pincode)
 
     now = _now()
     # A day that has already gone cannot be served. Judged in IST, not UTC:
@@ -1338,7 +1423,12 @@ async def create_ticket(
         company_id=principal.company_id,
         code=await next_code(db, principal.company_id),
         vendor_id=vendor.id,
-        subcategory_id=subcategory.id,
+        node_id=node.id,
+        # The node and everything above it, root first. Stamped so eligibility
+        # is one array test on the ticket rather than a walk up the catalogue —
+        # see `models/ticket.py`. Re-parenting the tree later cannot retroactively
+        # change who was eligible for a job somebody already accepted.
+        node_path_ids=[*node.ancestor_ids, node.id],
         model_id=model.id,
         service_type=body.serviceType,
         description=body.description,
@@ -1351,6 +1441,15 @@ async def create_ticket(
         # unpriced row, so both of these are NOT NULL at the source.
         technician_payout_paise=model.technician_payout_paise,
         vendor_price_paise=model.vendor_price_paise,
+        # The same reasoning applied to the RULES. `resolve_rules` folds
+        # DEFAULTS → the company's row → each ancestor node's overrides → this
+        # node's, and the answer is frozen here. Everything downstream — the six
+        # sweeps, the cancellation band, the geo radius, the SLA colouring —
+        # reads this column and joins nothing.
+        #
+        # Read it back with `snapshot_value` / `snapshot_int`, never a bare
+        # subscript: a ticket stamped before a rule existed has no key for it.
+        rules_snapshot=await resolve_rules(db, principal.company_id, node.id),
         serial_number=(body.serialNumber or "").strip() or None,
         customer_name=body.customerName.strip(),
         customer_phone=body.customerPhone,
@@ -1432,7 +1531,7 @@ async def create_ticket(
             db,
             company_id=row.company_id,
             pincode=row.pincode,
-            subcategory_id=row.subcategory_id,
+            node_path_ids=row.node_path_ids,
         )
     # A new ticket is movement the console should see appear.
     await publish_ticket_changed(db, row)
@@ -1850,11 +1949,14 @@ async def _load_assignable_technician(
             TechnicianPincode.pincode == row.pincode,
         )
     )
+    # Anywhere on the job's path counts — certified on *TV* is certified for an
+    # *Android TV* job. The same array test `pool_query` and `technicians_covering`
+    # use, so a manager is never offered a shortlist the pool would disagree with.
     certified = await db.scalar(
-        select(TechnicianSubcategory.id).where(
-            TechnicianSubcategory.company_id == principal.company_id,
-            TechnicianSubcategory.technician_id == profile.id,
-            TechnicianSubcategory.subcategory_id == row.subcategory_id,
+        select(TechnicianNode.id).where(
+            TechnicianNode.company_id == principal.company_id,
+            TechnicianNode.technician_id == profile.id,
+            TechnicianNode.node_id.in_(list(row.node_path_ids or [])),
         )
     )
     # Named individually. "Ineligible" leaves a manager guessing which of two
@@ -2008,7 +2110,7 @@ async def assign_technician(
         db,
         company_id=row.company_id,
         pincode=row.pincode,
-        subcategory_id=row.subcategory_id,
+        node_path_ids=row.node_path_ids,
     )
     await publish_job_changed(
         db,
@@ -2115,7 +2217,7 @@ async def add_bonus_and_renotify(
         db,
         company_id=row.company_id,
         pincode=row.pincode,
-        subcategory_id=row.subcategory_id,
+        node_path_ids=row.node_path_ids,
     )
     await publish_ticket_changed(db, row)
     await db.commit()
@@ -2129,7 +2231,7 @@ async def add_bonus_and_renotify(
         db,
         company_id=row.company_id,
         pincode=row.pincode,
-        subcategory_id=row.subcategory_id,
+        node_path_ids=row.node_path_ids,
         slot_start=row.slot_start,
     )
     await _push_pool_job(db, row)
@@ -2199,9 +2301,13 @@ async def record_no_show(
     # not be interleaved with another charge against this technician.
     await db.refresh(profile, with_for_update=True)
 
+    # The TICKET's bands, not the company's — a product node may price a
+    # no-show differently, and this ticket froze its answer at intake. The cap
+    # below is still the company's: it bounds a technician's month across every
+    # job they took, so it cannot come from one of them.
     rules = await load_rules(db, principal.company_id)
     label = CANCEL_PENALTY_BANDS[-1]
-    band = int(rules.cancel_penalties_paise[-1])
+    band = int(snapshot_value(row.rules_snapshot, "cancel_penalties_paise")[-1])
     already = await charged_this_month(
         db, company_id=principal.company_id, technician_id=profile.id
     )
@@ -2531,7 +2637,7 @@ async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:
         code=row.code,
         pincode=row.pincode,
         city=row.city,
-        subcategory_id=row.subcategory_id,
+        node_path_ids=row.node_path_ids,
         # So a technician whose day is already full is not told about it.
         slot_start=row.slot_start,
     )

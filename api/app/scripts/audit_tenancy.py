@@ -60,11 +60,17 @@ GLOBAL_TABLES: dict[str, str] = {
 
 #: (child, column, parent) links that must be composite.
 TENANT_LINKS = [
-    ("product_subcategories", "category_id", "product_categories"),
-    ("product_models", "subcategory_id", "product_subcategories"),
+    # SELF-referencing, and the only such link in the schema: the product tree
+    # is one table now, so a node's parent is another node. The three checks
+    # below all work unchanged on it — a composite FK against
+    # `uq_product_nodes_company_id_id`, and a row-level comparison that reads
+    # the same table twice under different aliases.
+    ("product_nodes", "parent_id", "product_nodes"),
+    ("product_models", "node_id", "product_nodes"),
     ("product_models", "vendor_id", "vendors"),
-    ("technician_subcategories", "technician_id", "technician_profiles"),
-    ("technician_subcategories", "subcategory_id", "product_subcategories"),
+    ("product_node_rules", "node_id", "product_nodes"),
+    ("technician_nodes", "technician_id", "technician_profiles"),
+    ("technician_nodes", "node_id", "product_nodes"),
     ("technician_pincodes", "technician_id", "technician_profiles"),
     ("technician_invite_pincodes", "invite_id", "technician_invites"),
     ("technician_profiles", "membership_id", "memberships"),
@@ -73,7 +79,7 @@ TENANT_LINKS = [
     # membership in company B; the replacement does not.
     ("membership_states", "membership_id", "memberships"),
     ("tickets", "vendor_id", "vendors"),
-    ("tickets", "subcategory_id", "product_subcategories"),
+    ("tickets", "node_id", "product_nodes"),
     ("tickets", "model_id", "product_models"),
     ("tickets", "technician_id", "technician_profiles"),
     ("ticket_events", "ticket_id", "tickets"),

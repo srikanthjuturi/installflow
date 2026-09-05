@@ -25,6 +25,18 @@ from app.core.coordinates import Latitude, Longitude
 from app.core.schemas import AppModel
 
 
+class ProductParameterOut(AppModel):
+    """One spec off the product — `RAM` / `8 GB`.
+
+    Declared here rather than imported from `features/masters`: slices never
+    import each other (hard rule 4), and two strings are not worth promoting to
+    `app.core` for a second consumer.
+    """
+
+    name: str
+    value: str
+
+
 class JobOfferOut(AppModel):
     """One job in the pool. Everything a technician needs to decide, and no more."""
 
@@ -107,6 +119,21 @@ class JobOut(JobOfferOut):
     #: do this or have I done it" is the whole question My jobs asks.
     status: str
     #: Why the customer called. Null for `Installation + Demo`, required for
+    #: The product's own specs — panel type, capacity, whatever ops recorded.
+    #:
+    #: Read LIVE from `product_models`, not stamped on the ticket like the price
+    #: and the rules. A spec is descriptive: correcting "8 GB" to "4 GB" should
+    #: fix every job that names the product, because the unit on the wall never
+    #: changed and the old value was simply wrong. Money and policy are the
+    #: opposite — those are what the job was AGREED at, so they are frozen.
+    #:
+    #: On `JobOut` and not on `JobOfferOut`: the pool is a decision about a trip
+    #: and a fee, and the offer deliberately carries as little as it can. The
+    #: specs matter once the job is yours and you are standing in front of it.
+    modelParameters: list[ProductParameterOut] = []
+    #: Prose about the product, if ops left any — read as a sentence, so it is
+    #: not a parameter.
+    modelNotes: str | None = None
     #: `Tech Visit` and `Service` — see the CHECK on `tickets.description`.
     description: str | None
     #: The serial the vendor holds on the invoice, which the technician

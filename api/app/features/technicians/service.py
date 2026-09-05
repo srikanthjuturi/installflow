@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from sqlalchemy import case, delete, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.config import settings
 from app.core.coverage import jobs_held_by_technician
@@ -39,6 +40,7 @@ from app.core.scope import (
 )
 from app.core.notifications import notify
 from app.core.presence import is_online
+from app.core.product_tree import CERTIFY_DEPTH
 from app.core.visibility import technician_scope
 from app.core.realtime import publish_notification, publish_technician_changed
 from app.core.sequences import next_code as allocate_code
@@ -61,7 +63,7 @@ from app.features.technicians.schemas import (
 from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
-from app.models.product import ProductCategory, ProductSubcategory
+from app.models.product import ProductNode
 from app.models.role import AREA_MANAGER, ROLE_LABELS, TECHNICIAN
 from app.models.technician import (
     ACTIVE,
@@ -79,7 +81,7 @@ from app.models.technician import (
     TechnicianInvitePincode,
     TechnicianPincode,
     TechnicianProfile,
-    TechnicianSubcategory,
+    TechnicianNode,
 )
 from app.models.territory import (
     District,
@@ -283,25 +285,31 @@ async def _subcategories_by_technician(
 ) -> dict[uuid.UUID, list[SubcategoryRef]]:
     if not technician_ids:
         return {}
+    root = aliased(ProductNode)
     rows = await session.execute(
         select(
-            TechnicianSubcategory.technician_id,
-            ProductSubcategory.id,
-            ProductSubcategory.name,
-            ProductCategory.name,
+            TechnicianNode.technician_id,
+            ProductNode.id,
+            ProductNode.name,
+            # The ROOT of this node's branch, for the "Electric · Television"
+            # line both clients print. A LEFT join, because a certification ON a
+            # root has no ancestor to name — `ancestor_ids[1]` is NULL there and
+            # the row must still come back.
+            root.name,
         )
-        .join(
-            ProductSubcategory,
-            ProductSubcategory.id == TechnicianSubcategory.subcategory_id,
-        )
-        .join(ProductCategory, ProductCategory.id == ProductSubcategory.category_id)
-        .where(TechnicianSubcategory.technician_id.in_(technician_ids))
-        .order_by(ProductCategory.sort_order, ProductSubcategory.sort_order)
+        .join(ProductNode, ProductNode.id == TechnicianNode.node_id)
+        .outerjoin(root, root.id == ProductNode.ancestor_ids[1])
+        .where(TechnicianNode.technician_id.in_(technician_ids))
+        .order_by(ProductNode.depth, ProductNode.sort_order)
     )
     out: dict[uuid.UUID, list[SubcategoryRef]] = {}
-    for tech_id, sub_id, sub_name, cat_name in rows:
+    for tech_id, node_id, node_name, root_name in rows:
         out.setdefault(tech_id, []).append(
-            SubcategoryRef(id=sub_id, name=sub_name, categoryName=cat_name)
+            # A root certification is its own category: "Electric · Electric"
+            # reads as a mistake, so the parent line falls back to the node.
+            SubcategoryRef(
+                id=node_id, name=node_name, categoryName=root_name or node_name
+            )
         )
     return out
 
@@ -680,11 +688,30 @@ async def list_technicians(
             TechnicianProfile.onboarding_mode == onboarding_mode
         )
     if subcategory_id:
+        # Certified on that node OR on anything ABOVE it — the same rule the
+        # pool applies. This filter feeds the assign screen's candidate
+        # shortlist, so matching the leaf alone would hide exactly the
+        # technicians whose certification is broadest, and a manager would be
+        # told nobody covers a job the pool was already offering.
+        #
+        # The path is resolved as a subquery rather than fetched first, so this
+        # stays one statement the caller can page. An unknown node selects no
+        # rows, so nobody matches — which is the right answer.
+        #
+        # ⚠ `IN (SELECT unnest(...))`, NOT `= ANY((SELECT ...))`. Postgres reads
+        # `= ANY (subquery)` as the SUBQUERY form, which expects a set of
+        # scalars — handed a subquery whose rows are `uuid[]` it fails with
+        # `operator does not exist: uuid = uuid[]`. The array form of `ANY`
+        # needs a plain array expression, which a subquery is not. Unnesting
+        # turns the one array row into the set the subquery form wants.
+        node_path = select(
+            func.unnest(func.array_append(ProductNode.ancestor_ids, ProductNode.id))
+        ).where(ProductNode.id == subcategory_id)
         tech_keys = tech_keys.where(
-            select(TechnicianSubcategory.id)
+            select(TechnicianNode.id)
             .where(
-                TechnicianSubcategory.technician_id == TechnicianProfile.id,
-                TechnicianSubcategory.subcategory_id == subcategory_id,
+                TechnicianNode.technician_id == TechnicianProfile.id,
+                TechnicianNode.node_id.in_(node_path),
             )
             .exists()
         )
@@ -1056,18 +1083,23 @@ async def validate_subcategories(
     unique = list(dict.fromkeys(ids))
     found = list(
         await session.scalars(
-            select(ProductSubcategory.id).where(
-                ProductSubcategory.id.in_(unique),
-                ProductSubcategory.company_id == company_id,
-                ProductSubcategory.is_active.is_(True),
-                ProductSubcategory.deleted_at.is_(None),
+            select(ProductNode.id).where(
+                ProductNode.id.in_(unique),
+                ProductNode.company_id == company_id,
+                ProductNode.is_active.is_(True),
+                ProductNode.deleted_at.is_(None),
+                # A MAIN sub-category and nothing else. See CERTIFY_DEPTH.
+                ProductNode.depth == CERTIFY_DEPTH,
             )
         )
     )
     if len(found) != len(unique):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unknown or inactive category",
+            detail=(
+                "A technician certifies on a main sub-category — not on a "
+                "top-level category, and not on one nested deeper"
+            ),
         )
     return unique
 
@@ -1080,19 +1112,17 @@ async def set_certifications(
     actor_id: uuid.UUID | None,
 ) -> None:
     await session.execute(
-        delete(TechnicianSubcategory).where(
-            TechnicianSubcategory.technician_id == profile.id
-        )
+        delete(TechnicianNode).where(TechnicianNode.technician_id == profile.id)
     )
-    for sub_id in dict.fromkeys(subcategory_ids):
+    for node_id in dict.fromkeys(subcategory_ids):
         session.add(
-            TechnicianSubcategory(
+            TechnicianNode(
                 # Denormalised so the composite FKs can check BOTH ends: a
                 # technician certified against another company's catalogue is
                 # rejected by the database, not just by the caller above.
                 company_id=profile.company_id,
                 technician_id=profile.id,
-                subcategory_id=sub_id,
+                node_id=node_id,
                 created_by=actor_id,
             )
         )

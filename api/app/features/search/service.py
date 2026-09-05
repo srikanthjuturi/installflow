@@ -21,9 +21,20 @@ a cross-entity read for a vendor would have to re-derive all five.
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from sqlalchemy import Row, Select, String, func, literal, or_, select, union_all
+from sqlalchemy import (
+    Row,
+    Select,
+    String,
+    case,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+)
 from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.deps import Principal
 from app.core.features import effective_features
@@ -38,7 +49,7 @@ from app.features.search.schemas import (
     SearchType,
 )
 from app.models.membership import Membership
-from app.models.product import ProductCategory, ProductModel, ProductSubcategory
+from app.models.product import ProductModel, ProductNode
 from app.models.role import (
     NATIONAL_HEAD,
     ROLE_LABELS,
@@ -260,40 +271,36 @@ _PRODUCT_LEVELS = {
 
 
 def _products_stmt(principal: Principal, term: str) -> Select:
-    """All three levels of the master as one group.
+    """The catalogue as one group — nodes at any depth, plus products.
+
+    Two legs rather than three, because the tree is one table now. A node's
+    level in the badge comes from its DEPTH: a root reads "Category" and
+    anything below it "Sub-category", which is what those words meant when they
+    were two tables.
 
     `parent` is the level above — the context that tells two identically named
-    models apart. Empty rather than NULL so the three legs of the union agree on
-    a type without a cast; `_text` turns it back into an absent subtitle.
+    nodes apart, and it earns its place harder now that names are only unique
+    among siblings. Empty rather than NULL so both legs of the union agree on a
+    type without a cast; `_text` turns it back into an absent subtitle.
     """
     company = principal.company_id
+    parent = aliased(ProductNode)
 
-    categories = select(
-        literal("category").label("level"),
-        ProductCategory.id.label("row_id"),
-        ProductCategory.name.label("name"),
-        literal("", String).label("parent"),
-    ).where(
-        ProductCategory.company_id == company,
-        ProductCategory.deleted_at.is_(None),
-        func.lower(ProductCategory.name).like(term),
-    )
-
-    subcategories = (
+    nodes = (
         select(
-            literal("subcategory").label("level"),
-            ProductSubcategory.id.label("row_id"),
-            ProductSubcategory.name.label("name"),
-            ProductCategory.name.label("parent"),
+            case((ProductNode.depth == 0, "category"), else_="subcategory").label(
+                "level"
+            ),
+            ProductNode.id.label("row_id"),
+            ProductNode.name.label("name"),
+            func.coalesce(parent.name, literal("", String)).label("parent"),
         )
-        .join(
-            ProductCategory,
-            ProductCategory.id == ProductSubcategory.category_id,
-        )
+        # LEFT, because a root has no parent and must still be findable.
+        .outerjoin(parent, parent.id == ProductNode.parent_id)
         .where(
-            ProductSubcategory.company_id == company,
-            ProductSubcategory.deleted_at.is_(None),
-            func.lower(ProductSubcategory.name).like(term),
+            ProductNode.company_id == company,
+            ProductNode.deleted_at.is_(None),
+            func.lower(ProductNode.name).like(term),
         )
     )
 
@@ -302,12 +309,9 @@ def _products_stmt(principal: Principal, term: str) -> Select:
             literal("model").label("level"),
             ProductModel.id.label("row_id"),
             ProductModel.name.label("name"),
-            ProductSubcategory.name.label("parent"),
+            ProductNode.name.label("parent"),
         )
-        .join(
-            ProductSubcategory,
-            ProductSubcategory.id == ProductModel.subcategory_id,
-        )
+        .join(ProductNode, ProductNode.id == ProductModel.node_id)
         .where(
             ProductModel.company_id == company,
             ProductModel.deleted_at.is_(None),
@@ -315,7 +319,7 @@ def _products_stmt(principal: Principal, term: str) -> Select:
         )
     )
 
-    union = union_all(categories, subcategories, models).subquery()
+    union = union_all(nodes, models).subquery()
     return select(
         union.c.level, union.c.row_id, union.c.name, union.c.parent
     ).order_by(union.c.name.asc(), union.c.row_id)

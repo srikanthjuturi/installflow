@@ -6,15 +6,16 @@ from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.otp import OtpCode
-from app.models.product import ProductCategory, ProductModel, ProductSubcategory
+from app.models.product import ProductModel, ProductNode
+from app.models.product_node_rules import ProductNodeRules
 from app.models.role import Role
 from app.models.sequence import CompanySequence
 from app.models.technician import (
     TechnicianInvite,
     TechnicianInvitePincode,
+    TechnicianNode,
     TechnicianPincode,
     TechnicianProfile,
-    TechnicianSubcategory,
 )
 from app.models.territory import (
     District,
@@ -49,9 +50,9 @@ __all__ = [
     "OtpCode",
     "Pincode",
     "PincodeDistrict",
-    "ProductCategory",
     "ProductModel",
-    "ProductSubcategory",
+    "ProductNode",
+    "ProductNodeRules",
     "RefreshToken",
     "Region",
     "Role",
@@ -59,9 +60,9 @@ __all__ = [
     "RoleFeatureDefault",
     "TechnicianInvite",
     "TechnicianInvitePincode",
+    "TechnicianNode",
     "TechnicianPincode",
     "TechnicianProfile",
-    "TechnicianSubcategory",
     "Ticket",
     "Notification",
     "NotificationRead",
