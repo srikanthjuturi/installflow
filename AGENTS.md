@@ -321,10 +321,33 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   and the reason is not cost: a ticket gets `latitude`/`longitude` ONLY from a picked search
   result, and `jobs.service` verifies a technician's live photo by DISTANCE only when the ticket
   has them. Switch a vendor off and every job they raise falls back to comparing pincodes, which
-  can span kilometres. Off is a decision about proof, not a saving.
+  can span kilometres. Off is a decision about proof, not a saving — a **weaker** check, never no
+  check, which is `location_check_enabled`'s job below.
   ⚠ It is a **UI capability, not a spend control.** The Maps key ships in the client bundle by
   design, so this hides the box rather than closing the door. Capping spend is a per-key quota and
   a budget alert in Google Cloud — nothing in this database can do it.
+- A vendor's **`location_check_enabled` decides whether the live proof photo is location-GATED at
+  all.** Its neighbour above chooses WHICH rule applies; this one chooses whether either is
+  enforced. Two switches because two questions — a vendor may reasonably want the distance rule
+  and no gate, or a gate and no map.
+  Off drops all three refusals in `jobs.service._check_live_was_taken_at_the_job`, including the
+  one for a live shot carrying **no location at all**. Half a gate would refuse exactly the
+  technician it was flipped for: it exists for sites that cannot produce a fix — a basement plant
+  room, a steel-clad warehouse, a rural dead spot — where the alternative is somebody standing at
+  the customer's door who cannot start the job, and whose only exit is a cancellation penalty for
+  a GPS problem.
+  **Off is not blind.** The phone still asks for a fix and still attaches it, `ticket_proofs` still
+  stores the coordinates, accuracy and device pincode, and the server still MEASURES the distance
+  and writes it to the `started` event — with *"location check off for this vendor"* beside it, so
+  a reader can tell a distance that was checked from one that was merely recorded. A far-away
+  photo becomes a fact somebody can act on instead of a refusal.
+  ⚠ It is the **one job term read live rather than stamped.** Both prices and the whole
+  `rules_snapshot` are frozen at intake precisely so a later edit cannot restate accepted work;
+  this is not, because it has to be usable while a technician is on the site. Flipping it changes
+  jobs already in flight, in both directions.
+  ⚠ **An installed APK keeps blocking.** `mobileapp` refuses the shutter itself, and no server
+  value can free a build that has never heard of the field — absent reads as enforced, which is
+  the safe direction. The switch is only fully effective after a mobile rebuild.
 - **Address searches are counted, one row per BILLED session.** Google is called straight from the
   browser, so nothing reaches the API on its own and a search cannot be counted after the fact —
   the portal reports each one to `POST /vendors/me/address-searches`, and `vendor_address_searches`

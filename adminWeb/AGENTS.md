@@ -836,12 +836,19 @@ Motion animation respects `prefers-reduced-motion`.
 
 **A boolean is TWO LABELLED CARDS, not a switch.** There is deliberately no `Switch` in
 `components/ui/`, and adding one would be the first. Every boolean in this console — Active/Paused
-on a category, a subcategory, a model and a vendor, On/Off for a vendor's address search — is a
-two-option `RadioGroup` of bordered cards, because a switch's two states carry no visible word and
-"never colour alone" applies to a control as much as to a badge. `StatusField.tsx` and
-`AddressSearchField.tsx` are the two shapes; copy whichever fits. They are deliberately NOT one
-generic component: `StatusField` is typed to `CategoryStatus` and belongs to the product master,
-and the habit here is to promote a shared control on the **third** consumer, not the second.
+on a category, a subcategory, a model and a vendor, On/Off for a vendor's address search and its
+location check — is a two-option `RadioGroup` of bordered cards, because a switch's two states
+carry no visible word and "never colour alone" applies to a control as much as to a badge.
+
+The markup lives once, in `shared/ChoiceCards`. It was promoted on the **third** consumer, which is
+the habit here — two usages is a coincidence. `StatusField`, `AddressSearchField` and
+`LocationCheckField` are thin wrappers over it and stay separate wrappers rather than call sites
+passing raw strings: each is typed to its own union, so a form cannot put a category status where a
+vendor's switch goes. A fourth boolean is a fourth wrapper, not a new copy of the cards.
+
+`ChoiceCards` is generic over the option type rather than taking a `boolean`, because the value a
+form holds is the WORD — "Active", "On" — which is what the radio renders and what zod validates.
+Converting to a boolean happens once, at submit, where the wire shape is decided.
 
 ## Performance plan
 
