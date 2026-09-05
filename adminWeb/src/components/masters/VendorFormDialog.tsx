@@ -41,6 +41,7 @@ import type {
 } from "@/types/vendor";
 import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { AddressSearchField } from "./AddressSearchField";
+import { LocationCheckField } from "./LocationCheckField";
 import { StatusField } from "./StatusField";
 import {
   CHANNEL_HINT,
@@ -49,6 +50,7 @@ import {
   INTAKE_CHANNELS,
   LOCAL_AVAILABLE,
   addressSearchOf,
+  locationCheckOf,
   statusOf,
   addVendorSchema,
   editVendorSchema,
@@ -310,6 +312,10 @@ function VendorForm({
       // ticket, and without them a technician's live photo is checked against
       // the pincode rather than the metres. Off is a real decision, not a saving.
       addressSearch: addressSearchOf(vendor?.addressSearchEnabled ?? true),
+      // On by default too, so nothing changes for a vendor nobody edits. Off is
+      // for sites that cannot produce a GPS fix at all, where the alternative is
+      // a technician who cannot start a job they are standing at.
+      locationCheck: locationCheckOf(vendor?.locationCheckEnabled ?? true),
     },
   });
 
@@ -567,6 +573,7 @@ function VendorForm({
       intakeChannels: values.intakeChannels,
       isActive: values.status === "Active",
       addressSearchEnabled: values.addressSearch === "On",
+      locationCheckEnabled: values.locationCheck === "On",
     };
     const done = (saved: Vendor) => {
       // On ADD the reply is a CreatedVendor and may carry an undelivered
@@ -774,6 +781,24 @@ function VendorForm({
               onChange={field.onChange}
               error={errors.addressSearch?.message}
               errorId="vendor-address-search-error"
+            />
+          )}
+        />
+      </FormSection>
+
+      {/* Its own section, NOT under Portal access. That one means "what this
+          vendor's portal is"; this is about how a technician's proof is
+          verified out on site, which the vendor never sees. */}
+      <FormSection legend="Proof verification">
+        <Controller
+          name="locationCheck"
+          control={control}
+          render={({ field }) => (
+            <LocationCheckField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.locationCheck?.message}
+              errorId="vendor-location-check-error"
             />
           )}
         />

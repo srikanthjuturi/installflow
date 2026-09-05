@@ -59,6 +59,16 @@ export interface Vendor {
   /** Whether this vendor's portal offers the Google address search. */
   addressSearchEnabled: boolean;
   /**
+   * Whether a technician's live site photo is location-gated on this vendor's
+   * jobs.
+   *
+   * Not the same question as the switch above. That one decides WHICH rule the
+   * server applies — distance if the address was picked off the map, pincode if
+   * it was typed. This one decides whether either is enforced at all; off means
+   * the photo is still geo-tagged and stored, and simply never refused.
+   */
+  locationCheckEnabled: boolean;
+  /**
    * Address searches this vendor and their staff have run, ever. A real COUNT
    * over one row per billed Google session.
    *
@@ -115,6 +125,7 @@ export interface CreateVendorInput {
   intakeChannels: IntakeChannel[];
   isActive: boolean;
   addressSearchEnabled: boolean;
+  locationCheckEnabled: boolean;
 }
 
 export interface UpdateVendorInput {
@@ -135,4 +146,5 @@ export interface UpdateVendorInput {
   intakeChannels?: IntakeChannel[];
   isActive?: boolean;
   addressSearchEnabled?: boolean;
+  locationCheckEnabled?: boolean;
 }
