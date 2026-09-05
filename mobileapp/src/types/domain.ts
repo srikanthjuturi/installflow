@@ -111,6 +111,18 @@ export interface Job {
   category: string;
   model: string;
   /**
+   * The product's specs, as ops recorded them — panel type, capacity, whatever
+   * the catalogue holds. Empty when none were recorded, never undefined.
+   *
+   * Read LIVE from the product rather than frozen on the job: correcting a spec
+   * should fix every job that names the product, because the unit on the wall
+   * never changed and the old value was simply wrong. The money and the
+   * cancellation rules are the opposite, and ARE frozen.
+   */
+  modelParameters: { name: string; value: string }[];
+  /** Prose about the product, if any. */
+  modelNotes: string | null;
+  /**
    * `Installation + Demo` · `Tech Visit` · `Service`.
    *
    * What the technician is actually going to do, which is not always an

@@ -272,6 +272,60 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                   </Text>
                 </View>
               </View>
+
+              {/* The product's own specs, so the technician knows what they are
+                  fitting before they are standing in front of it — panel type,
+                  capacity, whatever ops recorded against the model.
+
+                  A two-column row per spec rather than a chip list: these are
+                  read as name/value pairs, and a technician glancing at a phone
+                  in a stairwell scans a column faster than wrapped chips. */}
+              {job.modelParameters.length > 0 ? (
+                <View style={{ marginTop: 14, gap: 6 }}>
+                  {job.modelParameters.map((spec) => (
+                    <View
+                      key={spec.name}
+                      style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: 'Roboto_400Regular',
+                          fontSize: 12.5,
+                          color: color.textLabel,
+                          width: 104,
+                        }}
+                      >
+                        {spec.name}
+                      </Text>
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontFamily: 'Roboto_500Medium',
+                          fontSize: 12.5,
+                          color: color.textPrimary,
+                        }}
+                      >
+                        {spec.value || '—'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {/* Prose, so it reads as a sentence rather than a table row. */}
+              {job.modelNotes ? (
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_400Regular',
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    color: color.textSecondary,
+                    marginTop: 12,
+                  }}
+                >
+                  {job.modelNotes}
+                </Text>
+              ) : null}
             </Card>
 
             <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>

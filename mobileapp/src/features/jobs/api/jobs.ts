@@ -54,6 +54,12 @@ interface JobOfferDto {
 }
 
 /** `JobOut`: the offer plus everything that unlocks once the job is ours. */
+/** One spec off the product — `RAM` / `8 GB`. */
+export interface ProductParameterDto {
+  name: string;
+  value: string;
+}
+
 export interface JobDto extends JobOfferDto {
   customerName: string;
   customerPhone: string;
@@ -91,6 +97,17 @@ export interface JobDto extends JobOfferDto {
    * a number, or the app would block on a radius the server is not enforcing.
    */
   geoRadiusM?: number;
+
+  /**
+   * The product's own specs, as ops recorded them against the model.
+   *
+   * Optional because an older API does not send them; absent reads the same as
+   * "none recorded" and the screen simply omits the block. On the accepted job
+   * only — the pool offer deliberately carries as little as it can.
+   */
+  modelParameters?: ProductParameterDto[];
+  /** Prose about the product, if any. Read as a sentence, not a spec. */
+  modelNotes?: string | null;
 }
 
 /**
@@ -183,6 +200,11 @@ function toJob(dto: JobOfferDto): Job {
     code: dto.code,
     category: dto.subcategoryName,
     model: dto.modelName,
+    // Empty from a POOL offer, which carries no specs on purpose — the offer is
+    // a decision about a trip and a fee. `toFullJob` fills them in once the job
+    // is the technician's.
+    modelParameters: [],
+    modelNotes: null,
     serviceType: dto.serviceType,
     area: dto.city,
     pincode: dto.pincode,
@@ -233,6 +255,10 @@ export function toAcceptedJob(dto: JobDto): Job {
     latitude: dto.latitude ?? null,
     longitude: dto.longitude ?? null,
     geoRadiusM: dto.geoRadiusM ?? null,
+    // Blank rather than undefined, so every screen can map over it without a
+    // guard. An older API sending nothing reads as "none recorded".
+    modelParameters: dto.modelParameters ?? [],
+    modelNotes: dto.modelNotes ?? null,
   };
 }
 
