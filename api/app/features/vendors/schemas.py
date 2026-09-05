@@ -102,6 +102,10 @@ class VendorCreateRequest(BaseModel):
     #: on a ticket, and without them a technician's live photo is verified by
     #: pincode instead of by distance. See the column comment on the model.
     addressSearchEnabled: bool = True
+    #: Whether a technician's live site photo is location-gated on this vendor's
+    #: jobs. Defaults ON. Off never stops the photo carrying a location — it
+    #: stops the server refusing one. See the column comment on the model.
+    locationCheckEnabled: bool = True
 
     #: The vendor's login. REQUIRED, because only a vendor can raise a ticket —
     #: a vendor without an account would be a brand nobody could ever raise one
@@ -136,6 +140,7 @@ class VendorUpdateRequest(BaseModel):
     intakeChannels: IntakeChannels | None = None
     isActive: bool | None = None
     addressSearchEnabled: bool | None = None
+    locationCheckEnabled: bool | None = None
     #: NB: no password. Reissuing one is now `POST /vendors/{id}/reissue-password`
     #: — it takes no body, because the password is the server's to choose.
     #:
@@ -164,6 +169,7 @@ class VendorOut(AppModel):
     intakeChannels: list[str]
     isActive: bool
     addressSearchEnabled: bool
+    locationCheckEnabled: bool
     #: How many address searches this vendor and their staff have run, ever.
     #:
     #: A real COUNT over `vendor_address_searches`, one row per billed Google

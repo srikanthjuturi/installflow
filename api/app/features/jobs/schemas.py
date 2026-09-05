@@ -124,6 +124,19 @@ class JobOut(JobOfferOut):
     #: guess would refuse captures the server would have taken, or worse, allow
     #: ones it will not.
     geoRadiusM: int
+    #: Whether either location rule is ENFORCED on this job — the vendor's own
+    #: switch, read live rather than stamped, so it can be flipped while a
+    #: technician is standing on the site.
+    #:
+    #: False does not mean "do not ask for a location". The phone still requests
+    #: a fix and still attaches whatever it gets; what it must stop doing is
+    #: blocking its own shutter, because with this off the server accepts a live
+    #: photo taken anywhere — including one carrying no location at all.
+    #:
+    #: An older build that has never heard of this field keeps blocking, which
+    #: is the safe way round: no server value can free an installed APK, so the
+    #: switch is only fully effective after a rebuild.
+    locationCheckEnabled: bool
 
     #: The ticket's own status word (`Assigned`, `In Progress`, `Closed`…), not
     #: a client-side guess. The pool could omit it because everything in the
