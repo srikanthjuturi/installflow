@@ -6,6 +6,7 @@ import {
   Play,
   ScanLine,
   ShieldCheck,
+  UserCheck,
   UserPlus,
   UserX,
 } from "lucide-react";
@@ -60,9 +61,19 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     wrap: "bg-warn-bg text-warn",
     label: "Invite expired",
   },
-  // The two events here that are not a problem. Tinted like the statuses they
-  // describe rather than like a warning: a manager scanning the feed should be
-  // able to tell at a glance which rows need them and which are just news.
+  // The three events here that are not a problem. Tinted like the statuses
+  // they describe rather than like a warning: a manager scanning the feed
+  // should be able to tell at a glance which rows need them and which are just
+  // news.
+  //
+  // `assigned` is the one the VENDOR also sees — it is the only kind besides a
+  // serial mismatch that widens to their portal, because they raised the ticket
+  // and somebody going is the first thing they have wanted to hear since.
+  assigned: {
+    icon: UserCheck,
+    wrap: "bg-success-bg text-success",
+    label: "Job accepted",
+  },
   job_started: {
     icon: Play,
     wrap: "bg-info-bg text-info",

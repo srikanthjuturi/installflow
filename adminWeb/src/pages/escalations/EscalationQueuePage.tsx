@@ -53,7 +53,12 @@ const FILTERS: TypedFilterDef<Ticket>[] = [
  * The API sorts on the same test, so the two halves below are contiguous.
  */
 function isMissed(ticket: Ticket, now: number): boolean {
-  return ticket.slotEnd !== null && new Date(ticket.slotEnd).getTime() < now;
+  // `slaDueAt` when there is no slot, matching the API's `coalesce`. A job can
+  // now be escalated before the customer ever picked a time, and with a bare
+  // null test such a row was neither live nor missed — it arrived from the
+  // server, failed both filters and rendered nowhere.
+  const deadline = ticket.slotEnd ?? ticket.slaDueAt;
+  return deadline !== null && new Date(deadline).getTime() < now;
 }
 
 /**
@@ -222,8 +227,14 @@ export default function EscalationQueuePage() {
   // the headings read forward — Today, then Tomorrow. Missed rows run the other
   // way, newest first, so the most recent failure is the one at the top.
   const readAt = new Date(dataUpdatedAt);
-  const liveDays = groupByDay(live, (t) => t.slotStart!, readAt);
-  const missedDays = groupByDay(missed, (t) => t.slotStart!, readAt);
+  // `slaDueAt` when there is no slot — the same fallback the API sorts on, so
+  // the day headings match the order the rows arrived in. The `!` that stood
+  // here was safe only while the queue could not contain a slotless ticket; it
+  // can now, and `dayKey(undefined)` would have grouped them under an invalid
+  // date rather than throwing, which is the worse failure.
+  const day = (t: Ticket) => t.slotStart ?? t.slaDueAt;
+  const liveDays = groupByDay(live, day, readAt);
+  const missedDays = groupByDay(missed, day, readAt);
 
   // The live half is fully loaded once a missed row has arrived — the API puts
   // every live row before any missed one — or once there is nothing more to

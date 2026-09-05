@@ -24,6 +24,7 @@ NotificationKind = Literal[
     "technician_joined",
     "job_started",
     "invite_expired",
+    "assigned",
     "no_show",
 ]
 

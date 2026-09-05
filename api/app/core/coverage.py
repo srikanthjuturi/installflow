@@ -37,7 +37,12 @@ from sqlalchemy.orm import aliased
 from app.core.scope import ALL_INDIA_ROLES
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.models.membership import Membership
-from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_ROLES
+from app.models.role import (
+    AREA_MANAGER,
+    NATIONAL_HEAD,
+    REGIONAL_HEAD,
+    VENDOR_ROLES,
+)
 from app.models.technician import (
     ACTIVE,
     TechnicianNode,
@@ -88,12 +93,19 @@ async def technicians_covering(
     "do not offer me work", and a push that ignored it would make the toggle a
     lie — the one setting a technician uses to protect their evening.
 
-    `slot_start` applies the DAILY CAP as well, and omitting it is a bug waiting
-    to happen: `pool_query` hides a job from a technician whose day is full, so
-    without this they would still be pushed about it, tap the notification, and
-    land on a job they cannot take. That is precisely the notification that
-    teaches people to ignore notifications. It is optional only because a caller
-    may genuinely not have a slot — a ticket in the pool always does.
+    `slot_start` applies the DAILY CAP as well, and omitting it where one exists
+    is a bug waiting to happen: `pool_query` hides a job from a technician whose
+    day is full, so without this they would still be pushed about it, tap the
+    notification, and land on a job they cannot take. That is precisely the
+    notification that teaches people to ignore notifications.
+
+    ⚠ NULL is a real answer now, not merely a caller being lazy. A ticket in the
+    pool no longer always has a slot — one is offered from the moment it is
+    raised, in parallel with the customer being asked for a time. Such a job
+    spends no day, so there is no day to be full of, and skipping the cap term
+    is the CORRECT reading rather than a relaxation. It matches `has_cap_room`,
+    which exempts the same rows for the same reason; what bounds a technician's
+    slotless jobs is the free-window guard in `jobs.accept`.
 
     Returns profile ids, which is what `push_tokens.technician_id` keys on.
     """
@@ -193,6 +205,14 @@ def has_cap_room(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> ColumnEl
     Counted by SLOT date, not by when the job was accepted. "Maximum installs
     you'll take per day" is about work performed: taking five jobs this evening
     for next Friday should exhaust FRIDAY, not tonight.
+
+    ⚠ **A ticket with NO slot is exempt, and that is now explicit.** It used to
+    be true by accident: `ist_date(NULL)` is NULL, nothing equals NULL, the count
+    came back 0 and `0 < cap` passed. Harmless while a slotless ticket could
+    never reach this predicate — and the moment one can, an accident that reads
+    "the cap silently stops binding" is the wrong thing to be relying on. A job
+    with no day cannot spend one; what stops a technician hoarding them is the
+    free-window guard in `accept`, not this.
     """
     cap = (
         select(TechnicianProfile.daily_job_cap)
@@ -212,7 +232,11 @@ def has_cap_room(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> ColumnEl
     # skip the count rather than merely usually skip it.
     #
     # `<`, never `<=`: a cap of 5 with `<=` admits a sixth job.
-    return case((cap.is_(None), True), else_=used < cap)
+    return case(
+        (Ticket.slot_start.is_(None), True),
+        (cap.is_(None), True),
+        else_=used < cap,
+    )
 
 
 def has_room_at(slot_start: datetime.datetime) -> ColumnElement:
@@ -356,6 +380,76 @@ async def area_managers_covering(
             .distinct()
         )
     )
+
+
+async def nearest_manager_for(
+    db: AsyncSession, *, company_id: uuid.UUID, pincode: str
+) -> User | None:
+    """The one manager to interrupt about this pincode: AM, else RH, else NH.
+
+    A DIFFERENT question from `area_managers_covering` above, and the difference
+    is the fallback. That one is for escalation, where reaching only the Area
+    Service Manager is the requirement and silence is the correct outcome when
+    there is none — every rank above covers so much ground that a message per
+    escalation becomes a message they stop reading.
+
+    This is for an event that must reach *somebody*: a technician has taken a
+    job, and the person responsible for that ground should know who is going.
+    So it walks down the ranks until it finds one, and returns exactly one
+    person — the nearest, not all of them.
+
+    ## This is the interruption, not the record
+
+    The bell is already handled and needs none of this: a notification row is
+    scoped to the ticket's PINCODE and its audience is resolved at read time, so
+    the AM covering that state, the RH covering that region and every all-India
+    role see it already, without being named. What this picks is who gets a
+    message on their phone.
+
+    Ordered by rank so a tie inside a tier is at least deterministic, and
+    `phone IS NOT NULL` throughout — `users.phone` is nullable for console staff,
+    who sign in with an email, and one without a number cannot be reached this
+    way. A tier whose only member has no phone falls through to the next, which
+    is the point: "nobody was reachable" is the only acceptable empty answer.
+    """
+    state_of = select(Pincode.state_id).where(Pincode.code == pincode).scalar_subquery()
+    region_of = (
+        select(State.region_id)
+        .join(Pincode, Pincode.state_id == State.id)
+        .where(Pincode.code == pincode)
+        .scalar_subquery()
+    )
+
+    def reachable(stmt):
+        return stmt.where(
+            Membership.company_id == company_id,
+            Membership.is_active.is_(True),
+            Membership.deleted_at.is_(None),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+            User.phone.is_not(None),
+        )
+
+    base = select(User).join(Membership, Membership.user_id == User.id)
+
+    tiers = [
+        # The area manager whose STATES hold this pincode.
+        reachable(
+            base.join(MembershipState, MembershipState.membership_id == Membership.id)
+        ).where(User.role == AREA_MANAGER, MembershipState.state_id == state_of),
+        # The regional head whose REGIONS hold that state.
+        reachable(
+            base.join(MembershipRegion, MembershipRegion.membership_id == Membership.id)
+        ).where(User.role == REGIONAL_HEAD, MembershipRegion.region_id == region_of),
+        # A national head covers everything, so there is no territory to join.
+        reachable(base).where(User.role == NATIONAL_HEAD),
+    ]
+
+    for tier in tiers:
+        found = (await db.scalars(tier.order_by(User.full_name).distinct())).first()
+        if found is not None:
+            return found
+    return None
 
 
 async def users_notified_by(

@@ -21,7 +21,7 @@ import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import Select, case, func, or_, select, update
+from sqlalchemy import Select, and_, case, func, or_, select, update
 from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,10 +58,16 @@ from app.core.rules import (
     snapshot_int,
     snapshot_value,
 )
+from app.core.slots import (
+    IST,
+    bookable_slots,
+    clock,
+    clock_range,
+    day_label,
+    offered_slots,
+    when_label,
+)
 from app.core.tickets import (
-    SLOT_LEAD_MINUTES,
-    SLOT_TIMEZONE_OFFSET_MINUTES,
-    SLOT_WINDOWS,
     TERMINAL_STATUSES,
     TICKET_STATUSES,
 )
@@ -187,50 +193,6 @@ def _sla_order_case():
 
 
 # ── the windows a customer may pick from ─────────────────────────────────────
-
-IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
-
-
-def offered_slots(
-    row: Ticket, *, now: datetime.datetime | None = None
-) -> list[tuple[datetime.datetime, datetime.datetime]]:
-    """Every window this ticket could still be served in, soonest first.
-
-    Bounded at both ends, and both bounds matter:
-
-      * not sooner than SLOT_LEAD_MINUTES from now — nobody can be dispatched to
-        an address in ten minutes;
-      * not later than `sla_due_at` — the service level says the slot must START
-        within N hours of the ticket being raised, so a window past that is one
-        the company has already promised not to offer.
-
-    Because the list is generated from the window rather than filtered
-    afterwards, a customer CANNOT pick a slot that breaches. That is the point:
-    the constraint lives where the choice is made, not in a validator that has
-    to say no to something already chosen.
-
-    Empty is a real answer — a 12-hour ticket raised at 22:00 has nothing left
-    to offer, and the page says so rather than showing an empty list.
-    """
-    now = now or _now()
-    earliest = now + datetime.timedelta(minutes=SLOT_LEAD_MINUTES)
-    latest = row.sla_due_at
-
-    out: list[tuple[datetime.datetime, datetime.datetime]] = []
-    # Walk local days, because the windows are local working hours. Three is
-    # enough for the longest service level (48h) plus the day it spills into.
-    start_day = earliest.astimezone(IST).date()
-    for offset in range(4):
-        day = start_day + datetime.timedelta(days=offset)
-        for from_hour, to_hour in SLOT_WINDOWS:
-            begins = datetime.datetime.combine(
-                day, datetime.time(from_hour, tzinfo=IST)
-            )
-            ends = datetime.datetime.combine(day, datetime.time(to_hour, tzinfo=IST))
-            if begins < earliest or begins > latest:
-                continue
-            out.append((begins, ends))
-    return out
 
 
 def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
@@ -938,19 +900,36 @@ async def dashboard_summary(
     counts = await scoped(db, counts, principal)
     row = (await db.execute(counts)).one()
 
+    # TWO populations need a manager to end them by hand, and this tile counts
+    # both because `sweeps.sweep_force_close` raises a `force_close` bell for
+    # both. A card whose number disagrees with the queue it opens is the single
+    # thing that makes a count not worth having.
     awaiting = mine(
         select(func.count())
         .select_from(Ticket)
         .where(
-            Ticket.status == "Awaiting Customer",
-            Ticket.customer_confirmed_at.is_(None),
-            _last_event_at("feedback_requested").is_not(None),
-            # Per ticket, out of its own stamped rules — the same shape the
-            # sweep uses, so the tile counts exactly the rows the sweep will act
-            # on rather than an approximation of them.
-            _last_event_at("feedback_requested")
-            <= now
-            - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
+            or_(
+                # The work is done and the customer never confirmed it.
+                and_(
+                    Ticket.status == "Awaiting Customer",
+                    Ticket.customer_confirmed_at.is_(None),
+                    _last_event_at("feedback_requested").is_not(None),
+                    # Per ticket, out of its own stamped rules — the same shape
+                    # the sweep uses, so the tile counts exactly the rows the
+                    # sweep will act on rather than an approximation of them.
+                    _last_event_at("feedback_requested")
+                    <= now
+                    - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
+                ),
+                # The customer never picked a time and the window has shut, so
+                # they can no longer pick one. Nothing they or a technician does
+                # moves this ticket now.
+                and_(
+                    Ticket.status.not_in(TERMINAL_STATUSES),
+                    Ticket.slot_start.is_(None),
+                    Ticket.sla_due_at < now,
+                ),
+            )
         )
     )
     awaiting = await scoped(db, awaiting, principal)
@@ -959,7 +938,17 @@ async def dashboard_summary(
         select(func.count())
         .select_from(Ticket)
         .where(
-            Ticket.status == "Slot Pending",
+            # Keyed on the SLOT, not on `Slot Pending`, and it must match
+            # `sweeps.sweep_silent_slots` exactly — this tile is supposed to
+            # count the rows that sweep will act on, and the two drifting apart
+            # is a number nobody can reconcile with the queue it opens.
+            #
+            # The status test used to be the same question. It stopped being one
+            # when a job could be accepted before the customer answered: that
+            # ticket is `Assigned` with no time, still needs chasing, and would
+            # have vanished from this tile at the moment it gained a technician
+            # waiting to be told where to go.
+            Ticket.status.not_in(TERMINAL_STATUSES),
             Ticket.slot_start.is_(None),
             _last_event_at("slot_requested").is_not(None),
             _last_event_at("slot_requested")
@@ -1160,47 +1149,6 @@ def slot_link(token: str) -> str:
     return f"{settings.SLOT_LINK_BASE.rstrip('/')}/{token}"
 
 
-def clock(at: datetime.datetime) -> tuple[str, str]:
-    """`('10:00', 'AM')` in IST — the two halves, so a range can share one.
-
-    `.lstrip("0")` rather than `%-I`, which is a glibc extension and raises on
-    Windows, where this very much does get run. `%I` never yields `"00"`, so
-    stripping cannot empty the string.
-    """
-    local = at.astimezone(IST)
-    return local.strftime("%I:%M").lstrip("0"), local.strftime("%p").upper()
-
-
-def clock_range(start: datetime.datetime, end: datetime.datetime) -> str:
-    """`10:00 AM–12:00 PM`, or `2:00–4:00 PM` when it stays inside one half.
-
-    12-hour throughout, which is the house style taken from the approved
-    prototypes — the technician app reads `4:00 PM` and its job data reads
-    `2:00–4:00 PM`. A range that does not cross noon says the meridiem once.
-    """
-    start_hm, start_ap = clock(start)
-    end_hm, end_ap = clock(end)
-    if start_ap == end_ap:
-        return f"{start_hm}–{end_hm} {end_ap}"
-    return f"{start_hm} {start_ap}–{end_hm} {end_ap}"
-
-
-def day_label(at: datetime.datetime) -> str:
-    """`Thu 21 Aug` in IST — `when_label` without the clock.
-
-    The day the WORK happens, in the day the technician experiences, which is
-    the same reckoning the daily cap counts by. A UTC rendering would put a
-    05:00 IST job on the previous evening and make the cap's arithmetic look
-    wrong to whoever it refused.
-    """
-    return at.astimezone(IST).strftime("%a %d %b")
-
-
-def when_label(start: datetime.datetime, end: datetime.datetime) -> str:
-    """`Thu 21 Aug, 10:00 AM–12:00 PM`, in the customer's own timezone."""
-    return f"{day_label(start)}, {clock_range(start, end)}"
-
-
 async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
     # Resolved from the row rather than a constant: one WhatsApp number sends
     # for every tenant on this platform.
@@ -1319,7 +1267,10 @@ async def confirm_slot(
             detail="This visit is no longer open",
         )
 
-    match = next((s for s in offered_slots(row) if s[0] == start), None)
+    # `bookable_slots`, not `offered_slots` — re-derived from the SAME list the
+    # page rendered, which now excludes anything the assigned technician cannot
+    # serve. Re-deriving at all is the point: the posted value is a claim.
+    match = next((s for s in await bookable_slots(db, row) if s[0] == start), None)
     if match is None:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -1329,9 +1280,18 @@ async def confirm_slot(
     was = row.status
     row.slot_start, row.slot_end = match
     row.slot_confirmed_at = _now()
-    # Slot Pending was the only thing holding it back. It is now a real
-    # appointment, and eligible technicians can see it.
-    row.status = "New"
+    # ⚠ NOT unconditionally "New". A technician may already hold this ticket:
+    # since the pool started offering jobs with no time agreed, acceptance and
+    # confirmation race each other, and either can land first.
+    #
+    # Writing "New" over an accepted job would un-assign somebody who is
+    # committed to it while LEAVING `technician_id` set — a shape no query
+    # expects, and one the pool would then offer to a second technician while
+    # the first still has it in My Jobs.
+    #
+    # With a technician: the missing piece was the time, and it has arrived.
+    # Without: Slot Pending was the only thing holding it back.
+    row.status = "New" if row.technician_id is None else "Assigned"
     # The customer has no user row, which is exactly why the event records an
     # actor KIND as well as a label — `created_by` cannot answer this one.
     db.add(
@@ -1524,15 +1484,17 @@ async def create_ticket(
                 by_user=principal.user_id,
             )
         )
-        # A ticket raised WITH a time is already in the pool, so it rings now.
-        # One without is 'Slot Pending' and nobody may see it yet — its ring
-        # comes later, from `confirm_slot`.
-        await publish_pool_changed(
-            db,
-            company_id=row.company_id,
-            pincode=row.pincode,
-            node_path_ids=row.node_path_ids,
-        )
+    # EVERY new ticket is in the pool now, with or without a time — so the ring
+    # is unconditional and no longer nested under the slot branch. It used to
+    # be: a 'Slot Pending' ticket was invisible to every technician and its
+    # first ring came from `confirm_slot`, which on a 48-hour service level
+    # could be most of the SLA later.
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        node_path_ids=row.node_path_ids,
+    )
     # A new ticket is movement the console should see appear.
     await publish_ticket_changed(db, row)
     await db.commit()
@@ -1698,7 +1660,12 @@ async def correct_serial(
 #: operation than this one — it would strand evidence against a person who is no
 #: longer on the ticket. `New` is here because the console's "Re-assign" button
 #: is reachable from an ordinary pooled job, not only from the escalation queue.
-ASSIGNABLE_STATUSES = ("New", "Escalated", "Assigned")
+#: `Slot Pending` is in here because a technician can now take such a job from
+#: the pool — and anything a technician may take by tapping, a manager must be
+#: able to hand out by hand. Leaving it off meant the one ticket most likely to
+#: need a manager (nobody has answered, nobody has accepted) was the one they
+#: could not act on until it escalated.
+ASSIGNABLE_STATUSES = ("New", "Slot Pending", "Escalated", "Assigned")
 
 
 def _refused(code: str, detail: str) -> AppError:
@@ -1823,7 +1790,12 @@ async def list_escalations(
         # The customer-refusal escalation always has a technician. This queue is
         # about the jobs that have nobody.
         Ticket.technician_id.is_(None),
-        Ticket.slot_start.is_not(None),
+        # ⚠ There was a `slot_start IS NOT NULL` here, and it made this queue
+        # DROP the very tickets it exists for. A job offered before the customer
+        # picked a time can go unaccepted and escalate like any other — and
+        # escalating is precisely "put this in front of a manager", which this
+        # screen is. Filtering it out meant the escalation fired, the bell rang,
+        # and the queue the bell points at was empty.
     )
     stmt = await scoped(db, stmt, principal)
     # The dashboard's four, so its "Escalations · 2" card opens a queue holding
@@ -1843,17 +1815,21 @@ async def list_escalations(
     # of rules to learn.
     stmt = _apply_search(stmt, params.search)
 
+    # The instant this row is judged against. `slot_end` while there is one —
+    # the window is open until it closes, and somebody can still be sent — and
+    # `sla_due_at` when there is not, because that is the only deadline a
+    # slotless job has. One expression, used by the half filter, the ordering
+    # and the range below, so none of the three can disagree about which half a
+    # row belongs to.
+    deadline = func.coalesce(Ticket.slot_end, Ticket.sla_due_at)
+
     wanted = _canonical(half, ESCALATION_HALVES)
     if wanted is False:
         return [], 0
     if wanted == "live":
-        # `slot_end`, not `slot_start`: while the window is open somebody can
-        # still be sent. The same test the ordering below uses, so the filter
-        # and the sections it hides cannot disagree about which half a row is
-        # in.
-        stmt = stmt.where(Ticket.slot_end >= now)
+        stmt = stmt.where(deadline >= now)
     elif wanted == "missed":
-        stmt = stmt.where(Ticket.slot_end < now)
+        stmt = stmt.where(deadline < now)
 
     # On SLOT date — when the work was promised — not on when the ticket was
     # raised. Those two disagree by days on any job booked ahead, and it is the
@@ -1874,7 +1850,7 @@ async def list_escalations(
     # console's heading cannot disagree about which half a row is in. With
     # paging it does a second job: the live rows fill page one, so the work that
     # is still savable never sits below a scroll the manager has to trigger.
-    is_missed = case((Ticket.slot_end < now, 1), else_=0)
+    is_missed = case((deadline < now, 1), else_=0)
     # The two halves run in OPPOSITE directions, and each is the useful one for
     # what its rows are for.
     #
@@ -1887,8 +1863,13 @@ async def list_escalations(
     # Expressed as a signed epoch so both halves sort ASCENDING on one key.
     # Ordering by `slot_start` twice with different directions would need the
     # halves to be separate queries, and then paging could not span them.
-    epoch = func.extract("epoch", Ticket.slot_start)
-    within_half = case((Ticket.slot_end < now, -epoch), else_=epoch)
+    #
+    # `coalesce` again, and it must be the same fallback the half test uses:
+    # sorting a slotless row by a NULL epoch puts it at one end of the list
+    # regardless of how urgent it is, which for the live half is the bottom —
+    # exactly where the job with a running SLA and nobody on it should not be.
+    epoch = func.extract("epoch", func.coalesce(Ticket.slot_start, Ticket.sla_due_at))
+    within_half = case((deadline < now, -epoch), else_=epoch)
     stmt = stmt.order_by(
         is_missed.asc(),
         within_half.asc(),
@@ -2009,12 +1990,15 @@ async def assign_technician(
                 else ""
             ),
         )
-    if row.slot_start is None:
-        raise _refused(
-            "NO_SLOT",
-            "This ticket has no confirmed slot yet. Agree a time with the "
-            "customer before assigning anyone.",
-        )
+    # ⚠ This used to refuse a ticket with no confirmed slot. That was right when
+    # such a ticket was invisible to everybody: assigning somebody to a visit
+    # with no time would have been assigning them to nothing.
+    #
+    # It is wrong now. The same ticket is in the pool, any covering technician
+    # can take it by tapping, and a manager was the one person who could not —
+    # which inverted the point of manual assignment. The customer is still being
+    # chased for a time by `sweep_silent_slots`, and once they answer,
+    # `confirm_slot` keeps the assignment rather than releasing it.
 
     profile = await _load_assignable_technician(db, principal, row, technician_id)
     if profile.id == row.technician_id:
@@ -2062,10 +2046,21 @@ async def assign_technician(
             )
         )
         if unchanged is not None:
+            # `day_label(None)` raises, and this line is only unreachable for a
+            # slotless ticket by an argument — the cap exempts one, so the
+            # clause that lands here cannot have failed. That is precisely the
+            # reasoning behind three asserts that broke this week when the
+            # premise moved. Name the day when there is one and say so plainly
+            # when there is not.
+            when = (
+                f"on {day_label(row.slot_start)}"
+                if row.slot_start is not None
+                else "that day"
+            )
             raise _refused(
                 "DAILY_CAP_REACHED",
-                f"{profile.code} already has {profile.daily_job_cap} jobs on "
-                f"{day_label(row.slot_start)}, which is their daily limit. "
+                f"{profile.code} already has {profile.daily_job_cap} jobs "
+                f"{when}, which is their daily limit. "
                 "Choose another technician, or raise their limit first.",
             )
         raise _refused(
@@ -2124,13 +2119,22 @@ async def assign_technician(
     # After the commit, like every other outbound side effect here: a push about
     # an assignment that then rolled back is worse than a late one. They did not
     # ask for this job, so being told is not optional.
-    assert row.slot_end is not None  # both-or-neither, and the start is set
+    # The fourth assert of this family to fall over. Every one of them read
+    # "a ticket at this point always has a slot", every one was true when it
+    # was written, and all four broke together the day a job could be handed
+    # out before the customer had picked a time. The push still has to say
+    # something useful in the space where the time goes.
+    when = (
+        when_label(row.slot_start, row.slot_end)
+        if row.slot_start and row.slot_end
+        else "time to be confirmed"
+    )
     await send_to_technician(
         db,
         company_id=row.company_id,
         technician_id=profile.id,
         title=f"{row.code} assigned to you",
-        body=f"{row.city} {row.pincode} · {when_label(row.slot_start, row.slot_end)}",
+        body=f"{row.city} {row.pincode} · {when}",
         data={"type": "job", "ticketId": str(row.id), "code": row.code},
     )
     return await get_ticket(db, principal, ticket_id)
@@ -2180,7 +2184,17 @@ async def add_bonus_and_renotify(
             "A bonus can only be added to a job that nobody has accepted. "
             f"This ticket is {row.status}.",
         )
-    assert row.slot_start is not None  # `Escalated` with no technician implies one
+    # ⚠ The assert that stood here — "`Escalated` with no technician implies a
+    # slot" — is no longer true. A job with no agreed time can be offered,
+    # unaccepted and escalated like any other, and funding a bonus on one is
+    # exactly what a manager would do about it.
+    #
+    # Back to whichever open state it came from, not always `New`. Writing `New`
+    # over a ticket with a null slot would claim a time had been agreed: the
+    # console would show it as confirmed with an em-dash where the slot goes,
+    # and `sweep_silent_slots` reads the slot rather than the status precisely
+    # so the customer keeps being chased either way.
+    back_to = "New" if row.slot_start is not None else "Slot Pending"
 
     result = await db.execute(
         update(Ticket)
@@ -2190,7 +2204,7 @@ async def add_bonus_and_renotify(
             Ticket.status == "Escalated",
             Ticket.technician_id.is_(None),
         )
-        .values(status="New", bonus_paise=amount_paise)
+        .values(status=back_to, bonus_paise=amount_paise)
     )
     if result.rowcount == 0:
         raise _refused(
@@ -2199,7 +2213,7 @@ async def add_bonus_and_renotify(
             "again.",
         )
 
-    row.status = "New"
+    row.status = back_to
     row.bonus_paise = amount_paise
     db.add(
         record_event(
@@ -2208,7 +2222,7 @@ async def add_bonus_and_renotify(
             actor_kind="staff",
             actor_label=principal.user.full_name or "—",
             from_status="Escalated",
-            to_status="New",
+            to_status=back_to,
             note=f"₹{amount_paise // 100:,} bonus · back in the pool",
             by_user=principal.user_id,
         )
@@ -2627,8 +2641,12 @@ async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:
     Guarded on the ticket really being in the pool. Both callers establish that
     before getting here, but they do it in two different places and only one of
     them is obvious from the call site.
+
+    Both open statuses, matching `jobs.pool_query`: a `Slot Pending` ticket is
+    offered from the moment it is raised, and a push is the only thing that
+    reaches a technician who does not have the app open.
     """
-    if row.status != "New" or row.technician_id is not None:
+    if row.status not in ("New", "Slot Pending") or row.technician_id is not None:
         return
     await announce_pool_job(
         db,
@@ -2638,6 +2656,11 @@ async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:
         pincode=row.pincode,
         city=row.city,
         node_path_ids=row.node_path_ids,
-        # So a technician whose day is already full is not told about it.
+        # What it pays. The brief asked for it and it is the right call: an
+        # offer somebody has to open the app to price is one they price by
+        # opening the app, and first-accept-wins makes that a real cost to them.
+        payout_paise=row.technician_payout_paise,
+        # So a technician whose day is already full is not told about it. Null
+        # when no time is agreed, which is not "any day" — see `announce_pool_job`.
         slot_start=row.slot_start,
     )

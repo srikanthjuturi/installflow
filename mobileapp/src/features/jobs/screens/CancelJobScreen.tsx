@@ -20,10 +20,16 @@ export interface CancelJobScreenProps {
 /**
  * Screen 8 — Cancel with penalty.
  *
- * The customer was promised this slot before any technician saw the job, so
- * backing out breaks a commitment made on the technician's behalf. The cost
+ * Backing out breaks a commitment made on the technician's behalf. The cost
  * leads the screen, and the confirm button repeats the figure so it can never
  * be tapped without having been read.
+ *
+ * The band, the amount and whether it escalates all come from the SERVER —
+ * `GET /jobs/{id}/cancellation` — and this screen renders whatever comes back.
+ * That is what makes a job with no agreed time need nothing special here: the
+ * server prices it at the cheapest band, because the bands measure lateness
+ * against an appointment and nobody has been promised one. The screen never
+ * knew the rule, so it cannot get the new case wrong.
  */
 export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
   const router = useRouter();

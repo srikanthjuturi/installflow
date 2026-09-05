@@ -18,15 +18,16 @@ export type NotificationKind =
   | "technician_joined"
   | "job_started"
   | "invite_expired"
+  | "assigned"
   | "no_show";
 
 /**
- * The same nine, in the order the filter offers them — loudest first.
+ * The same ten, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
- * The last three are the things that merely HAPPENED — a technician arrived,
- * a visit began, an invite lapsed — and they sit at the bottom for the same
- * reason: nobody scrolls a feed looking for good news.
+ * The last four are the things that merely HAPPENED — a job was taken, a
+ * technician arrived, a visit began, an invite lapsed — and they sit at the
+ * bottom for the same reason: nobody scrolls a feed looking for good news.
  *
  * `satisfies` rather than a plain array: drop a kind from the union and this
  * line stops compiling, which is the point. A filter that quietly stops
@@ -40,6 +41,7 @@ export const NOTIFICATION_KINDS = [
   "force_close",
   "slot",
   "invite_expired",
+  "assigned",
   "job_started",
   "technician_joined",
 ] as const satisfies readonly NotificationKind[];

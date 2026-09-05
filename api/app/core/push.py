@@ -263,6 +263,7 @@ async def announce_pool_job(
     pincode: str,
     city: str,
     node_path_ids: list[uuid.UUID],
+    payout_paise: int | None = None,
     slot_start: datetime.datetime | None = None,
 ) -> int:
     """A job entered the pool — tell the phones that could take it.
@@ -286,6 +287,12 @@ async def announce_pool_job(
     # technician whose day is already full would be pushed about a job the pool
     # will not show them and `accept` will refuse — the exact notification that
     # teaches people to stop reading notifications.
+    #
+    # NULL is not "any day" and must not be read as one: a job with no agreed
+    # time spends no day, so there is no day to be full of. `technicians_covering`
+    # skips the cap term entirely for it, which matches `has_cap_room` — and
+    # what stops a technician hoarding such jobs is the free-window guard in
+    # `jobs.accept`, not this.
     technician_ids = await technicians_covering(
         db,
         company_id=company_id,
@@ -306,13 +313,25 @@ async def announce_pool_job(
         select(ProductNode.name).where(ProductNode.id == node_path_ids[-1])
     ) if node_path_ids else None
 
+    # The money leads. A lock screen is where the decision gets made — first
+    # accept wins, so whoever has to open the app to find out what a job pays
+    # has usually already lost it — and rupees are the one fact that decides
+    # whether opening it is worth doing.
+    #
+    # Whole rupees, no paise: this is a glance, not an invoice.
+    parts = [p for p in (
+        f"₹{payout_paise // 100:,}" if payout_paise else None,
+        what,
+        f"{city} {pincode}",
+    ) if p]
+
     return await send_to_technicians(
         db,
         company_id=company_id,
         technician_ids=technician_ids,
         # Singular of the prototype's Home banner, "{n} new jobs in your area".
         title="New job in your area",
-        body=f"{what} · {city} {pincode}" if what else f"{city} {pincode}",
+        body=" · ".join(parts),
         # Routing only. The app re-reads the offer through the authenticated
         # API — a lock screen is not the place for a customer's details, and
         # until the technician accepts they are not entitled to them anyway.

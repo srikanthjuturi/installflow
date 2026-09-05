@@ -240,10 +240,14 @@ export interface Job {
   customerRefused: boolean;
   /**
    * Hours until the committed slot; negative means past. Single source for
-   * status badges, pool filtering and penalty bands. Becomes a real timestamp
-   * at binding time.
+   * status badges, pool filtering and penalty bands.
+   *
+   * NULL when no time has been agreed — a job can be accepted before the
+   * customer picks one. Null rather than a sentinel number: `Infinity` and `0`
+   * both keep every comparison compiling while asserting something ("never
+   * starting", "starting now") that nobody decided.
    */
-  hoursToSlot: number;
+  hoursToSlot: number | null;
 
   /** Masked until the technician accepts — doc §6. */
   maskedCustomer: string;

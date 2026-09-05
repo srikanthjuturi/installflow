@@ -140,7 +140,11 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                       color: palette.secondary[600],
                     }}
                   >
-                    Confirmed slot
+                    {/* The label has to match the value under it. "Confirmed
+                        slot" over "Time not set yet" reads as a contradiction,
+                        and the technician is deciding from this block. Second
+                        string not yet approved. */}
+                    {job.hoursToSlot === null ? 'Slot' : 'Confirmed slot'}
                   </Text>
                   <Text
                     style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.slotFg }}

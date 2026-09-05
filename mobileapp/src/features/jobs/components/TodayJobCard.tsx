@@ -13,6 +13,9 @@ export interface TodayJobCardProps {
 function badge(job: Job) {
   if (job.status === 'completed') return { label: 'Completed', ...color.statusCompleted };
   if (job.status === 'inprogress') return { label: 'In progress', ...color.statusInProgress };
+  // Ahead of the =4h test: `null <= 4` is TRUE in JavaScript, so a job with no
+  // agreed time would otherwise announce itself as "Starting soon".
+  if (job.hoursToSlot === null) return { label: 'Awaiting time', ...color.statusUpcoming };
   if (job.hoursToSlot <= 4) return { label: 'Starting soon', ...color.statusStartingSoon };
   return { label: 'Upcoming', ...color.statusUpcoming };
 }

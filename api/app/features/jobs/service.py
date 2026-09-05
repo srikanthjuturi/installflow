@@ -26,15 +26,16 @@ either lives in `app.core.tickets` already or is small enough to state here.
 """
 
 import datetime
+import logging
 import secrets
 import uuid
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.coverage import has_cap_room
+from app.core.coverage import has_cap_room, nearest_manager_for
 from app.core.errors import AppError
 from app.core.escalation import escalate, whatsapp_the_area_manager
 from app.core.ledger import (
@@ -57,6 +58,7 @@ from app.core.rules import (
     snapshot_value,
 )
 from app.core.schemas import ListParams
+from app.core.slots import bookable_slots, when_label
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
     MIN_PRODUCT_PHOTOS,
@@ -87,6 +89,8 @@ from app.models.ledger import LedgerEntry
 from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
+
+log = logging.getLogger(__name__)
 
 
 def _now() -> datetime.datetime:
@@ -143,15 +147,30 @@ def pool_query(
     technician may see — only what they may be TOLD about a ticket that was
     already theirs to see.
 
-    The predicate is deliberately keyed on `status == 'New'` plus
-    `slot_start IS NOT NULL`, and NOT on `slot_confirmed_at`. That column is
-    null whenever the vendor typed the slot at intake — `create_ticket` sets
-    `status='New'` with `slot_request_status='not_needed'` and never stamps a
-    confirmation, because there was nothing to ask. Keying on it would silently
-    hide every ticket that arrived with a time already agreed, and the pool
-    would look like it was working.
+    ## Two kinds of offerable job, and the window differs
 
-    `technician_id IS NULL` as well as `status == 'New'`, though the two should
+    A job is offerable while there is still time to do it, and what bounds
+    "still" depends on whether a time has been agreed:
+
+      * **A slot is set** — offerable until that window OPENS. One that has
+        already begun cannot be travelled to.
+      * **No slot yet** — offerable until `sla_due_at`. The customer has been
+        sent the link and has not answered; the job is real, the money is real,
+        and the only deadline that exists is the service level. Waiting for the
+        customer before telling anybody used to cost most of a 48-hour SLA in
+        silence.
+
+    Hence `status IN ('New', 'Slot Pending')`. `Slot Pending` is not a lesser
+    state here — it is the same job, minus a time.
+
+    Never keyed on `slot_confirmed_at`. That column is null whenever the vendor
+    typed the slot at intake — `create_ticket` sets `status='New'` with
+    `slot_request_status='not_needed'` and never stamps a confirmation, because
+    there was nothing to ask. Keying on it would silently hide every ticket that
+    arrived with a time already agreed, and the pool would look like it was
+    working.
+
+    `technician_id IS NULL` as well as the status test, though the two should
     never disagree: the guarded UPDATE in `accept` sets both together, and a row
     where they had drifted apart is one this query must not offer twice.
     """
@@ -218,20 +237,29 @@ def pool_query(
         .exists()
     )
 
+    now = _now()
     conditions = [
         Ticket.company_id == company_id,
         Ticket.deleted_at.is_(None),
-        Ticket.slot_start.is_not(None),
-        # A window that has already opened cannot be travelled to. The pool
-        # is a list of commitments a technician could still keep.
-        Ticket.slot_start > _now(),
+        # ONE expression for "there is still time to do this", both shapes in
+        # it. Two separate predicates would be two chances to drift, and the
+        # drift would be silent: a pool that quietly stops offering half the
+        # work looks exactly like a quiet week.
+        or_(
+            # A window that has already opened cannot be travelled to. The pool
+            # is a list of commitments a technician could still keep.
+            and_(Ticket.slot_start.is_not(None), Ticket.slot_start > now),
+            # No time agreed yet. The service level is the only deadline there
+            # is, so it is the one that decides.
+            and_(Ticket.slot_start.is_(None), Ticket.sla_due_at > now),
+        ),
         covers_pincode,
         certified_for,
         is_active,
     ]
     if open_only:
         conditions += [
-            Ticket.status == "New",
+            Ticket.status.in_(("New", "Slot Pending")),
             Ticket.technician_id.is_(None),
         ]
     if eligible_only:
@@ -247,7 +275,15 @@ def pool_query(
         .where(*conditions)
         # Soonest first: the pool is read top-down and the job most at risk of
         # going unassigned is the one happening next.
-        .order_by(Ticket.slot_start.asc(), Ticket.code.asc())
+        #
+        # `coalesce`, because a plain `slot_start ASC` sorts NULLs LAST in
+        # Postgres — which would bury every slotless job below every scheduled
+        # one, exactly inverting the urgency. A job with no time agreed is
+        # running out of SLA right now; that deadline is what it sorts on.
+        .order_by(
+            func.coalesce(Ticket.slot_start, Ticket.sla_due_at).asc(),
+            Ticket.code.asc(),
+        )
     )
 
 
@@ -288,9 +324,11 @@ def _offer_out(
     sub_names: dict[uuid.UUID, str],
     models: dict[uuid.UUID, tuple[str, list[dict], str | None]],
 ) -> JobOfferOut:
-    # `slot_start`/`slot_end` are non-null by the query's own predicate; the
-    # asserts are for the type checker rather than for runtime.
-    assert t.slot_start is not None and t.slot_end is not None
+    # The assert that used to stand here — "non-null by the query's own
+    # predicate" — stopped being true when the pool started carrying jobs whose
+    # customer has not picked a time. Both are nullable on the wire now, and the
+    # client is told WHICH kind of offer it is holding rather than being left to
+    # infer it from a missing field.
     return JobOfferOut(
         id=t.id,
         code=t.code,
@@ -301,6 +339,7 @@ def _offer_out(
         pincode=t.pincode,
         slotStart=t.slot_start,
         slotEnd=t.slot_end,
+        slaDueAt=t.sla_due_at,
         serviceLevelHours=t.service_level_hours,
         maskedCustomer=mask_name(t.customer_name),
         payoutPaise=t.technician_payout_paise,
@@ -393,6 +432,12 @@ def mine_query(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> Select:
     and the only useful order for a day plan is the order they will drive it.
     `ix_tickets_company_technician` already exists on `tickets` and serves the
     lookup; the sort is over one technician's own rows, which is small.
+
+    A job they accepted before the customer picked a time has no slot to sort
+    on, and `NULLS LAST` would bury it at the bottom of the list — the one job
+    that needs chasing, filed behind everything already settled. It sorts on its
+    deadline instead, the same `coalesce` the pool uses, so it appears where its
+    urgency puts it.
     """
     return (
         select(Ticket)
@@ -401,7 +446,10 @@ def mine_query(*, company_id: uuid.UUID, technician_id: uuid.UUID) -> Select:
             Ticket.technician_id == technician_id,
             Ticket.deleted_at.is_(None),
         )
-        .order_by(Ticket.slot_start.asc(), Ticket.code.asc())
+        .order_by(
+            func.coalesce(Ticket.slot_start, Ticket.sla_due_at).asc(),
+            Ticket.code.asc(),
+        )
     )
 
 
@@ -629,12 +677,38 @@ async def accept(
             "take jobs.",
         )
 
+    if offered.slot_start is None:
+        # A job with no agreed time spends no day, so `has_cap_room` cannot
+        # refuse it — see the CASE at the top of `core.coverage.has_cap_room`.
+        # Without this guard a technician could hoard slotless jobs all morning
+        # and every one of those customers would open their link to find no
+        # times left, which is a dead end we caused and they cannot fix.
+        #
+        # The same function that will filter THEIR choices answers it: if there
+        # is not one window this technician could serve, they cannot take it.
+        # One rule, one function, both ends of the handshake.
+        if not await bookable_slots(db, offered, technician_id=profile.id):
+            raise JobRefused(
+                "NO_WINDOW_LEFT",
+                "You have no free window left inside this job's service level. "
+                "Finish or free up a day and it will come back.",
+            )
+
+    # BEFORE the UPDATE, not after. An ORM-enabled UPDATE synchronises the
+    # session, so `offered.status` is already "Assigned" on the far side of it —
+    # reading it there recorded a transition of "Assigned → Assigned" on the
+    # trail, which says nothing about where the job came from.
+    was = offered.status
+
     result = await db.execute(
         update(Ticket)
         .where(
             Ticket.id == ticket_id,
             Ticket.company_id == company_id,
-            Ticket.status == "New",
+            # Both shapes of an open job — see `pool_query`. A `Slot Pending`
+            # ticket is the same job minus a time, and taking it is the same
+            # act; what differs is only that the time arrives afterwards.
+            Ticket.status.in_(("New", "Slot Pending")),
             Ticket.technician_id.is_(None),
             # The cap is re-tested HERE and not only in the eligibility read
             # above, because that read is a read: one technician tapping two
@@ -657,7 +731,7 @@ async def accept(
             select(Ticket.id).where(
                 Ticket.id == ticket_id,
                 Ticket.company_id == company_id,
-                Ticket.status == "New",
+                Ticket.status.in_(("New", "Slot Pending")),
                 Ticket.technician_id.is_(None),
             )
         )
@@ -688,7 +762,11 @@ async def accept(
             kind="assigned",
             actor_kind="technician",
             actor_label=name or profile.code,
-            from_status="New",
+            # What it actually WAS, not a guess. A job can now be taken from
+            # `Slot Pending` as well as from `New`, and a timeline that says
+            # "New → Assigned" about a ticket that was never New is a trail
+            # nobody can trust afterwards.
+            from_status=was,
             to_status="Assigned",
         )
     )
@@ -715,9 +793,134 @@ async def accept(
         select(Ticket).where(Ticket.id == ticket_id, Ticket.company_id == company_id)
     )
     assert row is not None
+
+    await _announce_acceptance(db, row, technician=name or profile.code, profile=profile)
+
     # Now it is theirs, so the masked fields are theirs to see.
     offers, models = await _hydrate(db, [row])
     return _job_out(offers[0], row, models)
+
+
+async def _announce_acceptance(
+    db: AsyncSession, row: Ticket, *, technician: str, profile: TechnicianProfile
+) -> None:
+    """Somebody is going. Tell the three parties who are waiting to hear it.
+
+    Until now `accept` told nobody. That was defensible while a job could only
+    be accepted AFTER the customer had already agreed a time: the customer knew
+    a visit was coming, and `sweep_customer_notice` named the technician an hour
+    before the slot. Neither holds for a job taken before any time exists —
+    there may be no slot for that sweep to fire ahead of, and the vendor has
+    been sitting on a ticket with nothing to show for it.
+
+    Three recipients, three reasons, three channels:
+
+      * **the customer** — WhatsApp, because they have no login. Who is coming,
+        and on what number.
+      * **the vendor** — a bell in their portal. They raised it; the first news
+        they get should not be the closure.
+      * **the nearest manager** — a bell (which their territory already gives
+        them) plus one directed WhatsApp, so the person answerable for that
+        ground is not the last to find out.
+
+    AFTER the commit, never inside it. Every one of these leaves the building,
+    and an outbound message about a transaction that then rolled back cannot be
+    recalled. `notify` flushes without committing, so the two bells ride the
+    commit at the end of this function rather than the accept's.
+
+    Failure here must not fail the acceptance. The job IS taken — that is
+    settled in the database — and unwinding it because Meta was slow would turn
+    a delivery problem into a dispatch problem.
+    """
+    when = (
+        when_label(row.slot_start, row.slot_end)
+        if row.slot_start and row.slot_end
+        else None
+    )
+
+    raised = await notify(
+        db,
+        company_id=row.company_id,
+        kind="assigned",
+        title=f"{row.code}: {technician} accepted",
+        detail=(
+            when
+            if when
+            else "No time agreed yet — the customer still has the link."
+        ),
+        to=f"/tickets/{row.id}",
+        ticket_id=row.id,
+        pincode=row.pincode,
+        # Widens the audience to the vendor's own portal; it never narrows the
+        # staff one, who see it by territory as they always did.
+        vendor_id=row.vendor_id,
+    )
+    await db.commit()
+    await publish_notification(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        vendor_id=row.vendor_id,
+        notification_id=raised.id,
+    )
+
+    company, product, phone = await _who_and_what(db, row, profile)
+
+    await whatsapp.send_job_accepted(
+        row.customer_phone,
+        company,
+        product,
+        technician,
+        phone or "",
+        when,
+    )
+
+    manager = await nearest_manager_for(
+        db, company_id=row.company_id, pincode=row.pincode
+    )
+    if manager is None or not manager.phone:
+        # Nobody reachable covers this ground. The bell above still landed, so
+        # this is quieter than it looks — but it is worth a line, because a
+        # company taking work in a pincode no manager covers is a configuration
+        # problem somebody should fix.
+        log.warning(
+            "acceptance %s: no reachable manager covers %s", row.code, row.pincode
+        )
+        return
+
+    await whatsapp.send_job_accepted_manager(
+        manager.phone,
+        company,
+        manager.full_name,
+        row.code,
+        technician,
+        f"{row.city} {row.pincode}",
+        when,
+    )
+
+
+async def _who_and_what(
+    db: AsyncSession, row: Ticket, profile: TechnicianProfile
+) -> tuple[str, str, str | None]:
+    """Company name, product name, and the technician's own mobile.
+
+    Three scalars in one place because every one of them is needed by the
+    messages above and none of them is on the ticket. The company is resolved
+    from the row rather than a constant for the reason it is everywhere else
+    here: one WhatsApp number sends for every tenant on this platform.
+    """
+    company = (
+        await db.scalar(select(Company.name).where(Company.id == row.company_id))
+    ) or "Reliance GreenTech Service"
+    product = (
+        await db.scalar(select(ProductModel.name).where(ProductModel.id == row.model_id))
+    ) or "service"
+    phone = await db.scalar(
+        select(User.phone)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.id == profile.membership_id)
+    )
+    return company, product, phone
 
 
 # ── doing the job ────────────────────────────────────────────────────────────
@@ -1447,9 +1650,28 @@ async def _band_for(
     is the figure they pay.
     """
     rules = await load_rules(db, row.company_id)
-    assert row.slot_start is not None  # an Assigned job always has a slot
-    hours = (row.slot_start - _now()).total_seconds() / 3600
-    index = cancel_band_index(hours)
+
+    # ⚠ This used to assert `slot_start is not None`, on the reasoning that an
+    # Assigned job always has one. It does not any more: a job can be accepted
+    # before the customer has picked a time, and giving one of those back is a
+    # perfectly ordinary thing to do. The assert would have been a 500 on the
+    # cancel screen.
+    #
+    # No slot means the CHEAPEST band, and that is a judgement rather than a
+    # fallback. The bands price LATENESS — how little notice the customer got
+    # relative to an appointment they were promised. With no appointment there
+    # is no notice to be short of: nobody has been told to stay in, and the job
+    # goes back to a pool that still has its whole service level to run.
+    #
+    # Escalation is a different question and keeps its own clock. "Can this
+    # still be filled?" is answered by the deadline, which for a slotless job is
+    # `sla_due_at` — the same substitution `sweep_unaccepted` makes.
+    if row.slot_start is None:
+        index = 0
+        hours = (row.sla_due_at - _now()).total_seconds() / 3600
+    else:
+        hours = (row.slot_start - _now()).total_seconds() / 3600
+        index = cancel_band_index(hours)
     band = int(snapshot_value(row.rules_snapshot, "cancel_penalties_paise")[index])
 
     already = await charged_this_month(
@@ -1566,6 +1788,15 @@ async def cancel(
 
     charge, label, escalates = await _band_for(db, row, technician_id=profile.id)
 
+    # Back to what it WAS, which is not always `New`. A job accepted before the
+    # customer picked a time returns to `Slot Pending` — that status means "no
+    # time agreed", and writing `New` over a ticket with a null slot would put
+    # it in a shape nothing else in the product produces: the console would show
+    # it as confirmed while its Slot column reads "—", and `sweep_silent_slots`
+    # reads the slot rather than the status precisely so the customer still gets
+    # chased either way.
+    back_to = "New" if row.slot_start is not None else "Slot Pending"
+
     result = await db.execute(
         update(Ticket)
         .where(
@@ -1574,7 +1805,7 @@ async def cancel(
             Ticket.status == "Assigned",
             Ticket.technician_id == profile.id,
         )
-        .values(technician_id=None, status="New")
+        .values(technician_id=None, status=back_to)
     )
     if result.rowcount == 0:
         raise JobRefused(
@@ -1582,7 +1813,7 @@ async def cancel(
             "This job is no longer assigned to you. Refresh to see your "
             "current jobs.",
         )
-    row.status = "New"
+    row.status = back_to
     row.technician_id = None
 
     name = await _technician_name(db, profile)
@@ -1593,7 +1824,7 @@ async def cancel(
             actor_kind="technician",
             actor_label=name,
             from_status="Assigned",
-            to_status="New",
+            to_status=back_to,
             note=f"Cancelled: {reason} · {label} · ₹{charge // 100:,}",
         )
     )

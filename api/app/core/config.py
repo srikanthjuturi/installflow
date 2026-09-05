@@ -124,6 +124,19 @@ class Settings(BaseSettings):
     # NAME AND NUMBER, which Meta reviews on its own terms.
     WHATSAPP_TECHNICIAN_TEMPLATE_NAME: str = ""
     WHATSAPP_TECHNICIAN_TEMPLATE_LANG: str = "en_US"
+    #: "Ravi has accepted your visit." UTILITY, sent the moment a technician
+    #: takes the job — which can now be BEFORE any time is agreed, so unlike
+    #: `WHATSAPP_TECHNICIAN_TEMPLATE_NAME` its body cannot name a slot. That is
+    #: the whole reason it is a second template rather than a reuse: Meta
+    #: approves a body, and a parameter that is sometimes a time and sometimes
+    #: "we will confirm shortly" is not the same message.
+    WHATSAPP_ACCEPTED_TEMPLATE_NAME: str = ""
+    WHATSAPP_ACCEPTED_TEMPLATE_LANG: str = "en_US"
+    #: The same news to the manager answerable for that ground — the AM over the
+    #: state, else the RH, else a National Head. Staff-facing, so it names the
+    #: technician and the area rather than the customer.
+    WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_NAME: str = ""
+    WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_LANG: str = "en_US"
     #: The only message this system sends to its own STAFF. Managers have no
     #: mobile app, so an escalation four hours from a slot cannot wait for
     #: somebody to open a browser tab.

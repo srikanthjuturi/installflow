@@ -72,6 +72,16 @@ NOTIFICATION_KINDS = (
     #: the invite simply rotted: its status only ever flipped when somebody
     #: happened to try a resend, so nothing told the manager who sent it.
     "invite_expired",
+    #: A technician took the job. The only GOOD news here besides
+    #: `technician_joined`, and the reason it had to become a bell is that
+    #: acceptance can now happen before a time is agreed: the vendor used to
+    #: learn somebody was going only when `sweep_customer_notice` fired an hour
+    #: before a slot, and a job with no slot has no such hour.
+    #:
+    #: Carries `vendor_id`, so it widens to the portal of whoever raised the
+    #: ticket. They asked for the visit; the first thing they hear about it
+    #: should not be the closure.
+    "assigned",
     #: A technician held a slot, the window closed, and they never started.
     #: Nobody cancelled and nobody arrived — the customer is the only person
     #: who found out.
@@ -123,7 +133,7 @@ class Notification(Base, IdMixin, AuditMixin):
         CheckConstraint(
             "kind IN ('escalation', 'ai', 'serial_mismatch', 'force_close', "
             "'slot', 'technician_joined', 'job_started', 'invite_expired', "
-            "'no_show')",
+            "'assigned', 'no_show')",
             name="kind",
         ),
         # The feed: one company's notifications, newest first.

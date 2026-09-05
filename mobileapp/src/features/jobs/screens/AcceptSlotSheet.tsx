@@ -96,7 +96,12 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
             flex: 1,
           }}
         >
-          Commit to this slot?
+          {/* Two questions, because they commit to different things. With a
+              slot the technician is agreeing to an HOUR; without one they are
+              agreeing to the job and the hour lands later. Asking "commit to
+              this slot?" over a job that has none is a question about something
+              that is not on the screen. Second string not yet approved. */}
+          {job?.hoursToSlot === null ? 'Take this job?' : 'Commit to this slot?'}
         </Text>
       </View>
 
@@ -110,11 +115,33 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
           marginBottom: 16,
         }}
       >
-        The customer already confirmed{' '}
-        <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
-          {job?.slot ?? 'this slot'}
-        </Text>
-        . Accepting locks you to that time — cancelling later carries a penalty.
+        {job?.hoursToSlot === null ? (
+          /* NOT approved copy. It has to say something different because the
+             approved sentence asserts a fact that is false here — the customer
+             has NOT confirmed a time, and telling a technician they are locked
+             to one would be locking them to nothing.
+
+             It still says the two things that matter: the job is theirs from
+             the moment they tap, and a time is coming that they will be held
+             to. Understating the second would be the worse error — they can
+             still be charged for cancelling once it arrives. */
+          <>
+            The customer has not picked a time yet — they have the link. Accepting takes the
+            job now; you will be told the time as soon as they choose it, and{' '}
+            <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
+              cancelling after that carries a penalty
+            </Text>
+            .
+          </>
+        ) : (
+          <>
+            The customer already confirmed{' '}
+            <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
+              {job?.slot ?? 'this slot'}
+            </Text>
+            . Accepting locks you to that time — cancelling later carries a penalty.
+          </>
+        )}
       </Text>
 
       <View

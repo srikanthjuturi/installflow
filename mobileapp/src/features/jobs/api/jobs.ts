@@ -27,9 +27,23 @@ interface JobOfferDto {
   serviceType: string;
   city: string;
   pincode: string;
-  /** ISO instants. Both always present — a job with no slot is not offered. */
-  slotStart: string;
-  slotEnd: string;
+  /**
+   * ISO instants, and NULL together when the customer has not picked a time.
+   *
+   * A job is offered from the moment it is raised now, in parallel with the
+   * WhatsApp asking the customer to choose — so "no slot yet" is an ordinary
+   * state on the pool, not an impossible one. This comment used to promise both
+   * were always present, and every formatter below was written against that:
+   * `new Date(null)` is not an error, it is `Invalid Date`, which renders as
+   * those two words on the card.
+   */
+  slotStart: string | null;
+  slotEnd: string | null;
+  /**
+   * When the service level runs out. Always present, and it is what a job with
+   * no slot counts down to instead — there is no other deadline on one.
+   */
+  slaDueAt: string;
   serviceLevelHours: number;
   maskedCustomer: string;
   /**
@@ -161,8 +175,23 @@ function timeLabel(iso: string): string {
     .toUpperCase();
 }
 
+/**
+ * What a job with no agreed time says where a slot would go.
+ *
+ * Not "—" and not blank. The technician is deciding whether to take this, and
+ * the honest fact is that a time is coming but has not been chosen yet — an
+ * em-dash reads as missing data, which is a reason to distrust the card rather
+ * than a reason to accept it.
+ *
+ * NOT approved copy: the prototype has no slotless job, so there is no approved
+ * string for this state. See the note at the head of the pool screen.
+ */
+export const NO_SLOT_YET = 'Time not set yet';
+export const NO_SLOT_SHORT = 'No time yet';
+
 /** `Today · 2:00 PM–4:00 PM`, in IST — the zone the slot was agreed in. */
-function slotLabel(startIso: string, endIso: string): string {
+function slotLabel(startIso: string | null, endIso: string | null): string {
+  if (!startIso || !endIso) return NO_SLOT_YET;
   const start = new Date(startIso);
   const today = new Date();
   const sameDay =
@@ -175,7 +204,8 @@ function slotLabel(startIso: string, endIso: string): string {
 }
 
 /** `2–4 PM` for dense rows. */
-function slotShortLabel(startIso: string, endIso: string): string {
+function slotShortLabel(startIso: string | null, endIso: string | null): string {
+  if (!startIso || !endIso) return NO_SLOT_SHORT;
   const hour = (iso: string) =>
     new Date(iso).toLocaleTimeString(IST, { hour: 'numeric', hour12: true, timeZone: TZ });
   const [end, suffix] = hour(endIso).split(' ');
@@ -189,8 +219,15 @@ function slotShortLabel(startIso: string, endIso: string): string {
  * time would drift: a job that was "Upcoming" when the list loaded is
  * "Starting soon" twenty minutes later, and the penalty for cancelling it has
  * changed band.
+ *
+ * NULL for a job with no agreed time, and null rather than a number on purpose.
+ * Returning `Infinity` or `0` would let every `<=` comparison downstream keep
+ * working while quietly meaning something — "never starting" or "starting now"
+ * — that nobody chose. `null` makes each caller decide, and there are only
+ * three.
  */
-function hoursUntil(iso: string): number {
+function hoursUntil(iso: string | null): number | null {
+  if (!iso) return null;
   return (new Date(iso).getTime() - Date.now()) / 3_600_000;
 }
 

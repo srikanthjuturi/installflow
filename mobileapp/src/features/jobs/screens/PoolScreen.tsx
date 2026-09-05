@@ -12,8 +12,13 @@ import { palette } from '@/theme/tokens';
 /**
  * Screen 4 — Open job pool.
  *
- * Every job here already carries a customer-confirmed slot, so there is
- * nothing to negotiate — the only decision is whether to commit to that time.
+ * Two kinds of job now, and the card says which. One carries a
+ * customer-confirmed slot and the only decision is whether to commit to that
+ * time. The other has no time yet: it is offered from the moment the vendor
+ * raises it, in parallel with the customer being asked to pick a window, and
+ * accepting it commits to the JOB rather than to an hour.
+ *
+ * Both are real work and both pay the same, which is why they share a list.
  *
  * The intro sits in the content rather than the title bar, and states
  * first-accept-wins up front: a technician who reads a card carefully can lose
@@ -55,8 +60,18 @@ export function PoolScreen() {
             marginBottom: 14,
           }}
         >
-          Confirmed slots matching your category &amp; pincodes. First to accept wins — customer
-          details stay masked until you accept.
+          {/* ⚠ CHANGED FROM APPROVED COPY, and it had to be. The approved line
+              opened "Confirmed slots matching your category & pincodes", which
+              is no longer true: a job is offered from the moment it is raised,
+              before the customer has picked a time. Leaving it would be the
+              screen telling a technician every card has a slot while some of
+              them plainly say otherwise.
+
+              Pending sign-off. The two clauses that ARE approved — first to
+              accept wins, details masked until you accept — are kept verbatim,
+              because neither changed. */}
+          Jobs matching your category &amp; pincodes. First to accept wins — customer details
+          stay masked until you accept.
         </Text>
 
         {!online ? (

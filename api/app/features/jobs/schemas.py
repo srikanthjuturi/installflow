@@ -51,10 +51,22 @@ class JobOfferOut(AppModel):
     #: here at all — see the module docstring.
     city: str
     pincode: str
-    #: Both always present in the pool: a job with no slot is `Slot Pending`
-    #: and no technician is told it exists.
-    slotStart: datetime.datetime
-    slotEnd: datetime.datetime
+    #: NULL when the customer has not picked a time yet, which is a real and
+    #: common state — the job is offered from the moment it is raised, in
+    #: parallel with the WhatsApp asking them to choose. Both are null together
+    #: or neither is.
+    #:
+    #: This used to promise both were always present. That was true while the
+    #: pool waited for a confirmed slot, and it is the assumption every date
+    #: formatter on the phone was written against — a null one rendered
+    #: "Invalid Date" rather than blank, because `new Date(null)` is not an
+    #: error, it is a wrong answer.
+    slotStart: datetime.datetime | None = None
+    slotEnd: datetime.datetime | None = None
+    #: When the service level runs out. Always present, and it is what a slotless
+    #: offer counts down to: with no slot there is no other deadline, and the
+    #: card needs something honest to show in that space.
+    slaDueAt: datetime.datetime
     serviceLevelHours: int
     #: `R•••• M••••`. Enough to know a real person is waiting.
     maskedCustomer: str

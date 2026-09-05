@@ -132,10 +132,17 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
             "used once.</p>",
         )
 
-    slots = service.offered_slots(row)
+    # Technician-aware: a job can be accepted before a time exists, so by now
+    # somebody may be committed to this and the windows they cannot serve must
+    # not be on the page. Offering one would book a visit that cannot happen.
+    slots = await service.bookable_slots(db, row)
     if not slots:
-        # A real outcome, not an error: a 12-hour ticket raised late in the
-        # evening has nothing left inside its window.
+        # A real outcome, not an error, and now with two causes: a 12-hour
+        # ticket raised late in the evening has nothing left inside its window,
+        # and a ticket whose technician has filled every remaining day has
+        # nothing left either. The customer is told the same thing because the
+        # remedy is the same — and because "your technician is busy" is our
+        # problem to solve, not a fact to hand them.
         return _page(
             "No times left",
             "<h1>No times available</h1>"

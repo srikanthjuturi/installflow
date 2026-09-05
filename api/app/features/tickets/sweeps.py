@@ -70,7 +70,12 @@ import uuid
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.escalation import escalate, hours_to, whatsapp_the_area_manager
+from app.core.escalation import (
+    escalate,
+    hours_to,
+    time_to_slot,
+    whatsapp_the_area_manager,
+)
 from app.core.rules import (
     interval_hours as _hours,
     interval_minutes as _minutes,
@@ -79,8 +84,12 @@ from app.core.rules import (
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import publish_notification, publish_ticket_changed
-from app.core.tickets import NO_SHOW_GRACE_MINUTES, NO_SHOW_LOOKBACK_HOURS
-from app.features.tickets.service import clock, when_label
+from app.core.slots import clock, when_label
+from app.core.tickets import (
+    NO_SHOW_GRACE_MINUTES,
+    NO_SHOW_LOOKBACK_HOURS,
+    TERMINAL_STATUSES,
+)
 from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
@@ -216,15 +225,25 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
         await db.scalars(
             select(Ticket)
             .where(
-                Ticket.status == "New",
+                # Both shapes of an unclaimed job, matching `jobs.pool_query`.
+                # A `Slot Pending` ticket nobody has taken is exactly as empty
+                # as a `New` one, and until this included it a job offered
+                # before the customer answered could go unaccepted all the way
+                # to its deadline with nobody warned.
+                Ticket.status.in_(("New", "Slot Pending")),
                 Ticket.technician_id.is_(None),
                 Ticket.deleted_at.is_(None),
-                Ticket.slot_start.is_not(None),
+                # The deadline this job is measured against: its slot when it
+                # has one, its service level when it does not. `coalesce`, so
+                # the two live in one expression rather than in an `or_` that
+                # could drift — and so a slotless ticket cannot fall out of the
+                # comparison silently, which is what NULL does to `>`.
+                #
                 # Already started is not "at risk", it is missed — and a
                 # notification about it would be an apology, not an action.
-                Ticket.slot_start > now,
+                func.coalesce(Ticket.slot_start, Ticket.sla_due_at) > now,
                 # This company's own window, not the deployment's.
-                Ticket.slot_start
+                func.coalesce(Ticket.slot_start, Ticket.sla_due_at)
                 <= now + _hours(_rule("escalate_hours_before_slot")),
                 # NULL means never re-notified, which is the common case and
                 # must pass — hence the explicit IS NULL rather than relying on
@@ -249,7 +268,16 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
             db,
             row,
             note=(
-                f"No technician accepted · {hours_to(row.slot_start)}"
+                "No technician accepted · "
+                # With a slot, count down to it. Without one, `hours_to` would
+                # say "no slot" and stop — true, and useless to somebody
+                # deciding how urgent this is. The service level is the deadline
+                # in that case, so it is the one to name.
+                + (
+                    hours_to(row.slot_start)
+                    if row.slot_start
+                    else f"no slot yet · {time_to_slot(row.sla_due_at)} to SLA"
+                )
                 + (
                     f" · a ₹{row.bonus_paise // 100:,} bonus did not fill it"
                     if row.bonus_paise
@@ -271,9 +299,18 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
 async def sweep_silent_slots(db: AsyncSession) -> int:
     """The customer never picked a time.
 
-    Ops asked, WhatsApp delivered, and nothing came back. The ticket cannot
-    enter the pool until a slot exists, so it is invisible to every technician
-    and will stay that way until somebody phones the customer.
+    Ops asked, WhatsApp delivered, and nothing came back.
+
+    ⚠ Keyed on the SLOT, not on `Slot Pending`. It used to be the status, which
+    was the same question while a ticket could not leave that state without a
+    time. It can now: the pool offers jobs before the customer has answered, so
+    an accepted one sits at `Assigned` with `slot_start` still null — and this
+    chase, the only thing watching for a customer who has gone quiet, would have
+    stopped precisely when somebody was waiting to be told where to go.
+
+    Any live status, then, and the absence of a slot is the whole condition.
+    `TERMINAL_STATUSES` is excluded because a cancelled or closed ticket needs
+    no time.
 
     The vendor is told as well as us: it is their customer who has gone quiet,
     and they are usually the ones with another number to try.
@@ -296,7 +333,7 @@ async def sweep_silent_slots(db: AsyncSession) -> int:
         await db.execute(
             select(Ticket, _rule("slot_silence_hours"))
             .where(
-                Ticket.status == "Slot Pending",
+                Ticket.status.not_in(TERMINAL_STATUSES),
                 Ticket.deleted_at.is_(None),
                 Ticket.slot_start.is_(None),
                 asked.is_not(None),
@@ -355,7 +392,7 @@ async def sweep_force_close(db: AsyncSession) -> int:
     ).all()
     rows = [row for row, _ in pairs]
     wait_hours = {row.id: hours for row, hours in pairs}
-    return await _raise_for(
+    written = await _raise_for(
         db,
         rows,
         kind="force_close",
@@ -363,6 +400,66 @@ async def sweep_force_close(db: AsyncSession) -> int:
         detail=lambda r: (
             f"No customer response for {wait_hours[r.id]}h · {r.customer_name}"
         ),
+    )
+    return written + await _sweep_expired_without_slot(db)
+
+
+async def _sweep_expired_without_slot(db: AsyncSession) -> int:
+    """The customer never picked a time and the window has now closed.
+
+    The second way a ticket reaches "only a manager can end this", and it needed
+    finding rather than designing: once `sla_due_at` passes, `offered_slots`
+    returns EMPTY, so the customer's own link says "no times available" and
+    there is no longer any action they can take. The ticket cannot proceed and
+    cannot settle itself.
+
+    Nothing else catches it. `sweep_silent_slots` fires ONCE, deduped by its own
+    notification row, and usually long before the deadline — it says "they have
+    not answered in 6h", which is a different situation with a different remedy
+    (ring them). `sweep_unaccepted` only looks at tickets nobody holds, so it
+    skips one a technician accepted. `sweep_no_shows` measures from `slot_end`,
+    and there is none — correctly, since nobody can be a no-show for a time that
+    was never agreed.
+
+    It is also the backstop for the case `bookable_slots` creates: a customer
+    whose assigned technician filled every remaining day sees an empty page,
+    gives up, and nobody knows. That ticket arrives here when its window shuts.
+
+    Same `force_close` kind as above, because it is the same request of the same
+    person on the same screen — a job that can never proceed, needing a human to
+    end it. A separate kind would be a second queue for one remedy.
+
+    Assigned or not: an accepted job with no time is if anything worse, because
+    a technician is holding capacity for work that can no longer happen.
+    """
+    rows = list(
+        await db.scalars(
+            select(Ticket).where(
+                Ticket.status.not_in(TERMINAL_STATUSES),
+                Ticket.deleted_at.is_(None),
+                Ticket.slot_start.is_(None),
+                # The window is shut. Not "nearly" — while there is a minute
+                # left the customer can still act, and telling a manager to
+                # give up on a live ticket is the notification that teaches
+                # people to ignore them.
+                Ticket.sla_due_at < _now(),
+                Ticket.id.not_in(_already("force_close")),
+            )
+        )
+    )
+    return await _raise_for(
+        db,
+        rows,
+        kind="force_close",
+        title=lambda r: f"{r.code}: no time agreed, window closed",
+        detail=lambda r: (
+            f"{r.customer_name} never picked a slot and the {r.service_level_hours}h "
+            "service level has passed — they can no longer choose one"
+        ),
+        # The vendor raised it and their customer is the one who went quiet, so
+        # they are usually the only ones with another number to try. Same
+        # reasoning as `sweep_silent_slots`.
+        vendor=True,
     )
 
 

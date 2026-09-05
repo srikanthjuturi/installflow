@@ -151,7 +151,12 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                 color: color.pillChromeAmberFg,
               }}
             >
-              Committed · {job.slot}
+              {/* "Committed" is a promise about a time, so it cannot head a job
+                  that has none — the technician is committed to the JOB and is
+                  waiting on the customer. Second string not yet approved. */}
+              {job.hoursToSlot === null
+                ? `Accepted · ${job.slot}`
+                : `Committed · ${job.slot}`}
             </Text>
           </View>
         ) : null}

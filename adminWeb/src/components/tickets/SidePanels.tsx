@@ -204,9 +204,20 @@ export function TechnicianPanel({
                 {how} · {ticket.subcategoryName}
               </div>
             </div>
-            <span className="rounded-full bg-ok-bg px-2.25 py-0.75 text-xs font-semibold text-ok">
-              On job
-            </span>
+            {/* "On job" says somebody is going at a known time. A technician
+                can now take a job BEFORE the customer picks one, and the two
+                states need different answers from whoever is reading this
+                panel: one is settled, the other is still waiting on a customer
+                and is what the slot-request strip below is about. */}
+            {ticket.slotStart === null ? (
+              <span className="rounded-full bg-info-bg px-2.25 py-0.75 text-xs font-semibold text-info">
+                Awaiting time
+              </span>
+            ) : (
+              <span className="rounded-full bg-ok-bg px-2.25 py-0.75 text-xs font-semibold text-ok">
+                On job
+              </span>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-start gap-3">

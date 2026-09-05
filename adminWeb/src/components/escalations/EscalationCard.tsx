@@ -24,7 +24,8 @@ function reasonFor(ticket: Ticket): string {
 
 /**
  * One escalated ticket. The left border is danger-toned because every row
- * here is a customer holding a confirmed slot that nobody is going to.
+ * here is a customer nobody is going to — one holding a confirmed slot, or one
+ * who never picked a time and whose service level is running out regardless.
  *
  * `missed` is the same card for a slot that has already closed. It keeps both
  * actions — a manager may still want to send somebody late, and a bonus is
@@ -52,11 +53,18 @@ export function EscalationCard({
      `/tickets`, or worse, onto the very ticket they were still deciding about.
      The queue is a working list you come back to; say so on the way out. */
   const origin = useNavOrigin("Back to escalations");
-  const countdown = slotCountdown(
-    ticket.slotStart,
-    ticket.slotEnd,
-    new Date(readAt)
-  );
+  /* A job escalated before the customer ever picked a time has no slot to count
+     down to, and `slotCountdown(null)` correctly answers "—". That is the right
+     answer to the wrong question on this screen: a manager is here to decide
+     what is most urgent, and a row showing no deadline at all reads as the
+     least urgent thing in the queue when it is often the most.
+
+     So when there is no slot, count down to the SLA instead — the deadline that
+     does exist, and the one the API sorts and titles these rows by. */
+  const noSlot = ticket.slotStart === null;
+  const countdown = noSlot
+    ? { ...slotCountdown(ticket.slaDueAt, null, new Date(readAt)), label: "Time to SLA" }
+    : slotCountdown(ticket.slotStart, ticket.slotEnd, new Date(readAt));
 
   return (
     <Card className={missed ? undefined : "border-l-3 border-l-danger"}>
@@ -76,8 +84,12 @@ export function EscalationCard({
           </div>
           <p className="mt-1.5 text-xs text-ink-3">
             {ticket.city} · {ticket.pincode} ·{" "}
-            {/* The slot, not the SLA due time: it is the promise being missed. */}
-            Slot {formatSlot(ticket.slotStart, ticket.slotEnd)}
+            {/* The slot, not the SLA due time: it is the promise being missed.
+                Unless there is no slot — then "Slot —" states an absence
+                without explaining it, and the absence IS the situation: the
+                customer never answered and nobody can be sent to a time that
+                does not exist. */}
+            {noSlot ? "No slot agreed" : `Slot ${formatSlot(ticket.slotStart, ticket.slotEnd)}`}
           </p>
           <p className="mt-1.5 text-xs font-medium text-danger">
             {reasonFor(ticket)}

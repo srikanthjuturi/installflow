@@ -94,19 +94,30 @@ async def escalate(
     means the technician wins, the rowcount is 0, and nothing is recorded about
     a job that is no longer empty.
 
-    `New` is the only status it moves from. A cancellation that lands inside the
-    window releases the ticket to `New` first and then calls this, rather than
-    going straight to `Escalated`, so that the release and the escalation are
-    two facts on the trail instead of one that hides the other.
+    `New` and `Slot Pending` are the statuses it moves from, and they mean the
+    same thing here: a job nobody has taken. The second one joined when the pool
+    began offering work before the customer had agreed a time — such a ticket is
+    exactly as unaccepted, and leaving it out meant the one safety net skipped
+    the jobs most likely to need it.
+
+    A cancellation that lands inside the window releases the ticket to `New`
+    first and then calls this, rather than going straight to `Escalated`, so that
+    the release and the escalation are two facts on the trail instead of one that
+    hides the other.
 
     Returns whether it escalated, so a caller batching many can count them.
     """
+    # Captured BEFORE the UPDATE. An ORM-enabled UPDATE synchronises the
+    # session, so reading `row.status` afterwards gives "Escalated" and the
+    # trail would record a ticket escalating from the state it escalated INTO.
+    was = row.status
+
     result = await db.execute(
         update(Ticket)
         .where(
             Ticket.id == row.id,
             Ticket.company_id == row.company_id,
-            Ticket.status == "New",
+            Ticket.status.in_(("New", "Slot Pending")),
             Ticket.technician_id.is_(None),
         )
         .values(status="Escalated")
@@ -114,8 +125,6 @@ async def escalate(
     if result.rowcount == 0:
         return False
 
-    # The in-memory row still says `New`, and both the event below and the
-    # realtime frame read from it.
     row.status = "Escalated"
     db.add(
         TicketEvent(
@@ -124,7 +133,10 @@ async def escalate(
             kind="escalated",
             actor_kind=actor_kind,
             actor_label=actor_label,
-            from_status="New",
+            # What it actually was — `New` or `Slot Pending`. Both are "nobody
+            # has taken this", and a trail that says otherwise is worse than no
+            # trail.
+            from_status=was,
             to_status="Escalated",
             note=note,
         )
@@ -134,7 +146,18 @@ async def escalate(
         db,
         company_id=row.company_id,
         kind="escalation",
-        title=f"{row.code} unassigned — {hours_to(row.slot_start)}",
+        # With a slot, count down to it. Without one `hours_to` says "no slot",
+        # which is true and tells a manager nothing about how urgent this is —
+        # so name the deadline that does exist. Same substitution the sweep's
+        # own note makes.
+        title=(
+            f"{row.code} unassigned — "
+            + (
+                hours_to(row.slot_start)
+                if row.slot_start
+                else f"no slot yet, {time_to_slot(row.sla_due_at)} to SLA"
+            )
+        ),
         detail=detail,
         to=f"/tickets/{row.id}",
         ticket_id=row.id,

@@ -458,10 +458,12 @@ async def create_ticket(
 ) -> ApiEnvelope[TicketOut]:
     """Raise a ticket by hand — §4's third intake channel.
 
-    A slot decides where it lands: given one, the customer has already agreed a
-    time and the ticket is ready for technicians ("New"); without one it waits
-    for the customer to pick ("Slot Pending"). The WhatsApp that tells them
-    either way is a later slice.
+    A slot decides which status it lands in — "New" when the customer has
+    already agreed a time, "Slot Pending" when they have not — but no longer
+    whether technicians can see it. **Both go into the pool immediately.** A
+    slotless ticket is offered while its service level runs, in parallel with
+    the WhatsApp asking the customer to choose, and whoever accepts is told the
+    time when it arrives.
     """
     data = await service.create_ticket(db, principal, body)
     message = (
