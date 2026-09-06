@@ -34,6 +34,7 @@ from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.config import settings
 from app.core.coverage import has_cap_room, nearest_manager_for
 from app.core.errors import AppError
@@ -944,7 +945,8 @@ async def _who_and_what(
     """
     company = (
         await db.scalar(select(Company.name).where(Company.id == row.company_id))
-    ) or "Reliance GreenTech Service"
+    )
+    company = brand.company_name(company)
     product = (
         await db.scalar(select(ProductModel.name).where(ProductModel.id == row.model_id))
     ) or "service"

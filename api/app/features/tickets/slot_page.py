@@ -24,8 +24,10 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.database import get_db
 from app.features.tickets import service
+from app.models.company import Company
 from app.models.product import ProductModel
 
 router = APIRouter(tags=["tickets"])
@@ -80,7 +82,12 @@ _STYLE = """
 """
 
 
-def _page(title: str, body: str) -> HTMLResponse:
+def _page(title: str, body: str, *, mark: str | None = None) -> HTMLResponse:
+    """The shell. `mark` is the company's short code once the ticket is known.
+
+    It falls back to the platform's on the error paths, where a token that
+    resolved to nothing leaves no company to name — never to a guess.
+    """
     return HTMLResponse(
         f"""<!doctype html>
 <html lang="en">
@@ -91,7 +98,7 @@ def _page(title: str, body: str) -> HTMLResponse:
 <title>{html.escape(title)}</title>
 <style>{_STYLE}</style>
 </head>
-<body><div class="card"><div class="mark">RG</div>{body}</div></body>
+<body><div class="card"><div class="mark">{html.escape(brand.company_mark(mark))}</div>{body}</div></body>
 </html>"""
     )
 
@@ -109,6 +116,12 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
     row = await service.load_by_token(db, token)
     product = await db.scalar(
         select(ProductModel.name).where(ProductModel.id == row.model_id)
+    )
+    # Whose visit this is. The ticket names its company, and this page already
+    # shows the customer their own address — so the company installing their
+    # product is strictly less than it reveals already.
+    mark = await db.scalar(
+        select(Company.code).where(Company.id == row.company_id)
     )
     name = html.escape(row.customer_name.split(" ")[0])
     meta = (
@@ -130,6 +143,7 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
             '<p class="note">Our technician will call before arriving. '
             "To change the time, please call us &mdash; this link can only be "
             "used once.</p>",
+            mark=mark,
         )
 
     # Technician-aware: a job can be accepted before a time exists, so by now
@@ -148,6 +162,7 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
             "<h1>No times available</h1>"
             f"<p>Sorry {name} &mdash; we have run out of slots for this visit. "
             "Please call us and we will arrange one for you.</p>" + meta,
+            mark=mark,
         )
 
     by_day: dict[str, list[str]] = {}
@@ -178,6 +193,7 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
         f'<form method="post">{groups}</form>'
         '<p class="note">Two-hour windows. Our technician will call before '
         "arriving.</p>",
+        mark=mark,
     )
 
 

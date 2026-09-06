@@ -25,6 +25,7 @@ from sqlalchemy import Select, and_, case, func, or_, select, update
 from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.config import settings
 from app.core.coverage import has_cap_room, ist_day_bounds, technicians_covering
 from app.core.deps import Principal
@@ -1157,9 +1158,9 @@ def slot_link(token: str) -> str:
 async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
     # Resolved from the row rather than a constant: one WhatsApp number sends
     # for every tenant on this platform.
-    return (
+    return brand.company_name(
         await db.scalar(select(Company.name).where(Company.id == company_id))
-    ) or "Reliance GreenTech Service"
+    )
 
 
 async def _send_slot_request(db: AsyncSession, row: Ticket) -> None:

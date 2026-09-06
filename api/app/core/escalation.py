@@ -37,6 +37,7 @@ import logging
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.coverage import area_managers_covering
 from app.core.notifications import notify
 from app.core.realtime import (
@@ -219,7 +220,7 @@ async def whatsapp_the_area_manager(db: AsyncSession, row: Ticket) -> None:
             span = time_to_slot(row.slot_start)
             await whatsapp.send_escalation(
                 manager.phone or "",
-                company or "Reliance GreenTech",
+                brand.company_name(company),
                 row.code,
                 f"{row.city} {row.pincode}",
                 # The template reads "…and the slot is {{4}}", so this has to

@@ -11,13 +11,29 @@ link would attach later, so the URL a technician receives never has to change.
 Deliberately server-rendered with no assets. It is the first thing a new
 technician sees, often on a bad connection, and a build pipeline for one page
 would be its own liability.
+
+⚠ **This page carries the PLATFORM brand, not the inviting company's, and that
+is not an oversight.** It never resolves the token (see `invite_landing` below),
+so it has nothing to look a company up by — and giving it one would be actively
+harmful in two ways. It would turn the page into an oracle: a real token would
+render a company name and a forged one would not, which is exactly the "is this
+token valid" answer the endpoint refuses to give. And it would break the
+local-development path recorded in the root AGENTS.md, where a token minted by a
+LOCAL api opens fine through the deployed Azure page precisely because that page
+asks the database nothing.
+
+Its siblings — the customer's slot and feedback pages — DO name the company,
+because they already resolve a ticket and already show that customer their own
+address. There, the company is less sensitive than what is on screen anyway.
 """
 
+import html
 from urllib.parse import quote
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
+from app.core import brand
 from app.core.config import settings
 
 router = APIRouter(tags=["onboarding"])
@@ -78,7 +94,7 @@ _PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Your Reliance GreenTech technician invite</title>
+<title>Your {brand} technician invite</title>
 <style>
   :root {{ color-scheme: light; }}
   * {{ box-sizing: border-box; }}
@@ -111,9 +127,9 @@ _PAGE = """<!doctype html>
 </head>
 <body>
   <div class="card">
-    <div class="mark">RG</div>
+    <div class="mark">{mark}</div>
     <h1>Your invite is ready</h1>
-    <p>Open it in the Reliance GreenTech Technician app to set up your account.</p>
+    <p>Open it in the {brand} Technician app to set up your account.</p>
     <a class="cta" id="open" href="{deep_link}">Open the app</a>
     <a class="store" href="{app_link}">I don&rsquo;t have the app yet</a>
     <p class="note">
@@ -157,5 +173,7 @@ async def invite_landing(token: str) -> HTMLResponse:
             deep_link_js=f'"{deep_link}"',
             android_intent_js=f'"{android_intent}"',
             app_link=settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK,
+            brand=html.escape(brand.brand_name()),
+            mark=html.escape(brand.brand_mark()),
         )
     )

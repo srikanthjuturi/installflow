@@ -20,6 +20,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.deps import Principal
 from app.core.gst import assert_gstin_free_for_vendor
 from app.core.intake import (
@@ -524,7 +525,7 @@ async def _mail_password(
     result = await send_temporary_password(
         to=str(user.email),
         full_name=user.full_name,
-        company_name=company_name or "Reliance GreenTech",
+        company_name=brand.company_name(company_name),
         role_label=ROLE_LABELS.get(user.role, user.role),
         temporary_password=temporary_password,
     )

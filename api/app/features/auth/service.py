@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.config import settings
 from app.core.deps import Principal
 from app.core.errors import AppError
@@ -607,11 +608,11 @@ async def resettable_user(session: AsyncSession, email: str) -> User:
 async def reset_company_name(session: AsyncSession, user: User) -> str:
     """Whose name the reset email is sent in.
 
-    A parameter rather than the literal "Reliance GreenTech", because one sender
-    serves every company on this platform — the same argument
-    `send_temporary_password` makes. The company they last worked in is the one
-    they will recognise; a superadmin belongs to none, so the sender's own
-    display name is the honest fallback rather than an arbitrary tenant's.
+    A company rather than a fixed product name, because one sender serves every
+    company on this platform — the same argument `send_temporary_password`
+    makes. The company they last worked in is the one they will recognise; a
+    superadmin belongs to none, so the platform's own name is the honest
+    fallback rather than an arbitrary tenant's.
     """
     memberships = await _active_memberships(session, user)
     for _membership, company in memberships:
@@ -619,7 +620,7 @@ async def reset_company_name(session: AsyncSession, user: User) -> str:
             return company.name
     if memberships:
         return memberships[0][1].name
-    return settings.ACS_SENDER_NAME
+    return brand.brand_name()
 
 
 async def confirm_password_reset(

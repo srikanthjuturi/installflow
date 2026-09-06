@@ -29,8 +29,10 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.database import get_db
 from app.features.tickets import feedback_service as service
+from app.models.company import Company
 from app.models.product import ProductModel
 
 router = APIRouter(tags=["tickets"])
@@ -115,7 +117,12 @@ _STYLE = """
 """
 
 
-def _page(title: str, body: str) -> HTMLResponse:
+def _page(title: str, body: str, *, mark: str | None = None) -> HTMLResponse:
+    """The shell. `mark` is the company's short code once the ticket is known.
+
+    Falls back to the platform's on the error paths, where a token that
+    resolved to nothing leaves no company to name — never to a guess.
+    """
     return HTMLResponse(
         f"""<!doctype html>
 <html lang="en">
@@ -126,7 +133,7 @@ def _page(title: str, body: str) -> HTMLResponse:
 <title>{html.escape(title)}</title>
 <style>{_STYLE}</style>
 </head>
-<body><div class="card"><div class="mark">RG</div>{body}</div></body>
+<body><div class="card"><div class="mark">{html.escape(brand.company_mark(mark))}</div>{body}</div></body>
 </html>"""
     )
 
@@ -161,6 +168,12 @@ async def _render(db: AsyncSession, token: str, *, just_answered: bool):
     product = await db.scalar(
         select(ProductModel.name).where(ProductModel.id == row.model_id)
     )
+    # Whose job this was. The ticket names its company, and this page already
+    # shows the customer their own address and their technician's name — the
+    # company behind both is strictly less than it reveals already.
+    mark = await db.scalar(
+        select(Company.code).where(Company.id == row.company_id)
+    )
     name = html.escape(row.customer_name.split(" ")[0])
     meta = (
         f'<div class="meta"><b>{html.escape(product or "Your product")}</b>'
@@ -181,6 +194,7 @@ async def _render(db: AsyncSession, token: str, *, just_answered: bool):
                 '<div class="warn">Reported as not complete. Someone will '
                 "contact you.</div>"
                 '<p class="note">This link can only be used once.</p>',
+                mark=mark,
             )
         heading = "Thank you" if just_answered else "Already confirmed"
         return _page(
@@ -190,6 +204,7 @@ async def _render(db: AsyncSession, token: str, *, just_answered: bool):
             f"{meta}"
             '<div class="ok">Confirmed &mdash; this job is closed.</div>'
             '<p class="note">This link can only be used once.</p>',
+            mark=mark,
         )
 
     technician = await service.technician_name(db, row)
@@ -212,6 +227,7 @@ async def _render(db: AsyncSession, token: str, *, just_answered: bool):
         "</form>"
         '<p class="note">Your answer is what closes this job. If something is '
         "wrong, say so &mdash; it goes straight to a service manager.</p>",
+        mark=mark,
     )
 
 

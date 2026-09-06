@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import jwt
 
+from app.core import brand
 from app.core.config import settings
 from app.core.notifications import notify
 from app.core.realtime import publish_notification
@@ -190,7 +191,7 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
 
     return InviteResolveOut(
         phone=invite.phone,
-        companyName=company.name if company else "Reliance GreenTech Service",
+        companyName=brand.company_name(company.name if company else None),
         regionName=region.name if region else "—",
         invitedByName=inviter.full_name if inviter else None,
         expiresAt=invite.expires_at,

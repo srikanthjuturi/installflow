@@ -25,6 +25,7 @@ from sqlalchemy import case, delete, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core import brand
 from app.core.config import settings
 from app.core.coverage import jobs_held_by_technician
 from app.core.deps import Principal
@@ -1036,7 +1037,7 @@ async def technician_session(
         await _appointers(session, [profile.appointed_by_user_id])
     ).get(profile.appointed_by_user_id)
 
-    onboarded_by = company.name if company else "Reliance GreenTech Service"
+    onboarded_by = brand.company_name(company.name if company else None)
     if appointer and appointer.full_name:
         onboarded_by = f"{appointer.full_name} · {onboarded_by}"
 
@@ -1501,7 +1502,7 @@ async def _send_and_record(session: AsyncSession, invite: TechnicianInvite) -> N
     )
 
     result = await whatsapp.send_invite(
-        invite.phone, invite_link(invite.token), company_name or "Reliance GreenTech Service"
+        invite.phone, invite_link(invite.token), brand.company_name(company_name)
     )
     invite.send_attempts = (invite.send_attempts or 0) + 1
     if result.ok:

@@ -23,6 +23,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.deps import Principal
 from app.core.schemas import EmailStatus, ListParams
 from app.core.security import generate_temporary_password, hash_password
@@ -224,7 +225,7 @@ async def _mail_password(
     result = await send_temporary_password(
         to=str(user.email),
         full_name=user.full_name,
-        company_name=company_name or "Reliance GreenTech",
+        company_name=brand.company_name(company_name),
         role_label=ROLE_LABELS.get(user.role, user.role),
         temporary_password=temporary_password,
     )

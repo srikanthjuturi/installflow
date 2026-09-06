@@ -19,7 +19,27 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     SQL_ECHO: bool = False
-    PROJECT_NAME: str = "Reliance GreenTech Installation API"
+    #: The PLATFORM's own name — what this software calls itself when no
+    #: company can be named.
+    #:
+    #: Almost nothing user-facing should reach for it. Every surface that knows
+    #: which company it is acting for shows THAT company: the console chrome,
+    #: the customer's slot and feedback pages, and every email and WhatsApp
+    #: message, all of which already carry the company as a parameter. This is
+    #: the honest answer only where there genuinely is no company — a
+    #: superadmin belongs to none, and the invite landing page deliberately
+    #: never resolves its token.
+    #:
+    #: A setting rather than a literal so that renaming the platform is one
+    #: `.env` edit. `app/core/brand.py` is where it is actually consumed.
+    BRAND_NAME: str = "Reliance GreenTech"
+    #: The monogram beside it. A company's own mark is `companies.code`, which
+    #: is derived from its name once and then stored — see `core/company_code`.
+    BRAND_MARK: str = "RG"
+    #: The OpenAPI title at `/docs`. Empty means "follow BRAND_NAME", which is
+    #: what keeps the two from drifting; set it only to say something the brand
+    #: name does not, and see PROJECT_TITLE below for what is actually read.
+    PROJECT_NAME: str = ""
     API_V1_PREFIX: str = "/api/v1"
 
     # ─── CORS ──────────────────────────────────────────────────────────────
@@ -183,7 +203,12 @@ class Settings(BaseSettings):
     ACS_SENDER_ADDRESS: str = ""
     # The From name a recipient sees. Without it the raw azurecomm.net address
     # shows, which reads as machine spam.
-    ACS_SENDER_NAME: str = "Reliance GreenTech"
+    #
+    # Empty means "follow BRAND_NAME" — read it through `settings.SENDER_NAME`,
+    # never directly, so the platform cannot end up with two names. It is only
+    # ever the fallback anyway: an email that knows its company is sent in that
+    # company's name (`core/brand.py`).
+    ACS_SENDER_NAME: str = ""
     # Where the "Sign in" button in an email points.
     #
     # This is the CONSOLE's origin — Netlify — and NOT this API's, which is why
@@ -364,6 +389,23 @@ class Settings(BaseSettings):
     # password field and its confirmation, typed by somebody who has just been
     # locked out and is likely reaching for a password manager.
     PASSWORD_RESET_TOKEN_MINUTES: int = 15
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def PROJECT_TITLE(self) -> str:
+        """What `/docs` calls this API. Follows BRAND_NAME unless overridden."""
+        return self.PROJECT_NAME or f"{self.BRAND_NAME} Installation API"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def SENDER_NAME(self) -> str:
+        """The From name on an email that has no company to send in.
+
+        Almost every email names the COMPANY instead — see `core/brand.py`.
+        This is the fallback, and it follows BRAND_NAME so the platform has one
+        name rather than two that can disagree.
+        """
+        return self.ACS_SENDER_NAME or self.BRAND_NAME
 
     @computed_field  # type: ignore[prop-decorator]
     @property

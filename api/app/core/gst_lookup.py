@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.gst import gstin_holder_for_company, gstin_holder_for_vendor
 from app.core.schemas import AppModel
 from app.core.statutory import GstNumber
@@ -201,7 +202,7 @@ async def _alert_heads(
             result = await send_gstin_lookup_unavailable(
                 to=email,
                 full_name=full_name,
-                company_name=company_name or "Reliance GreenTech",
+                company_name=brand.company_name(company_name),
                 reason=reason,
             )
             if result.ok:

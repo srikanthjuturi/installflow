@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.core import brand
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -130,10 +131,15 @@ def build_otp_payload(phone: str, code: str) -> dict:
             [code],
             otp_button=True,
         )
+    # The PLATFORM name, not a company's — and this is the one message where
+    # that is right. A code is requested by a phone number, before anything has
+    # identified which company that number belongs to, so there is no company
+    # to name yet. The registered `yar_otp` template takes `[code]` alone for
+    # the same reason.
     return _text_payload(
         phone,
         (
-            f"{code} is your Reliance GreenTech Service verification code.\n\n"
+            f"{code} is your {brand.brand_name()} verification code.\n\n"
             "It expires in 5 minutes. Do not share it with anyone."
         ),
     )

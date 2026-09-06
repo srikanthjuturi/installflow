@@ -70,6 +70,7 @@ import uuid
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import brand
 from app.core.escalation import (
     escalate,
     hours_to,
@@ -636,7 +637,7 @@ async def sweep_customer_notice(db: AsyncSession) -> int:
         else:
             result = await whatsapp.send_technician_details(
                 row.customer_phone,
-                company or "Reliance GreenTech Service",
+                brand.company_name(company),
                 product or "your product",
                 when_label(row.slot_start, row.slot_end),
                 # A user row with no name is one nobody completed. Saying "our

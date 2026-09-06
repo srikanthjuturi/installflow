@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI):
 # the console would fail to parse it. The traceback is still logged server-side
 # by the handler in app.core.errors, which is where a developer should read it.
 app = FastAPI(
-    title=settings.PROJECT_NAME,
+    title=settings.PROJECT_TITLE,
     lifespan=lifespan,
 )
 
