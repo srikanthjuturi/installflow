@@ -6,6 +6,7 @@ import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser, useSignOut } from "@/hooks/useAuth";
+import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
 import { SuperadminSidebar } from "./SuperadminSidebar";
@@ -111,7 +112,7 @@ export function SuperadminShell() {
               rail's header shows on a wide screen — not both at once. */}
           <div className="min-w-0 leading-tight md:hidden">
             <p className="truncate text-sm font-semibold text-ink">
-              Reliance GreenTech Platform
+              {BRAND_NAME} Platform
             </p>
             <p className="truncate text-[11px] font-medium text-ink-3">
               Super Admin console

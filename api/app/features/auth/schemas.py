@@ -105,6 +105,10 @@ class MembershipOut(AppModel):
     companyId: uuid.UUID
     companyName: str
     companySlug: str
+    #: The company's short code — `TT` for Twincore Technologies. Sent so the
+    #: console can draw its brand tile from a real value rather than a literal;
+    #: see `core/company_code.py` for why it is stored and never recomputed.
+    companyCode: str
     role: str
     isActive: bool
 
@@ -113,6 +117,9 @@ class CompanyOut(AppModel):
     id: uuid.UUID
     name: str
     slug: str
+    #: Same monogram as `MembershipOut.companyCode`, for the surfaces that read
+    #: the active company rather than the membership list.
+    code: str
     email: str
     phone: str
     isActive: bool

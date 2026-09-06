@@ -1,5 +1,12 @@
 interface Meta {
-  title: string;
+  /**
+   * `null` on the fallback only, meaning "name the workspace here". A route
+   * with no entry of its own has nothing specific to say, so the header shows
+   * whose console this is — and that is the active company, which this module
+   * cannot know: it is a pure path→copy map with no session. `AppShell`
+   * substitutes it from `useBrand`.
+   */
+  title: string | null;
   subtitle: string;
 }
 
@@ -78,5 +85,5 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
 export function PAGE_META(pathname: string): Meta {
   if (STATIC[pathname]) return STATIC[pathname];
   for (const [re, meta] of DYNAMIC) if (re.test(pathname)) return meta;
-  return { title: "Reliance GreenTech", subtitle: "Ops Console" };
+  return { title: null, subtitle: "Ops Console" };
 }

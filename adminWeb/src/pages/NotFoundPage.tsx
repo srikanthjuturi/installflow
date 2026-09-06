@@ -2,9 +2,11 @@ import { useLocation, useNavigate } from "react-router";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { ArrowLeft, Compass } from "lucide-react";
 import { DispatchRadar } from "@/components/notfound/DispatchRadar";
+import { BrandMark } from "@/components/shared/BrandMark";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { Button } from "@/components/ui/button";
+import { useBrand } from "@/hooks/useBrand";
 import { landingPath, useSession } from "@/store/session";
 
 /* The page assembles bottom-up rather than fading in as one block — the eye
@@ -39,6 +41,7 @@ export default function NotFoundPage() {
   const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
   const reduceMotion = useReducedMotion();
+  const brand = useBrand();
 
   const home = signedIn
     ? {
@@ -76,12 +79,13 @@ export default function NotFoundPage() {
           animate="shown"
           className="relative flex w-full max-w-125 flex-col items-center text-center"
         >
+          {/* This page renders signed-OUT too, so the brand is whichever
+              `useBrand` can resolve — the active company when there is a
+              session, the platform when there is not. */}
           <motion.div variants={item} className="flex items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-[8px] bg-brand-500 text-xs font-bold text-white">
-              RG
-            </div>
+            <BrandMark mark={brand.mark} tone="brand" className="rounded-[8px]" />
             <div className="text-sm font-semibold text-ink">
-              Reliance GreenTech
+              {brand.name}
               <span className="font-normal text-ink-3"> · Ops Console</span>
             </div>
           </motion.div>

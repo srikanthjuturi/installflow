@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Download } from "lucide-react";
+import { useBrand } from "@/hooks/useBrand";
 import { useNavOrigin } from "@/hooks/useNavOrigin";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ export function LedgerTable({
 }: LedgerTableProps) {
   const kind = params.filters?.kind ?? ALL;
   const now = new Date(readAt);
+  const brand = useBrand();
 
   /* Both link columns leave the ledger, and both landed on a screen that sent
      the reader to its own list — a technician row to the roster, a ticket row
@@ -215,7 +217,10 @@ export function LedgerTable({
             disabled={!visible.length}
             onClick={() =>
               downloadCsv(
-                "reliancegreentech-ledger.csv",
+                // Named for the company whose ledger it is — someone who works
+                // across two of them ends up with both files in one Downloads
+                // folder, and a fixed product name makes them indistinguishable.
+                `${brand.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-ledger.csv`,
                 toCsv(
                   // Spelled out rather than taken from `columns`. The first
                   // column's header is "Time" now that the divider carries the

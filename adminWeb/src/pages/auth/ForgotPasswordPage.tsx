@@ -13,6 +13,7 @@ import {
   useRequestPasswordReset,
   useVerifyPasswordResetCode,
 } from "@/hooks/useAuth";
+import { BRAND_NAME } from "@/lib/brand";
 import { landingPath, useSession } from "@/store/session";
 
 /**
@@ -81,7 +82,7 @@ export default function ForgotPasswordPage() {
     <>
       <PageMeta
         title="Reset password"
-        description="Reset your Reliance GreenTech console password."
+        description={`Reset your ${BRAND_NAME} console password.`}
       />
       <AuthLayout>
         {/* Above every step and rendered once, so the three of them stay

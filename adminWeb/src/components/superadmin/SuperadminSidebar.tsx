@@ -4,6 +4,7 @@ import { SidebarCollapseToggle } from "@/components/shared/SidebarCollapseToggle
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMe } from "@/hooks/useAuth";
+import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
 import { SUPERADMIN_NAV, activeSuperadminPath } from "./superadminNav";
@@ -47,10 +48,10 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
       <div
         className={cn(
           "flex h-topbar shrink-0 items-center border-b border-white/10",
-          // Tighter than the vendor rail's px-5/gap-3: "Reliance GreenTech
-          // Platform" is a fixed string that overflows 236px, and the rebrand
-          // made it 10 characters longer than the name this was first tuned
-          // for — hence the smaller type on the line itself as well.
+          // Tighter than the vendor rail's px-5/gap-3: "<brand> Platform" is a
+          // configurable string that overflows 236px at the current name's
+          // length, and a longer one would overflow further — hence the
+          // smaller type on the line itself as well.
           collapsed ? "justify-center px-2" : "gap-2.5 px-3.5"
         )}
       >
@@ -59,10 +60,12 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
         </div>
         {!collapsed && (
           // No company line here, unlike the vendor rail: a superadmin belongs
-          // to none. The second line names the surface instead.
+          // to none — `principal.company_id` is None by design — so the
+          // PLATFORM brand is the honest answer rather than a blank or some
+          // arbitrary tenant's. The second line names the surface instead.
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[12px] font-semibold text-white">
-              Reliance GreenTech Platform
+              {BRAND_NAME} Platform
             </div>
             <div className="truncate text-[11px] font-medium text-white/50">
               Super Admin console

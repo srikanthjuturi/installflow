@@ -1,10 +1,19 @@
+import { BrandMark } from "@/components/shared/BrandMark";
+import { BRAND_MARK, BRAND_NAME } from "@/lib/brand";
+
 const STATS = [
   { value: "2,481", label: "tickets this month" },
   { value: "96.2%", label: "SLA adherence" },
   { value: "318", label: "active technicians" },
 ];
 
-/** Left half of the sign-in split. Decorative — hidden below `md`. */
+/**
+ * Left half of the sign-in split. Decorative — hidden below `md`.
+ *
+ * The PLATFORM brand, deliberately: nobody has signed in yet, so there is no
+ * company to name. Every signed-in surface wears the active company instead
+ * (`hooks/useBrand.ts`).
+ */
 export function BrandPanel() {
   return (
     <div className="relative hidden flex-col justify-between overflow-hidden bg-linear-150 from-brand-600 via-brand-500 to-brand-400 p-14 text-white md:flex">
@@ -19,11 +28,12 @@ export function BrandPanel() {
       />
 
       <div className="relative flex items-center gap-3">
-        <div className="grid size-9.5 place-items-center rounded-[9px] bg-white text-base font-bold text-brand-500">
-          RG
-        </div>
+        <BrandMark
+          mark={BRAND_MARK}
+          className="size-9.5 rounded-[9px] text-base"
+        />
         <div className="text-base font-semibold">
-          Reliance GreenTech
+          {BRAND_NAME}
           <span className="font-normal opacity-60"> · Ops Console</span>
         </div>
       </div>
@@ -47,7 +57,7 @@ export function BrandPanel() {
       </div>
 
       <div className="relative text-xs text-brand-300">
-        © 2026 Reliance GreenTech · Internal use only
+        © {new Date().getFullYear()} {BRAND_NAME} · Internal use only
       </div>
     </div>
   );

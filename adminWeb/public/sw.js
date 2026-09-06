@@ -52,6 +52,10 @@ async function handlePush(data) {
     // which is better than swallowing it.
   }
 
+  // The server always sends a title (the ticket code leads it), so this is the
+  // malformed-push path only. It is the ONE brand string that cannot read
+  // `src/lib/brand.ts`: `public/` bypasses the bundler, so there is no
+  // `import.meta.env` here. Keep it in step with BRAND_NAME by hand.
   const title = payload.title || "Reliance GreenTech";
   const body = payload.body || "";
   const info = payload.data || {};

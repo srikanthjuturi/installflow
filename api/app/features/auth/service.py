@@ -66,6 +66,7 @@ def _company_out(company: Company) -> CompanyOut:
         id=company.id,
         name=company.name,
         slug=company.slug,
+        code=company.code,
         email=company.email,
         phone=company.phone,
         isActive=company.is_active,
@@ -98,6 +99,7 @@ def _membership_out(user: User, membership: Membership, company: Company) -> Mem
         companyId=company.id,
         companyName=company.name,
         companySlug=company.slug,
+        companyCode=company.code,
         role=user.role,
         isActive=membership.is_active,
     )

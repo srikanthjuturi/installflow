@@ -132,6 +132,13 @@ export interface BackendMembership {
   companyId: string;
   companyName: string;
   companySlug: string;
+  /**
+   * The company's short code — `TT` for Twincore Technologies. Drawn as the
+   * brand tile beside the name. Optional because a session persisted before
+   * the field was sent still holds memberships without it, and `useBrand`
+   * falls back rather than forcing everyone to sign in again.
+   */
+  companyCode?: string;
   role: BackendRole;
   isActive: boolean;
 }
@@ -190,6 +197,8 @@ export interface ActiveCompany {
   id: string;
   name: string;
   slug: string;
+  /** The short code the brand tile draws — `TT` in `TT-INST-0001`. */
+  code: string;
   email: string;
   /** Mandatory since `f4b28d1a67c3` — every company has one. */
   phone: string;

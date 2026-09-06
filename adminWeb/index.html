@@ -5,9 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/reliance-greentech.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--
-      PageMeta overwrites this per route once React mounts. It stands alone only
-      for the first paint and for anything that reads the HTML without running
-      it, so it names the product rather than the bundler.
+      PageMeta overwrites this per route once React mounts — and it names the
+      ACTIVE COMPANY, not this. What is written here shows only for the first
+      paint and to anything that reads the HTML without running it, when no
+      company can possibly be known yet.
+
+      So this is the PLATFORM brand, and it is deliberately literal: index.html
+      is not processed by the bundler the way a module is, and a `%VITE_*%`
+      placeholder left undefined renders as the raw token on screen. Keep it in
+      step with BRAND_NAME in src/lib/brand.ts by hand — there are three copies
+      in this file (title, description, and the boot wordmark below).
     -->
     <title>Reliance GreenTech · Ops Console</title>
     <meta name="description" content="Reliance GreenTech Ops Console — installation and demo operations." />

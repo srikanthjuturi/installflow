@@ -3,9 +3,11 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "./nav";
 import { ROLE_LABEL, useSession } from "@/store/session";
+import { BrandMark } from "@/components/shared/BrandMark";
 import { SidebarCollapseToggle } from "@/components/shared/SidebarCollapseToggle";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useFeatureAccess } from "@/hooks/useAuth";
+import { useBrand } from "@/hooks/useBrand";
 import { useEscalations } from "@/hooks/useEscalations";
 
 function isActive(pathname: string, to: string, match?: string[]) {
@@ -34,6 +36,7 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   // Prefer the real backend role label; the mock `role` can drift from a stale
   // persisted session, so it's only a fallback for the still-mocked chrome.
   const roleLabel = backendUser?.roleLabel ?? ROLE_LABEL[role];
+  const brand = useBrand();
 
   // Two filters, then drop groups left empty:
   //   1. `roles` — the console's own coarse grouping (mock chrome).
@@ -95,12 +98,16 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
           collapsed ? "justify-center px-2" : "gap-3 px-5"
         )}
       >
-        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-white text-[13px] font-bold text-brand-500">
-          RG
-        </div>
+        {/* Whose console this is — the SAME company the CompanySwitcher names
+            in the topbar, resolved through one hook so the two can never
+            disagree again. */}
+        <BrandMark
+          mark={brand.mark}
+          label={collapsed ? brand.name : undefined}
+        />
         {!collapsed && (
           <div className="flex-1 truncate text-[15px] font-semibold text-white">
-            Reliance GreenTech
+            {brand.name}
           </div>
         )}
         {!collapsed && (

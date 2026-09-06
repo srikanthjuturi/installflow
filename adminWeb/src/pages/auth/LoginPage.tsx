@@ -5,6 +5,7 @@ import { CredentialsStep } from "@/components/auth/CredentialsStep";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { useGoogleSignIn, useLogin } from "@/hooks/useAuth";
+import { BRAND_NAME } from "@/lib/brand";
 import { GOOGLE_CLIENT_ID, GOOGLE_SIGN_IN_ENABLED } from "@/lib/googleIdentity";
 import { landingPath, useSession } from "@/store/session";
 
@@ -68,7 +69,7 @@ export default function LoginPage() {
 
   return (
     <>
-      <PageMeta title="Sign in" description="Reliance GreenTech console sign-in." />
+      <PageMeta title="Sign in" description={`${BRAND_NAME} console sign-in.`} />
       <AuthLayout>
         {/* Without a client id there is no provider, no button and no
             divider — password sign-in is untouched. That is what a Netlify

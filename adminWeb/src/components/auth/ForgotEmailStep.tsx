@@ -75,7 +75,7 @@ export function ForgotEmailStep({
             type="email"
             autoComplete="email"
             autoFocus
-            placeholder="you@reliancegreentech.in"
+            placeholder="you@company.com"
             aria-invalid={errors.email ? true : undefined}
             aria-describedby={errors.email ? "reset-email-error" : undefined}
             {...register("email")}

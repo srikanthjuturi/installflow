@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PageSkeleton } from "./PageSkeleton";
 import { PAGE_META } from "./routeMeta";
+import { useBrand } from "@/hooks/useBrand";
 import { useNotificationToasts } from "@/hooks/useNotificationToasts";
 import { useTicketStream } from "@/hooks/useTicketStream";
 import { useSession } from "@/store/session";
@@ -14,6 +15,7 @@ export function AppShell() {
   const { pathname } = useLocation();
   const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useSession();
   const meta = PAGE_META(pathname);
+  const brand = useBrand();
 
   // One live ticket socket for the whole signed-in session. Here rather than on
   // the tickets page, because a status change also moves dashboard counts — and
@@ -80,7 +82,7 @@ export function AppShell() {
           sidebarCollapsed ? "md:ml-sidebar-collapsed" : "md:ml-sidebar"
         )}
       >
-        <Topbar title={meta.title} subtitle={meta.subtitle} />
+        <Topbar title={meta.title ?? brand.name} subtitle={meta.subtitle} />
         {/* Fluid — the console is a work surface, so a wide monitor should
             buy more table, not more margin. */}
         <main className="p-4 md:p-5.5">

@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 
+import { useBrand } from "@/hooks/useBrand";
+
 interface PageMetaProps {
   title: string;
   description?: string;
@@ -11,10 +13,19 @@ interface PageMetaProps {
  * This is an internal console behind auth, so every route is `noindex,nofollow`
  * — but unique titles still matter: they name the browser tab and every entry
  * in back-button history.
+ *
+ * The tab is prefixed with the ACTIVE COMPANY, not a fixed product name. Two
+ * companies open in two tabs is an ordinary day here, and identical titles
+ * would make them indistinguishable in the tab strip and in history. Signed
+ * out — and for a superadmin, who belongs to no company — it falls back to the
+ * platform name through `useBrand`.
  */
 export function PageMeta({ title, description }: PageMetaProps) {
+  const brand = useBrand();
+  const brandName = brand.name;
+
   useEffect(() => {
-    document.title = `Reliance GreenTech · ${title}`;
+    document.title = `${brandName} · ${title}`;
 
     const set = (name: string, content: string) => {
       let el = document.head.querySelector<HTMLMetaElement>(
@@ -40,7 +51,7 @@ export function PageMeta({ title, description }: PageMetaProps) {
       document.head.appendChild(canonical);
     }
     canonical.href = window.location.origin + window.location.pathname;
-  }, [title, description]);
+  }, [brandName, title, description]);
 
   return null;
 }
