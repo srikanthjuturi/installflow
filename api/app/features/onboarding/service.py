@@ -192,6 +192,7 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
     return InviteResolveOut(
         phone=invite.phone,
         companyName=brand.company_name(company.name if company else None),
+        companyCode=brand.company_mark(company.code if company else None),
         regionName=region.name if region else "—",
         invitedByName=inviter.full_name if inviter else None,
         expiresAt=invite.expires_at,

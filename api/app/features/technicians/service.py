@@ -1049,6 +1049,8 @@ async def technician_session(
         profileImageUrl=user.profile_image_url,
         regionName=region.name if region else "—",
         onboardedBy=onboarded_by,
+        companyName=brand.company_name(company.name if company else None),
+        companyCode=brand.company_mark(company.code if company else None),
         subcategories=subs,
         pincodes=pins,
         dailyJobCap=profile.daily_job_cap,

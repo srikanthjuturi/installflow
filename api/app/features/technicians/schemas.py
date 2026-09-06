@@ -205,8 +205,16 @@ class TechnicianSessionOut(AppModel):
     phone: str
     profileImageUrl: str | None
     regionName: str
-    #: Display-only, e.g. "Reliance GreenTech · West Zone" — who onboarded them.
+    #: Display-only, e.g. "Priya Deshmukh · Twincore Technologies" — who
+    #: onboarded them. Already carries the company, but glued to a person's
+    #: name, so it cannot be used as a brand.
     onboardedBy: str
+    #: Whose app this is. The company the technician works for, and its stored
+    #: short code — what the app's brand tile draws instead of a fixed mark.
+    #: A technician belongs to exactly one company, so unlike the console there
+    #: is nothing to switch between.
+    companyName: str
+    companyCode: str
     subcategories: list[SubcategoryRef]
     pincodes: list[str]
     dailyJobCap: int | None

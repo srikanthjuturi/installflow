@@ -50,8 +50,22 @@ export interface TechnicianSession {
   phone: string;
   profileImageUrl: string | null;
   regionName: string;
-  /** Display-only, e.g. "Priya Deshmukh · Reliance GreenTech Service". */
+  /**
+   * Display-only, e.g. "Priya Deshmukh · Twincore Technologies". Already
+   * carries the company, but glued to a person's name — use `companyName`
+   * where the brand itself is wanted.
+   */
   onboardedBy: string;
+  /**
+   * Whose app this is. A technician belongs to exactly one company, so unlike
+   * the console there is nothing to switch between — this is simply the brand.
+   *
+   * Optional because a session persisted before these were sent still exists
+   * on somebody's phone; `useBrand` falls back rather than forcing a sign-in.
+   */
+  companyName?: string;
+  /** That company's stored short code — what the brand tile draws. */
+  companyCode?: string;
   subcategories: SubcategoryRef[];
   pincodes: string[];
   /** Null means no limit — the default until they set one. */

@@ -24,6 +24,8 @@ export interface InviteDetails {
   /** E.164. The number the invite was sent to, and the only identity so far. */
   phone: string;
   companyName: string;
+  /** That company's short code — the mark this screen's brand tile draws. */
+  companyCode: string;
   regionName: string;
   invitedByName: string | null;
   expiresAt: string;

@@ -59,6 +59,12 @@ class InviteResolveOut(AppModel):
 
     phone: str
     companyName: str
+    #: The company's short code, so the invite screen draws ITS mark rather
+    #: than the platform's. Safe to disclose here in a way it is not on the web
+    #: landing page: this resolve call is a real lookup that already answers
+    #: whether the token is valid, so the code reveals nothing extra — the
+    #: landing page refuses precisely because it does NOT look the token up.
+    companyCode: str
     regionName: str
     invitedByName: str | None
     expiresAt: datetime

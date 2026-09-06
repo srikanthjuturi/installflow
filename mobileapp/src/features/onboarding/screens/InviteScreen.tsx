@@ -95,9 +95,14 @@ export function InviteScreen({ token }: InviteScreenProps) {
        * The shared BrandMark, not a copy of it. This screen used to re-draw the
        * tile inline, which is how it kept the old "V" glyph after the mark had
        * already changed everywhere else.
+       *
+       * The mark is passed explicitly rather than left to `useBrand`: nobody is
+       * signed in yet, so the session names no company — but the resolved
+       * invite does, and it is the company doing the inviting that this screen
+       * is about. Falls back to the platform mark until the lookup lands.
        */}
       <Animated.View entering={FadeInDown.delay(60).duration(340)} style={{ marginTop: 18 }}>
-        <BrandMark />
+        <BrandMark mark={data?.companyCode} />
       </Animated.View>
 
       {isError ? (

@@ -35,8 +35,24 @@ function inviteHost(): string | undefined {
 
 const INVITE_HOST = inviteHost();
 
+/**
+ * The PLATFORM brand, for the handful of places no company can be named.
+ *
+ * In the app itself that is the login screen alone — signing in starts from a
+ * phone number, and nothing says which company it belongs to until the code is
+ * verified. Every screen after that draws the technician's own company, which
+ * arrives with the session (see `src/hooks/useBrand.ts`).
+ *
+ * Outside the app it is also the launcher label, the OS permission prompts and
+ * the artwork, all of which are baked in at build time and therefore cannot be
+ * per-tenant without a build per tenant. A franchise build overrides these two
+ * environment variables; nothing else in the app has to change.
+ */
+const BRAND_NAME = process.env.BRAND_NAME || 'Reliance GreenTech';
+const BRAND_MARK = process.env.BRAND_MARK || 'RG';
+
 const config: ExpoConfig = {
-  name: 'Reliance GreenTech Technician',
+  name: `${BRAND_NAME} Technician`,
   // NOT the product name, and never shown to a technician — `name` above is
   // what appears under the launcher icon. Deliberately still the pre-rebrand
   // value: an Expo project's slug is fixed at creation, so renaming it here
@@ -136,7 +152,7 @@ const config: ExpoConfig = {
       {
         // Proof capture — doc §8. Gallery uploads are never accepted.
         cameraPermission:
-          'Reliance GreenTech Technician needs the camera to capture installation proof.',
+          `${BRAND_NAME} Technician needs the camera to capture installation proof.`,
         recordAudioAndroid: false,
       },
     ],
@@ -144,9 +160,9 @@ const config: ExpoConfig = {
       'expo-image-picker',
       {
         photosPermission:
-          'Reliance GreenTech Technician needs your photos so you can set a profile picture.',
+          `${BRAND_NAME} Technician needs your photos so you can set a profile picture.`,
         cameraPermission:
-          'Reliance GreenTech Technician needs the camera to take your profile picture.',
+          `${BRAND_NAME} Technician needs the camera to take your profile picture.`,
       },
     ],
     [
@@ -157,7 +173,7 @@ const config: ExpoConfig = {
         // Background location is never requested: it needs a development build,
         // and following somebody around is not what this is for.
         locationWhenInUsePermission:
-          'Reliance GreenTech Technician records where the live site photo was taken, to confirm the visit.',
+          `${BRAND_NAME} Technician records where the live site photo was taken, to confirm the visit.`,
         isAndroidBackgroundLocationEnabled: false,
       },
     ],
@@ -175,6 +191,11 @@ const config: ExpoConfig = {
   ],
   extra: {
     surfaceColor: SURFACE,
+    // Read by `src/lib/brand.ts`. Via `extra` rather than `process.env`,
+    // because only `EXPO_PUBLIC_*` is inlined into the bundle and the brand is
+    // not something a device should be able to influence.
+    brandName: BRAND_NAME,
+    brandMark: BRAND_MARK,
     // Written by hand because `eas init` cannot edit a dynamic config.
     // Must match `owner` above — the project lives under that account.
     eas: {
