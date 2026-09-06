@@ -809,7 +809,7 @@ verbatim would be wrong, so:
 
 | Requirement | Here |
 |---|---|
-| Unique page titles | ✅ via `PageMeta` — `Reliance GreenTech · Escalation queue`. Drives tab + browser history |
+| Unique page titles | ✅ via `PageMeta` — `Twincore Technologies · Escalation queue`, prefixed with the ACTIVE COMPANY (`useBrand`), not a product name: two companies open in two tabs is an ordinary day here, and identical titles make them indistinguishable in the tab strip and in history. Drives tab + browser history |
 | Meta description | ✅ minimal, one per route |
 | `robots` | ✅ **`noindex, nofollow`** on every route |
 | Canonical URLs | ✅ trivial, one canonical per route |

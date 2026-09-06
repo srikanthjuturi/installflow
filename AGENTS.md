@@ -43,6 +43,33 @@ clearing it — and `AI Review` is still one of the nine ticket statuses. Everyt
 uncommenting; the copy is signed off, so deleting it would mean rebuilding it from the prototype
 bundle later.
 
+**The product is WHITE-LABELLED. The brand is the company, not us.** Every surface that knows
+which company it is acting for shows THAT company's name and its stored `code` as the monogram:
+the console rail and tab title, the customer's slot and feedback pages, the technician app after
+sign-in, and every email and WhatsApp message. Never write a product name into a component.
+
+Resolve it through the one helper on each side — `adminWeb/src/hooks/useBrand.ts`,
+`mobileapp/src/hooks/useBrand.ts`, `api/app/core/brand.py`. That indirection is the point: the
+rail once said "Reliance GreenTech" from a literal while the `CompanySwitcher` beside it said
+the real company, and eleven `or "Reliance GreenTech"` fallbacks were scattered across the API
+where none could be changed without finding the other ten.
+
+**The mark is never derived from the name.** `companies.code` is stamped once at creation and
+deliberately never recomputed (`api/app/core/company_code.py`), so a second derivation would
+eventually disagree with the codes already printed on that company's tickets.
+
+`BRAND_NAME` / `BRAND_MARK` — one setting per side — is the PLATFORM's own name, and it is the
+honest answer only where no company can be known: both sign-in screens (a phone number names no
+company until the OTP succeeds), the superadmin console (`principal.company_id` is None by
+design), the pre-JS boot splash and `index.html`, the launcher label and artwork, the OTP
+message, and the invite landing page — which never resolves its token, so giving it a company
+would turn it into an oracle for whether a token is valid.
+
+Deliberately NOT rebranded, because renaming them breaks live things and no user reads them: the
+persisted storage keys (`reliancegreentech.session` and its siblings — renaming signs everyone
+out), the Postgres channel `reliancegreentech_events`, the Android package, iOS bundle,
+`APP_SCHEME`, EAS slug and keystore, and the infrastructure names below.
+
 **A job is priced.** A product model carries two amounts — `technician_payout_paise` and
 `vendor_price_paise`, both NOT NULL — and a ticket STAMPS both at intake, so a repricing never
 restates what an old job was worth. On closure the technician's half becomes a `payout` entry in

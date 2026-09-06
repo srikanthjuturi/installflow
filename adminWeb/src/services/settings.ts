@@ -293,7 +293,7 @@ const USERS: User[] = [
   {
     id: "U-1001",
     name: "Arjun Mehta",
-    email: "arjun.mehta@reliancegreentech.in",
+    email: "arjun.mehta@example.com",
     role: "NH",
     region: "All India",
     status: "Active",
@@ -302,7 +302,7 @@ const USERS: User[] = [
   {
     id: "U-1014",
     name: "Kavita Rao",
-    email: "kavita.rao@reliancegreentech.in",
+    email: "kavita.rao@example.com",
     role: "RSH",
     region: "West",
     status: "Active",
@@ -311,7 +311,7 @@ const USERS: User[] = [
   {
     id: "U-1022",
     name: "Ravi Sharma",
-    email: "ravi.sharma@reliancegreentech.in",
+    email: "ravi.sharma@example.com",
     role: "ASM",
     region: "Pune",
     status: "Active",
@@ -320,7 +320,7 @@ const USERS: User[] = [
   {
     id: "U-1030",
     name: "Sneha Iyer",
-    email: "sneha.iyer@reliancegreentech.in",
+    email: "sneha.iyer@example.com",
     role: "ASM",
     region: "Mumbai",
     status: "Active",
@@ -329,7 +329,7 @@ const USERS: User[] = [
   {
     id: "U-1041",
     name: "Dinesh Kumar",
-    email: "dinesh.kumar@reliancegreentech.in",
+    email: "dinesh.kumar@example.com",
     role: "Ops Staff",
     region: "Pune",
     status: "Active",
@@ -338,7 +338,7 @@ const USERS: User[] = [
   {
     id: "U-1052",
     name: "Pooja Nanda",
-    email: "pooja.nanda@reliancegreentech.in",
+    email: "pooja.nanda@example.com",
     role: "Ops Staff",
     region: "Pune",
     status: "Invited",
@@ -347,7 +347,7 @@ const USERS: User[] = [
   {
     id: "U-1060",
     name: "Harish Patel",
-    email: "harish.patel@reliancegreentech.in",
+    email: "harish.patel@example.com",
     role: "RSH",
     region: "North",
     status: "Suspended",

@@ -17,7 +17,7 @@
  * name typed into a string field.
  */
 export const VENDOR_NAMES = [
-  "Reliance GreenTech",
+  "Sunview Appliances",
   "Kelvinator",
   "Sansui",
   "Electrolux",

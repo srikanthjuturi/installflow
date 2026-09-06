@@ -738,7 +738,7 @@ function VendorForm({
         <FieldGrid className={COLS}>
           {renderField("name", "Company name", {
             required: true,
-            placeholder: "e.g. Reliance GreenTech Industries",
+            placeholder: "e.g. Sunview Appliances Pvt Ltd",
             hint: "This is the brand shown on every product model you attribute to it.",
           })}
           {renderField("contactPerson", "Contact person", {
@@ -764,7 +764,7 @@ function VendorForm({
           {renderField("address", "Building, street and area", {
             required: true,
             textarea: true,
-            placeholder: "Reliance GreenTech House, 14th Floor\nChakala, Andheri East",
+            placeholder: "Sunview House, 14th Floor\nChakala, Andheri East",
             hint: "Paste it straight off the letterhead — line breaks are kept.",
             className: "sm:col-span-2 lg:col-span-3",
           })}
