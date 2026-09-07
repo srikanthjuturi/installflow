@@ -295,6 +295,53 @@ class CancelRequest(AppModel):
     reason: str = Field(min_length=2, max_length=120)
 
 
+class SlotOptionOut(AppModel):
+    """One two-hour window a job could be moved into.
+
+    Two instants and nothing else — no rendered label. Both clients already
+    format a slot (`slotLabel` on the phone, the console's own day grouping),
+    and sending a third rendering from here would be a third place for
+    "2:00–4:00 PM" to be spelled differently. The same reason `confirm_slot`
+    takes a `slotStart` rather than a label.
+    """
+
+    slotStart: datetime.datetime
+    slotEnd: datetime.datetime
+
+
+class RescheduleCodeRequest(AppModel):
+    """The window the customer is being asked to agree to.
+
+    The destination is deliberately NOT here: it comes off the ticket. A
+    technician who could name where the customer's one-time code is delivered
+    would defeat the entire gate.
+
+    The window, by contrast, must be here. The code is minted for it and
+    verifies only for it, because "yes, Thursday morning" is consent to Thursday
+    morning — a code bound to the ticket alone would let any window be posted
+    with it, and the gate would prove that a conversation happened without
+    pinning what was agreed in it.
+    """
+
+    slotStart: datetime.datetime
+
+
+class RescheduleRequest(AppModel):
+    """A window the customer picked, and the code proving they picked it."""
+
+    #: Re-derived server-side against the offered list. The posted value is a
+    #: claim: `tickets.confirm_slot` treats its own the same way, and
+    #: `record_no_show` now leans on this one being checked.
+    slotStart: datetime.datetime
+    #: The six digits the CUSTOMER received and read back.
+    code: str = Field(min_length=4, max_length=10)
+    #: Optionally, what the customer said. Free text and never branched on, like
+    #: `CancelRequest.reason` — but optional where that one is required, because
+    #: this door has the customer's own consent standing behind it and the
+    #: technician is typing with somebody waiting at the door.
+    note: str | None = Field(default=None, max_length=120)
+
+
 class ProofImageOut(AppModel):
     """One stored artifact, with a link that expires."""
 

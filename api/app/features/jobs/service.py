@@ -58,16 +58,31 @@ from app.core.rules import (
     load_rules,
     snapshot_value,
 )
+from app.core.reschedule import announce as announce_reschedule, move_slot, send_slot_moved
 from app.core.schemas import ListParams
 from app.core.slots import bookable_slots, when_label
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
     MIN_PRODUCT_PHOTOS,
     PROOF_KINDS,
+    RESCHEDULE_HORIZON_HOURS,
     SLOT_TIMEZONE_OFFSET_MINUTES,
     TERMINAL_STATUSES,
 )
 from app.db.repository import paginate
+# Hard rule 4 says slices never import each other, and `onboarding/service.py`
+# has imported exactly these two since self-registration shipped. One-time codes
+# are the one piece of auth that is genuinely shared machinery rather than
+# auth's own business — this is its second outside caller, not its first.
+#
+# The refactor that would retire the exception instead of widening it: lift the
+# generic half — `_mint`, `_check_throttles`, `_hash_code`, `issue_code`,
+# `consume_code` — into `app/core/otp.py` and leave auth's login and
+# password-reset wrappers behind. Not done here because `issue_code` returns an
+# auth schema, so it drags `OtpRequestResponse` with it, and re-plumbing the
+# sign-in path does not belong in the same change as a new feature.
+from app.features.auth.otp_service import consume_code, issue_code
+from app.features.auth.schemas import OtpRequestResponse
 from app.features.jobs.schemas import (
     JobOfferOut,
     JobOut,
@@ -75,7 +90,9 @@ from app.features.jobs.schemas import (
     ProductParameterOut,
     ProofArtifactIn,
     ProofImageOut,
+    SlotOptionOut,
 )
+from app.models.otp import PURPOSE_RESCHEDULE
 from app.integrations import blob, whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
@@ -1964,3 +1981,342 @@ async def cancel(
             slot_start=row.slot_start,
         )
     return PenaltyBandOut(amountPaise=charge, label=label, escalates=escalates)
+
+
+# ── moving the slot, with the customer's own consent ─────────────────────────
+#
+# The alternative to `cancel` above, and the reason it needed to exist: a
+# customer who says "come Thursday instead" left the technician nothing but the
+# cancel screen, which charges the band, escalates under four hours, and hands
+# the job back to a pool that cannot serve it either — the slot being re-offered
+# is the one the customer just refused.
+#
+# What makes this safe to give a technician is that they cannot do it alone. The
+# code goes to the CUSTOMER's phone and is read back, so the move carries their
+# agreement in a form the server can check. Refuse to give it and nothing
+# happens; the cancel screen is still there, unchanged.
+
+
+async def _load_reschedulable(
+    db: AsyncSession, ticket_id: uuid.UUID, *, company_id: uuid.UUID, technician_id: uuid.UUID
+) -> Ticket:
+    """This technician's own job, in the one status a slot may be moved from.
+
+    `Assigned` only, for `cancel`'s reason: past it, proof has been captured and
+    the technician is on site, and moving a visit that has already started is a
+    different operation with different evidence attached. Before it they do not
+    hold the job at all.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    if row.status != "Assigned":
+        raise JobRefused(
+            "JOB_NOT_RESCHEDULABLE",
+            "This job can no longer be rescheduled.",
+        )
+    if row.slot_start is None:
+        raise JobRefused(
+            "JOB_NOT_RESCHEDULABLE",
+            "This job has no confirmed time yet, so there is nothing to move. "
+            "The customer is still choosing one.",
+        )
+    return row
+
+
+def _reschedule_horizon() -> datetime.datetime:
+    return _now() + datetime.timedelta(hours=RESCHEDULE_HORIZON_HOURS)
+
+
+async def reschedule_options(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> list[SlotOptionOut]:
+    """The windows this job could move into, soonest first.
+
+    Against THIS technician, so the list already excludes the times they are
+    standing in somebody else's kitchen and the days their cap is spent — the
+    same subtraction the customer's own page makes, pointed at the person who
+    will have to serve it.
+
+    The horizon is `RESCHEDULE_HORIZON_HOURS` rather than the ticket's
+    `sla_due_at`, which has usually passed by now; the argument is on the
+    constant. Empty is still a real answer — a technician whose next two days
+    are full — and the screen says so rather than showing nothing.
+    """
+    row = await _load_reschedulable(
+        db, ticket_id, company_id=company_id, technician_id=technician_id
+    )
+    windows = await bookable_slots(
+        db, row, technician_id=technician_id, horizon=_reschedule_horizon()
+    )
+    return [SlotOptionOut(slotStart=s, slotEnd=e) for s, e in windows]
+
+
+async def _technician_phone(db: AsyncSession, profile: TechnicianProfile) -> str | None:
+    """The number this technician signs in with. Their identity, per hard rule 9."""
+    return await db.scalar(
+        select(User.phone)
+        .join(Membership, Membership.user_id == User.id)
+        .where(Membership.id == profile.membership_id)
+    )
+
+
+async def request_reschedule_code(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    slot_start: datetime.datetime,
+    request_ip: str | None = None,
+) -> OtpRequestResponse:
+    """WhatsApp a one-time code to the CUSTOMER, for them to read back.
+
+    The destination is the ticket's own `customer_phone` and nothing in the
+    request can influence it. That is the whole gate: a technician who could
+    name where the code went would be able to send it to themselves.
+
+    Everything that makes a code safe comes from `issue_code` unchanged — the
+    pepper, the ten-minute TTL, the five-attempt burn, the resend cooldown and
+    both window counters. Two consequences worth knowing at this door:
+
+      * requesting a new code KILLS the previous one, by destination. So a
+        customer asked about two of their own tickets has one live code, which
+        is why `consume_code` below is given the ticket id;
+      * the throttles are per destination too, so a customer who has just been
+        sent a code is refused a second for `OTP_RESEND_SECONDS`. The 429 says
+        how long, and the screen shows it.
+
+    ## The code is minted FOR one window
+
+    `slot_start` is required, checked against the offered list here, and stored
+    on the code. What the technician says to the customer is "can we do Thursday
+    morning instead" — so their yes is consent to Thursday morning, and a code
+    bound only to the ticket would let any window at all be posted with it. The
+    gate would prove a conversation happened without pinning what was agreed.
+
+    A consequence worth knowing at the screen: changing the window means asking
+    for a new code, because it is a different question.
+    """
+    row = await _load_reschedulable(
+        db, ticket_id, company_id=company_id, technician_id=technician_id
+    )
+    # Refuse before spending a code, not after. Same reasoning as the ordering
+    # in `reschedule` below.
+    if not any(
+        w[0] == slot_start
+        for w in await bookable_slots(
+            db, row, technician_id=technician_id, horizon=_reschedule_horizon()
+        )
+    ):
+        raise JobRefused(
+            "SLOT_NO_LONGER_AVAILABLE",
+            "That time is no longer free — pick another before sending a code.",
+        )
+    return await issue_code(
+        db,
+        phone=row.customer_phone,
+        purpose=PURPOSE_RESCHEDULE,
+        ticket_id=row.id,
+        slot_start=slot_start,
+        request_ip=request_ip,
+    )
+
+
+async def reschedule(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+    slot_start: datetime.datetime,
+    code: str,
+    note: str | None = None,
+) -> JobOut:
+    """Move the slot, once the customer's code checks out.
+
+    ## The order is not negotiable
+
+    `consume_code` COMMITS — on the success path and on a wrong guess, because
+    the attempt counter has to survive the refusal. So it cannot sit inside the
+    guarded-UPDATE → event → publish → commit shape everything else in this
+    slice uses; it stands alone, in its own transaction.
+
+    Everything that can refuse for free therefore happens BEFORE it: the status
+    check, and the window. Burning a customer's code over a window that aged out
+    while the technician was choosing would cost them a second code and a
+    30-second cooldown, on a doorstep, for a refusal that was never about the
+    code.
+
+    What remains is that a code is spent if the guarded UPDATE then loses its
+    race. That one is right this way round: the alternative is a code that could
+    verify twice, which is a gate that does not close.
+
+    ## The posted window is a claim
+
+    Re-derived from `bookable_slots` here rather than trusted, exactly as
+    `tickets.confirm_slot` re-derives its own. The screen was rendered at some
+    point in the past and a window open then may have closed since — and
+    `record_no_show` now depends on this being checked: a past window accepted
+    here would let a stale no-show bell charge somebody the top band for a visit
+    everybody agreed to move.
+    """
+    row = await _load_reschedulable(
+        db, ticket_id, company_id=company_id, technician_id=profile.id
+    )
+
+    # First, alone, and against THIS ticket — see `consume_code`'s own note on
+    # why the ticket id is load-bearing rather than defensive.
+    #
+    # ⚠ **The 401 must not escape.** `consume_code` answers 401 for a wrong,
+    # expired or already-burned code, which is right on the sign-in door where
+    # the caller is not authenticated — and wrong here, where it is. Both
+    # clients' transports read 401 as "the access token expired": `mobileapp`'s
+    # `authedRequest` would refresh and REPLAY this request, spending a second
+    # of the customer's five attempts on the same wrong digits, and would sign
+    # the technician out of the app entirely if the refresh happened to fail.
+    #
+    # So it is translated at the edge, exactly as the console's password reset
+    # answers 400 rather than 401 for a bad token and for the same stated
+    # reason. 400, not 409: nothing here conflicts, the code is simply wrong.
+    # ── the window FIRST, then the code ──────────────────────────────────────
+    #
+    # Order matters, and it is the opposite of the obvious one. Checking the
+    # window costs nothing and commits nothing; burning the code is permanent.
+    # Validating second would mean a technician who sat on the screen while a
+    # window aged out loses the customer's code to a refusal that was never
+    # about the code — and has to ask for another, which the 30-second resend
+    # cooldown makes a conversation neither of them wanted to have on a doorstep.
+    #
+    # It also keeps the refusal honest: `SLOT_NO_LONGER_AVAILABLE` now really
+    # does mean the code is still good.
+    match = next(
+        (
+            w
+            for w in await bookable_slots(
+                db, row, technician_id=profile.id, horizon=_reschedule_horizon()
+            )
+            if w[0] == slot_start
+        ),
+        None,
+    )
+    if match is None:
+        raise JobRefused(
+            "SLOT_NO_LONGER_AVAILABLE",
+            "That time has gone while you were choosing — pick another. The "
+            "customer's code still works.",
+        )
+
+    try:
+        await consume_code(
+            db,
+            phone=row.customer_phone,
+            code=code,
+            purpose=PURPOSE_RESCHEDULE,
+            ticket_id=row.id,
+            # …and for THIS window. A code minted while the customer was being
+            # asked about Thursday does not authorise Friday, however good the
+            # digits are.
+            slot_start=match[0],
+        )
+    except HTTPException as exc:
+        if exc.status_code != http_status.HTTP_401_UNAUTHORIZED:
+            raise
+        raise AppError(
+            http_status.HTTP_400_BAD_REQUEST, "BAD_CODE", str(exc.detail)
+        ) from exc
+
+    previous = (row.slot_start, row.slot_end)
+    name = await _technician_name(db, profile)
+
+    # ── the one case the gate cannot police ──────────────────────────────────
+    #
+    # If the ticket's customer number IS this technician's own, they received
+    # the code themselves and the customer agreed to nothing. Nothing in the
+    # data distinguishes that from a genuine reschedule afterwards.
+    #
+    # It is ALLOWED, and that is deliberate: a technician installing at their
+    # own address is an ordinary thing, and refusing would leave them only the
+    # cancel screen, which charges the band. Punishing the honest version of a
+    # case to deter the dishonest one is the wrong trade.
+    #
+    # So it is recorded instead — on the trail, and as a bell somebody can act
+    # on. Allow, record, ring.
+    own_number = (await _technician_phone(db, profile)) == row.customer_phone
+
+    moved = await move_slot(
+        db,
+        row,
+        start=match[0],
+        end=match[1],
+        actor_kind="technician",
+        actor_label=name,
+        # The one door that has earned this: a code that reached the customer's
+        # own phone came back, so `slot_confirmed_at` really does mean they
+        # picked it.
+        customer_agreed=True,
+        note=(
+            "customer confirmed by code"
+            + (" · ⚠ sent to the technician's own number" if own_number else "")
+            + ("" if not note else f" · {note}")
+        ),
+    )
+    if moved is None:
+        raise JobRefused(
+            "JOB_NOT_RESCHEDULABLE",
+            "This job moved while you were on this screen. Refresh to see "
+            "where it is now.",
+        )
+
+    await announce_reschedule(db, row, previous=previous, by=name)
+    if own_number:
+        # Staff only — no `vendor_id`. This is a governance concern about our
+        # own technician, and the vendor is not the audience for it.
+        raised = await notify(
+            db,
+            company_id=company_id,
+            kind="escalation",
+            title=f"{row.code} rescheduled using the technician's own number",
+            detail=(
+                f"{name} moved this visit with a code sent to {row.customer_phone}, "
+                f"which is their own number — so the customer did not confirm it."
+            ),
+            to=f"/tickets/{row.id}",
+            ticket_id=row.id,
+            pincode=row.pincode,
+        )
+        await publish_notification(
+            db,
+            company_id=company_id,
+            pincode=row.pincode,
+            vendor_id=None,
+            notification_id=raised.id,
+        )
+    await db.commit()
+
+    # After the commit, and never inside it: this leaves the process and cannot
+    # be rolled back. The customer is holding a message naming the OLD time, so
+    # the correction matters more here than the original receipt did.
+    sent = await send_slot_moved(db, row, previous)
+    if sent is not None:
+        db.add(sent)
+        # The doorbell above rang before this row existed — same tail as
+        # `tickets.confirm_slot`, and for the same reason: without it the
+        # `confirmation_sent` entry is invisible to an open console until
+        # somebody reloads.
+        await publish_ticket_changed(db, row)
+        await db.commit()
+
+    return await get_job(
+        db, ticket_id, company_id=company_id, technician_id=profile.id
+    )
