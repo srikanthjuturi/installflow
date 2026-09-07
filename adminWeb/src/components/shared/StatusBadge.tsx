@@ -63,6 +63,12 @@ export function SlaBadge({ state }: { state: SlaState }) {
 /**
  * Where a vendor-submitted product sits. Static strings, like `STATUS_CLASS`.
  *
+ * In `shared/` on TWO consumers, which the tier rule normally reads as a
+ * coincidence. The exception is that the two are in different SLICES —
+ * `approvals/ApprovalTable` and `masters/CategoryTree` — so neither can own it
+ * without the other importing a private folder. The rule is about promoting too
+ * early out of one slice; this was never in one.
+ *
  * Rejected is `warn`, not `danger`. `danger` is spoken for by escalation,
  * no-show and serial mismatch — the three rows about a customer who has already
  * been let down. A rejected product is a task with a fix, which is what `warn`
