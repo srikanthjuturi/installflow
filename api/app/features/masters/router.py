@@ -273,34 +273,42 @@ async def lookup_serial(
     principal: CanView,
     serial: Annotated[str, Query(min_length=1, max_length=64)],
 ) -> ApiEnvelope[list[SerialMatchOut]]:
-    """Which product a serial belongs to — the intake form's autofill.
+    """Serials STARTING WITH `serial`, each with the product it names.
+
+    Feeds the intake form's suggestion dropdown, and through it the autofill.
+    A prefix search: an exact-only lookup answered nothing until the last
+    character landed, so the box stayed silent through the whole of the typing
+    and read as broken. What the form DOES with the answer still turns on
+    exactness — it fills only when the typed value equals one of these outright
+    — but that is the client's decision, not this endpoint's.
 
     On `masters.view`, which vendors hold so their intake form has a product
-    tree. That is the point: the caller here is the vendor typing the number off
-    the unit in front of them.
+    tree. That is the point: the caller is the vendor reading the number off the
+    unit in front of them.
 
-    A LIST rather than one match, because the unique index is per
-    (company, model) — two products sharing a numbering scheme is legal, if
-    rare. The form fills silently only when exactly one comes back; more than
-    one is a question, not an answer.
+    Capped at `MAX_SERIAL_MATCHES` and ordered by serial, so the list is stable
+    between keystrokes. Under `MIN_SERIAL_QUERY` characters it answers nothing —
+    `SN-` matches most of a catalogue.
 
     Empty is the normal answer, not an error: most serials are simply not
     loaded, and a 404 here would make the form's ordinary state look broken.
 
     ⚠ `service.lookup_serial` pins a vendor to its OWN models. Without that this
-    endpoint is an oracle — a vendor could type serials until one resolved and
-    read back a competitor's product names and catalogue structure, in one
-    request and without raising anything.
+    endpoint is an oracle — and prefix matching makes that EASIER, not harder,
+    since a vendor could walk a competitor's numbering scheme three characters
+    at a time and read their catalogue back, in one request and without raising
+    anything.
     """
     matches = await service.lookup_serial(db, principal, serial)
+    exact = [m for m in matches if m.serial.lower() == serial.strip().lower()]
     return envelope(
         matches,
         message=(
-            f"{matches[0].modelName} matched"
-            if len(matches) == 1
-            else f"{len(matches)} products carry that serial"
+            f"{exact[0].modelName} matched"
+            if len(exact) == 1
+            else f"{len(matches)} matching serial(s)"
             if matches
-            else "No product carries that serial"
+            else "No serial starts with that"
         ),
     )
 

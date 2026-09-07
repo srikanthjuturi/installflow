@@ -1890,50 +1890,62 @@ async def import_serials(
     )
 
 
-#: How many models one serial may resolve to before the form stops guessing.
-#: Small on purpose — the unique index is per (company, MODEL), so two products
-#: sharing a number is legal but rare, and a list of ten is not an autofill.
-MAX_SERIAL_MATCHES = 5
+#: How many suggestions the intake form's dropdown offers at once. A list long
+#: enough to scroll is one nobody reads — past this, typing one more character
+#: is faster than looking.
+MAX_SERIAL_MATCHES = 10
+
+#: Below this the form does not ask. `SN-` matches most of a catalogue, and ten
+#: arbitrary serials under the box is noise rather than help.
+MIN_SERIAL_QUERY = 3
 
 
 async def lookup_serial(
     db: AsyncSession, principal: Principal, serial: str
 ) -> list[SerialMatchOut]:
-    """Which product a serial number belongs to. Powers the intake form's autofill.
+    """Serials STARTING WITH what was typed, each with the product it names.
 
     The vendor's real starting point is a unit with a number printed on it. The
-    category chain and the model are things they otherwise have to work out from
-    that number, and the master already knows — so this turns four boxes into
-    one.
+    category chain and the model are things they otherwise work out from that
+    number, and the master already knows — so this turns four boxes into one.
 
-    ## EXACT match, not a prefix
+    ## A PREFIX search, feeding a dropdown
 
-    A partial serial matches the wrong product as often as the right one, and
-    filling four fields from a half-typed number then having to unfill them is
-    worse than not filling them. Exact also means this is one probe of
-    `uq_product_model_serials_model_serial_lower` rather than a scan, which is
-    what makes it safe to call on every keystroke.
+    This was exact-match only to begin with, reasoning that a partial serial
+    names the wrong product as often as the right one. True, and beside the
+    point: an exact match answers nothing until the last character lands, so the
+    box sat silent through all the typing and read as broken. Suggestions are
+    what make the feature visible at all.
+
+    The exact/partial distinction still decides what the CLIENT does — it fills
+    the form only when what was typed equals one of these outright, and
+    otherwise just offers the list — but that is a question about confidence,
+    not about what is worth showing.
 
     ## A vendor only ever finds its OWN products
 
     Pinned server-side, the same way `_resolve_product` pins the model at
     intake and for exactly the same reason: without it this is an oracle. A
-    vendor could type serials until one resolved and read back a competitor's
-    product names and catalogue structure — worse than the enumeration the
-    intake check already guards against, because this one answers in a single
-    request and needs no ticket.
+    vendor could type prefixes until something resolved and read back a
+    competitor's product names and catalogue structure — worse than the
+    enumeration the intake check guards against, because this answers in one
+    request and needs no ticket. Prefix matching makes that easier, not harder,
+    which is why the pinning sits in the query and `MIN_SERIAL_QUERY` exists.
 
     ## Only what intake would actually ACCEPT
 
-    Approved, active, not deleted. Filling the form with a product the vendor
-    then cannot submit would be a worse experience than filling nothing, and it
-    would put the refusal at the end of a long form instead of at the box they
-    just typed in.
+    Approved, active, not deleted. Offering a product the vendor then cannot
+    submit is worse than offering nothing, and it moves the refusal to the end
+    of a long form instead of the box they are typing in.
     """
     needle = (serial or "").strip().lower()
-    if not needle:
+    if len(needle) < MIN_SERIAL_QUERY:
         return []
 
+    # Escaped, so a serial containing % or _ is matched literally instead of as
+    # a wildcard. Served by `ix_product_model_serials_company_serial_lower` —
+    # `(company_id, lower(serial) text_pattern_ops)`, added for exactly this.
+    escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     stmt = (
         select(ProductModelSerial.serial, ProductModel)
         .join(
@@ -1943,11 +1955,14 @@ async def lookup_serial(
         .where(
             ProductModelSerial.company_id == principal.company_id,
             ProductModel.company_id == principal.company_id,
-            func.lower(ProductModelSerial.serial) == needle,
+            func.lower(ProductModelSerial.serial).like(f"{escaped}%", escape="\\"),
             ProductModel.deleted_at.is_(None),
             ProductModel.is_active.is_(True),
             ProductModel.approval_status == APPROVED,
         )
+        # Stable between keystrokes: a dropdown whose rows reshuffle as you type
+        # is one you cannot reliably click.
+        .order_by(func.lower(ProductModelSerial.serial))
         .limit(MAX_SERIAL_MATCHES)
     )
     if principal.is_vendor and principal.vendor_id is not None:
