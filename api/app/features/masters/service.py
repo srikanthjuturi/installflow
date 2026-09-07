@@ -24,24 +24,43 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
+from app.core.errors import AppError
 from app.core.icons import DEFAULT_ICON_KEY
-from app.core.product_tree import MAX_NODE_DEPTH
+from app.core.notifications import notify
+from app.core.product_tree import (
+    APPROVAL_STATES,
+    APPROVED,
+    CATALOGUE,
+    INTAKE,
+    MAX_NODE_DEPTH,
+    PENDING,
+    REJECTED,
+)
+from app.core.realtime import publish_notification
+from app.core.schemas import ListParams, canonical_filter
+from app.db.repository import paginate
 from app.features.masters.schemas import (
+    ApprovalRequest,
     ModelCreateRequest,
     ModelUpdateRequest,
     NodeCreateRequest,
     NodeUpdateRequest,
     ParameterOut,
+    ProductApprovalOut,
     ProductModelOut,
     ProductNodeOut,
+    ProductResubmitRequest,
+    ProductSubmitRequest,
+    RejectionRequest,
 )
 from app.models.product import ProductModel, ProductNode
 from app.models.product_node_rules import ProductNodeRules
 from app.models.technician import TechnicianNode
+from app.models.user import User
 from app.models.vendor import Vendor
 
 
@@ -91,6 +110,56 @@ async def _load_model(
     )
     if row is None:
         raise _not_found("Product model")
+    return row
+
+
+async def _load_own_model(
+    db: AsyncSession, principal: Principal, model_id: uuid.UUID
+) -> ProductModel:
+    """The CALLER'S OWN product, or 404.
+
+    Two predicates, not one. `_load_model` proves the row belongs to this
+    company, which is the boundary for staff; for a vendor it is not — hard rule
+    7 says a vendor sees only its own, and this applies that to a WRITE. Without
+    the second line a vendor could edit a competitor's product by guessing an id
+    inside the same tenant.
+
+    404 and never 403, like every other scoped loader here: a 403 confirms the
+    row exists.
+    """
+    row = await db.scalar(
+        select(ProductModel).where(
+            ProductModel.id == model_id,
+            ProductModel.company_id == principal.company_id,
+            ProductModel.vendor_id == principal.vendor_id,
+            ProductModel.deleted_at.is_(None),
+        )
+    )
+    if row is None:
+        raise _not_found("Product model")
+    return row
+
+
+async def _load_reviewable(
+    db: AsyncSession, company_id: uuid.UUID, model_id: uuid.UUID
+) -> ProductModel:
+    """A product still awaiting a decision, or a 409 naming why not.
+
+    A coded conflict rather than a bare 409, because two National Heads can have
+    the queue open at once and the second one's prices would otherwise silently
+    overwrite the first's. The console refetches on `ALREADY_DECIDED` instead of
+    showing a refusal the reader cannot place.
+    """
+    row = await _load_model(db, company_id, model_id)
+    if row.approval_status != PENDING:
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="ALREADY_DECIDED",
+            detail=(
+                f"{row.name} has already been reviewed. Refresh the queue to "
+                "see the decision."
+            ),
+        )
     return row
 
 
@@ -217,6 +286,7 @@ async def get_tree(
     *,
     include_inactive: bool = False,
     vendor_id: uuid.UUID | None = None,
+    purpose: str = CATALOGUE,
 ) -> list[ProductNodeOut]:
     """The whole catalogue in one response, nested to whatever depth it has.
 
@@ -225,10 +295,9 @@ async def get_tree(
     technician form, ticket intake and the mobile coverage screen, where a
     second round trip on a field connection costs more than the join would have.
 
-    `vendor_id` narrows it to ONE BRAND'S catalogue: only that vendor's models,
-    and only the branches left holding any. A ticket is raised against a specific
-    vendor's product, so intake picks the vendor first and everything below it
-    follows.
+    `vendor_id` narrows it to ONE BRAND'S catalogue: only that vendor's models.
+    A ticket is raised against a specific vendor's product, so intake picks the
+    vendor first and everything below it follows.
 
     Technician certification deliberately does NOT pass this — a technician is
     skilled at Televisions whoever made them, and scoping that by brand would
@@ -237,11 +306,31 @@ async def get_tree(
     For a VENDOR caller the parameter is ignored and their own id substituted:
     see below.
 
+    ## `purpose` — am I filling this in, or picking from it?
+
+        catalogue   every approval state, and empty branches KEPT. The ops
+                    Categories screen, the vendor's own product screen, and the
+                    subtree every write echoes back.
+        intake      approved products only, and empty branches pruned. The
+                    ticket form's pickers.
+
+    One parameter rather than two booleans, because the two settings are not
+    independent choices. A caller that could ask for approved-only while keeping
+    empty branches would get a picker full of dead ends — which is the thing the
+    pruning exists to prevent. Same reasoning as `_flatten_for_invite` narrowing
+    what the phone is SENT rather than teaching the phone to filter.
+
+    `catalogue` is the default, and that direction is deliberate: an older
+    client that does not send the parameter keeps seeing everything, which is a
+    cosmetic surprise. Defaulting to `intake` would silently empty the
+    maintenance screens the day it shipped.
+
     A node whose parent was filtered out is DROPPED, never promoted to a root.
     Pausing *TV* has to take *Android TV* with it; a child that floated up to the
     top level would be offered as a choice its own parent had withdrawn.
     """
     company_id = principal.company_id
+    for_intake = purpose == INTAKE
 
     node_stmt = select(ProductNode).where(
         ProductNode.company_id == company_id,
@@ -262,6 +351,12 @@ async def get_tree(
         vendor_id = principal.vendor_id
     if vendor_id is not None:
         model_stmt = model_stmt.where(ProductModel.vendor_id == vendor_id)
+    # A product nobody has agreed to is not one a ticket can be raised against —
+    # it has no prices to stamp. This is the NORMAL path that keeps unapproved
+    # products out of every picker; `tickets._resolve_product` refuses one again
+    # for the stale tab and the crafted request.
+    if for_intake:
+        model_stmt = model_stmt.where(ProductModel.approval_status == APPROVED)
 
     # Depth first in the ORDER BY, so every parent is built before its children
     # and the top-down pass below can read what its parent resolved.
@@ -358,6 +453,8 @@ async def get_tree(
                     vendorPricePaise=m.vendor_price_paise,
                     imageUrls=list(m.image_urls or []),
                     isActive=m.is_active,
+                    approvalStatus=m.approval_status,
+                    rejectionReason=m.rejection_reason,
                     sortOrder=m.sort_order,
                 )
                 for m in models_by_node.get(n.id, [])
@@ -369,22 +466,34 @@ async def get_tree(
         else:
             parent.children.append(out)
 
-    if vendor_id is None:
+    if not for_intake:
         return roots
-    # Filtering to one vendor prunes upward: a branch holding none of that
-    # brand's models is not a choice, and offering it would dead-end the picker
-    # below it. Unfiltered, every node stays — an empty one is a real part of
-    # the master that somebody still has to fill.
-    return [root for root in roots if _prune_to_vendor(root)]
+    # A picker prunes upward: a branch holding nothing the caller could choose
+    # is not a choice, and offering it would dead-end below. On a maintenance
+    # screen every node stays — an empty one is a real part of the master that
+    # somebody still has to fill.
+    #
+    # Driven by `purpose` rather than by `vendor_id is not None`, which is what
+    # it used to test. That old trigger silently 404'd a vendor's own category
+    # create: `create_node` echoes the affected branch back through `_one_root`,
+    # a brand-new category has no models, and it was pruned out of the response
+    # to a write that had already committed.
+    return [root for root in roots if _prune_empty_branches(root)]
 
 
-def _prune_to_vendor(node: ProductNodeOut) -> bool:
+def _prune_empty_branches(node: ProductNodeOut) -> bool:
     """Drop branches with no models left. True if this node survives.
 
     Bottom-up, because a node with no models of its own is still worth keeping
     when something below it has some.
+
+    Named for what it does rather than for why it was first needed: it used to
+    run only when the tree was narrowed to one brand, so it was `_prune_to_vendor`.
+    It now also drops branches emptied by hiding unapproved products, and the
+    rule underneath both is the same — a branch that offers nothing is not a
+    choice.
     """
-    node.children = [child for child in node.children if _prune_to_vendor(child)]
+    node.children = [child for child in node.children if _prune_empty_branches(child)]
     return bool(node.models or node.children)
 
 
@@ -746,6 +855,13 @@ async def create_model(
             vendor_price_paise=body.vendorPricePaise,
             image_urls=list(body.imageUrls),
             is_active=body.isActive,
+            # Staff typed both prices, so there is nothing to approve. This
+            # writer is `require_staff_principal`-only; a vendor's submission
+            # goes through `submit_model` and starts pending.
+            #
+            # `submitted_at` stays NULL: nothing waited. That is the same claim
+            # the backfill makes about every product older than approvals.
+            approval_status=APPROVED,
             sort_order=sort_order,
             created_by=principal.user_id,
         )
@@ -792,8 +908,11 @@ async def update_model(
     if "notes" in body.model_fields_set:
         row.notes = (body.notes or "").strip() or None
     # Not clearable, so these test `is not None` like `vendorId` rather than
-    # presence like the four above: an explicit null must NOT unprice a model,
-    # because the ticket columns that copy these are NOT NULL.
+    # presence like the four above: an explicit null must NOT unprice a model.
+    # The columns became nullable when vendors could submit products, but that
+    # null means "not priced YET" and belongs to the approval flow — an editor
+    # reaching for it on an approved model would be refused by
+    # `approved_is_priced` anyway, with a constraint error instead of a sentence.
     if body.technicianPayoutPaise is not None:
         row.technician_payout_paise = body.technicianPayoutPaise
     if body.vendorPricePaise is not None:
@@ -816,3 +935,522 @@ async def delete_model(
     row.is_active = False
     row.updated_by = principal.user_id
     await db.commit()
+
+
+# ── a vendor's own submissions ────────────────────────────────────────────────
+#
+# Their own functions rather than a branch inside `create_model` /
+# `update_model`, for three reasons that all point the same way:
+#
+#   * A route carries ONE feature dependency. Letting a vendor through the staff
+#     writer would mean granting them `masters.edit` — which also gates PUT and
+#     DELETE on every node and every model in the tenant — or reaching for
+#     `require_any_feature`, whose own docstring says it is "deliberately NOT a
+#     way to soften a guard".
+#   * The bodies are different shapes. `ModelCreateRequest` REQUIRES `vendorId`
+#     and both prices; a vendor sends none of the three. Making all three
+#     optional on one schema would also let a STAFF caller silently create an
+#     unpriced pending product by omitting two keys.
+#   * `update_model` is already fifty lines of `model_fields_set` tests. A
+#     vendor's edit additionally has to refuse three fields and flip the row
+#     back to pending — four conditional behaviours threaded through a function
+#     whose difficulty is already that every field has its own presence rule.
+#
+# The CATEGORY write is the exception and routes straight into `create_node`: a
+# category has no vendor dimension, no prices and no approval, so there is
+# nothing to branch. That asymmetry is the point — the model write needs its own
+# path precisely because two of its columns are caller-dependent.
+
+
+async def submit_model(
+    db: AsyncSession,
+    principal: Principal,
+    node_id: uuid.UUID,
+    body: ProductSubmitRequest,
+) -> ProductNodeOut:
+    """A vendor adds a product to their own book. Unpriced, and pending."""
+    parent = await _load_node(db, principal.company_id, node_id)
+    if not parent.is_leaf:
+        raise _bad_request(
+            f"{parent.name} is not marked as the last sub-category. Tick "
+            '"This is the last sub-category" on it, or add products to one of '
+            "the levels below it."
+        )
+
+    name = body.name.strip()
+    await _assert_model_name_free(db, node_id, name)
+
+    sort_order = await _next_sort(
+        db,
+        select(func.max(ProductModel.sort_order)).where(
+            ProductModel.node_id == node_id,
+            ProductModel.deleted_at.is_(None),
+        ),
+    )
+    row = ProductModel(
+        company_id=principal.company_id,
+        node_id=node_id,
+        # THE pin. Never from the body — there is no field for it to arrive in,
+        # so no future branch can reopen this by forgetting a check.
+        vendor_id=principal.vendor_id,
+        name=name,
+        service_types=list(body.serviceTypes),
+        capacity=(body.capacity or "").strip() or None,
+        warranty_months=body.warrantyMonths,
+        notes=(body.notes or "").strip() or None,
+        parameters=list(body.parameters),
+        image_urls=list(body.imageUrls),
+        technician_payout_paise=None,
+        vendor_price_paise=None,
+        approval_status=PENDING,
+        submitted_at=_now(),
+        is_active=True,
+        sort_order=sort_order,
+        created_by=principal.user_id,
+    )
+    db.add(row)
+    # Sessions run with autoflush=False (hard rule 10), and the notification
+    # names the row — so it needs its server-side id before anything reads it.
+    await db.flush()
+    raised = await _notify_submitted(db, principal, row, parent)
+    await db.commit()
+    await publish_notification(
+        db,
+        company_id=principal.company_id,
+        pincode=None,
+        notification_id=raised,
+    )
+    return await _one_root(db, principal, node_id)
+
+
+async def update_own_model(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    body: ProductResubmitRequest,
+) -> ProductNodeOut:
+    """A vendor edits their own product. Any real change sends it back."""
+    row = await _load_own_model(db, principal, model_id)
+
+    if body.name is not None:
+        name = body.name.strip()
+        await _assert_model_name_free(db, row.node_id, name, exclude_id=model_id)
+        row.name = name
+    if body.serviceTypes is not None:
+        row.service_types = list(body.serviceTypes)
+    if body.parameters is not None:
+        row.parameters = list(body.parameters)
+    if "imageUrls" in body.model_fields_set:
+        row.image_urls = list(body.imageUrls or [])
+    if "capacity" in body.model_fields_set:
+        row.capacity = (body.capacity or "").strip() or None
+    if "warrantyMonths" in body.model_fields_set:
+        row.warranty_months = body.warrantyMonths
+    if "notes" in body.model_fields_set:
+        row.notes = (body.notes or "").strip() or None
+
+    # An approved product that has actually CHANGED is no longer the product
+    # that was approved, so it goes back for review.
+    #
+    # Guarded on a real change rather than on "was this a PUT", because the
+    # console resends the whole row on every save — bouncing an approved product
+    # for a no-op would make opening the dialog and pressing Save cost somebody
+    # their ability to raise tickets.
+    #
+    # ⚠ Measured BEFORE `updated_by` is stamped, and the order is load-bearing:
+    # that column changes whenever a DIFFERENT person saves, so stamping first
+    # would make `is_modified` true for a no-op by a colleague. The audit column
+    # records who touched the row; it is not one of the facts being reviewed.
+    changed = db.is_modified(row)
+    row.updated_by = principal.user_id
+
+    raised: uuid.UUID | None = None
+    if row.approval_status != PENDING and changed:
+        row.approval_status = PENDING
+        row.submitted_at = _now()
+        # `pending_has_no_decision` enforces the first two and
+        # `rejection_reason_only_on_rejected` the third — so a resubmission
+        # cannot carry a stale refusal a vendor would keep reading.
+        row.decided_at = None
+        row.decided_by = None
+        row.rejection_reason = None
+        # Prices are LEFT ALONE, and that is what lets a reviewer confirm a
+        # figure rather than re-price from scratch. Safe because intake gates on
+        # `approval_status`, never on "is it priced" — a pending row keeping its
+        # old prices is still unticketable.
+        parent = await _load_node(db, principal.company_id, row.node_id)
+        raised = await _notify_submitted(db, principal, row, parent)
+
+    await db.commit()
+    if raised is not None:
+        await publish_notification(
+            db,
+            company_id=principal.company_id,
+            pincode=None,
+            notification_id=raised,
+        )
+    return await _one_root(db, principal, row.node_id)
+
+
+async def delete_own_model(
+    db: AsyncSession, principal: Principal, model_id: uuid.UUID
+) -> None:
+    """A vendor withdraws their own product. Same soft delete as the staff one."""
+    row = await _load_own_model(db, principal, model_id)
+    row.deleted_at = _now()
+    row.is_active = False
+    row.updated_by = principal.user_id
+    await db.commit()
+
+
+# ── approvals ─────────────────────────────────────────────────────────────────
+
+
+async def _notify_submitted(
+    db: AsyncSession,
+    principal: Principal,
+    row: ProductModel,
+    parent: ProductNode,
+) -> uuid.UUID:
+    """Tell staff there is something to price.
+
+    `pincode=None` — a catalogue is company-wide, so there is no place to scope
+    this to. The cost is that it reaches every staff reader, including Area
+    Managers who hold no `masters.approve` and are refused by the rank floor on
+    the queue. Accepted deliberately: the row leaks a product name and a vendor
+    name to somebody who can already read both on the Categories screen, the
+    volume is units per week, and `technician_joined` already has exactly this
+    property. The console hides the kind from a reader without the feature.
+
+    `vendor_id=None` — pointedly. Widening this to the submitting vendor would
+    give them a bell about their own action, pointing at a screen they cannot
+    open. `vendor_id` is for a vendor who is a PARTY to the event; here they are
+    the author.
+    """
+    vendor_name = await db.scalar(
+        select(Vendor.name).where(Vendor.id == row.vendor_id)
+    )
+    path = " › ".join(await _node_path(db, principal.company_id, parent))
+    raised = await notify(
+        db,
+        company_id=principal.company_id,
+        kind="product_submitted",
+        title=f"{vendor_name or 'A vendor'} submitted {row.name}",
+        detail=f"In {path}. Set both prices to approve it.",
+        to="/approvals",
+    )
+    return raised.id
+
+
+async def _node_path(
+    db: AsyncSession, company_id: uuid.UUID, node: ProductNode
+) -> list[str]:
+    """The breadcrumb for one node, root first, including its own name.
+
+    One query on `ancestor_ids` rather than a walk, and ordered in Python off
+    that array because a `WHERE id IN (...)` returns no order of its own — the
+    array IS the order, and sorting by anything else would put *OLED* above
+    *Electronics*.
+    """
+    if not node.ancestor_ids:
+        return [node.name]
+    rows = await db.execute(
+        select(ProductNode.id, ProductNode.name).where(
+            ProductNode.id.in_(list(node.ancestor_ids)),
+            ProductNode.company_id == company_id,
+        )
+    )
+    by_id = {row_id: name for row_id, name in rows}
+    return [by_id[a] for a in node.ancestor_ids if a in by_id] + [node.name]
+
+
+def _approvals_query(company_id: uuid.UUID):
+    return select(ProductModel).where(
+        ProductModel.company_id == company_id,
+        ProductModel.deleted_at.is_(None),
+    )
+
+
+async def pending_count(db: AsyncSession, principal: Principal) -> int:
+    """How many products are waiting. The console's rail badge.
+
+    Its own endpoint rather than the queue's first page, for the reason
+    `useUnreadNotificationCount` gives: the rail renders on every screen, and
+    "how many are waiting" is a TOTAL — a page of twenty rows cannot say there
+    are twenty-three.
+    """
+    return int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ProductModel)
+            .where(
+                ProductModel.company_id == principal.company_id,
+                ProductModel.deleted_at.is_(None),
+                ProductModel.approval_status == PENDING,
+            )
+        )
+        or 0
+    )
+
+
+async def list_approvals(
+    db: AsyncSession,
+    principal: Principal,
+    params: ListParams,
+    *,
+    status_filter: str | None = None,
+) -> tuple[list[ProductApprovalOut], int]:
+    """The approvals queue.
+
+    NO territory scoping, deliberately. A catalogue is company-wide — it carries
+    no pincode to scope by — and the rank floor on the route means only an
+    all-India role reaches this at all. Written down so nobody adds
+    `territory_scope` here in six months on the grounds that every other list
+    has it.
+    """
+    stmt = _approvals_query(principal.company_id)
+
+    # Blank means PENDING, not "everything": the queue's job is the backlog, and
+    # a reader who opens it wants the work rather than the archive. "all" still
+    # widens it, because `canonical_filter` reads the sentinel as "no filter".
+    wanted = canonical_filter(status_filter or PENDING, APPROVAL_STATES)
+    if wanted is False:
+        # An unknown value from an old bookmark yields an empty page rather than
+        # a 422 that breaks the whole screen. Filters ride in a shareable query
+        # string, so this is the same courtesy `_canonical` does for tickets.
+        return [], 0
+    if wanted is not None:
+        stmt = stmt.where(ProductModel.approval_status == wanted)
+
+    if params.search:
+        term = f"%{params.search.strip().lower()}%"
+        vendor_hit = (
+            select(Vendor.id)
+            .where(
+                Vendor.company_id == principal.company_id,
+                func.lower(Vendor.name).like(term),
+            )
+            .scalar_subquery()
+        )
+        node_hit = (
+            select(ProductNode.id)
+            .where(
+                ProductNode.company_id == principal.company_id,
+                func.lower(ProductNode.name).like(term),
+            )
+            .scalar_subquery()
+        )
+        stmt = stmt.where(
+            or_(
+                func.lower(ProductModel.name).like(term),
+                ProductModel.vendor_id.in_(vendor_hit),
+                ProductModel.node_id.in_(node_hit),
+            )
+        )
+
+    # Two halves running in opposite directions on ONE ascending key, the trick
+    # `list_escalations` uses and for the same reason: ordering the same column
+    # twice in opposite directions would need two queries, and paging could not
+    # span them.
+    #
+    #   pending  — longest wait first: the vendor who has been blocked longest.
+    #   decided  — most recent first: what just happened is what somebody may
+    #              need to revisit.
+    waited = func.coalesce(ProductModel.submitted_at, ProductModel.created_at)
+    is_decided = case((ProductModel.approval_status == PENDING, 0), else_=1)
+    within_half = case(
+        (
+            ProductModel.approval_status == PENDING,
+            func.extract("epoch", waited),
+        ),
+        else_=-func.extract("epoch", func.coalesce(ProductModel.decided_at, waited)),
+    )
+    # The id tiebreak is not cosmetic: two products submitted in one transaction
+    # share `submitted_at` to the microsecond, and without a total key Postgres
+    # may order them differently between two OFFSET pages — the bug
+    # `notifications._NEWEST_FIRST` documents.
+    stmt = stmt.order_by(is_decided.asc(), within_half.asc(), ProductModel.id.asc())
+
+    rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
+    return await _approvals_out(db, principal, rows), total
+
+
+async def _approvals_out(
+    db: AsyncSession, principal: Principal, rows: list[ProductModel]
+) -> list[ProductApprovalOut]:
+    """Hydrate a page. Four flat lookups, joined in Python like `get_tree`."""
+    if not rows:
+        return []
+    company_id = principal.company_id
+
+    vendor_rows = await db.execute(
+        select(Vendor.id, Vendor.name).where(Vendor.company_id == company_id)
+    )
+    vendor_names = {row_id: name for row_id, name in vendor_rows}
+
+    node_rows = list(
+        await db.scalars(
+            select(ProductNode).where(
+                ProductNode.id.in_({r.node_id for r in rows}),
+                ProductNode.company_id == company_id,
+            )
+        )
+    )
+    nodes = {n.id: n for n in node_rows}
+    names = await db.execute(
+        select(ProductNode.id, ProductNode.name).where(
+            ProductNode.company_id == company_id
+        )
+    )
+    node_names = {row_id: name for row_id, name in names}
+
+    decider_ids = {r.decided_by for r in rows if r.decided_by is not None}
+    decider_names: dict[uuid.UUID, str] = {}
+    if decider_ids:
+        people = await db.execute(
+            select(User.id, User.full_name).where(User.id.in_(decider_ids))
+        )
+        # `full_name` is nullable, so a person with none resolves to no name at
+        # all rather than to an empty string — both clients render "—", which is
+        # the honest answer and not a claim that nobody decided.
+        decider_names = {row_id: name for row_id, name in people if name}
+
+    coverage = await _coverage_counts(db, company_id, node_rows)
+
+    out: list[ProductApprovalOut] = []
+    for r in rows:
+        node = nodes.get(r.node_id)
+        path = (
+            [node_names[a] for a in (node.ancestor_ids or []) if a in node_names]
+            + [node.name]
+            if node is not None
+            else []
+        )
+        out.append(
+            ProductApprovalOut(
+                id=r.id,
+                nodeId=r.node_id,
+                nodePath=path,
+                vendorId=r.vendor_id,
+                vendorName=vendor_names.get(r.vendor_id, ""),
+                name=r.name,
+                serviceTypes=list(r.service_types or []),
+                capacity=r.capacity,
+                warrantyMonths=r.warranty_months,
+                notes=r.notes,
+                parameters=_params_out(r.parameters),
+                imageUrls=list(r.image_urls or []),
+                approvalStatus=r.approval_status,
+                # NOT masked. The rank floor on this route means the reader is a
+                # National Head or an Admin, never a vendor.
+                technicianPayoutPaise=r.technician_payout_paise,
+                vendorPricePaise=r.vendor_price_paise,
+                rejectionReason=r.rejection_reason,
+                technicianCount=coverage.get(r.node_id, 0),
+                submittedAt=r.submitted_at,
+                decidedAt=r.decided_at,
+                decidedByName=(
+                    decider_names.get(r.decided_by) if r.decided_by else None
+                ),
+            )
+        )
+    return out
+
+
+async def _one_approval(
+    db: AsyncSession, principal: Principal, row: ProductModel
+) -> ProductApprovalOut:
+    return (await _approvals_out(db, principal, [row]))[0]
+
+
+async def _notify_decided(
+    db: AsyncSession, principal: Principal, row: ProductModel, *, approved: bool
+) -> uuid.UUID:
+    """Tell the vendor. Worded so it also reads correctly to staff.
+
+    `vendor_id` WIDENS — it does not narrow — so this row lands in every staff
+    feed too, with a `to` pointing at the portal. Accepted, the same compromise
+    `assigned` already ships in the other direction. The mitigation is the
+    wording: "43 inch LED (Samsung) approved" is true on a manager's screen,
+    where "Your product was approved" would not be.
+
+    ⚠ `detail` must never quote `technician_payout_paise`. This row reaches the
+    vendor's portal, and one f-string here would undo the masking that
+    `get_tree` and `tickets._hydrate` both enforce.
+    """
+    vendor_name = await db.scalar(
+        select(Vendor.name).where(Vendor.id == row.vendor_id)
+    )
+    label = f"{row.name} ({vendor_name})" if vendor_name else row.name
+    raised = await notify(
+        db,
+        company_id=principal.company_id,
+        kind="product_approved" if approved else "product_rejected",
+        title=f"{label} approved" if approved else f"{label} needs a change",
+        detail=(
+            "Tickets can be raised against it now."
+            if approved
+            else f"Reason: {row.rejection_reason}"
+        ),
+        to="/portal/products",
+        vendor_id=row.vendor_id,
+    )
+    return raised.id
+
+
+async def approve_model(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    body: ApprovalRequest,
+) -> ProductApprovalOut:
+    row = await _load_reviewable(db, principal.company_id, model_id)
+    row.technician_payout_paise = body.technicianPayoutPaise
+    row.vendor_price_paise = body.vendorPricePaise
+    row.approval_status = APPROVED
+    # A re-approval clears the previous refusal, so a vendor never reads a stale
+    # rejection against a product that is now live.
+    row.rejection_reason = None
+    row.decided_at = _now()
+    row.decided_by = principal.user_id
+    row.updated_by = principal.user_id
+    raised = await _notify_decided(db, principal, row, approved=True)
+    await db.commit()
+    await publish_notification(
+        db,
+        company_id=principal.company_id,
+        pincode=None,
+        vendor_id=row.vendor_id,
+        notification_id=raised,
+    )
+    return await _one_approval(db, principal, row)
+
+
+async def reject_model(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    body: RejectionRequest,
+) -> ProductApprovalOut:
+    row = await _load_reviewable(db, principal.company_id, model_id)
+    row.approval_status = REJECTED
+    row.rejection_reason = body.reason.strip()
+    row.decided_at = _now()
+    row.decided_by = principal.user_id
+    row.updated_by = principal.user_id
+    # Prices are NOT written. A rejected product has no agreed price, and
+    # leaving a figure on a row nobody signed off is worse than leaving none.
+    #
+    # `is_active` is not touched either, by neither this nor `approve_model`.
+    # Paused and rejected are different facts — see the module docstring on
+    # `models/product.py`.
+    raised = await _notify_decided(db, principal, row, approved=False)
+    await db.commit()
+    await publish_notification(
+        db,
+        company_id=principal.company_id,
+        pincode=None,
+        vendor_id=row.vendor_id,
+        notification_id=raised,
+    )
+    return await _one_approval(db, principal, row)

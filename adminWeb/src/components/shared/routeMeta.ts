@@ -18,6 +18,10 @@ const STATIC: Record<string, Meta> = {
     title: "Escalation queue",
     subtitle: "Unassigned within 4h of slot",
   },
+  "/approvals": {
+    title: "Product approvals",
+    subtitle: "Vendor-submitted products awaiting a price",
+  },
   // Hidden with the route — see `nav.ts`.
   // "/ai-review": { title: "AI review queue", subtitle: "Flagged verifications" },
   "/technicians": { title: "Technicians", subtitle: "Technician master list" },

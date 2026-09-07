@@ -23,6 +23,7 @@ a PRODUCT has them — see `ProductModelOut.parameters`.
 levels" in the response shape itself.
 """
 
+import datetime
 import uuid
 from typing import Annotated
 
@@ -227,10 +228,17 @@ class ModelCreateRequest(BaseModel):
     #: the answer, not the question.
     parameters: Parameters = Field(default_factory=list)
     #: What the job is worth to each side. REQUIRED, unlike everything else a
-    #: half-known model may leave out: a ticket stamps both at intake and the
-    #: columns are NOT NULL, so a model saved without them is one no ticket
-    #: could ever be raised against. Better to refuse the save than to accept a
-    #: row that fails on somebody else's screen a week later.
+    #: half-known model may leave out: a ticket stamps both at intake, so a
+    #: model saved without them is one no ticket could ever be raised against.
+    #: Better to refuse the save than to accept a row that fails on somebody
+    #: else's screen a week later.
+    #:
+    #: Required OF A STAFF CALLER, which is the only caller this schema serves —
+    #: `POST /masters/nodes/{id}/models` carries `require_staff_principal`. A
+    #: vendor submits through `ProductSubmitRequest`, which has no price field
+    #: at all, and their product is priced at approval instead. Keeping them
+    #: required here is what stops a staff caller silently creating a pending,
+    #: unpriced row by omitting two keys.
     technicianPayoutPaise: PricePaise
     vendorPricePaise: PricePaise
     imageUrls: ImageUrls = Field(default_factory=list)
@@ -287,19 +295,35 @@ class ProductModelOut(AppModel):
     parameters: list[ParameterOut]
     #: What this job is worth to each side, in paise.
     #:
-    #: `technicianPayoutPaise` is `int | None` only because it is **withheld
-    #: from a vendor** — the column itself is NOT NULL. `get_tree` sends null
-    #: for a vendor principal, and a vendor calls that endpoint every time they
-    #: open the intake form, so this is the field that would otherwise put the
-    #: technician's rate in their network tab.
+    #: `technicianPayoutPaise` is null for **two** reasons now, and they are
+    #: indistinguishable on the wire on purpose. It is **withheld from a
+    #: vendor** — `get_tree` masks it, and a vendor calls that endpoint every
+    #: time they open the intake form, so this is the field that would otherwise
+    #: put the technician's rate in their network tab. And it is genuinely
+    #: **unset** until a National Head approves the product. Both mean "no
+    #: figure for you", so nothing has to tell them apart.
     #:
-    #: `vendorPricePaise` goes to everyone: it is what the vendor is being
-    #: charged, and hiding somebody's own price from them serves nothing.
+    #: `vendorPricePaise` is optional for the SECOND reason only. It is never
+    #: masked — it is what the vendor is charged, and hiding somebody's own
+    #: price from them serves nothing — but a product waiting for approval has
+    #: no price yet. It was `int` until vendors could submit products, which
+    #: would have made this whole response 500 the first time a pending one
+    #: existed.
+    #:
+    #: A client rendering either must omit the line rather than print a dash:
+    #: "— to technician" reads as a figure that failed to load.
     technicianPayoutPaise: int | None
-    vendorPricePaise: int
+    vendorPricePaise: int | None
     #: Ordered; the first is the thumbnail. Empty when no photo was uploaded.
     imageUrls: list[str]
     isActive: bool
+    #: One of `core.product_tree.APPROVAL_STATES`. The vendor's own catalogue
+    #: screen badges on it, and it is the reason a product they can see may not
+    #: be one they can raise a ticket against.
+    approvalStatus: str
+    #: Why it was refused, so the vendor reads it where the product is and not
+    #: only in their bell. Null unless `approvalStatus == "rejected"`.
+    rejectionReason: str | None
     sortOrder: int
 
 
@@ -346,3 +370,128 @@ class ProductNodeOut(AppModel):
 
 
 ProductNodeOut.model_rebuild()
+
+
+# ── a vendor's own submissions ────────────────────────────────────────────────
+
+
+class ProductSubmitRequest(BaseModel):
+    """What a VENDOR submits. No brand, no prices, no pause switch.
+
+    All three are absent by construction rather than by validation — there is no
+    field for them to arrive in, so no branch has to remember to ignore one.
+
+      * **`vendorId`** — the caller's own vendor is the only possible answer,
+        and the service reads it off the principal. An id in a body is an
+        assertion, not a fact; this is the same reason `_resolve_product` will
+        not take one either.
+      * **both prices** — a National Head types them at approval. A vendor who
+        could send a number would be quoting their own rate, and
+        `technicianPayoutPaise` is withheld from them everywhere else in this
+        codebase.
+      * **`isActive`** — pausing a catalogue row is how ops withdraw a product.
+        A second "not available" switch in the hands of the submitter is two
+        answers to one question; `approval_status` is the axis that belongs to
+        them, and they move it by submitting.
+    """
+
+    name: Name120
+    serviceTypes: ServiceTypes = Field(
+        default_factory=lambda: list(DEFAULT_SERVICE_TYPES)
+    )
+    capacity: Capacity = None
+    warrantyMonths: WarrantyMonths = None
+    notes: Notes = None
+    parameters: Parameters = Field(default_factory=list)
+    imageUrls: ImageUrls = Field(default_factory=list)
+
+
+class ProductResubmitRequest(BaseModel):
+    """The same fields, all optional. Same three absences, same reasons.
+
+    Saving any real change returns the product to `pending` — see
+    `service.update_own_model`. Prices already agreed are LEFT ALONE, so a
+    reviewer confirms a figure rather than re-pricing from scratch.
+    """
+
+    name: Name120 | None = None
+    serviceTypes: ServiceTypes | None = None
+    capacity: Capacity = None
+    warrantyMonths: WarrantyMonths = None
+    notes: Notes = None
+    parameters: Parameters | None = None
+    imageUrls: ImageUrls | None = None
+
+
+# ── the approvals queue ───────────────────────────────────────────────────────
+
+
+class ApprovalRequest(BaseModel):
+    """Both prices, typed by the approver. The vendor submits neither.
+
+    `PricePaise` carries the `gt=0` and the ₹10,00,000 ceiling that catch the
+    mistake this pair invites — rupees typed into a paise box.
+    """
+
+    technicianPayoutPaise: PricePaise
+    vendorPricePaise: PricePaise
+
+
+class RejectionRequest(BaseModel):
+    """Why, in words the vendor will read.
+
+    Required. A rejection with no reason is one nobody can act on, and the
+    vendor's only remaining move is to resubmit the same row and wait again.
+
+    255 characters because this string is quoted verbatim into
+    `notifications.detail`, which is `String(255)` — bound it where it is
+    written, not where it is copied.
+    """
+
+    reason: Annotated[str, Field(min_length=3, max_length=255)]
+
+
+class ProductApprovalOut(AppModel):
+    """One row of the approvals queue.
+
+    FLAT, not a `ProductNodeOut`: the queue is a table of products somebody has
+    to decide about, not a catalogue to browse. `nodePath` carries the
+    breadcrumb so a reviewer sees where the product lands without opening the
+    tree.
+    """
+
+    id: uuid.UUID
+    nodeId: uuid.UUID
+    #: Root first, including the node's own name — "Electronics › TV › OLED".
+    nodePath: list[str]
+    vendorId: uuid.UUID
+    vendorName: str
+    name: str
+    serviceTypes: list[str]
+    capacity: str | None
+    warrantyMonths: int | None
+    notes: str | None
+    parameters: list[ParameterOut]
+    imageUrls: list[str]
+    approvalStatus: str
+    #: Both prices, and NOT masked — unlike `ProductModelOut`. The rank floor on
+    #: this endpoint means the reader is a National Head or an Admin and can
+    #: never be a vendor.
+    #:
+    #: Null on a first submission. They carry the LAST AGREED figures when a
+    #: vendor's edit sent an approved product back for review, so the reviewer
+    #: confirms rather than re-prices from scratch.
+    technicianPayoutPaise: int | None
+    vendorPricePaise: int | None
+    rejectionReason: str | None
+    #: How many technicians could actually take a job on this node — certified
+    #: here or on any ancestor. Shown because a vendor may file a product under
+    #: a brand-new sub-category nobody is certified on, and a job raised there
+    #: escalates immediately with nothing on any screen saying why. A zero here
+    #: turns that silent failure into something the approver sees first.
+    technicianCount: int = 0
+    submittedAt: datetime.datetime | None
+    decidedAt: datetime.datetime | None
+    #: Null on a product that never went through approval — every product that
+    #: predates this feature. Both clients render it as "—".
+    decidedByName: str | None

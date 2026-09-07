@@ -1,8 +1,11 @@
 import {
   AlertTriangle,
+  BadgeCheck,
+  BadgeX,
   Bell,
   Clock,
   MailX,
+  PackagePlus,
   Play,
   ScanLine,
   ShieldCheck,
@@ -61,14 +64,36 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     wrap: "bg-warn-bg text-warn",
     label: "Invite expired",
   },
-  // The three events here that are not a problem. Tinted like the statuses
-  // they describe rather than like a warning: a manager scanning the feed
-  // should be able to tell at a glance which rows need them and which are just
-  // news.
+  // A vendor added a product and cannot raise a ticket against it until
+  // somebody sets both prices. Work, not news — so it sits with the problems
+  // rather than with the three below.
+  product_submitted: {
+    icon: PackagePlus,
+    wrap: "bg-info-bg text-info",
+    label: "Product submitted",
+  },
+  // Warn rather than danger, the same call `ApprovalBadge` makes: danger is
+  // spoken for by the rows about a customer already let down, and a rejected
+  // product is a task with a fix.
+  product_rejected: {
+    icon: BadgeX,
+    wrap: "bg-warn-bg text-warn",
+    label: "Product rejected",
+  },
+  // The events here that are not a problem. Tinted like the statuses they
+  // describe rather than like a warning: a manager scanning the feed should be
+  // able to tell at a glance which rows need them and which are just news.
   //
-  // `assigned` is the one the VENDOR also sees — it is the only kind besides a
-  // serial mismatch that widens to their portal, because they raised the ticket
-  // and somebody going is the first thing they have wanted to hear since.
+  // FOUR kinds widen to a vendor's portal — `serial_mismatch`, `assigned`, and
+  // both product decisions. `vendor_id` on a notification widens the audience
+  // and never narrows it, so every one of these lands in the staff feed too;
+  // that is why their titles name the product or the ticket rather than saying
+  // "your", which would be false on a manager's screen.
+  product_approved: {
+    icon: BadgeCheck,
+    wrap: "bg-success-bg text-success",
+    label: "Product approved",
+  },
   assigned: {
     icon: UserCheck,
     wrap: "bg-success-bg text-success",

@@ -9,29 +9,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApprovalBadge } from "@/components/shared/StatusBadge";
 import { cn } from "@/lib/utils";
 import { moneyPaise } from "@/utils/money";
 import type { ProductModel, ProductNode } from "@/types/product";
 import { MAX_NODE_DEPTH } from "@/types/product";
 import { DEFAULT_ICON_KEY, PRODUCT_ICONS } from "./icons";
+import { addMenuItems } from "./nodeMenu";
+import type { MasterAction, NodeMenuItem } from "./nodeMenu";
+
+export type { MasterAction, NodeMenuItem } from "./nodeMenu";
 import { masterNodeId } from "./nodeIds";
 
-/**
- * Everything the tree can ask the page to do. One union beats eight callback
- * props, and it keeps the page's dialog state a single discriminated value
- * rather than eight booleans that can all be true at once.
- *
- * There is no `add-category` / `add-subcategory` split any more: both are
- * `add-node`, differing only in whether a parent came with it. That is the
- * whole shape of the change — a level is a `depth`, not a kind of row.
- */
-export type MasterAction =
-  | { kind: "add-node"; parent: ProductNode | null }
-  | { kind: "edit-node"; node: ProductNode }
-  | { kind: "delete-node"; node: ProductNode }
-  | { kind: "add-model"; node: ProductNode }
-  | { kind: "edit-model"; node: ProductNode; model: ProductModel }
-  | { kind: "delete-model"; model: ProductModel };
 
 interface CategoryTreeProps {
   nodes: ProductNode[];
@@ -41,6 +30,15 @@ interface CategoryTreeProps {
   /** Opens Rules Config scoped to a node. Absent when the viewer cannot read
    *  rules, which is a different grant from editing the catalogue. */
   onOpenRules?: (node: ProductNode) => void;
+  /**
+   * Overrides the row menu on every node. Absent → the ops menu.
+   *
+   * The vendor portal passes a shorter one: a category belongs to the COMPANY,
+   * not to whichever vendor happened to create it, so somebody filing products
+   * into one must not be offered "Edit category" or "Remove category" for every
+   * other brand in the tenant. `addMenuItems` is exported for exactly that.
+   */
+  menuFor?: (node: ProductNode) => NodeMenuItem[];
 }
 
 /** "1 model" / "3 models" — the count is the point, so it reads correctly. */
@@ -69,6 +67,7 @@ export function CategoryTree({
   onAction,
   canEdit,
   onOpenRules,
+  menuFor,
 }: CategoryTreeProps) {
   return (
     <ul className="flex flex-col gap-3" aria-label="Product categories">
@@ -79,6 +78,7 @@ export function CategoryTree({
             onAction={onAction}
             canEdit={canEdit}
             onOpenRules={onOpenRules}
+            menuFor={menuFor}
           />
         </li>
       ))}
@@ -153,29 +153,16 @@ function RowMenu({
   );
 }
 
-/** The actions any node offers, wherever it sits. */
+/** The actions any node offers to STAFF, wherever it sits. */
 function nodeMenuItems(
   node: ProductNode,
   onAction: (a: MasterAction) => void,
   onOpenRules?: (n: ProductNode) => void
-) {
-  const items: { label: string; onSelect: () => void; danger?: boolean }[] = [
+): NodeMenuItem[] {
+  const items: NodeMenuItem[] = [
     { label: "Edit category", onSelect: () => onAction({ kind: "edit-node", node }) },
   ];
-  // One or the other, never both — the same rule the API enforces, so the menu
-  // never offers something the save would refuse. A node that is marked as the
-  // last sub-category takes products; anything else takes sub-categories.
-  if (node.isLeaf) {
-    items.push({
-      label: "Add product",
-      onSelect: () => onAction({ kind: "add-model", node }),
-    });
-  } else if (node.depth < MAX_NODE_DEPTH) {
-    items.push({
-      label: "Add sub-category",
-      onSelect: () => onAction({ kind: "add-node", parent: node }),
-    });
-  }
+  items.push(...addMenuItems(node, onAction));
   if (onOpenRules) {
     items.push({ label: "Rules for this category", onSelect: () => onOpenRules(node) });
   }
@@ -192,11 +179,13 @@ function RootNode({
   onAction,
   canEdit,
   onOpenRules,
+  menuFor,
 }: {
   node: ProductNode;
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
   onOpenRules?: (n: ProductNode) => void;
+  menuFor?: (n: ProductNode) => NodeMenuItem[];
 }) {
   // Indexed rather than looked up through a helper: a function call here reads
   // to the React Compiler lint as a component being created during render.
@@ -242,7 +231,7 @@ function RootNode({
             ) : null}
             <RowMenu
               label={`Actions for ${node.name}`}
-              items={nodeMenuItems(node, onAction, onOpenRules)}
+              items={menuFor ? menuFor(node) : nodeMenuItems(node, onAction, onOpenRules)}
             />
           </div>
         ) : null}
@@ -267,6 +256,7 @@ function RootNode({
                 onAction={onAction}
                 canEdit={canEdit}
                 onOpenRules={onOpenRules}
+                menuFor={menuFor}
               />
             </li>
           ))}
@@ -291,11 +281,13 @@ function ChildNode({
   onAction,
   canEdit,
   onOpenRules,
+  menuFor,
 }: {
   node: ProductNode;
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
   onOpenRules?: (n: ProductNode) => void;
+  menuFor?: (n: ProductNode) => NodeMenuItem[];
 }) {
   const Icon = PRODUCT_ICONS[node.iconKey] ?? PRODUCT_ICONS[DEFAULT_ICON_KEY];
   const indent = INDENT[Math.min(node.depth - 1, INDENT.length - 1)];
@@ -352,7 +344,7 @@ function ChildNode({
               ) : null}
               <RowMenu
                 label={`Actions for ${node.name}`}
-                items={nodeMenuItems(node, onAction, onOpenRules)}
+                items={menuFor ? menuFor(node) : nodeMenuItems(node, onAction, onOpenRules)}
               />
             </div>
           ) : null}
@@ -389,6 +381,7 @@ function ChildNode({
                 onAction={onAction}
                 canEdit={canEdit}
                 onOpenRules={onOpenRules}
+                menuFor={menuFor}
               />
             </li>
           ))}
@@ -433,12 +426,22 @@ function ModelChip({
       ? model.parameters.map((p) => `${p.name}: ${p.value}`).join(" · ")
       : null,
     // Both prices, together, because the margin between them is the thing worth
-    // reading and neither number means much alone. `technicianPayoutPaise` is
-    // null only for a vendor caller — who never sees this screen — so the dash
-    // should not appear here; it is left to `moneyPaise` rather than special
-    // cased, because inventing a figure would be worse than showing one.
-    `${moneyPaise(model.technicianPayoutPaise)} to technician`,
-    `${moneyPaise(model.vendorPricePaise)} from vendor`,
+    // reading and neither number means much alone.
+    //
+    // Each line is DROPPED when its figure is null rather than dashed. Null used
+    // to mean only "a vendor is asking", which could not happen on this screen;
+    // it now also means the product is waiting for approval and nobody has set a
+    // price yet — which happens here all the time. "— to technician" reads as a
+    // number that failed to load, so the honest render is silence.
+    model.technicianPayoutPaise === null
+      ? null
+      : `${moneyPaise(model.technicianPayoutPaise)} to technician`,
+    model.vendorPricePaise === null
+      ? null
+      : `${moneyPaise(model.vendorPricePaise)} from vendor`,
+    model.approvalStatus === "rejected" && model.rejectionReason
+      ? `Not approved: ${model.rejectionReason}`
+      : null,
   ].filter(Boolean);
 
   const body = (
@@ -473,6 +476,16 @@ function ModelChip({
           {model.capacity}
         </span>
       ) : null}
+      {/* Only when it is NOT approved. A badge on every chip would be noise on
+          a screen where almost everything is approved, and the interesting
+          state is the one that stops a ticket being raised.
+
+          A word, not a tint: colour alone fails WCAG 1.4.1, and "why can I not
+          raise a ticket for this?" is exactly the question the chip has to
+          answer at a glance. */}
+      {model.approvalStatus === "approved" ? null : (
+        <ApprovalBadge status={model.approvalStatus} />
+      )}
     </>
   );
 

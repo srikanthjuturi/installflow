@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { APPROVAL_LABELS, type ApprovalStatus } from "@/types/approval";
 import type { SlaState, TicketStatus } from "@/types";
 
 /**
@@ -55,6 +56,40 @@ export function SlaBadge({ state }: { state: SlaState }) {
       )}
     >
       {SLA_LABEL[state]}
+    </span>
+  );
+}
+
+/**
+ * Where a vendor-submitted product sits. Static strings, like `STATUS_CLASS`.
+ *
+ * Rejected is `warn`, not `danger`. `danger` is spoken for by escalation,
+ * no-show and serial mismatch — the three rows about a customer who has already
+ * been let down. A rejected product is a task with a fix, which is what `warn`
+ * already means here for force-close and an expired invite.
+ */
+const APPROVAL_CLASS: Record<ApprovalStatus, string> = {
+  pending: "bg-info-bg text-info",
+  approved: "bg-ok-bg text-ok",
+  rejected: "bg-warn-bg text-warn",
+};
+
+export function ApprovalBadge({
+  status,
+  className,
+}: {
+  status: ApprovalStatus;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap",
+        APPROVAL_CLASS[status],
+        className
+      )}
+    >
+      {APPROVAL_LABELS[status]}
     </span>
   );
 }

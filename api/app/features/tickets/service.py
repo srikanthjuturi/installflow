@@ -42,7 +42,8 @@ from app.core.realtime import (
     publish_pool_changed,
     publish_ticket_changed,
 )
-from app.core.schemas import ListParams
+from app.core.product_tree import APPROVED, PENDING
+from app.core.schemas import ListParams, canonical_filter
 from app.core.scope import (
     pincodes_in_regions,
     pincodes_in_states,
@@ -394,6 +395,30 @@ async def _resolve_product(
             f"{model.name} is not one of your models — pick one of your own"
         )
 
+    # A product nobody has agreed to is not one anybody can be sent to install —
+    # and, since approval is where both prices are set, not one this ticket
+    # could be costed against either.
+    #
+    # AFTER the ownership test above, deliberately: refusing on approval first
+    # would let a vendor probing ids learn the state of a competitor's
+    # catalogue, which is exactly what that test exists to prevent.
+    #
+    # Like the paused-ancestor check above, this is a backstop rather than the
+    # normal path — `GET /masters/nodes?purpose=intake` already offers only
+    # approved models — and it is here for the stale tab and the crafted
+    # request, which is when a backstop earns its place.
+    if model.approval_status != APPROVED:
+        raise _bad_request(
+            f"{model.name} is still waiting to be approved, so it cannot be "
+            "ticketed yet."
+            if model.approval_status == PENDING
+            # The reason is deliberately NOT repeated here. It lives on their
+            # own products screen and in their bell; a 400 from an intake form
+            # is not where a paragraph belongs.
+            else f"{model.name} was not approved, so it cannot be ticketed. "
+            "Edit it and submit it again."
+        )
+
     supported = list(model.service_types or [])
     if body.serviceType not in supported:
         raise _bad_request(
@@ -616,27 +641,10 @@ def _apply_search(stmt: Select, search: str | None) -> Select:
 #: "All" at the front, and that value rides into the query string like any
 #: other, so the API has to understand it means "do not filter" rather than
 #: "match a status literally named All" — which would silently return nothing.
-ALL_SENTINEL = "all"
-
-
-def _canonical(value: str | None, allowed: tuple[str, ...]) -> str | None | bool:
-    """Match a filter value case-insensitively against a closed set.
-
-    Three outcomes, and the caller has to tell them apart:
-
-        None   no filter asked for (absent, blank, or the "All" sentinel)
-        str    the canonical spelling to filter on
-        False  asked for something that does not exist
-
-    Filters arrive from a shareable query string, so an older bookmark must not
-    be able to 422 the whole list; an unknown value yields an empty page.
-    """
-    if not value:
-        return None
-    wanted = value.strip().lower()
-    if wanted == ALL_SENTINEL:
-        return None
-    return next((a for a in allowed if a.lower() == wanted), False)
+#: Re-exported so the many call sites below read unchanged. The definition
+#: moved to `app.core.schemas` when the approvals queue needed the same rule —
+#: hard rule 4, and a second copy is the one that drifts.
+_canonical = canonical_filter
 
 
 async def list_tickets(
@@ -1403,8 +1411,17 @@ async def create_ticket(
         # accepted a ₹450 job is owed ₹450, and a vendor quoted ₹1,200 is billed
         # ₹1,200, whatever the catalogue says afterwards.
         #
-        # No "is it priced?" check is needed — `product_models` cannot hold an
-        # unpriced row, so both of these are NOT NULL at the source.
+        # Both SOURCE columns are nullable now — a product waiting for approval
+        # has no price yet. What guarantees these two are present is the pair
+        # above and below this line working together: `_resolve_product` refuses
+        # anything that is not `approved`, and the `approved_is_priced` CHECK on
+        # `product_models` says an approved row is a priced one. Approved
+        # implies priced, and only an approved model reaches here.
+        #
+        # No belt-and-braces null test, on purpose: it would be a second, weaker
+        # copy of an invariant the database already holds, and the ticket's own
+        # NOT NULL columns are the backstop that turns a bug here into a 409
+        # through `errors.py` rather than a priceless ticket.
         technician_payout_paise=model.technician_payout_paise,
         vendor_price_paise=model.vendor_price_paise,
         # The same reasoning applied to the RULES. `resolve_rules` folds

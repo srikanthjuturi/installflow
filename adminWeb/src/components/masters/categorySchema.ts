@@ -141,8 +141,16 @@ const MAX_RUPEES = 1_000_000;
  *
  * `> 0` rather than `>= 0`, matching the CHECK on both tables: a free job is
  * not a cheap job, it is a missing price.
+ *
+ * Exported for the approvals dialog, which asks for the same pair — it does not
+ * MOVE, and that is deliberate on two counts. `components/tickets/ticketSchema`
+ * already imports `SERVICE_TYPES` from this file, so schema constants crossing
+ * slices is this repo's existing habit and the component-tier rule is written
+ * about markup. And the ceiling here mirrors a server CHECK: a second copy is
+ * the copy that drifts the first time somebody tunes it. Promote to
+ * `lib/rupees.ts` if a third consumer ever appears.
  */
-const rupees = (missing: string) =>
+export const rupees = (missing: string) =>
   z
     .string()
     .trim()
@@ -154,7 +162,36 @@ const rupees = (missing: string) =>
       "That looks like paise — enter the amount in rupees",
     );
 
-export const modelSchema = z.object({
+/**
+ * A product form, with or without the two price boxes.
+ *
+ * A factory for the same reason `parameterRows` above is one: the shape differs
+ * by who is filling it in, and validating two fields that are not on screen
+ * refuses a save with a message nobody can act on.
+ *
+ * `withPricing` is false for a VENDOR submitting to their own book. They never
+ * set a price — a National Head types both at approval — so the boxes are
+ * absent, and `vendorId` is theirs and shown rather than offered.
+ */
+export const modelSchema = (withPricing = true) =>
+  baseModelSchema.extend(
+    withPricing
+      ? {
+          technicianPayoutPaise: rupees(
+            "What the technician is paid is required"
+          ),
+          vendorPricePaise: rupees("What the vendor is charged is required"),
+        }
+      : {
+          // Present but unvalidated, so `ModelFormValues` stays one type and
+          // the shared submit path does not need a second branch to read them.
+          // They are never rendered and never sent when `withPricing` is off.
+          technicianPayoutPaise: z.string(),
+          vendorPricePaise: z.string(),
+        }
+  );
+
+const baseModelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
   /** The brand. Required — a model with no maker names nothing a technician
    *  can be sent to install, and a brand backfilled later is one nobody
@@ -178,19 +215,6 @@ export const modelSchema = z.object({
       (v) => v === "" || Number(v) <= 240,
       "That looks like years — enter the number of months",
     ),
-  /** What the job is worth to each side, in whole RUPEES as typed.
-   *
-   *  Required, unlike everything above them: the API columns are NOT NULL and a
-   *  ticket stamps both at intake, so a model saved without them is one no
-   *  ticket could ever be raised against. Better to refuse the save here, where
-   *  the person can fix it, than to accept a row that fails on a vendor's
-   *  intake form next week.
-   *
-   *  Strings, then coerced at submit — the `warrantyMonths` precedent directly
-   *  above. `valueAsNumber` on an empty box yields NaN, which zod reports as
-   *  "expected number, received nan" and nobody can act on. */
-  technicianPayoutPaise: rupees("What the technician is paid is required"),
-  vendorPricePaise: rupees("What the vendor is charged is required"),
   imageUrls: z
     .array(
       z
@@ -211,7 +235,18 @@ export const modelSchema = z.object({
 });
 
 export type NodeFormValues = z.infer<typeof nodeSchema>;
-export type ModelFormValues = z.infer<typeof modelSchema>;
+/**
+ * One type for both modes. The price fields are always PRESENT — as validated
+ * rupee strings for ops, as unvalidated ones for a vendor — so the form, its
+ * defaults and its submit path stay single-shape and only the resolver and the
+ * rendered fields differ.
+ *
+ * The two amounts are named `…Paise` and hold whole RUPEES as typed. Strings,
+ * then coerced at submit — the `warrantyMonths` precedent above.
+ * `valueAsNumber` on an empty box yields NaN, which zod reports as "expected
+ * number, received nan" and nobody can act on.
+ */
+export type ModelFormValues = z.infer<ReturnType<typeof modelSchema>>;
 export type ParameterRow = z.infer<typeof parametersSchema>[number];
 
 /** Drop the blank rows a user added and abandoned. */

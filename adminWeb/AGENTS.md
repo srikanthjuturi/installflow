@@ -257,7 +257,8 @@ adminWeb/
       dashboard/          KpiRow · SlaBar · FunnelStrip · AttentionCards · RecentTickets
       tickets/            TicketTable · TicketFilters · StatusBadge · SlaBadge · TimelineEvent
                           FactGrid · ProofGrid · ManualEntryForm
-      vendor/             VendorShell · PortalNav · portalNav.ts · AddVendorUserDialog
+      vendor/             VendorShell · VendorSidebar · portalNav.ts
+                          AddVendorUserDialog · RejectedProductsNotice
                           — the vendor PORTAL, a third shell. See below.
       escalations/        EscalationCard · BonusPicker
                           — `EligibleTechTable` went with the mock queue; the
@@ -579,6 +580,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets/:id/bonus` | `BonusSetupPage` | bands from Rules config; pool balance shown, not enforced; re-notify reports the technicians actually reached |
 | `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot, in two halves under date dividers; search · Still savable/Missed · slot-date range · Refresh; loads on scroll |
 | `/escalations/:id/bonus` · `/escalations/:id/assign` | — | param-preserving **redirects** to their `/tickets/:id/…` twins. The mock queue owned duplicates of both; deleting a route does not close a path (hard rule 0a) |
+| `/approvals` | `ApprovalsPage` | products vendors submitted, unpriced and unticketable until decided; `masters.approve` + a National-Head rank floor. Server-paged, Pending/Approved/Rejected pills, and a **Certified** column whose zero is the warning — a product filed under a sub-category nobody covers escalates the moment a ticket is raised |
+| `/portal/products` | `VendorProductsPage` | a vendor's own catalogue: add a category, submit a product, see what is Pending and what was sent back with a reason. `vendor.catalogue`, `vendor` only |
 | ~~`/ai-review`~~ | `AiQueuePage` | below-threshold or unreadable. **Route commented out** — the page exists, nothing reaches it |
 | ~~`/ai-review/:id`~~ | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake. **Commented out** with the queue |
 | `/technicians` | `TechnicianListPage` | add · invite · **edit** — one `TechnicianFormDialog` for add and edit, pointed by an optional `technician` prop. Edit is `technicians.edit` and offered on REGISTERED rows only: an invite is a phone number and nothing else yet |
@@ -614,12 +617,12 @@ Three tiers. Promote downward only when a third consumer appears — two usages 
 
 - **`ui/`** — shadcn primitives, generated, never hand-edited.
 - **`shared/`** — cross-slice: `AppShell`, `DataTable`, `EmptyState`, `ErrorState`,
-  `TableSkeleton`, `ConfirmDialog`, `PageMeta`, `Money`, `StatusBadge`, `FilterPills`,
-  `FieldGrid`.
+  `TableSkeleton`, `ConfirmDialog`, `PageMeta`, `Money`, `StatusBadge` (which exports
+  `ApprovalBadge` too), `NotificationBell`, `FilterPills`, `FieldGrid`.
 - **`<slice>/`** — everything else, private to its feature.
 
-Nine of the twenty screens are a filtered table over a domain list. Build **one** `DataTable`
-(column defs, sort, empty/loading slots) and configure it; do not write nine tables.
+Ten of the screens are a filtered table over a domain list. Build **one** `DataTable`
+(column defs, sort, empty/loading slots) and configure it; do not write ten tables.
 
 **Nothing deletes or suspends on a single click.** Every destructive action goes through
 `shared/ConfirmDialog`, whose title NAMES the row it is about ("Suspend Sunil Pawar?") and whose
@@ -1000,6 +1003,11 @@ stamped: a spec is descriptive and no money moves when it changes.
 empty *Name / Value* row, `×` removes one. Two consumers today (`NodeFormDialog`'s template and
 `ModelFormDialog`'s product specs), so it stays in `masters/` until a third appears.
 
+⚠ It is still two **only because** `ModelFormDialog` took a `submitter` prop rather than being
+forked for the vendor portal. A separate vendor product dialog would have made this a third
+consumer and forced an unrelated promotion into `shared/` — which is one of the reasons the prop
+won that argument. Anybody reaching for a fork should know it moves this file too.
+
 `useFieldArray` had existed in exactly one place before this (`settings/RulesForm`) and was
 **fixed length** — `append` and `remove` were never called anywhere in `src/`. Two things about
 using it properly:
@@ -1229,6 +1237,17 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   uploads are never accepted; geo is validated against the ticket **pincode**.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review · unreadable →
   retake on-site before leaving.
+- **A vendor may add products, and may never price them.** A submission is `pending` and cannot be
+  ticketed; a National Head or Admin sets BOTH prices on `/approvals` to approve it, or rejects it
+  with a reason the vendor reads on `/portal/products`. A vendor editing an approved product sends
+  it back to pending — tickets already raised are unaffected, because both prices are stamped on
+  the ticket at intake. Everything that existed before this shipped was backfilled as approved.
+- **A vendor-created CATEGORY is not reviewed**, only a product. A category is company-wide, so the
+  portal's row menu offers neither "Edit category" nor "Remove category" — `CategoryTree`'s
+  `menuFor` prop is what shortens it.
+- **`technicianPayoutPaise` being null now means two things** — withheld from a vendor, or nobody
+  has priced it yet — and `vendorPricePaise` can be null for the second reason. Render neither as a
+  dash: "— to technician" reads as a number that failed to load. Omit the line.
 - Force-closure **requires** attachments and records who, when, and on what basis. Audit is a
   stated requirement, not a nicety.
 - **A force-closure's attachments are staff-only; its proof images are not.** Proof is the work

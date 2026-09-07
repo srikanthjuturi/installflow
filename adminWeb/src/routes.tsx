@@ -29,6 +29,10 @@ const TicketDetailPage = lazy(() => import("@/pages/tickets/TicketDetailPage"));
 const EscalationQueuePage = lazy(
   () => import("@/pages/escalations/EscalationQueuePage")
 );
+const ApprovalsPage = lazy(() => import("@/pages/approvals/ApprovalsPage"));
+const VendorProductsPage = lazy(
+  () => import("@/pages/vendor/VendorProductsPage")
+);
 const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const AssignTechnicianPage = lazy(
   () => import("@/pages/tickets/AssignTechnicianPage")
@@ -216,6 +220,10 @@ export const routes: RouteObject[] = [
                 element: <TicketDetailPage backTo="/portal/tickets" actions={null} />,
               },
               { path: "portal/users", element: <VendorUsersPage /> },
+              // Gated on `vendor.catalogue` through `portalNav.ts` — the portal
+              // guard DENIES anything that table does not name, so a route
+              // added here alone would be silently unreachable.
+              { path: "portal/products", element: <VendorProductsPage /> },
               // The bell is in the shared Topbar, so a vendor has always been
               // able to see it. Without this route it linked into the ops tree,
               // where `RequireOps` bounced them straight back to /portal — a
@@ -266,6 +274,9 @@ export const routes: RouteObject[] = [
               },
               { path: "tickets/:id/bonus", element: <BonusSetupPage /> },
               { path: "escalations", element: <EscalationQueuePage /> },
+              // Guarded by `masters.approve`, which `RequireFeature` reads off
+              // the nav table — no guard change needed here.
+              { path: "approvals", element: <ApprovalsPage /> },
               // Where those two used to live. See `RedirectToTicket`.
               {
                 path: "escalations/:id/bonus",

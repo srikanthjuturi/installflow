@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate } from "react-router";
 import {
   CategoryTree,
   CategoryTreeSkeleton,
   type MasterAction,
 } from "@/components/masters/CategoryTree";
-import { masterNodeId } from "@/components/masters/nodeIds";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
@@ -15,6 +14,7 @@ import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
+import { useFocusHighlight } from "@/hooks/useFocusHighlight";
 import {
   useDeleteModel,
   useDeleteNode,
@@ -40,37 +40,8 @@ export default function CategoriesPage() {
   const deleteNode = useDeleteNode();
   const deleteModel = useDeleteModel();
 
-  /**
-   * `?focus=<id>` — where a global-search hit on the product master lands.
-   *
-   * Nothing in the master has a detail route; it is one page with the whole
-   * tree already expanded on it. So a hit points at a node, and the page's job
-   * is to put that node in front of you rather than leave you scanning a
-   * hundred chips for the one you asked for.
-   *
-   * Written straight to the DOM rather than held in state: this is a one-off
-   * visual cue with no meaning afterwards, and a re-render that dropped it
-   * would be a highlight that flickered off mid-look. Runs once the tree has
-   * data — the node does not exist before that.
-   */
-  const [searchParams] = useSearchParams();
-  const focusId = searchParams.get("focus");
-  const loaded = !!data?.length;
-
-  useEffect(() => {
-    if (!focusId || !loaded) return;
-    const node = document.getElementById(masterNodeId(focusId));
-    if (!node) return;
-
-    node.scrollIntoView({ block: "center", behavior: "smooth" });
-    const ring = ["ring-2", "ring-brand-500", "rounded-md"];
-    node.classList.add(...ring);
-    const timer = window.setTimeout(() => node.classList.remove(...ring), 2400);
-    return () => {
-      window.clearTimeout(timer);
-      node.classList.remove(...ring);
-    };
-  }, [focusId, loaded]);
+  // `?focus=<id>` — where a global-search hit on the product master lands.
+  useFocusHighlight(!!data?.length);
 
   const close = () => setDialog(null);
   const removed = (name: string) => () => {

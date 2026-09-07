@@ -324,7 +324,7 @@ def require_staff_principal(principal: CompanyPrincipal) -> Principal:
     It exists for global search. Anything that reads ACROSS slices at once has to
     satisfy every slice's ownership rule at the same time, and a vendor's rule is
     the awkward one: they hold `jobs.view` and `masters.view`, so a cross-entity
-    read would have to re-derive the vendor pinning that `list_categories` and
+    read would have to re-derive the vendor pinning that `masters.get_tree` and
     `tickets.scoped()` each do their own way. Refusing the role at the door is
     both safer and honest — the vendor portal has no search box, and a technician
     searches in the app.

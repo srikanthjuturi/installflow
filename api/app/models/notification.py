@@ -91,6 +91,23 @@ NOTIFICATION_KINDS = (
     #: no-show, and should they be charged for it?" — and only a person can
     #: answer that, which is why nothing is charged until one does.
     "no_show",
+    #: A vendor added a product to their own book and it needs both prices
+    #: before anybody can be sent to install it. Staff-only: it carries no
+    #: `vendor_id`, because the vendor is the AUTHOR of this event rather than a
+    #: party to it, and a bell about your own action pointing at a screen you
+    #: cannot open is noise.
+    "product_submitted",
+    #: A National Head priced it. Carries `vendor_id`, so the vendor learns they
+    #: can start raising tickets against it.
+    "product_approved",
+    #: A National Head refused it, with a reason. Carries `vendor_id`.
+    #:
+    #: Its own kind rather than sharing one with the approval, because these are
+    #: different news to the person reading: one is "go ahead", the other is
+    #: "change something and send it back". Folded together they would land in
+    #: the feed under one icon, and the reader would have to open the row to
+    #: learn which had happened.
+    "product_rejected",
 )
 
 
@@ -130,10 +147,13 @@ class Notification(Base, IdMixin, AuditMixin):
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     __table_args__ = (
+        # Built FROM the tuple above rather than spelled out beside it. It was
+        # spelled out until there were thirteen of them, and a hand-kept second
+        # copy of a closed vocabulary is the copy that drifts — the same
+        # reasoning as the `assert` in `features/notifications/schemas.py`,
+        # which catches the third copy.
         CheckConstraint(
-            "kind IN ('escalation', 'ai', 'serial_mismatch', 'force_close', "
-            "'slot', 'technician_joined', 'job_started', 'invite_expired', "
-            "'assigned', 'no_show')",
+            "kind IN (" + ", ".join(f"'{k}'" for k in NOTIFICATION_KINDS) + ")",
             name="kind",
         ),
         # The feed: one company's notifications, newest first.

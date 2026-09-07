@@ -43,7 +43,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { paiseToRupeeInput as toRupeeInput } from "@/utils/money";
-import { useCreateModel, useUpdateModel } from "@/hooks/useProductMaster";
+import {
+  useCreateModel,
+  useResubmitModel,
+  useSubmitModel,
+  useUpdateModel,
+} from "@/hooks/useProductMaster";
 import { useVendorOptions } from "@/hooks/useVendors";
 import type { VendorOption } from "@/types/vendor";
 import type { ProductModel, ProductNode, ServiceType } from "@/types/product";
@@ -59,6 +64,31 @@ import {
   type ModelFormValues,
 } from "./categorySchema";
 
+/**
+ * Who is filling this in.
+ *
+ * Absent → the ops console: both prices are asked for and the brand is a
+ * picker. Present → a VENDOR submitting to their own book, where there are no
+ * price fields at all (a National Head types both at approval) and the brand is
+ * theirs, shown rather than offered.
+ *
+ * A PROP rather than a component that reads `useMe()` itself, for the reason
+ * `shared/AddressFields` records: a control that looked up the session could not
+ * be reused on a staff form, and could not tell a staff caller from a broken
+ * portal account. The caller knows which surface it is on.
+ *
+ * One dialog in two modes rather than two dialogs, which is this codebase's
+ * stated habit — `NodeFormDialog` MERGED a category and a subcategory form
+ * because what differed became data. A separate vendor dialog would duplicate
+ * the photo strip, the crop flow, the service-type grid, the spec template and
+ * the notes box to omit two `<Field>`s, and would make `ParameterFields` a
+ * third consumer, forcing an unrelated promotion into `shared/`.
+ */
+export interface ProductSubmitter {
+  vendorId: string;
+  vendorName: string;
+}
+
 interface ModelFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -66,6 +96,7 @@ interface ModelFormDialogProps {
   node: ProductNode;
   /** Omit to add. Pass a model to edit it in place. */
   model?: ProductModel;
+  submitter?: ProductSubmitter;
 }
 
 export function ModelFormDialog({
@@ -73,6 +104,7 @@ export function ModelFormDialog({
   onOpenChange,
   node,
   model,
+  submitter,
 }: ModelFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -85,6 +117,7 @@ export function ModelFormDialog({
         <ModelForm
           node={node}
           model={model}
+          submitter={submitter}
           onDone={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -95,16 +128,25 @@ export function ModelFormDialog({
 function ModelForm({
   node,
   model,
+  submitter,
   onDone,
 }: {
   node: ProductNode;
   model?: ProductModel;
+  submitter?: ProductSubmitter;
   onDone: () => void;
 }) {
   const isEdit = model !== undefined;
+  const withPricing = submitter === undefined;
   const create = useCreateModel();
   const update = useUpdateModel();
-  const pending = create.isPending || update.isPending;
+  const submit_ = useSubmitModel();
+  const resubmit = useResubmitModel();
+  const pending =
+    create.isPending ||
+    update.isPending ||
+    submit_.isPending ||
+    resubmit.isPending;
 
   const [queue, setQueue] = useState<PickedImage[]>([]);
 
@@ -116,10 +158,12 @@ function ModelForm({
     handleSubmit,
     formState: { errors },
   } = useForm<ModelFormValues>({
-    resolver: zodResolver(modelSchema),
+    // Computed once per mount, which is safe because the dialog unmounts on
+    // close — the mode cannot change under a live form.
+    resolver: zodResolver(modelSchema(withPricing)),
     defaultValues: {
       name: model?.name ?? "",
-      vendorId: model?.vendorId ?? "",
+      vendorId: model?.vendorId ?? submitter?.vendorId ?? "",
       // Installation + demo is what this product exists for, so it is the
       // starting point for a new model rather than an empty set.
       serviceTypes: model?.serviceTypes ?? ["Installation + Demo"],
@@ -177,9 +221,8 @@ function ModelForm({
   }
 
   function submit(values: ModelFormValues) {
-    const body = {
+    const shared = {
       name: values.name,
-      vendorId: values.vendorId,
       serviceTypes: values.serviceTypes,
       // An empty box means "not recorded", which the API stores as null —
       // never an empty string, so "unknown" and "blank" cannot diverge.
@@ -187,38 +230,87 @@ function ModelForm({
       warrantyMonths: values.warrantyMonths.trim()
         ? Number(values.warrantyMonths)
         : null,
+      imageUrls: values.imageUrls,
+      // Same "blank means not recorded" rule as `capacity` directly above.
+      notes: values.notes.trim() || null,
+      parameters: cleanParameters(values.parameters),
+    };
+
+    const done = (title: string, description: string) => () => {
+      toast.add({ title, description });
+      onDone();
+    };
+
+    if (submitter) {
+      // No prices and no `vendorId`: the server reads the vendor off the
+      // session and a National Head types both figures at approval. Sending
+      // either would be the vendor quoting their own rate.
+      //
+      // No `isActive` either — pausing is how ops withdraw a product, and the
+      // axis that belongs to a vendor is the one they move by submitting.
+      if (isEdit) {
+        resubmit.mutate(
+          { id: model.id, ...shared },
+          {
+            onSuccess: done(
+              `${values.name} sent for approval`,
+              "It cannot be ticketed again until it is priced."
+            ),
+          }
+        );
+      } else {
+        submit_.mutate(
+          { nodeId: node.id, ...shared },
+          {
+            onSuccess: done(
+              `${values.name} sent for approval`,
+              `In ${node.path.join(" › ")}. We will price it before it can be ticketed.`
+            ),
+          }
+        );
+      }
+      return;
+    }
+
+    const body = {
+      ...shared,
+      vendorId: values.vendorId,
       // Rupees in the box, paise on the wire — hard rule 9, and the same
       // convention `tickets.bonusPaise` uses. (The Rules screen sends rupees
       // and converts server-side; that difference is deliberate and recorded
       // in `api/app/features/settings/schemas.py`.)
       technicianPayoutPaise: Number(values.technicianPayoutPaise) * 100,
       vendorPricePaise: Number(values.vendorPricePaise) * 100,
-      imageUrls: values.imageUrls,
-      // Same "blank means not recorded" rule as `capacity` directly above.
-      notes: values.notes.trim() || null,
-      parameters: cleanParameters(values.parameters),
       isActive: values.status === "Active",
     };
-    const done = () => {
-      toast.add({
-        title: `${values.name} ${isEdit ? "updated" : "added"}`,
-        description: `In ${node.path.join(" › ")}.`,
-      });
-      onDone();
-    };
+    const saved = done(
+      `${values.name} ${isEdit ? "updated" : "added"}`,
+      `In ${node.path.join(" › ")}.`
+    );
 
-    if (isEdit) update.mutate({ id: model.id, ...body }, { onSuccess: done });
-    else create.mutate({ nodeId: node.id, ...body }, { onSuccess: done });
+    if (isEdit) update.mutate({ id: model.id, ...body }, { onSuccess: saved });
+    else create.mutate({ nodeId: node.id, ...body }, { onSuccess: saved });
   }
 
   return (
     <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
       <DialogHeader>
         <DialogTitle>
-          {isEdit ? "Edit product model" : "Add product model"}
+          {submitter
+            ? isEdit
+              ? "Edit product"
+              : "Add product"
+            : isEdit
+              ? "Edit product model"
+              : "Add product model"}
         </DialogTitle>
         <DialogDescription>
-          In {node.path.join(" › ")}. Ticket intake picks a model from this list.
+          In {node.path.join(" › ")}.{" "}
+          {submitter
+            ? isEdit
+              ? "Saving a change sends it back for approval."
+              : "We price it before you can raise tickets against it."
+            : "Ticket intake picks a model from this list."}
         </DialogDescription>
       </DialogHeader>
 
@@ -255,22 +347,34 @@ function ModelForm({
             <FieldLabel htmlFor="model-vendor" required>
               Brand
             </FieldLabel>
-            <Controller
-              name="vendorId"
-              control={control}
-              render={({ field }) => (
-                <BrandSelect
-                  value={field.value}
-                  onChange={field.onChange}
-                  invalid={errors.vendorId !== undefined}
-                  current={
-                    model
-                      ? { id: model.vendorId, name: model.vendorName }
-                      : undefined
-                  }
-                />
-              )}
-            />
+            {submitter ? (
+              /* Shown, not offered — a vendor has exactly one answer, and the
+                 server reads it off the session in any case. The same
+                 read-only treatment `ManualEntryForm` gives its vendor box. */
+              <Input
+                id="model-vendor"
+                value={submitter.vendorName}
+                readOnly
+                disabled
+              />
+            ) : (
+              <Controller
+                name="vendorId"
+                control={control}
+                render={({ field }) => (
+                  <BrandSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    invalid={errors.vendorId !== undefined}
+                    current={
+                      model
+                        ? { id: model.vendorId, name: model.vendorName }
+                        : undefined
+                    }
+                  />
+                )}
+              />
+            )}
             {errors.vendorId ? (
               <FieldDescription
                 id="model-vendor-error"
@@ -281,7 +385,7 @@ function ModelForm({
               </FieldDescription>
             ) : (
               <FieldDescription id="model-vendor-hint">
-                The vendor who makes it.
+                {submitter ? "Your products carry your own brand." : "The vendor who makes it."}
               </FieldDescription>
             )}
           </Field>
@@ -371,7 +475,14 @@ function ModelForm({
             Neither party sees the other's figure. The vendor's intake form
             shows what it costs them; the technician's app shows what they
             earn. The server withholds each from the other, so this pair is the
-            one place both numbers appear together. */}
+            one place both numbers appear together.
+
+            Absent entirely when a VENDOR is submitting. Not disabled and not
+            hidden with CSS: a disabled box still says "there is a number here
+            you may not have", and the honest statement is that pricing is not
+            part of what they are doing. A National Head sets both on the
+            approvals screen, and the notice below says so. */}
+        {withPricing ? (
         <FieldGrid className="grid gap-5 sm:grid-cols-2">
           <Field data-invalid={errors.technicianPayoutPaise ? true : undefined}>
             <FieldLabel htmlFor="model-payout">Paid to technician (₹)</FieldLabel>
@@ -431,6 +542,12 @@ function ModelForm({
             )}
           </Field>
         </FieldGrid>
+        ) : (
+          <p className="rounded-md bg-info-bg px-3 py-2.5 text-xs text-ink-2">
+            We price this before it can be ticketed. You will be told as soon as
+            it is approved.
+          </p>
+        )}
 
         <FieldSeparator />
 
@@ -588,21 +705,29 @@ function ModelForm({
           )}
         </Field>
 
-        <FieldSeparator />
+        {/* Absent for a vendor, and not merely disabled: pausing is how OPS
+            withdraw a product from intake, and a second "not available" switch
+            in the submitter's hands would be two answers to one question. The
+            axis that belongs to them is approval, which they move by saving. */}
+        {withPricing ? (
+          <>
+            <FieldSeparator />
 
-        <Controller
-          name="status"
-          control={control}
-          render={({ field }) => (
-            <StatusField
-              value={field.value}
-              onChange={field.onChange}
-              description="Paused models stay out of new ticket entry."
-              error={errors.status?.message}
-              errorId="model-status-error"
+            <Controller
+              name="status"
+              control={control}
+              render={({ field }) => (
+                <StatusField
+                  value={field.value}
+                  onChange={field.onChange}
+                  description="Paused models stay out of new ticket entry."
+                  error={errors.status?.message}
+                  errorId="model-status-error"
+                />
+              )}
             />
-          )}
-        />
+          </>
+        ) : null}
       </FieldGroup>
 
       <DialogFooter>

@@ -1,4 +1,5 @@
 import type { IconKey } from "@/components/masters/icons";
+import type { ApprovalStatus } from "./approval";
 
 /**
  * The product master: a recursive category tree, with priced products as leaves.
@@ -7,8 +8,8 @@ import type { IconKey } from "@/components/masters/icons";
  * the depth encoded in the types themselves. *Electronics → TV → Android TV →
  * 32" Android* is four and could not be expressed. Categories at every level are
  * one `ProductNode` now, nesting through `children`; a `ProductModel` is still
- * its own thing, because it has a brand, photos, service types and two prices
- * that a category has none of.
+ * its own thing, because it has a brand, photos, service types, an approval
+ * state and — once approved — two prices that a category has none of.
  *
  * Everything carries a UUID `id`. The old flat `Category` was keyed by `name`,
  * which meant a rename silently orphaned every technician and ticket that
@@ -70,14 +71,38 @@ export interface ProductModel {
   /**
    * What a technician earns for one job on this model, in PAISE.
    *
-   * `null` NEVER means unpriced — the column is NOT NULL. It means the caller
-   * is a **vendor**, and the server withholds this from them: what we pay a
-   * technician is not part of what a vendor bought. Ops always get a number.
+   * `null` means one of **two** things, and they are indistinguishable on the
+   * wire on purpose:
+   *
+   *  - the caller is a **vendor**, and the server withholds this from them —
+   *    what we pay a technician is not part of what a vendor bought;
+   *  - the product is **not approved yet**, so nobody has set a price at all.
+   *
+   * Both mean "no figure for you", so nothing has to tell them apart. What a
+   * renderer must not do is print a dash: "— to technician" reads as a number
+   * that failed to load. Omit the line instead.
    */
   technicianPayoutPaise: number | null;
-  /** What the vendor is charged to raise one of these, in PAISE. Everyone who
-   *  can see the model sees this — including the vendor, whose price it is. */
-  vendorPricePaise: number;
+  /**
+   * What the vendor is charged to raise one of these, in PAISE.
+   *
+   * Never masked — everyone who can see the model sees this, including the
+   * vendor, whose price it is. `null` here therefore means only the second
+   * thing above: a product waiting for approval has no agreed price yet.
+   */
+  vendorPricePaise: number | null;
+  /**
+   * Where this product sits between "a vendor asked for it" and "somebody can
+   * be sent to install it".
+   *
+   * A third axis, orthogonal to `isActive` (paused) and to deletion. A vendor
+   * may add products to their own book but not price them, so a submission
+   * waits until a National Head sets both figures. Only `approved` can be
+   * ticketed, and the intake tree never offers anything else.
+   */
+  approvalStatus: ApprovalStatus;
+  /** Why it was refused, in words the vendor reads. Null unless rejected. */
+  rejectionReason: string | null;
   /**
    * Up to five http(s) URLs into blob storage, ordered — the first is the
    * thumbnail. The API rejects `data:` on purpose: a base64 photo in every list
@@ -173,13 +198,46 @@ export interface CreateModelInput {
   warrantyMonths?: number | null;
   notes?: string | null;
   parameters?: Parameter[];
-  /** Both REQUIRED, in paise. The API columns are NOT NULL, so a model saved
-   *  without them is one no ticket could be raised against. */
+  /**
+   * Both REQUIRED, in paise — of an OPS caller, which is the only caller this
+   * input serves. A model staff save without them is one no ticket could be
+   * raised against.
+   *
+   * A vendor submits through `SubmitModelInput`, which carries no price at all,
+   * and a National Head sets both at approval. The API is the authority on
+   * which caller it is talking to: `POST /masters/nodes/{id}/models` is
+   * staff-only, and the vendor's own path is `/masters/portal/...`.
+   */
   technicianPayoutPaise: number;
   vendorPricePaise: number;
   imageUrls?: string[];
   isActive: boolean;
 }
+
+/**
+ * What a VENDOR submits for their own book.
+ *
+ * No `vendorId` — the server reads it off the session, because an id in a body
+ * is an assertion rather than a fact. No prices — a National Head types both at
+ * approval. No `isActive` — pausing is how ops withdraw a product, and a second
+ * "not available" switch in the submitter's hands is two answers to one
+ * question.
+ */
+export interface SubmitModelInput {
+  nodeId: string;
+  name: string;
+  serviceTypes: ServiceType[];
+  capacity?: string | null;
+  warrantyMonths?: number | null;
+  notes?: string | null;
+  parameters?: Parameter[];
+  imageUrls?: string[];
+}
+
+/** The same fields, all optional. Saving any real change returns it to pending. */
+export type ResubmitModelInput = { id: string } & Partial<
+  Omit<SubmitModelInput, "nodeId">
+>;
 
 export interface UpdateModelInput {
   id: string;
@@ -192,8 +250,14 @@ export interface UpdateModelInput {
   warrantyMonths?: number | null;
   notes?: string | null;
   parameters?: Parameter[];
-  /** Repricing is allowed; UNpricing is not, so omit to leave alone — there is
-   *  no null that clears these, the way there is for `capacity`. */
+  /**
+   * Repricing is allowed; UNpricing is not, so omit to leave alone — there is
+   * no null that clears these, the way there is for `capacity`.
+   *
+   * The columns became nullable when vendors could submit products, but that
+   * null belongs to the approval flow and means "not priced yet". An ops edit
+   * cannot reach it, and the server would refuse it on an approved row anyway.
+   */
   technicianPayoutPaise?: number;
   vendorPricePaise?: number;
   /** Sent whole — an empty array clears the gallery. */
