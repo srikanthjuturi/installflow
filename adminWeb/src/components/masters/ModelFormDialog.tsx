@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ImagePlus, X } from "lucide-react";
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
+import { ModelSerialsPanel } from "./ModelSerialsPanel";
 import { ImageCropDialog } from "@/components/shared/ImageCropDialog";
 import {
   useImagePicker,
@@ -149,6 +150,9 @@ function ModelForm({
     resubmit.isPending;
 
   const [queue, setQueue] = useState<PickedImage[]>([]);
+  /** Set once an ADD has saved, which is what swaps the form for the serials
+   *  step. Null on an edit, where the panel is live from the start. */
+  const [justCreated, setJustCreated] = useState<ProductModel | null>(null);
 
   const {
     control,
@@ -289,7 +293,61 @@ function ModelForm({
     );
 
     if (isEdit) update.mutate({ id: model.id, ...body }, { onSuccess: saved });
-    else create.mutate({ nodeId: node.id, ...body }, { onSuccess: saved });
+    else
+      create.mutate(
+        { nodeId: node.id, ...body },
+        {
+          onSuccess: (root) => {
+            // The requirement is "serial numbers while ADDING a model", and
+            // serials need a `product_model_id` that does not exist until the
+            // product is saved. So the dialog does not close — it moves to the
+            // serials step on the row that was just created.
+            //
+            // The write returns the affected ROOT branch, not the model, so the
+            // new id is found by walking it. If it cannot be found the dialog
+            // simply closes as it always did: a missing id is no reason to trap
+            // somebody in a form whose product HAS been saved.
+            const created = findModel(root, node.id, values.name.trim());
+            toast.add({
+              title: `${values.name} added`,
+              description: `In ${node.path.join(" › ")}.`,
+            });
+            if (created) setJustCreated(created);
+            else onDone();
+          },
+        }
+      );
+  }
+
+  // The product has just been created and now wants its serials. A separate
+  // step rather than a section of the form, because the panel writes straight
+  // to the server the moment somebody adds a row — it has nothing to do with
+  // this form's submit, and rendering it inside a <form> would make Enter in
+  // the paste box try to save the product again.
+  if (justCreated) {
+    return (
+      <div className="grid gap-4">
+        <DialogHeader>
+          <DialogTitle>{justCreated.name} added</DialogTitle>
+          <DialogDescription>
+            Add the serial numbers this model covers. Ticket intake checks a
+            vendor's serial against them — until at least one is loaded, this
+            model is not checked at all.
+          </DialogDescription>
+        </DialogHeader>
+
+        <ModelSerialsPanel
+          modelId={justCreated.id}
+          modelName={justCreated.name}
+        />
+
+        <DialogFooter>
+          <Button type="button" onClick={onDone}>
+            Done
+          </Button>
+        </DialogFooter>
+      </div>
+    );
   }
 
   return (
@@ -730,6 +788,22 @@ function ModelForm({
         ) : null}
       </FieldGroup>
 
+      {/* Serial numbers, on an ops EDIT only.
+          - Not on a vendor's form (`withPricing` is false there): loading
+            serials is staff-only, the same decision the two price fields make
+            two blocks above.
+          - Not on ADD, because a serial needs a `product_model_id` that does
+            not exist until the product is saved. That path gets the same panel
+            as a step immediately after saving, so "serials while adding a
+            model" still holds.
+          Outside <FieldGroup> and visually separated: it writes to the server
+          on its own, so it is not part of what Save sends. */}
+      {withPricing && isEdit ? (
+        <div className="grid gap-3 rounded-lg border border-line p-3">
+          <ModelSerialsPanel modelId={model.id} modelName={model.name} />
+        </div>
+      ) : null}
+
       <DialogFooter>
         <DialogClose render={<Button type="button" variant="outline" />}>
           Cancel
@@ -741,6 +815,35 @@ function ModelForm({
       </DialogFooter>
     </form>
   );
+}
+
+/**
+ * Find a freshly created model in the root branch the write returned.
+ *
+ * Every master write answers with the affected ROOT and its whole subtree
+ * rather than the row that changed, so a new model's id has to be recovered
+ * from it. Matched on node AND name, which is unique among a node's models —
+ * `uq_product_models_node_name_lower` says so, and the form would have been
+ * refused with a 409 otherwise.
+ */
+function findModel(
+  root: ProductNode,
+  nodeId: string,
+  name: string
+): ProductModel | null {
+  const wanted = name.toLowerCase();
+  const walk = (n: ProductNode): ProductModel | null => {
+    if (n.id === nodeId) {
+      const hit = n.models.find((m) => m.name.toLowerCase() === wanted);
+      if (hit) return hit;
+    }
+    for (const child of n.children) {
+      const found = walk(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  return walk(root);
 }
 
 /**

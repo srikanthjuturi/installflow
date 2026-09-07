@@ -1,12 +1,16 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addSerials,
   createModel,
   createNode,
   deleteModel,
   deleteNode,
   deleteOwnModel,
+  deleteSerial,
+  importSerials,
   listNodeTree,
+  listSerials,
   resubmitModel,
   submitModel,
   submitNode,
@@ -15,6 +19,7 @@ import {
   type TreePurpose,
 } from "@/services/productMaster";
 import { CERTIFY_DEPTH, flattenNodes } from "@/types/product";
+import type { ListParams } from "@/types/api";
 
 export const productKeys = {
   all: ["product-master"] as const,
@@ -147,3 +152,84 @@ export const useUpdateModel = () =>
   useMasterMutation(updateModel, "Couldn't save the product model");
 export const useDeleteModel = () =>
   useMasterMutation(deleteModel, "Couldn't remove the product model");
+
+/* ── model-wise serial numbers ─────────────────────────────────────────────── */
+//
+// Their own query key rather than a slice of the tree. The tree is fetched
+// whole and cached long because it is tens of rows; a model's serials can be
+// tens of thousands, are read only while the panel is open, and are paged.
+
+export const serialKeys = {
+  all: ["product-serials"] as const,
+  /** Prefix per model, so adding to one model does not refetch another's. */
+  model: (modelId: string) => ["product-serials", modelId] as const,
+  page: (modelId: string, params: ListParams) =>
+    ["product-serials", modelId, params] as const,
+};
+
+export function useModelSerials(modelId: string | null, params: ListParams) {
+  return useQuery({
+    queryKey: serialKeys.page(modelId ?? "", params),
+    queryFn: () => listSerials(modelId as string, params),
+    // Only while the panel is open, and only once the model exists — on the
+    // Add path there is no id to load until the product has been saved.
+    enabled: !!modelId,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * Every serial write invalidates that model's serial pages AND the tree.
+ *
+ * The tree matters because `ModelChip` shows the count, and the count is not
+ * decoration: zero is the state in which ticket intake does NOT check this
+ * model, so a stale one would tell somebody their catalogue is guarded when it
+ * is not.
+ */
+function useSerialMutation<TVars, TData>(
+  modelId: string,
+  fn: (vars: TVars) => Promise<TData>,
+  errorTitle: string
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle },
+    mutationFn: fn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: serialKeys.model(modelId) });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+    },
+  });
+}
+
+export const useAddSerials = (modelId: string) =>
+  useSerialMutation(
+    modelId,
+    (serials: string[]) => addSerials(modelId, serials),
+    "Couldn't add those serial numbers"
+  );
+
+export const useDeleteSerial = (modelId: string) =>
+  useSerialMutation(
+    modelId,
+    (serialId: string) => deleteSerial(modelId, serialId),
+    "Couldn't remove that serial number"
+  );
+
+/**
+ * The two-pass import. A DRY RUN invalidates nothing — it wrote nothing, and
+ * refetching on it would flicker the list for a preview the user may cancel.
+ */
+export function useImportSerials(modelId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't read that file" },
+    mutationFn: ({ file, dryRun }: { file: File; dryRun: boolean }) =>
+      importSerials(modelId, file, { dryRun }),
+    onSuccess: (report) => {
+      if (report.dryRun) return;
+      queryClient.invalidateQueries({ queryKey: serialKeys.model(modelId) });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+    },
+  });
+}

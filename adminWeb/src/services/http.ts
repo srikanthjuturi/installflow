@@ -274,6 +274,38 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   return unwrap(await request<T>("POST", path, form));
 }
 
+/**
+ * A GET whose response is a FILE, not the envelope.
+ *
+ * Its own function rather than a flag on `apiGet`, because everything below
+ * `request` assumes JSON — it parses the body, reads `success` and throws on
+ * the envelope's own message. A spreadsheet has none of that.
+ *
+ * It still carries the session, which is the whole point: these endpoints are
+ * guarded like every other, and a plain `<a href>` sends no Authorization
+ * header, so it would silently save a 401 page under the file's name. One
+ * refresh-and-replay, matching `request`.
+ */
+export async function apiGetBlob(path: string): Promise<Blob> {
+  let res = await send("GET", path);
+  if (res.status === 401 && (await refreshSession())) {
+    res = await send("GET", path);
+  }
+  if (!res.ok) {
+    // The failure body IS the envelope — the guard rejected it before any file
+    // was produced — so the server's own message is what the user should read.
+    let message = `That file could not be downloaded (${res.status}).`;
+    try {
+      const env = (await res.json()) as ApiEnvelope<unknown>;
+      if (env?.message) message = env.message;
+    } catch {
+      /* not JSON; the status line above is the best we have */
+    }
+    throw new ApiError(message, res.status);
+  }
+  return res.blob();
+}
+
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   return unwrap(await request<T>("PUT", path, body ?? {}));
 }

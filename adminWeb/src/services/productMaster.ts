@@ -14,13 +14,25 @@
 import type {
   CreateModelInput,
   CreateNodeInput,
+  ProductModelSerial,
   ProductNode,
   ResubmitModelInput,
+  SerialAddResult,
+  SerialImportReport,
   SubmitModelInput,
   UpdateModelInput,
   UpdateNodeInput,
 } from "@/types/product";
-import { apiDelete, apiGet, apiPost, apiPut } from "./http";
+import {
+  apiDelete,
+  apiGet,
+  apiGetBlob,
+  apiGetPage,
+  apiPost,
+  apiPut,
+  apiUpload,
+} from "./http";
+import type { ListParams, Page } from "@/types/api";
 
 /**
  * What the tree is being READ for.
@@ -140,4 +152,96 @@ export function resubmitModel({
 
 export function deleteOwnModel(id: string): Promise<null> {
   return apiDelete<null>(`/masters/portal/models/${id}`);
+}
+
+/* ── model-wise serial numbers ─────────────────────────────────────────────── */
+//
+// The serials a model covers, checked at ticket intake. Staff only — a vendor
+// holds the invoice and could reasonably load these, but an unloaded model is
+// simply unchecked, so nobody is blocked while staff catch up.
+
+/** Same ceiling and accepted kinds as the geography importer. */
+export const MAX_SERIAL_IMPORT_BYTES = 16 * 1024 * 1024;
+export const SERIAL_IMPORT_ACCEPT = ".xlsx,.csv";
+
+export function listSerials(
+  modelId: string,
+  params: ListParams = {}
+): Promise<Page<ProductModelSerial>> {
+  return apiGetPage<ProductModelSerial>(
+    `/masters/models/${modelId}/serials`,
+    params
+  );
+}
+
+/**
+ * Add serials typed or pasted into the box.
+ *
+ * Takes a list because the box accepts a pasted block — the server trims, drops
+ * blanks and de-duplicates case-insensitively, so the caller sends the split
+ * lines as they are.
+ */
+export function addSerials(
+  modelId: string,
+  serials: string[]
+): Promise<SerialAddResult> {
+  return apiPost<SerialAddResult>(`/masters/models/${modelId}/serials`, {
+    serials,
+  });
+}
+
+/** Removes one, and answers with what the model holds afterwards. */
+export function deleteSerial(
+  modelId: string,
+  serialId: string
+): Promise<number> {
+  return apiDelete<number>(`/masters/models/${modelId}/serials/${serialId}`);
+}
+
+/**
+ * Upload the spreadsheet. `dryRun` validates and writes nothing, which is what
+ * the preview step sends; the same file is sent again to commit.
+ *
+ * Two uploads rather than a server-side batch, exactly as `importGeography`
+ * does: the file is a few MB, and a batch table would exist only to carry state
+ * between two clicks.
+ */
+export function importSerials(
+  modelId: string,
+  file: File,
+  { dryRun }: { dryRun: boolean }
+): Promise<SerialImportReport> {
+  const form = new FormData();
+  // A part with no filename is not treated as a file upload at all, and the
+  // server reads the extension off it to choose the parser.
+  form.append("file", file, file.name);
+  return apiUpload<SerialImportReport>(
+    `/masters/models/${modelId}/serials/import?dryRun=${dryRun}`,
+    form
+  );
+}
+
+/**
+ * Download the starter .xlsx.
+ *
+ * Fetched and turned into a blob rather than linked with a plain `<a href>`:
+ * the endpoint is guarded like every other, and a bare link carries no
+ * `Authorization` header, so it would download a 401 page named
+ * `serial-numbers.xlsx`.
+ */
+export async function downloadSerialTemplate(): Promise<void> {
+  const blob = await apiGetBlob("/masters/serials/template");
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "serial-numbers.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // Revoked on the next tick, not immediately: Safari has not started the
+    // download by the time click() returns.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
 }

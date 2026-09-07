@@ -442,6 +442,12 @@ function ModelChip({
     model.approvalStatus === "rejected" && model.rejectionReason
       ? `Not approved: ${model.rejectionReason}`
       : null,
+    // Both directions, unlike the chip below, because a tooltip is opt-in and
+    // "is intake checking this one?" is a fair question to be able to answer
+    // without opening the model.
+    model.serialCount > 0
+      ? `${model.serialCount.toLocaleString()} serial number${model.serialCount === 1 ? "" : "s"} — intake checks against them`
+      : "No serial numbers — intake accepts any serial for this model",
   ].filter(Boolean);
 
   const body = (
@@ -486,6 +492,22 @@ function ModelChip({
       {model.approvalStatus === "approved" ? null : (
         <ApprovalBadge status={model.approvalStatus} />
       )}
+      {/* Only when serials ARE loaded, which is the opposite of the rule the
+          approval badge above follows — and deliberately.
+
+          Zero is the permissive state: it blocks nothing, and on the day this
+          shipped EVERY model had it, so a "not checked" badge would have marked
+          the entire catalogue and been scrolled past for ever. A count is the
+          state worth pointing at, because it is the one that can refuse a
+          vendor's ticket. The tooltip answers it either way. */}
+      {model.serialCount > 0 ? (
+        <span
+          className="rounded-sm bg-surface-2 px-1 text-[11px] font-normal tabular-nums text-ink-3"
+          title={`${model.serialCount.toLocaleString()} serial numbers on record`}
+        >
+          {model.serialCount.toLocaleString()} SN
+        </span>
+      ) : null}
     </>
   );
 

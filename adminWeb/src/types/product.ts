@@ -111,6 +111,15 @@ export interface ProductModel {
   imageUrls: string[];
   isActive: boolean;
   sortOrder: number;
+  /**
+   * How many serial numbers this model covers.
+   *
+   * **Zero is a state, not an empty list.** Ticket intake checks a vendor's
+   * typed serial against this model only once at least one is loaded, so zero
+   * means the model is not checked at all — which is why the row shows it
+   * rather than leaving it to be found by opening the panel.
+   */
+  serialCount: number;
 }
 
 /** How deep the tree may go. Mirrors `MAX_NODE_DEPTH` in the API. */
@@ -329,4 +338,60 @@ export function flattenNodes(tree: ProductNode[] | undefined): NodeOption[] {
 
   (tree ?? []).forEach((root) => walk(root, root));
   return out;
+}
+
+/* ── model-wise serial numbers ─────────────────────────────────────────────── */
+
+/**
+ * One serial number a product model is known to cover.
+ *
+ * ## An EMPTY list means intake is NOT checked for that model
+ *
+ * `POST /tickets` refuses a serial only when the model has at least one of
+ * these loaded. That is deliberate — it is what let the feature ship against a
+ * live catalogue with no backfill — but it means "0 serials" is a meaningful
+ * state and not merely an empty list, which is why the count is shown on the
+ * model rather than left to be discovered by opening the panel.
+ */
+export interface ProductModelSerial {
+  id: string;
+  serial: string;
+  createdAt: string;
+}
+
+/** Matches `product_model_serials.serial` and `tickets.serialNumber`, both 64. */
+export const MAX_SERIAL_LENGTH = 64;
+
+/** Mirrors `MAX_SERIALS_PER_REQUEST` in `api/app/features/masters/schemas.py`. */
+export const MAX_SERIALS_PER_REQUEST = 500;
+
+export interface SerialAddResult {
+  added: number;
+  /** Already on the model. Reported, never an error — re-pasting an
+   *  overlapping block is how somebody tops a model up. */
+  duplicates: number;
+  /** What the model holds afterwards. */
+  total: number;
+}
+
+export interface SerialReject {
+  row: number | null;
+  serial: string | null;
+  reason: string;
+}
+
+/** The same two-pass shape as geography's `ImportReport`. */
+export interface SerialImportReport {
+  dryRun: boolean;
+  rowsRead: number;
+  added: number;
+  /** Present more than once in the FILE — a mistake in the sheet. */
+  duplicatesInFile: number;
+  /** Overlapping what the model already holds — expected on a top-up. */
+  alreadyPresent: number;
+  rejected: number;
+  /** Capped; `rejected` carries the true total. */
+  rejects: SerialReject[];
+  /** What the model holds after the import. On a dry run, what it WOULD hold. */
+  total: number;
 }
