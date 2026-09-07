@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AddressFields,
   type AddressStatus,
@@ -293,6 +293,28 @@ export function ManualEntryForm({
      filled from a half-typed number are worse than four empty ones. */
   const serialNumber = useWatch({ control, name: "serialNumber" });
   const [matches, setMatches] = useState<SerialMatch[]>([]);
+  /* The suggestion list under the box. Open is its own state rather than
+     `matches.length > 0`, because picking one has to shut it while the matches
+     it was built from are still perfectly valid. */
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const serialBoxRef = useRef<HTMLDivElement>(null);
+
+  /* Dismissed by an outside pointerdown rather than by the input's blur.
+     `register` owns `onBlur` — it is what marks the field touched — so passing
+     our own through `TextField` would replace it and quietly break validation
+     on this one box. An outside click is also the more correct trigger: it
+     leaves the list open while the pointer is on its way to a row. */
+  useEffect(() => {
+    if (!suggestOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!serialBoxRef.current?.contains(e.target as Node)) {
+        setSuggestOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [suggestOpen]);
 
   const applyMatch = useCallback(
     (hit: SerialMatch) => {
@@ -332,13 +354,55 @@ export function ManualEntryForm({
     // is the authority on that at submit either way.
     onSuccess: (found) => {
       setMatches(found);
-      const hit = found.length === 1 ? found[0] : undefined;
-      // A model already chosen is the user's, not ours to overwrite. Agreement
-      // needs nothing done; a disagreement becomes the offer below.
-      if (hit && !getValues("modelId")) applyMatch(hit);
+      setActiveIndex(-1);
+      // The reply is a PREFIX search, so "did they finish typing one of these?"
+      // is asked here rather than by the server. Only an exact hit fills.
+      const typed = (getValues("serialNumber") ?? "").trim().toLowerCase();
+      const exact = found.filter((f) => f.serial.toLowerCase() === typed);
+      if (exact.length === 1) {
+        // A model already chosen is the user's, not ours to overwrite.
+        // Agreement needs nothing done; a disagreement becomes the offer below.
+        if (!getValues("modelId")) applyMatch(exact[0]);
+        // Closed in BOTH cases, and that is the fix for a loop rather than a
+        // nicety: picking a suggestion writes the serial, which re-runs this
+        // lookup, which would otherwise re-open the list over a box that is
+        // already settled. An exact hit leaves nothing to choose.
+        setSuggestOpen(false);
+      } else {
+        setSuggestOpen(found.length > 0);
+      }
     },
-    onError: () => setMatches([]),
+    onError: () => {
+      setMatches([]);
+      setSuggestOpen(false);
+    },
   });
+
+  const pickSuggestion = useCallback(
+    (hit: SerialMatch) => {
+      applyMatch(hit);
+      setSuggestOpen(false);
+      setActiveIndex(-1);
+    },
+    [applyMatch]
+  );
+
+  function onSerialKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!suggestOpen || matches.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % matches.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i - 1 + matches.length) % matches.length);
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      // Or the form submits from inside a dropdown somebody was navigating.
+      e.preventDefault();
+      pickSuggestion(matches[activeIndex]);
+    } else if (e.key === "Escape") {
+      setSuggestOpen(false);
+    }
+  }
 
   useEffect(() => {
     const value = (serialNumber ?? "").trim();
@@ -347,8 +411,10 @@ export function ManualEntryForm({
     // are cleared rather than skipped, so deleting a serial takes its notice
     // away with it.
     const id = setTimeout(() => {
-      if (value.length < 3) setMatches([]);
-      else lookup.mutate(value);
+      if (value.length < 3) {
+        setMatches([]);
+        setSuggestOpen(false);
+      } else lookup.mutate(value);
     }, 300);
     return () => clearTimeout(id);
     // `lookup` is a stable mutation object; depending on it would re-arm the
@@ -356,9 +422,15 @@ export function ManualEntryForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serialNumber]);
 
-  /* One match is an answer. Several is a question — two products may legally
-     share a numbering scheme — so the form asks instead of guessing. */
-  const match = matches.length === 1 ? matches[0] : undefined;
+  /* `matches` is a PREFIX result, so several of them is the ordinary case and
+     says nothing — it is a list to choose from. The interesting question is
+     narrower: has this serial been typed out in full, and if so does exactly
+     one product carry it? */
+  const typedSerial = (serialNumber ?? "").trim().toLowerCase();
+  const exactMatches = matches.filter(
+    (m) => m.serial.toLowerCase() === typedSerial
+  );
+  const match = exactMatches.length === 1 ? exactMatches[0] : undefined;
 
   /** The serial names a DIFFERENT product than the one selected. An offer. */
   const conflicting =
@@ -433,18 +505,77 @@ export function ManualEntryForm({
                 <FieldLabel htmlFor="vendor-name">Company / vendor</FieldLabel>
                 <Input id="vendor-name" value={vendor.name} readOnly disabled />
               </Field>
-              <TextField
-                name="serialNumber"
-                label="Serial number"
-                required
-                placeholder="Type or scan it — the product fills in"
-                className="font-mono"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={64}
-                register={register}
-                error={err("serialNumber")}
-              />
+              {/* `relative`, because the suggestion list is absolutely
+                  positioned against it — and it is the element the outside-click
+                  dismissal measures against, so the list must live INSIDE it or
+                  clicking a row would count as outside and close before the
+                  click lands. */}
+              <div className="relative" ref={serialBoxRef}>
+                <TextField
+                  name="serialNumber"
+                  label="Serial number"
+                  required
+                  placeholder="Start typing — the product fills in"
+                  className="font-mono"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={64}
+                  register={register}
+                  error={err("serialNumber")}
+                  role="combobox"
+                  aria-expanded={suggestOpen}
+                  aria-controls="serial-suggestions"
+                  aria-autocomplete="list"
+                  aria-activedescendant={
+                    activeIndex >= 0 ? `serial-option-${activeIndex}` : undefined
+                  }
+                  onKeyDown={onSerialKeyDown}
+                />
+                {suggestOpen && matches.length > 0 ? (
+                  <ul
+                    id="serial-suggestions"
+                    role="listbox"
+                    aria-label="Matching serial numbers"
+                    /* `bg-surface`, not `bg-surface-1` — there is no such
+                       token, and Tailwind emits nothing for a name it cannot
+                       resolve, so the list rendered fully transparent with the
+                       form showing through it. The scale is
+                       surface / surface-2 / surface-3. */
+                    className="scroll-slim absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg"
+                  >
+                    {matches.map((hit, i) => (
+                      <li
+                        key={`${hit.modelId}-${hit.serial}`}
+                        id={`serial-option-${i}`}
+                        role="option"
+                        aria-selected={i === activeIndex}
+                        /* `onPointerDown`, not `onClick`: the dismissal above
+                           listens on pointerdown, and a click would arrive
+                           after the list had already been torn down. */
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          pickSuggestion(hit);
+                        }}
+                        onPointerEnter={() => setActiveIndex(i)}
+                        className={cn(
+                          "cursor-pointer px-3 py-1.5",
+                          i === activeIndex ? "bg-surface-2" : undefined
+                        )}
+                      >
+                        <span className="font-mono text-[13px] text-ink">
+                          {hit.serial}
+                        </span>
+                        {/* The product, because the serial alone does not say
+                            what it is — and choosing between two similar
+                            numbers is exactly what this list is for. */}
+                        <span className="block text-[11px] text-ink-3">
+                          {hit.modelName} · {hit.nodePath.join(" › ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </FieldGrid>
 
             {/* What the serial says about the rest of the form. Three states,
@@ -479,10 +610,10 @@ export function ManualEntryForm({
                   Use {conflicting.modelName}
                 </Button>
               </FieldDescription>
-            ) : matches.length > 1 ? (
+            ) : exactMatches.length > 1 ? (
               <FieldDescription className="text-warn">
-                {matches.length} products carry this serial — pick the category
-                and model below.
+                {exactMatches.length} products carry this exact serial — pick
+                one from the list, or set the category and model below.
               </FieldDescription>
             ) : null}
             {/* Said once, here, because "which serial?" is the obvious question
