@@ -8,6 +8,7 @@ import { SidebarCollapseToggle } from "@/components/shared/SidebarCollapseToggle
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
+import { useApprovalsBadge } from "@/hooks/useApprovals";
 import { useEscalations } from "@/hooks/useEscalations";
 
 function isActive(pathname: string, to: string, match?: string[]) {
@@ -45,11 +46,22 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   //      server refuses the call regardless.
   const { has } = useFeatureAccess();
 
-  // The escalation badge is the only live one. It reads the SAME query the
-  // queue page does, so the rail and the screen share one request and can
-  // never disagree about how many jobs are waiting — and the query only runs
-  // for somebody who can see the entry at all, because the rail is filtered
-  // before this and a 403 would otherwise be fetched on every page load.
+  // Two live badges, sourced DIFFERENTLY, and the difference is not an
+  // inconsistency worth tidying away.
+  //
+  // Escalations reads the SAME query the queue page does, so the rail and the
+  // screen share one request and can never disagree. That works because the
+  // rail asks for it unnarrowed, which is exactly what the page asks for on
+  // first load — the two keys hash identically.
+  //
+  // Approvals cannot do that: its page seeds params from the URL and grows a
+  // `search` the moment anybody types, so sharing would either fork into a
+  // second request or badge the rail with the size of somebody's search. And
+  // "how many are waiting" is a TOTAL, which a page of rows cannot give. It has
+  // its own count endpoint, the way the notification bell does.
+  //
+  // Both queries only run for somebody who can see the entry at all: the rail
+  // is filtered below, and a 403 would otherwise be fetched on every page load.
   const canSeeEscalations = has("jobs.assign");
   const escalations = useEscalations({ enabled: canSeeEscalations });
   // LIVE rows only. The queue also carries jobs whose slot has already closed
@@ -73,13 +85,21 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
       (t) => t.slotEnd === null || new Date(t.slotEnd).getTime() >= readAt
     ).length ?? 0;
 
+  const { data: approvalCount = 0 } = useApprovalsBadge({
+    enabled: has("masters.approve"),
+  });
+
   const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
     .map((g) => ({
       ...g,
       items: g.items
         .filter((i) => has(i.feature))
         .map((i) =>
-          i.to === "/escalations" ? { ...i, badge: escalationCount } : i
+          i.to === "/escalations"
+            ? { ...i, badge: escalationCount }
+            : i.to === "/approvals"
+              ? { ...i, badge: approvalCount }
+              : i
         ),
     }))
     .filter((g) => g.items.length > 0);

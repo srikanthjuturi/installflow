@@ -26,6 +26,9 @@ NotificationKind = Literal[
     "invite_expired",
     "assigned",
     "no_show",
+    "product_submitted",
+    "product_approved",
+    "product_rejected",
 ]
 
 assert set(get_args(NotificationKind)) == set(NOTIFICATION_KINDS), (

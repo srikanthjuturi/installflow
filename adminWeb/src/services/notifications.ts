@@ -19,15 +19,23 @@ export type NotificationKind =
   | "job_started"
   | "invite_expired"
   | "assigned"
-  | "no_show";
+  | "no_show"
+  | "product_submitted"
+  | "product_approved"
+  | "product_rejected";
 
 /**
- * The same ten, in the order the filter offers them — loudest first.
+ * The same thirteen, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
- * The last four are the things that merely HAPPENED — a job was taken, a
- * technician arrived, a visit began, an invite lapsed — and they sit at the
- * bottom for the same reason: nobody scrolls a feed looking for good news.
+ * The tail is the things that merely HAPPENED — a product was decided, a job
+ * was taken, a technician arrived, a visit began, an invite lapsed — and they
+ * sit at the bottom for the same reason: nobody scrolls a feed looking for good
+ * news.
+ *
+ * `product_submitted` is in the problem half because it is WORK: a vendor is
+ * blocked from raising tickets until somebody prices it. The two decisions are
+ * news to the vendor and a record to everyone else, so they sit with `assigned`.
  *
  * `satisfies` rather than a plain array: drop a kind from the union and this
  * line stops compiling, which is the point. A filter that quietly stops
@@ -41,6 +49,9 @@ export const NOTIFICATION_KINDS = [
   "force_close",
   "slot",
   "invite_expired",
+  "product_submitted",
+  "product_rejected",
+  "product_approved",
   "assigned",
   "job_started",
   "technician_joined",

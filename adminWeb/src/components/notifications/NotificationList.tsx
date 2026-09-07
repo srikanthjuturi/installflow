@@ -29,17 +29,46 @@ interface NotificationListProps {
 }
 
 /**
- * The server stores ONE route per notification, written for the console —
- * `/tickets/{id}`. The vendor portal is a separate route tree over the same
- * ticket, so the same row has to point somewhere else there.
+ * Where each ops route lands for a PORTAL reader, longest prefix first.
+ *
+ * An ordered table rather than a chain of ifs, because the list is two now and
+ * will grow: `vendor_id` widens a notification to a vendor's portal, and four
+ * kinds already carry one.
+ */
+const PORTAL_ROUTES: [prefix: string, rewrite: (path: string) => string][] = [
+  ["/tickets/", (path) => `/portal${path}`],
+  // A decision on a product this vendor submitted. The server writes
+  // `/portal/products` directly, so this is the identity — it is listed anyway
+  // so the fallback below cannot swallow it if the server's route ever changes
+  // to the ops one.
+  ["/portal/products", (path) => path],
+  ["/approvals", () => "/portal/products"],
+];
+
+/**
+ * The server stores ONE route per notification. Most are written for the
+ * console; the vendor portal is a separate route tree over the same records, so
+ * the same row has to point somewhere else there.
  *
  * Rewritten here rather than stored twice: two columns would have to be kept
  * in step by every writer, and a notification whose two routes disagreed would
  * be worse than one that needed translating.
+ *
+ * The query string is split off BEFORE matching. The old single rule only
+ * handled `/tickets/…` correctly by luck — it prefixed the whole string, so a
+ * `?focus=` would have travelled along by accident rather than by design.
+ *
+ * The fallback stays and is deliberate: a kind this build has never heard of
+ * must still land somewhere real, the same reasoning `kindMeta` uses, and the
+ * ticket list is the portal's home.
  */
 function routeFor(to: string, portal: boolean): string {
   if (!portal) return to;
-  return to.startsWith("/tickets/") ? `/portal${to}` : "/portal/tickets";
+  const q = to.indexOf("?");
+  const path = q === -1 ? to : to.slice(0, q);
+  const query = q === -1 ? "" : to.slice(q);
+  const hit = PORTAL_ROUTES.find(([prefix]) => path.startsWith(prefix));
+  return hit ? `${hit[1](path)}${query}` : "/portal/tickets";
 }
 
 export function NotificationList({

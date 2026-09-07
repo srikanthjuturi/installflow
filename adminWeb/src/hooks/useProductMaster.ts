@@ -5,17 +5,38 @@ import {
   createNode,
   deleteModel,
   deleteNode,
+  deleteOwnModel,
   listNodeTree,
+  resubmitModel,
+  submitModel,
+  submitNode,
   updateModel,
   updateNode,
+  type TreePurpose,
 } from "@/services/productMaster";
 import { CERTIFY_DEPTH, flattenNodes } from "@/types/product";
 
 export const productKeys = {
   all: ["product-master"] as const,
-  /** Prefix — one invalidation refreshes the tree and every derived list. */
-  tree: (includeInactive: boolean, vendorId?: string) =>
-    ["product-master", "tree", includeInactive, vendorId ?? null] as const,
+  /** Prefix — one invalidation refreshes the tree and every derived list.
+   *
+   *  `purpose` is part of the key because the two reads answer different
+   *  questions: an intake read hides unapproved products and prunes what that
+   *  empties, a catalogue read does not. Sharing one entry would let a picker
+   *  render from a maintenance screen's cache and offer a product nobody can
+   *  raise a ticket for. */
+  tree: (
+    includeInactive: boolean,
+    vendorId?: string,
+    purpose: TreePurpose = "catalogue"
+  ) =>
+    [
+      "product-master",
+      "tree",
+      includeInactive,
+      vendorId ?? null,
+      purpose,
+    ] as const,
 };
 
 /**
@@ -25,10 +46,14 @@ export const productKeys = {
  * form and ticket intake, so it is fetched once and cached long — a product
  * master changes a few times a year, not a few times a minute.
  */
-export function useNodeTree(includeInactive = false, vendorId?: string) {
+export function useNodeTree(
+  includeInactive = false,
+  vendorId?: string,
+  purpose: TreePurpose = "catalogue"
+) {
   return useQuery({
-    queryKey: productKeys.tree(includeInactive, vendorId),
-    queryFn: () => listNodeTree(includeInactive, vendorId),
+    queryKey: productKeys.tree(includeInactive, vendorId, purpose),
+    queryFn: () => listNodeTree(includeInactive, vendorId, purpose),
     staleTime: 60 * 60 * 1000,
     // Nothing to ask for until a vendor is chosen, when one is being asked for.
     // Fetching the whole catalogue first and discarding it would flash the wrong
@@ -105,6 +130,19 @@ export const useDeleteNode = () =>
 
 export const useCreateModel = () =>
   useMasterMutation(createModel, "Couldn't add the product model");
+
+/* A vendor's own writes. Same invalidation, different endpoints — the server
+   pins the vendor, stamps the product pending and tells staff there is
+   something to price. */
+export const useSubmitNode = () =>
+  useMasterMutation(submitNode, "Couldn't add the category");
+export const useSubmitModel = () =>
+  useMasterMutation(submitModel, "Couldn't send the product for approval");
+export const useResubmitModel = () =>
+  useMasterMutation(resubmitModel, "Couldn't save the product");
+export const useDeleteOwnModel = () =>
+  useMasterMutation(deleteOwnModel, "Couldn't remove the product");
+
 export const useUpdateModel = () =>
   useMasterMutation(updateModel, "Couldn't save the product model");
 export const useDeleteModel = () =>

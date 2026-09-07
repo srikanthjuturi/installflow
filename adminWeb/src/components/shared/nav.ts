@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  BadgeCheck,
   Boxes,
   Coins,
   LayoutDashboard,
@@ -85,6 +86,28 @@ export const NAV_GROUPS: NavGroup[] = [
         // with a rank floor of area_manager that no Feature Access override can
         // lift. Hard rule 8: this hides the link, the server refuses the act.
         feature: "jobs.assign",
+      },
+      {
+        label: "Approvals",
+        to: "/approvals",
+        icon: BadgeCheck,
+        // Overridden by `Sidebar` with the live pending count. Zero here rather
+        // than a figure: an unloaded badge must not claim there is work.
+        badge: 0,
+        // In OPERATIONS rather than Master Data, and the argument is about what
+        // the groups mean. Master Data holds records you maintain; Operations
+        // holds things waiting for a manager, which is why it already owns the
+        // rail's only other badge. A moving number among the static registries
+        // would read as one of them.
+        //
+        // No `match`: the decision happens in a dialog, so there is no
+        // `/approvals/:id` for a prefix to catch. Add one the day there is.
+        //
+        // Pricing a product decides what every ticket ever raised against it is
+        // worth, so the API pairs this key with a National-Head rank floor no
+        // Feature Access override can lift. Hard rule 8: this hides the link,
+        // the server refuses the act.
+        feature: "masters.approve",
       },
       /* AI Review — hidden for now, not deleted. The slice is not built:
          nothing writes the `AI Review` status and `services/ai.ts` is still

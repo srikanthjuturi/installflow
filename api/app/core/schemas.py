@@ -176,3 +176,33 @@ def list_params(
     return ListParams(
         page=page, limit=limit, search=search, sortBy=sortBy, sortDir=sortDir
     )
+
+
+#: What a filter chip sends for "no filter". Both consoles spell it this way.
+ALL_SENTINEL = "all"
+
+
+def canonical_filter(
+    value: str | None, allowed: tuple[str, ...]
+) -> str | None | bool:
+    """Match a filter value case-insensitively against a closed set.
+
+    Three outcomes, and the caller has to tell them apart:
+
+        None   no filter asked for (absent, blank, or the "All" sentinel)
+        str    the canonical spelling to filter on
+        False  asked for something that does not exist
+
+    Filters arrive from a shareable query string, so an older bookmark must not
+    be able to 422 the whole list; an unknown value yields an empty page.
+
+    Lives here rather than in whichever slice needed it first — tickets did —
+    because a second copy of a filter-canonicalisation rule is the copy that
+    drifts, and hard rule 4 says shared logic moves to `app/core/`.
+    """
+    if not value:
+        return None
+    wanted = value.strip().lower()
+    if wanted == ALL_SENTINEL:
+        return None
+    return next((a for a in allowed if a.lower() == wanted), False)

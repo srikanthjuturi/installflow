@@ -188,8 +188,18 @@ export function ManualEntryForm({
      raised against a specific brand's product, so the categories on offer are
      the ones that vendor actually makes something in. Narrowing on the server
      rather than filtering here means the empty case is a fact the API states,
-     not something the form has to infer from an empty array. */
-  const { data: tree, isPending: treePending } = useNodeTree(false, vendorId);
+     not something the form has to infer from an empty array.
+
+     `intake` is what makes that true of APPROVAL too. A vendor can now add
+     products themselves, and one nobody has priced cannot be ticketed — so the
+     server hides it and prunes whatever branch that empties. This form needed
+     no filtering logic of its own for the same reason it never needed any for
+     paused products. */
+  const { data: tree, isPending: treePending } = useNodeTree(
+    false,
+    vendorId,
+    "intake"
+  );
   const vendorName = vendor.name;
   // A vendor with nothing to install is a gap in the master, not a dead end for
   // the person keying in a ticket — so it is named, with somewhere to go.
@@ -340,7 +350,7 @@ export function ManualEntryForm({
                       : !vendorId
                         ? "Pick a vendor first"
                         : vendorHasNothing
-                          ? `${vendorName} has no product models yet`
+                          ? `${vendorName} has nothing approved yet`
                           : "Select category"
                   }
                   groups={[
@@ -481,19 +491,31 @@ export function ManualEntryForm({
               between them collapsed the whole select row to zero height, which
               looked exactly like the four dropdowns had vanished. The info
               banner at the foot of this form sits here for the same reason. */}
+          {/* Says "nothing APPROVED", not "no product models yet". Since a
+              vendor can submit their own, an empty tree here has two causes and
+              only one of them means the catalogue is bare — the other is a
+              product sitting in the approvals queue, which "no product models
+              yet" would flatly deny to the person who submitted it yesterday.
+
+              And it links to `/portal/products`, not `/categories`. This form
+              is portal-only today (`VendorNewTicketPage` is its one consumer),
+              and `/categories` is an ops route that bounces a vendor back to
+              `/portal` — a dead link on the screen they use most. If an ops
+              intake screen ever returns, this branch needs a second voice via a
+              prop rather than a second guess here. */}
           {vendorHasNothing ? (
             <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
               <Info className="mt-px size-4 shrink-0" aria-hidden />
               <span>
-                {vendorName} has no product models yet, so there is nothing to
-                raise a ticket against.{" "}
+                {vendorName} has nothing approved to raise a ticket against
+                yet.{" "}
                 <Link
-                  to="/categories"
+                  to="/portal/products"
                   className="font-semibold underline underline-offset-2"
                 >
-                  Add one in Product Master
+                  Check your products
                 </Link>
-                , or pick a different vendor.
+                , or add one there — we price it before it can be ticketed.
               </span>
             </p>
           ) : null}

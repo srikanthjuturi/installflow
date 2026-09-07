@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogOut, Menu } from "lucide-react";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
+import { NotificationBell } from "@/components/shared/NotificationBell";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -21,15 +22,20 @@ import { VendorSidebar } from "./VendorSidebar";
  * header, which stopped fitting once a vendor with several intake channels had
  * more than a couple, and read as filter chips rather than navigation.
  *
- * Three things `AppShell` has that are deliberately absent:
+ * Two things `AppShell` has that are deliberately absent:
  *
  *   * **the company switcher** — a vendor belongs to exactly one company, and
  *     that switcher already degrades to a static chip for a single membership.
  *     The rail's header already names the company.
- *   * **the notification bell** — still backed by a mock. A fabricated number
- *     on an external party's screen is not a placeholder, it is a lie.
  *   * **the search box** — `Topbar`'s input is wired to nothing. A new surface
  *     must not inherit a dead control.
+ *
+ * The notification bell used to be a third, on the grounds that it was backed
+ * by a mock and a fabricated number on an external party's screen is a lie. It
+ * is real now: the same `NotificationBell` the ops topbar renders, reading the
+ * same endpoint. Nothing here decides who sees what — the API scopes a vendor's
+ * feed to notifications carrying their own `vendor_id`, which is four kinds
+ * today.
  *
  * And one thing it adds: Sign out stays on the bar. The ops console hides it a
  * click deep on the account page, which is fine for staff who live here all
@@ -136,6 +142,7 @@ export function VendorShell() {
           <div className="flex-1" />
 
           <ThemeToggle />
+          <NotificationBell />
           <Button
             type="button"
             variant="outline"

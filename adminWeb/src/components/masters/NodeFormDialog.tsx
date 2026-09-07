@@ -20,7 +20,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useCreateNode, useUpdateNode } from "@/hooks/useProductMaster";
+import {
+  useCreateNode,
+  useSubmitNode,
+  useUpdateNode,
+} from "@/hooks/useProductMaster";
 import type { ProductNode } from "@/types/product";
 import { IconPicker } from "./IconPicker";
 import { ParameterFields } from "./ParameterFields";
@@ -53,6 +57,18 @@ interface NodeFormDialogProps {
   parent: ProductNode | null;
   /** Omit to add. Pass a node to edit it in place. */
   node?: ProductNode;
+  /**
+   * Set on the VENDOR portal, where the write goes through `/masters/portal/*`
+   * instead of the staff route — which is the only difference. A category
+   * carries no vendor, no price and no approval state, so unlike a product
+   * there is nothing to branch in the FORM: the server routes a vendor's create
+   * straight into the same writer staff use, and this flag only picks the door.
+   *
+   * A vendor never EDITS one. A category belongs to the company, not to
+   * whichever vendor created it, so the portal's row menu does not offer it —
+   * see `CategoryTree`'s `menuFor`.
+   */
+  portal?: boolean;
 }
 
 export function NodeFormDialog({
@@ -60,6 +76,7 @@ export function NodeFormDialog({
   onOpenChange,
   parent,
   node,
+  portal = false,
 }: NodeFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -67,6 +84,7 @@ export function NodeFormDialog({
         <NodeForm
           parent={parent}
           node={node}
+          portal={portal}
           onDone={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -77,14 +95,18 @@ export function NodeFormDialog({
 function NodeForm({
   parent,
   node,
+  portal,
   onDone,
 }: {
   parent: ProductNode | null;
   node?: ProductNode;
+  portal: boolean;
   onDone: () => void;
 }) {
   const isEdit = node !== undefined;
-  const create = useCreateNode();
+  const staffCreate = useCreateNode();
+  const portalCreate = useSubmitNode();
+  const create = portal ? portalCreate : staffCreate;
   const update = useUpdateNode();
   const pending = create.isPending || update.isPending;
 

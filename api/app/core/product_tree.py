@@ -50,3 +50,47 @@ CERTIFY_DEPTH = 1
 #: There is therefore nothing above a product to inherit from — the first cut of
 #: this feature had categories carrying them too, and the merge that implied.
 MAX_PARAMETERS = 20
+
+#: Where a product sits between "a vendor asked for it" and "somebody can be
+#: sent to install it".
+#:
+#: A vendor may add products to their own book, but not price them — what a
+#: technician earns is never shown to a vendor, and what a vendor is charged is
+#: a term between them and the company rather than something they set for
+#: themselves. So a submitted product waits, unpriced, until a National Head or
+#: an Admin types both figures and approves it.
+#:
+#: These live here rather than in `masters` because `tickets._resolve_product`
+#: tests them too, and slices never import each other (hard rule 4) — the same
+#: reason `CERTIFY_DEPTH` is here.
+#:
+#: Lowercase on the wire, matching every other CHECK-constrained vocabulary in
+#: this schema (`notifications.kind`, `ticket_events.kind`, `ledger_entries.kind`).
+#: `tickets.status` is the one capitalised exception and is not the model to
+#: follow; the console maps these to a display label the way `kinds.ts` already
+#: does for notification kinds.
+PENDING = "pending"
+APPROVED = "approved"
+REJECTED = "rejected"
+
+#: Interpolated into the CHECK on `product_models.approval_status`, so the
+#: constraint and the code cannot drift — the same trick `MAX_NODE_DEPTH` and
+#: `MAX_PARAMETERS` already play.
+APPROVAL_STATES = (PENDING, APPROVED, REJECTED)
+
+#: What the catalogue is being READ for — `masters.service.get_tree`'s `purpose`.
+#:
+#:     catalogue   every approval state, empty branches KEPT. Maintenance
+#:                 screens: the ops Categories page, a vendor's own product
+#:                 page, and the subtree every write echoes back.
+#:     intake      approved products only, empty branches pruned. The ticket
+#:                 form's pickers.
+#:
+#: ONE parameter rather than two booleans, because the two settings are not
+#: independent choices — they are one question, "am I filling this in or picking
+#: from it?" A caller that could ask for approved-only while keeping empty
+#: branches would get a picker full of dead ends, which is exactly what the
+#: pruning exists to prevent.
+CATALOGUE = "catalogue"
+INTAKE = "intake"
+TREE_PURPOSES = (CATALOGUE, INTAKE)

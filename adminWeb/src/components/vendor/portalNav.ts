@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FileText, ListFilter, UserCog } from "lucide-react";
+import { FileText, ListFilter, Package, UserCog } from "lucide-react";
 import type { IntakeChannel } from "@/types/vendor";
 
 /**
@@ -49,6 +49,20 @@ const CHANNEL_ENTRY: Partial<Record<IntakeChannel, PortalNavItem>> = {
 
 const ALWAYS: PortalNavItem[] = [
   {
+    label: "My products",
+    to: "/portal/products",
+    icon: Package,
+    // In ALWAYS rather than CHANNEL_ENTRY: adding a product is not an intake
+    // channel, and a vendor whose tickets arrive by Excel still has a
+    // catalogue.
+    //
+    // Gated on `vendor.catalogue`, which is seeded to `vendor` and not to
+    // `vendor_user` — the line `vendor.users` already draws. A sub-user raises
+    // tickets; shaping the book is a vendor-admin act. One Feature Access row
+    // widens it per company, with no deploy.
+    feature: "vendor.catalogue",
+  },
+  {
     label: "My tickets",
     to: "/portal/tickets",
     icon: ListFilter,
@@ -76,7 +90,14 @@ const ALL_ITEMS: PortalNavItem[] = [...Object.values(CHANNEL_ENTRY), ...ALWAYS];
 
 /**
  * Paths any signed-in portal user reaches whatever their features: their own
- * record and their own password.
+ * record, their own password and their own bell.
+ *
+ * The feed is ungated rather than given a key of its own because its audience
+ * is decided in SQL — the API returns only notifications carrying this vendor's
+ * `vendor_id`. A feature key here would be a second, weaker copy of a rule the
+ * server already enforces, and `PortalNavItem.feature` being required leaves no
+ * third option. Without this line the route exists and is unreachable: the
+ * guard denies anything the nav table does not name.
  *
  * An explicit allow-list, because `RequirePortalFeature` DENIES anything it
  * does not recognise — the opposite polarity to the ops guard, and the reason
@@ -85,6 +106,7 @@ const ALL_ITEMS: PortalNavItem[] = [...Object.values(CHANNEL_ENTRY), ...ALWAYS];
 export const PORTAL_UNGATED = new Set([
   "/portal",
   "/portal/account",
+  "/portal/notifications",
   "/portal/password",
 ]);
 

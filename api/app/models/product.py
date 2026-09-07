@@ -36,14 +36,24 @@ length. **`parent_id` is create-only** (`ProductNodeUpdateRequest` has no field
 for it), so the array is written once and there is no subtree to rewrite and no
 cycle to detect at runtime.
 
-## Two independent notions of "not available", deliberately kept apart
+## Three independent notions of "not available", deliberately kept apart
 
-    is_active   Active / Paused. A paused node stays out of new ticket intake
-                but remains a valid reference for existing tickets. Intake
-                checks the whole `ancestor_ids` chain, not just the node —
-                pausing *TV* has to stop *Android TV* too.
-    deleted_at  Removed. Soft, because tickets and technician certifications
-                reference these rows forever.
+    is_active        Active / Paused. A paused node stays out of new ticket
+                     intake but remains a valid reference for existing tickets.
+                     Intake checks the whole `ancestor_ids` chain, not just the
+                     node — pausing *TV* has to stop *Android TV* too.
+    deleted_at       Removed. Soft, because tickets and technician
+                     certifications reference these rows forever.
+    approval_status  Not yet AGREED. A product only, not a node: a vendor may
+                     submit one, and it waits unpriced until a National Head
+                     approves it. See `core.product_tree.APPROVAL_STATES`.
+
+They are orthogonal and intake tests all three. None can stand in for another,
+and the tempting collapse is the wrong one: a rejected product is not a paused
+product. Pausing is reversible by whoever paused it and says nothing about
+whether the row was ever agreed; rejection carries a reason the vendor has to
+answer. Writing a refusal into `is_active` would lose that reason and make
+"paused" mean two things.
 
 Case-insensitive uniqueness is a hand-written `lower()` index in the migration
 (the pattern `companies` already uses for slug and GSTIN), partial on
@@ -58,10 +68,12 @@ no other level — and that covers everything beneath it. See `CERTIFY_DEPTH` in
 """
 
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKeyConstraint,
     ForeignKey,
     Index,
@@ -76,7 +88,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.product_tree import MAX_NODE_DEPTH, MAX_PARAMETERS
+from app.core.product_tree import (
+    APPROVAL_STATES,
+    MAX_NODE_DEPTH,
+    MAX_PARAMETERS,
+)
 from app.db.base_class import Base
 from app.db.mixins import AuditMixin, IdMixin, SoftDeleteMixin
 
@@ -328,12 +344,67 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: `tickets._hydrate`, and the technician's `JobOfferOut` simply has no
     #: vendor-price field to leak.
     #:
-    #: Both are NOT NULL and both CHECK `> 0`. A model nobody has priced is one
-    #: no ticket can be costed against, and the alternative — nullable, refused
-    #: at intake — leaves the Excel importer and the vendor API channel free to
-    #: write a priceless row that only fails much later.
-    technician_payout_paise: Mapped[int] = mapped_column(Integer, nullable=False)
-    vendor_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Both are NULLABLE, and only an APPROVED product is guaranteed to carry
+    #: them — `approved_is_priced` below is what says so. They were NOT NULL
+    #: until vendors could submit products of their own: a vendor never sets
+    #: either figure, so a product waiting for approval genuinely has neither,
+    #: and null here means "nobody has priced this yet", which is a different
+    #: claim from 0 (hard rule 8).
+    #:
+    #: That trades one guarantee for another rather than giving one up. What
+    #: used to be "no row can be unpriced" is now "no *approved* row can be",
+    #: and `tickets._resolve_product` refuses anything that is not approved — so
+    #: intake still cannot reach a priceless model, and the Excel importer and
+    #: the vendor API channel still cannot write one that quietly ships.
+    technician_payout_paise: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    vendor_price_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Where this product sits between submission and use — one of
+    #: `core.product_tree.APPROVAL_STATES`. A THIRD notion of "not available",
+    #: orthogonal to the two the module docstring describes: `is_active` is
+    #: paused, `deleted_at` is removed, and this is not yet agreed. Intake tests
+    #: all three, and none of them can stand in for another — do not collapse a
+    #: rejection into `is_active = false`.
+    #:
+    #: `server_default` is `'pending'` and stays that way permanently, which is
+    #: the OPPOSITE call `e6a3f91c72b8` made when it dropped the price columns'
+    #: defaults — deliberately, because the fail-safe direction is reversed
+    #: here. There, a leftover default would have silently PRICED every future
+    #: row. Here, a default of `'approved'` would silently make every future row
+    #: TICKETABLE, and no default at all would turn a forgetful future writer
+    #: into a NOT NULL 500. `'pending'` fails closed: a writer that forgets
+    #: produces a row that is invisible to intake and visible in the approvals
+    #: queue, which is somebody noticing rather than somebody being billed.
+    approval_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'")
+    )
+    #: When this last ENTERED pending — set on submission and again every time a
+    #: vendor's edit returns an approved product for review. The approvals queue
+    #: sorts on it, so the vendor who has been blocked longest is first.
+    #:
+    #: NULL means "never waited", which is true of every product that predates
+    #: approvals and of anything staff create directly. Deliberately NOT
+    #: backfilled from `created_at`: that would assert a submission nobody made.
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: When somebody decided, and who. NULL on a product nobody ever reviewed.
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    #: The deciding user. No FK, for the reason `AuditMixin` gives for
+    #: `created_by`: an actor is a fact about what happened, and it must survive
+    #: the account being removed.
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    #: Why it was refused, in words the VENDOR reads — it reaches them in a
+    #: notification and on their own catalogue screen.
+    #:
+    #: `String(255)` rather than `Text` because it is quoted verbatim into
+    #: `notifications.detail`, which is `String(255)`. Bound it where it is
+    #: written, not where it is copied, or a longer reason arrives at their bell
+    #: truncated mid-word.
+    rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
@@ -348,8 +419,69 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         ),
         # `> 0` rather than `>= 0`: a free job is not a cheap job, it is a
         # missing price. Same reading as `ledger_entries.amount_paise`.
-        CheckConstraint("technician_payout_paise > 0", name="technician_payout_paise"),
-        CheckConstraint("vendor_price_paise > 0", name="vendor_price_paise"),
+        #
+        # NULL is a legal state now — a product waiting for approval has no
+        # price yet. A bare `> 0` would already permit NULL, since a CHECK
+        # counts NULL as satisfied; spelling it out is the difference between a
+        # reader knowing that and a reader having to remember three-valued
+        # logic.
+        CheckConstraint(
+            "technician_payout_paise IS NULL OR technician_payout_paise > 0",
+            name="technician_payout_paise",
+        ),
+        CheckConstraint(
+            "vendor_price_paise IS NULL OR vendor_price_paise > 0",
+            name="vendor_price_paise",
+        ),
+        CheckConstraint(
+            "approval_status IN ("
+            + ", ".join(f"'{state}'" for state in APPROVAL_STATES)
+            + ")",
+            name="approval_status",
+        ),
+        # THE constraint. It is what replaces the two NOT NULLs the price
+        # columns used to carry, and it is what makes the gate in
+        # `tickets._resolve_product` sufficient rather than hopeful: approved
+        # implies priced, so a ticket that reaches an approved model cannot fail
+        # to be costed, and `create_ticket` needs no null test of its own.
+        CheckConstraint(
+            "approval_status <> 'approved' OR (technician_payout_paise IS NOT NULL "
+            "AND vendor_price_paise IS NOT NULL)",
+            name="approved_is_priced",
+        ),
+        # Both, or neither. One person types the pair on the approval form and
+        # nothing else writes either, so a half-priced row is not a state
+        # anybody wants — it is a bug, and this is where it stops.
+        CheckConstraint(
+            "(technician_payout_paise IS NULL) = (vendor_price_paise IS NULL)",
+            name="both_prices_or_neither",
+        ),
+        # One-directional, NOT an iff. Every product that existed before
+        # approvals did is `approved` with no decision attached, because nobody
+        # decided it — asserting otherwise would fake an audit trail. The
+        # working half is the other way round: this is what forces a vendor's
+        # edit to CLEAR the old decision when it sends a product back.
+        CheckConstraint(
+            "approval_status <> 'pending' "
+            "OR (decided_at IS NULL AND decided_by IS NULL)",
+            name="pending_has_no_decision",
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by IS NULL)",
+            name="decided_by_with_decided_at",
+        ),
+        # An iff, unlike the one above: a rejection says why, and nothing else
+        # carries a reason. The second half is the part that works — it forces a
+        # resubmission to clear the previous refusal, so a vendor never reads a
+        # stale rejection against a product that is now waiting.
+        CheckConstraint(
+            "(approval_status = 'rejected') = (rejection_reason IS NOT NULL)",
+            name="rejection_reason_only_on_rejected",
+        ),
+        CheckConstraint(
+            "approval_status <> 'pending' OR submitted_at IS NOT NULL",
+            name="pending_was_submitted",
+        ),
         CheckConstraint(
             "jsonb_typeof(service_types) = 'array' "
             "AND jsonb_array_length(service_types) >= 1 "

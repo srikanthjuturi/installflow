@@ -81,9 +81,8 @@ an IST `slotFrom`/`slotTo` range on the SLOT — the day the work was promised, 
 ticket was raised.
 
 **Job payouts are live.** `product_models` carries `technician_payout_paise` and
-`vendor_price_paise` (both NOT NULL — an unpriced model is not a state, so intake needs no check
-for one), `tickets` stamps both at intake, and closure writes a third `LEDGER_KINDS` value,
-`payout`. Two writers, and they shipped with the kind (hard rule 8): `feedback_service` on a
+`vendor_price_paise`, `tickets` stamps both at intake, and closure writes a third `LEDGER_KINDS`
+value, `payout`. Two writers, and they shipped with the kind (hard rule 8): `feedback_service` on a
 customer-confirmed closure credits the full amount, `force_close_ticket` credits what the manager
 entered, clamped to the ticket's price and writing no row at zero.
 
@@ -93,6 +92,11 @@ Three things about it are load-bearing:
   both null `technicianPayoutPaise` for a vendor — `_hydrate` takes `principal` for that one
   reason, so the decision lives in one place rather than at its four call sites. The jobs slice
   needs no such branch: `JobOfferOut` has no vendor-price field, and must never grow one.
+  On `ProductModelOut` that field is now null for **two** reasons — withheld from a vendor, or
+  genuinely unset before approval — and they are indistinguishable on the wire on purpose, because
+  both mean "no figure for you". `vendorPricePaise` is optional for the second reason only; it is
+  never masked. A client renders neither as a dash: "— to technician" reads as a number that failed
+  to load.
 - **A payout is not pool money.** `core.ledger.pool` and `features/ledger._entries_query` both
   restrict to `POOL_KINDS`; `features/earnings` reads the same table unfiltered, because the
   technician's own list is all three kinds. Left unfiltered, the console's pool screen would list
@@ -356,10 +360,19 @@ Applied on the list AND on fetch-by-id, so a guessed id reads 404. It fails clos
 whose membership names no vendor sees nothing.
 
 **Anything a vendor can call must pin the vendor server-side.** `masters.view` is granted so the
-intake form has a product tree, and `list_categories` and `/vendors/options` therefore substitute
-the caller's own vendor for whatever was asked for. `_resolve_product` additionally checks
-`model.vendor_id == vendor.id` — the composite FK constrains `(company_id, vendor_id)`, not
+intake form has a product tree, and `masters.service.get_tree` and `/vendors/options` therefore
+substitute the caller's own vendor for whatever was asked for. `_resolve_product` additionally
+checks `model.vendor_id == vendor.id` — the composite FK constrains `(company_id, vendor_id)`, not
 `(vendor, model)`, so nothing else says it.
+
+**A vendor WRITES to the product master now**, which this section used to assume away. It goes
+through `/masters/portal/*` on `vendor.catalogue`, and the pinning is structural rather than
+checked: `ProductSubmitRequest` has no `vendorId` field for one to arrive in, and
+`_load_own_model` matches on `vendor_id` as well as `company_id` so an edit cannot reach a
+competitor's row. The six staff writes gained `require_staff_principal` in the same change — not
+because a vendor holds `masters.edit` (none does), but because `_validate_vendor` proves a body's
+`vendorId` names a live vendor *in the company* and never that it names the caller's own, and that
+gap was one Feature Access toggle from being live.
 
 ⚠ **`audit_tenancy` cannot see this.** It proves a membership cannot name another COMPANY's vendor.
 Whether one vendor can read another's tickets inside a company is an application invariant the
@@ -447,10 +460,44 @@ product_nodes
   icon_key       nullable at every level; the nearest ancestor's is used
 
 product_models
-  node_id        renamed from subcategory_id, same UUIDs
-  parameters     JSONB — this product's specs (value REQUIRED)
-  notes          TEXT
+  node_id           renamed from subcategory_id, same UUIDs
+  parameters        JSONB — this product's specs (value REQUIRED)
+  notes             TEXT
+  approval_status   pending | approved | rejected. NOT NULL, defaults 'pending'
+  submitted_at      when it last ENTERED pending. NULL = never waited
+  decided_at        )  both set or both null
+  decided_by        )  the deciding user. No FK — the ActorMixin reason
+  rejection_reason  VARCHAR(255) — bounded where it is WRITTEN, because it is
+                    quoted verbatim into notifications.detail, which is 255
 ```
+
+**Three independent notions of "not available" on a product, and they do not collapse.**
+`is_active` is paused, `deleted_at` is removed, `approval_status` is not yet agreed. Intake tests
+all three. The tempting mistake is writing a refusal into `is_active`: pausing is reversible by
+whoever paused it and says nothing about whether the row was ever agreed, while a rejection carries
+a reason the vendor has to answer — and "paused" would then mean two things.
+
+**`ancestor_ids` is what makes everything else cheap.** Inheritance, technician eligibility and
+the breadcrumb are one array test instead of a recursive CTE. It is safe to denormalise only
+because **`parentId` is create-only and not patchable** — the array and `depth` are written once
+from the parent (`parent.ancestor_ids || parent.id`, `parent.depth + 1`) and cycles are therefore
+unreachable. The price of that is **no move/re-parent operation**; see the root `AGENTS.md`.
+
+Four CHECKs guard it — `depth` in range, no self-parent, `NOT (id = ANY(ancestor_ids))`, and
+`depth = coalesce(array_length(ancestor_ids, 1), 0)` so the array cannot disagree with the number.
+The `parameters` CHECK can only assert `jsonb_typeof(...) = 'array'` and a length cap: walking the
+entries needs a set-returning function, which Postgres refuses inside a CHECK, so entry shape and
+name uniqueness are schema-layer. And **assign a new list to change it** — SQLAlchemy does not
+track JSONB mutation in place.
+
+Two traps that already bit:
+
+- **Root name uniqueness needs `COALESCE(parent_id, <zero uuid>)`.** Postgres treats NULLs as
+  DISTINCT in a unique index, so the natural `(company_id, parent_id, lower(name))` would happily
+  accept two roots both called "Electronics". Partial on `deleted_at IS NULL`, hand-written, and
+  autogenerate will want to drop it every time (hard rule 8).
+- **A null JSONB column needs `JSONB(none_as_null=True)`.** Without it psycopg writes Python
+  `None` as JSON `null`, which is not what the CHECK means by "unset" — it fails.
 
 **`ancestor_ids` is what makes everything else cheap.** Inheritance, technician eligibility and
 the breadcrumb are one array test instead of a recursive CTE. It is safe to denormalise only
@@ -579,12 +626,19 @@ python -m app.scripts.copy_geography --to RelianceProdDB      # 41,073 rows, ids
 POSTGRES_DB=RelianceProdDB python -m app.scripts.audit_tenancy
 ```
 
-`upgrade head` seeds the global reference data itself — 8 roles, 5 regions, 26 features, 78 role
+`upgrade head` seeds the global reference data itself — roles, regions, features and their role
 defaults — so there is nothing else to seed. Geography is the exception, because the tables are
 created empty and normally filled from a spreadsheet through Super Admin → Geography;
 `copy_geography` lifts it from an existing database instead. It replaces the target's five seeded
 `regions` rows rather than reusing them, because `regions.id` is `gen_random_uuid()` and the two
 databases would otherwise disagree about which UUID is North.
+
+⚠ This used to name exact counts — "8 roles, 5 regions, 26 features, 78 role defaults". They were
+removed rather than updated: every migration that seeds a feature moves two of them, the published
+figures had already drifted (hard rule 2 describes `jobs.force_close`, which the initial seed does
+not contain), and a stale count is worse than none because somebody eventually diffs against it.
+**Measure, do not do arithmetic:** `SELECT count(*) FROM features` and
+`SELECT count(*) FROM role_feature_defaults` on a freshly migrated database.
 
 ## Commands
 
@@ -626,6 +680,69 @@ Two traps that hid this:
 - **Background commands do not inherit a `cd` from an earlier Bash call.** Launch the server with
   absolute paths, or it exits 127 and the previous server keeps serving while you believe you
   restarted it.
+
+## Vendor-submitted products — the approval flow
+
+A vendor may add categories and products to the master, and **may not price them**. What a
+technician earns is withheld from a vendor everywhere else here; what a vendor is *charged* is a
+commercial term between them and the company, not something they set for themselves. So a
+submission waits, unpriced and unticketable, until a National Head or an Admin types both figures.
+
+    vendor submits  ->  pending, both prices NULL, staff bell rings
+    NH approves     ->  both prices set, vendor bell rings, intake offers it
+    NH rejects      ->  reason recorded, vendor bell rings, vendor edits and resubmits
+    vendor edits    ->  back to pending if anything actually CHANGED
+
+Everything that existed before was backfilled `approved` and kept both prices, so nothing that used
+to be ticketable stopped being so.
+
+**Two feature keys, and neither is `masters.edit`** (hard rule 2 — "a key that already exists is
+not automatically the right key"). `masters.approve` is `jobs.force_close`'s shape: it spends
+money, since the payout typed there prices every ticket ever raised against that product, so it is
+paired with `require_min_rank(NATIONAL_HEAD)` that no per-company override can lift.
+`vendor.catalogue` exists because `masters.edit` also gates PUT and DELETE on **every** node and
+model in the tenant — a vendor holding it could rename or delete a competitor's products. Seeded to
+`vendor` and not `vendor_user`, the line `vendor.users` already draws; one Feature Access row
+widens it per company.
+
+**`approved_is_priced` is the constraint the whole thing rests on.** It replaced the two NOT NULLs,
+and it is what makes the one-line gate in `_resolve_product` sufficient rather than hopeful:
+approved implies priced, so `create_ticket` needs no null test and cannot produce an uncosted
+ticket. Six more CHECKs keep the rest honest — both-or-neither on the prices, no decision on a
+pending row, a reason if and only if rejected.
+
+**`get_tree` takes a `purpose`, not two booleans.** `catalogue` (the default) shows every approval
+state and keeps empty branches; `intake` shows approved products only and prunes what that empties.
+One parameter because they are one question — am I filling this in, or picking from it? A caller
+that could ask for approved-only while keeping empty branches would get a picker full of dead ends,
+which is what the pruning exists to prevent. `catalogue` is the default so an older client that
+omits it keeps seeing everything; defaulting to `intake` would have silently emptied the
+maintenance screens the day it shipped. It also fixed a latent bug — pruning used to trigger on
+`vendor_id is not None`, so `_one_root` dropped a vendor's brand-new empty category and answered a
+committed write with a 404.
+
+**Two audience costs, both measured and both accepted.** Neither is a bug to be found later:
+
+- `product_submitted` carries `pincode=NULL`, so it reaches every staff reader including Area
+  Managers who hold no `masters.approve` and are refused by the rank floor. `notifications` has no
+  column expressing "staff holding feature X", and adding one would put a third audience dimension
+  inside `_visible()` — the one function that must never be wrong — permanently, to fix a cosmetic
+  problem with no confidentiality content. The console hides the kind from a reader without the
+  feature. `technician_joined` already has this property.
+- The two decision kinds carry `vendor_id`, which **widens and never narrows**, so they land in
+  staff feeds too with a `to` pointing at the portal. `assigned` already ships the same compromise.
+  The mitigation is the wording: *"43 inch LED (Samsung) approved"* is true on a manager's screen
+  where *"Your product was approved"* would not be. ⚠ And a decision's `detail` must never quote
+  `technician_payout_paise` — that row reaches the vendor's portal, and one f-string would undo the
+  masking `get_tree` and `_hydrate` both enforce.
+
+**A vendor-created CATEGORY is not reviewed**, deliberately. It is company-wide, carries no vendor
+and no price, and an empty one offers nothing at intake — `purpose=intake` prunes it from every
+picker and other vendors' brand-filtered trees never show it. The worst case is a junk row an admin
+deletes. What is worth watching instead is coverage: a product filed under a brand-new main
+sub-category has no certified technicians, so every ticket raised there escalates immediately with
+nothing on screen saying why. The approvals queue therefore carries `technicianCount` and the
+console warns on zero **before** the decision.
 
 ## GSTIN lookup — where a vendor's details come from
 
