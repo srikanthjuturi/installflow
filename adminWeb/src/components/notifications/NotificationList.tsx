@@ -28,22 +28,33 @@ interface NotificationListProps {
   onClearFilters: () => void;
 }
 
+type Rewrite = [prefix: string, rewrite: (path: string) => string];
+
 /**
- * Where each ops route lands for a PORTAL reader, longest prefix first.
+ * Where each route lands for a PORTAL reader, first match wins.
  *
- * An ordered table rather than a chain of ifs, because the list is two now and
- * will grow: `vendor_id` widens a notification to a vendor's portal, and four
- * kinds already carry one.
+ * An ordered table rather than a chain of ifs, because the list grows:
+ * `vendor_id` widens a notification to a vendor's portal, and four kinds
+ * already carry one.
  */
-const PORTAL_ROUTES: [prefix: string, rewrite: (path: string) => string][] = [
+const PORTAL_ROUTES: Rewrite[] = [
   ["/tickets/", (path) => `/portal${path}`],
-  // A decision on a product this vendor submitted. The server writes
-  // `/portal/products` directly, so this is the identity — it is listed anyway
-  // so the fallback below cannot swallow it if the server's route ever changes
-  // to the ops one.
-  ["/portal/products", (path) => path],
+  // A staff-written route for something a vendor is a party to. `/approvals`
+  // is the ops queue; their copy of that product is on their own screen.
   ["/approvals", () => "/portal/products"],
+  ["/portal/products", (path) => path],
 ];
+
+/**
+ * The same table in the other direction, for a STAFF reader.
+ *
+ * It is needed because `vendor_id` on a notification WIDENS the audience and
+ * never narrows it: a product decision is written for the vendor and lands in
+ * every staff feed too. Without this, a manager clicking one would be sent to
+ * `/portal/products`, which `RequirePortal` bounces straight back to `/` — a
+ * bell that leads nowhere, which is the one thing a notification must not be.
+ */
+const OPS_ROUTES: Rewrite[] = [["/portal/products", () => "/approvals"]];
 
 /**
  * The server stores ONE route per notification. Most are written for the
@@ -63,12 +74,15 @@ const PORTAL_ROUTES: [prefix: string, rewrite: (path: string) => string][] = [
  * ticket list is the portal's home.
  */
 function routeFor(to: string, portal: boolean): string {
-  if (!portal) return to;
   const q = to.indexOf("?");
   const path = q === -1 ? to : to.slice(0, q);
   const query = q === -1 ? "" : to.slice(q);
-  const hit = PORTAL_ROUTES.find(([prefix]) => path.startsWith(prefix));
-  return hit ? `${hit[1](path)}${query}` : "/portal/tickets";
+  const table = portal ? PORTAL_ROUTES : OPS_ROUTES;
+  const hit = table.find(([prefix]) => path.startsWith(prefix));
+  if (hit) return `${hit[1](path)}${query}`;
+  // A portal reader falls back to their home; a staff reader keeps whatever the
+  // server wrote, because the ops routes ARE the ones it writes by default.
+  return portal ? "/portal/tickets" : to;
 }
 
 export function NotificationList({

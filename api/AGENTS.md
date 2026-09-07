@@ -727,12 +727,22 @@ committed write with a 404.
   Managers who hold no `masters.approve` and are refused by the rank floor. `notifications` has no
   column expressing "staff holding feature X", and adding one would put a third audience dimension
   inside `_visible()` — the one function that must never be wrong — permanently, to fix a cosmetic
-  problem with no confidentiality content. The console hides the kind from a reader without the
-  feature. `technician_joined` already has this property.
+  problem with no confidentiality content. `technician_joined` already has this property.
+  ⚠ **Nothing filters it, and that is the accepted half.** A manager without the feature sees the
+  row and, on clicking it, is bounced by `RequireFeature` — a bell that leads nowhere, which this
+  file elsewhere calls the one thing a notification must not be. Hiding the row in the console
+  was considered and is WRONG: the unread count is computed server-side, so a hidden row leaves
+  a badge reading 3 above a feed showing nothing. The only honest fix is server-side, and it is
+  a real option rather than a forbidden one — a `kind -> required feature` map consulted in
+  `_visible()`, using `core.features.effective_features`. It was left out because it changes the
+  one function that must never be wrong, not because it is unthinkable. Do it the day somebody
+  complains, and do it there.
 - The two decision kinds carry `vendor_id`, which **widens and never narrows**, so they land in
   staff feeds too with a `to` pointing at the portal. `assigned` already ships the same compromise.
-  The mitigation is the wording: *"43 inch LED (Samsung) approved"* is true on a manager's screen
-  where *"Your product was approved"* would not be. ⚠ And a decision's `detail` must never quote
+  Two mitigations: the wording — *"43 inch LED (Samsung) approved"* is true on a manager's screen
+  where *"Your product was approved"* would not be — and `NotificationList.routeFor`, which
+  rewrites the portal route back to `/approvals` for a staff reader. Without that second half a
+  manager clicking one landed on `/portal/products` and was bounced to `/` by `RequirePortal`. ⚠ And a decision's `detail` must never quote
   `technician_payout_paise` — that row reaches the vendor's portal, and one f-string would undo the
   masking `get_tree` and `_hydrate` both enforce.
 
