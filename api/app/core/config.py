@@ -132,6 +132,17 @@ class Settings(BaseSettings):
     WHATSAPP_SLOT_TEMPLATE_NAME: str = ""
     WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME: str = ""
     WHATSAPP_SLOT_TEMPLATE_LANG: str = "en_US"
+    #: "Your visit has been MOVED — it was Tuesday, it is now Thursday."
+    #: UTILITY, and its own template rather than a second send of
+    #: `WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME`: a customer holding two messages
+    #: that both read "your visit is confirmed for…" has no way to tell which
+    #: one is current, and the one they act on is as likely to be the old one.
+    #: Naming the previous window is what makes the correction legible.
+    #:
+    #: Shares `WHATSAPP_SLOT_TEMPLATE_LANG` with the pair above, as
+    #: `WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME` already does — all three are the
+    #: scheduling conversation and are approved together.
+    WHATSAPP_SLOT_RESCHEDULED_TEMPLATE_NAME: str = ""
     # "Your installation is complete — please confirm and rate it." UTILITY,
     # like the other customer-facing ones. Its own lang setting rather than
     # sharing the slot one, because this template can be approved in a

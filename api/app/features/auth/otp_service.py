@@ -5,10 +5,20 @@ the token pair `login` issues, so `sign_in` delegates to `issue_session` rather
 than duplicating token logic — and the rule that slices never import each other
 stays intact.
 
-Everything here is shared by three callers:
+Everything here is shared by four callers:
   * technician sign-in            purpose='login',          phone, keyed on a user
   * self-registration             purpose='invite',         phone, keyed on an invite
   * console password reset        purpose='password_reset',  EMAIL, keyed on a user
+  * a customer agreeing to a new slot
+                                  purpose='reschedule',     phone, keyed on a TICKET
+
+The fourth is the odd one and worth reading twice. Its recipient has no account
+here, so `user_id` is null and `ticket_id` carries the identity instead. It is
+the only code somebody reads back to a THIRD party — the technician standing at
+their door — rather than typing in themselves. And it is the only one that
+carries what was AGREED as well as who agreed: `slot_start` pins the window,
+because "yes, Thursday morning" is consent to Thursday morning and to nothing
+else, and a code bound to the ticket alone would move the visit anywhere.
 
 A **destination** is a phone or an email, never both. Every function below takes
 one as `phone=` or `email=` and the rest of the machine — the pepper, the TTL,
@@ -167,6 +177,8 @@ async def _mint(
     user_id: uuid.UUID | None,
     invite_id: uuid.UUID | None,
     request_ip: str | None,
+    ticket_id: uuid.UUID | None = None,
+    slot_start: datetime | None = None,
 ) -> tuple[OtpCode, str]:
     """Throttle, burn the live code, mint a new one. Does not send, does not commit.
 
@@ -181,6 +193,15 @@ async def _mint(
 
     # Exactly one live code per destination. Without this, "the older message
     # also works" is a permanent source of confused support tickets.
+    #
+    # ⚠ By DESTINATION, with no purpose filter, and that is load-bearing twice
+    # over. It is why `consume_code` must be given a `ticket_id` for a
+    # reschedule: a customer asked about a second ticket has had the first
+    # one's code burned, so the surviving row is the one a verification of the
+    # FIRST ticket would otherwise find and accept. And it is why a customer
+    # whose number also belongs to a technician will occasionally cancel that
+    # technician's live sign-in code — a coincidence that resolves itself
+    # within `OTP_RESEND_SECONDS`, and not worth scoping the rule for.
     await session.execute(
         OtpCode.__table__.update()
         .where(where_destination, OtpCode.consumed_at.is_(None))
@@ -194,6 +215,8 @@ async def _mint(
         email=destination if email is not None else None,
         user_id=user_id,
         invite_id=invite_id,
+        ticket_id=ticket_id,
+        slot_start=slot_start,
         code_hash=_hash_code(destination, code),
         expires_at=_now() + timedelta(seconds=settings.OTP_TTL_SECONDS),
     )
@@ -240,8 +263,15 @@ async def issue_code(
     user_id: uuid.UUID | None = None,
     invite_id: uuid.UUID | None = None,
     request_ip: str | None = None,
+    ticket_id: uuid.UUID | None = None,
+    slot_start: datetime | None = None,
 ) -> OtpRequestResponse:
-    """Throttle, mint, deliver by WhatsApp, record. Commits."""
+    """Throttle, mint, deliver by WhatsApp, record. Commits.
+
+    `ticket_id` is set only by a reschedule, whose recipient is a CUSTOMER with
+    no account here at all — so `user_id` is null on exactly those rows and this
+    is what says who the code was for.
+    """
     row, code = await _mint(
         session,
         phone=phone,
@@ -250,6 +280,8 @@ async def issue_code(
         user_id=user_id,
         invite_id=invite_id,
         request_ip=request_ip,
+        ticket_id=ticket_id,
+        slot_start=slot_start,
     )
 
     channel = resolve_channel()
@@ -312,11 +344,34 @@ async def consume_code(
     purpose: str,
     phone: str | None = None,
     email: str | None = None,
+    ticket_id: uuid.UUID | None = None,
+    slot_start: datetime | None = None,
 ) -> OtpCode:
     """Verify and burn a code. Raises 401 on anything that is not a clean match.
 
     Every failure returns the same message. Distinguishing "expired" from
     "wrong" tells an attacker which half of the guess was right.
+
+    ## `ticket_id` is not belt-and-braces
+
+    A customer with two open tickets has ONE live code, because `_mint` burns
+    every other one for that destination. So the row this query finds when
+    verifying ticket A is, in that case, the code minted for ticket B — and
+    without this filter it verifies, moving the wrong appointment. Both are that
+    customer's, so nothing leaks; the wrong visit simply moves.
+
+    Expressed as a WHERE rather than as a comparison after the fact on purpose:
+    the mismatch is then "no live code", not a hash failure, so presenting the
+    wrong ticket's code does not spend one of the five attempts standing against
+    the right one.
+
+    `slot_start` narrows it further, to the window the customer actually agreed
+    to. Without it the gate proves a conversation happened but not what was said
+    in it, and a client holding a good code could post any window at all.
+
+    ⚠ Both only narrow when a caller passes them. Nothing here can require them
+    for `reschedule` alone without teaching this module about that purpose, so
+    the reschedule service is what must not forget.
     """
     destination = _destination(phone, email)
     invalid = HTTPException(
@@ -330,6 +385,8 @@ async def consume_code(
             _destination_filter(phone, email),
             OtpCode.purpose == purpose,
             OtpCode.consumed_at.is_(None),
+            *(() if ticket_id is None else (OtpCode.ticket_id == ticket_id,)),
+            *(() if slot_start is None else (OtpCode.slot_start == slot_start,)),
         )
         .order_by(OtpCode.created_at.desc())
         .limit(1)

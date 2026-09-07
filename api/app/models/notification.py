@@ -108,6 +108,18 @@ NOTIFICATION_KINDS = (
     #: the feed under one icon, and the reader would have to open the row to
     #: learn which had happened.
     "product_rejected",
+    #: A confirmed visit moved to a different time.
+    #:
+    #: Carries `vendor_id`, and that is the reason it exists: the vendor ASKED
+    #: for this visit and was the one party a reschedule never reached. The
+    #: customer gets a WhatsApp and the technician gets a push, while the brand
+    #: whose customer is now expecting somebody on a different day learned
+    #: nothing at all.
+    #:
+    #: Its own kind rather than folded into `assigned`: that one says somebody
+    #: is coming, this says WHEN changed, and a reader scanning the feed has to
+    #: tell those apart without opening the row.
+    "rescheduled",
 )
 
 
@@ -158,6 +170,15 @@ class Notification(Base, IdMixin, AuditMixin):
         ),
         # The feed: one company's notifications, newest first.
         Index("ix_notifications_company_created", "company_id", "created_at"),
+        # "when was this kind of bell last raised for THIS ticket" — the
+        # question every sweep re-arm in `tickets/sweeps.py` asks now that a
+        # slot can move, and one no other index here can answer. It is also the
+        # covering index the composite FK below has been owed since the table
+        # was written: Postgres creates none, so deleting a ticket had to scan
+        # every notification in the database to prove nothing referenced it.
+        Index(
+            "ix_notifications_company_ticket", "company_id", "ticket_id", "kind"
+        ),
         ForeignKeyConstraint(
             ["company_id", "ticket_id"],
             ["tickets.company_id", "tickets.id"],

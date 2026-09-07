@@ -155,6 +155,25 @@ EVENT_KINDS = (
     #: transaction. That combination IS the audit trail §10 asks for — who
     #: closed it, when, and on what basis.
     "force_closed",
+    #: The confirmed slot moved. `actor_kind` says which door it came through: a
+    #: technician standing at the address who read back a code the CUSTOMER
+    #: received, or a manager who had already spoken to them.
+    #:
+    #: `note` carries BOTH windows, old first. The ticket keeps only the current
+    #: one, so without that this event would record that something changed and
+    #: not what — and "what time was it before" is the first thing anybody asks.
+    #:
+    #: A ticket may carry MANY. There is deliberately no cap: the customer's
+    #: consent is what bounds this, not a counter, and a job that has slid four
+    #: times is something a manager should be able to read rather than something
+    #: the system should have silently refused on the fourth try.
+    #:
+    #: It is also a MARKER. Six sweeps dedupe on "has this ever happened to this
+    #: ticket", which after a move is the wrong question — nobody has been
+    #: reminded about the NEW time, and the customer has not been told who is
+    #: coming to it. Each of them now asks "…since the slot last moved", and
+    #: this is the row they measure from. See `tickets/sweeps.py`.
+    "rescheduled",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -207,7 +226,7 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'feedback_requested', 'completed', 'feedback_received', "
             "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
             "'customer_notified', 'escalated', 'bonus_added', 'released', "
-            "'no_show', 'force_closed')",
+            "'no_show', 'force_closed', 'rescheduled')",
             name="kind",
         ),
         CheckConstraint(

@@ -203,6 +203,42 @@ def build_slot_confirmed_payload(
     )
 
 
+def build_slot_rescheduled_payload(
+    phone: str, company: str, product: str, previous: str, when: str
+) -> dict:
+    """"Your visit has moved" — the correction, naming BOTH windows.
+
+    Deliberately not a second `build_slot_confirmed_payload`. A customer who
+    already has "your visit is confirmed for Tue 2:00–4:00 PM" and then receives
+    "your visit is confirmed for Thu 9:00–11:00 AM" holds two messages in the
+    same words and no way to tell which is current — and the one they act on is
+    as likely to be the older. Naming what it WAS is what makes this read as a
+    correction rather than as a second booking.
+
+    ⚠ The REGISTERED body must not open or close with a variable — Meta subcode
+    `2388299`, which has already cost two submissions in this file. The
+    free-form text below is allowed to differ and does, exactly as
+    `build_slot_confirmed_payload`'s does: it opens with the company because
+    nothing reviews it. The body to submit is in `api/AGENTS.md` and in `.env`
+    beside the empty variable; it opens with "Your" and closes with a sentence.
+    """
+    if settings.WHATSAPP_SLOT_RESCHEDULED_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_SLOT_RESCHEDULED_TEMPLATE_NAME,
+            settings.WHATSAPP_SLOT_TEMPLATE_LANG,
+            [company, product, previous, when],
+        )
+    return _text_payload(
+        phone,
+        (
+            f"{company}: your {product} visit has been moved.\n\n"
+            f"It was {previous}. It is now {when}.\n\n"
+            "Our technician will call you before arriving."
+        ),
+    )
+
+
 def build_feedback_payload(
     phone: str, link: str, company: str, product: str, technician: str
 ) -> dict:
@@ -490,6 +526,16 @@ async def send_slot_confirmed(
     return await _send(
         build_slot_confirmed_payload(phone, company, product, when),
         what="slot confirmation",
+    )
+
+
+async def send_slot_rescheduled(
+    phone: str, company: str, product: str, previous: str, when: str
+) -> SendResult:
+    """Tell the customer their visit has moved, and what it was before. Never raises."""
+    return await _send(
+        build_slot_rescheduled_payload(phone, company, product, previous, when),
+        what="slot reschedule",
     )
 
 

@@ -9,6 +9,7 @@ import {
   correctTicketSerial,
   createTicket,
   forceCloseTicket,
+  getRescheduleSlots,
   getTicket,
   getTicketProof,
   listTicketAttachments,
@@ -16,6 +17,7 @@ import {
   listTechnicianTickets,
   listTickets,
   recordNoShow,
+  rescheduleTicket,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
 import { ledgerKeys } from "./useLedger";
@@ -49,6 +51,10 @@ export const ticketKeys = {
    *  invalidation, but keyed on the whole request the way `list` is. */
   byTechnicianList: (technicianId: string, params: ListParams) =>
     ["tickets", "byTechnicianList", technicianId, params] as const,
+  /** The windows a ticket could be moved into. Under the same prefix as
+   *  everything else here, so any mutation — or the socket's `ticket.changed` —
+   *  already clears a list that has gone stale. */
+  rescheduleSlots: (id: string) => ["tickets", "rescheduleSlots", id] as const,
 };
 
 /**
@@ -261,6 +267,53 @@ export function useAssignTicket() {
  * is the only control in the console that takes money OFF a technician, so the
  * pool balance and the transaction list are both stale the moment it succeeds.
  */
+/**
+ * The windows this ticket could be given.
+ *
+ * `enabled` so the dialog fetches when it opens rather than on every render of
+ * a ticket nobody is rescheduling, and `staleTime: 0` because windows fall out
+ * of the list as they approach — nothing can be booked inside 90 minutes, so a
+ * dialog left open must refetch rather than offer a time the server will
+ * refuse.
+ */
+export function useRescheduleSlots(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ticketKeys.rescheduleSlots(id),
+    queryFn: () => getRescheduleSlots(id),
+    enabled: enabled && !!id,
+    staleTime: 0,
+  });
+}
+
+/**
+ * Give a ticket a new time.
+ *
+ * The `useAssignTicket` ladder, minus the ledger: rescheduling moves a job
+ * between queues and changes a technician's day, but it charges nobody. Its
+ * absence here is the difference from `useRecordNoShow` above, which does debit
+ * somebody and does invalidate it.
+ *
+ * `escalationKeys` matters most of all — an escalated ticket given a new time
+ * leaves that queue entirely, which is the whole point of the control.
+ */
+export function useRescheduleTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't change the time" },
+    mutationFn: rescheduleTicket,
+    onSuccess: (ticket) => {
+      // The response IS the ticket, so seed the detail rather than showing a
+      // spinner on the screen the manager is already looking at — the same
+      // thing `useCorrectTicketSerial` does with its own response.
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: escalationKeys.all });
+      queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
+  });
+}
+
 export function useRecordNoShow() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -23,7 +23,7 @@ Every route carries **two** guards, and both are load-bearing:
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -36,6 +36,7 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
+from app.features.auth.schemas import OtpRequestResponse
 from app.features.jobs import service
 from app.features.jobs.schemas import (
     CancelRequest,
@@ -44,12 +45,19 @@ from app.features.jobs.schemas import (
     PenaltyBandOut,
     ProofImageOut,
     ProofSubmitRequest,
+    RescheduleCodeRequest,
+    RescheduleRequest,
+    SlotOptionOut,
 )
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 CanSeePool = Depends(require_feature("pool.view"))
+#: Its own key, not `pool.view`. Taking work and moving a customer's agreed time
+#: are different permissions, and a company must be able to grant one without
+#: the other — which a shared key could not express.
+CanReschedule = Depends(require_feature("jobs.reschedule"))
 
 
 @router.get(
@@ -288,6 +296,117 @@ async def cancel_job(
         reason=body.reason,
     )
     return envelope(band, message="Job cancelled")
+
+
+# ── moving the slot ──────────────────────────────────────────────────────────
+#
+# All three carry `jobs.reschedule` rather than `pool.view`. A company that
+# wants its technicians to take work but not to move a customer's time can then
+# say so on Feature Access with one row, which is the whole reason the key is
+# separate — and `require_technician_principal` is still what makes it
+# technician-only, because a feature grant is overridable and this one is
+# deliberately held by managers too.
+
+
+@router.get(
+    "/{ticket_id}/reschedule/slots",
+    response_model=ApiEnvelope[list[SlotOptionOut]],
+    dependencies=[CanReschedule],
+)
+async def list_reschedule_slots(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[list[SlotOptionOut]]:
+    """Windows this job could move into, already filtered to what YOU can serve.
+
+    Empty is a real answer, not an error: it means the next two days are full,
+    and the screen says so.
+
+    **409 `JOB_NOT_RESCHEDULABLE`** once the job is past `Assigned` — proof has
+    been captured and the technician is on site — or while it has no confirmed
+    time at all, which is the customer's to pick rather than anybody's to move.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.reschedule_options(
+            db, ticket_id, company_id=principal.company_id, technician_id=profile.id
+        )
+    )
+
+
+@router.post(
+    "/{ticket_id}/reschedule/code",
+    response_model=ApiEnvelope[OtpRequestResponse],
+    dependencies=[CanReschedule],
+)
+async def send_reschedule_code(
+    db: Db,
+    me: TechnicianPrincipal,
+    ticket_id: uuid.UUID,
+    body: RescheduleCodeRequest,
+    request: Request,
+) -> ApiEnvelope[OtpRequestResponse]:
+    """Send the CUSTOMER a code agreeing to ONE window, for them to read back.
+
+    The number comes off the ticket and cannot be named in the request — a
+    technician who could choose where the code went would be able to send it to
+    themselves, and there would be no gate.
+
+    The window can and must: the code is minted for it and verifies only for it,
+    so changing the time means asking the customer again. That is the honest
+    behaviour — it is a different question.
+
+    **429** means the customer was sent one moments ago; the body says how long
+    to wait. The throttles are per phone number, so this is also what a customer
+    with two tickets in one afternoon will occasionally see.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.request_reschedule_code(
+            db,
+            ticket_id,
+            company_id=principal.company_id,
+            technician_id=profile.id,
+            slot_start=body.slotStart,
+            request_ip=request.client.host if request.client else None,
+        ),
+        message="Code sent to the customer",
+    )
+
+
+@router.post(
+    "/{ticket_id}/reschedule",
+    response_model=ApiEnvelope[JobOut],
+    dependencies=[CanReschedule],
+)
+async def reschedule_job(
+    db: Db,
+    me: TechnicianPrincipal,
+    ticket_id: uuid.UUID,
+    body: RescheduleRequest,
+) -> ApiEnvelope[JobOut]:
+    """Move the slot. Nothing is charged and the job stays yours.
+
+    **401** is the code — wrong, expired, or minted for a different ticket.
+    **409 `SLOT_NO_LONGER_AVAILABLE`** means the window went while the screen
+    was open, and the customer will need to pick again from a fresh list.
+
+    Deliberately no penalty and no escalation, which is the entire difference
+    from `/cancel`: the customer agreed to this, and proved it.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    job = await service.reschedule(
+        db,
+        ticket_id,
+        company_id=principal.company_id,
+        profile=profile,
+        slot_start=body.slotStart,
+        code=body.code,
+        note=body.note,
+    )
+    return envelope(job, message="Time updated")
 
 
 @router.get(

@@ -177,7 +177,9 @@ const POOL_LIMIT = 100;
 const IST = 'en-IN';
 const TZ = 'Asia/Kolkata';
 
-function timeLabel(iso: string): string {
+/** `2:00 PM`, in IST. Exported for the reschedule picker, which renders a list
+ *  of bare windows rather than whole slots. */
+export function timeLabel(iso: string): string {
   return new Date(iso)
     .toLocaleTimeString(IST, {
       hour: 'numeric',
@@ -214,6 +216,27 @@ function slotLabel(startIso: string | null, endIso: string | null): string {
     ? 'Today'
     : start.toLocaleDateString(IST, { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
   return `${day} · ${timeLabel(startIso)}–${timeLabel(endIso)}`;
+}
+
+/**
+ * `Today` / `Wed 9 Sep`, in IST — the heading the reschedule picker groups by.
+ *
+ * The same "Today" substitution `slotLabel` makes, split out because that one
+ * always carries a time with it and a group heading must not.
+ */
+export function dayHeading(iso: string): string {
+  const start = new Date(iso);
+  const sameDay =
+    start.toLocaleDateString(IST, { timeZone: TZ }) ===
+    new Date().toLocaleDateString(IST, { timeZone: TZ });
+  return sameDay
+    ? 'Today'
+    : start.toLocaleDateString(IST, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        timeZone: TZ,
+      });
 }
 
 /** `2–4 PM` for dense rows. */

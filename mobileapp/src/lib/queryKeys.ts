@@ -16,6 +16,11 @@ export const qk = {
   myJobs: (status: JobStatus | 'all') => ['jobs', 'mine', status] as const,
   job: (id: string) => ['jobs', id] as const,
   cancellationPreview: (id: string) => ['jobs', id, 'cancellation-preview'] as const,
+  // Under the `['jobs', id]` prefix on purpose, like the preview above: the
+  // websocket's `job.changed` frame invalidates that prefix, so a slot moved
+  // from anywhere else already clears this list without the socket learning
+  // about it.
+  rescheduleSlots: (id: string) => ['jobs', id, 'reschedule-slots'] as const,
 
   // The window is part of the key, not just the request: a week, a month and a
   // range somebody picked are three different answers, and sharing one entry

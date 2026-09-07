@@ -122,6 +122,28 @@ export function offeredSlots(
   return out;
 }
 
+/**
+ * One window the SERVER offered, rendered the way this file renders its own.
+ *
+ * The reschedule picker cannot use `offeredSlots` above: that one mirrors the
+ * intake rule and stops at the service level, which a ticket being re-slotted
+ * has usually already blown — the browser would compute an empty list for
+ * exactly the tickets the control exists for. It also cannot know what the
+ * assigned technician is already booked for. So the API sends the windows and
+ * this only dresses them, which keeps ONE rendering of "Wed 19 Aug" and
+ * "9:00–11:00 AM" in the console rather than a second that drifts.
+ */
+export function describeSlot(startIso: string, endIso: string): OfferedSlot {
+  const begins = new Date(startIso);
+  const ends = new Date(endIso);
+  return {
+    start: startIso,
+    end: endIso,
+    day: DAY_FMT.format(begins).replace(",", ""),
+    time: formatTimeRange(begins, ends, IST_ZONE),
+  };
+}
+
 /** Today in IST, as `yyyy-mm-dd` — the `min` a date input needs. */
 export function istToday(now: Date = new Date()): string {
   const { year, month, date } = istParts(now);

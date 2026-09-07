@@ -22,7 +22,13 @@ import { Timeline } from "@/components/tickets/Timeline";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { readNavOrigin, useNavOrigin } from "@/hooks/useNavOrigin";
 import { useRulesConfig } from "@/hooks/useSettings";
-import { useRecordNoShow, useTicket } from "@/hooks/useTickets";
+import { formatSlot } from "@/utils/datetime";
+import { RescheduleDialog } from "@/components/tickets/RescheduleDialog";
+import {
+  useRecordNoShow,
+  useRescheduleTicket,
+  useTicket,
+} from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
 import { isTerminalTicketStatus } from "@/types";
 
@@ -106,6 +112,8 @@ export default function TicketDetailPage({
      it moving. The server re-checks anyway and refuses SLOT_STILL_OPEN. */
   const [noShowOpen, setNoShowOpen] = useState(false);
   const recordNoShow = useRecordNoShow();
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const reschedule = useRescheduleTicket();
   const { data: rules } = useRulesConfig({ enabled: isOps });
   const noShowAmount = rules?.penalty.at(-1)?.amount ?? null;
   const canRecordNoShow =
@@ -138,6 +146,23 @@ export default function TicketDetailPage({
      "close your own job" and belongs to admins and technicians. Hiding the
      button is presentation; the server refuses the call regardless. */
   const canForceClose = canAct && has("jobs.force_close");
+
+  /* Moving the agreed time. Its own key, shared with the technician's door in
+     the app — `company_role_features` overrides are per role, so a company that
+     wants managers to reschedule but not technicians turns off one row.
+
+     The status gate mirrors the server's `RESCHEDULABLE_STATUSES`, and the
+     second half is the interesting one: `Escalated` means two different things
+     depending on whether a technician is still on it. With one, the CUSTOMER
+     said the job was not done, and giving that a new time would launder a
+     complaint into an appointment. The server refuses it; this stops the button
+     appearing at all. */
+  const canReschedule =
+    canAct &&
+    has("jobs.reschedule") &&
+    !!ticket &&
+    ["New", "Slot Pending", "Assigned", "Escalated"].includes(ticket.status) &&
+    !(ticket.status === "Escalated" && ticket.technicianId);
 
   return (
     <>
@@ -219,6 +244,19 @@ export default function TicketDetailPage({
                           >
                             Force close
                           </LinkButton>
+                        ) : null}
+                        {/* A dialog rather than a routed page, unlike its three
+                            neighbours: one menu and one sentence is the
+                            lightweight confirmation shape `NoShowDialog`
+                            already occupies, not the evidence-gathering shape
+                            force-close needs. */}
+                        {canReschedule ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => setRescheduleOpen(true)}
+                          >
+                            Change the time
+                          </Button>
                         ) : null}
                         <LinkButton
                           to={`/tickets/${ticket.id}/assign`}
@@ -316,6 +354,32 @@ export default function TicketDetailPage({
               // while the manager was deciding — is reported by the toaster,
               // and closing the dialog under it would hide what was refused.
               { onSuccess: () => setNoShowOpen(false) }
+            )
+          }
+        />
+      ) : null}
+
+      {/* Outside the loading branch for `NoShowDialog`'s reason: a successful
+          reschedule refetches the ticket, and a dialog unmounted mid-flight
+          would take its pending state with it. */}
+      {ticket ? (
+        <RescheduleDialog
+          open={rescheduleOpen}
+          onOpenChange={setRescheduleOpen}
+          ticketId={ticket.id}
+          currentSlot={
+            ticket.slotStart && ticket.slotEnd
+              ? formatSlot(ticket.slotStart, ticket.slotEnd)
+              : null
+          }
+          isPending={reschedule.isPending}
+          onConfirm={(values) =>
+            reschedule.mutate(
+              { id: ticket.id, ...values },
+              // Closed only on success — a refusal (the window went, or
+              // somebody moved the ticket) is reported by the toaster, and
+              // closing under it would hide what was refused.
+              { onSuccess: () => setRescheduleOpen(false) }
             )
           }
         />

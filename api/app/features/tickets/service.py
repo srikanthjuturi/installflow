@@ -69,7 +69,13 @@ from app.core.slots import (
     offered_slots,
     when_label,
 )
+from app.core.reschedule import (
+    announce as announce_reschedule,
+    move_slot,
+    send_slot_moved,
+)
 from app.core.tickets import (
+    RESCHEDULE_HORIZON_HOURS,
     TERMINAL_STATUSES,
     TICKET_STATUSES,
 )
@@ -82,6 +88,7 @@ from app.features.tickets.schemas import (
     FunnelOut,
     RenotifyOut,
     SlaBreakdownOut,
+    SlotOptionOut,
     TicketAttachmentOut,
     TicketCreateRequest,
     TicketDetailOut,
@@ -1058,6 +1065,14 @@ _EVENT_TITLES = {
     "serial_mismatch": "Serial did not match the order",
     "serial_corrected": "Expected serial corrected",
     "reminded": "Technician reminded",
+    # Missed when the sweep that writes it shipped, so this one has been
+    # rendering the raw key too — the same fault the note above describes, still
+    # live. Reads next to "Technician reminded", which is its other half.
+    "customer_notified": "Customer told who is coming",
+    # The generic form. Both doors have their own below, because who moved a
+    # customer's agreed time — and on whose authority — is the whole question a
+    # reader of this row is asking.
+    "rescheduled": "Slot rescheduled",
     "escalated": "No technician accepted",
     "bonus_added": "Bonus added and re-notified",
     # Reads next to "Technician accepted", which is the event it undoes.
@@ -1081,6 +1096,14 @@ _EVENT_TITLES = {
 #: assigned", including the one the cap is counted from.
 _EVENT_TITLES_BY_ACTOR = {
     ("assigned", "staff"): "Assigned by a manager",
+    # The same distinction as `assigned` above, and it matters more here. A
+    # technician can only move a slot by reading back a code the CUSTOMER
+    # received, so that row records the customer's own agreement; a manager's
+    # records a phone call nobody else heard. A reader deciding whether a
+    # rescheduled visit was properly agreed needs to see which, without opening
+    # the note.
+    ("rescheduled", "technician"): "Rescheduled — customer confirmed by code",
+    ("rescheduled", "staff"): "Rescheduled by a manager",
 }
 
 
@@ -1798,12 +1821,20 @@ async def list_escalations(
     risk, and in the missed half it is the customer who has been waiting
     longest for somebody to ring them.
 
-    ⚠ **Nothing clears the missed half yet.** Re-slotting a job whose time has
-    passed means asking the customer for another one, which is a conversation
-    and not a status change. Until that exists this list only grows, which is
-    also why the count sits on its own heading rather than in the rail's badge.
-    It is also why paging arrived: an ever-growing list was going to be sent
-    whole on every poll.
+    **The missed half now has an exit.** It did not for a long time: re-slotting
+    a job whose time has passed means asking the customer for another one, which
+    is a conversation rather than a status change, so the list only ever grew.
+    `reschedule` below is where that conversation's outcome lands — a manager
+    rings the customer, agrees a window, and the ticket leaves `Escalated` for
+    `New` with a time somebody can actually be sent to. It drops out of this
+    query entirely rather than moving into the live half, which is right: the
+    hard part is done, and asking for a second action would be asking for
+    nothing new.
+
+    The count still sits on its own heading rather than in the rail's badge, and
+    paging still exists. Both were sized for a list that grew without bound and
+    both remain correct for one that merely can: nothing sweeps this half, so it
+    empties only as fast as people work it.
     """
     now = _now()
     stmt = select(Ticket).where(
@@ -2324,6 +2355,40 @@ async def record_no_show(
             "ends.",
         )
 
+    # ⚠ That guard is also what stops a RESCHEDULED visit being charged as a
+    # no-show, and it is worth knowing that it does, because nothing else here
+    # mentions a reschedule. `core.slots.offered_slots` bounds every window at
+    # `now + SLOT_LEAD_MINUTES`, so a slot that has just been moved is always
+    # hours in the future — therefore `slot_end < now` proves the window that
+    # closed is still the current one and nobody has moved it since.
+    #
+    # It rests on both reschedule endpoints RE-DERIVING the window from
+    # `bookable_slots` rather than trusting the `slotStart` they were posted. If
+    # either ever trusts the client, a past window becomes bookable and this
+    # stops being a guard — a stale `no_show` bell would then let a manager
+    # charge the top band for a visit everybody had agreed to move.
+
+    # And when they were given it. A technician handed a job AFTER its window
+    # shut cannot have missed it — `sweep_no_shows` has refused to flag that
+    # since it was written, and this endpoint has been able to charge for it
+    # anyway. Closing it here now that a moved slot makes the case ordinary
+    # rather than exotic; the sweep's own reasoning applies unchanged, including
+    # that no event at all means we cannot say when they took it, and "we do not
+    # know" must never become ₹1,200.
+    held_from = await db.scalar(
+        select(func.max(TicketEvent.created_at)).where(
+            TicketEvent.company_id == principal.company_id,
+            TicketEvent.ticket_id == row.id,
+            TicketEvent.kind == "assigned",
+        )
+    )
+    if held_from is None or held_from >= row.slot_end:
+        raise _refused(
+            "NOT_A_NO_SHOW",
+            "This technician was given the job after the window had closed, so "
+            "they cannot have missed it.",
+        )
+
     profile = await db.scalar(
         select(TechnicianProfile).where(
             TechnicianProfile.id == row.technician_id,
@@ -2420,6 +2485,211 @@ async def record_no_show(
         ticket_id=row.id,
     )
     await db.commit()
+    return await get_ticket(db, principal, ticket_id)
+
+
+# ── giving a ticket a new time ───────────────────────────────────────────────
+#
+# The manager's door onto `core.reschedule`, and the thing that finally clears
+# the escalation queue's missed half. `list_escalations` has carried a ⚠ since
+# it was written saying that half only ever grows, because "re-slotting means
+# asking the customer for another time, which is a conversation and not a status
+# change". The conversation still happens on a phone; this is where its outcome
+# lands.
+#
+# No code here, unlike the technician's door. A manager has already spoken to
+# the customer, and asking them to also read back six digits would be ceremony
+# rather than evidence. What stands in its place is a required reason and a rank
+# floor.
+
+
+#: The statuses a manager may move a slot FROM.
+#:
+#: `ASSIGNABLE_STATUSES` minus nothing and plus nothing — the same four, and not
+#: by coincidence: "somebody can still be sent to this" and "this can still be
+#: given a different time" are the same question about a ticket. Past `Assigned`
+#: the technician is on site with proof captured, and moving a visit that has
+#: already started is a different operation with different evidence attached.
+RESCHEDULABLE_STATUSES = ASSIGNABLE_STATUSES
+
+
+def _reschedule_horizon() -> datetime.datetime:
+    return _now() + datetime.timedelta(hours=RESCHEDULE_HORIZON_HOURS)
+
+
+async def _load_reschedulable(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
+) -> Ticket:
+    """The ticket, if this manager may move its time.
+
+    ⚠ **`Escalated` splits in two here, and only one half may be moved.** The
+    comment above `ASSIGNABLE_STATUSES` states the rule the whole escalation
+    surface runs on: `Escalated` with no technician means "nobody accepted",
+    while `Escalated` WITH one means "the customer said it was not done". They
+    are told apart by the column rather than by a second status.
+
+    Booking a new slot on the second would quietly turn a complaint into an
+    appointment and drop it out of `list_escalations` — the queue would stop
+    being a record of unresolved refusals, which is a far more expensive loss
+    than the convenience of rescheduling from this screen. That case already has
+    its remedies: re-assign, or force-close with the evidence.
+    """
+    row = await _load(db, principal, ticket_id)
+    if row.status not in RESCHEDULABLE_STATUSES:
+        raise _refused(
+            "TICKET_NOT_RESCHEDULABLE",
+            f"A time can only be set while a job is still to be done. This "
+            f"ticket is {row.status}.",
+        )
+    if row.status == "Escalated" and row.technician_id is not None:
+        raise _refused(
+            "ESCALATION_IS_A_REFUSAL",
+            "The customer said this job was not done, so it needs a technician "
+            "or a closure rather than a new time. Re-assign it, or force-close "
+            "it with the evidence.",
+        )
+    return row
+
+
+async def reschedule_options(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
+) -> list[SlotOptionOut]:
+    """The windows this ticket could be given, soonest first.
+
+    `bookable_slots` with no `technician_id` argument, which resolves the row's
+    OWN technician — so an assigned job is offered only times that person can
+    actually serve, and an unassigned one is offered everything. Both are right,
+    and neither needed a branch here.
+
+    The horizon is `RESCHEDULE_HORIZON_HOURS`, not `sla_due_at`: a ticket being
+    re-slotted has usually blown its service level already, and bounding by it
+    would hand the manager an empty list on exactly the tickets this screen
+    exists for.
+    """
+    row = await _load_reschedulable(db, principal, ticket_id)
+    windows = await bookable_slots(db, row, horizon=_reschedule_horizon())
+    return [SlotOptionOut(slotStart=s, slotEnd=e) for s, e in windows]
+
+
+async def reschedule(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    slot_start: datetime.datetime,
+    reason: str,
+) -> TicketDetailOut:
+    """Set the new time, and put the job wherever that leaves it.
+
+    Where it lands is `core.reschedule.move_slot`'s decision, and it is
+    `confirm_slot`'s rule: whoever holds the job keeps it, and a job nobody
+    holds goes to `New` — the pool. That second half is the one that matters
+    here, because it is how an `Escalated` ticket whose slot had passed leaves
+    the escalation queue entirely rather than merely shuffling within it. The
+    manager has already done the hard part; asking them for a second action
+    afterwards would be asking for nothing new.
+
+    The posted window is re-derived rather than trusted, for the reason
+    `confirm_slot` gives — the screen was rendered in the past — and for one
+    `confirm_slot` did not have: `record_no_show` now leans on a booked window
+    never being in the past.
+    """
+    row = await _load_reschedulable(db, principal, ticket_id)
+
+    match = next(
+        (
+            w
+            for w in await bookable_slots(db, row, horizon=_reschedule_horizon())
+            if w[0] == slot_start
+        ),
+        None,
+    )
+    if match is None:
+        raise _refused(
+            "SLOT_NO_LONGER_AVAILABLE",
+            "That window is no longer free — pick another.",
+        )
+
+    previous = (row.slot_start, row.slot_end)
+    went_to_pool = row.technician_id is None
+    # Captured before the move, because `move_slot` may clear it — and because
+    # the person whose day just changed has to be told, below.
+    held_by = row.technician_id
+    moved = await move_slot(
+        db,
+        row,
+        start=match[0],
+        end=match[1],
+        actor_kind="staff",
+        # The manager spoke to the customer; the system did not hear it. So no
+        # `slot_confirmed_at` — the console would print "Picked by the customer"
+        # off it — and `move_slot` spends the slot token instead. The reason
+        # they typed is the record of the call.
+        customer_agreed=False,
+        actor_label=principal.user.full_name or "—",
+        by_user=principal.user_id,
+        note=reason,
+    )
+    if moved is None:
+        raise _refused(
+            "TICKET_NOT_RESCHEDULABLE",
+            "This ticket moved while you were on this screen. Reload it and "
+            "try again.",
+        )
+    await announce_reschedule(
+        db, row, previous=previous, by=principal.user.full_name or "a manager"
+    )
+    await db.commit()
+
+    # Everything below leaves the process and cannot be rolled back, so it waits
+    # for the commit — the ordering `assign_technician` and `cancel` both use.
+    if went_to_pool:
+        # It is in the pool with a servable time, possibly for the first time in
+        # days. Nobody is watching a card they last saw a week ago, so the push
+        # is what actually re-offers it.
+        await announce_pool_job(
+            db,
+            company_id=row.company_id,
+            ticket_id=row.id,
+            code=row.code,
+            pincode=row.pincode,
+            city=row.city,
+            node_path_ids=row.node_path_ids,
+            payout_paise=row.technician_payout_paise,
+            slot_start=row.slot_start,
+        )
+    elif held_by is not None:
+        # Somebody's day just changed and they did not do it. Without this they
+        # find out from the websocket — only if the app happens to be open — or
+        # from `sweep_slot_reminders` an hour before the NEW slot, which is far
+        # too late to rearrange around. A push is the whole reason that feature
+        # exists: the person who needs it is outdoors with the app shut.
+        await send_to_technician(
+            db,
+            company_id=principal.company_id,
+            technician_id=held_by,
+            title=f"{row.code} moved to {when_label(row.slot_start, row.slot_end)}",
+            body=f"{row.city} {row.pincode} · rescheduled by your manager",
+            data={"type": "job", "ticketId": str(row.id), "code": row.code},
+        )
+
+    # Which message the customer gets depends on whether there was anything to
+    # correct. A ticket that never had a time is being BOOKED, not moved, and
+    # "it was X, it is now Y" cannot be written without an X — so it takes the
+    # same receipt `confirm_slot` sends. Only a real move gets the correction.
+    sent = (
+        await send_slot_moved(db, row, previous)
+        if previous[0] is not None
+        else await _send_slot_confirmed(db, row)
+    )
+    if sent is not None:
+        db.add(sent)
+        # Same tail as `confirm_slot`: the doorbell rang before this row
+        # existed, so without a second one the `confirmation_sent` entry is
+        # invisible to an open console until somebody reloads.
+        await publish_ticket_changed(db, row)
+        await db.commit()
+
     return await get_ticket(db, principal, ticket_id)
 
 

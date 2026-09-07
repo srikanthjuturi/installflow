@@ -246,11 +246,19 @@ export interface TimelineEvent {
     | "serial_mismatch"
     | "serial_corrected"
     | "reminded"
+    // Pre-existing gap, not new here: the API has written this since
+    // `b4e17c92a08d` and the union never learned about it, so every "we told
+    // the customer who is coming" row has been drawing the `created` icon.
+    // Worth closing now because the reschedule work makes it FIRE MORE OFTEN —
+    // the sweep re-arms after a slot moves, so a rescheduled visit gets a
+    // second one.
+    | "customer_notified"
     | "escalated"
     | "bonus_added"
     | "released"
     | "no_show"
-    | "force_closed";
+    | "force_closed"
+    | "rescheduled";
   title: string;
   /**
    * WHO caused it, as a value rather than as wording.

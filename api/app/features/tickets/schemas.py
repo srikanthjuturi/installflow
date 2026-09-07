@@ -381,6 +381,40 @@ class NoShowRequest(AppModel):
     note: str | None = Field(default=None, max_length=255)
 
 
+class SlotOptionOut(AppModel):
+    """One two-hour window a ticket could be moved into.
+
+    Two instants and no rendered label: the console already groups and formats
+    slots for the intake form, and a third rendering shipped from here would be
+    a third place for "2:00–4:00 PM" to be spelled differently.
+
+    Declared here as well as in `jobs/schemas.py` rather than shared, because
+    slices never import each other (hard rule 4) and a two-field DTO is exactly
+    the size of duplication that rule is willing to pay for. If a third slice
+    ever needs it, it moves to `core`.
+    """
+
+    slotStart: datetime.datetime
+    slotEnd: datetime.datetime
+
+
+class RescheduleRequest(AppModel):
+    """A manager moving a customer's agreed time, without a code.
+
+    The technician's door proves the customer agreed by sending them a one-time
+    code; this one has nothing standing behind it but the person clicking, who
+    has presumably just put the phone down. So the reason is **required** where
+    the technician's equivalent note is optional — it is the only record that
+    the conversation happened at all.
+    """
+
+    #: Re-derived server-side against the offered list. The posted value is a
+    #: claim, exactly as it is in `confirm_slot` — and `record_no_show` now
+    #: depends on this being checked rather than trusted.
+    slotStart: datetime.datetime
+    reason: str = Field(min_length=3, max_length=255)
+
+
 class ForceCloseAttachmentIn(AppModel):
     """One supporting file, already in blob storage.
 

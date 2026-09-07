@@ -93,9 +93,6 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-from app.core.product_tree import APPROVAL_STATES
-from app.models.notification import NOTIFICATION_KINDS
-
 # revision identifiers, used by Alembic.
 revision: str = "c4e81b90f7a2"
 down_revision: Union[str, Sequence[str], None] = "e1c73b04a95d"
@@ -157,9 +154,29 @@ def _fix_ledger_amount_check() -> None:
     )
 
 
-#: The three product-approval kinds this revision adds. Removing them from the
-#: model's tuple is how the downgrade rebuilds the old CHECK, so the two halves
-#: cannot disagree about which are new.
+#: The three approval states, FROZEN.
+#:
+#: Spelled out rather than imported from `core.product_tree`, and the same for
+#: the two notification lists below. A migration is a statement about a moment:
+#: importing the live tuple would mean this revision quietly starts writing a
+#: different CHECK the day somebody adds a fourth state, so re-running it on an
+#: old database would produce a schema that database never had. `f2b6a95d10c7`
+#: froze its own kind list for exactly this reason.
+#:
+#: The models are still the source of truth for the CODE; these are a snapshot
+#: of what they said here. A `test_` guard is not worth it — a drift shows up as
+#: an `alembic check` diff on the next schema change, which is the same net that
+#: catches every other constraint.
+APPROVAL_STATES = ("pending", "approved", "rejected")
+
+#: The ten kinds `notifications` allowed before this revision.
+KINDS_BEFORE = (
+    "escalation", "ai", "serial_mismatch", "force_close", "slot",
+    "technician_joined", "job_started", "invite_expired", "assigned", "no_show",
+)
+
+#: The three this revision adds. `KINDS_BEFORE + NEW_KINDS` is what the CHECK
+#: becomes; `KINDS_BEFORE` alone is what the downgrade restores.
 NEW_KINDS = ("product_submitted", "product_approved", "product_rejected")
 
 #: (key, label, parent_key, sort_order) — parent first, self-referencing FK.
@@ -309,7 +326,9 @@ def upgrade() -> None:
     #    constraint cannot drift from the code that writes it.
     op.drop_constraint("kind", "notifications", type_="check")
     op.create_check_constraint(
-        "kind", "notifications", f"kind IN ({_in_list(NOTIFICATION_KINDS)})"
+        "kind",
+        "notifications",
+        f"kind IN ({_in_list(KINDS_BEFORE + NEW_KINDS)})",
     )
 
     # 6. An unrelated leftover, fixed here so `alembic check` stays readable.
@@ -381,9 +400,7 @@ def downgrade() -> None:
 
     op.drop_constraint("kind", "notifications", type_="check")
     op.create_check_constraint(
-        "kind",
-        "notifications",
-        f"kind IN ({_in_list([k for k in NOTIFICATION_KINDS if k not in NEW_KINDS])})",
+        "kind", "notifications", f"kind IN ({_in_list(KINDS_BEFORE)})"
     )
 
     op.drop_constraint("technician_payout_paise", "product_models", type_="check")

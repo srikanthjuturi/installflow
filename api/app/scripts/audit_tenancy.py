@@ -55,7 +55,18 @@ GLOBAL_TABLES: dict[str, str] = {
     "pincode_districts": "geography - joins two global tables",
     "membership_regions": "scoped through membership_id, which is company-scoped",
     "refresh_tokens": "belongs to a user, not a company; the token's claim carries the company",
-    "otp_codes": "issued before a company is selected - auth precedes tenancy",
+    "otp_codes": (
+        "issued before a company is selected - auth precedes tenancy. Its "
+        "ticket_id (a 'reschedule' code names the visit it authorises) is "
+        "therefore a PLAIN fk, the only shape a table with no company_id can "
+        "have. What makes that safe is not the constraint: both reschedule "
+        "endpoints resolve the ticket through a company-scoped loader FIRST "
+        "(mine_query / _load) and only then require the code's ticket_id to "
+        "equal it, so a code minted against another tenant's ticket can never "
+        "be presented for one of ours. Deliberately absent from TENANT_LINKS - "
+        "that check would demand a composite fk that cannot exist here, and "
+        "would fail for ever"
+    ),
 }
 
 #: (child, column, parent) links that must be composite.

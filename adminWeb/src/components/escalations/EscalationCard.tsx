@@ -1,6 +1,8 @@
 import { Link } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { useNavOrigin } from "@/hooks/useNavOrigin";
 import { formatSlot, slotCountdown } from "@/utils/datetime";
 import { moneyPaise } from "@/utils/money";
@@ -37,9 +39,12 @@ export function EscalationCard({
   ticket,
   missed = false,
   readAt,
+  onReschedule,
 }: {
   ticket: Ticket;
   missed?: boolean;
+  /** Raised when the manager wants a new time. The page owns the dialog. */
+  onReschedule?: (ticket: Ticket) => void;
   /**
    * When the rows were READ, as an epoch. The countdown is measured against it
    * rather than `new Date()` so this card and the queue's own live/missed split
@@ -53,6 +58,30 @@ export function EscalationCard({
      `/tickets`, or worse, onto the very ticket they were still deciding about.
      The queue is a working list you come back to; say so on the way out. */
   const origin = useNavOrigin("Back to escalations");
+
+  /* Rescheduling from here, rather than only from the ticket page.
+     `EscalationQueuePage`'s own comment about the missed half — "These cannot be
+     rescued — the slot has closed" — was true of every control that existed
+     when it was written, and this is the one that makes it false.
+
+     The DIALOG lives on the page, not here: this component is rendered once per
+     row of an infinite list, and a dialog plus a mutation hook per row is a
+     cost that grows with the backlog. The card raises the intent; the page owns
+     the one dialog and the one mutation. */
+  const { has } = useFeatureAccess();
+  /* Mirrors the server's own refusal. An escalation that still names a
+     technician is a customer REFUSAL, not an unfilled slot, and giving it a new
+     time would launder a complaint into an appointment. Nothing in this queue
+     should carry one — `list_escalations` selects `technician_id IS NULL` — but
+     the card is cheap to make honest about it. */
+  const canReschedule =
+    !!onReschedule && has("jobs.reschedule") && !ticket.technicianId;
+
+  const renderReschedule = () => (
+    <Button variant="outline" onClick={() => onReschedule?.(ticket)}>
+      Change the time
+    </Button>
+  );
   /* A job escalated before the customer ever picked a time has no slot to count
      down to, and `slotCountdown(null)` correctly answers "—". That is the right
      answer to the wrong question on this screen: a manager is here to decide
@@ -144,6 +173,15 @@ export function EscalationCard({
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2">
+          {/* On a MISSED row this leads, and on a live one it comes last.
+              The order is the advice: while the slot is still open the job can
+              be filled as it stands, so money and a technician are the first
+              two answers. Once it has closed neither of them fixes anything —
+              there is no window left to send somebody to — and the only real
+              move is to ring the customer for another time. This is the control
+              that records that call, and the one thing that takes a row out of
+              the Missed pile for good. */}
+          {missed && canReschedule ? renderReschedule() : null}
           <LinkButton to={`/tickets/${ticket.id}/bonus`} state={origin}>
             Add bonus &amp; re-notify
           </LinkButton>
@@ -154,8 +192,10 @@ export function EscalationCard({
           >
             Assign manually
           </LinkButton>
+          {!missed && canReschedule ? renderReschedule() : null}
         </div>
       </CardContent>
+
     </Card>
   );
 }

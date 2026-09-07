@@ -86,6 +86,12 @@ value, `payout`. Two writers, and they shipped with the kind (hard rule 8): `fee
 customer-confirmed closure credits the full amount, `force_close_ticket` credits what the manager
 entered, clamped to the ticket's price and writing no row at zero.
 
+⚠ **Both price columns are NULLABLE, and an unpriced model IS a state now** — it is a product a
+vendor submitted and nobody has approved. That reverses what this section used to say, and it did
+not give up the guarantee, it moved it: `approved_is_priced` says an approved row is a priced one,
+and `_resolve_product` refuses anything that is not approved. Approved implies priced, so intake
+still cannot reach an uncosted model. See **Vendor-submitted products** below.
+
 Three things about it are load-bearing:
 
 - **The masking is by principal, in the serializer.** `masters.get_tree` and `tickets._hydrate`
@@ -108,9 +114,49 @@ Still to come: **AI review**, the **dashboard**, and the **redeem-cash flow** �
 `upi_id` is collected (console add/edit, the joining flow, and `PATCH /technicians/me/payout-account`)
 but nothing spends against it yet.
 
-Two things nothing clears yet, both deliberate and both needing a product decision rather than
-code: an escalated job whose slot has PASSED stays in the queue for ever (re-slotting means asking
-the customer for another time), and the vendor is never told their customer's slot is at risk.
+**A slot can move**, which is what finally clears the escalation queue's missed half. Two doors onto
+one mover in `core/reschedule.py` — the technician's, gated by a one-time code sent to the
+**customer's** phone (`otp_codes.purpose = 'reschedule'`, keyed on `ticket_id`) and read back to
+them; and the console's, `jobs.reschedule` + an Area-Manager floor, no code and a required reason.
+Nothing is charged either way: the customer agreed.
+
+Six things about it are load-bearing:
+
+- **`sla_due_at` is FROZEN, never re-based.** The promise made at intake is a fact, and a ticket
+  that is rescheduled goes on reading as breached — which is true. The replacement window is
+  bounded by `core.tickets.RESCHEDULE_HORIZON_HOURS` instead, and `offered_slots` grew a `horizon=`
+  for exactly one caller. Bounded by `sla_due_at` the list would be EMPTY on precisely the tickets
+  the feature exists for.
+- **The code is minted for ONE WINDOW, not just one ticket.** `otp_codes` carries both `ticket_id`
+  and `slot_start`, and `consume_code` filters on both. Either alone is a hole: `_mint` keeps one
+  live code per destination, so without the ticket a customer's second code verifies their first
+  visit; and without the window a valid code books any time at all, proving a conversation
+  happened without pinning what was agreed in it. Changing the window means asking again — it is a
+  different question.
+- **Six sweeps re-arm against it.** Their dedupe asked "has this ever happened to this ticket",
+  which after a move is the wrong question — nobody has been reminded about the NEW slot, and the
+  customer has not been told who is coming to it. `_rearmed(marker, _last_event("rescheduled"))`
+  is the predicate, and for a ticket that never moved it collapses to exactly the old test.
+  ⚠ Event-vs-event comparisons use **`seq`, not `created_at`**: `now()` is the TRANSACTION's start
+  time, so a sweep that began just before a reschedule committed would stamp its own marker
+  *earlier* than the move and remind twice. `seq` is assigned at INSERT and cannot.
+- **`Escalated` splits in two and only one half may be moved.** With no technician it means
+  "nobody accepted" and rescheduling is the remedy; WITH one it means "the customer said it was
+  not done", and giving that a new time would launder a complaint into an appointment. Refused
+  with `ESCALATION_IS_A_REFUSAL`.
+- **`slot_confirmed_at` is written by the technician's door only.** It means "the customer picked
+  this" and the console prints exactly that sentence off it, so a manager who agreed a time on the
+  phone has not earned it. That door spends the `slot_token` instead — same protection against the
+  customer's stale link overwriting a fresh booking, without the false claim.
+- **Everybody who needs telling is told**, and each by the right channel: the customer a WhatsApp
+  naming BOTH windows (its own template, never a second "your visit is confirmed"), the technician
+  a push when a manager moved their day, and the vendor a `rescheduled` notification — they asked
+  for the visit and were the one party a move never reached. A code sent to a number that is also
+  the technician's own is allowed, recorded on the trail and rung to the area manager: refusing
+  would punish a technician installing at their own address with a cancellation penalty.
+
+One thing nothing clears yet, deliberate and needing a product decision rather than code: the
+vendor is never told their customer's slot is at risk.
 
 ---
 
@@ -476,28 +522,6 @@ product_models
 all three. The tempting mistake is writing a refusal into `is_active`: pausing is reversible by
 whoever paused it and says nothing about whether the row was ever agreed, while a rejection carries
 a reason the vendor has to answer — and "paused" would then mean two things.
-
-**`ancestor_ids` is what makes everything else cheap.** Inheritance, technician eligibility and
-the breadcrumb are one array test instead of a recursive CTE. It is safe to denormalise only
-because **`parentId` is create-only and not patchable** — the array and `depth` are written once
-from the parent (`parent.ancestor_ids || parent.id`, `parent.depth + 1`) and cycles are therefore
-unreachable. The price of that is **no move/re-parent operation**; see the root `AGENTS.md`.
-
-Four CHECKs guard it — `depth` in range, no self-parent, `NOT (id = ANY(ancestor_ids))`, and
-`depth = coalesce(array_length(ancestor_ids, 1), 0)` so the array cannot disagree with the number.
-The `parameters` CHECK can only assert `jsonb_typeof(...) = 'array'` and a length cap: walking the
-entries needs a set-returning function, which Postgres refuses inside a CHECK, so entry shape and
-name uniqueness are schema-layer. And **assign a new list to change it** — SQLAlchemy does not
-track JSONB mutation in place.
-
-Two traps that already bit:
-
-- **Root name uniqueness needs `COALESCE(parent_id, <zero uuid>)`.** Postgres treats NULLs as
-  DISTINCT in a unique index, so the natural `(company_id, parent_id, lower(name))` would happily
-  accept two roots both called "Electronics". Partial on `deleted_at IS NULL`, hand-written, and
-  autogenerate will want to drop it every time (hard rule 8).
-- **A null JSONB column needs `JSONB(none_as_null=True)`.** Without it psycopg writes Python
-  `None` as JSON `null`, which is not what the CHECK means by "unset" — it fails.
 
 **`ancestor_ids` is what makes everything else cheap.** Inheritance, technician eligibility and
 the breadcrumb are one array test instead of a recursive CTE. It is safe to denormalise only
@@ -1014,3 +1038,45 @@ Please make sure someone is available at the address.
 
 Parameters in order: company, product, slot, technician, technician's mobile. The company is a
 parameter for the reason it is in every other template here — one WABA sends for every tenant.
+
+### `slot_rescheduled` is SUBMITTED and pending review
+
+Sent to Meta on **2026-09-07**, template id `2208058859762917`, UTILITY / `en_US`, status
+**PENDING**. `WHATSAPP_SLOT_RESCHEDULED_TEMPLATE_NAME` stays **empty in both `.env` files until it
+reads APPROVED** — a pending template cannot send, and `publish.py` refuses to deploy on one.
+
+Until then `core.reschedule.send_slot_moved` falls back to free-form text, which reaches nobody
+outside the 24-hour window. Everything else works: the slot moves, the `confirmation_sent` event
+records Meta's refusal, and the vendor's bell and the technician's push are in-app and arrive
+regardless.
+
+⚠ The cost of the gap is sharper than for the other templates that waited. A customer whose visit
+has been MOVED is holding a message naming the old time, and this is the one that corrects it —
+until it is approved, they keep turning up on the wrong day. Do not announce the feature first.
+
+⚠ **Nothing tells you when Meta says yes.** `job_accepted` and `job_accepted_manager` were approved
+and sat empty in dev's `.env` for two days, silently dropped with 131047, because filling the name
+in is a manual step nobody is prompted to take. `publish.py` guards only the opposite direction —
+a CONFIGURED name that is not approved. Check with:
+
+```bash
+curl -s -H "Authorization: Bearer $WHATSAPP_TOKEN" \
+  "https://graph.facebook.com/v21.0/$WHATSAPP_BUSINESS_ID/message_templates?fields=name,status&limit=200"
+```
+
+The body as registered — four parameters, opening with "Your" and closing on a fixed sentence for
+subcode `2388299`, and matching the `Your {{2}} … from {{1}}` shape Meta has already approved four
+times here:
+
+```
+Your {{2}} visit from {{1}} has been moved.
+
+It was {{3}}. It is now {{4}}.
+
+Our technician will call you before arriving.
+```
+
+Parameters in order: company, product, the PREVIOUS window, the new one. Naming the previous one
+is the whole point — a second message reading "your visit is confirmed for…" beside the first
+leaves the customer unable to tell which is current, which is why this is its own template rather
+than a re-send of `slot_confirmed`.

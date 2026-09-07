@@ -1,3 +1,4 @@
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { SERVICE_TYPES } from "@/components/masters/categorySchema";
 import { SERVICE_LEVELS } from "@/types/ticket";
@@ -140,6 +141,32 @@ export const ticketSchema = z
   });
 
 export type TicketFormValues = z.infer<typeof ticketSchema>;
+
+/**
+ * Moving a ticket that already exists.
+ *
+ * Deliberately does NOT re-derive the window against `offeredSlots` the way
+ * `ticketSchema` does above. That check mirrors intake's rule — inside the
+ * service level — and a ticket being re-slotted has usually blown it, so the
+ * validator would refuse every window the server had just offered. The list
+ * here comes from the API and the API re-derives it on submit; a second,
+ * differently-bounded opinion in the browser would only be wrong.
+ *
+ * `reason` is required, unlike the technician's optional note in the app. That
+ * door has the customer's own one-time code standing behind it. This one has
+ * only the manager, so the sentence they type is the whole record of the call.
+ */
+export const rescheduleSchema = z.object({
+  slotStart: z.string().min(1, "Pick a window"),
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Say why it is moving — this is the only record of the call")
+    .max(255, "Keep it under 255 characters"),
+});
+
+export type RescheduleFormValues = z.infer<typeof rescheduleSchema>;
+export const rescheduleResolver = zodResolver(rescheduleSchema);
 
 /**
  * The four service levels, as radio cards.
