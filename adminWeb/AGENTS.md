@@ -119,8 +119,9 @@ things about it are worth knowing before editing:
 - **Every card opens a list holding exactly what the card counted.** A count that disagrees with
   the rows behind it is worse than no count. Two things make it hold, and both must survive:
   the Escalations card links with **`half=live`** (it counts the savable half; the queue also
-  carries a missed pile that only grows, so the unfiltered link showed seven rows under a card
-  saying two), and every card carries the dashboard's own four filters through `linkTo()`.
+  carries a missed pile that empties only when somebody works it, so the unfiltered link showed
+  seven rows under a card saying two), and every card carries the dashboard's own four filters
+  through `linkTo()`.
   `list_escalations` and `list_tickets` both accept them and apply the same `narrowed()` the
   figures came from. Verified across all five roles, unfiltered and narrowed.
 - **A filter the destination cannot show must announce itself.** The escalation queue has no
@@ -153,6 +154,20 @@ Two seams to know about:
   confirming: nothing writes `Cancelled`, so without it a silent customer leaves an immortal
   ticket. A `force_closed` event carries who, when and the reason + justification, and the
   technician is credited (`jobs_completed` counts `Closed` **and** `Force-Closed`).
+- **Rescheduling is real, and it is what empties the escalation queue's missed half.**
+  `POST /tickets/{id}/reschedule` behind `jobs.reschedule` plus an Area-Manager floor, with the
+  windows coming from `GET /tickets/{id}/reschedule/slots` — **never** from `utils/slots.offeredSlots`,
+  which mirrors intake's rule and stops at the service level a re-slotted ticket has usually blown.
+  `RescheduleDialog` is mounted on the ticket page and once on the escalation QUEUE — the page, not
+  the card. A manager works down that list, so a routed page per row is what the `state={origin}`
+  plumbing exists to apologise for; but the cards are rendered per row of an infinite list, and a
+  dialog plus a mutation hook inside each would grow with the backlog when only one can ever be
+  open. The card raises `onReschedule(ticket)`; the page owns the dialog. No code and a required
+  reason, unlike the technician's door in the app.
+  ⚠ Every string in it is **NET-NEW and needs sign-off** — the prototype has no reschedule
+  anywhere and says the opposite where it touches the subject ("Slot confirmed & locked"). Same
+  marking convention as `NoShowDialog`. The missed half's subtitle changed too: it used to say the
+  rows could not be rescued, which this made false.
 
 **Do not fake a number that has a real source.** A null rating renders `—`, not `0`; the
 technician job-history table renders empty rather than inventing rows.

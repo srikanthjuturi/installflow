@@ -434,9 +434,28 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **The escalation queue is two lists, and they run in opposite directions.** Jobs whose window is
   still open sort soonest-first — the one closest to being missed. Jobs whose slot has CLOSED sort
   newest-first, because what just went wrong is what somebody can still ring a customer about.
-  Nothing clears the second half (re-slotting means asking the customer for another time), so it
-  only ever grows; that is why the console pages it on scroll and why the rail's badge counts the
-  live half alone.
+  The second half is emptied by **rescheduling** and by nothing else — a manager rings the
+  customer, agrees another window, and the ticket leaves `Escalated` for the pool. Until that
+  existed it only ever grew, which is why the console still pages it on scroll and why the rail's
+  badge still counts the live half alone: nothing sweeps it, so it empties only as fast as people
+  work it.
+- **A confirmed slot can MOVE, and only with the customer's agreement.** A technician does it from
+  the app with a one-time code sent to the **customer's** phone and read back to them; an Area
+  Manager and above does it from the console with no code and a written reason, having just been
+  on the phone to them. Nothing is charged either way — that is the whole difference from
+  cancelling, which charges the band and hands back a slot the customer has already refused.
+  There is **no cap** on how often a ticket may move: the customer's consent is the guard, and
+  every move is a `rescheduled` event carrying both windows.
+  The code is minted for **one window**, not just one ticket. "Yes, Thursday morning" is consent
+  to Thursday morning, so picking a different time means asking the customer again — the app
+  clears the digits when the window changes, and the server would refuse them anyway.
+  All three other parties are told, each the way that reaches them: the customer a WhatsApp naming
+  the old time and the new, the technician a push when a MANAGER moved their day, and the vendor a
+  bell — they asked for the visit and were the one party a reschedule used to miss entirely.
+  ⚠ The service-level deadline is **not** re-based, so a rescheduled ticket reads as SLA-breached
+  for ever. That is deliberate and it is honest — the promise made at intake was missed — and the
+  replacement window is bounded by a 48-hour horizon instead of by a deadline that has usually
+  already passed.
 - **No-show is not a late cancellation**, which is why it is the priciest band rather than merely
   the last. Cancelling after the slot has opened is still `< 2h`: they told somebody, and the gap
   between the two prices is what speaking up is worth. Detected by `sweep_no_shows`, which charges

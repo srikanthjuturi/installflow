@@ -55,8 +55,15 @@ weights 400/500/700/900 — headline numbers are 900.
 
 ## 2. Screen inventory
 
-18 screens in the prototype, 20 now. The prototype's own index numbering is kept so it's easy
-to cross-reference; the two additions came with real onboarding and are marked NEW.
+18 screens in the prototype, 21 now. The prototype's own index numbering is kept so it's easy
+to cross-reference; the additions are marked NEW — two came with real onboarding, and one with
+rescheduling.
+
+⚠ **Reschedule has NO approved copy.** The prototype has no such screen and never mentions moving
+a time; the console's own prototype says the opposite outright ("Slot confirmed & locked"). Every
+string on it was written fresh and is awaiting sign-off, marked in the file the way §3 marks the
+other unapproved strings. Do not treat anything in `RescheduleJobScreen.tsx` as approved copy to
+copy elsewhere.
 
 | # | Route | Screen |
 |---|---|---|
@@ -73,6 +80,7 @@ to cross-reference; the two additions came with real onboarding and are marked N
 | 6 | `(app)/(tabs)/jobs` | My jobs |
 | 7 | `(app)/job/[id]/index` | Job detail (unlocked) |
 | 8 | `(app)/job/[id]/cancel` | Cancel + penalty |
+| — | `(app)/job/[id]/reschedule` | **NEW** — move the slot, with the CUSTOMER's code |
 | 9–12 | `(app)/job/[id]/proof/capture` | Camera — 4 modes |
 | 13 | `(app)/job/[id]/proof/review` | Review & submit |
 | — | `(app)/job/[id]/proof/verifying` | AI wait |
