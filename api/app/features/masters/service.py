@@ -1890,18 +1890,18 @@ async def import_serials(
     )
 
 
-#: How many suggestions the intake form's dropdown offers at once. A list long
-#: enough to scroll is one nobody reads — past this, typing one more character
-#: is faster than looking.
-MAX_SERIAL_MATCHES = 10
+#: One page of suggestions. The dropdown pages on scroll rather than truncating
+#: at this — it was a hard cap of ten to begin with, which is fine for finding a
+#: serial you already know and useless for browsing what a model actually holds.
+MAX_SERIAL_MATCHES = 25
 
-#: Below this the form does not ask. `SN-` matches most of a catalogue, and ten
-#: arbitrary serials under the box is noise rather than help.
+#: Below this the form does not ask. `SN-` matches most of a catalogue, and the
+#: first page of an unfiltered scroll is noise rather than help.
 MIN_SERIAL_QUERY = 3
 
 
 async def lookup_serial(
-    db: AsyncSession, principal: Principal, serial: str
+    db: AsyncSession, principal: Principal, serial: str, *, offset: int = 0
 ) -> list[SerialMatchOut]:
     """Serials STARTING WITH what was typed, each with the product it names.
 
@@ -1921,6 +1921,22 @@ async def lookup_serial(
     the form only when what was typed equals one of these outright, and
     otherwise just offers the list — but that is a question about confidence,
     not about what is worth showing.
+
+    ## Paged, so the dropdown can scroll
+
+    `offset` walks further into the same ordered result. It was a hard cap of
+    `MAX_SERIAL_MATCHES` with nothing beyond it, which is fine for confirming a
+    serial you already know and useless for browsing what a model holds.
+
+    Offset paging rather than a keyset, deliberately: a keyset on `lower(serial)`
+    would need the model id in the cursor too (a serial may sit on two products)
+    for a result set that is one company's serials under one prefix, scrolled for
+    a few seconds. The drift offset paging is criticised for needs rows to be
+    inserted mid-scroll, and nothing writes here while somebody types.
+
+    An exact match always lands on the FIRST page, which is what lets the client
+    decide about autofilling without paging: the ordering is by serial, and a
+    serial that equals the whole query sorts ahead of everything extending it.
 
     ## A vendor only ever finds its OWN products
 
@@ -1960,9 +1976,15 @@ async def lookup_serial(
             ProductModel.is_active.is_(True),
             ProductModel.approval_status == APPROVED,
         )
-        # Stable between keystrokes: a dropdown whose rows reshuffle as you type
-        # is one you cannot reliably click.
-        .order_by(func.lower(ProductModelSerial.serial))
+        # Stable between keystrokes AND between pages: a dropdown whose rows
+        # reshuffle as you type is one you cannot reliably click, and one whose
+        # order is not total would repeat or skip rows as it pages. The model id
+        # breaks the tie, because a serial CAN legally appear on two products.
+        .order_by(
+            func.lower(ProductModelSerial.serial),
+            ProductModelSerial.product_model_id,
+        )
+        .offset(offset)
         .limit(MAX_SERIAL_MATCHES)
     )
     if principal.is_vendor and principal.vendor_id is not None:

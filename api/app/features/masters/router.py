@@ -272,6 +272,7 @@ async def lookup_serial(
     db: Db,
     principal: CanView,
     serial: Annotated[str, Query(min_length=1, max_length=64)],
+    offset: Annotated[int, Query(ge=0, le=10_000)] = 0,
 ) -> ApiEnvelope[list[SerialMatchOut]]:
     """Serials STARTING WITH `serial`, each with the product it names.
 
@@ -286,9 +287,15 @@ async def lookup_serial(
     tree. That is the point: the caller is the vendor reading the number off the
     unit in front of them.
 
-    Capped at `MAX_SERIAL_MATCHES` and ordered by serial, so the list is stable
-    between keystrokes. Under `MIN_SERIAL_QUERY` characters it answers nothing —
-    `SN-` matches most of a catalogue.
+    One page of `MAX_SERIAL_MATCHES`, ordered by serial then model id — a total
+    order, so paging neither repeats nor skips. `offset` walks further in, which
+    is what lets the dropdown scroll instead of stopping at the cap. Under
+    `MIN_SERIAL_QUERY` characters it answers nothing — `SN-` matches most of a
+    catalogue.
+
+    A short page means the end: the client stops asking when it gets back fewer
+    than it asked for, so there is no total to compute and no second query to
+    count one.
 
     Empty is the normal answer, not an error: most serials are simply not
     loaded, and a 404 here would make the form's ordinary state look broken.
@@ -299,7 +306,7 @@ async def lookup_serial(
     at a time and read their catalogue back, in one request and without raising
     anything.
     """
-    matches = await service.lookup_serial(db, principal, serial)
+    matches = await service.lookup_serial(db, principal, serial, offset=offset)
     exact = [m for m in matches if m.serial.lower() == serial.strip().lower()]
     return envelope(
         matches,
