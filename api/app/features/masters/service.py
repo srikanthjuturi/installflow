@@ -65,6 +65,7 @@ from app.features.masters.schemas import (
     SerialAddRequest,
     SerialAddResult,
     SerialImportReport,
+    SerialMatchOut,
     SerialReject,
 )
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
@@ -1887,3 +1888,122 @@ async def import_serials(
         # "the model will hold" has to be projected rather than counted.
         total=held if not dry_run else held + len(fresh),
     )
+
+
+#: How many models one serial may resolve to before the form stops guessing.
+#: Small on purpose — the unique index is per (company, MODEL), so two products
+#: sharing a number is legal but rare, and a list of ten is not an autofill.
+MAX_SERIAL_MATCHES = 5
+
+
+async def lookup_serial(
+    db: AsyncSession, principal: Principal, serial: str
+) -> list[SerialMatchOut]:
+    """Which product a serial number belongs to. Powers the intake form's autofill.
+
+    The vendor's real starting point is a unit with a number printed on it. The
+    category chain and the model are things they otherwise have to work out from
+    that number, and the master already knows — so this turns four boxes into
+    one.
+
+    ## EXACT match, not a prefix
+
+    A partial serial matches the wrong product as often as the right one, and
+    filling four fields from a half-typed number then having to unfill them is
+    worse than not filling them. Exact also means this is one probe of
+    `uq_product_model_serials_model_serial_lower` rather than a scan, which is
+    what makes it safe to call on every keystroke.
+
+    ## A vendor only ever finds its OWN products
+
+    Pinned server-side, the same way `_resolve_product` pins the model at
+    intake and for exactly the same reason: without it this is an oracle. A
+    vendor could type serials until one resolved and read back a competitor's
+    product names and catalogue structure — worse than the enumeration the
+    intake check already guards against, because this one answers in a single
+    request and needs no ticket.
+
+    ## Only what intake would actually ACCEPT
+
+    Approved, active, not deleted. Filling the form with a product the vendor
+    then cannot submit would be a worse experience than filling nothing, and it
+    would put the refusal at the end of a long form instead of at the box they
+    just typed in.
+    """
+    needle = (serial or "").strip().lower()
+    if not needle:
+        return []
+
+    stmt = (
+        select(ProductModelSerial.serial, ProductModel)
+        .join(
+            ProductModel,
+            ProductModel.id == ProductModelSerial.product_model_id,
+        )
+        .where(
+            ProductModelSerial.company_id == principal.company_id,
+            ProductModel.company_id == principal.company_id,
+            func.lower(ProductModelSerial.serial) == needle,
+            ProductModel.deleted_at.is_(None),
+            ProductModel.is_active.is_(True),
+            ProductModel.approval_status == APPROVED,
+        )
+        .limit(MAX_SERIAL_MATCHES)
+    )
+    if principal.is_vendor and principal.vendor_id is not None:
+        stmt = stmt.where(ProductModel.vendor_id == principal.vendor_id)
+
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return []
+
+    # The breadcrumb, in one read for every match rather than one per match.
+    node_ids = {m.node_id for _, m in rows}
+    nodes = {
+        n.id: n
+        for n in (
+            await db.scalars(
+                select(ProductNode).where(
+                    ProductNode.id.in_(node_ids),
+                    ProductNode.company_id == principal.company_id,
+                    ProductNode.deleted_at.is_(None),
+                    ProductNode.is_active.is_(True),
+                )
+            )
+        ).all()
+    }
+    wanted: set[uuid.UUID] = set(nodes)
+    for node in nodes.values():
+        wanted.update(node.ancestor_ids or [])
+    names = dict(
+        (
+            await db.execute(
+                select(ProductNode.id, ProductNode.name).where(
+                    ProductNode.id.in_(wanted),
+                    ProductNode.company_id == principal.company_id,
+                )
+            )
+        ).all()
+    )
+
+    out: list[SerialMatchOut] = []
+    for stored, model in rows:
+        node = nodes.get(model.node_id)
+        # A paused or deleted category takes its products out of intake with it,
+        # so a match under one is not a match the form may fill.
+        if node is None:
+            continue
+        out.append(
+            SerialMatchOut(
+                modelId=model.id,
+                modelName=model.name,
+                nodeId=node.id,
+                nodePath=[
+                    names[a] for a in (node.ancestor_ids or []) if a in names
+                ]
+                + [node.name],
+                serviceTypes=list(model.service_types or []),
+                serial=stored,
+            )
+        )
+    return out

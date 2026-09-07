@@ -616,3 +616,30 @@ class SerialImportReport(AppModel):
     #: What the model holds once this import lands — the figure the console
     #: shows on the model, and on a dry run the figure it WOULD show.
     total: int
+
+
+class SerialMatchOut(AppModel):
+    """The product a serial number belongs to — what the intake form fills from.
+
+    Answers the vendor's real starting point. They are standing in front of a
+    unit with a number printed on it; the category chain and the model are
+    things they have to work out from it, and the master already knows.
+
+    Deliberately carries the NODE as well as the model. The intake form's
+    category drill-down is a chain of node ids, so a match that named only the
+    model would fill the last box and leave the four above it empty.
+    """
+
+    modelId: uuid.UUID
+    modelName: str
+    nodeId: uuid.UUID
+    #: Root first, INCLUDING the node's own name — the breadcrumb the form shows
+    #: back so the vendor can see what it filled in and disagree with it.
+    nodePath: list[str]
+    #: What the model supports, so the form can narrow its service-type box
+    #: without waiting for a second read of the tree.
+    serviceTypes: list[str]
+    #: As STORED, not as typed. The form writes this back into the box, so a
+    #: serial entered in the wrong case is corrected in front of the user rather
+    #: than silently at the server.
+    serial: str

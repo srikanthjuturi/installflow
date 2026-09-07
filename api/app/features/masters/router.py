@@ -74,6 +74,7 @@ from app.features.masters.schemas import (
     SerialAddRequest,
     SerialAddResult,
     SerialImportReport,
+    SerialMatchOut,
 )
 from app.models.role import NATIONAL_HEAD
 
@@ -261,6 +262,46 @@ async def serial_template(principal: CanEdit) -> StreamingResponse:
         headers={
             "Content-Disposition": 'attachment; filename="serial-numbers.xlsx"'
         },
+    )
+
+
+@router.get(
+    "/serials/lookup", response_model=ApiEnvelope[list[SerialMatchOut]]
+)
+async def lookup_serial(
+    db: Db,
+    principal: CanView,
+    serial: Annotated[str, Query(min_length=1, max_length=64)],
+) -> ApiEnvelope[list[SerialMatchOut]]:
+    """Which product a serial belongs to — the intake form's autofill.
+
+    On `masters.view`, which vendors hold so their intake form has a product
+    tree. That is the point: the caller here is the vendor typing the number off
+    the unit in front of them.
+
+    A LIST rather than one match, because the unique index is per
+    (company, model) — two products sharing a numbering scheme is legal, if
+    rare. The form fills silently only when exactly one comes back; more than
+    one is a question, not an answer.
+
+    Empty is the normal answer, not an error: most serials are simply not
+    loaded, and a 404 here would make the form's ordinary state look broken.
+
+    ⚠ `service.lookup_serial` pins a vendor to its OWN models. Without that this
+    endpoint is an oracle — a vendor could type serials until one resolved and
+    read back a competitor's product names and catalogue structure, in one
+    request and without raising anything.
+    """
+    matches = await service.lookup_serial(db, principal, serial)
+    return envelope(
+        matches,
+        message=(
+            f"{matches[0].modelName} matched"
+            if len(matches) == 1
+            else f"{len(matches)} products carry that serial"
+            if matches
+            else "No product carries that serial"
+        ),
     )
 
 
