@@ -257,8 +257,19 @@ export async function downloadSerialTemplate(): Promise<void> {
  * The server pins a vendor to its OWN models, so this can never be used to read
  * back a competitor's catalogue.
  */
-export function lookupSerial(serial: string): Promise<SerialMatch[]> {
-  return apiGet<SerialMatch[]>(
-    `/masters/serials/lookup?serial=${encodeURIComponent(serial)}`
-  );
+export function lookupSerial(
+  serial: string,
+  { offset = 0 }: { offset?: number } = {}
+): Promise<SerialMatch[]> {
+  const query = new URLSearchParams({ serial });
+  if (offset) query.set("offset", String(offset));
+  return apiGet<SerialMatch[]>(`/masters/serials/lookup?${query}`);
 }
+
+/**
+ * One page of suggestions. The dropdown pages on scroll rather than stopping
+ * here, and a SHORT page is how it knows it has reached the end — so this has
+ * to match `MAX_SERIAL_MATCHES` in `api/app/features/masters/service.py`. Set
+ * it lower here and the list would stop early believing it was done.
+ */
+export const SERIAL_PAGE_SIZE = 25;

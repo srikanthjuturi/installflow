@@ -34,7 +34,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { moneyPaise } from "@/utils/money";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useNodeTree } from "@/hooks/useProductMaster";
-import { lookupSerial } from "@/services/productMaster";
+import {
+  lookupSerial,
+  SERIAL_PAGE_SIZE,
+} from "@/services/productMaster";
 import { cn } from "@/lib/utils";
 import { istToday, offeredSlots, type OfferedSlot } from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
@@ -299,6 +302,11 @@ export function ManualEntryForm({
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const serialBoxRef = useRef<HTMLDivElement>(null);
+  /* What `matches` is a result FOR, and whether the server has more of it.
+     Both are needed to page: the scroll handler has to ask for the same term
+     the list was built from, not whatever is in the box by the time it fires. */
+  const [searchedFor, setSearchedFor] = useState("");
+  const [hasMore, setHasMore] = useState(false);
 
   /* Dismissed by an outside pointerdown rather than by the input's blur.
      `register` owns `onBlur` — it is what marks the field touched — so passing
@@ -352,9 +360,14 @@ export function ManualEntryForm({
     // A lookup that fails leaves the form exactly as the vendor typed it. There
     // is nothing to report: the serial may simply not be loaded, and the server
     // is the authority on that at submit either way.
-    onSuccess: (found) => {
+    onSuccess: (found, serial) => {
       setMatches(found);
       setActiveIndex(-1);
+      setSearchedFor(serial);
+      // A full page might have more behind it; a short one is the end. No total
+      // is fetched, because counting would be a second query to answer a
+      // question one comparison already answers.
+      setHasMore(found.length === SERIAL_PAGE_SIZE);
       // The reply is a PREFIX search, so "did they finish typing one of these?"
       // is asked here rather than by the server. Only an exact hit fills.
       const typed = (getValues("serialNumber") ?? "").trim().toLowerCase();
@@ -375,8 +388,37 @@ export function ManualEntryForm({
     onError: () => {
       setMatches([]);
       setSuggestOpen(false);
+      setHasMore(false);
     },
   });
+
+  /* The next page, appended. Its own mutation rather than a flag on the one
+     above, because the two do different things to the list: that one REPLACES
+     it and may autofill from it, this one only ever adds to the end and must
+     never re-trigger a fill. */
+  const loadMore = useMutation({
+    mutationFn: ({ term, offset }: { term: string; offset: number }) =>
+      lookupSerial(term, { offset }),
+    onSuccess: (found, { term }) => {
+      // The box may have moved on while this was in flight. Appending a page
+      // of a stale search would put rows under a query that never asked for
+      // them, so it is dropped.
+      if (term !== searchedFor) return;
+      setMatches((prev) => [...prev, ...found]);
+      setHasMore(found.length === SERIAL_PAGE_SIZE);
+    },
+    onError: () => setHasMore(false),
+  });
+
+  function onSuggestScroll(e: React.UIEvent<HTMLUListElement>) {
+    if (!hasMore || loadMore.isPending) return;
+    const el = e.currentTarget;
+    // Fetched a little before the end, so the next rows are usually already
+    // there by the time the reader arrives at them — the same lead
+    // `shared/LoadMore` takes with its IntersectionObserver.
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 80) return;
+    loadMore.mutate({ term: searchedFor, offset: matches.length });
+  }
 
   const pickSuggestion = useCallback(
     (hit: SerialMatch) => {
@@ -414,6 +456,7 @@ export function ManualEntryForm({
       if (value.length < 3) {
         setMatches([]);
         setSuggestOpen(false);
+        setHasMore(false);
       } else lookup.mutate(value);
     }, 300);
     return () => clearTimeout(id);
@@ -536,6 +579,7 @@ export function ManualEntryForm({
                     id="serial-suggestions"
                     role="listbox"
                     aria-label="Matching serial numbers"
+                    onScroll={onSuggestScroll}
                     /* `bg-surface`, not `bg-surface-1` — there is no such
                        token, and Tailwind emits nothing for a name it cannot
                        resolve, so the list rendered fully transparent with the
@@ -573,6 +617,24 @@ export function ManualEntryForm({
                         </span>
                       </li>
                     ))}
+                    {/* `aria-hidden` and not an option: it is a status, and a
+                        screen reader walking the list must not land on a row
+                        that cannot be chosen. */}
+                    {hasMore ? (
+                      <li
+                        aria-hidden
+                        className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-ink-3"
+                      >
+                        {loadMore.isPending ? (
+                          <>
+                            <Spinner />
+                            Loading more…
+                          </>
+                        ) : (
+                          "Scroll for more"
+                        )}
+                      </li>
+                    ) : null}
                   </ul>
                 ) : null}
               </div>
