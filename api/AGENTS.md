@@ -1039,20 +1039,16 @@ Please make sure someone is available at the address.
 Parameters in order: company, product, slot, technician, technician's mobile. The company is a
 parameter for the reason it is in every other template here — one WABA sends for every tenant.
 
-### `slot_rescheduled` is SUBMITTED and pending review
+### `slot_rescheduled` is APPROVED and live
 
-Sent to Meta on **2026-09-07**, template id `2208058859762917`, UTILITY / `en_US`, status
-**PENDING**. `WHATSAPP_SLOT_RESCHEDULED_TEMPLATE_NAME` stays **empty in both `.env` files until it
-reads APPROVED** — a pending template cannot send, and `publish.py` refuses to deploy on one.
+Submitted to Meta on **2026-09-07**, template id `2208058859762917`, UTILITY / `en_US`, and
+**APPROVED the same day**. `WHATSAPP_SLOT_RESCHEDULED_TEMPLATE_NAME=slot_rescheduled` is set in
+both `.env` files and deployed; `publish.py` now counts ten approved templates instead of nine,
+which is its own independent confirmation.
 
-Until then `core.reschedule.send_slot_moved` falls back to free-form text, which reaches nobody
-outside the 24-hour window. Everything else works: the slot moves, the `confirmation_sent` event
-records Meta's refusal, and the vendor's bell and the technician's push are in-app and arrive
-regardless.
-
-⚠ The cost of the gap is sharper than for the other templates that waited. A customer whose visit
-has been MOVED is holding a message naming the old time, and this is the one that corrects it —
-until it is approved, they keep turning up on the wrong day. Do not announce the feature first.
+Proved by sending one, not by reading the status: a wrong parameter count is Meta error `132000`
+and nothing but a real send finds it. Sent to `+916301815418` — one of the two numbers on
+`WHATSAPP_ALLOWLIST` — and accepted with a message id.
 
 ⚠ **Nothing tells you when Meta says yes.** `job_accepted` and `job_accepted_manager` were approved
 and sat empty in dev's `.env` for two days, silently dropped with 131047, because filling the name
