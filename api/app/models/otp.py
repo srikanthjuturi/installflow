@@ -41,11 +41,17 @@ from app.db.mixins import AuditMixin, IdMixin
 PURPOSE_LOGIN = "login"
 PURPOSE_INVITE = "invite"
 PURPOSE_PASSWORD_RESET = "password_reset"
+PURPOSE_RESCHEDULE = "reschedule"
 
-#: The one place the three are listed. The CHECK below and the wire schemas both
-#: read it, so adding a fourth cannot be done in one place and forgotten in the
+#: The one place the four are listed. The CHECK below and the wire schemas both
+#: read it, so adding a fifth cannot be done in one place and forgotten in the
 #: other.
-PURPOSES = (PURPOSE_LOGIN, PURPOSE_INVITE, PURPOSE_PASSWORD_RESET)
+PURPOSES = (
+    PURPOSE_LOGIN,
+    PURPOSE_INVITE,
+    PURPOSE_PASSWORD_RESET,
+    PURPOSE_RESCHEDULE,
+)
 
 
 class OtpCode(Base, IdMixin, AuditMixin):
@@ -55,6 +61,9 @@ class OtpCode(Base, IdMixin, AuditMixin):
     #: 'invite' — proving possession of the phone before self-registering.
     #: 'password_reset' — a console account proving possession of its EMAIL
     #: before choosing a new password. The only purpose that travels by email.
+    #: 'reschedule' — a CUSTOMER agreeing to a new slot. The only purpose whose
+    #: recipient has no account here at all, which is why `user_id` is null on
+    #: one and `ticket_id` below is set instead.
     purpose: Mapped[str] = mapped_column(String(16), nullable=False)
     #: E.164. Null exactly when this code went to an email instead.
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -68,6 +77,42 @@ class OtpCode(Base, IdMixin, AuditMixin):
     )
     invite_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("technician_invites.id", ondelete="CASCADE"), nullable=True
+    )
+    #: Which visit a 'reschedule' code authorises. Null for the other three
+    #: purposes, which have no ticket.
+    #:
+    #: Not a convenience: `_mint` keeps exactly ONE live code per destination,
+    #: so a customer with two open tickets who is asked about the second has had
+    #: the first one's code burned — and the surviving row is the one a
+    #: verification of the FIRST ticket would otherwise find and accept. The
+    #: column is what makes `consume_code` able to refuse it.
+    #:
+    #: A PLAIN foreign key, not the composite `(company_id, ticket_id)` every
+    #: parent link inside tenant data uses, because this table has no
+    #: `company_id` to put in one — a code is issued before a company is
+    #: selected. What keeps it safe is the application: both reschedule
+    #: endpoints resolve the ticket through a company-scoped loader first and
+    #: only then require this to equal it, so a code minted against another
+    #: tenant's ticket can never be presented for one of ours.
+    #: `app/scripts/audit_tenancy.py` records the same argument beside the
+    #: table's exemption.
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=True
+    )
+    #: WHICH WINDOW a 'reschedule' code authorises. Null for the other purposes.
+    #:
+    #: `ticket_id` alone would make the code mean "this customer agreed to some
+    #: change to this visit", and that is not what was said to them: somebody
+    #: who agreed to Thursday morning has consented to Thursday morning. Without
+    #: this, a client holding a valid code could post any window at all and the
+    #: server would take it — the gate would prove a conversation happened, not
+    #: what was agreed in it.
+    #:
+    #: So a code is minted FOR one window and verifies for that window. Changing
+    #: the window means asking the customer again, which is exactly right: it is
+    #: a different question.
+    slot_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -101,10 +146,11 @@ class OtpCode(Base, IdMixin, AuditMixin):
         # covering index a phone code has or each one table-scans.
         Index("ix_otp_codes_email_created", "email", "created_at"),
         Index("ix_otp_codes_ip_created", "request_ip", "created_at"),
-        # The two FKs. An OTP row outlives the sign-in attempt, so both parents
-        # can be deleted while codes still point at them.
+        # The three FKs. An OTP row outlives the attempt that created it, so
+        # every parent can be deleted while codes still point at them.
         Index("ix_otp_codes_user_id", "user_id"),
         Index("ix_otp_codes_invite_id", "invite_id"),
+        Index("ix_otp_codes_ticket_id", "ticket_id"),
         CheckConstraint(
             "purpose IN ('" + "','".join(PURPOSES) + "')", name="purpose"
         ),
