@@ -9,6 +9,7 @@ import { FormSection } from "@/components/shared/FormSection";
 import { Link } from "react-router";
 import type { Control } from "react-hook-form";
 import { Controller, useController, useForm, useWatch } from "react-hook-form";
+import { useMutation } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,11 +34,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { moneyPaise } from "@/utils/money";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useNodeTree } from "@/hooks/useProductMaster";
+import { lookupSerial } from "@/services/productMaster";
 import { cn } from "@/lib/utils";
 import { istToday, offeredSlots, type OfferedSlot } from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
 import type { CreateTicketInput } from "@/types/ticket";
-import type { ProductNode } from "@/types/product";
+import { nodeIdPath, type ProductNode, type SerialMatch } from "@/types/product";
 import {
   SERVICE_LEVEL_OPTIONS,
   ticketSchema,
@@ -97,6 +99,7 @@ export function ManualEntryForm({
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
@@ -278,6 +281,92 @@ export function ManualEntryForm({
 
   // Only these two carry a fault to describe. An installation explains itself.
   const needsProblem = serviceType === "Tech Visit" || serviceType === "Service";
+
+  /* ── autofill from the serial number ──────────────────────────────────────
+     The vendor's real starting point is a unit with a number printed on it.
+     Everything above — the category chain, the model, the service type — is
+     something they otherwise have to work out FROM that number, and the master
+     already knows. So typing the serial fills the rest in.
+
+     Only on an exact match, which is also all the server answers: a partial
+     serial picks the wrong product as often as the right one, and four fields
+     filled from a half-typed number are worse than four empty ones. */
+  const serialNumber = useWatch({ control, name: "serialNumber" });
+  const [matches, setMatches] = useState<SerialMatch[]>([]);
+
+  const applyMatch = useCallback(
+    (hit: SerialMatch) => {
+      // A match the drill-down cannot reach is not one to fill. The intake tree
+      // hides unapproved and paused branches, so this is what keeps a product
+      // the vendor could not actually submit out of the form.
+      const path = nodeIdPath(tree, hit.nodeId);
+      if (!path) return;
+      setPicked(path);
+      setValue("subcategoryId", hit.nodeId, { shouldValidate: false });
+      setValue("modelId", hit.modelId, { shouldValidate: false });
+      setValue("serviceType", hit.serviceTypes[0] ?? "Installation + Demo", {
+        shouldValidate: false,
+      });
+      // Normalisation, never a content change: the match was EXACT, so this can
+      // differ only in case or surrounding space. Worth doing — the ticket would
+      // otherwise print a serial the master spells differently.
+      setValue("serialNumber", hit.serial, { shouldValidate: false });
+    },
+    [tree, setValue]
+  );
+
+  /* Looked up as a MUTATION rather than a query, because that is what this
+     actually is: a user action, an async answer, and form state written from
+     the reply. A `useQuery` would mean reacting to its data in an effect, and
+     a fill triggered from an effect body is a cascading render — the shape
+     `react-hooks/set-state-in-effect` exists to stop.
+
+     It also removes a piece of state. Nothing has to remember which serial it
+     already filled from, because the fill happens once per REPLY rather than on
+     every render: clearing the model by hand (which `pickLevel` does) no longer
+     re-triggers anything, so the autofill cannot fight the user. */
+  const lookup = useMutation({
+    mutationFn: (serial: string) => lookupSerial(serial),
+    // A lookup that fails leaves the form exactly as the vendor typed it. There
+    // is nothing to report: the serial may simply not be loaded, and the server
+    // is the authority on that at submit either way.
+    onSuccess: (found) => {
+      setMatches(found);
+      const hit = found.length === 1 ? found[0] : undefined;
+      // A model already chosen is the user's, not ours to overwrite. Agreement
+      // needs nothing done; a disagreement becomes the offer below.
+      if (hit && !getValues("modelId")) applyMatch(hit);
+    },
+    onError: () => setMatches([]),
+  });
+
+  useEffect(() => {
+    const value = (serialNumber ?? "").trim();
+    // setState only inside the timer, never beside it — a synchronous one here
+    // cascades a render on every keystroke. Below three characters the matches
+    // are cleared rather than skipped, so deleting a serial takes its notice
+    // away with it.
+    const id = setTimeout(() => {
+      if (value.length < 3) setMatches([]);
+      else lookup.mutate(value);
+    }, 300);
+    return () => clearTimeout(id);
+    // `lookup` is a stable mutation object; depending on it would re-arm the
+    // timer on every render and debounce nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serialNumber]);
+
+  /* One match is an answer. Several is a question — two products may legally
+     share a numbering scheme — so the form asks instead of guessing. */
+  const match = matches.length === 1 ? matches[0] : undefined;
+
+  /** The serial names a DIFFERENT product than the one selected. An offer. */
+  const conflicting =
+    match && modelId && modelId !== match.modelId ? match : undefined;
+  /** The selected model IS the serial's product — whether the form filled it or
+   *  the user picked it by hand. Worth confirming either way: it tells the
+   *  vendor the number will survive intake. */
+  const confirmed = match && modelId === match.modelId ? match : undefined;
 
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
@@ -474,12 +563,51 @@ export function ManualEntryForm({
                 error={err("serialNumber")}
               />
             </FieldGrid>
+            {/* What the serial says about the rest of the form. Three states,
+                each answering a different question:
+                  confirmed    the model and the serial agree — say so, both
+                               because the form may have just filled four boxes
+                               on its own and because it means intake will
+                               accept the number
+                  conflicting  they disagree. An OFFER, never a silent switch:
+                               the model may be what the user meant and the
+                               serial the typo
+                  several      two products carry the number, so the form asks
+                Silence otherwise, including on no match — most serials are not
+                loaded, and that is not a failure worth a line of text. */}
+            {confirmed ? (
+              <FieldDescription className="text-ok">
+                Matches {confirmed.nodePath.join(" › ")} ›{" "}
+                {confirmed.modelName}.
+              </FieldDescription>
+            ) : conflicting ? (
+              <FieldDescription className="flex flex-wrap items-center gap-2 text-warn">
+                <span>
+                  This serial belongs to {conflicting.modelName}, not the model
+                  selected above.
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyMatch(conflicting)}
+                >
+                  Use {conflicting.modelName}
+                </Button>
+              </FieldDescription>
+            ) : matches.length > 1 ? (
+              <FieldDescription className="text-warn">
+                {matches.length} products carry this serial — pick the category
+                and model above.
+              </FieldDescription>
+            ) : null}
             {/* Said once, here, because "which serial?" is the obvious question
                 and the answer decides whether AI review can do its job. */}
             <FieldDescription>
               The serial you EXPECT to find, off the invoice — the technician
               photographs the real one on site, and a mismatch is what AI review
-              catches.
+              catches. Type it first and the category, model and service type
+              fill themselves in.
             </FieldDescription>
           </FormSection>
 

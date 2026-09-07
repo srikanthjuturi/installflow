@@ -17,6 +17,7 @@ import type {
   ProductModelSerial,
   ProductNode,
   ResubmitModelInput,
+  SerialMatch,
   SerialAddResult,
   SerialImportReport,
   SubmitModelInput,
@@ -244,4 +245,20 @@ export async function downloadSerialTemplate(): Promise<void> {
     // download by the time click() returns.
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+}
+
+/**
+ * Which product a serial number belongs to — the intake form's autofill.
+ *
+ * A LIST, because the unique index is per (company, model): two products
+ * sharing a numbering scheme is legal, if rare. An empty array is the ordinary
+ * answer, not a failure — most serials are simply not loaded.
+ *
+ * The server pins a vendor to its OWN models, so this can never be used to read
+ * back a competitor's catalogue.
+ */
+export function lookupSerial(serial: string): Promise<SerialMatch[]> {
+  return apiGet<SerialMatch[]>(
+    `/masters/serials/lookup?serial=${encodeURIComponent(serial)}`
+  );
 }

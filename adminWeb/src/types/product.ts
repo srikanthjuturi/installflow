@@ -395,3 +395,47 @@ export interface SerialImportReport {
   /** What the model holds after the import. On a dry run, what it WOULD hold. */
   total: number;
 }
+
+/**
+ * The product a serial number belongs to — what the intake form fills from.
+ *
+ * Carries the NODE as well as the model because the form's category drill-down
+ * is a chain of node ids: a match naming only the model would fill the last box
+ * and leave the ones above it empty.
+ */
+export interface SerialMatch {
+  modelId: string;
+  modelName: string;
+  nodeId: string;
+  /** Root first, including the node's own name — the breadcrumb shown back. */
+  nodePath: string[];
+  serviceTypes: ServiceType[];
+  /** As STORED, not as typed. The form writes this back so a serial entered in
+   *  the wrong case is corrected in front of the user. */
+  serial: string;
+}
+
+/**
+ * The id path from a root down to `nodeId`, for seeding the drill-down.
+ *
+ * The sibling of `resolveChain` in `ManualEntryForm`, which goes the other way:
+ * that turns a picked chain into nodes, this turns a node into the chain that
+ * would have picked it. Returns null when the node is not in this tree, which
+ * is a real answer rather than a failure — an intake tree hides unapproved and
+ * paused branches, and a product the form cannot offer must not be filled in.
+ */
+export function nodeIdPath(
+  tree: ProductNode[] | undefined,
+  nodeId: string
+): string[] | null {
+  const walk = (nodes: ProductNode[], trail: string[]): string[] | null => {
+    for (const node of nodes) {
+      const here = [...trail, node.id];
+      if (node.id === nodeId) return here;
+      const deeper = walk(node.children, here);
+      if (deeper) return deeper;
+    }
+    return null;
+  };
+  return walk(tree ?? [], []);
+}
