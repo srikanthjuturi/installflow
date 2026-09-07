@@ -1290,6 +1290,18 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   count and the panel's empty state says so in words. Do not render "0 SN" as a badge on every
   model: on the day this shipped every model had zero, so the state worth pointing at is the one
   that can refuse a ticket.
+- **The intake form runs that backwards: typing the serial FILLS the product.** `ManualEntryForm`
+  debounces the serial box into `GET /masters/serials/lookup` and, on exactly one match, sets the
+  category chain, the model and the service type — the vendor's real starting point is a number
+  printed on a unit, not a category tree.
+  Three rules keep it from fighting the user. It fills **only when no model is chosen**; a
+  disagreement is an **offer** under the box, never a silent switch, because the model may be right
+  and the serial the typo. It rewrites the typed serial **only to the master's spelling**, which an
+  exact match guarantees differs by case or space alone.
+  It is a **`useMutation`, not a `useQuery`** — user input, async answer, form state written from
+  the reply. A query would mean filling from an effect, which is the cascading render
+  `react-hooks/set-state-in-effect` exists to stop, and it would need a second piece of state to
+  remember which serial it had already filled from.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review · unreadable →
   retake on-site before leaving.
 - **A vendor may add products, and may never price them.** A submission is `pending` and cannot be

@@ -566,6 +566,25 @@ from openpyxl as a float and stores as `1.23456789012e+11`. A vendor could reaso
 since it holds the invoice; that stayed a follow-up because nothing is blocked while staff catch
 up.
 
+**`GET /masters/serials/lookup` runs the check backwards, and it is the one place here that is an
+ORACLE RISK.** It answers "which product is this serial?", so the intake form can fill the category
+chain, the model and the service type from the number printed on the unit — the vendor's actual
+starting point, and four boxes they otherwise derive by hand.
+
+- **A vendor only ever finds its OWN models**, pinned in `lookup_serial` exactly as
+  `_resolve_product` pins the model at intake. Without it a vendor could type serials until one
+  resolved and read back a competitor's product names and catalogue structure, in one request and
+  without raising anything. This is a stronger version of the enumeration the intake check already
+  orders its refusals to prevent.
+- **EXACT match, never a prefix.** A partial serial names the wrong product as often as the right
+  one, and it keeps this to one probe of the unique index rather than a scan — which is what makes
+  it safe to call while somebody types.
+- **Approved, active, not deleted only.** Filling the form with a product the vendor cannot then
+  submit is worse than filling nothing, and it moves the refusal to the end of a long form.
+- A **list**, because the unique index is per (company, model): two products sharing a numbering
+  scheme is legal. The console fills silently only on exactly one. Empty is the ordinary answer and
+  not an error — most serials are simply not loaded.
+
 **Three independent notions of "not available" on a product, and they do not collapse.**
 `is_active` is paused, `deleted_at` is removed, `approval_status` is not yet agreed. Intake tests
 all three. The tempting mistake is writing a refusal into `is_active`: pausing is reversible by
