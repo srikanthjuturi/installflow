@@ -412,7 +412,17 @@ export function ManualEntryForm({
                 form that found the Chrome bug that component exists to avoid.
                 The billing line below is the sibling whose insertion collapsed
                 every control here to height 0. */}
-            <FieldGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* The serial comes FIRST, and that ordering is the feature.
+
+                It used to sit below the four boxes it fills, which made the
+                autofill unreachable in practice: by the time somebody reached
+                it they had already picked the category, the model and the
+                service type by hand, and the box could only agree with them.
+
+                Read top-down it now matches what the vendor is actually doing —
+                they are holding a unit with a number printed on it, and that
+                number is the one fact they have before anything else. */}
+            <FieldGrid className="grid gap-4 sm:grid-cols-2">
               {/* Read-only rather than a one-option select: there is nothing
                   to choose, and a disabled dropdown invites a click that does
                   nothing. Same treatment `ScopeField` gives a National Head's
@@ -423,6 +433,68 @@ export function ManualEntryForm({
                 <FieldLabel htmlFor="vendor-name">Company / vendor</FieldLabel>
                 <Input id="vendor-name" value={vendor.name} readOnly disabled />
               </Field>
+              <TextField
+                name="serialNumber"
+                label="Serial number"
+                required
+                placeholder="Type or scan it — the product fills in"
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={64}
+                register={register}
+                error={err("serialNumber")}
+              />
+            </FieldGrid>
+
+            {/* What the serial says about the rest of the form. Three states,
+                each answering a different question:
+                  confirmed    the model and the serial agree — say so, both
+                               because the form may have just filled three boxes
+                               on its own and because it means intake will
+                               accept the number
+                  conflicting  they disagree. An OFFER, never a silent switch:
+                               the model may be what the user meant and the
+                               serial the typo
+                  several      two products carry the number, so the form asks
+                Silence otherwise, including on no match — most serials are not
+                loaded, and that is not a failure worth a line of text. */}
+            {confirmed ? (
+              <FieldDescription className="text-ok">
+                Matches {confirmed.nodePath.join(" › ")} ›{" "}
+                {confirmed.modelName}.
+              </FieldDescription>
+            ) : conflicting ? (
+              <FieldDescription className="flex flex-wrap items-center gap-2 text-warn">
+                <span>
+                  This serial belongs to {conflicting.modelName}, not the model
+                  selected below.
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyMatch(conflicting)}
+                >
+                  Use {conflicting.modelName}
+                </Button>
+              </FieldDescription>
+            ) : matches.length > 1 ? (
+              <FieldDescription className="text-warn">
+                {matches.length} products carry this serial — pick the category
+                and model below.
+              </FieldDescription>
+            ) : null}
+            {/* Said once, here, because "which serial?" is the obvious question
+                and the answer decides whether AI review can do its job. */}
+            <FieldDescription>
+              The serial you EXPECT to find, off the invoice — the technician
+              photographs the real one on site, and a mismatch is what AI review
+              catches. Enter it and the boxes below fill themselves in; pick
+              them by hand if it is not on record yet.
+            </FieldDescription>
+
+            <FieldGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {/* One box per level, appearing as the previous one is answered.
                   Keyed on the PARENT, not the index: picking a different TV
                   replaces the list below it, and an index key would leave the
@@ -535,10 +607,14 @@ export function ManualEntryForm({
               </div>
             ) : null}
 
-            <FieldGrid className="grid gap-4 sm:grid-cols-2">
-              {/* Only the two service types that describe a fault. Rendering it
-                  always would invite a description the API then refuses. */}
-              {needsProblem ? (
+            {/* Only the two service types that describe a fault. Rendering it
+                always would invite a description the API then refuses.
+
+                Below the product now rather than beside the serial: which
+                question to ask depends on the service type, so it cannot be
+                answered before the model above has been settled. */}
+            {needsProblem ? (
+              <FieldGrid className="grid gap-4">
                 <TextField
                   name="description"
                   label="What is the problem?"
@@ -549,66 +625,8 @@ export function ManualEntryForm({
                   register={register}
                   error={err("description")}
                 />
-              ) : null}
-              <TextField
-                name="serialNumber"
-                label="Serial number"
-                required
-                placeholder="As printed on the box"
-                className="font-mono"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={64}
-                register={register}
-                error={err("serialNumber")}
-              />
-            </FieldGrid>
-            {/* What the serial says about the rest of the form. Three states,
-                each answering a different question:
-                  confirmed    the model and the serial agree — say so, both
-                               because the form may have just filled four boxes
-                               on its own and because it means intake will
-                               accept the number
-                  conflicting  they disagree. An OFFER, never a silent switch:
-                               the model may be what the user meant and the
-                               serial the typo
-                  several      two products carry the number, so the form asks
-                Silence otherwise, including on no match — most serials are not
-                loaded, and that is not a failure worth a line of text. */}
-            {confirmed ? (
-              <FieldDescription className="text-ok">
-                Matches {confirmed.nodePath.join(" › ")} ›{" "}
-                {confirmed.modelName}.
-              </FieldDescription>
-            ) : conflicting ? (
-              <FieldDescription className="flex flex-wrap items-center gap-2 text-warn">
-                <span>
-                  This serial belongs to {conflicting.modelName}, not the model
-                  selected above.
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => applyMatch(conflicting)}
-                >
-                  Use {conflicting.modelName}
-                </Button>
-              </FieldDescription>
-            ) : matches.length > 1 ? (
-              <FieldDescription className="text-warn">
-                {matches.length} products carry this serial — pick the category
-                and model above.
-              </FieldDescription>
+              </FieldGrid>
             ) : null}
-            {/* Said once, here, because "which serial?" is the obvious question
-                and the answer decides whether AI review can do its job. */}
-            <FieldDescription>
-              The serial you EXPECT to find, off the invoice — the technician
-              photographs the real one on site, and a mismatch is what AI review
-              catches. Type it first and the category, model and service type
-              fill themselves in.
-            </FieldDescription>
           </FormSection>
 
           {/* A dead end with a way out of it: an empty dropdown reads as broken,
