@@ -454,6 +454,30 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     different evidence, and the server refuses this one. */}
                 {stage === 'Assigned' ? (
                   <View style={{ marginTop: 10 }}>
+                    {/* ⚠ NET-NEW, and every string needs sign-off — the
+                        prototype has no reschedule anywhere. See the header of
+                        `RescheduleJobScreen`.
+
+                        ABOVE the cancel button, and that order is the point.
+                        The two answer the same moment — the customer cannot do
+                        today — and only one of them costs the technician
+                        ₹300–₹800. Offering the free, customer-agreed option
+                        second would bury it under the one that charges them.
+
+                        `secondary`, so it reads as a real alternative to the
+                        blue CTA above without competing with it, and clearly
+                        apart from the red one below. Same `Assigned`-only gate
+                        as cancelling, for the same reason: past it, proof is
+                        captured and the technician is on site. */}
+                    <View style={{ marginBottom: 10 }}>
+                      <Button
+                        label="Reschedule with the customer"
+                        variant="secondary"
+                        leadingIcon="calendar"
+                        onPress={() => router.push(`/job/${jobId}/reschedule`)}
+                      />
+                    </View>
+
                     {/* Was plain `ghost`, so the destructive action rendered in
                         the same grey as body copy and read as disabled text
                         rather than a control.
