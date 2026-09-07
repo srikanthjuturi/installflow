@@ -191,7 +191,15 @@ DEFAULTS: dict[str, object] = {
     "escalate_hours_before_slot": 4,
     # A completed visit the customer never confirmed. Nothing is auto-closed —
     # a manager force-closes it with supporting documents.
-    "force_close_hours": 48,
+    #
+    # Twelve, not the 48 this started at. Two days of silence means a technician
+    # who finished the work on Monday is still unpaid on Wednesday, because the
+    # payout entry is written at closure; twelve puts the decision in front of a
+    # manager the same working day. It is a WAIT, not a deadline — nothing
+    # closes when it elapses, it only unlocks the force-close a person still has
+    # to justify — so the cost of it being short is a card appearing early, and
+    # the cost of it being long is money nobody can release.
+    "force_close_hours": 12,
     # How long a manager's funded re-notification is protected before the sweep
     # may escalate the same job again. Without it the re-publish lands back
     # inside the escalation window it never left and the next tick takes it
