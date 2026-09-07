@@ -51,7 +51,9 @@ from app.features.tickets.schemas import (
     ForceCloseRequest,
     NoShowRequest,
     RenotifyOut,
+    RescheduleRequest,
     SerialCorrectionRequest,
+    SlotOptionOut,
     TicketAttachmentOut,
     TicketCreateRequest,
     TicketDetailOut,
@@ -336,6 +338,77 @@ async def record_no_show(
     return envelope(
         await service.record_no_show(db, principal, ticket_id, note=body.note),
         message="No-show recorded",
+    )
+
+
+#: Moving a customer's agreed time.
+#:
+#: Shared with the technician's own door in `jobs/router.py`, which is what makes
+#: it one key rather than two: `company_role_features` overrides are per ROLE, so
+#: a company that wants managers to reschedule but not technicians turns off
+#: exactly one row. Two keys would have made that the same decision written
+#: twice, and the pair would drift.
+#:
+#: Paired with the rank floor for the reason every other pairing on this screen
+#: is: the grant is overridable on Feature Access, and this one changes a
+#: promise already made to a customer.
+CanReschedule = Annotated[Principal, Depends(require_feature("jobs.reschedule"))]
+
+
+@router.get(
+    "/{ticket_id}/reschedule/slots",
+    response_model=ApiEnvelope[list[SlotOptionOut]],
+    dependencies=[AreaManagerUp],
+)
+async def list_reschedule_slots(
+    ticket_id: uuid.UUID, db: Db, principal: CanReschedule
+) -> ApiEnvelope[list[SlotOptionOut]]:
+    """Windows this ticket could be given.
+
+    Already narrowed to what its assigned technician can serve, when it has one
+    — so a manager cannot book a time the person holding it is standing in
+    somebody else's kitchen for. Unassigned, it is every free window.
+
+    Empty is a real answer and means the assigned technician's next two days are
+    full; re-assigning is the way out of that, not this screen.
+    """
+    return envelope(await service.reschedule_options(db, principal, ticket_id))
+
+
+@router.post(
+    "/{ticket_id}/reschedule",
+    response_model=ApiEnvelope[TicketDetailOut],
+    dependencies=[AreaManagerUp],
+)
+async def reschedule_ticket(
+    ticket_id: uuid.UUID,
+    db: Db,
+    principal: CanReschedule,
+    body: RescheduleRequest,
+) -> ApiEnvelope[TicketDetailOut]:
+    """Give the job a new time, after agreeing one with the customer.
+
+    No code, unlike the technician's door: the manager has just put the phone
+    down, and a required reason is the record of that call.
+
+    A ticket nobody holds goes back to the pool with its new time, which is how
+    an escalation whose slot had passed leaves the queue for good — the case
+    that queue has never had an exit for.
+
+    **409 `ESCALATION_IS_A_REFUSAL`** means the customer said the job was NOT
+    done, which needs a technician or a closure rather than a new time.
+    **409 `SLOT_NO_LONGER_AVAILABLE`** means the window went while the dialog
+    was open.
+    """
+    return envelope(
+        await service.reschedule(
+            db,
+            principal,
+            ticket_id,
+            slot_start=body.slotStart,
+            reason=body.reason,
+        ),
+        message="Time updated",
     )
 
 
