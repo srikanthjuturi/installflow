@@ -493,14 +493,15 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   deliberately not unique and a later service call on the same unit repeats the number.
   The same guard runs on `PATCH /tickets/{id}/serial`, or the check would be one request away from
   being bypassed by anybody who can raise a ticket.
-- **The intake form runs that backwards, and that is the point of loading serials at all.** Typing
-  the serial fills the category, the model and the service type (`GET /masters/serials/lookup`) —
-  a vendor's real starting point is the number printed on the unit in front of them, not a category
-  tree. It fills only when no model is picked, and a disagreement is an offer rather than a silent
-  switch.
+- **The intake form runs that backwards, and that is the point of loading serials at all.** The
+  serial is the FIRST field on the form; typing it offers a dropdown of matching serials and fills
+  the category, the model and the service type (`GET /masters/serials/lookup`) — a vendor's real
+  starting point is the number printed on the unit in front of them, not a category tree. It fills
+  only when no model is picked, and a disagreement is an offer rather than a silent switch.
   ⚠ That endpoint is the one **oracle risk** in this slice: a vendor is pinned server-side to its
-  OWN models, or it becomes a way to read back a competitor's catalogue one guessed serial at a
-  time. Exact match only, and approved+active models only.
+  OWN models, or it becomes a way to read back a competitor's catalogue one prefix at a time —
+  and it is a PREFIX search, which makes that easier rather than harder. Approved and active
+  models only, and nothing is answered below three characters.
 - Proof is **four** artifacts: barcode, serial, product photos, geo-tagged live photos.
   Gallery uploads are never accepted.
 - **Only the customer closes a job — except a manager force-closing it.** That is the one hole the

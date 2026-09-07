@@ -567,23 +567,32 @@ since it holds the invoice; that stayed a follow-up because nothing is blocked w
 up.
 
 **`GET /masters/serials/lookup` runs the check backwards, and it is the one place here that is an
-ORACLE RISK.** It answers "which product is this serial?", so the intake form can fill the category
-chain, the model and the service type from the number printed on the unit — the vendor's actual
-starting point, and four boxes they otherwise derive by hand.
+ORACLE RISK.** It answers "which products carry serials starting with this?", so the intake form
+can offer a dropdown and fill the category chain, the model and the service type from the number
+printed on the unit — the vendor's actual starting point, and four boxes they otherwise derive by
+hand.
 
 - **A vendor only ever finds its OWN models**, pinned in `lookup_serial` exactly as
-  `_resolve_product` pins the model at intake. Without it a vendor could type serials until one
-  resolved and read back a competitor's product names and catalogue structure, in one request and
+  `_resolve_product` pins the model at intake. Without it a vendor could walk a competitor's
+  numbering scheme and read back their product names and catalogue structure, in one request and
   without raising anything. This is a stronger version of the enumeration the intake check already
-  orders its refusals to prevent.
-- **EXACT match, never a prefix.** A partial serial names the wrong product as often as the right
-  one, and it keeps this to one probe of the unique index rather than a scan — which is what makes
-  it safe to call while somebody types.
-- **Approved, active, not deleted only.** Filling the form with a product the vendor cannot then
-  submit is worse than filling nothing, and it moves the refusal to the end of a long form.
-- A **list**, because the unique index is per (company, model): two products sharing a numbering
-  scheme is legal. The console fills silently only on exactly one. Empty is the ordinary answer and
-  not an error — most serials are simply not loaded.
+  orders its refusals to prevent, and **prefix matching makes it easier, not harder** — which is
+  why the pinning is in the query and `MIN_SERIAL_QUERY` (3) exists.
+- **A PREFIX search, capped and ordered.** It began exact-only, reasoning that a partial serial
+  names the wrong product as often as the right one. That was true and beside the point: an exact
+  match answers nothing until the last character lands, so the box sat silent through all the
+  typing and read as broken. Exactness still decides what the CLIENT does — it fills only when the
+  typed value equals a result outright — but that is a question about confidence, not about what
+  is worth showing.
+- **It needed an index of its own.** `uq_product_model_serials_model_serial_lower` is
+  `(company_id, product_model_id, lower(serial))`, so a search that fixes the company and the
+  serial but not the model has an unconstrained column in the middle of the key and cannot
+  range-scan. `c7f1a4e93b26` adds `(company_id, lower(serial) text_pattern_ops)` — `text_pattern_ops`
+  because the default opclass serves equality but not `LIKE 'abc%'` outside the C collation. That
+  index is what the exact lookup had always really wanted too.
+- **Approved, active, not deleted only.** Offering a product the vendor cannot then submit is worse
+  than offering nothing, and it moves the refusal to the end of a long form.
+- Empty is the ordinary answer and not an error — most serials are simply not loaded.
 
 **Three independent notions of "not available" on a product, and they do not collapse.**
 `is_active` is paused, `deleted_at` is removed, `approval_status` is not yet agreed. Intake tests

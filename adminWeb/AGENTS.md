@@ -1290,10 +1290,12 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   count and the panel's empty state says so in words. Do not render "0 SN" as a badge on every
   model: on the day this shipped every model had zero, so the state worth pointing at is the one
   that can refuse a ticket.
-- **The intake form runs that backwards: typing the serial FILLS the product.** `ManualEntryForm`
-  debounces the serial box into `GET /masters/serials/lookup` and, on exactly one match, sets the
-  category chain, the model and the service type — the vendor's real starting point is a number
-  printed on a unit, not a category tree.
+- **The intake form runs that backwards: the serial is the FIRST field and it fills the product.**
+  `ManualEntryForm` debounces the serial box into `GET /masters/serials/lookup`, offers the matches
+  as a **suggestion dropdown**, and on an exact hit sets the category chain, the model and the
+  service type. The vendor's real starting point is a number printed on a unit, not a category
+  tree — so the box sits above the four fields it fills. It used to sit below them, which made the
+  autofill unreachable: by the time anybody got to it they had already picked everything by hand.
   Three rules keep it from fighting the user. It fills **only when no model is chosen**; a
   disagreement is an **offer** under the box, never a silent switch, because the model may be right
   and the serial the typo. It rewrites the typed serial **only to the master's spelling**, which an
@@ -1302,6 +1304,12 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   the reply. A query would mean filling from an effect, which is the cascading render
   `react-hooks/set-state-in-effect` exists to stop, and it would need a second piece of state to
   remember which serial it had already filled from.
+  Two traps the dropdown itself hit, both worth keeping:
+  **an exact hit must CLOSE the list**, or picking a row writes the serial, re-runs the lookup and
+  re-opens the list over a box that is already settled; and it is dismissed by an **outside
+  pointerdown**, not by the input's blur, because `register` owns `onBlur` and replacing it
+  silently breaks validation on that one field. Rows commit on `onPointerDown` for the same
+  ordering reason — a `click` arrives after the dismissal has already torn the list down.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review · unreadable →
   retake on-site before leaving.
 - **A vendor may add products, and may never price them.** A submission is `pending` and cannot be
