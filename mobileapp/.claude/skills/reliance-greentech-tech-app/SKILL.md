@@ -59,11 +59,15 @@ weights 400/500/700/900 — headline numbers are 900.
 to cross-reference; the additions are marked NEW — two came with real onboarding, and one with
 rescheduling.
 
-⚠ **Reschedule has NO approved copy.** The prototype has no such screen and never mentions moving
-a time; the console's own prototype says the opposite outright ("Slot confirmed & locked"). Every
-string on it was written fresh and is awaiting sign-off, marked in the file the way §3 marks the
-other unapproved strings. Do not treat anything in `RescheduleJobScreen.tsx` as approved copy to
-copy elsewhere.
+⚠ **Reschedule is NOT IN THE PROTOTYPE.** It has no such screen and never mentions moving a
+time; the console's own prototype says the opposite outright ("Slot confirmed & locked"). Every
+string on it was written fresh and signed off separately on **2026-09-07**, so it IS approved —
+but it is approved copy with no design artifact behind it, which is a different thing from every
+other screen here.
+
+Two consequences. Anything ADDED to that screen later cannot be extracted from the prototype
+either, so it needs its own sign-off. And nothing in `RescheduleJobScreen.tsx` should be copied
+elsewhere as though the prototype had blessed the pattern — it did not.
 
 | # | Route | Screen |
 |---|---|---|

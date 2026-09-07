@@ -164,9 +164,11 @@ Two seams to know about:
   dialog plus a mutation hook inside each would grow with the backlog when only one can ever be
   open. The card raises `onReschedule(ticket)`; the page owns the dialog. No code and a required
   reason, unlike the technician's door in the app.
-  ⚠ Every string in it is **NET-NEW and needs sign-off** — the prototype has no reschedule
-  anywhere and says the opposite where it touches the subject ("Slot confirmed & locked"). Same
-  marking convention as `NoShowDialog`. The missed half's subtitle changed too: it used to say the
+  ⚠ Every string in it is **net-new and NOT from the prototype** — which has no reschedule
+  anywhere and says the opposite where it touches the subject ("Slot confirmed & locked"). Signed
+  off separately on **2026-09-07**, so it is approved; but a string added here later cannot be
+  extracted from the prototype either and needs the same treatment. `NoShowDialog` is in the same
+  position and still awaiting its own. The missed half's subtitle changed too: it used to say the
   rows could not be rescued, which this made false.
 
 **Do not fake a number that has a real source.** A null rating renders `—`, not `0`; the

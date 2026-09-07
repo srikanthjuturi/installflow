@@ -347,7 +347,7 @@ export default function EscalationQueuePage() {
                   window agreed with the customer, which puts the job back in
                   the pool and takes the row out of this list for good.
 
-                  ⚠ NET-NEW copy, needs sign-off. It replaces a line whose
+                  Net-new copy, approved 2026-09-07. It replaces a line whose
                   premise the reschedule work removed: these rows used to have
                   no exit at all, and the paragraph said so. */}
               <h2 className="mb-1 text-sm font-semibold">

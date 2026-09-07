@@ -26,13 +26,16 @@ export interface RescheduleJobScreenProps {
 /**
  * Reschedule — pick a new window, then the customer's code.
  *
- * ⚠ **NET-NEW. Every string on this screen needs sign-off.** The approved
- * prototype has sixteen screens, login through profile, and not one of them
- * moves a time — its cancel screen is the only exit from a job, and the
- * console's own prototype says the opposite of this feature outright ("Slot
- * confirmed & locked"). Nothing here was pulled from an approved source, which
- * hard rule 6 says to flag rather than quietly invent. Same convention as
- * `NoShowDialog` on the console side.
+ * ⚠ **Net-new copy, NOT from the prototype — approved separately on
+ * 2026-09-07.** The prototype has sixteen screens, login through profile, and
+ * not one of them moves a time; its cancel screen is the only exit from a job,
+ * and the console's own prototype says the opposite outright ("Slot confirmed &
+ * locked"). So every string here was written fresh and then signed off, rather
+ * than pulled from an approved source as hard rule 6 normally requires.
+ *
+ * The distinction still matters for anyone extending this screen: the prototype
+ * has nothing to copy from, so a NEW string here needs the same sign-off these
+ * did. Do not assume the design artifact covers it.
  *
  * ## Why the code goes to the customer
  *

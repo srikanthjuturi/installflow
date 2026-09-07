@@ -454,8 +454,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     different evidence, and the server refuses this one. */}
                 {stage === 'Assigned' ? (
                   <View style={{ marginTop: 10 }}>
-                    {/* ⚠ NET-NEW, and every string needs sign-off — the
-                        prototype has no reschedule anywhere. See the header of
+                    {/* Net-new copy — the prototype has no reschedule
+                        anywhere. Approved 2026-09-07; see the header of
                         `RescheduleJobScreen`.
 
                         ABOVE the cancel button, and that order is the point.

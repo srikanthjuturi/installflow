@@ -33,11 +33,12 @@ import {
 /**
  * Give a ticket a new time, after agreeing one with the customer.
  *
- * ⚠ **NET-NEW. Every string here needs sign-off.** The approved prototype has
- * no reschedule anywhere and says the opposite where it touches the subject —
- * "Slot confirmed & locked", and "The confirmed slot … stays locked" on the
- * bonus screen. Same convention as `NoShowDialog`, which carries the same note
- * for the same reason.
+ * ⚠ **Net-new copy, NOT from the prototype — approved separately on
+ * 2026-09-07.** The prototype has no reschedule anywhere and says the opposite
+ * where it touches the subject: "Slot confirmed & locked", and "The confirmed
+ * slot … stays locked" on the bonus screen. A NEW string added here needs the
+ * same sign-off these got; there is nothing in the design artifact to copy
+ * from. `NoShowDialog` is in the same position and still awaiting its own.
  *
  * ## Why there is no code here
  *

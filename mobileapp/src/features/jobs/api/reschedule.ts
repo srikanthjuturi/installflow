@@ -20,10 +20,10 @@ import type { Job } from '@/types/domain';
  * a technician who could choose where the code went could send it to
  * themselves.
  *
- * NOT approved copy. The prototype has no reschedule screen at all — its 16
- * screens are login through profile and none of them moves a time — so every
- * string in this feature is new and needs sign-off. See the note at the head of
- * `RescheduleJobScreen`.
+ * Copy here is net-new rather than pulled from the prototype, which has no
+ * reschedule screen at all — its 16 screens are login through profile and none
+ * of them moves a time. Approved separately on 2026-09-07. See the note at the
+ * head of `RescheduleJobScreen` for what that means for anything added later.
  */
 
 /** Mirrors `SlotOptionOut` in the API: two instants, no rendered label. */
