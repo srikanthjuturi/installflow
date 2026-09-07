@@ -867,10 +867,12 @@ async def dashboard_summary(
 
     is_open = Ticket.status.not_in(TERMINAL_STATUSES)
     # The escalation queue's LIVE half, exactly — `slot_end >= now`. The missed
-    # half is deliberately not counted here: it only ever grows (nothing clears
-    # it yet, see `list_escalations`), so folding it in would turn a number that
-    # means "act today" into a number that only ever climbs, and the card's own
-    # words — "unassigned within 4h" — would stop being true of it.
+    # half is deliberately not counted here, and the reason has changed without
+    # the decision changing: it used to be that nothing could ever clear that
+    # half, so folding it in would have made a number that only ever climbed.
+    # Rescheduling clears it now — but it is still work somebody does by ringing
+    # a customer, on their own time, not work that is late TODAY. The card's own
+    # words are "unassigned within 4h", and a missed slot is not that.
     is_escalated_live = (
         (Ticket.status == "Escalated")
         & Ticket.technician_id.is_(None)
@@ -2333,8 +2335,14 @@ async def record_no_show(
       needing a new slot belongs and where the manager is already working.
 
     It does NOT re-open the pool. The slot has closed, so there is nothing left
-    to offer — the customer has to be asked for a new time, and that is a
-    conversation rather than a status change.
+    to offer — the customer has to be asked for a new time first.
+
+    That conversation now has somewhere to land: `reschedule` below takes the
+    time they agree to and puts the job back in the pool with it, which is what
+    takes the row out of the escalation queue's missed half. This function
+    deliberately stops short of it, because the two are different decisions —
+    this one charges somebody for a morning nobody turned up to, and only a
+    person who has spoken to the customer can make the other.
 
     The monthly cap applies exactly as it does to a cancellation, and for the
     same reason: it is a cap on what one technician can be charged in a month,

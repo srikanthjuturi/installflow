@@ -124,9 +124,16 @@ EVENT_KINDS = (
     #: column that only holds the LATEST figure.
     "bonus_added",
     #: The technician who held this job gave it up, and it went back to the
-    #: pool with its slot untouched — the customer's time was never the
-    #: technician's to move. §7's other way into an escalation, and the one the
+    #: pool with its slot untouched — walking away is not permission to move
+    #: somebody's appointment. §7's other way into an escalation, and the one the
     #: requirement document actually leads with.
+    #:
+    #: ⚠ This used to read "the customer's time was never the technician's to
+    #: move", which is no longer true as a principle: `rescheduled` below is a
+    #: technician doing exactly that. What separates them is CONSENT — that one
+    #: carries a code the customer read back, and this one carries nothing but a
+    #: technician leaving. The slot stays put here for that reason, not because
+    #: it is immovable.
     #:
     #: The name this kind was going to have was written down long before it had
     #: a writer: *"Release belongs here too and will be added by the migration
