@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { LoadMore } from "@/components/shared/LoadMore";
+import { NarrowedNotice } from "@/components/shared/NarrowedNotice";
 import { Toolbar, type TypedFilterDef } from "@/components/shared/DataTable";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { EscalationCard } from "@/components/escalations/EscalationCard";
@@ -159,32 +160,26 @@ export default function EscalationQueuePage() {
     writeFilters({});
   }
 
-  /* What the dashboard narrowed this to, said out loud.
-     The queue has no control for territory or an intake date range, so without
-     this line those filters would be invisible: a manager would see four rows,
-     have no idea two hundred were being withheld, and reasonably conclude the
-     queue was broken. Naming them and offering the way out is the whole fix. */
-  const inherited = FROM_DASHBOARD.filter((k) => filters[k]);
-  const narrowedNotice = inherited.length ? (
-    <p className="mb-3.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-surface-2 px-3.5 py-2.5 text-xs text-ink-2">
-      <span>
-        Narrowed from the dashboard
-        {filters.dateFrom || filters.dateTo ? " · raised in a date range" : ""}
-        {filters.regionId || filters.stateId ? " · one territory" : ""}
-      </span>
-      <button
-        type="button"
-        className="font-semibold text-brand-400 hover:text-brand-500"
-        onClick={() => {
-          const next = { ...filters };
-          for (const key of FROM_DASHBOARD) delete next[key];
-          writeFilters(next);
-        }}
-      >
-        Show the whole queue
-      </button>
-    </p>
-  ) : null;
+  /* What the dashboard narrowed this to, said out loud — see `NarrowedNotice`,
+     which the ticket board now shares for the same reason. The queue has no
+     control for territory or an intake date range, so without this line those
+     filters would be invisible. */
+  const narrowedNotice = (
+    <NarrowedNotice
+      parts={[
+        ...(filters.dateFrom || filters.dateTo
+          ? ["raised in a date range"]
+          : []),
+        ...(filters.regionId || filters.stateId ? ["one territory"] : []),
+      ]}
+      actionLabel="Show the whole queue"
+      onClear={() => {
+        const next = { ...filters };
+        for (const key of FROM_DASHBOARD) delete next[key];
+        writeFilters(next);
+      }}
+    />
+  );
 
   const toolbar = (
     <Toolbar

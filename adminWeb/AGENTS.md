@@ -116,18 +116,43 @@ things about it are worth knowing before editing:
 - **Zero is a normal state now.** A territory or a date range can legitimately match nothing, so
   `SlaPanel` draws a filled `bg-chart-empty` bar at a total of 0; three zero-width segments render
   as a bare strip that reads as a chart that failed to load.
-- **Every card opens a list holding exactly what the card counted.** A count that disagrees with
-  the rows behind it is worse than no count. Two things make it hold, and both must survive:
-  the Escalations card links with **`half=live`** (it counts the savable half; the queue also
-  carries a missed pile that empties only when somebody works it, so the unfiltered link showed
-  seven rows under a card saying two), and every card carries the dashboard's own four filters
-  through `linkTo()`.
+- **Every FIGURE opens a list holding exactly what it counted** — the four attention cards, the
+  three KPI tiles, the three SLA legend entries and the three funnel stats. A count that disagrees
+  with the rows behind it is worse than no count. What makes it hold:
+  the Escalations card and the "In escalation" tile link with **`half=live`** (they count the
+  savable half; the queue also carries a missed pile that empties only when somebody works it, so
+  the unfiltered link showed seven rows under a card saying two); the SLA figures link on
+  `slaState`, which is `_sla_order_case` — the same rank they were counted with; and the three
+  populations no single status can name got their own filters on `GET /tickets` rather than a
+  link that lands close enough (`status` as a comma-separated **set**, `open=true`,
+  `closedWithinDays`, all detailed in `api/AGENTS.md`). Every link carries the dashboard's own four
+  filters through `linkTo()`.
   `list_escalations` and `list_tickets` both accept them and apply the same `narrowed()` the
   figures came from. Verified across all five roles, unfiltered and narrowed.
+  ⚠ **`closedWithinDays` comes off the response, never written as `7` in the client.** The server
+  sends the window it measured in `funnel.closedWithinDays` — null when a date range is in force,
+  because the range bounds the count instead — and a second copy of that number in the console is
+  the copy that would be wrong the day the window moves.
+- **A tile that leads nowhere honest must not pretend to.** `Kpi.to` and `FunnelStage.to` are
+  optional and the components render a plain, unclickable card without one. There is no such tile
+  today; the option exists so the answer to a figure with no exact destination is "leave it inert",
+  not "link it somewhere close".
 - **A filter the destination cannot show must announce itself.** The escalation queue has no
-  control for territory or intake dates, so arriving with them set would hide rows with nothing
-  on screen to explain it. `NarrowedNotice` names them and offers "Show the whole queue". Its
-  `half` pill, by contrast, needs no notice — it is a visible control that reflects the URL.
+  control for territory or intake dates, and the ticket board has none for an SLA bucket, "not yet
+  closed", a closure window or a PAIR of statuses — the chips can show one status and cannot show
+  a set. Arriving with any of them set would hide rows with nothing on screen to explain it, so
+  the shared `NarrowedNotice` names them and offers the way out ("Show the whole queue", "Show the
+  whole board"). It names only what the reader cannot see: the queue's `half` pill and a single
+  status chip are visible controls that reflect the URL already.
+  `useTicketFilters.clearNarrowing()` is what the board's escape calls — the hook owns the
+  query-string contract, so the key list lives there rather than in a component that would drift
+  from it. It drops a multi-status too, and keeps a single one.
+  `DataTable`'s `narrowed` prop is the other half: without it a board holding rows back reads
+  "No tickets yet", which is the console telling somebody their work does not exist.
+- **Picking a status chip clears `open` and `closedWithinDays`.** Both are status-shaped, so
+  arriving on "Closed this week" and then clicking Slot Pending would ask for slot-pending tickets
+  closed in the last seven days and read empty under a chip insisting otherwise. `slaState` is a
+  different axis and survives — "breaching AND assigned" is a refinement somebody may want.
 - **The queue's filters live in the query string.** They were `useState`, which is why
   `?half=live` was ignored and the card's link did nothing. A filter in component state cannot be
   linked to, and this screen is a link target.
@@ -586,7 +611,7 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 |---|---|---|
 | `/login` | `LoginPage` | single step, two doors: email + password, or Google (button + One Tap). No OTP — signing IN never asks for a code here |
 | `/forgot-password` | `ForgotPasswordPage` | three steps in local state: email → 6-digit code emailed → new password, then straight into a session. Signed-out only (under `RedirectIfSignedIn`), and it shares `AuthLayout` with `/login`. `OtpStep.tsx` was dead prototype code until this used it |
-| `/` | `DashboardPage` | 4 KPI tiles · SLA stacked bar · 3-stat funnel · "Needs your attention" (4 cards, each deep-links) · recent tickets |
+| `/` | `DashboardPage` | 4 KPI tiles · SLA stacked bar · 3-stat funnel · "Needs your attention" (4 cards) · recent tickets — **every figure deep-links** to the list holding exactly what it counted; the bar itself stays a picture, its legend is the way in |
 | `/tickets` | `TicketListPage` | status pills, search, **default sort = SLA urgency** (breach → warn → ok → done) |
 | `/tickets/:id` | `TicketDetailPage` | facts grid · timeline & audit trail · customer · technician · proof-of-completion grid |
 | `/tickets/new` | `ManualEntryPage` | vendor/category/model · request type · customer · SLA · submit fires the slot request |

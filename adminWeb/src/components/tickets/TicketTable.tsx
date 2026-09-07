@@ -42,6 +42,14 @@ interface TicketTableProps {
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
+  /**
+   * Whether the URL carries narrowing this toolbar cannot show — the dashboard
+   * tiles' "not yet closed", an SLA bucket, a closure window, a pair of
+   * statuses. Only the empty state reads it, so a board holding rows back never
+   * says "No tickets yet". The page that owns the URL decides; see
+   * `TicketListPage`.
+   */
+  narrowed?: boolean;
   toolbarActions?: React.ReactNode;
   /**
    * What the ticket's own "Back" button should say when opened from here.
@@ -67,6 +75,7 @@ export function TicketTable({
   isLoading,
   error,
   onRetry,
+  narrowed,
   toolbarActions,
   backLabel,
   backState,
@@ -226,6 +235,7 @@ export function TicketTable({
       }
       onRowClick={(t) => navigate(`${basePath}/${t.id}`, { state: origin })}
       minWidth="57.5rem"
+      narrowed={narrowed}
       emptyTitle="No tickets yet"
       emptyDescription={emptyDescription}
       filteredEmptyTitle="No tickets match those filters"

@@ -49,7 +49,13 @@ interface SummaryWire {
   escalated: number;
   aiFlagged: number;
   sla: { ok: number; warn: number; breach: number };
-  funnel: { slotPending: number; active: number; closedThisWeek: number };
+  funnel: {
+    slotPending: number;
+    active: number;
+    closedThisWeek: number;
+    /** The window `closedThisWeek` was counted over. Null when a range is set. */
+    closedWithinDays: number | null;
+  };
   attention: {
     escalations: number;
     aiReview: number;
@@ -110,18 +116,30 @@ export async function getDashboard(
         // all-India role that is the country. This says what is counted
         // instead, which is true for every reader.
         sub: "not yet closed",
+        // `open=true`, not a bare `/tickets`: the board would open on every
+        // closed job as well, under a tile whose own subtitle says "not yet
+        // closed". The API filters on the same expression the count came from.
+        to: linkTo("/tickets", { open: "true" }),
       },
       {
         key: "breach",
         label: "Breaching SLA",
         value: String(s.breaching),
         sub: "need attention",
+        // The SAME `_sla_order_case` rank the tile was counted with, so the
+        // number and the rows can never rank one ticket two ways. Terminal
+        // tickets rank `done`, which is why no "open" filter is needed here.
+        to: linkTo("/tickets", { slaState: "breach" }),
       },
       {
         key: "escalation",
         label: "In escalation",
         value: String(s.escalated),
         sub: "within 4h of slot",
+        // The queue, on `half=live` — the same reason the Escalations card
+        // below carries it: this counts the savable half, and the unfiltered
+        // queue also holds the missed pile.
+        to: linkTo("/escalations", { half: "live" }),
       },
       /* AI flagged — hidden with the queue. `s.aiFlagged` counts tickets in the
          `AI Review` status and nothing writes it, so the tile could only ever
@@ -139,12 +157,40 @@ export async function getDashboard(
     // the way out would answer a question the reader did not ask.
     ticketsHref: linkTo("/tickets"),
     sla: s.sla,
+    slaHrefs: {
+      ok: linkTo("/tickets", { slaState: "ok" }),
+      warn: linkTo("/tickets", { slaState: "warn" }),
+      breach: linkTo("/tickets", { slaState: "breach" }),
+    },
     funnel: [
-      { n: String(s.funnel.slotPending), label: "Slot pending" },
-      { n: String(s.funnel.active), label: "Assigned / in progress" },
+      {
+        n: String(s.funnel.slotPending),
+        label: "Slot pending",
+        to: linkTo("/tickets", { status: "Slot Pending" }),
+      },
+      {
+        n: String(s.funnel.active),
+        label: "Assigned / in progress",
+        // TWO statuses, which is why `status` takes a set. Linking to
+        // `Assigned` alone would open a list holding part of the number above
+        // it, and the reader has no way to tell which part is missing.
+        to: linkTo("/tickets", { status: "Assigned,In Progress" }),
+      },
       {
         n: String(s.funnel.closedThisWeek),
         label: ranged ? "Closed" : "Closed this week",
+        // Both ways a job ends up finished, and the window the server actually
+        // measured — `closedWithinDays` is null when a date range is in force,
+        // because the range (already riding along in `linkTo`) is what bounds
+        // the count then. Reading the number off the response rather than
+        // writing 7 here is what stops the tile and its list disagreeing if
+        // that window ever moves.
+        to: linkTo("/tickets", {
+          status: "Closed,Force-Closed",
+          ...(s.funnel.closedWithinDays
+            ? { closedWithinDays: String(s.funnel.closedWithinDays) }
+            : {}),
+        }),
       },
     ],
     attention: [

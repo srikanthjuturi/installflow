@@ -117,6 +117,8 @@ async def list_tickets(
     stateId: Annotated[uuid.UUID | None, Query()] = None,
     dateFrom: Annotated[datetime.date | None, Query()] = None,
     dateTo: Annotated[datetime.date | None, Query()] = None,
+    open_: Annotated[bool, Query(alias="open")] = False,
+    closedWithinDays: Annotated[int | None, Query(ge=1, le=365)] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """One page of tickets, most urgent first.
 
@@ -129,6 +131,23 @@ async def list_tickets(
     company-scoped and territory-scoped, so an id from another company — or from
     outside the reader's own area — narrows to nothing and returns an empty
     page. It cannot be used to discover that a technician exists.
+
+    ## Three filters exist so the DASHBOARD's tiles can link honestly
+
+    Every figure on that screen has to open a list holding exactly what it
+    counted, and three of them are populations a single status cannot name:
+
+      * `status` takes a comma-separated SET — `Assigned,In Progress` is the
+        funnel's middle tile, `Closed,Force-Closed` its last. One value behaves
+        as it always did.
+      * `open=true` is "not yet closed", from `service.open_tickets()` — the
+        same expression the `openTickets` tile counts.
+      * `closedWithinDays=7` is "closed in the last N days", from
+        `service.closed_in()` — the same expression the "Closed this week" tile
+        counts, with the window it reports in `funnel.closedWithinDays`.
+
+    None of the three widens anything: they narrow a list that `scoped()` has
+    already cut to the caller's own territory.
     """
     rows, total = await service.list_tickets(
         db,
@@ -142,6 +161,8 @@ async def list_tickets(
         state_id=stateId,
         date_from=dateFrom,
         date_to=dateTo,
+        open_only=open_,
+        closed_within_days=closedWithinDays,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 

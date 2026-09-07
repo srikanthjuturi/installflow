@@ -18,6 +18,15 @@ export interface Kpi {
   delta?: string;
   /** Whether the movement is good news — not whether the number rose. */
   good?: boolean;
+  /**
+   * The list holding exactly what this tile counted.
+   *
+   * Optional because a figure with no honest destination must not pretend to
+   * have one — a tile that opened a superset would send a manager to sift for
+   * rows the number promised were there. Every tile the dashboard draws today
+   * has one; `KpiRow` renders a plain card for any that does not.
+   */
+  to?: string;
 }
 
 export interface SlaBreakdown {
@@ -26,9 +35,14 @@ export interface SlaBreakdown {
   breach: number;
 }
 
+/** The three SLA buckets, as the board filtered to each one. */
+export type SlaHrefs = Record<"ok" | "warn" | "breach", string>;
+
 export interface FunnelStage {
   n: string;
   label: string;
+  /** The list holding exactly this stage — same rule as `Kpi.to`. */
+  to?: string;
 }
 
 export interface AttentionItem {
@@ -43,6 +57,12 @@ export interface AttentionItem {
 export interface DashboardSummary {
   kpis: Kpi[];
   sla: SlaBreakdown;
+  /**
+   * Where each SLA bucket leads — built beside the other links rather than in
+   * `SlaPanel`, so every route off this screen carries the dashboard's own
+   * filters through the one `linkTo()` that knows about them.
+   */
+  slaHrefs: SlaHrefs;
   funnel: FunnelStage[];
   attention: AttentionItem[];
   /**

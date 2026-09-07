@@ -6,10 +6,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { FunnelStage, SlaBreakdown } from "@/types";
+import type { FunnelStage, SlaBreakdown, SlaHrefs } from "@/types";
 
 interface SlaPanelProps {
   sla: SlaBreakdown;
+  /** Where each bucket leads. Composed in `services/dashboard.ts` — see `SlaHrefs`. */
+  slaHrefs: SlaHrefs;
   stages: FunnelStage[];
   /** The board, still narrowed to whatever the dashboard is showing. */
   ticketsHref: string;
@@ -19,14 +21,31 @@ interface SlaPanelProps {
  * SLA proportion across open tickets, with the flow funnel beneath it —
  * the same card: "how healthy is the queue" and "where is it sitting".
  */
-export function SlaPanel({ sla, stages, ticketsHref }: SlaPanelProps) {
+export function SlaPanel({
+  sla,
+  slaHrefs,
+  stages,
+  ticketsHref,
+}: SlaPanelProps) {
   const total = sla.ok + sla.warn + sla.breach;
   const pct = (n: number) => (total ? (n / total) * 100 : 0);
 
   const segments = [
-    { key: "ok", label: "On track", n: sla.ok, tint: "bg-ok" },
-    { key: "warn", label: "Due soon", n: sla.warn, tint: "bg-warn" },
-    { key: "breach", label: "Breached", n: sla.breach, tint: "bg-danger" },
+    { key: "ok", label: "On track", n: sla.ok, tint: "bg-ok", to: slaHrefs.ok },
+    {
+      key: "warn",
+      label: "Due soon",
+      n: sla.warn,
+      tint: "bg-warn",
+      to: slaHrefs.warn,
+    },
+    {
+      key: "breach",
+      label: "Breached",
+      n: sla.breach,
+      tint: "bg-danger",
+      to: slaHrefs.breach,
+    },
   ];
 
   return (
@@ -76,32 +95,61 @@ export function SlaPanel({ sla, stages, ticketsHref }: SlaPanelProps) {
         )}
 
         {/* Every figure is written out — the bar's colour is never the only
-            thing carrying the meaning. */}
-        <dl className="mt-3.5 flex flex-wrap gap-x-5.5 gap-y-2 text-[13px]">
+            thing carrying the meaning.
+
+            Links rather than a `<dl>`: each one opens the board filtered to
+            that bucket, on the same `slaState` rank the segment was measured
+            with. The bar itself stays a picture — a 2%-wide segment is not a
+            click target, and its aria-label already reads the whole breakdown
+            out, so nothing is lost by making the legend the way in. */}
+        <div className="mt-3.5 flex flex-wrap gap-x-5.5 gap-y-2 text-[13px]">
           {segments.map((s) => (
-            <div key={s.key} className="flex items-center gap-1.5">
+            // The negative margins cancel the padding exactly, so each link's
+            // margin box is the size the old bare row was: the hit area grows,
+            // the approved spacing does not move.
+            <Link
+              key={s.key}
+              to={s.to}
+              className="-mx-1.5 -my-1 flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <span
                 className={`size-2.25 rounded-[2px] ${s.tint}`}
                 aria-hidden
               />
-              <dt>{s.label}</dt>
-              <dd className="font-semibold">{s.n}</dd>
-            </div>
+              <span>{s.label}</span>
+              <span className="font-semibold">{s.n}</span>
+            </Link>
           ))}
-        </dl>
+        </div>
 
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {stages.map((s) => (
-            <div
-              key={s.label}
-              className="rounded-md border border-line-2 bg-surface-2 px-3.5 py-3.25"
-            >
-              <div className="text-[23px] leading-none font-semibold tabular-nums">
-                {s.n}
+          {stages.map((s) => {
+            const box =
+              "rounded-md border border-line-2 bg-surface-2 px-3.5 py-3.25";
+            const inner = (
+              <>
+                <div className="text-[23px] leading-none font-semibold tabular-nums">
+                  {s.n}
+                </div>
+                <div className="mt-1.5 text-xs text-ink-2">{s.label}</div>
+              </>
+            );
+            // Same rule as the KPI tiles: a stage with no honest destination
+            // renders as the plain box it always was, rather than pretending.
+            return s.to ? (
+              <Link
+                key={s.label}
+                to={s.to}
+                className={`${box} transition-colors outline-none hover:border-brand-400 focus-visible:ring-2 focus-visible:ring-ring`}
+              >
+                {inner}
+              </Link>
+            ) : (
+              <div key={s.label} className={box}>
+                {inner}
               </div>
-              <div className="mt-1.5 text-xs text-ink-2">{s.label}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>

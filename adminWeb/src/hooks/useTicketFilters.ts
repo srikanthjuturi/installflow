@@ -1,10 +1,28 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
-import { TICKET_STATUSES, type TicketStatus } from "@/types";
+import { TICKET_STATUSES } from "@/types";
 
-const isStatus = (v: string | null): v is TicketStatus =>
-  Boolean(v) && (TICKET_STATUSES as readonly string[]).includes(v as string);
+/**
+ * A status filter, which is a SET — one member or several, comma-separated.
+ *
+ * The dashboard's funnel counts populations a single status cannot name:
+ * "Assigned / in progress" is two, and "Closed" is two more once a
+ * force-closure counts as finished. `GET /tickets` takes the same set, so a
+ * tile can open a list holding exactly what it counted.
+ *
+ * Validated member by member, and an unknown one falls back to "All" rather
+ * than travelling: the whole point of keeping this in the URL is that it gets
+ * pasted and bookmarked, and a stale value must not reach the API as a filter
+ * matching nothing.
+ */
+const isStatusSet = (v: string | null): boolean =>
+  Boolean(v) &&
+  (v as string)
+    .split(",")
+    .every((part) =>
+      (TICKET_STATUSES as readonly string[]).includes(part.trim())
+    );
 
 const ALL = "All";
 /** Triage order — the same key the list endpoint falls back to. */
@@ -13,15 +31,39 @@ const DEFAULT_SORT_DIR = "asc";
 
 /**
  * Narrowing that arrives from the dashboard rather than from this screen's own
- * controls: a territory, and a range of intake dates.
+ * controls: a territory, a range of intake dates, and the three narrowings its
+ * tiles need to open a list holding exactly what they counted.
  *
- * The board has no UI for them — they exist so an attention card can open a
- * list holding exactly what it counted. They pass straight through to the API,
- * which applies the same `narrowed()` the dashboard's own figures use, and they
- * survive every other filter change because `setParams` only writes the keys it
- * owns.
+ * The board has no UI for any of them. They pass straight through to the API —
+ * which applies the same expressions the dashboard's own figures came from —
+ * and they survive every other filter change because `setParams` only writes
+ * the keys it owns. `NarrowedNotice` on the list says they are on, because a
+ * filter you cannot see is one you forget you left running.
+ *
+ *   slaState          one bucket of `_sla_order_case`, the SLA bar's own rank
+ *   open              "not yet closed", the Open tickets tile's own expression
+ *   closedWithinDays  the rolling window "Closed this week" was measured over
  */
-const PASSTHROUGH = ["regionId", "stateId", "dateFrom", "dateTo"] as const;
+const PASSTHROUGH = [
+  "regionId",
+  "stateId",
+  "dateFrom",
+  "dateTo",
+  "slaState",
+  "open",
+  "closedWithinDays",
+] as const;
+
+/**
+ * The two passthrough keys a status the reader picks HAS to clear.
+ *
+ * Both are status-shaped: arriving on "Closed this week" and then clicking the
+ * Slot Pending chip would otherwise ask for slot-pending tickets closed in the
+ * last seven days and read empty, with the chip on screen insisting otherwise.
+ * `slaState` is not in the list — it is a different axis, and "breaching AND
+ * assigned" is a refinement somebody may legitimately want.
+ */
+const STATUS_SHAPED = ["open", "closedWithinDays"] as const;
 
 /** One query-string key, its serialised value, and whether it is the default. */
 interface Field {
@@ -67,8 +109,11 @@ export function useTicketFilters() {
 
   const search = searchParams.get("q") ?? "";
   const statusParam = searchParams.get("status");
-  const status: TicketStatus | "All" = isStatus(statusParam)
-    ? statusParam
+  // A single status, or the dashboard's comma-separated set. `string` rather
+  // than `TicketStatus` because a set is not one of them — the members are
+  // validated above, and the API canonicalises them again on arrival.
+  const status: string = isStatusSet(statusParam)
+    ? (statusParam as string)
     : ALL;
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const limit = Math.max(
@@ -131,6 +176,9 @@ export function useTicketFilters() {
         if (f.value === before[i].value) return;
         if (f.isDefault) url.delete(f.key);
         else url.set(f.key, f.value);
+        // The status the reader just picked replaces the one they arrived on,
+        // and takes its status-shaped companions with it — see `STATUS_SHAPED`.
+        if (f.key === "status") for (const k of STATUS_SHAPED) url.delete(k);
       });
 
       pending.current = url;
@@ -143,5 +191,26 @@ export function useTicketFilters() {
     [params, searchParams, setSearchParams]
   );
 
-  return { params, setParams };
+  /**
+   * Drop everything the dashboard sent that this screen has no control for.
+   *
+   * Lives here rather than in the page because this hook owns the query-string
+   * contract; a second list of key names in a component is the list that drifts
+   * when one is added.
+   *
+   * A MULTI status goes with them and a single one stays. The chips can show
+   * one status and cannot show a set, so a set is exactly as invisible as the
+   * rest of this — while a lone "Slot Pending" is on screen, selected, and
+   * clearing it would undo something the reader can see themselves.
+   */
+  const clearNarrowing = useCallback(() => {
+    const url = new URLSearchParams(searchParams);
+    for (const key of PASSTHROUGH) url.delete(key);
+    if ((url.get("status") ?? "").includes(",")) url.delete("status");
+    // Page 4 of the narrowed list is not page 4 of the whole board.
+    url.delete("page");
+    setSearchParams(url, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  return { params, setParams, clearNarrowing };
 }

@@ -199,6 +199,16 @@ export interface DataTableProps<T> {
   emptyTitle: string;
   emptyDescription?: string;
   emptyAction?: React.ReactNode;
+  /**
+   * Narrowed by something this table does not own — a filter that arrived in
+   * the URL and has no control here, such as the ticket board's "not yet
+   * closed" from a dashboard tile.
+   *
+   * Only the empty state reads it, and only to tell the two nothings apart:
+   * "No tickets yet" over a board that is holding rows back is the console
+   * telling somebody their work does not exist.
+   */
+  narrowed?: boolean;
   /** Shown when filters/search hide everything. Falls back to the empty copy. */
   filteredEmptyTitle?: string;
   filteredEmptyDescription?: string;

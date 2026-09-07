@@ -99,7 +99,7 @@ from app.features.tickets.schemas import (
 from app.models.company import Company
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
-from app.models.product import ProductModel, ProductNode
+from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
 from app.models.territory import Pincode
 from app.models.technician import (
@@ -433,7 +433,78 @@ async def _resolve_product(
             f"It supports {', '.join(supported) or 'nothing yet'}."
         )
 
+    # LAST, and after the ownership test above for the reason the approval check
+    # is: a serial list is a fact about a product, and answering questions about
+    # it before proving the caller owns the model would let a vendor probing ids
+    # learn what is in a competitor's catalogue.
+    await _assert_serial_known(db, model, body.serialNumber)
+
     return vendor, node, model
+
+
+async def _assert_serial_known(
+    db: AsyncSession, model: ProductModel, serial: str
+) -> None:
+    """The serial must be one this model actually covers — IF any are loaded.
+
+    `tickets.serial_number` is the number off the vendor's invoice, and until
+    `product_model_serials` existed nothing could say whether it was plausible
+    for the model being ticketed. A television's serial raised against an air
+    conditioner stored happily, and the first anybody knew was a
+    `serial_mismatch` raised with a technician already at the customer's door.
+
+    ## An EMPTY list means unchecked, not "nothing matches"
+
+    A model nobody has loaded serials for is not checked at all. That is what
+    lets this ship against a live catalogue: there is no backfill and no flag
+    day, and a company loads its models one at a time instead of every vendor's
+    intake breaking on deploy. The console shows the count on each model so
+    "this one is not checked" is readable rather than inferred.
+
+    ## Two queries, in this order
+
+    The probe comes first and answers the common case — a serial that is on the
+    model — with a single hit on
+    `uq_product_model_serials_model_serial_lower`. Only a MISS pays for the
+    second query, which decides whether the miss means "not loaded, so allow"
+    or "loaded, so refuse". Counting the model's serials up front would be the
+    obvious implementation and the wrong one: it reads thousands of rows to
+    answer what the index already answers.
+
+    Compared trimmed and lower-cased, which is what
+    `jobs.service.serial_mismatch` already does to the serial a technician
+    photographs. Two rules disagreeing about case would be worse than one.
+    """
+    needle = (serial or "").strip().lower()
+    if not needle:
+        return
+
+    hit = await db.scalar(
+        select(ProductModelSerial.id).where(
+            ProductModelSerial.company_id == model.company_id,
+            ProductModelSerial.product_model_id == model.id,
+            func.lower(ProductModelSerial.serial) == needle,
+        )
+    )
+    if hit is not None:
+        return
+
+    loaded = await db.scalar(
+        select(ProductModelSerial.id)
+        .where(
+            ProductModelSerial.company_id == model.company_id,
+            ProductModelSerial.product_model_id == model.id,
+        )
+        .limit(1)
+    )
+    if loaded is None:
+        return
+
+    raise _bad_request(
+        f"{serial.strip()} is not a serial number on record for {model.name}. "
+        "Check it against the invoice, or ask for it to be added to the "
+        "product master."
+    )
 
 
 async def next_code(db: AsyncSession, company_id: uuid.UUID) -> str:
@@ -654,6 +725,77 @@ def _apply_search(stmt: Select, search: str | None) -> Select:
 _canonical = canonical_filter
 
 
+def _canonical_set(
+    value: str | None, allowed: tuple[str, ...]
+) -> list[str] | None | bool:
+    """`canonical_filter` over a COMMA-SEPARATED set, with the same three answers.
+
+    A dashboard tile counts a population, not a status: "Assigned / in progress"
+    is two of them and "Closed" is two more once a force-closure counts as
+    finished. A filter that took one value could only ever open a list holding
+    half of what the tile said, which is the single thing that makes a count not
+    worth having.
+
+    One value still behaves exactly as before — `status=Closed` has no comma in
+    it — so every existing link and bookmark is unaffected. An unknown member
+    empties the page rather than 422-ing the screen, for the reason the single
+    version gives: these values arrive from a shareable query string, and a
+    stale bookmark must not be able to break the list.
+
+    Local to this slice on purpose. `canonical_filter` moved to `app/core/` the
+    day a second slice needed it; this has one caller, and moving it before then
+    would be guessing at what the second one wants.
+    """
+    if not value:
+        return None
+    out: list[str] = []
+    for part in value.split(","):
+        one = _canonical(part, allowed)
+        if one is False:
+            return False
+        # `None` is the "All" sentinel or an empty member — neither narrows, and
+        # neither should drag the rest of the set down with it.
+        if one is not None:
+            out.append(str(one))
+    return out or None
+
+
+def open_tickets():
+    """Not yet closed — one expression, so no two screens can disagree.
+
+    The dashboard's "Open tickets" tile counts it and the board that tile links
+    to filters on it. Written once against `TERMINAL_STATUSES` rather than as a
+    status list either side could get wrong.
+    """
+    return Ticket.status.not_in(TERMINAL_STATUSES)
+
+
+def closed_in(cutoff: datetime.datetime | None):
+    """Both ways a job ends up finished, optionally inside a recent window.
+
+    BOTH, always. A force-closure is a manager settling work the technician
+    really did, and counting only customer-confirmed closures would show the
+    funnel narrowing every time a customer went quiet — the opposite of what
+    happened.
+
+    The two statuses date differently and neither instant fits the other:
+    `customer_confirmed_at` is written in the same UPDATE that sets `Closed`
+    (see `feedback_service`) and is set on a REJECTION too, which is why the
+    status test is not redundant; a force-closed ticket has none of that, so it
+    dates off its own event.
+
+    `cutoff` of None means "however long ago" — which is what a dashboard
+    narrowed to a date range wants, because there the range already bounds the
+    population and a second window would fight it.
+    """
+    confirmed = Ticket.status == "Closed"
+    forced = Ticket.status == "Force-Closed"
+    if cutoff is not None:
+        confirmed = confirmed & (Ticket.customer_confirmed_at >= cutoff)
+        forced = forced & (_last_event_at("force_closed") >= cutoff)
+    return or_(confirmed, forced)
+
+
 async def list_tickets(
     db: AsyncSession,
     principal: Principal,
@@ -667,6 +809,8 @@ async def list_tickets(
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    open_only: bool = False,
+    closed_within_days: int | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -692,11 +836,21 @@ async def list_tickets(
     if technician_id is not None:
         stmt = stmt.where(Ticket.technician_id == technician_id)
 
-    wanted = _canonical(status_filter, TICKET_STATUSES)
-    if wanted is False:
+    statuses = _canonical_set(status_filter, TICKET_STATUSES)
+    if statuses is False:
         return [], 0
-    if wanted:
-        stmt = stmt.where(Ticket.status == wanted)
+    if statuses:
+        stmt = stmt.where(Ticket.status.in_(statuses))
+
+    # The dashboard's own two populations, so its tiles can open a list holding
+    # exactly what they counted rather than a superset the reader has to sift.
+    # Both are shared expressions, not a second reading of the same rule.
+    if open_only:
+        stmt = stmt.where(open_tickets())
+    if closed_within_days:
+        stmt = stmt.where(
+            closed_in(_now() - datetime.timedelta(days=closed_within_days))
+        )
 
     wanted = _canonical(service_type, SERVICE_TYPES)
     if wanted is False:
@@ -791,6 +945,14 @@ def narrowed(
     return stmt
 
 
+#: How far back "Closed this week" reaches when no date range is picked.
+#:
+#: Sent to the console in `FunnelOut.closedWithinDays` rather than written there
+#: too: the tile links to a list filtered on the same window, and two copies of
+#: the number is how a tile and its list start disagreeing.
+ROLLING_CLOSED_DAYS = 7
+
+
 async def dashboard_summary(
     db: AsyncSession,
     principal: Principal,
@@ -865,7 +1027,7 @@ async def dashboard_summary(
         """
         return func.count(case((condition, 1)))
 
-    is_open = Ticket.status.not_in(TERMINAL_STATUSES)
+    is_open = open_tickets()
     # The escalation queue's LIVE half, exactly — `slot_end >= now`. The missed
     # half is deliberately not counted here, and the reason has changed without
     # the decision changing: it used to be that nothing could ever clear that
@@ -880,32 +1042,20 @@ async def dashboard_summary(
         & (Ticket.slot_end >= now)
     )
 
-    # "Closed", against whichever window is in force.
-    #
-    # BOTH ways a job ends up finished. A force-closure is a manager settling
-    # work the technician really did, and counting only customer-confirmed
-    # closures would show the funnel narrowing every time a customer went quiet
-    # — the opposite of what happened.
+    # "Closed", against whichever window is in force — see `closed_in` for what
+    # counts as closed and why a force-closure has to.
     #
     # With NO date range the tile means "closed this week", so it carries its own
-    # rolling 7 days. The two statuses date differently and neither instant fits
-    # the other: `customer_confirmed_at` is written in the same UPDATE that sets
-    # `Closed` (see `feedback_service`) and is set on a REJECTION too, which is
-    # why the status test is not redundant; a force-closed ticket has none of
-    # that, so it dates off its own event, the way `awaiting` and `silent` below
-    # already do.
-    #
-    # With a range picked, that 7 days would fight the range: "raised in March
-    # AND closed in the last week" is a question nobody asked. The range wins and
-    # the tile means "of the work raised in this period, how much is now done" —
-    # which is why the console relabels it from "Closed this week" to "Closed".
-    confirmed = Ticket.status == "Closed"
-    forced = Ticket.status == "Force-Closed"
-    if lower is None and upper is None:
-        cutoff = now - datetime.timedelta(days=7)
-        confirmed = confirmed & (Ticket.customer_confirmed_at >= cutoff)
-        forced = forced & (_last_event_at("force_closed") >= cutoff)
-    closed_in_window = confirmed | forced
+    # rolling 7 days. With a range picked that 7 days would fight the range:
+    # "raised in March AND closed in the last week" is a question nobody asked.
+    # The range wins and the tile means "of the work raised in this period, how
+    # much is now done" — which is why the console relabels it from "Closed this
+    # week" to "Closed", and why its link then sends the range instead of
+    # `closedWithinDays`.
+    rolling = lower is None and upper is None
+    closed_in_window = closed_in(
+        now - datetime.timedelta(days=ROLLING_CLOSED_DAYS) if rolling else None
+    )
 
     counts = mine(
         select(
@@ -991,6 +1141,7 @@ async def dashboard_summary(
             slotPending=row.slot_pending,
             active=row.active,
             closedThisWeek=row.closed_week,
+            closedWithinDays=ROLLING_CLOSED_DAYS if rolling else None,
         ),
         attention=AttentionOut(
             escalations=row.escalated,
@@ -1657,6 +1808,14 @@ async def correct_serial(
 
     Recorded as an event carrying BOTH values, because "what did it say before"
     is the first question anybody auditing a corrected serial will ask.
+
+    ## The correction is checked against the model too
+
+    Without that this endpoint is a hole straight through
+    `_assert_serial_known`: raise the ticket quoting a serial the model covers,
+    then correct it to anything at all. It is open to the vendor by design,
+    which is exactly who the intake check is for — so the same guard runs here,
+    against the model the ticket was stamped with.
     """
     row = await _load(db, principal, ticket_id)
 
@@ -1666,6 +1825,18 @@ async def correct_serial(
         # Nothing changed. Writing an event saying so would be noise in a trail
         # whose value is that every row means something.
         return await get_ticket(db, principal, ticket_id)
+
+    # The ticket's own model, not one from the request — a correction cannot
+    # move a ticket to a different product, so there is nothing here to scope
+    # beyond the ticket `_load` has already proved the caller may see.
+    model = await db.scalar(
+        select(ProductModel).where(
+            ProductModel.id == row.model_id,
+            ProductModel.company_id == row.company_id,
+        )
+    )
+    if model is not None:
+        await _assert_serial_known(db, model, now)
 
     row.serial_number = now
     db.add(

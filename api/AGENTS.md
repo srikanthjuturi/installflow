@@ -70,6 +70,20 @@ measuring: the distance is still computed and still written to the `started` eve
 *"location check off for this vendor"* appended, because a trail that cannot distinguish "checked"
 from "not checked" is worse than one that says neither.
 
+**`GET /tickets` takes three filters that exist only so the DASHBOARD can link honestly.**
+Every figure on that screen has to open a list holding exactly what it counted, and three of them
+name populations a single status cannot: `status` therefore accepts a comma-separated **set**
+(`Assigned,In Progress`, `Closed,Force-Closed` — one value behaves exactly as before), `open=true`
+is "not yet closed", and `closedWithinDays=7` is the rolling window "Closed this week" is measured
+over. The last two are `service.open_tickets()` and `service.closed_in()` — the same expressions
+`dashboard_summary` counts with, called from both places rather than written twice, which is what
+stops a tile and its list drifting apart. `funnel.closedWithinDays` reports the window the count
+actually used (**null when a date range is in force**, because the range bounds it instead), for
+the same reason `AttentionOut` sends its two hour-counts: the console must filter on the number the
+count used, not on one it hard-coded. An unknown member of a set empties the page rather than
+422-ing it — these values arrive from a shareable query string, and a stale bookmark must not break
+the screen.
+
 `GET /tickets/escalations` is **paginated but never pagered** — the console loads on scroll, so
 every row stays reachable. Its ordering does two jobs at once and is one expression so the API and
 the screen's headings cannot disagree: live rows before missed ones (page one is therefore the half

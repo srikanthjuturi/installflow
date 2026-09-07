@@ -58,6 +58,7 @@ export function DataTable<T>({
   emptyTitle,
   emptyDescription,
   emptyAction,
+  narrowed,
   filteredEmptyTitle,
   filteredEmptyDescription,
 }: DataTableProps<T>) {
@@ -186,7 +187,9 @@ export function DataTable<T>({
 
         {showEmpty ? (
           <div className="p-2">
-            {t.isFiltered ? (
+            {/* `narrowed` too: a filter with no control on this table still
+                hides rows, and the "nothing here yet" copy would be false. */}
+            {t.isFiltered || narrowed ? (
               <EmptyState
                 title={filteredEmptyTitle ?? "Nothing matches those filters"}
                 description={

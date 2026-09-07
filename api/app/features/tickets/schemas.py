@@ -514,6 +514,13 @@ class FunnelOut(AppModel):
     #: because somebody corrected its serial yesterday.
     closedThisWeek: int
 
+    #: The window that figure was measured over, sent for the reason
+    #: `AttentionOut`'s two hour-counts are: the tile links to a list, and the
+    #: list has to be filtered on the same number the count used. **Null when a
+    #: date range is in force** — the range bounds the population instead, so the
+    #: link sends that and no window at all.
+    closedWithinDays: int | None
+
 
 class AttentionOut(AppModel):
     """The four queues a manager is meant to clear, as counts.
