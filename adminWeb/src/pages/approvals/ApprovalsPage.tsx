@@ -30,11 +30,19 @@ export default function ApprovalsPage() {
    *
    * `status` is seeded as a FILTER so a link can carry it — the notification
    * that brings somebody here points at the bare route, but a manager who has
-   * filtered to Rejected can share what they are looking at. The server
-   * defaults a missing value to `pending`, which is the backlog this queue
-   * exists to clear.
+   * filtered to Rejected can share what they are looking at.
+   *
+   * It starts EXPLICITLY on `pending` rather than relying on the server's
+   * default for a missing value. The two agree, but the pill does not read the
+   * server: `filterValue` falls back to the "All" sentinel when a filter is
+   * unset, so an implicit default lit the All pill above a list that was only
+   * ever the backlog — the screen stating one thing and showing another. A URL
+   * carrying its own `status` still overrides this.
    */
-  const [params, setParams] = useUrlSeededListParams({}, ["status"]);
+  const [params, setParams] = useUrlSeededListParams(
+    { filters: { status: "pending" } },
+    ["status"]
+  );
   const { data, isLoading, isError, error, refetch } = useApprovals(params);
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
