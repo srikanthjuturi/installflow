@@ -310,9 +310,15 @@ adminWeb/
       technicians/        TechTable · BandwidthBar · TechProfileHeader · JobHistoryTable
       masters/            VendorTable · TerritoryTree · CategoryTree · UserTable
                           NodeFormDialog · ModelFormDialog · ParameterFields
+                          ModelSerialsPanel · SerialImportDialog
                           — one dialog for every catalogue level; the tree is
                             recursive and `CategoryFormDialog`/`SubcategoryFormDialog`
                             merged into `NodeFormDialog` when depth stopped being fixed
+                          — the serials panel is on an ops EDIT only, and as a
+                            STEP after saving on add: a serial needs a
+                            `product_model_id` that does not exist until the
+                            product does. `SerialImportDialog` is
+                            `GeoImportDialog`'s twin, down to the dry run
       settings/           SlaRuleList · PenaltyBandTable · ThresholdSlider
                           RulesForm (company) · NodeRulesForm (a category's overrides)
       shared/             AppShell · Sidebar · Topbar · RoleTabs · PageMeta · DataTable
@@ -1277,6 +1283,13 @@ it is vocabulary the system is built from. Two removals make the line concrete:
 - Penalties fund a **pool**; the pool funds **escalation bonuses**. Money in equals money out.
 - Proof is **four** artifacts: barcode, serial, product photos, geo-tagged live photos. Gallery
   uploads are never accepted; geo is validated against the ticket **pincode**.
+- **A model carries the serial numbers it covers, and intake checks against them — but only once
+  some are loaded.** Staff load them on the model (`ModelSerialsPanel`), by hand or from a
+  spreadsheet, and `POST /tickets` then refuses a serial that does not belong to the chosen model.
+  **Zero serials means UNCHECKED, not "nothing matches"** — which is why `ModelChip` shows the
+  count and the panel's empty state says so in words. Do not render "0 SN" as a badge on every
+  model: on the day this shipped every model had zero, so the state worth pointing at is the one
+  that can refuse a ticket.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review · unreadable →
   retake on-site before leaving.
 - **A vendor may add products, and may never price them.** A submission is `pending` and cannot be

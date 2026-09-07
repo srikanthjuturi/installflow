@@ -481,6 +481,18 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   while ops typed tickets and often did not have it; the vendor holds the invoice, so it is
   knowable at intake — and AI verification always has something to compare the photographed serial
   against. Not unique: a service call on a unit installed earlier repeats it.
+- **A model carries the serials it covers, and intake checks against them — but only once some are
+  loaded.** `product_model_serials` is the master data; staff load it on the model, by hand or from
+  a spreadsheet. `POST /tickets` then refuses a serial that does not belong to the chosen model, so
+  a television's number can no longer be raised against an air conditioner.
+  **An EMPTY list means UNCHECKED, not "nothing matches".** That is what let this ship against a
+  live catalogue with no backfill and no flag day — a company loads its models one at a time rather
+  than having every vendor's intake break on deploy — and it is why the console shows the count on
+  the model: zero is a state, not an empty list.
+  A serial is **never consumed**. Raising a ticket marks nothing used, because ticket serials are
+  deliberately not unique and a later service call on the same unit repeats the number.
+  The same guard runs on `PATCH /tickets/{id}/serial`, or the check would be one request away from
+  being bypassed by anybody who can raise a ticket.
 - Proof is **four** artifacts: barcode, serial, product photos, geo-tagged live photos.
   Gallery uploads are never accepted.
 - **Only the customer closes a job — except a manager force-closing it.** That is the one hole the

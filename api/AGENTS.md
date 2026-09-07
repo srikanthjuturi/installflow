@@ -529,7 +529,42 @@ product_models
   decided_by        )  the deciding user. No FK — the ActorMixin reason
   rejection_reason  VARCHAR(255) — bounded where it is WRITTEN, because it is
                     quoted verbatim into notifications.detail, which is 255
+
+product_model_serials
+  product_model_id  composite FK on (company_id, product_model_id)
+  serial            VARCHAR(64), matching tickets.serial_number
+                    UNIQUE (company_id, product_model_id, lower(serial)) —
+                    hand-written, TOTAL (no deleted_at on this table)
 ```
+
+**A model carries the serial numbers it covers, and an EMPTY list means UNCHECKED.**
+`tickets._assert_serial_known` refuses a vendor's typed serial only when the model has at least one
+row in `product_model_serials`. That is not a hedge — it is what let the check ship against a live
+catalogue with no backfill and no flag day, so a company loads its models one at a time instead of
+every vendor's intake breaking on deploy. `ProductModelOut.serialCount` carries it to both clients
+for the same reason: zero is a *state*, not an empty list, and the console has to be able to say
+"this model is not checked" without somebody opening it.
+
+Three things about it are load-bearing:
+
+- **A serial is never CONSUMED.** Raising a ticket spends nothing here and marks nothing used.
+  `tickets.serial_number` is deliberately not unique — a service call on a unit installed months
+  ago repeats its serial — so a row has to keep matching for the life of the unit. Treating these
+  as stock to draw down would break the second visit to every customer.
+- **The check is two queries, and the order is the point.** An index probe for the typed serial
+  answers the common case; only a MISS pays for the `EXISTS` that tells "not loaded, allow" from
+  "loaded, refuse". Counting the model's serials up front is the obvious implementation and the
+  wrong one — it reads thousands of rows to answer what the unique index already answers.
+- **`correct_serial` runs the same guard**, and without it the whole thing is bypassable: raise the
+  ticket quoting a serial the model covers, then `PATCH /tickets/{id}/serial` to anything. That
+  endpoint is open to the vendor by design, which is exactly who the intake check is for.
+
+Staff load them (`masters.edit` + `IsStaff`), by hand or from a spreadsheet. The importer is
+deliberately the same shape as `features/geo`'s — template, dry run, per-row rejects that never
+block the good rows — and reuses its numeric-cell guard, without which an all-digit serial arrives
+from openpyxl as a float and stores as `1.23456789012e+11`. A vendor could reasonably load these,
+since it holds the invoice; that stayed a follow-up because nothing is blocked while staff catch
+up.
 
 **Three independent notions of "not available" on a product, and they do not collapse.**
 `is_active` is paused, `deleted_at` is removed, `approval_status` is not yet agreed. Intake tests
