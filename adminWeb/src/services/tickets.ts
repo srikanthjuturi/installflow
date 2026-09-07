@@ -208,6 +208,62 @@ export function assignTechnician({
   return apiPost<TicketDetail>(`/tickets/${id}/assign`, { technicianId });
 }
 
+/** Mirrors `SlotOptionOut`: two instants, no rendered label. */
+export interface SlotOption {
+  slotStart: string;
+  slotEnd: string;
+}
+
+/**
+ * Windows this ticket could be given, soonest first.
+ *
+ * ⚠ From the SERVER, never from `utils/slots.offeredSlots`. That helper mirrors
+ * the intake rule — bounded by the service level — and a ticket being re-slotted
+ * has usually blown it, so the browser would compute an empty list for exactly
+ * the tickets this exists for. The server also subtracts what the assigned
+ * technician is already booked for and the days their cap is spent, neither of
+ * which a browser can know.
+ *
+ * An empty array is a real answer: the assigned technician's next two days are
+ * full, and re-assigning is the way out rather than this dialog.
+ */
+export function getRescheduleSlots(id: string): Promise<SlotOption[]> {
+  return apiGet<SlotOption[]>(`/tickets/${id}/reschedule/slots`);
+}
+
+export interface RescheduleInput {
+  id: string;
+  slotStart: string;
+  /** Required — see below. */
+  reason: string;
+}
+
+/**
+ * Give a ticket a new time, after agreeing one with the customer on the phone.
+ *
+ * No one-time code, unlike the technician's door in the app: a manager has just
+ * put the phone down, and the required `reason` is the only record that the
+ * conversation happened at all.
+ *
+ * A ticket nobody holds goes back to the pool with its new time — which is how
+ * an escalation whose slot had passed finally leaves the queue instead of
+ * sitting in the "Missed" half for ever.
+ *
+ * **409 `ESCALATION_IS_A_REFUSAL`** means the customer said the job was NOT
+ * done, which needs a technician or a closure rather than a new time.
+ * **409 `SLOT_NO_LONGER_AVAILABLE`** means the window went while the dialog was
+ * open. **409 `TICKET_NOT_RESCHEDULABLE`** means it has moved past the point a
+ * time can be set. Each carries a sentence saying what to do instead, and the
+ * toaster shows it — nothing here branches on the code.
+ */
+export function rescheduleTicket({
+  id,
+  slotStart,
+  reason,
+}: RescheduleInput): Promise<TicketDetail> {
+  return apiPost<TicketDetail>(`/tickets/${id}/reschedule`, { slotStart, reason });
+}
+
 export interface RecordNoShowInput {
   id: string;
   /** Optional, and worth asking for — see the API's own note on the field. */

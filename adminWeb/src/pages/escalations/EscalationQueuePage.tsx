@@ -8,10 +8,13 @@ import { LoadMore } from "@/components/shared/LoadMore";
 import { Toolbar, type TypedFilterDef } from "@/components/shared/DataTable";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { EscalationCard } from "@/components/escalations/EscalationCard";
+import { RescheduleDialog } from "@/components/tickets/RescheduleDialog";
 import { groupByDay } from "@/lib/dayGroup";
 import { relativeTime } from "@/lib/relativeTime";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useEscalations } from "@/hooks/useEscalations";
+import { useRescheduleTicket } from "@/hooks/useTickets";
+import { formatSlot } from "@/utils/datetime";
 import type { Ticket } from "@/types/ticket";
 
 const ALL = "All";
@@ -87,6 +90,12 @@ const FROM_DASHBOARD = ["regionId", "stateId", "dateFrom", "dateTo"] as const;
 export default function EscalationQueuePage() {
   const listId = useId();
   const [query, setQuery] = useState("");
+  /* ONE dialog for the whole queue, holding whichever row asked for it. The
+     cards are rendered per row of an infinite list, so a dialog and a mutation
+     hook inside each would scale with the backlog for no benefit — only one can
+     ever be open. */
+  const [rescheduling, setRescheduling] = useState<Ticket | null>(null);
+  const reschedule = useRescheduleTicket();
   /* In the URL, not in component state. It was `useState`, which meant the
      dashboard could link here with `?half=live` and the queue would ignore it
      and render all seven rows under a card that said two. It also makes a
@@ -322,6 +331,7 @@ export default function EscalationQueuePage() {
                       key={ticket.id}
                       ticket={ticket}
                       readAt={dataUpdatedAt}
+                      onReschedule={setRescheduling}
                     />
                   ))}
                 </DaySection>
@@ -331,15 +341,22 @@ export default function EscalationQueuePage() {
 
           {missed.length > 0 ? (
             <section className={count > 0 ? "mt-7" : undefined}>
-              {/* Below the live queue and under its own heading. These cannot
-                  be rescued — the slot has closed — so the actions on them are
-                  about the customer, not the roster. */}
+              {/* Below the live queue and under its own heading. The slot has
+                  closed, so nothing here can be filled as it stands — but this
+                  pile is no longer a dead end. "Change the time" records a new
+                  window agreed with the customer, which puts the job back in
+                  the pool and takes the row out of this list for good.
+
+                  ⚠ NET-NEW copy, needs sign-off. It replaces a line whose
+                  premise the reschedule work removed: these rows used to have
+                  no exit at all, and the paragraph said so. */}
               <h2 className="mb-1 text-sm font-semibold">
                 Missed · {missedTotal}
               </h2>
               <p className="mb-3.5 text-xs text-ink-3">
                 The slot closed with no technician assigned. Each one is a
-                customer who was expecting a visit.
+                customer who was expecting a visit — ring them, agree another
+                window, and use Change the time.
               </p>
               {missedDays.map((day) => (
                 <DaySection key={day.key} label={day.label}>
@@ -348,6 +365,7 @@ export default function EscalationQueuePage() {
                       key={ticket.id}
                       ticket={ticket}
                       readAt={dataUpdatedAt}
+                      onReschedule={setRescheduling}
                       missed
                     />
                   ))}
@@ -364,6 +382,34 @@ export default function EscalationQueuePage() {
           />
         </div>
       )}
+
+      {/* Outside the loading branch, like the ticket page's: a successful move
+          refetches the queue and the row this dialog belongs to leaves it, so a
+          dialog living inside the list would unmount mid-flight and take its
+          pending state with it. */}
+      {rescheduling ? (
+        <RescheduleDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setRescheduling(null);
+          }}
+          ticketId={rescheduling.id}
+          currentSlot={
+            rescheduling.slotStart && rescheduling.slotEnd
+              ? formatSlot(rescheduling.slotStart, rescheduling.slotEnd)
+              : null
+          }
+          isPending={reschedule.isPending}
+          onConfirm={(values) =>
+            reschedule.mutate(
+              { id: rescheduling.id, ...values },
+              // Closed only on success — a refusal is reported by the toaster,
+              // and closing under it would hide what was refused.
+              { onSuccess: () => setRescheduling(null) }
+            )
+          }
+        />
+      ) : null}
     </>
   );
 }

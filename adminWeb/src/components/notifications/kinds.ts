@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   BadgeX,
   Bell,
+  CalendarClock,
   Clock,
   MailX,
   PackagePlus,
@@ -79,6 +80,15 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: BadgeX,
     wrap: "bg-warn-bg text-warn",
     label: "Product rejected",
+  },
+  // A confirmed visit moved. Amber rather than red: the customer agreed to it,
+  // so it is not a failure — but somebody is now expecting a technician on a
+  // different day, and the vendor reading this feed is the party who had no
+  // other way of finding out.
+  rescheduled: {
+    icon: CalendarClock,
+    wrap: "bg-warn-bg text-warn",
+    label: "Rescheduled",
   },
   // The events here that are not a problem. Tinted like the statuses they
   // describe rather than like a warning: a manager scanning the feed should be

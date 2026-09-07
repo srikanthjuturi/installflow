@@ -22,10 +22,11 @@ export type NotificationKind =
   | "no_show"
   | "product_submitted"
   | "product_approved"
-  | "product_rejected";
+  | "product_rejected"
+  | "rescheduled";
 
 /**
- * The same thirteen, in the order the filter offers them — loudest first.
+ * The same fourteen, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
  * The tail is the things that merely HAPPENED — a product was decided, a job
@@ -53,6 +54,7 @@ export const NOTIFICATION_KINDS = [
   "product_rejected",
   "product_approved",
   "assigned",
+  "rescheduled",
   "job_started",
   "technician_joined",
 ] as const satisfies readonly NotificationKind[];

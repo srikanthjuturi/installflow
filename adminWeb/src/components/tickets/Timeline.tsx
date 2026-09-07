@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   BellRing,
+  CalendarClock,
   Check,
   CheckCheck,
   Coins,
@@ -57,6 +58,9 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   // Routine and system-sent — the quietest tint here, because a timeline where
   // everything is coloured is one where nothing stands out.
   reminded: { icon: BellRing, tint: "bg-surface-3 text-ink-2" },
+  // The customer's half of the same courtesy — who is coming, and on what
+  // number. Same quiet tint for the same reason.
+  customer_notified: { icon: MessageSquare, tint: "bg-surface-3 text-ink-2" },
   // Nobody accepted and the slot was close, so the job left the pool. Red with
   // `reopened` and `serial_mismatch`: a customer is holding a confirmed time
   // that the system could not fill on its own.
@@ -76,6 +80,11 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   // else's word, and a reader scanning the trail should see that this closure
   // is not the same thing as "Customer responded".
   force_closed: { icon: FileCheck2, tint: "bg-warn-bg text-warn" },
+  // The agreed time moved. Amber, beside `released`: a customer has been kept
+  // waiting longer than they were first promised, which is not a failure — they
+  // agreed to it — but is not a step forward either. `note` carries both
+  // windows, so this is the one row that says what the time used to be.
+  rescheduled: { icon: CalendarClock, tint: "bg-warn-bg text-warn" },
 };
 
 /**
