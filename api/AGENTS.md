@@ -578,12 +578,25 @@ hand.
   without raising anything. This is a stronger version of the enumeration the intake check already
   orders its refusals to prevent, and **prefix matching makes it easier, not harder** — which is
   why the pinning is in the query and `MIN_SERIAL_QUERY` (3) exists.
-- **A PREFIX search, capped and ordered.** It began exact-only, reasoning that a partial serial
+- **A PREFIX search, paged and ordered.** It began exact-only, reasoning that a partial serial
   names the wrong product as often as the right one. That was true and beside the point: an exact
   match answers nothing until the last character lands, so the box sat silent through all the
   typing and read as broken. Exactness still decides what the CLIENT does — it fills only when the
   typed value equals a result outright — but that is a question about confidence, not about what
   is worth showing.
+- **`offset` pages it, and a SHORT page means the end.** It was a hard cap of ten with nothing
+  beyond it, which is fine for confirming a serial you already know and useless for browsing what
+  a model holds. No total is computed: counting would be a second query to answer what one
+  comparison against `MAX_SERIAL_MATCHES` already answers.
+  The ordering is `lower(serial), product_model_id` — **total**, not just deterministic. Ordering
+  by the serial alone would repeat or skip rows across pages wherever one serial sits on two
+  products, which is legal here.
+  Offset rather than a keyset, deliberately: a keyset would need the model id in the cursor for a
+  result set that is one company's serials under one prefix, scrolled for a few seconds, and the
+  drift offset paging is criticised for needs rows inserted mid-scroll.
+  An exact match always lands on the FIRST page — the ordering is by serial, and a serial equal to
+  the whole query sorts ahead of everything extending it — which is what lets the client decide
+  about autofilling without paging.
 - **It needed an index of its own.** `uq_product_model_serials_model_serial_lower` is
   `(company_id, product_model_id, lower(serial))`, so a search that fixes the company and the
   serial but not the model has an unconstrained column in the middle of the key and cannot

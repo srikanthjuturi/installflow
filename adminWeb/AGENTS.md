@@ -1304,11 +1304,16 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   the reply. A query would mean filling from an effect, which is the cascading render
   `react-hooks/set-state-in-effect` exists to stop, and it would need a second piece of state to
   remember which serial it had already filled from.
-  Two traps the dropdown itself hit, both worth keeping:
+  The dropdown **pages on scroll** — `SERIAL_PAGE_SIZE` must equal the API's `MAX_SERIAL_MATCHES`,
+  because a short page is how the list knows it has reached the end; set it lower here and the list
+  stops early believing it is done. Paging is its **own mutation**, separate from the search: that
+  one replaces the list and may autofill from it, this one only ever appends and must never
+  re-trigger a fill. It drops a reply whose term is no longer the one the list was built from.
+  Three traps the dropdown itself hit, all worth keeping:
   **an exact hit must CLOSE the list**, or picking a row writes the serial, re-runs the lookup and
-  re-opens the list over a box that is already settled; and it is dismissed by an **outside
+  re-opens the list over a box that is already settled; it is dismissed by an **outside
   pointerdown**, not by the input's blur, because `register` owns `onBlur` and replacing it
-  silently breaks validation on that one field. Rows commit on `onPointerDown` for the same
+  silently breaks validation on that one field; and rows commit on `onPointerDown` for the same
   ordering reason — a `click` arrives after the dismissal has already torn the list down.
 - AI verification has **three** outcomes: match → closure · mismatch → ASM review · unreadable →
   retake on-site before leaving.
