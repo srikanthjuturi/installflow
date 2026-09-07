@@ -26,6 +26,15 @@ a customer notice by a `customer_notified` one. The escalation's is the
 strongest form, because it also settles the race against whatever else is
 moving the same ticket.
 
+⚠ **"Already done" now carries a qualifier, and the qualifier is the point.**
+A slot can move (`core.reschedule`), and the moment it does, everything these
+sweeps did was done about a time that no longer exists — nobody has been
+reminded about the NEW slot, and the customer has not been told who is coming to
+it. So four of them ask "…since the slot last moved" instead of "ever", against
+the `rescheduled` event, in the shape `sweep_unaccepted` already used for
+`bonus_added`. `_rearmed` below is that predicate, and for a ticket that has
+never been rescheduled it collapses to exactly the old test.
+
 ## Why the timestamps come from `ticket_events`
 
 There is no `slot_requested_at` or `feedback_requested_at` column, and there
@@ -67,7 +76,7 @@ import datetime
 import logging
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
@@ -135,6 +144,85 @@ def _already(kind: str) -> select:
     return select(Notification.ticket_id).where(
         Notification.kind == kind, Notification.ticket_id.is_not(None)
     )
+
+
+# ── "…since the slot last moved" ─────────────────────────────────────────────
+#
+# The three pieces that let a sweep re-arm after a reschedule. Correlated
+# subqueries against the row being scanned, so they read off
+# `ix_ticket_events_company_ticket` and `ix_notifications_company_ticket`
+# rather than scanning — both are `(company_id, ticket_id, …)`, which is why
+# each one filters on the company as well as the ticket.
+
+
+def _last_event(kind: str, *, by: str = "seq"):
+    """Where this kind of event last stands in the ticket's trail.
+
+    **`seq`, not `created_at`, whenever both sides of a comparison are events.**
+    `ticket_events.created_at` defaults to `now()`, which in Postgres is the
+    TRANSACTION's start time, not the statement's — the trap that model's own
+    docstring was written about. A sweep transaction that began a moment before
+    a reschedule committed will stamp the `reminded` row it writes with a time
+    EARLIER than the move it has just acted on, and the next tick would read
+    that as "reminded before the slot moved" and remind all over again.
+
+    `seq` is an identity column assigned at INSERT, so it orders two rows by
+    when they were actually written whatever their transactions were doing. It
+    is what the timeline already sorts by, for the same reason.
+
+    `by="created_at"` is for the one comparison that cannot use it: a
+    notification measured against an event, since `notifications` has no `seq`.
+    """
+    column = TicketEvent.seq if by == "seq" else TicketEvent.created_at
+    return (
+        select(func.max(column))
+        .where(
+            TicketEvent.company_id == Ticket.company_id,
+            TicketEvent.ticket_id == Ticket.id,
+            TicketEvent.kind == kind,
+        )
+        .scalar_subquery()
+    )
+
+
+def _last_raised(kind: str):
+    """When this kind of notification was last raised for the ticket scanned.
+
+    The `_already` above answers "ever", which is the same question until a slot
+    moves. This one answers "when", which is the question afterwards.
+
+    Timestamps, because `notifications` has no `seq` — so it inherits the
+    transaction-clock hazard `_last_event` avoids. It is harmless HERE and only
+    here: both sweeps that use this select on a slot already in the past
+    (`no_show`) or on a status a rescheduled ticket cannot be in
+    (`force_close`), so a ticket whose slot has just moved forward drops out of
+    the WHERE entirely rather than being re-armed a second time.
+    """
+    return (
+        select(func.max(Notification.created_at))
+        .where(
+            Notification.company_id == Ticket.company_id,
+            Notification.ticket_id == Ticket.id,
+            Notification.kind == kind,
+        )
+        .scalar_subquery()
+    )
+
+
+def _rearmed(marker, moved):
+    """Never done, or done before the slot last moved.
+
+    ⚠ Read the never-rescheduled case first, because it is almost every ticket:
+    `moved` is NULL, so the second arm is `AND(FALSE, …)` and the whole thing
+    collapses to `marker IS NULL` — which is precisely the `not_in(...)` test
+    this replaced. The population on the first tick after this ships is
+    identical, so nothing arrives as a backlog burst.
+
+    The `moved IS NOT NULL` is written out rather than left to `marker < NULL`
+    being neither true nor false. The result is the same today; the difference
+    is that this one still means what it says if somebody wraps it in a NOT.
+    """
+    return or_(marker.is_(None), and_(moved.is_not(None), marker < moved))
 
 
 async def _raise_for(
@@ -211,14 +299,23 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
     about a job that is no longer empty.
     """
     now = _now()
-    # A manager's re-notification gets its grace period. Same shape as the
+    # A job that was just PUT BACK gets its grace period. Same shape as the
     # `slot_requested` subquery in `sweep_silent_slots`: the latest event of a
     # kind, compared against a cutoff.
-    renotified = (
+    #
+    # Two kinds, not one, and the second is not optional. A manager rescuing an
+    # escalated ticket by agreeing a new time with the customer commonly lands
+    # it inside `escalate_hours_before_slot` — 09:00 for an 11:00 slot is a
+    # perfectly ordinary rescue — and without `rescheduled` here it would
+    # escalate straight back on the next five-minute tick, putting the row the
+    # manager just cleared back in their own queue. That is exactly what the
+    # grace exists to prevent for a bonus.
+    republished = (
         select(func.max(TicketEvent.created_at))
         .where(
+            TicketEvent.company_id == Ticket.company_id,
             TicketEvent.ticket_id == Ticket.id,
-            TicketEvent.kind == "bonus_added",
+            TicketEvent.kind.in_(("bonus_added", "rescheduled")),
         )
         .scalar_subquery()
     )
@@ -246,12 +343,12 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
                 # This company's own window, not the deployment's.
                 func.coalesce(Ticket.slot_start, Ticket.sla_due_at)
                 <= now + _hours(_rule("escalate_hours_before_slot")),
-                # NULL means never re-notified, which is the common case and
+                # NULL means never re-published, which is the common case and
                 # must pass — hence the explicit IS NULL rather than relying on
                 # a comparison against NULL, which is neither true nor false.
                 or_(
-                    renotified.is_(None),
-                    renotified
+                    republished.is_(None),
+                    republished
                     <= now - _minutes(_rule("renotify_grace_minutes")),
                 ),
             )
@@ -387,7 +484,17 @@ async def sweep_force_close(db: AsyncSession) -> int:
                 Ticket.customer_confirmed_at.is_(None),
                 asked.is_not(None),
                 asked <= now - _hours(_rule("force_close_hours")),
-                Ticket.id.not_in(_already("force_close")),
+                # "Since the slot last moved", and this one fixes a real hole
+                # rather than merely re-arming a courtesy. A ticket that went
+                # `Slot Pending` past its SLA already has a `force_close` bell
+                # from `_sweep_expired_without_slot` below — a completely
+                # different problem, but the same kind. That used to be
+                # harmless because such a ticket was a dead end; a manager can
+                # now rescue it by booking a time, so it can reach
+                # `Awaiting Customer`, go silent, and find its own bell already
+                # spent. The ticket would then have no exit at all.
+                _rearmed(_last_raised("force_close"),
+                         _last_event("rescheduled", by="created_at")),
             )
         )
     ).all()
@@ -444,6 +551,12 @@ async def _sweep_expired_without_slot(db: AsyncSession) -> int:
                 # give up on a live ticket is the notification that teaches
                 # people to ignore them.
                 Ticket.sla_due_at < _now(),
+                # Plainly "ever", and deliberately NOT the `_rearmed` its
+                # sibling above uses. This branch requires `slot_start IS NULL`
+                # and a reschedule always writes a slot, so a rescheduled ticket
+                # can never reach here — there is no re-arming to do, and adding
+                # it would only invite the reader to assume the two dedupes are
+                # the same test written twice.
                 Ticket.id.not_in(_already("force_close")),
             )
         )
@@ -484,7 +597,12 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
     for it: "did anybody remind them" is the first question after a no-show, and
     a push receipt is not something this system keeps.
     """
-    reminded = select(TicketEvent.ticket_id).where(TicketEvent.kind == "reminded")
+    # …and "since the slot last moved", not "ever". A reminder pushed for a
+    # 10:00 slot says nothing about the 15:00 one it was rescheduled to, and the
+    # `not_in` this replaced would have suppressed the second reminder for ever
+    # — silently disarming the one notification whose whole job is stopping
+    # somebody being late.
+    reminded = _rearmed(_last_event("reminded"), _last_event("rescheduled"))
     now = _now()
     rows = list(
         await db.scalars(
@@ -499,7 +617,7 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
                 Ticket.slot_start > now,
                 Ticket.slot_start
                 <= now + _minutes(_rule("slot_reminder_minutes")),
-                Ticket.id.not_in(reminded),
+                reminded,
             )
         )
     )
@@ -572,8 +690,14 @@ async def sweep_customer_notice(db: AsyncSession) -> int:
     slot opened, and would leave the one question somebody asks later
     unanswerable.
     """
-    notified = select(TicketEvent.ticket_id).where(
-        TicketEvent.kind == "customer_notified"
+    # "Since the slot last moved", not "ever" — the twin of the reminder's, and
+    # the worse half if it is missed. The customer is already holding a WhatsApp
+    # naming the OLD time; suppressing this one leaves them with nothing that
+    # names the new one and nobody to ring when a stranger does not arrive.
+    # (`core.reschedule.send_slot_moved` sends the correction at the moment of
+    # the move; this is the hour-before courtesy, and they are different jobs.)
+    notified = _rearmed(
+        _last_event("customer_notified"), _last_event("rescheduled")
     )
     now = _now()
     # Everything the message needs, in one query rather than five lookups a
@@ -614,7 +738,7 @@ async def sweep_customer_notice(db: AsyncSession) -> int:
                 Ticket.slot_start > now,
                 Ticket.slot_start
                 <= now + _minutes(_rule("customer_notice_minutes")),
-                Ticket.id.not_in(notified),
+                notified,
             )
         )
     ).all()
@@ -756,7 +880,18 @@ async def sweep_no_shows(db: AsyncSession) -> int:
                 # NULL compares to neither, so an event-less ticket drops out —
                 # the safe direction when the alternative is a charge.
                 assigned_at < Ticket.slot_end,
-                Ticket.id.not_in(_already("no_show")),
+                # "Since the slot last moved". A technician who missed Tuesday
+                # and was given Thursday can miss Thursday too, and the second
+                # one is a fact of its own — the `not_in` this replaced would
+                # have suppressed it silently, and with it the prompt a manager
+                # needs before anything is charged.
+                #
+                # `assigned_at < slot_end` above needs no equivalent: a
+                # rescheduled window is never sooner than SLOT_LEAD_MINUTES from
+                # the moment it was booked, so the old `assigned` event still
+                # predates the new `slot_end` and the clause keeps holding.
+                _rearmed(_last_raised("no_show"),
+                    _last_event("rescheduled", by="created_at")),
             )
         )
     )
