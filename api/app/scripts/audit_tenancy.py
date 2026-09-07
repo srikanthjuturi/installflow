@@ -79,6 +79,10 @@ TENANT_LINKS = [
     ("product_nodes", "parent_id", "product_nodes"),
     ("product_models", "node_id", "product_nodes"),
     ("product_models", "vendor_id", "vendors"),
+    # The serial numbers a model covers. A row pointing across the boundary
+    # would let one company's uploaded serials validate — or silently refuse —
+    # another company's ticket intake.
+    ("product_model_serials", "product_model_id", "product_models"),
     ("product_node_rules", "node_id", "product_nodes"),
     ("technician_nodes", "technician_id", "technician_profiles"),
     ("technician_nodes", "node_id", "product_nodes"),

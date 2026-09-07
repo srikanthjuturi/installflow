@@ -6,7 +6,7 @@ from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.otp import OtpCode
-from app.models.product import ProductModel, ProductNode
+from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
 from app.models.role import Role
 from app.models.sequence import CompanySequence
@@ -51,6 +51,7 @@ __all__ = [
     "Pincode",
     "PincodeDistrict",
     "ProductModel",
+    "ProductModelSerial",
     "ProductNode",
     "ProductNodeRules",
     "RefreshToken",

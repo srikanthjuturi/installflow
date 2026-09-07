@@ -20,11 +20,15 @@ extra round trips. Rows arrive ordered by depth, so a parent is always built
 before its children and each can simply read what its parent resolved.
 """
 
+import csv
+import io
+import re
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import case, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
@@ -44,6 +48,7 @@ from app.core.realtime import publish_notification
 from app.core.schemas import ListParams, canonical_filter
 from app.db.repository import paginate
 from app.features.masters.schemas import (
+    MAX_SERIAL_LENGTH,
     ApprovalRequest,
     ModelCreateRequest,
     ModelUpdateRequest,
@@ -52,12 +57,17 @@ from app.features.masters.schemas import (
     ParameterOut,
     ProductApprovalOut,
     ProductModelOut,
+    ProductModelSerialOut,
     ProductNodeOut,
     ProductResubmitRequest,
     ProductSubmitRequest,
     RejectionRequest,
+    SerialAddRequest,
+    SerialAddResult,
+    SerialImportReport,
+    SerialReject,
 )
-from app.models.product import ProductModel, ProductNode
+from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
 from app.models.technician import TechnicianNode
 from app.models.user import User
@@ -382,6 +392,7 @@ async def get_tree(
     node_ids = [n.id for n in nodes]
     coverage = await _coverage_counts(db, company_id, nodes)
     overriding = await _nodes_with_rule_overrides(db, company_id, node_ids)
+    serial_counts = await _serial_counts(db, company_id, [m.id for m in models])
 
     models_by_node: dict[uuid.UUID, list[ProductModel]] = {}
     for m in models:
@@ -456,6 +467,11 @@ async def get_tree(
                     approvalStatus=m.approval_status,
                     rejectionReason=m.rejection_reason,
                     sortOrder=m.sort_order,
+                    # Zero is not decoration: it is the state in which ticket
+                    # intake does NOT check this model's serials. Sent with the
+                    # tree so the console can say so on the row, rather than
+                    # leaving it to be discovered by opening the panel.
+                    serialCount=serial_counts.get(m.id, 0),
                 )
                 for m in models_by_node.get(n.id, [])
             ],
@@ -495,6 +511,35 @@ def _prune_empty_branches(node: ProductNodeOut) -> bool:
     """
     node.children = [child for child in node.children if _prune_empty_branches(child)]
     return bool(node.models or node.children)
+
+
+async def _serial_counts(
+    db: AsyncSession, company_id: uuid.UUID, model_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """How many serials each model holds, in one grouped query.
+
+    A live COUNT rather than a stored counter on `product_models`, for the
+    reason `technician_profiles` records: a denormalised count is a number that
+    drifts, and this one would drift into claiming a model is guarded when its
+    serials had been deleted.
+
+    Models with no serials are simply absent from the result — the caller reads
+    it with `.get(id, 0)`, and zero is the meaningful state here.
+    """
+    if not model_ids:
+        return {}
+    rows = await db.execute(
+        select(
+            ProductModelSerial.product_model_id,
+            func.count().label("n"),
+        )
+        .where(
+            ProductModelSerial.company_id == company_id,
+            ProductModelSerial.product_model_id.in_(model_ids),
+        )
+        .group_by(ProductModelSerial.product_model_id)
+    )
+    return {model_id: int(n) for model_id, n in rows}
 
 
 async def _coverage_counts(
@@ -1454,3 +1499,391 @@ async def reject_model(
         notification_id=raised,
     )
     return await _one_approval(db, principal, row)
+
+
+# ── model-wise serial numbers ─────────────────────────────────────────────────
+#
+# The serials a model is known to cover. `tickets._assert_serial_known` checks a
+# vendor's typed serial against this at intake, and refuses only when the model
+# has at least one row — an unloaded model is not checked, which is what lets
+# this ship against a live catalogue with no backfill and no flag day.
+#
+# Staff only (`masters.edit`). A vendor holds the invoice and could reasonably be
+# the party that loads these, but nothing is blocked while staff catch up, so
+# that stayed a deliberate follow-up rather than an assumption.
+#
+# The importer is deliberately the SAME SHAPE as `features/geo`'s: a template to
+# download, a dry run that writes nothing and returns exactly what the commit
+# would do, and per-row rejects that never block the good rows. Two importers
+# that behaved differently would be two things to learn.
+
+#: Serials in one uploaded file. Lower than geography's 200k because this is one
+#: model's stock, not the whole of India.
+MAX_SERIAL_ROWS = 100_000
+#: Nothing goes to blob storage — the 8 MB image ceiling does not apply.
+MAX_SERIAL_UPLOAD_BYTES = 16 * 1024 * 1024
+#: How many rejects travel back; `rejected` always carries the true total.
+MAX_SERIAL_REJECTS_RETURNED = 200
+#: Existence is probed in chunks so a 100k-row file does not become a single
+#: statement with 100k bind parameters.
+_SERIAL_PROBE_CHUNK = 5_000
+
+#: Header spellings accepted for the serial column, lowercased with non-letters
+#: stripped — so "Serial No.", "SERIAL_NUMBER" and "serialno" all land.
+_SERIAL_HEADERS = {
+    "serial",
+    "serialno",
+    "serialnos",
+    "serialnumber",
+    "serialnumbers",
+    "sno",
+    "srno",
+}
+
+
+def build_serial_template() -> io.BytesIO:
+    """A one-sheet .xlsx with the single header and two example rows."""
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Serials"
+    sheet.append(["Serial Number"])
+    sheet.append(["SN-EXAMPLE-000001"])
+    sheet.append(["SN-EXAMPLE-000002"])
+    sheet.column_dimensions["A"].width = 34
+    buffer = io.BytesIO()
+    book.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def _iter_serial_rows(data: bytes, filename: str):
+    """Yield raw tuples from .xlsx or .csv, streaming in both cases.
+
+    A near-twin of `geo.service._iter_rows`, kept here rather than shared: hard
+    rule 4 forbids one slice importing another's service, and importing the
+    geography slice to save fifteen lines would couple the product master to
+    India.
+    """
+    if filename.lower().endswith(".csv"):
+        text = data.decode("utf-8-sig", errors="replace")
+        yield from csv.reader(io.StringIO(text))
+        return
+
+    try:
+        import openpyxl
+    except ModuleNotFoundError:  # pragma: no cover - dependency is in requirements
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Spreadsheet support is not installed on this server",
+        )
+    try:
+        book = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        raise _bad_request("That file could not be opened as a spreadsheet")
+    try:
+        yield from book[book.sheetnames[0]].iter_rows(values_only=True)
+    finally:
+        book.close()
+
+
+def _cell_text(value: object) -> str:
+    """One spreadsheet cell as the string a human meant by it.
+
+    ⚠ The float branch is the one that matters. A serial that happens to be all
+    digits arrives from openpyxl as a FLOAT — `123456789012` becomes
+    `123456789012.0`, and `str()` of that is what would be stored and then never
+    match anything at intake. The geography importer carries the identical guard
+    for pincodes, and it is the most valuable line in either parser.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).strip()
+
+
+def _norm_serial_header(raw: object) -> str:
+    return re.sub(r"[^a-z]", "", str(raw or "").lower())
+
+
+async def _existing_lower(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    model_id: uuid.UUID,
+    lowers: list[str],
+) -> set[str]:
+    """Which of these serials the model already holds, matched case-insensitively.
+
+    Probed rather than loaded whole: a model may hold a hundred thousand serials
+    while the file names ten, so asking about the ten is what uses
+    `uq_product_model_serials_model_serial_lower` instead of reading the lot.
+    """
+    found: set[str] = set()
+    for start in range(0, len(lowers), _SERIAL_PROBE_CHUNK):
+        chunk = lowers[start : start + _SERIAL_PROBE_CHUNK]
+        if not chunk:
+            continue
+        rows = await db.scalars(
+            select(func.lower(ProductModelSerial.serial)).where(
+                ProductModelSerial.company_id == company_id,
+                ProductModelSerial.product_model_id == model_id,
+                func.lower(ProductModelSerial.serial).in_(chunk),
+            )
+        )
+        found.update(rows.all())
+    return found
+
+
+async def serial_count(
+    db: AsyncSession, company_id: uuid.UUID, model_id: uuid.UUID
+) -> int:
+    """How many serials a model holds. Zero means intake does not check it."""
+    return int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ProductModelSerial)
+            .where(
+                ProductModelSerial.company_id == company_id,
+                ProductModelSerial.product_model_id == model_id,
+            )
+        )
+        or 0
+    )
+
+
+async def list_serials(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    params: ListParams,
+) -> tuple[list[ProductModelSerialOut], int]:
+    """One page of a model's serials, newest first.
+
+    The model is resolved through `_load_model` first, so a guessed id — or one
+    belonging to another company — is a 404 before any serial is read.
+    """
+    await _load_model(db, principal.company_id, model_id)
+
+    stmt = select(ProductModelSerial).where(
+        ProductModelSerial.company_id == principal.company_id,
+        ProductModelSerial.product_model_id == model_id,
+    )
+    if params.search:
+        # A substring match, not a prefix: somebody checking whether a unit is
+        # loaded usually has the tail of the number off the box, not its head.
+        stmt = stmt.where(
+            ProductModelSerial.serial.ilike(f"%{params.search.strip()}%")
+        )
+    # Newest first: somebody who has just uploaded or pasted a batch is looking
+    # for what they just added, not for the alphabetical head of the list.
+    stmt = stmt.order_by(
+        ProductModelSerial.created_at.desc(), ProductModelSerial.serial.asc()
+    )
+
+    rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
+    return [
+        ProductModelSerialOut(id=row.id, serial=row.serial, createdAt=row.created_at)
+        for row in rows
+    ], total
+
+
+async def add_serials(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    body: SerialAddRequest,
+) -> SerialAddResult:
+    """Add serials typed or pasted into the console — the manual half.
+
+    The schema has already trimmed, dropped blanks and de-duplicated the batch
+    case-insensitively, so what arrives here is clean.
+
+    Serials the model already holds are REPORTED, not refused. Re-pasting a block
+    that overlaps what is loaded is how somebody tops a model up, and failing the
+    whole request on the first overlap would make the normal case an error.
+    """
+    await _load_model(db, principal.company_id, model_id)
+
+    wanted = body.serials
+    present = await _existing_lower(
+        db, principal.company_id, model_id, [s.lower() for s in wanted]
+    )
+    fresh = [s for s in wanted if s.lower() not in present]
+
+    if fresh:
+        await db.execute(
+            pg_insert(ProductModelSerial)
+            .values(
+                [
+                    {
+                        "company_id": principal.company_id,
+                        "product_model_id": model_id,
+                        "serial": serial,
+                        "created_by": principal.user_id,
+                        "updated_by": principal.user_id,
+                    }
+                    for serial in fresh
+                ]
+            )
+            # A net for the race the probe above cannot close: two managers
+            # pasting overlapping blocks at once. Without it the second one 500s
+            # on a unique violation instead of reporting a duplicate.
+            .on_conflict_do_nothing()
+        )
+        await db.commit()
+
+    return SerialAddResult(
+        added=len(fresh),
+        duplicates=len(wanted) - len(fresh),
+        total=await serial_count(db, principal.company_id, model_id),
+    )
+
+
+async def delete_serial(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    serial_id: uuid.UUID,
+) -> int:
+    """Remove one serial. A hard delete — see `ProductModelSerial` for why.
+
+    Returns what the model holds afterwards, so the console can update its count
+    without a second round trip.
+    """
+    await _load_model(db, principal.company_id, model_id)
+    row = await db.scalar(
+        select(ProductModelSerial).where(
+            ProductModelSerial.id == serial_id,
+            ProductModelSerial.company_id == principal.company_id,
+            ProductModelSerial.product_model_id == model_id,
+        )
+    )
+    if row is None:
+        raise _not_found("Serial number")
+    await db.delete(row)
+    await db.commit()
+    return await serial_count(db, principal.company_id, model_id)
+
+
+async def import_serials(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    data: bytes,
+    filename: str,
+    *,
+    dry_run: bool,
+) -> SerialImportReport:
+    """Load a model's serials from a spreadsheet — the Excel half.
+
+    Two passes over one file, as geography does: `dry_run` writes nothing and
+    returns exactly the numbers the commit will produce, so what the console
+    shows is the server's own count rather than a guess made in a browser that
+    never parsed the file.
+
+    **Additive.** It adds what the file names and never removes what the file
+    omits — a half-finished upload must not silently empty a model and quietly
+    turn intake checking off for it.
+
+    Rejected rows never block the file: they are counted, listed with a reason,
+    and the good rows land regardless.
+    """
+    await _load_model(db, principal.company_id, model_id)
+
+    rows = _iter_serial_rows(data, filename)
+    first = next(rows, None)
+    if first is None:
+        raise _bad_request("The file is empty")
+
+    rows_read = 0
+    kept: list[str] = []
+    seen: set[str] = set()
+    duplicates_in_file = 0
+    rejects: list[SerialReject] = []
+    rejected = 0
+
+    def take(number: int | None, raw: str) -> None:
+        nonlocal duplicates_in_file, rejected
+        if not raw:
+            return
+        if len(raw) > MAX_SERIAL_LENGTH:
+            rejected += 1
+            if len(rejects) < MAX_SERIAL_REJECTS_RETURNED:
+                rejects.append(
+                    SerialReject(
+                        row=number,
+                        serial=raw[:64],
+                        reason=f"Longer than {MAX_SERIAL_LENGTH} characters",
+                    )
+                )
+            return
+        key = raw.lower()
+        if key in seen:
+            duplicates_in_file += 1
+            return
+        seen.add(key)
+        kept.append(raw)
+
+    # The sheet is one column, so a header is OPTIONAL — if the first row is
+    # already a serial it is kept. Requiring one would reject the most obvious
+    # file somebody can produce: a column pasted straight out of another sheet.
+    head = [_cell_text(c) for c in (first if isinstance(first, (list, tuple)) else [first])]
+    named = [
+        i for i, c in enumerate(head) if _norm_serial_header(c) in _SERIAL_HEADERS
+    ]
+    column = named[0] if named else 0
+    if not named and head and head[column]:
+        rows_read += 1
+        take(1, head[column])
+
+    for number, row in enumerate(rows, start=2):
+        if row is None:
+            continue
+        rows_read += 1
+        if rows_read > MAX_SERIAL_ROWS:
+            raise _bad_request(f"That file has more than {MAX_SERIAL_ROWS:,} rows")
+        cells = row if isinstance(row, (list, tuple)) else [row]
+        take(number, _cell_text(cells[column]) if column < len(cells) else "")
+
+    present = await _existing_lower(
+        db, principal.company_id, model_id, [s.lower() for s in kept]
+    )
+    fresh = [s for s in kept if s.lower() not in present]
+
+    if not dry_run and fresh:
+        # Chunked for the same reason the probe is: one INSERT carrying 100,000
+        # rows is a statement the driver struggles to build.
+        for start in range(0, len(fresh), _SERIAL_PROBE_CHUNK):
+            await db.execute(
+                pg_insert(ProductModelSerial)
+                .values(
+                    [
+                        {
+                            "company_id": principal.company_id,
+                            "product_model_id": model_id,
+                            "serial": serial,
+                            "created_by": principal.user_id,
+                            "updated_by": principal.user_id,
+                        }
+                        for serial in fresh[start : start + _SERIAL_PROBE_CHUNK]
+                    ]
+                )
+                .on_conflict_do_nothing()
+            )
+        await db.commit()
+
+    held = await serial_count(db, principal.company_id, model_id)
+    return SerialImportReport(
+        dryRun=dry_run,
+        rowsRead=rows_read,
+        added=len(fresh),
+        duplicatesInFile=duplicates_in_file,
+        alreadyPresent=len(present),
+        rejected=rejected,
+        rejects=rejects,
+        # On a dry run nothing was written, so the figure the console shows as
+        # "the model will hold" has to be projected rather than counted.
+        total=held if not dry_run else held + len(fresh),
+    )

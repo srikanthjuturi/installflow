@@ -524,3 +524,89 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ondelete="RESTRICT",
         ),
     )
+
+
+class ProductModelSerial(Base, IdMixin, AuditMixin):
+    """One serial number this model is known to cover.
+
+    The unit-level fact the master was missing. `tickets.serial_number` is the
+    serial a vendor reads off the invoice at intake, and until this table
+    existed nothing could say whether it was a plausible serial for the model
+    being ticketed — so a television's number could be raised against an air
+    conditioner, and the first anybody knew was a `serial_mismatch` raised with
+    a technician already standing at the customer's door.
+
+    ## Empty means UNCHECKED, not "nothing matches"
+
+    `tickets._assert_serial_known` refuses a serial only when the model has at
+    least one row here. That is what makes this shippable against a live
+    catalogue: there is no backfill and no flag day, and a company loads its
+    models one at a time instead of every vendor's intake breaking on deploy.
+    The console shows the count on the model for exactly this reason — "0
+    serials" is precisely the state in which intake is not checked, and that
+    should be readable rather than inferred.
+
+    ## A serial is never CONSUMED
+
+    Raising a ticket does not spend a row here, and nothing marks one used.
+    `tickets.serial_number` is deliberately not unique — a service call on a
+    unit installed months ago repeats its serial (see `Ticket.serial_number`) —
+    so a serial has to keep matching for the life of the unit. Treating these as
+    stock to be drawn down would break the second visit to every customer.
+
+    ## Not soft-deleted, unlike both tables above
+
+    The only table in this module without `deleted_at`, and deliberately: these
+    are bulk rows with no independent identity, nothing points a foreign key at
+    them, and removing a mistyped serial has to free that number for immediate
+    re-upload. Soft deletion would buy no audit worth the partial-index dance it
+    forces on the UNIQUE below. `vendor_address_searches` is the precedent for a
+    plain tenant table.
+    """
+
+    __tablename__ = "product_model_serials"
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    #: The model this serial belongs to. A COMPOSITE FK — see __table_args__.
+    product_model_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: Stored as it was typed or imported. Compared case-insensitively and
+    #: trimmed, which is what `jobs.service.serial_mismatch` already does to the
+    #: serial a technician photographs — two rules disagreeing about case would
+    #: be worse than one.
+    serial: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        # Serves the composite FK below, columns in order. An index on
+        # `company_id` alone does not serve `(company_id, product_model_id)`,
+        # and without this deleting one model scans every serial in the table.
+        Index(
+            "ix_product_model_serials_company_model",
+            "company_id",
+            "product_model_id",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "product_model_id"],
+            ["product_models.company_id", "product_models.id"],
+            name="fk_product_model_serials_company_model",
+            ondelete="CASCADE",
+        ),
+        # ⚠ The UNIQUE is a hand-written functional index in the migration, not
+        # declared here: it is on `lower(serial)`, and Alembic does not
+        # recognise `LOWER()` indexes — autogenerate mistakes them for stale and
+        # emits a drop on every run. See `uq_product_models_node_name_lower`,
+        # which is spelled the same way and for the same reason.
+        #
+        # Total, not partial: there is no `deleted_at` on this table, so the
+        # soft-delete rule that makes every other UNIQUE here partial does not
+        # apply.
+        #
+        #   uq_product_model_serials_model_serial_lower
+        #     (company_id, product_model_id, lower(serial))
+        #
+        # Scoped to the MODEL, not the company. A serial physically names one
+        # unit, so company-wide uniqueness is tempting — but it is a stronger
+        # claim than the check needs, and it would reject a legitimate import
+        # where two models genuinely share a numbering scheme.
+    )

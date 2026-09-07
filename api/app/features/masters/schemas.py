@@ -39,6 +39,17 @@ from app.core.service_types import DEFAULT_SERVICE_TYPES, SERVICE_TYPES
 #: that the gallery still fits a phone screen and a list response stays small.
 MAX_IMAGES = 5
 
+#: Matches `product_model_serials.serial` and `tickets.serial_number`, which are
+#: both String(64). The three have to agree: a serial too long to store on a
+#: ticket is one intake could never match anyway.
+MAX_SERIAL_LENGTH = 64
+
+#: How many serials one manual POST may carry. The box accepts a pasted block,
+#: so this is not "one at a time" — it is the point past which somebody should
+#: be using the spreadsheet importer, which streams and reports per-row rejects
+#: instead of failing the whole request on the first bad line.
+MAX_SERIALS_PER_REQUEST = 500
+
 
 def _check_icon(value: str) -> str:
     if value not in PRODUCT_ICON_KEYS:
@@ -325,6 +336,14 @@ class ProductModelOut(AppModel):
     #: only in their bell. Null unless `approvalStatus == "rejected"`.
     rejectionReason: str | None
     sortOrder: int
+    #: How many serial numbers this model covers.
+    #:
+    #: **Zero is a state, not an empty list.** Ticket intake checks a typed
+    #: serial against this model only when at least one is loaded, so zero means
+    #: "not checked" — which is exactly the thing somebody maintaining the
+    #: catalogue needs to see without opening the panel. A live COUNT, never a
+    #: stored counter; see `_serial_counts`.
+    serialCount: int = 0
 
 
 class ProductNodeOut(AppModel):
@@ -495,3 +514,105 @@ class ProductApprovalOut(AppModel):
     #: Null on a product that never went through approval — every product that
     #: predates this feature. Both clients render it as "—".
     decidedByName: str | None
+
+
+# ── model-wise serial numbers ─────────────────────────────────────────────────
+#
+# The serials a model is known to cover, checked at ticket intake. An EMPTY list
+# means unchecked, not "nothing matches" — see `ProductModelSerial` for why that
+# is what makes this shippable against a live catalogue.
+
+
+def _clean_serials(values: list[str]) -> list[str]:
+    """Trim, drop blanks, and de-duplicate case-insensitively.
+
+    Done here rather than in the service because the manual box accepts a pasted
+    block, and a paste out of a spreadsheet column arrives with trailing spaces
+    and usually a blank last line. Rejecting the whole request for that would be
+    theatre — the user cannot see the whitespace they are being refused for.
+
+    Case-insensitive de-duplication matches the unique index, so a paste
+    containing both `AB-1` and `ab-1` is one serial rather than an insert that
+    fails halfway.
+    """
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = (raw or "").strip()
+        if not value:
+            continue
+        if len(value) > MAX_SERIAL_LENGTH:
+            raise ValueError(
+                f"{value[:20]}… is longer than {MAX_SERIAL_LENGTH} characters"
+            )
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(value)
+    if not cleaned:
+        raise ValueError("Enter at least one serial number")
+    if len(cleaned) > MAX_SERIALS_PER_REQUEST:
+        raise ValueError(
+            f"Up to {MAX_SERIALS_PER_REQUEST} serials at a time — "
+            "use the spreadsheet import for more"
+        )
+    return cleaned
+
+
+class SerialAddRequest(BaseModel):
+    """One or many serials for a model. The manual half of the requirement."""
+
+    serials: Annotated[list[str], AfterValidator(_clean_serials)]
+
+
+class ProductModelSerialOut(AppModel):
+    id: uuid.UUID
+    serial: str
+    createdAt: datetime.datetime
+
+
+class SerialAddResult(AppModel):
+    """What a manual add actually did.
+
+    `duplicates` is not an error. Re-pasting a block that overlaps what is
+    already loaded is the normal way somebody tops a model up, so the added ones
+    land and the rest are reported rather than refused.
+    """
+
+    added: int
+    duplicates: int
+    total: int
+
+
+class SerialReject(AppModel):
+    """One row the importer could not take, and why."""
+
+    row: int | None = None
+    serial: str | None = None
+    reason: str
+
+
+class SerialImportReport(AppModel):
+    """The same two-pass shape as the geography importer's `ImportReport`.
+
+    A dry run writes nothing and returns exactly what the commit would do, so
+    the numbers the console shows are the server's own count rather than a guess
+    made in a browser that never parsed the file.
+    """
+
+    dryRun: bool
+    rowsRead: int
+    added: int
+    #: Present more than once in the FILE. Counted separately from
+    #: `alreadyPresent` because they mean different things to whoever prepared
+    #: the sheet: one is a mistake in it, the other is an overlap with what is
+    #: already loaded and is expected on a top-up.
+    duplicatesInFile: int
+    alreadyPresent: int
+    rejected: int = 0
+    #: Capped; `rejected` carries the true total.
+    rejects: list[SerialReject] = Field(default_factory=list)
+    #: What the model holds once this import lands — the figure the console
+    #: shows on the model, and on a dry run the figure it WOULD show.
+    total: int

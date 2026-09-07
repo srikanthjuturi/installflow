@@ -29,7 +29,16 @@ spends money, so it is paired with a rank floor no per-company override can lift
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -57,10 +66,14 @@ from app.features.masters.schemas import (
     NodeCreateRequest,
     NodeUpdateRequest,
     ProductApprovalOut,
+    ProductModelSerialOut,
     ProductNodeOut,
     ProductResubmitRequest,
     ProductSubmitRequest,
     RejectionRequest,
+    SerialAddRequest,
+    SerialAddResult,
+    SerialImportReport,
 )
 from app.models.role import NATIONAL_HEAD
 
@@ -222,6 +235,149 @@ async def delete_model(
 ) -> ApiEnvelope[None]:
     await service.delete_model(db, principal, model_id)
     return envelope(None, message="Product model removed")
+
+
+# ── model-wise serial numbers ─────────────────────────────────────────────────
+#
+# The serials a model covers, checked at ticket intake by
+# `tickets._assert_serial_known`. Staff writes, on the same `masters.edit` +
+# `IsStaff` pairing as everything above — a vendor could reasonably be the party
+# that loads these, since it holds the invoice, but nothing is blocked while
+# staff catch up (an unloaded model is simply unchecked) so that stayed a
+# deliberate follow-up rather than an assumption.
+#
+# The template route sits at `/serials/template` rather than under `/models/…`
+# so it cannot be read as a model id under any future route.
+
+
+@router.get("/serials/template", dependencies=[IsStaff])
+async def serial_template(principal: CanEdit) -> StreamingResponse:
+    """A starter .xlsx with the one header the importer reads."""
+    return StreamingResponse(
+        service.build_serial_template(),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={
+            "Content-Disposition": 'attachment; filename="serial-numbers.xlsx"'
+        },
+    )
+
+
+@router.get(
+    "/models/{model_id}/serials",
+    response_model=PaginatedEnvelope[ProductModelSerialOut],
+)
+async def list_serials(
+    model_id: uuid.UUID,
+    db: Db,
+    principal: CanView,
+    params: Annotated[ListParams, Depends(list_params)],
+) -> PaginatedEnvelope[ProductModelSerialOut]:
+    """One page of a model's serials, newest first. `?search=` narrows.
+
+    On `masters.view` rather than `masters.edit`: this is the tree's own read
+    guard, and a manager who can see a product can see which units it covers.
+    The model is resolved company-scoped first, so a guessed id is a 404.
+    """
+    rows, total = await service.list_serials(db, principal, model_id, params)
+    return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.post(
+    "/models/{model_id}/serials",
+    response_model=ApiEnvelope[SerialAddResult],
+    status_code=201,
+    dependencies=[IsStaff],
+)
+async def add_serials(
+    model_id: uuid.UUID, body: SerialAddRequest, db: Db, principal: CanEdit
+) -> ApiEnvelope[SerialAddResult]:
+    """Add serials typed or pasted into the console.
+
+    Takes a list, not one value: the console's box accepts a pasted block, which
+    is how somebody adds twenty without reaching for a spreadsheet. Serials the
+    model already holds are reported in `duplicates`, never refused.
+    """
+    data = await service.add_serials(db, principal, model_id, body)
+    return envelope(
+        data,
+        message=(
+            f"{data.added} serial number{'' if data.added == 1 else 's'} added"
+            if data.added
+            else "Already on this model — nothing to add"
+        ),
+        status_code=201,
+    )
+
+
+@router.delete(
+    "/models/{model_id}/serials/{serial_id}",
+    response_model=ApiEnvelope[int],
+    dependencies=[IsStaff],
+)
+async def delete_serial(
+    model_id: uuid.UUID, serial_id: uuid.UUID, db: Db, principal: CanEdit
+) -> ApiEnvelope[int]:
+    """Remove one serial, and answer with what the model holds afterwards.
+
+    ⚠ Removing the LAST serial turns intake checking off for this model, because
+    empty means unchecked. The console says so before it lets the count reach
+    zero; the count in this response is what it reads to know.
+    """
+    total = await service.delete_serial(db, principal, model_id, serial_id)
+    return envelope(total, message="Serial number removed")
+
+
+@router.post(
+    "/models/{model_id}/serials/import",
+    response_model=ApiEnvelope[SerialImportReport],
+    dependencies=[IsStaff],
+)
+async def import_serials(
+    model_id: uuid.UUID,
+    db: Db,
+    principal: CanEdit,
+    file: Annotated[UploadFile, File()],
+    dryRun: Annotated[bool, Query()] = True,
+) -> ApiEnvelope[SerialImportReport]:
+    """Load a model's serials from a spreadsheet. `dryRun` writes nothing.
+
+    Additive: it adds what the file names and never removes what the file omits,
+    for the reason geography's importer does not either — a half-finished upload
+    must not silently empty a model and turn its intake check off.
+    """
+    name = (file.filename or "").lower()
+    if not name.endswith((".xlsx", ".csv")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload an .xlsx or .csv file",
+        )
+
+    # Read with a ceiling rather than trusting the declared size: a client can
+    # claim any content-length, and the body would otherwise be in memory before
+    # any check that came after it. Lifted verbatim from `geo.import_geography`.
+    data = await file.read(service.MAX_SERIAL_UPLOAD_BYTES + 1)
+    if len(data) > service.MAX_SERIAL_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "The file must be under "
+                f"{service.MAX_SERIAL_UPLOAD_BYTES // (1024 * 1024)} MB"
+            ),
+        )
+
+    report = await service.import_serials(
+        db, principal, model_id, data, name, dry_run=dryRun
+    )
+    return envelope(
+        report,
+        message=(
+            "Checked — nothing was saved"
+            if dryRun
+            else f"{report.added} serial number{'' if report.added == 1 else 's'} added"
+        ),
+    )
 
 
 # ── approvals ─────────────────────────────────────────────────────────────────
