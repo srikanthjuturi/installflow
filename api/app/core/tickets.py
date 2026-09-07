@@ -134,6 +134,40 @@ NO_SHOW_GRACE_MINUTES = 30
 #: about at the time is not a penalty, it is an ambush.
 NO_SHOW_LOOKBACK_HOURS = 48
 
+#: How far ahead a RESCHEDULE may look, when the ordinary bound cannot be used.
+#:
+#: Every other caller of `core.slots.offered_slots` bounds the list at
+#: `tickets.sla_due_at` — the service level's promise that the slot must START
+#: within N hours of the ticket being raised. A reschedule cannot: `sla_due_at`
+#: is stamped once at intake and never recomputed, and by the time anybody is
+#: moving a slot it has usually passed. Bounded by it, the list would come back
+#: EMPTY and the feature would be unusable in exactly the case it exists for.
+#:
+#: So the promise stays frozen — a ticket that is rescheduled reads as breached
+#: on the board, which is true, and the `rescheduled` event says why — and the
+#: replacement window is bounded by this instead.
+#:
+#: 48 hours, for four reasons:
+#:
+#:   * it is the longest service level this product sells (`SERVICE_LEVEL_HOURS`
+#:     above), so a reschedule can never promise a customer a longer wait than
+#:     the worst thing the company already sells them;
+#:   * it can never be empty. `SLOT_WINDOWS` runs 5 AM to 9 PM, so 48 hours
+#:     holds at least eight windows even after `SLOT_LEAD_MINUTES` — and the one
+#:     thing this must never do is recreate the dead end it was written to
+#:     rescue;
+#:   * with no cap on how often a ticket may move, it is the only thing bounding
+#:     a job walking forward. Each hop is 48 hours and each leaves its own row
+#:     in `ticket_events`;
+#:   * it keeps every existing caller's behaviour identical — 48 hours reaches
+#:     at most two days out, inside the span the day loop already walked.
+#:
+#: Here rather than in `company_rules` for hard rule 8's reason: do not ship a
+#: rule nothing has asked to vary. If ops does ask, it becomes an overridable
+#: key read off the ticket's own `rules_snapshot` through `rules.snapshot_int`,
+#: which is a code change and not a migration over every ticket ever raised.
+RESCHEDULE_HORIZON_HOURS = 48
+
 #: Local time for the offered windows. India is the whole market (see
 #: `app/core/phone.py` for the same assumption), and a customer picking "3 PM"
 #: means 3 PM where they live, not UTC.

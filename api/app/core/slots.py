@@ -35,7 +35,10 @@ def _now() -> datetime.datetime:
 
 
 def offered_slots(
-    row: Ticket, *, now: datetime.datetime | None = None
+    row: Ticket,
+    *,
+    now: datetime.datetime | None = None,
+    horizon: datetime.datetime | None = None,
 ) -> list[tuple[datetime.datetime, datetime.datetime]]:
     """Every window this ticket could still be served in, soonest first.
 
@@ -46,6 +49,14 @@ def offered_slots(
       * not later than `sla_due_at` — the service level says the slot must START
         within N hours of the ticket being raised, so a window past that is one
         the company has already promised not to offer.
+
+    `horizon` REPLACES that upper bound, and exactly one caller passes it: a
+    reschedule. `sla_due_at` is stamped at intake and never recomputed, so by
+    the time a slot is being moved it has usually passed — bounded by it the
+    list would be empty, which is the dead end the whole feature exists to
+    rescue. The promise itself is left frozen rather than re-based, so a
+    rescheduled ticket goes on reading as breached; see
+    `core.tickets.RESCHEDULE_HORIZON_HOURS` for the argument and the number.
 
     Because the list is generated from the window rather than filtered
     afterwards, a customer CANNOT pick a slot that breaches. That is the point:
@@ -62,13 +73,20 @@ def offered_slots(
     """
     now = now or _now()
     earliest = now + datetime.timedelta(minutes=SLOT_LEAD_MINUTES)
-    latest = row.sla_due_at
+    latest = horizon or row.sla_due_at
 
     out: list[tuple[datetime.datetime, datetime.datetime]] = []
-    # Walk local days, because the windows are local working hours. Three is
-    # enough for the longest service level (48h) plus the day it spills into.
+    # Walk local days, because the windows are local working hours.
+    #
+    # DERIVED from the upper bound, never a constant. It was `range(4)`,
+    # justified by a comment about the longest service level — correct while
+    # `sla_due_at` was the only ceiling, and a silent truncation the moment a
+    # caller supplied its own. A bound that is quietly ignored is worse than one
+    # that raises. For every caller that passes no `horizon` this computes 4 or
+    # fewer and the result is identical.
     start_day = earliest.astimezone(IST).date()
-    for offset in range(4):
+    days = (latest.astimezone(IST).date() - start_day).days + 1
+    for offset in range(max(1, days)):
         day = start_day + datetime.timedelta(days=offset)
         for from_hour, to_hour in SLOT_WINDOWS:
             begins = datetime.datetime.combine(
@@ -93,6 +111,7 @@ async def bookable_slots(
     *,
     now: datetime.datetime | None = None,
     technician_id: uuid.UUID | None = _UNSET,
+    horizon: datetime.datetime | None = None,
 ) -> list[tuple[datetime.datetime, datetime.datetime]]:
     """`offered_slots`, minus the ones the assigned technician cannot serve.
 
@@ -119,6 +138,9 @@ async def bookable_slots(
     putting it back, which would leave a dirty attribute on a tracked object for
     the next flush to find.
 
+    `horizon` is passed straight through to `offered_slots`, where the argument
+    for it is. Only a reschedule supplies one.
+
     ## Empty is a real answer, and now a worse one
 
     It already meant "the service level has run out". It can now also mean "the
@@ -128,7 +150,7 @@ async def bookable_slots(
     """
     against = row.technician_id if technician_id is _UNSET else technician_id
 
-    windows = offered_slots(row, now=now)
+    windows = offered_slots(row, now=now, horizon=horizon)
     if against is None or not windows:
         return windows
 
