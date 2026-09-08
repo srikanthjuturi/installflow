@@ -1,0 +1,15 @@
+# Credentials. Never committed — see README.md.
+#
+# Both of these are WRITTEN BY `seed/seed_dev.mjs`, which is why they are easy to
+# forget: neither is created by hand, so neither shows up when you think about
+# what you are adding. They name every seeded account and the shared password.
+.env
+seed/credentials.json
+
+# Captured screenshots and built decks are outputs, not source. Re-run the
+# pipeline to regenerate them; a 100 MB folder of PNGs in git helps nobody.
+out/
+dist/
+
+node_modules/
+.venv/
