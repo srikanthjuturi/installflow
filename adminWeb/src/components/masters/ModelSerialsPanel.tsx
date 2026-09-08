@@ -1,5 +1,14 @@
 import * as React from "react";
-import { Download, FileSpreadsheet, Plus, Search, Trash2 } from "lucide-react";
+import {
+  Check,
+  Download,
+  FileSpreadsheet,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -12,9 +21,10 @@ import {
   useAddSerials,
   useDeleteSerial,
   useModelSerials,
+  useUpdateSerial,
 } from "@/hooks/useProductMaster";
 import { downloadSerialTemplate } from "@/services/productMaster";
-import { MAX_SERIALS_PER_REQUEST } from "@/types/product";
+import { MAX_SERIAL_LENGTH, MAX_SERIALS_PER_REQUEST } from "@/types/product";
 import { SerialImportDialog } from "./SerialImportDialog";
 import type { ProductModelSerial } from "@/types/product";
 
@@ -39,9 +49,25 @@ const PAGE_SIZE = 25;
 export function ModelSerialsPanel({
   modelId,
   modelName,
+  portal = false,
 }: {
   modelId: string;
   modelName: string;
+  /**
+   * Rendered on a VENDOR's own product page.
+   *
+   * The only difference it makes is WHICH endpoints the writes go to — the
+   * `/masters/portal/*` twins, which the server pins to the caller's own
+   * models. A vendor has the same four actions staff do: add, import, correct,
+   * remove.
+   *
+   * It was read-plus-add here at first, because removing the last serial turns
+   * intake checking off for that model and so lets a vendor lift its own gate.
+   * That was raised and the call was made to hand it over; what survives is the
+   * WARNING in `ConfirmDialog` when the last one is about to go, and an inline
+   * edit so correcting a typo never has to go through a delete at all.
+   */
+  portal?: boolean;
 }) {
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
@@ -66,7 +92,10 @@ export function ModelSerialsPanel({
     limit: PAGE_SIZE,
     search: term || undefined,
   });
-  const removeSerial = useDeleteSerial(modelId);
+  const removeSerial = useDeleteSerial(modelId, portal);
+  const renameSerial = useUpdateSerial(modelId, portal);
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState("");
 
   const rows = query.data?.rows ?? [];
   const total = query.data?.pagination.totalRecords ?? 0;
@@ -74,6 +103,15 @@ export function ModelSerialsPanel({
   // The unfiltered count. While a search is active `total` is the match count,
   // which must never be read as "this model is unguarded".
   const searching = term.length > 0;
+
+  function commitRename(serialId: string) {
+    const value = draft.trim();
+    if (!value) return;
+    renameSerial.mutate(
+      { serialId, serial: value },
+      { onSuccess: () => setEditing(null) }
+    );
+  }
 
   return (
     <div className="grid gap-3">
@@ -113,6 +151,7 @@ export function ModelSerialsPanel({
       {adding ? (
         <AddSerialsForm
           modelId={modelId}
+          portal={portal}
           onDone={() => {
             setAdding(false);
             setPage(1);
@@ -159,9 +198,16 @@ export function ModelSerialsPanel({
           <EmptyState
             icon={FileSpreadsheet}
             title="No serial numbers yet"
+            /* Second person on the portal, third on the ops screen — the
+               sentence describes the reader in one case and somebody else in
+               the other, and "a vendor can raise…" reads as a stranger's
+               problem to the vendor it is actually about. */
             description={
-              "Ticket intake does not check this model until at least one is " +
-              "loaded — a vendor can raise a ticket quoting any serial at all."
+              portal
+                ? "Until you load at least one, a ticket for this product is " +
+                  "accepted with any serial number — nothing checks it."
+                : "Ticket intake does not check this model until at least one " +
+                  "is loaded — a vendor can raise a ticket quoting any serial."
             }
             action={
               <Button type="button" onClick={() => setImporting(true)}>
@@ -174,25 +220,87 @@ export function ModelSerialsPanel({
       ) : (
         <>
           <ul className="scroll-slim max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line">
-            {rows.map((row) => (
-              <li
-                key={row.id}
-                className="flex items-center justify-between gap-2 px-3 py-1.5"
-              >
-                <span className="font-mono text-[13px] text-ink">
-                  {row.serial}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Remove ${row.serial}`}
-                  onClick={() => setPendingDelete(row)}
+            {rows.map((row) =>
+              editing === row.id ? (
+                <li key={row.id} className="flex items-center gap-1.5 px-3 py-1.5">
+                  <Input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      // Enter saves, Escape abandons. Both stop here — this
+                      // sits inside the product form, and a bare Enter would
+                      // otherwise submit that.
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitRename(row.id);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setEditing(null);
+                      }
+                    }}
+                    autoFocus
+                    maxLength={MAX_SERIAL_LENGTH}
+                    aria-label={`Serial number, was ${row.serial}`}
+                    className="h-8 font-mono text-[13px]"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Save"
+                    disabled={renameSerial.isPending || !draft.trim()}
+                    onClick={() => commitRename(row.id)}
+                  >
+                    {renameSerial.isPending ? (
+                      <Spinner />
+                    ) : (
+                      <Check className="size-3.5 text-ok" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Cancel"
+                    onClick={() => setEditing(null)}
+                  >
+                    <X className="size-3.5 text-ink-3" />
+                  </Button>
+                </li>
+              ) : (
+                <li
+                  key={row.id}
+                  className="flex items-center justify-between gap-2 px-3 py-1.5"
                 >
-                  <Trash2 className="size-3.5 text-ink-3" />
-                </Button>
-              </li>
-            ))}
+                  <span className="font-mono text-[13px] text-ink">
+                    {row.serial}
+                  </span>
+                  <span className="flex items-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Edit ${row.serial}`}
+                      onClick={() => {
+                        setEditing(row.id);
+                        setDraft(row.serial);
+                      }}
+                    >
+                      <Pencil className="size-3.5 text-ink-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Remove ${row.serial}`}
+                      onClick={() => setPendingDelete(row)}
+                    >
+                      <Trash2 className="size-3.5 text-ink-3" />
+                    </Button>
+                  </span>
+                </li>
+              )
+            )}
           </ul>
 
           {pages > 1 ? (
@@ -243,17 +351,25 @@ export function ModelSerialsPanel({
         onOpenChange={setImporting}
         modelId={modelId}
         modelName={modelName}
+        portal={portal}
       />
 
       <ConfirmDialog
         open={!!pendingDelete}
         onOpenChange={(open) => !open && setPendingDelete(null)}
         title="Remove this serial number?"
+        /* The last one is a different question from any other one, and the
+           warning is what remains of the argument against letting a vendor
+           delete at all: this is the click that turns the check off. Second
+           person on the portal, because there it is the reader's own gate. */
         description={
           total === 1
             ? `${pendingDelete?.serial} is the last one on ${modelName}. ` +
-              "Removing it turns off the intake check for this model — a " +
-              "vendor will be able to raise a ticket quoting any serial."
+              (portal
+                ? "Removing it turns the intake check off for this product — " +
+                  "a ticket will then be accepted with any serial number."
+                : "Removing it turns off the intake check for this model — a " +
+                  "vendor will be able to raise a ticket quoting any serial.")
             : `${pendingDelete?.serial} will no longer be accepted at ticket intake for ${modelName}.`
         }
         confirmLabel="Remove"
@@ -281,13 +397,15 @@ export function ModelSerialsPanel({
  */
 function AddSerialsForm({
   modelId,
+  portal,
   onDone,
 }: {
   modelId: string;
+  portal: boolean;
   onDone: () => void;
 }) {
   const [value, setValue] = React.useState("");
-  const addSerials = useAddSerials(modelId);
+  const addSerials = useAddSerials(modelId, portal);
 
   // Split on newlines AND commas: both are how a pasted column arrives,
   // depending on which application it was copied from.

@@ -44,11 +44,14 @@ export function SerialImportDialog({
   onOpenChange,
   modelId,
   modelName,
+  portal = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelId: string;
   modelName: string;
+  /** Uploads through the vendor's own-product endpoint. See `ModelSerialsPanel`. */
+  portal?: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -56,6 +59,7 @@ export function SerialImportDialog({
         <ImportForm
           modelId={modelId}
           modelName={modelName}
+          portal={portal}
           onDone={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -66,15 +70,17 @@ export function SerialImportDialog({
 function ImportForm({
   modelId,
   modelName,
+  portal,
   onDone,
 }: {
   modelId: string;
   modelName: string;
+  portal: boolean;
   onDone: () => void;
 }) {
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<SerialImportReport | null>(null);
-  const runImport = useImportSerials(modelId);
+  const runImport = useImportSerials(modelId, portal);
 
   const picker = useFilePicker({
     accept: SERIAL_IMPORT_ACCEPT,

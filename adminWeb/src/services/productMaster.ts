@@ -157,9 +157,9 @@ export function deleteOwnModel(id: string): Promise<null> {
 
 /* ── model-wise serial numbers ─────────────────────────────────────────────── */
 //
-// The serials a model covers, checked at ticket intake. Staff only — a vendor
-// holds the invoice and could reasonably load these, but an unloaded model is
-// simply unchecked, so nobody is blocked while staff catch up.
+// The serials a model covers, checked at ticket intake. Staff manage any model
+// in the company through these; a vendor manages its OWN through the `…Own…`
+// twins below, which the server pins with `_load_own_model`.
 
 /** Same ceiling and accepted kinds as the geography importer. */
 export const MAX_SERIAL_IMPORT_BYTES = 16 * 1024 * 1024;
@@ -189,6 +189,76 @@ export function addSerials(
   return apiPost<SerialAddResult>(`/masters/models/${modelId}/serials`, {
     serials,
   });
+}
+
+/**
+ * The same writes, for a VENDOR managing its own product's serials.
+ *
+ * Full control — add, import, correct, remove. It was add-only when it shipped,
+ * because removing the last serial turns intake checking off for that model and
+ * so lets a vendor lift its own gate. That was raised and the call was made to
+ * hand it over: a vendor who cannot fix its own typo has to ring somebody to
+ * correct a number only it can read. What remains is the WARNING before the
+ * last one goes, not a refusal.
+ */
+export function addOwnSerials(
+  modelId: string,
+  serials: string[]
+): Promise<SerialAddResult> {
+  return apiPost<SerialAddResult>(`/masters/portal/models/${modelId}/serials`, {
+    serials,
+  });
+}
+
+export function importOwnSerials(
+  modelId: string,
+  file: File,
+  { dryRun }: { dryRun: boolean }
+): Promise<SerialImportReport> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return apiUpload<SerialImportReport>(
+    `/masters/portal/models/${modelId}/serials/import?dryRun=${dryRun}`,
+    form
+  );
+}
+
+export function updateOwnSerial(
+  modelId: string,
+  serialId: string,
+  serial: string
+): Promise<ProductModelSerial> {
+  return apiPut<ProductModelSerial>(
+    `/masters/portal/models/${modelId}/serials/${serialId}`,
+    { serial }
+  );
+}
+
+export function deleteOwnSerial(
+  modelId: string,
+  serialId: string
+): Promise<number> {
+  return apiDelete<number>(
+    `/masters/portal/models/${modelId}/serials/${serialId}`
+  );
+}
+
+/**
+ * Correct one serial IN PLACE, rather than removing it and adding the fix.
+ *
+ * The row keeps its `createdAt`, so a corrected typo still records when that
+ * unit was loaded. A delete-and-re-add would restamp it to whoever fixed the
+ * spelling.
+ */
+export function updateSerial(
+  modelId: string,
+  serialId: string,
+  serial: string
+): Promise<ProductModelSerial> {
+  return apiPut<ProductModelSerial>(
+    `/masters/models/${modelId}/serials/${serialId}`,
+    { serial }
+  );
 }
 
 /** Removes one, and answers with what the model holds afterwards. */

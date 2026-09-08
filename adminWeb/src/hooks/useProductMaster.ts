@@ -1,13 +1,16 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addOwnSerials,
   addSerials,
   createModel,
   createNode,
   deleteModel,
   deleteNode,
   deleteOwnModel,
+  deleteOwnSerial,
   deleteSerial,
+  importOwnSerials,
   importSerials,
   listNodeTree,
   listSerials,
@@ -16,6 +19,8 @@ import {
   submitNode,
   updateModel,
   updateNode,
+  updateOwnSerial,
+  updateSerial,
   type TreePurpose,
 } from "@/services/productMaster";
 import { CERTIFY_DEPTH, flattenNodes } from "@/types/product";
@@ -202,30 +207,57 @@ function useSerialMutation<TVars, TData>(
   });
 }
 
-export const useAddSerials = (modelId: string) =>
+/**
+ * `portal` picks the VENDOR's own-product endpoint instead of the ops one.
+ *
+ * A flag rather than a second hook, because the panel that calls this is the
+ * same component on both screens — the difference is which door it knocks on,
+ * not what it does.
+ */
+export const useAddSerials = (modelId: string, portal = false) =>
   useSerialMutation(
     modelId,
-    (serials: string[]) => addSerials(modelId, serials),
+    (serials: string[]) =>
+      portal ? addOwnSerials(modelId, serials) : addSerials(modelId, serials),
     "Couldn't add those serial numbers"
   );
 
-export const useDeleteSerial = (modelId: string) =>
+export const useDeleteSerial = (modelId: string, portal = false) =>
   useSerialMutation(
     modelId,
-    (serialId: string) => deleteSerial(modelId, serialId),
+    (serialId: string) =>
+      portal
+        ? deleteOwnSerial(modelId, serialId)
+        : deleteSerial(modelId, serialId),
     "Couldn't remove that serial number"
+  );
+
+/**
+ * Correct one in place. A real update, not a delete plus an add — the row keeps
+ * its `createdAt`, so fixing a typo does not restamp when that unit was loaded.
+ */
+export const useUpdateSerial = (modelId: string, portal = false) =>
+  useSerialMutation(
+    modelId,
+    ({ serialId, serial }: { serialId: string; serial: string }) =>
+      portal
+        ? updateOwnSerial(modelId, serialId, serial)
+        : updateSerial(modelId, serialId, serial),
+    "Couldn't update that serial number"
   );
 
 /**
  * The two-pass import. A DRY RUN invalidates nothing — it wrote nothing, and
  * refetching on it would flicker the list for a preview the user may cancel.
  */
-export function useImportSerials(modelId: string) {
+export function useImportSerials(modelId: string, portal = false) {
   const queryClient = useQueryClient();
   return useMutation({
     meta: { errorTitle: "Couldn't read that file" },
     mutationFn: ({ file, dryRun }: { file: File; dryRun: boolean }) =>
-      importSerials(modelId, file, { dryRun }),
+      portal
+        ? importOwnSerials(modelId, file, { dryRun })
+        : importSerials(modelId, file, { dryRun }),
     onSuccess: (report) => {
       if (report.dryRun) return;
       queryClient.invalidateQueries({ queryKey: serialKeys.model(modelId) });

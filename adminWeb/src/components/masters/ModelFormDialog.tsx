@@ -788,19 +788,27 @@ function ModelForm({
         ) : null}
       </FieldGroup>
 
-      {/* Serial numbers, on an ops EDIT only.
-          - Not on a vendor's form (`withPricing` is false there): loading
-            serials is staff-only, the same decision the two price fields make
-            two blocks above.
+      {/* Serial numbers, on any EDIT — ops or a vendor's own product.
+          - `portal={!withPricing}` is what separates them. A vendor writes
+            through `/masters/portal/*`, which pins it to its own models, and
+            gets no Delete: removing the last serial turns intake checking off
+            for that model, and a vendor must not be able to lift its own gate.
+            Adding can only ever widen what one model accepts, which is why
+            that half is safe to hand over — and the vendor holds the invoice,
+            so it is the party that actually knows these numbers.
           - Not on ADD, because a serial needs a `product_model_id` that does
             not exist until the product is saved. That path gets the same panel
             as a step immediately after saving, so "serials while adding a
             model" still holds.
           Outside <FieldGroup> and visually separated: it writes to the server
           on its own, so it is not part of what Save sends. */}
-      {withPricing && isEdit ? (
+      {isEdit ? (
         <div className="grid gap-3 rounded-lg border border-line p-3">
-          <ModelSerialsPanel modelId={model.id} modelName={model.name} />
+          <ModelSerialsPanel
+            modelId={model.id}
+            modelName={model.name}
+            portal={!withPricing}
+          />
         </div>
       ) : null}
 
