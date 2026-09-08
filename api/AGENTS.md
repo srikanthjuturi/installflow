@@ -562,9 +562,35 @@ Three things about it are load-bearing:
 Staff load them (`masters.edit` + `IsStaff`), by hand or from a spreadsheet. The importer is
 deliberately the same shape as `features/geo`'s — template, dry run, per-row rejects that never
 block the good rows — and reuses its numeric-cell guard, without which an all-digit serial arrives
-from openpyxl as a float and stores as `1.23456789012e+11`. A vendor could reasonably load these,
-since it holds the invoice; that stayed a follow-up because nothing is blocked while staff catch
-up.
+from openpyxl as a float and stores as `1.23456789012e+11`.
+
+**A vendor manages its OWN products' serials too — add, import, correct, remove.** It holds the
+invoice, which is the same fact that makes the expected serial mandatory at intake, so it is the
+party that actually knows these numbers. Four `/masters/portal/models/{id}/serials…` routes on
+`vendor.catalogue`, every one through `_serial_target(own_only=True)` → `_load_own_model`, so
+another vendor's model is a 404 rather than a refusal.
+
+⚠ **Delete lets a vendor lift its own gate**, and that is a decision rather than an oversight.
+Removing the last serial turns intake checking OFF for that model; adding never can, and an import
+is additive so it cannot empty one either. It shipped add-only for exactly that reason, the point
+was raised, and the call was made to hand delete over: a vendor who cannot fix its own typo has to
+ring somebody to correct a number only it can read. What survives is the WARNING in both clients
+when the last one is about to go — not a refusal.
+
+**`update_serial` exists so "edit" is not delete-plus-add.** The row keeps `created_at` and
+`created_by`, so a corrected typo still records who loaded that unit and when, and the model never
+passes through a moment with one fewer serial than it should. A rename onto a value the model
+already carries is a 409, not a 500 from
+`uq_product_model_serials_model_serial_lower`.
+
+`list_serials` pins a vendor to its own models for the same reason `lookup_serial` always has.
+It was company-scoped alone, so a vendor guessing a model id could page a competitor's serial
+list — only a guess, since `get_tree` never shows them another vendor's ids, but hard rule 7 says
+a vendor sees only its own and this was the one serial route that did not say it.
+
+`GET /serials/template` is on `masters.view`, NOT staff-only: a vendor importing needs the same
+starter file, and it carries no data — one header row and two example serials, identical for every
+caller.
 
 **`GET /masters/serials/lookup` runs the check backwards, and it is the one place here that is an
 ORACLE RISK.** It answers "which products carry serials starting with this?", so the intake form

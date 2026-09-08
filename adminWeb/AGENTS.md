@@ -1290,6 +1290,17 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   count and the panel's empty state says so in words. Do not render "0 SN" as a badge on every
   model: on the day this shipped every model had zero, so the state worth pointing at is the one
   that can refuse a ticket.
+  `ModelSerialsPanel` takes a **`portal`** flag and appears on a vendor's own product too. All it
+  changes is which endpoints the writes hit — the `/masters/portal/*` twins, pinned server-side to
+  the caller's own models. A vendor gets the same four actions staff do: add, import, correct,
+  remove.
+  Two pieces of copy flip to the **second person** there, because on the portal the sentence
+  describes the reader rather than somebody else: the empty state, and the delete confirmation when
+  the LAST serial is about to go — which is the one click that turns the intake check off, and the
+  reason that dialog says so instead of "are you sure".
+  Rows edit **in place** (`useUpdateSerial` → `PUT`), never delete-then-add: the row keeps its
+  `createdAt`, and Enter/Escape in the inline input both `preventDefault`, or a bare Enter would
+  submit the product form the panel sits inside.
 - **The intake form runs that backwards: the serial is the FIRST field and it fills the product.**
   `ManualEntryForm` debounces the serial box into `GET /masters/serials/lookup`, offers the matches
   as a **suggestion dropdown**, and on an exact hit sets the category chain, the model and the

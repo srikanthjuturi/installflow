@@ -489,6 +489,13 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   live catalogue with no backfill and no flag day — a company loads its models one at a time rather
   than having every vendor's intake break on deploy — and it is why the console shows the count on
   the model: zero is a state, not an empty list.
+  **A vendor manages its OWN products' serials — add, import, correct, remove.** It holds the
+  invoice, so it is the party that knows the numbers.
+  ⚠ Removing the LAST serial turns the check off for that model, so delete does let a vendor lift
+  its own gate. That was raised and the call was made to hand it over anyway: a vendor who cannot
+  fix its own typo has to ring somebody to correct a number only it can read. What remains is the
+  WARNING before the last one goes — in those words, in both clients — and an in-place EDIT, so
+  correcting a serial never has to pass through a delete and never restamps who loaded that unit.
   A serial is **never consumed**. Raising a ticket marks nothing used, because ticket serials are
   deliberately not unique and a later service call on the same unit repeats the number.
   The same guard runs on `PATCH /tickets/{id}/serial`, or the check would be one request away from
