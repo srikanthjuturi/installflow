@@ -1,0 +1,5 @@
+# Deliberately NOT in api/requirements.txt — that file is a pinned production
+# list which scripts/publish.py ships to Azure, and a deck builder is not an API
+# dependency. This installs into deck/.venv instead.
+python-pptx==1.0.2
+Pillow==11.3.0

@@ -1,0 +1,17 @@
+{
+  "name": "reliance-greentech-deck",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Screenshot capture + PowerPoint assembly for the client-facing product decks. A tool, not shipped code — wired into neither adminWeb nor mobileapp.",
+  "scripts": {
+    "capture": "node capture/run.mjs",
+    "capture:prototype": "node capture/run.mjs --only=prototype",
+    "capture:console": "node capture/run.mjs --only=console",
+    "capture:mobile": "node capture/run.mjs --only=mobile",
+    "capture:customer": "node capture/run.mjs --only=customer"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}

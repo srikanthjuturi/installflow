@@ -156,6 +156,11 @@ export function usePushRegistration(): void {
   // ── one arriving while the app is open ───────────────────────────────────
   useEffect(() => {
     if (status !== 'authenticated') return;
+    // `expo-notifications` has no web implementation, and its listeners throw
+    // rather than no-op. `npm run web` is a development surface (see the same
+    // branch in `src/lib/secureStorage.ts`), so the guard belongs here — one
+    // throw inside an effect takes the whole screen down behind a red box.
+    if (Platform.OS === 'web') return;
 
     // A notification about a job the technician holds means that job moved, and
     // if it moved to closed the ledger moved with it. `usePoolStream` normally
@@ -181,6 +186,9 @@ export function usePushRegistration(): void {
   // ── tapping one ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (status !== 'authenticated') return;
+    // As above. There is also no cold-start tap to honour on the web, where the
+    // app is opened by typing a URL.
+    if (Platform.OS === 'web') return;
 
     const open = (data: Record<string, unknown> | undefined) => {
       // Routing only — the frame carries no customer details, so the screen
