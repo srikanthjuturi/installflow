@@ -75,6 +75,7 @@ from app.features.masters.schemas import (
     SerialAddResult,
     SerialImportReport,
     SerialMatchOut,
+    SerialUpdateRequest,
 )
 from app.models.role import NATIONAL_HEAD
 
@@ -374,6 +375,25 @@ async def add_serials(
     )
 
 
+@router.put(
+    "/models/{model_id}/serials/{serial_id}",
+    response_model=ApiEnvelope[ProductModelSerialOut],
+    dependencies=[IsStaff],
+)
+async def update_serial(
+    model_id: uuid.UUID,
+    serial_id: uuid.UUID,
+    body: SerialUpdateRequest,
+    db: Db,
+    principal: CanEdit,
+) -> ApiEnvelope[ProductModelSerialOut]:
+    """Correct one serial in place, keeping who loaded it and when."""
+    data = await service.update_serial(
+        db, principal, model_id, serial_id, body.serial
+    )
+    return envelope(data, message="Serial number updated")
+
+
 @router.delete(
     "/models/{model_id}/serials/{serial_id}",
     response_model=ApiEnvelope[int],
@@ -590,14 +610,19 @@ async def delete_own_model(
 
 # ── a vendor's own serial numbers ─────────────────────────────────────────────
 #
-# ADD ONLY — there is deliberately no portal DELETE, and the asymmetry is the
-# point. Removing the last serial from a model turns intake checking OFF for it,
-# so a vendor able to delete could quietly remove its own gate and go back to
-# raising tickets with any serial at all. Adding cannot do that: the worst a bad
-# add does is widen what one model accepts by one number.
+# Full control of its OWN products' serials: add, import, correct, remove. Every
+# one is pinned by `_serial_target(own_only=True)` → `_load_own_model`, so
+# another vendor's model is a 404 rather than a refusal.
 #
-# Staff keep DELETE on the ops routes above, which is where somebody with no
-# stake in that model's tickets can undo a mistake.
+# ⚠ This was ADD-ONLY when it shipped, on the reasoning that removing the last
+# serial turns intake checking OFF for a model — so delete lets a vendor lift
+# its own gate, which add never can. That was raised and the call was made to
+# hand it over anyway: the vendor holds the invoice, and a vendor who cannot fix
+# its own typo has to ring somebody to correct a number only it can read.
+#
+# What survives the decision is the WARNING, not a refusal. Removing the last
+# serial is confirmed in those words in both clients, and `update_serial` exists
+# so correcting a typo does not have to go through a delete at all.
 
 
 @router.post(
@@ -678,3 +703,50 @@ async def import_own_serials(
             else f"{report.added} serial number{'' if report.added == 1 else 's'} added"
         ),
     )
+
+
+@router.put(
+    "/portal/models/{model_id}/serials/{serial_id}",
+    response_model=ApiEnvelope[ProductModelSerialOut],
+    dependencies=[IsVendor],
+)
+async def update_own_serial(
+    model_id: uuid.UUID,
+    serial_id: uuid.UUID,
+    body: SerialUpdateRequest,
+    db: Db,
+    principal: CanContribute,
+) -> ApiEnvelope[ProductModelSerialOut]:
+    """A vendor corrects one of its own serials, in place.
+
+    The reason this exists rather than leaving "edit" to a delete and a re-add:
+    the row keeps `created_at` and `created_by`, so fixing a typo does not
+    rewrite the record of who loaded that unit — and it never passes through a
+    moment where the model has one fewer serial than it should.
+    """
+    data = await service.update_serial(
+        db, principal, model_id, serial_id, body.serial, own_only=True
+    )
+    return envelope(data, message="Serial number updated")
+
+
+@router.delete(
+    "/portal/models/{model_id}/serials/{serial_id}",
+    response_model=ApiEnvelope[int],
+    dependencies=[IsVendor],
+)
+async def delete_own_serial(
+    model_id: uuid.UUID, serial_id: uuid.UUID, db: Db, principal: CanContribute
+) -> ApiEnvelope[int]:
+    """Remove one of a vendor's own serials, and answer with what is left.
+
+    ⚠ Removing the LAST one turns intake checking off for this product — this
+    vendor's own gate. Not refused, deliberately: an empty model is the state
+    every model ships in, and a vendor that cannot remove a wrong number would
+    have to ring somebody to correct a serial only it can read. The count in
+    this response is what the portal uses to warn before it happens.
+    """
+    total = await service.delete_serial(
+        db, principal, model_id, serial_id, own_only=True
+    )
+    return envelope(total, message="Serial number removed")

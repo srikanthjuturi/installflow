@@ -643,3 +643,15 @@ class SerialMatchOut(AppModel):
     #: serial entered in the wrong case is corrected in front of the user rather
     #: than silently at the server.
     serial: str
+
+
+class SerialUpdateRequest(BaseModel):
+    """Correct one serial in place.
+
+    A real update rather than remove-and-re-add, which is what "edit a serial"
+    would otherwise mean: the row keeps its `created_at` and `created_by`, so a
+    corrected typo still shows who loaded that unit and when. Delete-then-add
+    would silently restamp both to whoever fixed the spelling.
+    """
+
+    serial: Annotated[str, Field(min_length=1, max_length=MAX_SERIAL_LENGTH)]

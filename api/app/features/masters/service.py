@@ -1779,18 +1779,16 @@ async def add_serials(
     )
 
 
-async def delete_serial(
+async def _own_serial(
     db: AsyncSession,
     principal: Principal,
     model_id: uuid.UUID,
     serial_id: uuid.UUID,
-) -> int:
-    """Remove one serial. A hard delete — see `ProductModelSerial` for why.
-
-    Returns what the model holds afterwards, so the console can update its count
-    without a second round trip.
-    """
-    await _load_model(db, principal.company_id, model_id)
+    *,
+    own_only: bool,
+) -> ProductModelSerial:
+    """One serial row, after proving the caller may touch its model."""
+    await _serial_target(db, principal, model_id, own_only=own_only)
     row = await db.scalar(
         select(ProductModelSerial).where(
             ProductModelSerial.id == serial_id,
@@ -1800,6 +1798,78 @@ async def delete_serial(
     )
     if row is None:
         raise _not_found("Serial number")
+    return row
+
+
+async def update_serial(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    serial_id: uuid.UUID,
+    serial: str,
+    *,
+    own_only: bool = False,
+) -> ProductModelSerialOut:
+    """Correct one serial IN PLACE.
+
+    A real update rather than a delete followed by an add, which is what "edit a
+    serial" would otherwise have to mean. The row keeps its `created_at` and
+    `created_by`, so a corrected typo still records who loaded that unit and
+    when; remove-and-re-add would restamp both to whoever fixed the spelling.
+
+    Refused if the model already carries the new value on a DIFFERENT row —
+    otherwise the write dies on `uq_product_model_serials_model_serial_lower`
+    with a 500 where a sentence would do. Changing only the case of the same row
+    is allowed, and is the ordinary reason to reach for this.
+    """
+    row = await _own_serial(db, principal, model_id, serial_id, own_only=own_only)
+
+    value = serial.strip()
+    if not value:
+        raise _bad_request("Enter a serial number")
+    if value == row.serial:
+        return ProductModelSerialOut(
+            id=row.id, serial=row.serial, createdAt=row.created_at
+        )
+
+    clash = await db.scalar(
+        select(ProductModelSerial.id).where(
+            ProductModelSerial.company_id == principal.company_id,
+            ProductModelSerial.product_model_id == model_id,
+            func.lower(ProductModelSerial.serial) == value.lower(),
+            ProductModelSerial.id != serial_id,
+        )
+    )
+    if clash is not None:
+        raise _conflict(f"{value} is already on this product")
+
+    row.serial = value
+    row.updated_by = principal.user_id
+    await db.commit()
+    return ProductModelSerialOut(
+        id=row.id, serial=row.serial, createdAt=row.created_at
+    )
+
+
+async def delete_serial(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    serial_id: uuid.UUID,
+    *,
+    own_only: bool = False,
+) -> int:
+    """Remove one serial. A hard delete — see `ProductModelSerial` for why.
+
+    Returns what the model holds afterwards, so the console can update its count
+    without a second round trip.
+
+    ⚠ Removing the LAST one turns intake checking off for this model. Nothing
+    here refuses that — it is a legitimate thing to want, and a model with no
+    serials is the state every model ships in — but both clients confirm it in
+    those words rather than as a bare "are you sure".
+    """
+    row = await _own_serial(db, principal, model_id, serial_id, own_only=own_only)
     await db.delete(row)
     await db.commit()
     return await serial_count(db, principal.company_id, model_id)
