@@ -1637,6 +1637,30 @@ async def _existing_lower(
     return found
 
 
+async def _serial_target(
+    db: AsyncSession,
+    principal: Principal,
+    model_id: uuid.UUID,
+    *,
+    own_only: bool,
+) -> ProductModel:
+    """The model a serial write is aimed at, scoped to who is asking.
+
+    `own_only` is what separates the ops routes from the portal ones. Staff may
+    load serials onto any model in their company; a vendor may load them only
+    onto its OWN products, which is `_load_own_model`'s whole job — and it 404s
+    rather than 403s, so a vendor guessing ids cannot even learn that a
+    competitor's model exists.
+
+    A parameter rather than a second pair of functions: the import is a hundred
+    lines of parsing that both callers need identically, and duplicating it to
+    change one loader is how the two drift.
+    """
+    if own_only:
+        return await _load_own_model(db, principal, model_id)
+    return await _load_model(db, principal.company_id, model_id)
+
+
 async def serial_count(
     db: AsyncSession, company_id: uuid.UUID, model_id: uuid.UUID
 ) -> int:
@@ -1662,10 +1686,18 @@ async def list_serials(
 ) -> tuple[list[ProductModelSerialOut], int]:
     """One page of a model's serials, newest first.
 
-    The model is resolved through `_load_model` first, so a guessed id — or one
-    belonging to another company — is a 404 before any serial is read.
+    The model is resolved FIRST, so a guessed id — or one belonging to another
+    company — is a 404 before any serial is read.
+
+    A vendor is additionally held to its OWN models. This endpoint is on
+    `masters.view`, which vendors hold so their intake form has a product tree,
+    and it was company-scoped alone: a vendor who guessed a model id could page
+    a competitor's serial list. Only a guess, since `get_tree` substitutes their
+    own vendor and never shows them another's ids — but hard rule 7 says a
+    vendor sees only its own, and this is the one serial route that did not say
+    it. `lookup_serial` has pinned the vendor since it was written.
     """
-    await _load_model(db, principal.company_id, model_id)
+    await _serial_target(db, principal, model_id, own_only=principal.is_vendor)
 
     stmt = select(ProductModelSerial).where(
         ProductModelSerial.company_id == principal.company_id,
@@ -1695,6 +1727,8 @@ async def add_serials(
     principal: Principal,
     model_id: uuid.UUID,
     body: SerialAddRequest,
+    *,
+    own_only: bool = False,
 ) -> SerialAddResult:
     """Add serials typed or pasted into the console — the manual half.
 
@@ -1704,8 +1738,11 @@ async def add_serials(
     Serials the model already holds are REPORTED, not refused. Re-pasting a block
     that overlaps what is loaded is how somebody tops a model up, and failing the
     whole request on the first overlap would make the normal case an error.
+
+    `own_only` is set by the portal route: a vendor loads serials onto its own
+    products, staff onto any in the company. See `_serial_target`.
     """
-    await _load_model(db, principal.company_id, model_id)
+    await _serial_target(db, principal, model_id, own_only=own_only)
 
     wanted = body.serials
     present = await _existing_lower(
@@ -1776,6 +1813,7 @@ async def import_serials(
     filename: str,
     *,
     dry_run: bool,
+    own_only: bool = False,
 ) -> SerialImportReport:
     """Load a model's serials from a spreadsheet — the Excel half.
 
@@ -1790,8 +1828,11 @@ async def import_serials(
 
     Rejected rows never block the file: they are counted, listed with a reason,
     and the good rows land regardless.
+
+    `own_only` is set by the portal route: a vendor loads serials onto its own
+    products, staff onto any in the company. See `_serial_target`.
     """
-    await _load_model(db, principal.company_id, model_id)
+    await _serial_target(db, principal, model_id, own_only=own_only)
 
     rows = _iter_serial_rows(data, filename)
     first = next(rows, None)

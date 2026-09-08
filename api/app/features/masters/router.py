@@ -251,9 +251,16 @@ async def delete_model(
 # so it cannot be read as a model id under any future route.
 
 
-@router.get("/serials/template", dependencies=[IsStaff])
-async def serial_template(principal: CanEdit) -> StreamingResponse:
-    """A starter .xlsx with the one header the importer reads."""
+@router.get("/serials/template")
+async def serial_template(principal: CanView) -> StreamingResponse:
+    """A starter .xlsx with the one header the importer reads.
+
+    On `masters.view` and NOT staff-only: a vendor loading serials onto its own
+    products needs the same starter file, and the file carries no data at all —
+    one header row and two example serials, identical for every caller. Gating
+    it harder than the tree it accompanies would only mean a vendor guessing at
+    the column name.
+    """
     return StreamingResponse(
         service.build_serial_template(),
         media_type=(
@@ -579,3 +586,95 @@ async def delete_own_model(
 ) -> ApiEnvelope[None]:
     await service.delete_own_model(db, principal, model_id)
     return envelope(None, message="Product removed")
+
+
+# ── a vendor's own serial numbers ─────────────────────────────────────────────
+#
+# ADD ONLY — there is deliberately no portal DELETE, and the asymmetry is the
+# point. Removing the last serial from a model turns intake checking OFF for it,
+# so a vendor able to delete could quietly remove its own gate and go back to
+# raising tickets with any serial at all. Adding cannot do that: the worst a bad
+# add does is widen what one model accepts by one number.
+#
+# Staff keep DELETE on the ops routes above, which is where somebody with no
+# stake in that model's tickets can undo a mistake.
+
+
+@router.post(
+    "/portal/models/{model_id}/serials",
+    response_model=ApiEnvelope[SerialAddResult],
+    status_code=201,
+    dependencies=[IsVendor],
+)
+async def add_own_serials(
+    model_id: uuid.UUID,
+    body: SerialAddRequest,
+    db: Db,
+    principal: CanContribute,
+) -> ApiEnvelope[SerialAddResult]:
+    """A vendor loads serials onto its OWN product.
+
+    The vendor holds the invoice, which is the same fact that makes the expected
+    serial mandatory at intake — so it is the party that actually knows these
+    numbers.
+
+    `own_only=True` routes the lookup through `_load_own_model`, so another
+    vendor's model is a 404 and not merely a refusal.
+    """
+    data = await service.add_serials(db, principal, model_id, body, own_only=True)
+    return envelope(
+        data,
+        message=(
+            f"{data.added} serial number{'' if data.added == 1 else 's'} added"
+            if data.added
+            else "Already on this product — nothing to add"
+        ),
+        status_code=201,
+    )
+
+
+@router.post(
+    "/portal/models/{model_id}/serials/import",
+    response_model=ApiEnvelope[SerialImportReport],
+    dependencies=[IsVendor],
+)
+async def import_own_serials(
+    model_id: uuid.UUID,
+    db: Db,
+    principal: CanContribute,
+    file: Annotated[UploadFile, File()],
+    dryRun: Annotated[bool, Query()] = True,
+) -> ApiEnvelope[SerialImportReport]:
+    """The same spreadsheet import, for a vendor's own product.
+
+    Additive like the ops one, which is what makes it safe to expose here: an
+    import can only ever add, so no upload — half-finished or not — can empty a
+    model and turn its intake check off.
+    """
+    name = (file.filename or "").lower()
+    if not name.endswith((".xlsx", ".csv")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload an .xlsx or .csv file",
+        )
+    data = await file.read(service.MAX_SERIAL_UPLOAD_BYTES + 1)
+    if len(data) > service.MAX_SERIAL_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "The file must be under "
+                f"{service.MAX_SERIAL_UPLOAD_BYTES // (1024 * 1024)} MB"
+            ),
+        )
+
+    report = await service.import_serials(
+        db, principal, model_id, data, name, dry_run=dryRun, own_only=True
+    )
+    return envelope(
+        report,
+        message=(
+            "Checked — nothing was saved"
+            if dryRun
+            else f"{report.added} serial number{'' if report.added == 1 else 's'} added"
+        ),
+    )
