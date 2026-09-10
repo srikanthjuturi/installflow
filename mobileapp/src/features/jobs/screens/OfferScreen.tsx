@@ -26,7 +26,7 @@ export interface OfferScreenProps {
 export function OfferScreen({ jobId }: OfferScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { data: job, isPending, isError, refetch } = useOffer(jobId);
+  const { data: job, isError, refetch } = useOffer(jobId);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -86,14 +86,14 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
         contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        {isError ? (
-          <ErrorState onRetry={() => refetch()} />
-        ) : isPending ? (
-          <View style={{ gap: 14 }}>
-            <Skeleton width="100%" height={150} rounded={18} />
-            <Skeleton width="100%" height={220} rounded={18} />
-          </View>
-        ) : (
+        {/* The offer first, the error only when there is no offer to show.
+            A refetch that fails keeps the last good answer, and one ALWAYS
+            fails the moment this technician accepts: the job has left the
+            pool, so `GET /jobs/pool/:id` 404s. `pool.changed` fires that
+            refetch at commit, before the accept response (which waits on two
+            WhatsApp sends), so error-first painted "check your connection"
+            under the sheet until the job opened. */}
+        {job ? (
           <>
             <View
               style={{
@@ -232,6 +232,13 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
               ) : null}
             </View>
           </>
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
+        ) : (
+          <View style={{ gap: 14 }}>
+            <Skeleton width="100%" height={150} rounded={18} />
+            <Skeleton width="100%" height={220} rounded={18} />
+          </View>
         )}
       </ScrollView>
 

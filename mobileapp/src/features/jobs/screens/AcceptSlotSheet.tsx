@@ -162,7 +162,15 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
         loading={accept.isPending}
         onPress={() =>
           accept.mutate(undefined, {
-            onSuccess: () => router.replace(`/job/${jobId}`),
+            // The offer under this sheet goes too, not just the sheet. It is
+            // the masked view of a job that is now theirs, and Back from the
+            // job used to land on it — with an "Accept job" button that could
+            // only answer "someone got there first" about their own job.
+            // Always one screen down: the offer is the only way in here.
+            onSuccess: () => {
+              router.dismiss();
+              router.replace(`/job/${jobId}`);
+            },
           })
         }
       />
