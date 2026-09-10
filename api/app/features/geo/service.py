@@ -5,12 +5,30 @@ deletes what the file omits — a partial upload must not silently unmap half of
 India. Everything it decides that a human might disagree with is reported:
 re-parented rows and every rejected row, with its reason.
 
-**The spreadsheet is the only source.** There are no hard-coded corrections. An
-earlier version carried researched overrides for a dozen pincodes, and they had
-to go: an override outranks the file, so fixing the file stopped fixing the
-master, and nobody could tell from the sheet what the master would end up
-holding. Corrections are made in the sheet and re-uploaded —
-`RequirementDocs/apply-pincode-corrections.py` records the ones already applied.
+**There are no hard-coded corrections.** An earlier version carried researched
+overrides for a dozen pincodes, and they had to go: an override outranks the
+file, so fixing the file stopped fixing the master, and nobody could tell from
+the sheet what the master would end up holding.
+`RequirementDocs/apply-pincode-corrections.py` records the ones already applied
+to the sheet itself.
+
+**A superadmin can also edit a pincode by hand**, and that is not the thing that
+was deleted. The overrides were a second table layered ABOVE the import; these
+writes go into the master rows themselves, so they are a peer of the importer
+rather than a tier over it and there is no hidden layer to reason about. What
+each kind of manual edit survives is decided entirely by `import_geography`
+below, and it is worth knowing before reading it:
+
+  * a code the file never names is untouched — it is absent from `chosen`, and
+    `touched` is built from `chosen`, so both the row and its district links
+    survive every future upload, permanently;
+  * a code the file DOES name has its state written back (counted as `moved`)
+    and its district links replaced wholesale;
+  * `is_active` is written only in the `Pincode(...)` constructor, on create, so
+    switching a code off survives a re-import.
+
+In one line: **the sheet owns where a pincode is; the console owns whether it is
+on.** `pincodes.source` records which rows the sheet does not cover at all.
 
 Parsing is streamed (`read_only=True`), because the real file is 165,627 rows —
 one per post office, roughly 8.5 rows per pincode.
@@ -24,9 +42,10 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from fastapi import HTTPException, status
-from sqlalchemy import bindparam, func, or_, select, update
+from sqlalchemy import bindparam, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AppError
 from app.core.schemas import ListParams
 from app.features.geo.schemas import (
     DistrictOut,
@@ -289,13 +308,22 @@ async def list_pincodes(
     region_id: uuid.UUID | None = None,
     district_id: uuid.UUID | None = None,
     no_district: bool = False,
+    include_inactive: bool = False,
 ) -> tuple[list[PincodeOut], int]:
-    """Paginated pincodes. This is what a coverage picker searches."""
+    """Paginated pincodes. This is what a coverage picker searches.
+
+    Active-only by default, which is what makes switching a pincode off mean
+    anything: every picker in both consoles reads this. Only the Geography
+    screen passes `include_inactive`, because it is the one place that has to
+    show a switched-off code in order to switch it back on.
+    """
     stmt = (
         select(Pincode, State, Region)
         .join(State, State.id == Pincode.state_id)
         .join(Region, Region.id == State.region_id)
     )
+    if not include_inactive:
+        stmt = stmt.where(Pincode.is_active.is_(True))
     if state_id is not None:
         stmt = stmt.where(Pincode.state_id == state_id)
     if region_id is not None:
@@ -354,29 +382,319 @@ async def list_pincodes(
         )
     ).all()
 
-    codes = [p.code for p, _s, _r in rows]
-    names: dict[str, list[str]] = defaultdict(list)
-    if codes:
-        joined = await session.execute(
-            select(PincodeDistrict.pincode_code, District.name)
-            .join(District, District.id == PincodeDistrict.district_id)
-            .where(PincodeDistrict.pincode_code.in_(codes))
-            .order_by(District.name)
-        )
-        for code, name in joined:
-            names[code].append(name)
-
+    districts = await _districts_of(session, [p.code for p, _s, _r in rows])
     return [
-        PincodeOut(
-            code=p.code,
-            stateId=s.id,
-            stateName=s.name,
-            regionId=r.id,
-            regionName=r.name,
-            districts=names.get(p.code, []),
-        )
+        _pincode_out(p, s, r, districts.get(p.code, []))
         for p, s, r in rows
     ], int(total or 0)
+
+
+async def _districts_of(
+    session: AsyncSession, codes: list[str]
+) -> dict[str, list[tuple[uuid.UUID, str]]]:
+    """Each code's districts as `(id, name)`, name-ordered.
+
+    Both halves in one pass: the name is what a chip prints, the id is what an
+    edit form round-trips, and five district names belong to two states each —
+    so resolving the id back from the name later is not something the caller can
+    be asked to do.
+    """
+    out: dict[str, list[tuple[uuid.UUID, str]]] = defaultdict(list)
+    if not codes:
+        return out
+    joined = await session.execute(
+        select(PincodeDistrict.pincode_code, District.id, District.name)
+        .join(District, District.id == PincodeDistrict.district_id)
+        .where(PincodeDistrict.pincode_code.in_(codes))
+        .order_by(District.name)
+    )
+    for code, district_id, name in joined:
+        out[code].append((district_id, name))
+    return out
+
+
+def _pincode_out(
+    pincode: Pincode,
+    state: State,
+    region: Region,
+    districts: list[tuple[uuid.UUID, str]],
+) -> PincodeOut:
+    """The one place a `PincodeOut` is built, so the list and the four write
+    endpoints cannot drift into describing the same row differently."""
+    return PincodeOut(
+        code=pincode.code,
+        stateId=state.id,
+        stateName=state.name,
+        regionId=region.id,
+        regionName=region.name,
+        districts=[name for _id, name in districts],
+        districtIds=[district_id for district_id, _name in districts],
+        isActive=pincode.is_active,
+        source=pincode.source,
+    )
+
+
+# ── editing by hand ────────────────────────────────────────────────────────
+#
+# Four writers beside the importer. They write the master rows themselves, so
+# the sheet still wins the next time it names the same code — see the module
+# note for exactly what each edit survives.
+#
+# Nothing here is tenant-scoped, because geography is not tenant data: there is
+# no company to leak by confirming a row exists, so an unknown code is an
+# ordinary 404 and the 404-not-403 rule does not apply.
+
+
+def _not_found(what: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail=f"{what} not found"
+    )
+
+
+def _conflict(code: str, detail: str) -> AppError:
+    """A 409 the console can place on the field that caused it.
+
+    Coded rather than bare, because both conflicts here belong to one specific
+    input — a duplicate pincode to the code box, a duplicate district to the
+    name box — and `useFieldConflict` matches on the code. The toast fires
+    either way; the code decides whether anything ALSO appears under the field.
+    """
+    return AppError(status_code=status.HTTP_409_CONFLICT, code=code, detail=detail)
+
+
+def _bad_request(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
+async def _hydrate(session: AsyncSession, code: str) -> PincodeOut:
+    """One code as the wire sees it. Every writer returns through here."""
+    row = (
+        await session.execute(
+            select(Pincode, State, Region)
+            .join(State, State.id == Pincode.state_id)
+            .join(Region, Region.id == State.region_id)
+            .where(Pincode.code == code)
+        )
+    ).first()
+    if row is None:
+        raise _not_found(f"Pincode {code}")
+    pincode, state, region = row
+    districts = await _districts_of(session, [code])
+    return _pincode_out(pincode, state, region, districts.get(code, []))
+
+
+async def _load_state(session: AsyncSession, state_id: uuid.UUID) -> State:
+    state = await session.get(State, state_id)
+    if state is None or not state.is_active:
+        raise _bad_request("That state is not in the geography master")
+    return state
+
+
+async def _resolve_districts(
+    session: AsyncSession, state: State, district_ids: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    """The districts, checked against the state that was chosen.
+
+    This is the check worth having. Five district names belong to two states
+    each — Aurangabad, Balrampur, Bilaspur, Hamirpur, Pratapgarh — so an id from
+    the wrong state is not a typo somebody would spot on screen: the form would
+    say "Bilaspur" either way, and the pincode would end up linked to a district
+    in a state it does not sit in, where nothing downstream would ever notice.
+    """
+    wanted = list(dict.fromkeys(district_ids))
+    if not wanted:
+        return []
+    found = {
+        row.id: row
+        for row in (
+            await session.scalars(select(District).where(District.id.in_(wanted)))
+        ).all()
+    }
+    missing = [str(d) for d in wanted if d not in found]
+    if missing:
+        raise _bad_request(
+            "Unknown district: " + ", ".join(missing)
+        )
+    foreign = sorted(
+        found[d].name for d in wanted if found[d].state_id != state.id
+    )
+    if foreign:
+        raise _bad_request(
+            f"{', '.join(foreign)} "
+            + ("is not a district" if len(foreign) == 1 else "are not districts")
+            + f" of {state.name}"
+        )
+    return wanted
+
+
+async def _set_links(
+    session: AsyncSession,
+    code: str,
+    district_ids: list[uuid.UUID],
+    *,
+    actor_id: uuid.UUID | None,
+) -> None:
+    """Replace a code's district links with exactly this set.
+
+    A full replace, not a merge — the same contract the importer holds for the
+    codes its file names, and the only one an edit form can express.
+    """
+    current = set(
+        (
+            await session.scalars(
+                select(PincodeDistrict.district_id).where(
+                    PincodeDistrict.pincode_code == code
+                )
+            )
+        ).all()
+    )
+    wanted = set(district_ids)
+    stale = current - wanted
+    if stale:
+        await session.execute(
+            delete(PincodeDistrict).where(
+                PincodeDistrict.pincode_code == code,
+                PincodeDistrict.district_id.in_(stale),
+            )
+        )
+    for district_id in sorted(wanted - current):
+        session.add(
+            PincodeDistrict(
+                pincode_code=code, district_id=district_id, created_by=actor_id
+            )
+        )
+
+
+async def create_pincode(
+    session: AsyncSession,
+    code: str,
+    state_id: uuid.UUID,
+    district_ids: list[uuid.UUID],
+    *,
+    actor_id: uuid.UUID | None,
+) -> PincodeOut:
+    """Add a code the spreadsheet does not have.
+
+    Stamped `source='manual'`, which is the whole point of the column: the
+    importer never deletes what the file omits, so this row survives every
+    future upload and nothing else would mark it as one the sheet cannot
+    account for.
+    """
+    if await session.get(Pincode, code) is not None:
+        raise _conflict(
+            "PINCODE_EXISTS", f"{code} is already in the geography master"
+        )
+    state = await _load_state(session, state_id)
+    districts = await _resolve_districts(session, state, district_ids)
+
+    session.add(
+        Pincode(
+            code=code,
+            state_id=state.id,
+            is_active=True,
+            source="manual",
+            created_by=actor_id,
+        )
+    )
+    # autoflush is off; the link rows below reference this code.
+    await session.flush()
+    await _set_links(session, code, districts, actor_id=actor_id)
+    await session.commit()
+    return await _hydrate(session, code)
+
+
+async def update_pincode(
+    session: AsyncSession,
+    code: str,
+    state_id: uuid.UUID,
+    district_ids: list[uuid.UUID],
+    *,
+    actor_id: uuid.UUID | None,
+) -> PincodeOut:
+    """Correct a code's state and districts.
+
+    The code itself is not a parameter — see `PincodeUpdateRequest`. `source` is
+    left alone: correcting a row the sheet supplied does not make the sheet stop
+    covering it.
+    """
+    row = await session.get(Pincode, code)
+    if row is None:
+        raise _not_found(f"Pincode {code}")
+    state = await _load_state(session, state_id)
+    districts = await _resolve_districts(session, state, district_ids)
+
+    row.state_id = state.id
+    row.updated_by = actor_id
+    await _set_links(session, code, districts, actor_id=actor_id)
+    await session.commit()
+    return await _hydrate(session, code)
+
+
+async def set_pincode_status(
+    session: AsyncSession,
+    code: str,
+    is_active: bool,
+    *,
+    actor_id: uuid.UUID | None,
+) -> PincodeOut:
+    """Switch a pincode off, or back on.
+
+    Off rather than deleted, always. No foreign key protects the six characters
+    stored in `tickets.pincode`, `technician_pincodes.pincode`,
+    `technician_invite_pincodes.pincode` or `notifications.pincode`, so removing
+    the row would leave those resolving to nothing, silently, with no error
+    anywhere. Off keeps every one of them working and merely stops the code
+    being offered for new work.
+    """
+    row = await session.get(Pincode, code)
+    if row is None:
+        raise _not_found(f"Pincode {code}")
+    row.is_active = is_active
+    row.updated_by = actor_id
+    await session.commit()
+    return await _hydrate(session, code)
+
+
+async def create_district(
+    session: AsyncSession,
+    state_id: uuid.UUID,
+    name: str,
+    *,
+    actor_id: uuid.UUID | None,
+) -> DistrictOut:
+    """Add a district, so entering a pincode is not blocked by a missing one."""
+    state = await _load_state(session, state_id)
+    clean = title_case(name.strip())
+    if not clean:
+        raise _bad_request("Give the district a name")
+
+    existing = await session.scalar(
+        select(District).where(
+            District.state_id == state.id,
+            func.lower(District.name) == clean.lower(),
+        )
+    )
+    if existing is not None:
+        raise _conflict(
+            "DISTRICT_EXISTS",
+            f"{state.name} already has a district called {clean}",
+        )
+
+    region = await session.get(Region, state.region_id)
+    row = District(
+        id=uuid.uuid4(), state_id=state.id, name=clean, created_by=actor_id
+    )
+    session.add(row)
+    await session.commit()
+    return DistrictOut(
+        id=row.id,
+        name=row.name,
+        stateId=state.id,
+        stateName=state.name,
+        regionId=state.region_id,
+        regionName=region.name if region else "",
+        pincodeCount=0,
+    )
 
 
 # ── parsing ────────────────────────────────────────────────────────────────
@@ -582,6 +900,10 @@ class _Existing:
     districts: dict[tuple[uuid.UUID, str], District] = field(default_factory=dict)
     pincodes: dict[str, uuid.UUID] = field(default_factory=dict)      # code -> state_id
     links: set[tuple[str, uuid.UUID]] = field(default_factory=set)
+    #: Codes currently marked `source='manual'`. Kept separately rather than
+    #: widening the map above, because it is normally a handful of rows against
+    #: 19,496 and every other user of `pincodes` wants the state id alone.
+    manual: set[str] = field(default_factory=set)
 
 
 async def _load_existing(session: AsyncSession) -> _Existing:
@@ -592,10 +914,12 @@ async def _load_existing(session: AsyncSession) -> _Existing:
         out.states[state.name.lower()] = state
     for district in (await session.scalars(select(District))).all():
         out.districts[(district.state_id, district.name.lower())] = district
-    for code, state_id in await session.execute(
-        select(Pincode.code, Pincode.state_id)
+    for code, state_id, source in await session.execute(
+        select(Pincode.code, Pincode.state_id, Pincode.source)
     ):
         out.pincodes[code] = state_id
+        if source == "manual":
+            out.manual.add(code)
     for code, district_id in await session.execute(
         select(PincodeDistrict.pincode_code, PincodeDistrict.district_id)
     ):
@@ -708,9 +1032,15 @@ async def import_geography(
 
     # Pincodes.
     moved: list[dict] = []
+    #: Hand-added codes this file turns out to name after all. `source='manual'`
+    #: means "the spreadsheet does not cover this", so the moment it does, the
+    #: flag has to go or it starts pointing at a gap that has been filled.
+    adopted: list[dict] = []
     for code, state_name in chosen.items():
         state = state_rows[state_name.lower()]
         current = existing.pincodes.get(code)
+        if code in existing.manual:
+            adopted.append({"c": code})
         if current is None:
             pincodes.created += 1
             if not dry_run:
@@ -738,6 +1068,16 @@ async def import_geography(
             .where(Pincode.code == bindparam("c"))
             .values(state_id=bindparam("s"), updated_by=actor_id),
             moved,
+        )
+    if not dry_run and adopted:
+        # Only the ones that are actually 'manual' today. Setting `source` on
+        # every code the file names would turn the `pincodes.updated` no-op
+        # branch into 19,496 writes on every single import.
+        await session.execute(
+            update(Pincode)
+            .where(Pincode.code == bindparam("c"))
+            .values(source="import"),
+            adopted,
         )
     if not dry_run and (pincodes.created or pincodes.moved):
         await session.flush()

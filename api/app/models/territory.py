@@ -138,11 +138,24 @@ class Pincode(Base, AuditMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
+    #: Where this row came from. 'manual' means exactly one thing: **the
+    #: spreadsheet does not cover this code**. That is worth storing because the
+    #: importer is additive -- it never deletes what the file omits -- so a code
+    #: added by hand survives every future upload, permanently. Without this
+    #: column nothing distinguishes those rows, and nobody reconciling the sheet
+    #: later could find them.
+    #:
+    #: The importer flips a code back to 'import' the first time the file names
+    #: it, so the flag never claims the sheet is missing something it has.
+    source: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default=text("'import'")
+    )
 
     __table_args__ = (
         # The naming convention adds the ck_pincodes_ prefix; passing it here
         # too produced names like ck_tickets_ck_tickets_status once already.
         CheckConstraint("code ~ '^[1-9][0-9]{5}$'", name="format"),
+        CheckConstraint("source IN ('import', 'manual')", name="source"),
         Index("ix_pincodes_state_id", "state_id"),
     )
 

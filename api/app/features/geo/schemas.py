@@ -64,6 +64,62 @@ class PincodeOut(AppModel):
     #: Usually one, but 1,209 real pincodes span up to four districts — and four
     #: belong to no district at all, so this list can also be empty.
     districts: list[str] = Field(default_factory=list)
+    #: The same districts by id, in the same order. Names are for reading and
+    #: ids are for editing: five district names belong to two states each
+    #: (Aurangabad, Balrampur, Bilaspur, Hamirpur, Pratapgarh), so a name is not
+    #: an identity and an edit form cannot round-trip one.
+    districtIds: list[uuid.UUID] = Field(default_factory=list)
+    #: False hides it from every picker and refuses it at ticket intake. The row
+    #: survives, so tickets and technician coverage already on it still resolve.
+    isActive: bool = True
+    #: 'import' | 'manual'. 'manual' means the spreadsheet does not cover this
+    #: code — see the column note on the model.
+    source: str = "import"
+
+
+class PincodeCreateRequest(AppModel):
+    """A pincode entered by hand.
+
+    `districtIds` may be empty: four real pincodes have no district, and a
+    superadmin who genuinely does not know one should record that rather than
+    guess. It is a full list, not a delta — the same contract the importer holds
+    for the codes its file names.
+    """
+
+    code: str = Field(pattern=r"^[1-9][0-9]{5}$")
+    stateId: uuid.UUID
+    districtIds: list[uuid.UUID] = Field(default_factory=list)
+
+
+class PincodeUpdateRequest(AppModel):
+    """What a manual edit may change.
+
+    The code is absent on purpose. It is the primary key, and no foreign key
+    protects the bare six characters in `tickets.pincode`,
+    `technician_pincodes.pincode`, `technician_invite_pincodes.pincode` or
+    `notifications.pincode` — renaming one would silently strand every row that
+    references it, with nothing to report the breakage. A wrong code is switched
+    off and re-added.
+    """
+
+    stateId: uuid.UUID
+    districtIds: list[uuid.UUID] = Field(default_factory=list)
+
+
+class PincodeStatusRequest(AppModel):
+    isActive: bool
+
+
+class DistrictCreateRequest(AppModel):
+    """A district added while entering a pincode that needs one.
+
+    Its own endpoint rather than a field on the pincode body: it carries its own
+    conflict (a duplicate name in that state), and the form needs the new id
+    back before it can save the pincode.
+    """
+
+    stateId: uuid.UUID
+    name: str = Field(min_length=1, max_length=96)
 
 
 class ImportCounts(AppModel):

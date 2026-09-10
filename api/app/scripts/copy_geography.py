@@ -45,7 +45,11 @@ TABLES: list[tuple[str, str]] = [
     ("regions", "id, code, name, sort_order, is_active, created_at, updated_at"),
     ("states", "id, region_id, name, is_active, created_at, updated_at"),
     ("districts", "id, state_id, name, created_at, updated_at"),
-    ("pincodes", "code, state_id, is_active, created_at, updated_at"),
+    # `source` travels: it records that the SPREADSHEET does not cover a code,
+    # which is a fact about the sheet and not about either database. Letting it
+    # fall back to the 'import' default here would tell the target that a
+    # hand-added pincode came from a file that has never named it.
+    ("pincodes", "code, state_id, is_active, source, created_at, updated_at"),
     ("pincode_districts", "pincode_code, district_id, created_at, updated_at"),
 ]
 

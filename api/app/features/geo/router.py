@@ -4,11 +4,18 @@ Separate from the `territory` slice on purpose. `territory` answers "who covers
 what" for one company; this answers "what is India", which is the same for every
 company and is maintained by a superadmin.
 
-The two reads carry `get_current_principal` and no feature guard. That is
-deliberate and matches `/uploads`: geography is reference data every signed-in
-client needs to render a picker, and `require_feature` is built on
-`CompanyPrincipal`, which refuses a superadmin outright — so a feature key here
-would lock the superadmin out of the very screen that maintains the data.
+The reads carry `get_current_principal` and no feature guard. That is deliberate
+and matches `/uploads`: geography is reference data every signed-in client needs
+to render a picker, and `require_feature` is built on `CompanyPrincipal`, which
+refuses a superadmin outright — so a feature key here would lock the superadmin
+out of the very screen that maintains the data.
+
+Every WRITE is `require_superadmin`, the same door the importer uses. There are
+two ways in for the same reason a serial list has two: a spreadsheet for the
+whole country, and a form for the one code somebody is stuck on. They are peers
+— the manual writers edit the master rows themselves rather than layering over
+them — and `features/geo/service.py` records exactly what a re-import does to a
+hand-edited row.
 """
 
 import uuid
@@ -31,9 +38,13 @@ from app.core.schemas import (
 )
 from app.features.geo import service
 from app.features.geo.schemas import (
+    DistrictCreateRequest,
     DistrictOut,
     ImportReport,
+    PincodeCreateRequest,
     PincodeOut,
+    PincodeStatusRequest,
+    PincodeUpdateRequest,
     RegionOut,
     StateOut,
 )
@@ -175,6 +186,10 @@ async def list_pincodes(
     #: The pincodes in no district at all — four of them, and otherwise
     #: unreachable from a district drill-down.
     noDistrict: Annotated[bool, Query()] = False,
+    #: Switched-off codes too. Only the Geography screen asks for these: every
+    #: other reader is a picker, and offering a code that ticket intake will
+    #: refuse is worse than not offering it.
+    includeInactive: Annotated[bool, Query()] = False,
 ) -> PaginatedEnvelope[PincodeOut]:
     rows, total = await service.list_pincodes(
         db,
@@ -183,8 +198,87 @@ async def list_pincodes(
         region_id=regionId,
         district_id=districtId,
         no_district=noDistrict,
+        include_inactive=includeInactive,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.post(
+    "/pincodes",
+    response_model=ApiEnvelope[PincodeOut],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_pincode(
+    body: PincodeCreateRequest,
+    principal: Superadmin,
+    db: Db,
+) -> ApiEnvelope[PincodeOut]:
+    """Add a pincode the spreadsheet does not have.
+
+    The importer is additive, so this row survives every future upload — which
+    is why it is stamped `source='manual'` and why the console says so.
+    """
+    data = await service.create_pincode(
+        db,
+        body.code,
+        body.stateId,
+        body.districtIds,
+        actor_id=principal.user_id,
+    )
+    return envelope(data, message=f"{body.code} added")
+
+
+@router.put("/pincodes/{code}", response_model=ApiEnvelope[PincodeOut])
+async def update_pincode(
+    code: str,
+    body: PincodeUpdateRequest,
+    principal: Superadmin,
+    db: Db,
+) -> ApiEnvelope[PincodeOut]:
+    """Correct a pincode's state and its districts.
+
+    A full replace of the district set, matching the contract the importer holds
+    for the codes its file names. The code itself cannot change — see
+    `PincodeUpdateRequest`.
+    """
+    data = await service.update_pincode(
+        db, code, body.stateId, body.districtIds, actor_id=principal.user_id
+    )
+    return envelope(data, message=f"{code} updated")
+
+
+@router.patch("/pincodes/{code}/status", response_model=ApiEnvelope[PincodeOut])
+async def set_pincode_status(
+    code: str,
+    body: PincodeStatusRequest,
+    principal: Superadmin,
+    db: Db,
+) -> ApiEnvelope[PincodeOut]:
+    """Switch a pincode off or back on. Never deleted — see the service."""
+    data = await service.set_pincode_status(
+        db, code, body.isActive, actor_id=principal.user_id
+    )
+    return envelope(
+        data,
+        message=f"{code} switched {'back on' if body.isActive else 'off'}",
+    )
+
+
+@router.post(
+    "/districts",
+    response_model=ApiEnvelope[DistrictOut],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_district(
+    body: DistrictCreateRequest,
+    principal: Superadmin,
+    db: Db,
+) -> ApiEnvelope[DistrictOut]:
+    """Add a district, so a missing one cannot block entering a pincode."""
+    data = await service.create_district(
+        db, body.stateId, body.name, actor_id=principal.user_id
+    )
+    return envelope(data, message=f"{data.name} added")
 
 
 @router.get("/import/template")
