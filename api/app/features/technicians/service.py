@@ -46,6 +46,7 @@ from app.core.visibility import technician_scope
 from app.core.realtime import publish_notification, publish_technician_changed
 from app.core.sequences import next_code as allocate_code
 from app.features.technicians.schemas import (
+    AppLinkOutcome,
     AvailabilityOut,
     AvailabilityRequest,
     PayoutAccountOut,
@@ -55,6 +56,7 @@ from app.features.technicians.schemas import (
     InviteCreateRequest,
     OnboardingOut,
     SubcategoryRef,
+    TechnicianCreatedOut,
     TechnicianCreateRequest,
     TechnicianInviteOut,
     TechnicianOut,
@@ -106,6 +108,18 @@ def _not_found(what: str = "Technician") -> HTTPException:
 
 def invite_link(token: str) -> str:
     return f"{settings.INVITE_LINK_BASE.rstrip('/')}/{token}"
+
+
+def app_link() -> str:
+    """The link a DIRECTLY added technician is sent: the invite base, no token.
+
+    Deliberately the same host and path as an invite, so it rides on everything
+    already built for one. The installed app's App Link claims `/invite`, and
+    `app/(auth)/invite/index.tsx` sends a visit with no token to sign-in; a
+    phone without the app gets the tokenless landing page, which offers the
+    download. `publish.py` already refuses a base that is not this site.
+    """
+    return settings.INVITE_LINK_BASE.rstrip("/")
 
 
 # ── territory ─────────────────────────────────────────────────────────────────
@@ -1291,7 +1305,7 @@ async def _own_membership_id(
 
 async def create_technician(
     session: AsyncSession, principal: Principal, body: TechnicianCreateRequest
-) -> TechnicianOut:
+) -> TechnicianCreatedOut:
     region = await resolve_region(session, principal, body.regionId)
     await check_pincodes_exist(session, region.id, body.pincodes)
     await check_pincodes_in_own_area(session, principal, body.pincodes)
@@ -1393,7 +1407,14 @@ async def create_technician(
 
     await session.commit()
 
-    return await get_technician(session, principal, profile.id)
+    detail = await get_technician(session, principal, profile.id)
+    # AFTER the commit, the order `users.create_user` argues for: there is no
+    # row to record the outcome on, so a message sent first for an account
+    # whose commit then failed would tell somebody to sign in to nothing. A
+    # refused send never undoes the technician — it is reported, and "Send app
+    # link" on their row tries again.
+    outcome = await send_app_link(session, principal.company_id, body.phone)
+    return TechnicianCreatedOut(**detail.model_dump(), **outcome.model_dump())
 
 
 async def update_technician(
@@ -1485,6 +1506,47 @@ async def delete_technician(
         delete(TechnicianPincode).where(TechnicianPincode.technician_id == profile.id)
     )
     await session.commit()
+
+
+# ── the app link ──────────────────────────────────────────────────────────────
+
+
+async def send_app_link(
+    session: AsyncSession, company_id: uuid.UUID, phone: str
+) -> AppLinkOutcome:
+    """WhatsApp a technician where the app is and how to sign in. Never raises.
+
+    The message names the company they work for — theirs, looked up rather than
+    written in, for the reason `_send_and_record` gives: one WhatsApp number
+    sends for every tenant on this platform.
+    """
+    company_name = await session.scalar(
+        select(Company.name).where(Company.id == company_id)
+    )
+    link = app_link()
+    result = await whatsapp.send_app_link(
+        phone, link, brand.company_name(company_name)
+    )
+    # `ok` is Meta ACCEPTING it, not delivery — the invite's caveat exactly.
+    return AppLinkOutcome(
+        appLinkStatus="sent" if result.ok else "failed",
+        appLinkError=None if result.ok else result.error,
+        appLink=link,
+    )
+
+
+async def resend_app_link(
+    session: AsyncSession, principal: Principal, technician_id: uuid.UUID
+) -> AppLinkOutcome:
+    """Send a registered technician the app link again, from their row.
+
+    Through `_load`, so it reaches exactly the technicians the caller can see:
+    somebody outside their territory is a 404, never a message. Offered on
+    every registered technician, not only the directly added ones — somebody
+    who self-registered and then changed phones needs the app just as much.
+    """
+    _profile, _membership, user = await _load(session, principal, technician_id)
+    return await send_app_link(session, principal.company_id, user.phone)
 
 
 # ── invites ───────────────────────────────────────────────────────────────────

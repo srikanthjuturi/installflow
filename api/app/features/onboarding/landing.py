@@ -94,7 +94,7 @@ _PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Your {brand} technician invite</title>
+<title>{title}</title>
 <style>
   :root {{ color-scheme: light; }}
   * {{ box-sizing: border-box; }}
@@ -128,14 +128,11 @@ _PAGE = """<!doctype html>
 <body>
   <div class="card">
     <div class="mark">{mark}</div>
-    <h1>Your invite is ready</h1>
-    <p>Open it in the {brand} Technician app to set up your account.</p>
+    <h1>{heading}</h1>
+    <p>{lead}</p>
     <a class="cta" id="open" href="{deep_link}">Open the app</a>
     <a class="store" href="{app_link}">I don&rsquo;t have the app yet</a>
-    <p class="note">
-      This link is personal to you &mdash; please don&rsquo;t share it. If nothing
-      happens, install the app first, then open this link again.
-    </p>
+    <p class="note">{note}</p>
   </div>
   <script>
     // Android needs an intent:// URI — Chrome refuses a bare custom scheme and
@@ -157,6 +154,29 @@ _PAGE = """<!doctype html>
 """
 
 
+def _render(path: str, *, title: str, heading: str, lead: str, note: str) -> HTMLResponse:
+    """One page, two messages. `path` is what the app is opened at.
+
+    The copy arguments are HTML, already escaped by the caller — each one has
+    the brand spliced into fixed words, and the brand is the only variable part.
+    """
+    deep_link = f"{settings.APP_SCHEME}://{path}"
+    android_intent = _android_intent(path)
+    return HTMLResponse(
+        _PAGE.format(
+            title=title,
+            heading=heading,
+            lead=lead,
+            note=note,
+            deep_link=deep_link,
+            deep_link_js=f'"{deep_link}"',
+            android_intent_js=f'"{android_intent}"',
+            app_link=settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK,
+            mark=html.escape(brand.brand_mark()),
+        )
+    )
+
+
 @router.get("/invite/{token}", response_class=HTMLResponse, include_in_schema=False)
 async def invite_landing(token: str) -> HTMLResponse:
     """Deliberately says nothing about whether the token is valid.
@@ -165,15 +185,40 @@ async def invite_landing(token: str) -> HTMLResponse:
     used. Answering that here would let anyone probe tokens by loading a URL.
     """
     safe = "".join(c for c in token if c.isalnum() or c in "-_")
-    deep_link = f"{settings.APP_SCHEME}://invite/{safe}"
-    android_intent = _android_intent(f"invite/{safe}")
-    return HTMLResponse(
-        _PAGE.format(
-            deep_link=deep_link,
-            deep_link_js=f'"{deep_link}"',
-            android_intent_js=f'"{android_intent}"',
-            app_link=settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK,
-            brand=html.escape(brand.brand_name()),
-            mark=html.escape(brand.brand_mark()),
-        )
+    name = html.escape(brand.brand_name())
+    return _render(
+        f"invite/{safe}",
+        title=f"Your {name} technician invite",
+        heading="Your invite is ready",
+        lead=f"Open it in the {name} Technician app to set up your account.",
+        note=(
+            "This link is personal to you &mdash; please don&rsquo;t share it. "
+            "If nothing happens, install the app first, then open this link again."
+        ),
+    )
+
+
+@router.get("/invite", response_class=HTMLResponse, include_in_schema=False)
+async def app_landing() -> HTMLResponse:
+    """Where a DIRECTLY added technician's app link lands without the app.
+
+    The link is the invite base with no token — `technicians.service.app_link`
+    — so a phone WITH the app never reaches this page: the App Link claims
+    `/invite` and opens it, and a tokenless visit goes to sign-in. This is the
+    browser half, for everybody else: open the app if it is there, download it
+    if it is not. The same card as an invite, because it is the same bridge,
+    and the same platform brand for the same reason — it knows no company.
+
+    Nothing to resolve and nothing to leak: every technician gets this one URL.
+    """
+    name = html.escape(brand.brand_name())
+    return _render(
+        "invite",
+        title=f"The {name} technician app",
+        heading="Your account is ready",
+        lead=f"Sign in to the {name} Technician app with your mobile number.",
+        note=(
+            "We will send you a one-time code when you sign in. If nothing "
+            "happens, install the app first, then open this link again."
+        ),
     )

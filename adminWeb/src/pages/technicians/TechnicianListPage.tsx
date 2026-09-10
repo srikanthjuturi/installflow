@@ -14,6 +14,7 @@ import {
   useCancelInvite,
   useInviteTechnician,
   useResendInvite,
+  useSendAppLink,
   useTechnicians,
 } from "@/hooks/useTechnicians";
 import { useUrlSeededListParams } from "@/hooks/useListParams";
@@ -32,6 +33,7 @@ export default function TechnicianListPage() {
   const invite = useInviteTechnician();
   const resend = useResendInvite();
   const cancel = useCancelInvite();
+  const sendAppLink = useSendAppLink();
 
   const { has } = useFeatureAccess();
   const canCreate = has("technicians.create");
@@ -119,6 +121,25 @@ export default function TechnicianListPage() {
           setEditing(technician);
           setFormOpen(true);
         }}
+        canSendAppLink={canCreate}
+        busyTechnicianId={sendAppLink.isPending ? sendAppLink.variables : null}
+        onSendAppLink={(technician) =>
+          sendAppLink.mutate(technician.id, {
+            /* Like Resend on an invite: a refusal is an answer, not an error,
+               and the link comes back to hand over another way. */
+            onSuccess: (outcome) =>
+              toast.add({
+                title:
+                  outcome.appLinkStatus === "sent"
+                    ? `App link sent to ${formatPhone(technician.phone)}`
+                    : `Couldn't reach ${formatPhone(technician.phone)}`,
+                description:
+                  outcome.appLinkStatus === "sent"
+                    ? undefined
+                    : `${outcome.appLinkError ?? "WhatsApp did not take it."} Send them ${outcome.appLink} another way.`,
+              }),
+          })
+        }
         busyInviteId={busyInviteId}
         onResend={(row: TechnicianRow) =>
           resend.mutate(row.id, {

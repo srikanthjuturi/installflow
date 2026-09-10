@@ -72,6 +72,11 @@ interface TechTableProps {
   /** `technicians.edit` — correct a registered technician's record. */
   canEditTechnician: boolean;
   onEditTechnician: (technician: Technician) => void;
+  /** `technicians.create` — WhatsApp a registered technician the app link. */
+  canSendAppLink: boolean;
+  onSendAppLink: (technician: Technician) => void;
+  /** The technician whose app link is on its way, so its button waits. */
+  busyTechnicianId?: string | null;
   onResend: (row: TechnicianRow) => void;
   onCancel: (row: TechnicianRow) => void;
   onCopyLink: (row: TechnicianRow) => void;
@@ -92,6 +97,9 @@ export function TechTable({
   canManageInvites,
   canEditTechnician,
   onEditTechnician,
+  canSendAppLink,
+  onSendAppLink,
+  busyTechnicianId,
   onResend,
   onCancel,
   onCopyLink,
@@ -279,21 +287,43 @@ export function TechTable({
            record holds until they register — and nothing to resend once they
            have. */
         if (t.registered) {
-          if (!canEditTechnician) return null;
+          if (!canEditTechnician && !canSendAppLink) return null;
           return (
-            <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="flex items-center justify-end gap-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* The app link again — what a technician needs when the first
+                  message never arrived, or when they change phones. Beside
+                  Edit rather than in a menu, matching the invite row's
+                  Resend: it is the one other thing done to a row here. */}
+              {canSendAppLink ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs font-semibold text-brand-400"
+                  disabled={busyTechnicianId === t.id}
+                  onClick={() => onSendAppLink(t)}
+                >
+                  Send app link
+                  <span className="sr-only"> to {t.name}</span>
+                </Button>
+              ) : null}
               {/* A button, not a link: it opens a dialog rather than
                   navigating, and the row click already goes to the profile. */}
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto p-0 text-xs font-semibold text-brand-400"
-                onClick={() => onEditTechnician(t)}
-              >
-                Edit
-                <span className="sr-only"> {t.name}</span>
-              </Button>
+              {canEditTechnician ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs font-semibold text-brand-400"
+                  onClick={() => onEditTechnician(t)}
+                >
+                  Edit
+                  <span className="sr-only"> {t.name}</span>
+                </Button>
+              ) : null}
             </div>
           );
         }

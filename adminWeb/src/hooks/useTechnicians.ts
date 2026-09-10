@@ -14,6 +14,7 @@ import {
   listCandidateTechnicians,
   listTechnicians,
   resendInvite,
+  sendAppLink,
   updateTechnician,
 } from "@/services/technicians";
 import { PRESENCE_REFETCH_MS } from "./liveness";
@@ -117,6 +118,18 @@ export const useResendInvite = () =>
   useTechnicianMutation(resendInvite, "Couldn't resend the invite");
 export const useCancelInvite = () =>
   useTechnicianMutation(cancelInvite, "Couldn't cancel the invite");
+
+/**
+ * "Send app link" on a registered row. A plain mutation, not
+ * `useTechnicianMutation`: it changes nothing on the record, so there is no
+ * list to refresh — the toast reports the outcome and that is all of it.
+ */
+export function useSendAppLink() {
+  return useMutation({
+    meta: { errorTitle: "Couldn't send the app link" },
+    mutationFn: sendAppLink,
+  });
+}
 
 /**
  * The shortlist for one ticket — real technicians, filtered by the server.

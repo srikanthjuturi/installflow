@@ -1167,8 +1167,8 @@ The `failureReason` on the invite row is Meta's own message. The ones seen so fa
 | `132001` | Template name or language does not exist. Language is exact: a template registered as `en` will not match `en_US`. | Check `GET /{business_id}/message_templates`. |
 
 `WHATSAPP_TEMPLATE_NAME` (the invite) is deliberately EMPTY unless a UTILITY template exists whose
-body takes exactly one parameter — the link. Pointing it at an unrelated approved template sends
-that template's words, not an invite. With it empty the code falls back to free-form text, which
+body takes exactly two parameters — the company, then the link (`technician_invite`, approved).
+Pointing it at an unrelated approved template sends that template's words, not an invite. With it empty the code falls back to free-form text, which
 only reaches someone inside the 24-hour window; that is fine for testing against your own number
 and not fine for real onboarding.
 
@@ -1254,3 +1254,34 @@ Parameters in order: company, product, the PREVIOUS window, the new one. Naming 
 is the whole point — a second message reading "your visit is confirmed for…" beside the first
 leaves the customer unable to tell which is current, which is why this is its own template rather
 than a re-send of `slot_confirmed`.
+
+### `technician_app_link` — a DIRECTLY added technician gets the app link
+
+`create_technician` WhatsApps the new technician where the app is, the way an invite does, and
+"Send app link" on a registered row (`POST /technicians/{id}/app-link`, `technicians.create`) sends
+it again. Three decisions in it:
+
+- **The link carries no token.** It is `INVITE_LINK_BASE` itself (`technicians.service.app_link`):
+  the installed app's App Link already claims `/invite`, and `app/(auth)/invite/index.tsx` sends a
+  tokenless visit to sign-in — so no mobile rebuild. A phone without the app lands on
+  `GET /invite`, the invite landing page's tokenless twin, which offers "Open the app" and the
+  download. That page exists only once the API is deployed; until then a browser gets a 404.
+- **Sent after the commit, and reported rather than stored** — `users.create_user`'s order and
+  reasoning. An invite keeps its delivery on its own row because the invite IS the record until
+  somebody registers; a direct technician's record is complete without it. `appLinkStatus`,
+  `appLinkError` and `appLink` ride on the create response and the resend, and the console's toast
+  is all there is of them. No migration.
+- **Its own template, not the invite's.** `technician_invite` says "complete your registration" and
+  "this link is personal to you", both wrong for somebody a manager already registered.
+
+⚠ **The template is NOT approved.** Submitted 2026-09-10 as UTILITY / `en_US`, id
+`2131819437688748`, and rejected `INCORRECT_CATEGORY` — twice: once as "You have been added as a
+service technician with {{1}}. Install the technician app and sign in with this mobile number:
+{{2}}…", and again after editing it into an account notice ("Your service technician account with
+{{1}} has been created. Sign in with this mobile number to see your jobs: {{2}}…"). Meta's
+classifier reads both as MARKETING. `WHATSAPP_APP_LINK_TEMPLATE_NAME` is therefore EMPTY in both
+`.env` files, and the send falls back to free-form text — accepted by Meta, and delivered only
+inside the 24-hour window. The ways forward are a review request in WhatsApp Manager, a MARKETING
+submission (dearer per message), or reusing `technician_invite` with its wrong words. Whichever
+body is finally approved, make `build_app_link_payload`'s fallback say the same thing, and add the
+name to `publish.py`'s must-be-set list only after it is APPROVED.

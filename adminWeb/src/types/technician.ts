@@ -121,6 +121,27 @@ export interface TechnicianInvite {
 /** One row of the Technicians screen. Discriminated on `registered`. */
 export type TechnicianRow = Technician | TechnicianInvite;
 
+/**
+ * What happened to the WhatsApp telling a technician where the app is — on
+ * add, and on "Send app link".
+ *
+ * Reported, never stored: the technician's record is complete without it, so
+ * unlike an invite there is no row status to show later. The toast is the
+ * whole of it.
+ */
+export interface AppLinkOutcome {
+  /** `sent` is Meta ACCEPTING it, not delivery — the same caveat as an invite. */
+  appLinkStatus: "sent" | "failed";
+  /** Meta's reason, when it refused. */
+  appLinkError: string | null;
+  /** The link, to hand over another way when the send failed. The same for
+   *  every technician — it names no account. */
+  appLink: string;
+}
+
+/** `POST /technicians`: the new technician, and whether the app link went. */
+export type CreatedTechnician = Technician & AppLinkOutcome;
+
 /* ----------------------------------------------------------------- inputs */
 
 export interface CreateTechnicianInput {

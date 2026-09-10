@@ -24,12 +24,14 @@ from app.core.schemas import (
 )
 from app.features.technicians import service
 from app.features.technicians.schemas import (
+    AppLinkOutcome,
     AvailabilityOut,
     AvailabilityRequest,
     PayoutAccountOut,
     PayoutAccountRequest,
     DistrictBreakdownOut,
     InviteCreateRequest,
+    TechnicianCreatedOut,
     TechnicianCreateRequest,
     TechnicianDetailOut,
     TechnicianInviteOut,
@@ -213,12 +215,38 @@ async def district_breakdown(
     return envelope(data, message="Technicians by district")
 
 
-@router.post("", response_model=ApiEnvelope[TechnicianDetailOut], status_code=201)
+@router.post("", response_model=ApiEnvelope[TechnicianCreatedOut], status_code=201)
 async def create_technician(
     body: TechnicianCreateRequest, db: Db, principal: CanCreate
-) -> ApiEnvelope[TechnicianDetailOut]:
+) -> ApiEnvelope[TechnicianCreatedOut]:
+    """201 whether or not the app link reached them — like an invite.
+
+    The technician exists either way; `appLinkStatus` says whether WhatsApp
+    took the message, and the link comes back for a manager to send by hand.
+    """
     data = await service.create_technician(db, principal, body)
-    return envelope(data, message="Technician added", status_code=201)
+    message = (
+        "Technician added"
+        if data.appLinkStatus == "sent"
+        else "Technician added, but the app link was not delivered"
+    )
+    return envelope(data, message=message, status_code=201)
+
+
+@router.post(
+    "/{technician_id}/app-link", response_model=ApiEnvelope[AppLinkOutcome]
+)
+async def send_app_link(
+    technician_id: uuid.UUID, db: Db, principal: CanCreate
+) -> ApiEnvelope[AppLinkOutcome]:
+    """WhatsApp a registered technician the app link again.
+
+    `technicians.create`, the grant that sent it the first time. Writes nothing
+    — the outcome is reported, not stored — which is why it needs no edit grant.
+    """
+    data = await service.resend_app_link(db, principal, technician_id)
+    message = "App link sent" if data.appLinkStatus == "sent" else "App link not delivered"
+    return envelope(data, message=message)
 
 
 @router.get("/{technician_id}", response_model=ApiEnvelope[TechnicianDetailOut])

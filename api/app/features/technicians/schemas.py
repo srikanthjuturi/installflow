@@ -191,6 +191,30 @@ class TechnicianDetailOut(TechnicianOut):
     """The profile page. Same shape today; kept apart so it can grow."""
 
 
+class AppLinkOutcome(AppModel):
+    """What happened to the WhatsApp that tells a technician where the app is.
+
+    Reported, not stored. An invite keeps its delivery on its own row because
+    the invite IS the record until somebody registers; a directly added
+    technician's record already exists and is complete, so the message is a
+    courtesy with nothing to hang a status on. A manager who wants it again
+    presses "Send app link" — the same send, answered the same way.
+    """
+
+    #: `sent` means Meta ACCEPTED it, not that it arrived — there is no delivery
+    #: webhook, the same caveat as an invite's `sent`.
+    appLinkStatus: Literal["sent", "failed"]
+    #: Meta's reason, when it refused. Null when sent.
+    appLinkError: str | None = None
+    #: The link itself, so a manager can hand it over another way when the
+    #: send failed. The same for every technician — it names no account.
+    appLink: str
+
+
+class TechnicianCreatedOut(TechnicianDetailOut, AppLinkOutcome):
+    """`POST /technicians`: the new profile, and whether the app link went."""
+
+
 class TechnicianSessionOut(AppModel):
     """What the mobile app needs about itself right after signing in.
 

@@ -187,12 +187,20 @@ function TechnicianForm({
       },
       {
         onSuccess: (saved) => {
-          toast.add({
-            title: `${saved.name} added`,
-            description: saved.dailyJobCap
-              ? `${saved.code} · ${saved.dailyJobCap} jobs/day.`
-              : `${saved.code} · no daily limit yet.`,
-          });
+          /* The server WhatsApps them the app link after the save. A refusal
+             is not an error — the technician exists — so the link comes back
+             to hand over another way, the same as an undelivered invite. */
+          toast.add(
+            saved.appLinkStatus === "sent"
+              ? {
+                  title: `${saved.name} added`,
+                  description: `${saved.code} · app link sent on WhatsApp.`,
+                }
+              : {
+                  title: `${saved.name} added — app link not delivered`,
+                  description: `${saved.appLinkError ?? "WhatsApp did not take it."} Send them ${saved.appLink} another way.`,
+                }
+          );
           onDone();
         },
       }
@@ -321,7 +329,8 @@ function TechnicianForm({
                     </FieldDescription>
                   ) : (
                     <FieldDescription id="tech-phone-hint">
-                      They sign in with this number and a one-time code.
+                      They sign in with this number and a one-time code. The
+                      app link goes to it on WhatsApp.
                     </FieldDescription>
                   )}
                 </Field>

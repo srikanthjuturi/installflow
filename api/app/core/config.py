@@ -119,6 +119,14 @@ class Settings(BaseSettings):
     # The invite template (UTILITY category).
     WHATSAPP_TEMPLATE_NAME: str = ""
     WHATSAPP_TEMPLATE_LANG: str = "en_US"
+    #: "You have been added as a technician — here is the app." UTILITY, two
+    #: parameters: company, link. What a DIRECTLY added technician receives,
+    #: and its own template rather than the invite's, whose words ("complete
+    #: your registration", "personal to you") are wrong for somebody whose
+    #: account a manager already made. Empty falls back to free-form text,
+    #: which only reaches a number inside the 24-hour window.
+    WHATSAPP_APP_LINK_TEMPLATE_NAME: str = ""
+    WHATSAPP_APP_LINK_TEMPLATE_LANG: str = "en_US"
     # OTP needs its OWN template in the AUTHENTICATION category — Meta reviews
     # it separately from the invite one and will not deliver a one-time code
     # through a UTILITY template.

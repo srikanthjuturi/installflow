@@ -563,6 +563,11 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   invite someone who then registers themselves. `created_by` is the appointing manager in BOTH
   cases; do not overload it to mean "who typed it".
 - **Direct**: a manager fills in everything; the technician just signs in and lands on Home.
+  They are WhatsApped the app link as soon as they are added — the invite base with no token, which
+  opens the app's sign-in or a page offering the download — and "Send app link" on their row sends
+  it again. The outcome is reported in the console's toast, not stored. ⚠ Its template
+  (`technician_app_link`) was rejected by Meta, so until one is approved the message goes as
+  free-form text and only reaches a number inside the 24-hour window — see `api/AGENTS.md`.
 - **Invite**: a manager supplies only a phone number; the technician self-registers their name,
   photo, subcategories and coverage from the deep link. Nothing is written until they prove the
   phone by OTP, and then it all commits in one transaction.

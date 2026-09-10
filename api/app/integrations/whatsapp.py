@@ -122,6 +122,41 @@ def build_invite_payload(phone: str, link: str, company: str) -> dict:
     )
 
 
+def build_app_link_payload(phone: str, link: str, company: str) -> dict:
+    """What a DIRECTLY added technician receives: the app, and how to sign in.
+
+    The invite's sibling, and deliberately not the invite: that template says
+    "complete your registration" and "this link is personal to you", and a
+    technician whose account a manager already made has nothing to register and
+    a link that is the same for everybody. Same two parameters in the same
+    order — company, then link — and the link is a BODY parameter for the same
+    reason `build_invite_payload` gives.
+
+    The link carries no token. It opens the app's sign-in (the App Link claims
+    `/invite`, and `invite/index` sends a tokenless visit to login), or a page
+    offering the download when the app is not installed yet.
+    """
+    if settings.WHATSAPP_APP_LINK_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_APP_LINK_TEMPLATE_NAME,
+            settings.WHATSAPP_APP_LINK_TEMPLATE_LANG,
+            [company, link],
+        )
+    # Same words as the template registered as `technician_app_link`. Only
+    # delivered inside the 24-hour window — see `build_invite_payload`.
+    return _text_payload(
+        phone,
+        (
+            f"You have been added as a service technician with {company}.\n\n"
+            "Install the technician app and sign in with this mobile number:\n"
+            f"{link}\n\n"
+            "We will send you a one-time code when you sign in."
+        ),
+        preview_url=True,
+    )
+
+
 def build_otp_payload(phone: str, code: str) -> dict:
     if settings.WHATSAPP_OTP_TEMPLATE_NAME:
         return _template_payload(
@@ -502,6 +537,13 @@ async def send_escalation(
 async def send_invite(phone: str, link: str, company: str) -> SendResult:
     """Send one invite. Returns the outcome; never raises for a delivery failure."""
     return await _send(build_invite_payload(phone, link, company), what="invite")
+
+
+async def send_app_link(phone: str, link: str, company: str) -> SendResult:
+    """Send a directly added technician the app link. Never raises."""
+    return await _send(
+        build_app_link_payload(phone, link, company), what="app link"
+    )
 
 
 async def send_otp(phone: str, code: str) -> SendResult:

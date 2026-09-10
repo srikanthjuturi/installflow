@@ -12,6 +12,8 @@
 import { apiDelete, apiGetPage, apiGet, apiPost, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type {
+  AppLinkOutcome,
+  CreatedTechnician,
   CreateTechnicianInput,
   DistrictBreakdown,
   InviteTechnicianInput,
@@ -56,10 +58,23 @@ export function getDistrictBreakdown(
   );
 }
 
+/**
+ * Add a technician directly. The server then WhatsApps them the app link, after
+ * the save — so the reply carries whether that went, and a refusal never undoes
+ * the technician.
+ */
 export function createTechnician(
   input: CreateTechnicianInput
-): Promise<Technician> {
-  return apiPost<Technician>("/technicians", input);
+): Promise<CreatedTechnician> {
+  return apiPost<CreatedTechnician>("/technicians", input);
+}
+
+/**
+ * WhatsApp a registered technician the app link again. Writes nothing — the
+ * outcome comes back, it is not kept anywhere.
+ */
+export function sendAppLink(id: string): Promise<AppLinkOutcome> {
+  return apiPost<AppLinkOutcome>(`/technicians/${id}/app-link`);
 }
 
 export function updateTechnician({
