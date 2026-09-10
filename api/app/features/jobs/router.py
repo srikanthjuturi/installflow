@@ -23,7 +23,7 @@ Every route carries **two** guards, and both are load-bearing:
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -172,17 +172,24 @@ async def list_today(db: Db, me: TechnicianPrincipal) -> ApiEnvelope[list[JobOut
     dependencies=[CanSeePool],
 )
 async def accept_job(
-    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID, background: BackgroundTasks
 ) -> ApiEnvelope[JobOut]:
     """Commit to the slot, and unlock the customer's details.
 
     **409 means somebody else got there first**, and that is a normal outcome
     of first-accept-wins rather than a failure — the app has a screen for it.
+
+    The WhatsApps announcing it are sent after this replies — see
+    `service._announce_acceptance`.
     """
     principal, profile = me
     assert principal.company_id is not None
     job = await service.accept(
-        db, ticket_id, company_id=principal.company_id, profile=profile
+        db,
+        ticket_id,
+        company_id=principal.company_id,
+        profile=profile,
+        background=background,
     )
     return envelope(job, message="Job accepted")
 

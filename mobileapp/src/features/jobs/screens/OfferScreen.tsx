@@ -90,9 +90,9 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
             A refetch that fails keeps the last good answer, and one ALWAYS
             fails the moment this technician accepts: the job has left the
             pool, so `GET /jobs/pool/:id` 404s. `pool.changed` fires that
-            refetch at commit, before the accept response (which waits on two
-            WhatsApp sends), so error-first painted "check your connection"
-            under the sheet until the job opened. */}
+            refetch at commit, before the accept response has even arrived,
+            so error-first painted "check your connection" under the sheet
+            until the job opened. */}
         {job ? (
           <>
             <View

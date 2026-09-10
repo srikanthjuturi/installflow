@@ -30,7 +30,7 @@ import logging
 import secrets
 import uuid
 
-from fastapi import HTTPException, status as http_status
+from fastapi import BackgroundTasks, HTTPException, status as http_status
 from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -664,6 +664,7 @@ async def accept(
     *,
     company_id: uuid.UUID,
     profile: TechnicianProfile,
+    background: BackgroundTasks,
 ) -> JobOut:
     """Take the job. First accept wins; everybody else gets a 409.
 
@@ -845,7 +846,9 @@ async def accept(
     )
     assert row is not None
 
-    await _announce_acceptance(db, row, technician=name or profile.code, profile=profile)
+    await _announce_acceptance(
+        db, row, technician=name or profile.code, profile=profile, background=background
+    )
 
     # Now it is theirs, so the masked fields are theirs to see.
     offers, models = await _hydrate(db, [row])
@@ -853,7 +856,12 @@ async def accept(
 
 
 async def _announce_acceptance(
-    db: AsyncSession, row: Ticket, *, technician: str, profile: TechnicianProfile
+    db: AsyncSession,
+    row: Ticket,
+    *,
+    technician: str,
+    profile: TechnicianProfile,
+    background: BackgroundTasks,
 ) -> None:
     """Somebody is going. Tell the three parties who are waiting to hear it.
 
@@ -882,6 +890,16 @@ async def _announce_acceptance(
     Failure here must not fail the acceptance. The job IS taken — that is
     settled in the database — and unwinding it because Meta was slow would turn
     a delivery problem into a dispatch problem.
+
+    Nor may it DELAY it, which is why the two WhatsApps go after the reply and
+    not merely after the commit. Each is a round trip to Meta with a 30-second
+    timeout, and the technician's accept button used to spin for as long as both
+    took — waiting on messages to two other people that the job does not depend
+    on. Everything they say is read here, while the session is open; the tasks
+    carry plain strings, because the request's session is closed before they
+    run. A worker that dies in between loses the courtesy, on the same terms as
+    push everywhere else here: the assignment and the bell are durable, only
+    the interruption is best-effort.
     """
     when = (
         when_label(row.slot_start, row.slot_end)
@@ -917,7 +935,8 @@ async def _announce_acceptance(
 
     company, product, phone = await _who_and_what(db, row, profile)
 
-    await whatsapp.send_job_accepted(
+    background.add_task(
+        whatsapp.send_job_accepted,
         row.customer_phone,
         company,
         product,
@@ -939,7 +958,8 @@ async def _announce_acceptance(
         )
         return
 
-    await whatsapp.send_job_accepted_manager(
+    background.add_task(
+        whatsapp.send_job_accepted_manager,
         manager.phone,
         company,
         manager.full_name,
