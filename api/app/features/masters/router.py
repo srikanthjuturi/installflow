@@ -64,6 +64,7 @@ from app.features.masters.schemas import (
     ModelCreateRequest,
     ModelUpdateRequest,
     NodeCreateRequest,
+    NodePortalUpdateRequest,
     NodeUpdateRequest,
     ProductApprovalOut,
     ProductModelSerialOut,
@@ -560,10 +561,33 @@ async def submit_node(
 
     A category is company-wide, so this one is not reviewed. An empty one offers
     nothing at intake and `purpose=intake` prunes it out of every picker, so the
-    worst case is a row on the ops Categories screen that an admin removes.
+    worst case is a row on the ops Categories screen that an admin removes. The
+    vendor can edit it afterwards (`PUT /portal/nodes/{id}`) because it created
+    it — `created_by` is what records that.
     """
     data = await service.create_node(db, principal, body)
     return envelope(data, message="Category added", status_code=201)
+
+
+@router.put(
+    "/portal/nodes/{node_id}",
+    response_model=ApiEnvelope[ProductNodeOut],
+    dependencies=[IsVendor],
+)
+async def update_own_node(
+    node_id: uuid.UUID,
+    body: NodePortalUpdateRequest,
+    db: Db,
+    principal: CanContribute,
+) -> ApiEnvelope[ProductNodeOut]:
+    """A vendor edits a category it CREATED. Not reviewed, same as the create.
+
+    Only its own: a category is company-wide, so one somebody else added — staff
+    or another brand — is a 404 here, the way another vendor's product is. No
+    DELETE twin; removing a category stays with staff.
+    """
+    data = await service.update_own_node(db, principal, node_id, body)
+    return envelope(data, message="Category updated")
 
 
 @router.post(
@@ -591,7 +615,7 @@ async def update_own_model(
     db: Db,
     principal: CanContribute,
 ) -> ApiEnvelope[ProductNodeOut]:
-    """Edit an own product. Any real change sends it back for approval."""
+    """Edit an own product. Approved stays approved; a rejected one resubmits."""
     data = await service.update_own_model(db, principal, model_id, body)
     return envelope(data, message="Product saved")
 

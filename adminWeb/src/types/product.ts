@@ -166,6 +166,9 @@ export interface ProductNode {
   /** Whether this node overrides any operating rule. Just a badge; the values
    *  live on Configuration → Rules Config, scoped to the node. */
   hasRuleOverrides: boolean;
+  /** Whether the signed-in VENDOR created this category — the ones the portal
+   *  offers "Edit category" on. Always false for staff, who edit every one. */
+  isOwn: boolean;
   children: ProductNode[];
   models: ProductModel[];
 }
@@ -243,7 +246,10 @@ export interface SubmitModelInput {
   imageUrls?: string[];
 }
 
-/** The same fields, all optional. Saving any real change returns it to pending. */
+/**
+ * The same fields, all optional. An approved product stays approved; a
+ * rejected one that actually changes goes back to pending.
+ */
 export type ResubmitModelInput = { id: string } & Partial<
   Omit<SubmitModelInput, "nodeId">
 >;
@@ -338,6 +344,27 @@ export function flattenNodes(tree: ProductNode[] | undefined): NodeOption[] {
 
   (tree ?? []).forEach((root) => walk(root, root));
   return out;
+}
+
+/**
+ * The node with this id, anywhere in the tree. Null for a missing id — which
+ * is also what a root's `parentId` asks for.
+ *
+ * What an edit dialog is given as a node's parent: found by walking the tree
+ * rather than stored on the action, so it is always the current row.
+ */
+export function findNode(
+  tree: ProductNode[] | undefined,
+  id: string | null
+): ProductNode | null {
+  if (!id) return null;
+  const stack = [...(tree ?? [])];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.id === id) return node;
+    stack.push(...node.children);
+  }
+  return null;
 }
 
 /* ── model-wise serial numbers ─────────────────────────────────────────────── */

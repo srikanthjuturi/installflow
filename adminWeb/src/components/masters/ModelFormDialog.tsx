@@ -52,6 +52,7 @@ import {
 } from "@/hooks/useProductMaster";
 import { useVendorOptions } from "@/hooks/useVendors";
 import type { VendorOption } from "@/types/vendor";
+import type { ApprovalStatus } from "@/types/approval";
 import type { ProductModel, ProductNode, ServiceType } from "@/types/product";
 import { ParameterFields } from "./ParameterFields";
 import { StatusField } from "./StatusField";
@@ -88,6 +89,24 @@ import {
 export interface ProductSubmitter {
   vendorId: string;
   vendorName: string;
+}
+
+/**
+ * What saving does to a vendor's own product, said before they press Save.
+ *
+ * Only a REJECTED product goes back for review — that save is the answer to the
+ * refusal. An approved one stays approved and keeps both prices; a pending one
+ * is already waiting.
+ */
+function vendorEditNote(status: ApprovalStatus): string {
+  switch (status) {
+    case "approved":
+      return "Your changes apply straight away.";
+    case "pending":
+      return "It is still waiting for approval.";
+    case "rejected":
+      return "Saving sends it back for approval.";
+  }
 }
 
 interface ModelFormDialogProps {
@@ -253,13 +272,22 @@ function ModelForm({
       // No `isActive` either — pausing is how ops withdraw a product, and the
       // axis that belongs to a vendor is the one they move by submitting.
       if (isEdit) {
+        // Only a REJECTED product goes back for review when its vendor saves
+        // it — that save is the answer to the refusal. An approved one stays
+        // approved and keeps its prices; a pending one is already waiting.
         resubmit.mutate(
           { id: model.id, ...shared },
           {
-            onSuccess: done(
-              `${values.name} sent for approval`,
-              "It cannot be ticketed again until it is priced."
-            ),
+            onSuccess:
+              model.approvalStatus === "rejected"
+                ? done(
+                    `${values.name} sent for approval`,
+                    "It cannot be ticketed until it is priced."
+                  )
+                : done(
+                    `${values.name} updated`,
+                    `In ${node.path.join(" › ")}.`
+                  ),
           }
         );
       } else {
@@ -366,7 +394,7 @@ function ModelForm({
           In {node.path.join(" › ")}.{" "}
           {submitter
             ? isEdit
-              ? "Saving a change sends it back for approval."
+              ? vendorEditNote(model.approvalStatus)
               : "We price it before you can raise tickets against it."
             : "Ticket intake picks a model from this list."}
         </DialogDescription>
@@ -600,7 +628,10 @@ function ModelForm({
             )}
           </Field>
         </FieldGrid>
-        ) : (
+        ) : model?.approvalStatus === "approved" ? null : (
+          /* Not on an APPROVED product: it is priced and ticketable already,
+             and a vendor's edit keeps it that way — the description says so
+             above, and this sentence would contradict it. */
           <p className="rounded-md bg-info-bg px-3 py-2.5 text-xs text-ink-2">
             We price this before it can be ticketed. You will be told as soon as
             it is approved.
@@ -766,7 +797,8 @@ function ModelForm({
         {/* Absent for a vendor, and not merely disabled: pausing is how OPS
             withdraw a product from intake, and a second "not available" switch
             in the submitter's hands would be two answers to one question. The
-            axis that belongs to them is approval, which they move by saving. */}
+            axis that belongs to them is approval, which they move by submitting
+            — or, after a refusal, by saving again. */}
         {withPricing ? (
           <>
             <FieldSeparator />

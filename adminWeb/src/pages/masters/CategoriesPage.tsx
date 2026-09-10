@@ -20,6 +20,7 @@ import {
   useDeleteNode,
   useNodeTree,
 } from "@/hooks/useProductMaster";
+import { findNode } from "@/types/product";
 
 /** The one dialog that is open, if any. `null` is "none". */
 type OpenDialog = MasterAction | null;
@@ -107,7 +108,7 @@ export default function CategoriesPage() {
               : // On an edit the parent is context, not a choice — a node
                 // cannot move. Found by walking the tree rather than stored on
                 // the action, so it is always the current row.
-                findParent(data, dialog.node.parentId)
+                findNode(data, dialog.node.parentId)
           }
           node={dialog.kind === "edit-node" ? dialog.node : undefined}
         />
@@ -155,19 +156,4 @@ export default function CategoriesPage() {
       ) : null}
     </>
   );
-}
-
-/** The node with this id, anywhere in the tree. Null for a root's parent. */
-function findParent(
-  tree: Parameters<typeof CategoryTree>[0]["nodes"] | undefined,
-  parentId: string | null
-) {
-  if (!parentId) return null;
-  const stack = [...(tree ?? [])];
-  while (stack.length) {
-    const node = stack.pop()!;
-    if (node.id === parentId) return node;
-    stack.push(...node.children);
-  }
-  return null;
 }

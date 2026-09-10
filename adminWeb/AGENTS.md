@@ -1337,12 +1337,19 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   retake on-site before leaving.
 - **A vendor may add products, and may never price them.** A submission is `pending` and cannot be
   ticketed; a National Head or Admin sets BOTH prices on `/approvals` to approve it, or rejects it
-  with a reason the vendor reads on `/portal/products`. A vendor editing an approved product sends
-  it back to pending — tickets already raised are unaffected, because both prices are stamped on
-  the ticket at intake. Everything that existed before this shipped was backfilled as approved.
-- **A vendor-created CATEGORY is not reviewed**, only a product. A category is company-wide, so the
-  portal's row menu offers neither "Edit category" nor "Remove category" — `CategoryTree`'s
-  `menuFor` prop is what shortens it.
+  with a reason the vendor reads on `/portal/products`. A vendor editing an APPROVED product keeps
+  it approved, prices and all — no review — and `ModelFormDialog` says so before Save ("Your
+  changes apply straight away."). Only a REJECTED product goes back to pending when edited, which
+  is the resubmission. Tickets already raised are unaffected either way, because both prices are
+  stamped on the ticket at intake. Everything that existed before this shipped was backfilled as
+  approved.
+- **A vendor-created CATEGORY is not reviewed**, only a product — and the vendor can EDIT the
+  categories it created, not reviewed either. A category is company-wide, so the portal's row menu
+  (`portalMenuItems`, through `CategoryTree`'s `menuFor`) offers "Edit category" only where the
+  server says `isOwn`, and "Remove category" never. `NodeFormDialog`'s `portal` flag picks
+  `PUT /masters/portal/nodes/{id}` for the edit, as it already picked the portal door for the
+  create. The edit dialog is handed the node's parent through `findNode`, shared with the ops
+  screen.
 - **`technicianPayoutPaise` being null now means two things** — withheld from a vendor, or nobody
   has priced it yet — and `vendorPricePaise` can be null for the second reason. Render neither as a
   dash: "— to technician" reads as a number that failed to load. Omit the line.

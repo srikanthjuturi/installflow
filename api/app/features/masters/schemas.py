@@ -201,6 +201,23 @@ class NodeUpdateRequest(BaseModel):
     sortOrder: int | None = Field(default=None, ge=0)
 
 
+class NodePortalUpdateRequest(BaseModel):
+    """What a VENDOR may change on a category it created.
+
+    `NodeUpdateRequest` less `sortOrder`: sibling order is how the whole
+    company's tree reads, and where a category sits among other brands' is not
+    one vendor's call. No `parentId` either, for the staff reason — a node
+    cannot move. Which categories count as the vendor's own is decided by
+    `service._load_own_node`, never by anything in this body.
+    """
+
+    name: Name64 | None = None
+    iconKey: IconKey | None = None
+    isLeaf: bool | None = None
+    parameters: ParameterTemplate | None = None
+    isActive: bool | None = None
+
+
 #: Size or rating — "43 inch", "7 kg", "340 L".
 Capacity = Annotated[str | None, Field(default=None, max_length=64)]
 #: 0–240 months. The ceiling catches a year count typed into a months field.
@@ -384,6 +401,10 @@ class ProductNodeOut(AppModel):
     #: A node carries no `parameters` of its own: specs live on the PRODUCT, so
     #: there is nothing here to inherit from and no precedence rule to state.
     hasRuleOverrides: bool = False
+    #: Whether the CALLING VENDOR created this category — the ones its portal
+    #: may edit. Always false for staff, who edit every category through
+    #: `masters.edit` and have no use for it.
+    isOwn: bool = False
     children: list["ProductNodeOut"] = []
     models: list[ProductModelOut] = []
 
@@ -428,9 +449,10 @@ class ProductSubmitRequest(BaseModel):
 class ProductResubmitRequest(BaseModel):
     """The same fields, all optional. Same three absences, same reasons.
 
-    Saving any real change returns the product to `pending` — see
-    `service.update_own_model`. Prices already agreed are LEFT ALONE, so a
-    reviewer confirms a figure rather than re-pricing from scratch.
+    An APPROVED product stays approved when edited, keeping both prices. A
+    REJECTED one that actually changes goes back to `pending` — see
+    `service.update_own_model`. Either way the prices are LEFT ALONE: a vendor
+    has no field to send one in.
     """
 
     name: Name120 | None = None
@@ -497,9 +519,11 @@ class ProductApprovalOut(AppModel):
     #: this endpoint means the reader is a National Head or an Admin and can
     #: never be a vendor.
     #:
-    #: Null on a first submission. They carry the LAST AGREED figures when a
-    #: vendor's edit sent an approved product back for review, so the reviewer
-    #: confirms rather than re-prices from scratch.
+    #: Null on a first submission. They carry the LAST AGREED figures on a row
+    #: that was once approved and is back in review — which a vendor's edit no
+    #: longer causes (an approved product stays approved), so today that is
+    #: only rows sent back before that changed. Kept so the reviewer confirms
+    #: rather than re-prices from scratch.
     technicianPayoutPaise: int | None
     vendorPricePaise: int | None
     rejectionReason: str | None

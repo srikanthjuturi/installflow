@@ -27,11 +27,9 @@ export interface NodeMenuItem {
 /**
  * What a node offers under "Add", and nothing else.
  *
- * Split out because it is the whole of a VENDOR's node menu: a category is
- * company-wide, so somebody who files products into one may not rename it or
- * remove it for every other brand in the tenant. Exported so the portal builds
- * its menu from the same rule rather than re-deriving which of `is_leaf`'s two
- * branches applies.
+ * Split out because it is most of a VENDOR's node menu — see
+ * `portalMenuItems` below — so the portal builds its menu from the same rule
+ * rather than re-deriving which of `is_leaf`'s two branches applies.
  */
 export function addMenuItems(
   node: ProductNode,
@@ -57,4 +55,29 @@ export function addMenuItems(
     ];
   }
   return [];
+}
+
+/**
+ * A VENDOR's node menu: "Edit category" on the ones it created, then the Add
+ * actions.
+ *
+ * A category is company-wide, so a vendor may not rename one that staff or
+ * another brand added — that would change the catalogue for everybody filing
+ * there. `isOwn` is the server's answer to "did this vendor create it", and the
+ * server refuses the edit on any other. There is no "Remove category" here:
+ * deleting a category stays with staff.
+ */
+export function portalMenuItems(
+  node: ProductNode,
+  onAction: (a: MasterAction) => void
+): NodeMenuItem[] {
+  const edit: NodeMenuItem[] = node.isOwn
+    ? [
+        {
+          label: "Edit category",
+          onSelect: () => onAction({ kind: "edit-node", node }),
+        },
+      ]
+    : [];
+  return [...edit, ...addMenuItems(node, onAction)];
 }

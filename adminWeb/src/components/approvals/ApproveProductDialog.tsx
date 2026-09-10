@@ -84,9 +84,11 @@ function ApproveForm({
        * Blank on a first submission — a price nobody chose is a price nobody
        * checked, which is the same reason the product form starts empty.
        *
-       * NOT blank when a vendor's edit sent an already-approved product back:
-       * the last agreed figures are carried through, so the reviewer confirms a
-       * number rather than re-deriving one they had already decided.
+       * NOT blank on a row that was once approved and is back in review: the
+       * last agreed figures are carried through, so the reviewer confirms a
+       * number rather than re-deriving one they had already decided. A vendor's
+       * edit no longer sends an approved product back — it stays approved — so
+       * that is a rejected row resubmitted after once being priced.
        */
       technicianPayoutPaise: toRupeeInput(submission.technicianPayoutPaise),
       vendorPricePaise: toRupeeInput(submission.vendorPricePaise),

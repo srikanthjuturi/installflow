@@ -24,6 +24,7 @@ import {
   useCreateNode,
   useSubmitNode,
   useUpdateNode,
+  useUpdateOwnNode,
 } from "@/hooks/useProductMaster";
 import type { ProductNode } from "@/types/product";
 import { IconPicker } from "./IconPicker";
@@ -62,11 +63,11 @@ interface NodeFormDialogProps {
    * instead of the staff route — which is the only difference. A category
    * carries no vendor, no price and no approval state, so unlike a product
    * there is nothing to branch in the FORM: the server routes a vendor's create
-   * straight into the same writer staff use, and this flag only picks the door.
+   * and edit into the same writer staff use, and this flag only picks the door.
    *
-   * A vendor never EDITS one. A category belongs to the company, not to
-   * whichever vendor created it, so the portal's row menu does not offer it —
-   * see `CategoryTree`'s `menuFor`.
+   * A vendor edits only a category it CREATED (`node.isOwn`). A category is
+   * company-wide, so the portal's row menu offers "Edit category" on its own
+   * ones alone — see `portalMenuItems` — and the server 404s any other.
    */
   portal?: boolean;
 }
@@ -107,7 +108,9 @@ function NodeForm({
   const staffCreate = useCreateNode();
   const portalCreate = useSubmitNode();
   const create = portal ? portalCreate : staffCreate;
-  const update = useUpdateNode();
+  const staffUpdate = useUpdateNode();
+  const portalUpdate = useUpdateOwnNode();
+  const update = portal ? portalUpdate : staffUpdate;
   const pending = create.isPending || update.isPending;
 
   const {

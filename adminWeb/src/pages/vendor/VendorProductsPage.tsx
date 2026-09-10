@@ -4,7 +4,10 @@ import {
   CategoryTree,
   CategoryTreeSkeleton,
 } from "@/components/masters/CategoryTree";
-import { addMenuItems, type MasterAction } from "@/components/masters/nodeMenu";
+import {
+  portalMenuItems,
+  type MasterAction,
+} from "@/components/masters/nodeMenu";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
@@ -19,7 +22,7 @@ import { toast } from "@/components/ui/toast";
 import { useMe } from "@/hooks/useAuth";
 import { useFocusHighlight } from "@/hooks/useFocusHighlight";
 import { useDeleteOwnModel, useNodeTree } from "@/hooks/useProductMaster";
-import type { ProductNode } from "@/types/product";
+import { findNode, type ProductNode } from "@/types/product";
 
 /** The one dialog that is open, if any. `null` is "none". */
 type OpenDialog = MasterAction | null;
@@ -124,12 +127,13 @@ export default function VendorProductsPage() {
             canEdit
             onAction={setDialog}
             /* A shorter menu than the ops one. A category belongs to the
-               company, not to whichever vendor created it, so renaming or
-               removing one here would change the catalogue for every other
-               brand in the tenant — the server refuses it too. What is left is
-               exactly the two "Add" actions, built from the same rule the ops
-               menu uses so neither can offer what a save would reject. */
-            menuFor={(node) => addMenuItems(node, setDialog)}
+               company, so a vendor may edit only the ones it created
+               (`isOwn`) — renaming anybody else's would change the catalogue
+               for every other brand in the tenant, and the server refuses it
+               too. Never "Remove category". The "Add" actions are built from
+               the same rule the ops menu uses so neither can offer what a
+               save would reject. */
+            menuFor={(node) => portalMenuItems(node, setDialog)}
           />
           {/* Stated where the Pending chips are, rather than on the intake
               form. Somebody looking at a badge is the moment the sentence is
@@ -148,7 +152,13 @@ export default function VendorProductsPage() {
         <NodeFormDialog
           open
           onOpenChange={(next) => !next && close()}
-          parent={dialog.kind === "add-node" ? dialog.parent : null}
+          parent={
+            dialog.kind === "add-node"
+              ? dialog.parent
+              : // On an edit the parent is context, not a choice — a node
+                // cannot move. Same lookup the ops screen does.
+                findNode(data, dialog.node.parentId)
+          }
           node={dialog.kind === "edit-node" ? dialog.node : undefined}
           portal
         />

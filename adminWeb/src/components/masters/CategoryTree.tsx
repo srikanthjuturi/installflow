@@ -34,9 +34,8 @@ interface CategoryTreeProps {
    * Overrides the row menu on every node. Absent → the ops menu.
    *
    * The vendor portal passes a shorter one: a category belongs to the COMPANY,
-   * not to whichever vendor happened to create it, so somebody filing products
-   * into one must not be offered "Edit category" or "Remove category" for every
-   * other brand in the tenant. `addMenuItems` is exported for exactly that.
+   * so a vendor is offered "Edit category" only on the ones it created, and
+   * "Remove category" never. `portalMenuItems` is exported for exactly that.
    */
   menuFor?: (node: ProductNode) => NodeMenuItem[];
 }

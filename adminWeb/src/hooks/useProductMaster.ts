@@ -19,6 +19,7 @@ import {
   submitNode,
   updateModel,
   updateNode,
+  updateOwnNode,
   updateOwnSerial,
   updateSerial,
   type TreePurpose,
@@ -142,10 +143,12 @@ export const useCreateModel = () =>
   useMasterMutation(createModel, "Couldn't add the product model");
 
 /* A vendor's own writes. Same invalidation, different endpoints — the server
-   pins the vendor, stamps the product pending and tells staff there is
+   pins the vendor, stamps a new product pending and tells staff there is
    something to price. */
 export const useSubmitNode = () =>
   useMasterMutation(submitNode, "Couldn't add the category");
+export const useUpdateOwnNode = () =>
+  useMasterMutation(updateOwnNode, "Couldn't save the category");
 export const useSubmitModel = () =>
   useMasterMutation(submitModel, "Couldn't send the product for approval");
 export const useResubmitModel = () =>

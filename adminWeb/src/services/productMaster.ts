@@ -123,6 +123,20 @@ export function submitNode(input: CreateNodeInput): Promise<ProductNode> {
 }
 
 /**
+ * A vendor edits a category it CREATED (`ProductNode.isOwn`). Not reviewed,
+ * same as the create.
+ *
+ * Any other category is a 404: a category is company-wide, so renaming one a
+ * vendor did not add would change the catalogue for every brand filing there.
+ */
+export function updateOwnNode({
+  id,
+  ...body
+}: UpdateNodeInput): Promise<ProductNode> {
+  return apiPut<ProductNode>(`/masters/portal/nodes/${id}`, body);
+}
+
+/**
  * A vendor submits a product. Unpriced, pending, and not yet ticketable.
  *
  * No `vendorId` and no prices in the body — there are no fields for them. The
@@ -139,10 +153,10 @@ export function submitModel({
 /**
  * A vendor edits their own product.
  *
- * Any real change returns it to pending and re-notifies — an approved product
- * that has changed is no longer the product that was approved. A save that
- * changes nothing is a no-op, so re-opening the dialog and pressing Save does
- * not cost somebody their ability to raise tickets.
+ * An APPROVED product stays approved and keeps its prices — no review. A
+ * REJECTED one that actually changes goes back to pending and re-notifies
+ * staff, because saving it is the answer to the refusal. A pending one stays
+ * pending.
  */
 export function resubmitModel({
   id,

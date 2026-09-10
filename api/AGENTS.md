@@ -470,7 +470,9 @@ checks `model.vendor_id == vendor.id` — the composite FK constrains `(company_
 through `/masters/portal/*` on `vendor.catalogue`, and the pinning is structural rather than
 checked: `ProductSubmitRequest` has no `vendorId` field for one to arrive in, and
 `_load_own_model` matches on `vendor_id` as well as `company_id` so an edit cannot reach a
-competitor's row. The six staff writes gained `require_staff_principal` in the same change — not
+competitor's row. A CATEGORY has no vendor column, so `_load_own_node` pins it the only way the
+schema allows: its `created_by` must be one of the vendor's own logins (`_vendor_user_ids`, via
+`memberships.vendor_id`). The six staff writes gained `require_staff_principal` in the same change — not
 because a vendor holds `masters.edit` (none does), but because `_validate_vendor` proves a body's
 `vendorId` names a live vendor *in the company* and never that it names the caller's own, and that
 gap was one Feature Access toggle from being live.
@@ -872,10 +874,20 @@ submission waits, unpriced and unticketable, until a National Head or an Admin t
     vendor submits  ->  pending, both prices NULL, staff bell rings
     NH approves     ->  both prices set, vendor bell rings, intake offers it
     NH rejects      ->  reason recorded, vendor bell rings, vendor edits and resubmits
-    vendor edits    ->  back to pending if anything actually CHANGED
+    vendor edits    ->  approved STAYS approved, prices kept, no bell
+                        rejected -> back to pending if anything actually CHANGED
+                        pending  -> stays pending
 
 Everything that existed before was backfilled `approved` and kept both prices, so nothing that used
 to be ticketable stopped being so.
+
+**Editing an approved product needs no approval.** It used to: any real change sent it back to
+pending, unticketable until a National Head looked again. That was dropped on request — a vendor
+correcting its own product's details should not lose the ability to raise tickets against it for
+a day. The accepted cost is commercial and worth knowing: a vendor can now rename an approved
+product and keep the prices agreed for it. Tickets already raised are unaffected either way, because
+both prices are stamped on the ticket at intake. A REJECTED product still resubmits, because it has
+no agreed prices to keep.
 
 **Two feature keys, and neither is `masters.edit`** (hard rule 2 — "a key that already exists is
 not automatically the right key"). `masters.approve` is `jobs.force_close`'s shape: it spends
@@ -930,7 +942,16 @@ committed write with a 404.
 **A vendor-created CATEGORY is not reviewed**, deliberately. It is company-wide, carries no vendor
 and no price, and an empty one offers nothing at intake — `purpose=intake` prunes it from every
 picker and other vendors' brand-filtered trees never show it. The worst case is a junk row an admin
-deletes. What is worth watching instead is coverage: a product filed under a brand-new main
+deletes.
+
+**A vendor edits the categories it CREATED, and no others** — `PUT /masters/portal/nodes/{id}`,
+not reviewed either. Owned means `created_by` is one of the vendor's logins, sub-users included and
+removed ones too, since a category a former sub-user added still belongs to the vendor. Anything
+else — seeded, staff-made, another brand's — is a 404 through `_load_own_node`. The body is
+`NodePortalUpdateRequest`, which is the staff one less `sortOrder`: where a category sits among the
+whole company's is not one vendor's call. The write itself is shared (`_apply_node_update`), so the
+leaf guards cannot drift between the two doors. `ProductNodeOut.isOwn` tells the portal which rows
+to offer "Edit category" on; it is always false for staff. There is still no portal DELETE. What is worth watching instead is coverage: a product filed under a brand-new main
 sub-category has no certified technicians, so every ticket raised there escalates immediately with
 nothing on screen saying why. The approvals queue therefore carries `technicianCount` and the
 console warns on zero **before** the decision.

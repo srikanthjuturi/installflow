@@ -57,6 +57,7 @@ from app.features.masters.schemas import (
     ParameterOut,
     ProductApprovalOut,
     ProductModelOut,
+    NodePortalUpdateRequest,
     ProductModelSerialOut,
     ProductNodeOut,
     ProductResubmitRequest,
@@ -68,6 +69,7 @@ from app.features.masters.schemas import (
     SerialMatchOut,
     SerialReject,
 )
+from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
 from app.models.technician import TechnicianNode
@@ -148,6 +150,50 @@ async def _load_own_model(
     )
     if row is None:
         raise _not_found("Product model")
+    return row
+
+
+async def _vendor_user_ids(
+    db: AsyncSession, principal: Principal
+) -> set[uuid.UUID]:
+    """Every login that acts for the caller's vendor in this company.
+
+    This is how a CATEGORY's owner is found. `product_nodes` has no vendor
+    column, only `created_by`, and a membership is where a login is tied to a
+    vendor — so "did this vendor create it" is "is `created_by` one of these".
+
+    The vendor account and every sub-user, REMOVED ones included: a category a
+    former sub-user added still belongs to the vendor they worked for, and
+    filtering on `deleted_at` would orphan it the day that person left.
+    """
+    if principal.vendor_id is None:
+        return set()
+    rows = await db.scalars(
+        select(Membership.user_id).where(
+            Membership.company_id == principal.company_id,
+            Membership.vendor_id == principal.vendor_id,
+        )
+    )
+    return set(rows)
+
+
+async def _load_own_node(
+    db: AsyncSession, principal: Principal, node_id: uuid.UUID
+) -> ProductNode:
+    """A category the CALLER'S VENDOR created, or 404.
+
+    A category is company-wide — every vendor files products into one tree — so
+    a vendor may edit only the ones it added itself. Renaming a staff category,
+    or another brand's, would change the catalogue for everybody filing there.
+
+    404 and never 403, like `_load_own_model`. A row with no `created_by` was
+    seeded, which makes it nobody's to edit from the portal.
+    """
+    row = await _load_node(db, principal.company_id, node_id)
+    if row.created_by is None or row.created_by not in await _vendor_user_ids(
+        db, principal
+    ):
+        raise _not_found("Category")
     return row
 
 
@@ -390,6 +436,13 @@ async def get_tree(
     )
     vendor_names = {row_id: name for row_id, name in vendor_rows}
 
+    # Which categories the calling VENDOR created, and so may edit. Empty for
+    # staff: they edit every category through `masters.edit`, and the flag
+    # answers a portal question only.
+    own_creators = (
+        await _vendor_user_ids(db, principal) if principal.is_vendor else set()
+    )
+
     node_ids = [n.id for n in nodes]
     coverage = await _coverage_counts(db, company_id, nodes)
     overriding = await _nodes_with_rule_overrides(db, company_id, node_ids)
@@ -435,6 +488,7 @@ async def get_tree(
             sortOrder=n.sort_order,
             technicianCount=coverage.get(n.id, 0),
             hasRuleOverrides=n.id in overriding,
+            isOwn=n.created_by is not None and n.created_by in own_creators,
             parameters=_params_out(n.parameters),
             children=[],
             models=[
@@ -723,11 +777,51 @@ async def update_node(
     body: NodeUpdateRequest,
 ) -> ProductNodeOut:
     row = await _load_node(db, principal.company_id, node_id)
+    await _apply_node_update(db, principal, row, body)
+    # Staff only. Sibling order is how the whole company's tree reads, so it is
+    # not on the portal's body at all.
+    if body.sortOrder is not None:
+        row.sort_order = body.sortOrder
 
+    await db.commit()
+    return await _one_root(db, principal, node_id)
+
+
+async def update_own_node(
+    db: AsyncSession,
+    principal: Principal,
+    node_id: uuid.UUID,
+    body: NodePortalUpdateRequest,
+) -> ProductNodeOut:
+    """A vendor edits a category it created. Not reviewed, same as the create.
+
+    A category has no vendor dimension, no prices and no approval state, so the
+    write itself is the staff one — `_apply_node_update` — and what differs is
+    the loader: `_load_own_node` pins it to the vendor's own categories.
+    """
+    row = await _load_own_node(db, principal, node_id)
+    await _apply_node_update(db, principal, row, body)
+
+    await db.commit()
+    return await _one_root(db, principal, node_id)
+
+
+async def _apply_node_update(
+    db: AsyncSession,
+    principal: Principal,
+    row: ProductNode,
+    body: NodeUpdateRequest | NodePortalUpdateRequest,
+) -> None:
+    """The fields both writers share: name, icon, leaf flag, template, status.
+
+    One function so the two doors cannot drift apart — the leaf guards and the
+    template rule are the parts that are easy to get wrong, and a vendor's
+    category is held to exactly the same ones.
+    """
     if body.name is not None:
         name = body.name.strip()
         await _assert_node_name_free(
-            db, principal.company_id, row.parent_id, name, exclude_id=node_id
+            db, principal.company_id, row.parent_id, name, exclude_id=row.id
         )
         row.name = name
     # An explicit null resets the icon to "inherit", so this reads the payload
@@ -751,12 +845,7 @@ async def update_node(
         row.parameters = list(body.parameters)
     if body.isActive is not None:
         row.is_active = body.isActive
-    if body.sortOrder is not None:
-        row.sort_order = body.sortOrder
     row.updated_by = principal.user_id
-
-    await db.commit()
-    return await _one_root(db, principal, node_id)
 
 
 async def _assert_can_switch_leaf(
@@ -998,8 +1087,8 @@ async def delete_model(
 #     optional on one schema would also let a STAFF caller silently create an
 #     unpriced pending product by omitting two keys.
 #   * `update_model` is already fifty lines of `model_fields_set` tests. A
-#     vendor's edit additionally has to refuse three fields and flip the row
-#     back to pending — four conditional behaviours threaded through a function
+#     vendor's edit additionally has to refuse three fields and flip a rejected
+#     row back to pending — four conditional behaviours threaded through a function
 #     whose difficulty is already that every field has its own presence rule.
 #
 # The CATEGORY write is the exception and routes straight into `create_node`: a
@@ -1075,7 +1164,12 @@ async def update_own_model(
     model_id: uuid.UUID,
     body: ProductResubmitRequest,
 ) -> ProductNodeOut:
-    """A vendor edits their own product. Any real change sends it back."""
+    """A vendor edits their own product. Only a REJECTED one goes back for review.
+
+    An approved product stays approved and keeps both prices: editing what a
+    vendor already sells does not need anybody's sign-off. A rejected one has
+    no agreed prices yet, so saving it is the resubmission.
+    """
     row = await _load_own_model(db, principal, model_id)
 
     if body.name is not None:
@@ -1095,13 +1189,21 @@ async def update_own_model(
     if "notes" in body.model_fields_set:
         row.notes = (body.notes or "").strip() or None
 
-    # An approved product that has actually CHANGED is no longer the product
-    # that was approved, so it goes back for review.
+    # A REJECTED product that has actually changed is the vendor answering the
+    # refusal, so it goes back into the queue.
+    #
+    # An APPROVED one does not. It used to — any real change sent it back to
+    # pending, unticketable until a National Head looked again — and that was
+    # dropped on request: a vendor correcting its own product's details should
+    # not lose the ability to raise tickets against it for a day. The prices
+    # stay what was agreed, and tickets already raised are unaffected either
+    # way, because both prices are stamped on the ticket at intake.
+    #
+    # A PENDING one is already waiting, so there is nothing to move.
     #
     # Guarded on a real change rather than on "was this a PUT", because the
-    # console resends the whole row on every save — bouncing an approved product
-    # for a no-op would make opening the dialog and pressing Save cost somebody
-    # their ability to raise tickets.
+    # console resends the whole row on every save — resubmitting for a no-op
+    # would ring the staff bell for nothing.
     #
     # ⚠ Measured BEFORE `updated_by` is stamped, and the order is load-bearing:
     # that column changes whenever a DIFFERENT person saves, so stamping first
@@ -1111,7 +1213,7 @@ async def update_own_model(
     row.updated_by = principal.user_id
 
     raised: uuid.UUID | None = None
-    if row.approval_status != PENDING and changed:
+    if row.approval_status == REJECTED and changed:
         row.approval_status = PENDING
         row.submitted_at = _now()
         # `pending_has_no_decision` enforces the first two and

@@ -380,8 +380,9 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         String(16), nullable=False, server_default=text("'pending'")
     )
     #: When this last ENTERED pending — set on submission and again every time a
-    #: vendor's edit returns an approved product for review. The approvals queue
-    #: sorts on it, so the vendor who has been blocked longest is first.
+    #: vendor edits a REJECTED product and so resubmits it. (An approved product
+    #: stays approved when its vendor edits it.) The approvals queue sorts on it,
+    #: so the vendor who has been blocked longest is first.
     #:
     #: NULL means "never waited", which is true of every product that predates
     #: approvals and of anything staff create directly. Deliberately NOT
@@ -460,7 +461,7 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # approvals did is `approved` with no decision attached, because nobody
         # decided it — asserting otherwise would fake an audit trail. The
         # working half is the other way round: this is what forces a vendor's
-        # edit to CLEAR the old decision when it sends a product back.
+        # edit to CLEAR the old refusal when it resubmits a rejected product.
         CheckConstraint(
             "approval_status <> 'pending' "
             "OR (decided_at IS NULL AND decided_by IS NULL)",
