@@ -577,6 +577,16 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   global (no `company_id` — India is the same for every company), imported from a spreadsheet by
   a superadmin on **Super Admin → Geography**. 36 states, 754 districts, 19,496 pincodes.
   A pincode↔district link is many-to-many because 1,258 real pincodes span up to four districts.
+  **A superadmin can also add or correct one pincode by hand** on that screen, because intake
+  refuses a code the master lacks and re-uploading 19,496 rows is not a remedy for one of them.
+  It is not the deleted `pincode_overrides`: the writes edit the master rows themselves, so the
+  sheet still wins the next time it names the same code. The split is worth remembering —
+  **the sheet owns where a pincode is; the console owns whether it is on** — and `pincodes.source`
+  marks the rows the sheet does not cover at all, which survive every future import because the
+  importer never deletes what the file omits. A pincode is **switched off, never deleted**, and
+  its code can never change: both would strand the un-keyed six characters already copied into
+  `tickets`, `technician_pincodes`, `technician_invite_pincodes` and `notifications`.
+  Full table of what a re-import reverts: `api/AGENTS.md`.
 - **A Regional Head covers regions; an Area Manager covers STATES.** Nobody assigns their own
   territory — a senior does it in Users & roles. The RH picks regions and the states under them
   are shown read-only (he is responsible for all of them). The AM picks states, and his region is

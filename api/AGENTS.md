@@ -224,21 +224,59 @@ every company) and the `roles` / `features` catalogues (global, with per-company
 `company_role_features`). `users` is global too, because one person may work for
 several companies — the `memberships` row is the tenant link.
 
-#### The spreadsheet is the only source. There are no overrides.
+#### The spreadsheet is the record. There are still no overrides.
 
-`RequirementDocs/Reliance Green Tech Pin Code.xlsx` is what the importer reads, and nothing
-else outranks it. An earlier version carried researched corrections in a `pincode_overrides`
-module; they were deleted because an override outranks the file — so fixing the file stopped
-fixing the master, and you could not tell from the sheet what the master would end up holding.
+`RequirementDocs/Reliance Green Tech Pin Code.xlsx` is what the importer reads. An earlier version
+carried researched corrections in a `pincode_overrides` module; they were deleted because an
+override outranks the file — so fixing the file stopped fixing the master, and you could not tell
+from the sheet what the master would end up holding.
 
-**To change or add a pincode: edit the sheet and upload it.** Corrections already applied are in
-`RequirementDocs/apply-pincode-corrections.py` (declarative, re-runnable on a fresh vendor
-export) and explained in `Pin Code corrections.md`.
+Three importer rules that make bulk loading safe: it is **additive** (creates and updates what the
+file names, never deletes what it omits, so a one-state sheet is fine on its own); a **tie is
+refused by name** rather than guessed at; and **`#N/A` rows are dropped**, with any pincode that
+appears on nothing else reported individually. Corrections already applied to the sheet are in
+`RequirementDocs/apply-pincode-corrections.py` (declarative, re-runnable on a fresh vendor export)
+and explained in `Pin Code corrections.md`.
 
-Three importer rules that make that safe: it is **additive** (creates and updates what the file
-names, never deletes what it omits, so a one-state sheet is fine on its own); a **tie is refused
-by name** rather than guessed at; and **`#N/A` rows are dropped**, with any pincode that appears
-on nothing else reported individually.
+**A superadmin can also edit a pincode by hand**, and that is not what was deleted. `POST
+/geo/pincodes`, `PUT /geo/pincodes/{code}`, `PATCH /geo/pincodes/{code}/status` and `POST
+/geo/districts` write the **master rows themselves**, so they are a peer of the importer rather
+than a tier above it: there is no hidden layer, and re-uploading the sheet still decides the
+answer. It exists because `_assert_pincode_known` refuses intake for a code the master lacks, and
+re-uploading 19,496 rows is not a remedy for one missing pincode.
+
+**Know what a re-import does before you rely on a manual edit.** It differs by field, nobody could
+guess it, and it falls straight out of `import_geography`:
+
+| Manual edit | Next upload of the sheet |
+|---|---|
+| **Added** a code the sheet never names | **Survives, permanently** — absent from `chosen`, and `touched` is built from `chosen`, so neither the row nor its links are considered |
+| **Moved** a code the sheet names to another state | **Reverted**, and counted as `moved` in the report — visible, not silent |
+| **Changed the districts** of a code the sheet names | **Replaced wholesale** by the sheet's |
+| **Switched a code off** | **Survives** — `is_active` is written only on create |
+
+In one line: **the sheet owns where a pincode is; the console owns whether it is on.**
+
+Two consequences worth holding on to:
+
+- **`pincodes.source` exists because of row one.** A hand-added code outlives every future import,
+  so `'manual'` means exactly *"the spreadsheet does not cover this"* — the only way anybody
+  reconciling the sheet later could find those rows. The importer flips a code back to `'import'`
+  the first time the file names it, and only for codes that are currently `'manual'`: setting it
+  on every code the file names would turn the `pincodes.updated` no-op branch into 19,496 writes
+  per import.
+- **Nothing is ever deleted, only switched off.** No foreign key protects the bare six characters
+  in `tickets.pincode`, `tickets.device_pincode`, `technician_pincodes.pincode`,
+  `technician_invite_pincodes.pincode` or `notifications.pincode`. Deleting the row would leave
+  every one of them resolving to nothing, silently. The code is immutable for the same reason.
+
+**Exactly one read filters `is_active`, and that is deliberate.** `list_pincodes` is active-only
+unless asked otherwise, because every caller but the Geography screen is a picker and offering a
+code intake will refuse is worse than not offering it. `core/scope.py`, `core/coverage.py`,
+`core/visibility.py` and `technicians.check_pincodes_exist` all deliberately do **not** filter:
+they answer "who can see this ticket" and "who covers this job" for work that already exists, and
+filtering there would hide live tickets and refuse edits to technicians whose coverage predates
+the switch-off. Do not "fix" them.
 
 #### Three counting facts about the geography master
 
@@ -259,8 +297,11 @@ states each out loud rather than hiding it.
 
 **Every `/geo` read carries `CurrentPrincipal`, never `require_feature`.** `require_feature` is
 built on `CompanyPrincipal`, which refuses a superadmin outright — a feature key here would lock
-the superadmin out of the very screen that maintains this data. Only the importer and the
-template are `require_superadmin`.
+the superadmin out of the very screen that maintains this data. Every **write** is
+`require_superadmin`: the importer, the template, and the four manual writers above.
+
+Geography is global, so **404-not-403 does not apply here** — there is no tenant to leak by
+confirming a code exists, and an unknown one is an ordinary 404.
 
 ### 2. RBAC is enforced here, never in the UI.
 

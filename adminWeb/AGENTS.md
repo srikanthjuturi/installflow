@@ -195,6 +195,13 @@ Two seams to know about:
   extracted from the prototype either and needs the same treatment. `NoShowDialog` is in the same
   position and still awaiting its own. The missed half's subtitle changed too: it used to say the
   rows could not be rescued, which this made false.
+- **Editing a pincode by hand** (`PincodeFormDialog`, `SwitchOffPincodeDialog`, and the `Off` chip
+  badge in `PincodeChips`) is in the same position: the prototype's Geography screen is read-only
+  apart from the import, so **every string is net-new** and needs sign-off rather than extraction.
+  Two of them carry a fact nobody could infer and must not be softened into filler — the dialog's
+  *"A pincode added here survives every import; the state and districts of one the sheet names are
+  reset by the next upload"*, and the confirm's *"Re-importing the sheet will not switch it back on
+  — do that here."* Both are literally what `import_geography` does; see `api/AGENTS.md`.
 
 **Do not fake a number that has a real source.** A null rating renders `—`, not `0`; the
 technician job-history table renders empty rather than inventing rows.
@@ -636,7 +643,7 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/technicians/:id` | `TechnicianProfilePage` | bandwidth, cancels, net ledger, job history; "Edit details" opens the same dialog |
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |
 | `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named. The vendor row carries an **Address searches** column — a lifetime COUNT, always a number and never a dash, and independent of the switch that produced it |
-| `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, loaded from a spreadsheet; drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link |
+| `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, with **two ways in**: a spreadsheet import for the country, and `PincodeFormDialog` for the one code somebody is stuck on (a chip is a button; switching off replaces deleting). Drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link. Its copy is **net-new, not from the prototype** — see below |
 | `/settings/rules` · `/settings/users` | settings | |
 | `*` | `NotFoundPage` | every unmatched URL. Renders — it does not redirect |
 
