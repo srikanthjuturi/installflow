@@ -32,3 +32,16 @@ export const COMPANY_GST_CODES: readonly string[] = [
   GST_BELONGS_TO_VENDOR,
   GST_DUPLICATE_COMPANY,
 ];
+
+/* ── geography ────────────────────────────────────────────────────────────── */
+/** Mirrors `api/app/features/geo/service.py`. Both belong on one input, which
+ *  is the whole reason they carry a code: a pincode save can also 409 for
+ *  reasons that are not the code box. */
+
+/** That pincode is already in the master. Belongs on the code field. */
+export const PINCODE_EXISTS = "PINCODE_EXISTS";
+/** That state already has a district with this name. Belongs on the name field. */
+export const DISTRICT_EXISTS = "DISTRICT_EXISTS";
+
+export const PINCODE_CODES: readonly string[] = [PINCODE_EXISTS];
+export const DISTRICT_CODES: readonly string[] = [DISTRICT_EXISTS];

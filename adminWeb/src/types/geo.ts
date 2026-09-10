@@ -53,6 +53,35 @@ export interface GeoPincode {
   /** Usually one, but 1,209 real pincodes span up to four districts — and four
    *  (222101, 390008, 605012, 804454) belong to none, so this can be empty. */
   districts: string[];
+  /** The same districts by id, same order. Names are for reading, ids are for
+   *  editing: five district names belong to two states each, so a name cannot
+   *  be resolved back to a row. */
+  districtIds: string[];
+  /** False hides it from every picker and refuses it at ticket intake. The row
+   *  survives, so tickets and technician coverage already on it still resolve —
+   *  which is why this is a switch and not a delete. */
+  isActive: boolean;
+  /** `"manual"` means the spreadsheet does not cover this code. It matters
+   *  because the importer never deletes what the file omits, so a hand-added
+   *  code survives every future upload and nothing else would mark it. */
+  source: "import" | "manual";
+}
+
+/** A pincode entered by hand. `districtIds` may be empty — four real pincodes
+ *  have none, and recording "unknown" beats guessing. */
+export interface PincodeInput {
+  code: string;
+  stateId: string;
+  districtIds: string[];
+}
+
+/** What an edit may change. The code is absent on purpose — see
+ *  `updatePincode`. */
+export type PincodeUpdate = Omit<PincodeInput, "code">;
+
+export interface DistrictInput {
+  stateId: string;
+  name: string;
 }
 
 export interface ImportCounts {

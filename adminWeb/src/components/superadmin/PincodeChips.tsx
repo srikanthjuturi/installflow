@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useInfinitePincodes } from "@/hooks/useGeo";
+import { cn } from "@/lib/utils";
 import type { PincodeFilters } from "@/services/geo";
+import type { GeoPincode } from "@/types/geo";
 
 interface Props {
   filters: PincodeFilters;
@@ -28,6 +30,12 @@ interface Props {
    * the state they are indistinguishable. Five district names repeat this way.
    */
   showState?: boolean;
+  /**
+   * Open the edit dialog on a chip. Optional, so this stays presentational —
+   * only the Geography screen can write, and it is the only caller that passes
+   * it.
+   */
+  onEdit?: (pincode: GeoPincode) => void;
 }
 
 /**
@@ -45,6 +53,7 @@ export function PincodeChips({
   scopeLabel,
   currentDistrict,
   showState,
+  onEdit,
 }: Props) {
   const query = useInfinitePincodes(search, filters);
   const { rows, total, isPending, isError, error, refetch } = query;
@@ -112,14 +121,25 @@ export function PincodeChips({
             ? pincode.districts.filter((d) => d !== currentDistrict)
             : pincode.districts;
 
-          return (
-            <li
-              key={pincode.code}
-              className="flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2.5 py-1.5 leading-tight"
-            >
-              <span className="text-[13px] font-semibold tabular-nums text-ink">
+          const body = (
+            <>
+              <span
+                className={cn(
+                  "text-[13px] font-semibold tabular-nums text-ink",
+                  !pincode.isActive && "line-through"
+                )}
+              >
                 {pincode.code}
               </span>
+
+              {/* Marked, never hidden. This is the one screen that can switch a
+                  pincode back on, so a switched-off code has to be reachable
+                  here even though every picker has stopped offering it. */}
+              {!pincode.isActive && (
+                <span className="rounded bg-surface-3 px-1 py-px text-[10px] font-medium text-ink-2">
+                  Off
+                </span>
+              )}
 
               {currentDistrict ? (
                 others.length > 0 && (
@@ -145,6 +165,33 @@ export function PincodeChips({
                     ? pincode.districts.join(" · ")
                     : "No district"}
                 </span>
+              )}
+            </>
+          );
+
+          const chip =
+            "flex w-full items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 leading-tight";
+
+          return (
+            <li key={pincode.code}>
+              {onEdit ? (
+                // The whole chip, rather than a pencil beside it: there is one
+                // fact per chip and no room for a second control, and the
+                // approved layout is what a superadmin already reads.
+                <button
+                  type="button"
+                  onClick={() => onEdit(pincode)}
+                  aria-label={`Edit ${pincode.code}`}
+                  className={cn(
+                    chip,
+                    "bg-surface-2 text-left transition-colors hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    !pincode.isActive && "opacity-70"
+                  )}
+                >
+                  {body}
+                </button>
+              ) : (
+                <span className={cn(chip, "bg-surface-2")}>{body}</span>
               )}
             </li>
           );

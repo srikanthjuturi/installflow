@@ -6,16 +6,20 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  createDistrict,
+  createPincode,
   importGeography,
   listDistricts,
   listGeoRegions,
   listPincodes,
   listStates,
   lookupPincode,
+  setPincodeActive,
+  updatePincode,
   type PincodeFilters,
 } from "@/services/geo";
 import type { ListParams } from "@/types/api";
-import type { GeoState } from "@/types/geo";
+import type { GeoState, PincodeUpdate } from "@/types/geo";
 
 export const geoKeys = {
   all: ["geo"] as const,
@@ -210,9 +214,70 @@ export function useImportGeography() {
       importGeography(file, { dryRun }),
     onSuccess: (report) => {
       if (report.dryRun) return;
-      queryClient.invalidateQueries({ queryKey: geoKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["regions"] });
-      queryClient.invalidateQueries({ queryKey: ["territory"] });
+      invalidateGeography(queryClient);
     },
+  });
+}
+
+/* ── editing by hand ──────────────────────────────────────────────────────── */
+
+/**
+ * What every geography write has to clear.
+ *
+ * `geoKeys.all` rather than the pincode key alone, and it is load-bearing:
+ * regions, states and districts are cached for a full hour, the Geography
+ * screen's four stat tiles are summed from `GeoRegion.pincodeCount`, and each
+ * district row prints its own count. Clearing only the list somebody just
+ * edited leaves every number beside it an hour stale. The prefix also catches
+ * `useInfinitePincodes`, whose key is hand-written but still starts `["geo"]`.
+ *
+ * The other two are the same reach the importer needs — a pincode changing
+ * state changes who covers it.
+ */
+function invalidateGeography(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: geoKeys.all });
+  queryClient.invalidateQueries({ queryKey: ["regions"] });
+  queryClient.invalidateQueries({ queryKey: ["territory"] });
+}
+
+/** Add a pincode the spreadsheet does not have. */
+export function useCreatePincode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't add the pincode" },
+    mutationFn: createPincode,
+    onSuccess: () => invalidateGeography(queryClient),
+  });
+}
+
+/** Correct a pincode's state and districts. */
+export function useUpdatePincode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't update the pincode" },
+    mutationFn: ({ code, input }: { code: string; input: PincodeUpdate }) =>
+      updatePincode(code, input),
+    onSuccess: () => invalidateGeography(queryClient),
+  });
+}
+
+/** Switch a pincode off, or back on. */
+export function useSetPincodeActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't change the pincode" },
+    mutationFn: ({ code, isActive }: { code: string; isActive: boolean }) =>
+      setPincodeActive(code, isActive),
+    onSuccess: () => invalidateGeography(queryClient),
+  });
+}
+
+/** Add a district, so a missing one cannot block entering a pincode. */
+export function useCreateDistrict() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't add the district" },
+    mutationFn: createDistrict,
+    onSuccess: () => invalidateGeography(queryClient),
   });
 }

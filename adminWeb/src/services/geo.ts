@@ -6,14 +6,17 @@
  * the server enforces that.
  */
 
-import { apiGet, apiGetPage, apiUpload } from "./http";
+import { apiGet, apiGetPage, apiPatch, apiPost, apiPut, apiUpload } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type {
+  DistrictInput,
   GeoDistrict,
   GeoPincode,
   GeoRegion,
   GeoState,
   ImportReport,
+  PincodeInput,
+  PincodeUpdate,
 } from "@/types/geo";
 
 /** Mirrors MAX_UPLOAD_BYTES in app/features/geo/service.py. Not the 8 MB image
@@ -64,6 +67,7 @@ export function listPincodes(
   // Only ever sent when true — `noDistrict=false` is the default and adding it
   // to the key would split the cache for no reason.
   if (filters.noDistrict) merged.noDistrict = "true";
+  if (filters.includeInactive) merged.includeInactive = "true";
   return apiGetPage<GeoPincode>("/geo/pincodes", { ...params, filters: merged });
 }
 
@@ -77,6 +81,13 @@ export interface PincodeFilters {
    * none of its districts, which reads as a counting bug.
    */
   noDistrict?: boolean;
+  /**
+   * Switched-off codes too. Only the Geography screen sets this: everywhere
+   * else this list feeds a picker, and offering a code that ticket intake will
+   * refuse is worse than not offering it. Geography needs them visible because
+   * it is the one screen that can switch one back on.
+   */
+  includeInactive?: boolean;
 }
 
 /**
@@ -134,4 +145,48 @@ export function importGeography(
   // server reads the extension off it to choose the parser.
   form.append("file", file, file.name);
   return apiUpload<ImportReport>(`/geo/import?dryRun=${dryRun}`, form);
+}
+
+/* ── editing by hand ──────────────────────────────────────────────────────── */
+/**
+ * The four superadmin writers. They are a PEER of the import, not an override —
+ * they write the master rows themselves, so the sheet still wins the next time
+ * it names the same code. What that means in practice, and what the dialog
+ * tells the user: a code the sheet has never heard of survives every future
+ * upload, but the state and districts of one it does name are reset by it.
+ * Switching a code off survives either way.
+ */
+
+/** Add a pincode the spreadsheet does not have. Stamped `source: "manual"`. */
+export function createPincode(input: PincodeInput): Promise<GeoPincode> {
+  return apiPost<GeoPincode>("/geo/pincodes", input);
+}
+
+/**
+ * Correct a pincode's state and districts. A full replace of the district set,
+ * matching what the importer does to the codes its file names.
+ *
+ * The code is not in the body: it is the primary key, and nothing in the schema
+ * protects the six characters copied into tickets, technician coverage and
+ * invites — so it cannot change. A wrong code is switched off and re-added.
+ */
+export function updatePincode(
+  code: string,
+  input: PincodeUpdate
+): Promise<GeoPincode> {
+  return apiPut<GeoPincode>(`/geo/pincodes/${code}`, input);
+}
+
+/** Switch a pincode off, or back on. Never deleted — existing tickets and
+ *  technician coverage store the bare code and would silently stop resolving. */
+export function setPincodeActive(
+  code: string,
+  isActive: boolean
+): Promise<GeoPincode> {
+  return apiPatch<GeoPincode>(`/geo/pincodes/${code}/status`, { isActive });
+}
+
+/** Add a district, so a missing one cannot block entering a pincode. */
+export function createDistrict(input: DistrictInput): Promise<GeoDistrict> {
+  return apiPost<GeoDistrict>("/geo/districts", input);
 }

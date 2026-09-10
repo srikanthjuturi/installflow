@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useDistricts, usePincodes } from "@/hooks/useGeo";
 import { cn } from "@/lib/utils";
 import type { PincodeFilters } from "@/services/geo";
-import type { GeoRegion, GeoState } from "@/types/geo";
+import type { GeoPincode, GeoRegion, GeoState } from "@/types/geo";
 import { PincodeChips } from "./PincodeChips";
 import { isNeutral, toneFor } from "@/components/geo/regionTone";
 
@@ -36,6 +36,9 @@ interface Props {
   onSelectRegion: (regionId: string) => void;
   onSelectState: (stateId: string) => void;
   onSelectDistrict: (districtId: string) => void;
+  /** Open the edit dialog on a pincode chip. Drilled to `PincodeChips`, the
+   *  way the selection callbacks above already are. */
+  onEditPincode: (pincode: GeoPincode) => void;
 }
 
 /**
@@ -56,6 +59,7 @@ export function GeoDetailPanel({
   onSelectRegion,
   onSelectState,
   onSelectDistrict,
+  onEditPincode,
 }: Props) {
   const { regionId, stateId, districtId } = selection;
 
@@ -73,12 +77,18 @@ export function GeoDetailPanel({
           // Above a state, the district alone does not identify a result —
           // "Bilaspur" matches one in Himachal and one in Chhattisgarh.
           showState={!stateId}
+          onEdit={onEditPincode}
         />
       </Panel>
     );
   }
 
-  if (districtId) return <DistrictLeaf {...{ selection, states, filters, scopeLabel }} />;
+  if (districtId)
+    return (
+      <DistrictLeaf
+        {...{ selection, states, filters, scopeLabel, onEditPincode }}
+      />
+    );
   if (stateId) {
     return (
       <StateDistricts
@@ -319,11 +329,13 @@ function DistrictLeaf({
   states,
   filters,
   scopeLabel,
+  onEditPincode,
 }: {
   selection: GeoSelection;
   states: GeoState[];
   filters: PincodeFilters;
   scopeLabel: string;
+  onEditPincode: (pincode: GeoPincode) => void;
 }) {
   const state = states.find((s) => s.id === selection.stateId);
   const orphaned = selection.districtId === NO_DISTRICT;
@@ -345,6 +357,7 @@ function DistrictLeaf({
         // Not passed for the orphan view: there is no current district there,
         // and every one of those chips genuinely has nothing to name.
         currentDistrict={orphaned ? undefined : scopeLabel}
+        onEdit={onEditPincode}
       />
     </Panel>
   );

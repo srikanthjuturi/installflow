@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { Globe2, Search, Upload, X } from "lucide-react";
+import { Globe2, Plus, Search, Upload, X } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { GeoDetailPanel, NO_DISTRICT } from "@/components/superadmin/GeoDetailPanel";
 import { GeoImportDialog } from "@/components/superadmin/GeoImportDialog";
+import { PincodeFormDialog } from "@/components/superadmin/PincodeFormDialog";
+import { SwitchOffPincodeDialog } from "@/components/superadmin/SwitchOffPincodeDialog";
 import { IndiaMap, type StateMark } from "@/components/geo/IndiaMap";
 import { plural } from "@/lib/plural";
 import { RegionLegend } from "@/components/geo/RegionLegend";
@@ -12,15 +14,30 @@ import { toneFor } from "@/components/geo/regionTone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useDistricts, useGeoRegions, useStates } from "@/hooks/useGeo";
+import { toast } from "@/components/ui/toast";
+import {
+  useDistricts,
+  useGeoRegions,
+  useSetPincodeActive,
+  useStates,
+} from "@/hooks/useGeo";
 import type { PincodeFilters } from "@/services/geo";
-import type { GeoState } from "@/types/geo";
+import type { GeoPincode, GeoState } from "@/types/geo";
 
 /**
  * The geography master — region → state → district → pincode, for every company
- * at once. Read-only apart from the import: this is reference data, and
- * hand-editing one state out of 36 while a spreadsheet is the source of truth
- * would be a second, competing way to record the same thing.
+ * at once.
+ *
+ * **Two ways in, because the requirement has two.** A spreadsheet for the whole
+ * country, and a form for the one code somebody is stuck on: ticket intake
+ * refuses a pincode the master does not hold, and re-uploading 19,496 rows to
+ * add one is not a remedy. This screen used to be read-only apart from the
+ * import, on the argument that hand-editing beside a spreadsheet would be a
+ * second, competing way to record the same thing. What makes it not that is
+ * WHERE the writes go: they edit the master rows themselves rather than
+ * layering over them, so the sheet still wins the next time it names the same
+ * code. `api/app/features/geo/service.py` records exactly which manual edits a
+ * re-import reverts.
  *
  * A composer only; every piece of markup lives in `components/superadmin/`.
  *
@@ -31,6 +48,10 @@ export default function GeographyPage() {
   const [params, setParams] = useSearchParams();
   const [importing, setImporting] = useState(false);
   const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState<GeoPincode | undefined>();
+  const [adding, setAdding] = useState(false);
+  const [switchingOff, setSwitchingOff] = useState<GeoPincode | undefined>();
+  const setActive = useSetPincodeActive();
 
   const states = useStates();
   // `/geo/regions`, not the company-side `/regions` — that one is guarded by
@@ -60,13 +81,22 @@ export default function GeographyPage() {
     setSearch("");
   };
 
-  /** What the pincode reads are scoped to at this level. */
+  /**
+   * What the pincode reads are scoped to at this level.
+   *
+   * `includeInactive` everywhere on this screen, and nowhere else in the
+   * console: every other reader of this list is a picker, and offering a code
+   * that ticket intake will refuse is worse than not offering it. This is the
+   * one screen that can switch one back on, so it has to be able to see it.
+   */
   const filters: PincodeFilters = useMemo(() => {
-    if (districtId === NO_DISTRICT) return { stateId, noDistrict: true };
-    if (districtId) return { districtId };
-    if (stateId) return { stateId };
-    if (regionId) return { regionId };
-    return {};
+    const base = { includeInactive: true };
+    if (districtId === NO_DISTRICT)
+      return { ...base, stateId, noDistrict: true };
+    if (districtId) return { ...base, districtId };
+    if (stateId) return { ...base, stateId };
+    if (regionId) return { ...base, regionId };
+    return base;
   }, [regionId, stateId, districtId]);
 
   const scopeLabel =
@@ -140,10 +170,31 @@ export default function GeographyPage() {
             regional head covers regions, an area manager covers states.
           </p>
         </div>
-        <Button type="button" size="toolbar" onClick={() => setImporting(true)}>
-          <Upload data-icon="inline-start" />
-          Import from Excel
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Only once there is geography to add one to. With no states loaded
+              the form has nothing to pick, so the empty state below offers the
+              import alone — and while loading or failed there is nothing yet
+              to add one into either. */}
+          {!isPending && !isError && !empty && (
+            <Button
+              type="button"
+              size="toolbar"
+              variant="outline"
+              onClick={() => setAdding(true)}
+            >
+              <Plus data-icon="inline-start" />
+              Add pincode
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="toolbar"
+            onClick={() => setImporting(true)}
+          >
+            <Upload data-icon="inline-start" />
+            Import from Excel
+          </Button>
+        </div>
       </div>
 
       {isError ? (
@@ -246,12 +297,51 @@ export default function GeographyPage() {
               onSelectDistrict={(id) =>
                 go({ region: state?.regionId, state: stateId, district: id })
               }
+              onEditPincode={setEditing}
             />
           </div>
         </div>
       )}
 
       <GeoImportDialog open={importing} onOpenChange={setImporting} />
+
+      {/* Add and edit are the same dialog pointed at different rows, so they are
+          two instances rather than one piece of state that means both. A new
+          pincode starts wherever the drill-down already is. */}
+      {/* Keyed on the drill-down: `defaults` are read once when the form mounts,
+          so without this, opening Add from a second district would still be
+          pre-filled with the first one's. */}
+      <PincodeFormDialog
+        key={`add:${stateId ?? ""}:${district?.id ?? ""}`}
+        open={adding}
+        onOpenChange={setAdding}
+        defaults={{ stateId, districtId: district?.id }}
+      />
+      <PincodeFormDialog
+        open={editing !== undefined}
+        onOpenChange={(next) => !next && setEditing(undefined)}
+        pincode={editing}
+        onSwitchOff={(target) => {
+          setEditing(undefined);
+          setSwitchingOff(target);
+        }}
+        onSwitchOn={(target) =>
+          setActive.mutate(
+            { code: target.code, isActive: true },
+            {
+              onSuccess: () => {
+                toast.add({ title: `${target.code} switched back on` });
+                setEditing(undefined);
+              },
+            }
+          )
+        }
+      />
+      <SwitchOffPincodeDialog
+        open={switchingOff !== undefined}
+        onOpenChange={(next) => !next && setSwitchingOff(undefined)}
+        pincode={switchingOff}
+      />
     </>
   );
 }
