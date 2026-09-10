@@ -8,6 +8,20 @@ const STATS = [
 ];
 
 /**
+ * A PICTURE of one EAS build's install URL, not a link generated from config —
+ * so it goes stale on every mobile build, exactly like the API's
+ * `TECHNICIAN_APP_LINK` (see the publish-api skill). Replace the PNG whenever a
+ * new build ships: left on an old one, a technician installs whatever API that
+ * build was aimed at.
+ *
+ * It can also simply EXPIRE. An internal-distribution build is kept for a
+ * limited time — the one encoded today (5145845f, Android, `preview`, the same
+ * build `TECHNICIAN_APP_LINK` names) reports `expirationDate` 2026-09-21. Check
+ * with `eas build:view <id> --json`.
+ */
+const TECHNICIAN_APP_QR = "/images/appqr.png";
+
+/**
  * Left half of the sign-in split. Decorative — hidden below `md`.
  *
  * The PLATFORM brand, deliberately: nobody has signed in yet, so there is no
@@ -56,8 +70,33 @@ export function BrandPanel() {
         </div>
       </div>
 
-      <div className="relative text-xs text-brand-300">
-        © {new Date().getFullYear()} {BRAND_NAME} · Internal use only
+      <div className="relative flex flex-col gap-7">
+        {/* For a technician standing beside this screen. Here rather than under
+            the form because the form is for console accounts only, and it
+            leaves the panel along with everything else below `md` — a QR on a
+            phone's own screen is one nobody can scan. `lazy` is what keeps a
+            hidden panel from fetching it at all. */}
+        <div className="flex max-w-[420px] items-center gap-4.5 rounded-xl border border-white/15 bg-white/8 p-4">
+          <img
+            src={TECHNICIAN_APP_QR}
+            alt="QR code to download the Technician app"
+            width={128}
+            height={128}
+            loading="lazy"
+            decoding="async"
+            className="size-32 shrink-0 rounded-lg bg-white"
+          />
+          <div>
+            <div className="text-sm font-semibold">Technician app</div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-brand-200">
+              Scan with your Android phone&rsquo;s camera to download it.
+            </p>
+          </div>
+        </div>
+
+        <div className="text-xs text-brand-300">
+          © {new Date().getFullYear()} {BRAND_NAME} · Internal use only
+        </div>
       </div>
     </div>
   );
