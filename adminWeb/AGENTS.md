@@ -1394,6 +1394,10 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   The ceiling is **20 brands of any status** — waiting ones count, on both sides, so an approval can
   never leave a vendor the staff form cannot save. ⚠ `useBrand` beside `useOwnBrands` is the company
   WHITE-LABEL hook, a different idea entirely — never add a `useBrands`.
+  All of its copy is net-new — neither prototype has brands — and was **approved as written on
+  2026-09-11**: the vendor form's Brands section, My brands and its dialog, the product form's
+  Vendor and Brand pickers, the Approvals Products | Brands switch and its brand dialogs, and the
+  "Brand" fact. A new string still needs sign-off.
 - **A vendor-created CATEGORY is not reviewed**, only a product — and the vendor can EDIT the
   categories it created, not reviewed either. A category is company-wide, so the portal's row menu
   (`portalMenuItems`, through `CategoryTree`'s `menuFor`) offers "Edit category" only where the

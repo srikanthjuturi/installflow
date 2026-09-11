@@ -30,7 +30,8 @@ import { MAX_BRANDS, MAX_BRAND_NAME, type VendorFormValues } from "./vendorSchem
  *   * an approved brand that products carry cannot be REMOVED (renaming is
  *     fine) — the save would be refused, so the button is not offered.
  *
- * Net-new copy, NOT from the prototype, which has no brands. Needs sign-off.
+ * Net-new copy, NOT from the prototype, which has no brands — approved as
+ * written on 2026-09-11 with the rest of the brands wording.
  */
 export function BrandRowsField({
   control,
