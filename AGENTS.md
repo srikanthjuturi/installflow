@@ -413,6 +413,13 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   console's prototype said something else, and the contradiction was a logged open decision until
   the ledger forced it. **Ruled in favour of the console's four.** The technician's cancel screen
   needed no redesign, because it renders whatever the server sends.
+- **A penalty can be given back — in full, with a reason — by the ticket's Area Manager, else its
+  Regional Head, else a National Head, else an Admin, or by anyone senior to whoever that is.**
+  Done from the ticket's page (the Penalty & Bonus list is Admin/NH only, so it could not be the
+  place an AM does it). The ledger gains a `reversal` row — the penalty itself is never edited — and
+  the technician's month total, the pool balance and their Earnings screen all read it as never
+  charged. The cancellation still counts against them; only the money comes back. Detail:
+  `api/AGENTS.md` → Reversing a penalty.
 - **A rule can also belong to a category, and the ticket is what remembers which.** A penalty that
   is right for a 32" TV is wrong for a rooftop solar install, so any node may override any rule in
   `product_node_rules`, every column nullable, null meaning inherit. They resolve

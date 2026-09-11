@@ -44,6 +44,16 @@ record of money, and a correction is a NEW entry rather than a rewrite of an
 old one. `updated_at` / `updated_by` come in from the mixin unused, exactly as
 they do on `ticket_events`, because a table that is *almost* like every other
 table but not quite is the kind of exception people trip over later.
+
+## A reversal is that rule, used
+
+A manager who gives a penalty back writes a `reversal` row whose `reverses_id`
+names it — in full, once (`uq_ledger_entries_reverses`), never a partial amount.
+The penalty stays exactly as it was: it says what was charged, and the reversal
+says it was returned, by whom, and why. To the pool a reversal is money OUT,
+like a bonus; to the technician it is the penalty undone. Every reader that
+sums penalties therefore has to know about reversals — see `core.ledger` and
+`earnings.service`, which treat a reversed penalty as if it was never charged.
 """
 
 import uuid
@@ -55,7 +65,9 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -75,10 +87,13 @@ from app.db.mixins import AuditMixin, IdMixin
 #: outside it. `core.ledger.pool` and `earnings.summary` are safe by
 #: construction (both read `totals.get("penalty")` / `("bonus")` by name), but
 #: `features/ledger` had to be taught to exclude it explicitly.
-LEDGER_KINDS = ("penalty", "bonus", "payout")
+#:
+#: `reversal` is a penalty given back — see the module docstring. It arrived
+#: with its writer, `tickets.service.reverse_penalty`.
+LEDGER_KINDS = ("penalty", "bonus", "payout", "reversal")
 
-#: The two that net against each other in the pool balance.
-POOL_KINDS = ("penalty", "bonus")
+#: The kinds that move the pool balance: penalties in, bonuses and reversals out.
+POOL_KINDS = ("penalty", "bonus", "reversal")
 
 
 class LedgerEntry(Base, IdMixin, AuditMixin):
@@ -111,8 +126,22 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
     #: says what was true at the time.
     reason: Mapped[str] = mapped_column(String(160), nullable=False)
 
+    #: The penalty a `reversal` gives back. Set on a reversal and on nothing
+    #: else (`reversal_points_back`). COMPOSITE self-FK on `(company_id, id)`, so
+    #: a reversal can never name another company's penalty.
+    reverses_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+
     __table_args__ = (
-        CheckConstraint("kind IN ('penalty', 'bonus', 'payout')", name="kind"),
+        CheckConstraint(
+            "kind IN ('penalty', 'bonus', 'payout', 'reversal')", name="kind"
+        ),
+        CheckConstraint(
+            "(kind = 'reversal') = (reverses_id IS NOT NULL)",
+            name="reversal_points_back",
+        ),
+        # The target the self-referencing FK below needs. TOTAL — a partial
+        # index cannot be a foreign key target.
+        UniqueConstraint("company_id", "id", name="uq_ledger_entries_company_id_id"),
         # `> 0`, not `>= 0`. A zero-rupee entry is not a smaller movement, it is
         # the absence of one, and the absence is spelled "write no row". The one
         # place that could produce a zero — a technician whose monthly cap is
@@ -144,5 +173,21 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
             ["tickets.company_id", "tickets.id"],
             name="fk_ledger_entries_company_ticket",
             ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "reverses_id"],
+            ["ledger_entries.company_id", "ledger_entries.id"],
+            name="fk_ledger_entries_company_reverses",
+            ondelete="RESTRICT",
+        ),
+        # One reversal per penalty — a double click or two managers at once
+        # cannot give the same money back twice — and the covering index the FK
+        # above needs.
+        Index(
+            "uq_ledger_entries_reverses",
+            "company_id",
+            "reverses_id",
+            unique=True,
+            postgresql_where=text("reverses_id IS NOT NULL"),
         ),
     )

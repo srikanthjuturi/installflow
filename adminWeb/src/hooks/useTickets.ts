@@ -18,6 +18,7 @@ import {
   listTickets,
   recordNoShow,
   rescheduleTicket,
+  reversePenalty,
 } from "@/services/tickets";
 import { dashboardKeys } from "./useDashboard";
 import { ledgerKeys } from "./useLedger";
@@ -325,6 +326,24 @@ export function useRecordNoShow() {
       queryClient.invalidateQueries({ queryKey: technicianKeys.all });
       queryClient.invalidateQueries({ queryKey: ledgerKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
+  });
+}
+
+/**
+ * Give a penalty back. The response IS the ticket, so the detail is seeded
+ * from it — the panel flips to "Reversed" without a second request — and the
+ * ledger is invalidated because the pool balance and its list both moved.
+ */
+export function useReversePenalty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't reverse the penalty" },
+    mutationFn: reversePenalty,
+    onSuccess: (ticket) => {
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: ledgerKeys.all });
     },
   });
 }

@@ -290,3 +290,33 @@ export function recordNoShow({
 }: RecordNoShowInput): Promise<TicketDetail> {
   return apiPost<TicketDetail>(`/tickets/${id}/no-show`, { note: note ?? null });
 }
+
+export interface ReversePenaltyInput {
+  ticketId: string;
+  /** The penalty's ledger id — `TicketPenalty.id`. */
+  entryId: string;
+  /** Required, 3–160 characters: kept verbatim beside the money. */
+  reason: string;
+}
+
+/**
+ * Give one penalty back to the technician — all of it, once, with a reason.
+ *
+ * Area Manager and above, inside their own territory, holding
+ * `penalties.reverse`. The ledger gains a `reversal` row; the penalty itself is
+ * never edited. The technician's month total, the pool balance and their
+ * Earnings screen all read it as never charged.
+ *
+ * **409 `PENALTY_ALREADY_REVERSED`** — somebody got there first; the toaster
+ * says so. Answers with the ticket, reloaded.
+ */
+export function reversePenalty({
+  ticketId,
+  entryId,
+  reason,
+}: ReversePenaltyInput): Promise<TicketDetail> {
+  return apiPost<TicketDetail>(
+    `/tickets/${ticketId}/penalties/${entryId}/reverse`,
+    { reason }
+  );
+}

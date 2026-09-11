@@ -23,12 +23,19 @@ import type { LedgerEntry } from "@/types";
 const KIND_CHIP: Record<LedgerEntry["kind"], string> = {
   penalty: "bg-danger-bg text-danger",
   bonus: "bg-ok-bg text-ok",
+  // Money back to the technician like a bonus, but not a bonus — its own tone
+  // so the two credits are never read as one.
+  reversal: "bg-info-bg text-info",
 };
 
-/** The wire value is lower case; the column prints the approved label. */
+/**
+ * The wire value is lower case; the column prints the approved label.
+ * "Penalty reversed" is net-new — neither prototype has a reversal.
+ */
 const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
   penalty: "Penalty",
   bonus: "Bonus",
+  reversal: "Penalty reversed",
 };
 
 const ALL = "All";
@@ -99,13 +106,22 @@ export function LedgerTable({
       cell: (l) => (
         // The word carries the debit/credit distinction, so the amount's
         // colour is never the only signal.
-        <span
-          className={cn(
-            "inline-block rounded-full px-2.25 py-0.75 text-[11px] font-semibold",
-            KIND_CHIP[l.kind]
-          )}
-        >
-          {KIND_LABEL[l.kind]}
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span
+            className={cn(
+              "inline-block rounded-full px-2.25 py-0.75 text-[11px] font-semibold",
+              KIND_CHIP[l.kind]
+            )}
+          >
+            {KIND_LABEL[l.kind]}
+          </span>
+          {/* The charge stays on the ledger as it was; this says it was later
+              given back. The reversal is its own row, usually newer. */}
+          {l.reversed ? (
+            <span className="text-[11px] font-semibold text-ink-3">
+              Reversed
+            </span>
+          ) : null}
         </span>
       ),
     },
@@ -170,6 +186,7 @@ export function LedgerTable({
       options: [
         { value: "penalty", label: "Penalty" },
         { value: "bonus", label: "Bonus" },
+        { value: "reversal", label: "Penalty reversed" },
       ],
       value: kind,
       // A change, not a whole query — the page merges it in.
@@ -229,7 +246,9 @@ export function LedgerTable({
                   ["When", "Type", "Technician", "Ticket", "Reason", "Amount"],
                   visible.map((e) => [
                     e.at,
-                    KIND_LABEL[e.kind],
+                    e.reversed
+                      ? `${KIND_LABEL[e.kind]} (reversed)`
+                      : KIND_LABEL[e.kind],
                     e.technicianName,
                     e.ticketCode,
                     e.reason,

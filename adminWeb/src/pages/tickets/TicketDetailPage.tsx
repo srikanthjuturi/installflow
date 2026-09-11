@@ -18,19 +18,25 @@ import {
   TechnicianPanel,
 } from "@/components/tickets/SidePanels";
 import { NoShowDialog } from "@/components/tickets/NoShowDialog";
+import { PenaltiesPanel } from "@/components/tickets/PenaltiesPanel";
+import { ReversePenaltyDialog } from "@/components/tickets/ReversePenaltyDialog";
 import { Timeline } from "@/components/tickets/Timeline";
+import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { readNavOrigin, useNavOrigin } from "@/hooks/useNavOrigin";
 import { useRulesConfig } from "@/hooks/useSettings";
 import { formatSlot } from "@/utils/datetime";
+import { moneyPaise } from "@/utils/money";
 import { RescheduleDialog } from "@/components/tickets/RescheduleDialog";
 import {
   useRecordNoShow,
   useRescheduleTicket,
+  useReversePenalty,
   useTicket,
 } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
 import { isTerminalTicketStatus } from "@/types";
+import type { TicketPenalty } from "@/types/ticket";
 
 /**
  * One ticket, on two surfaces.
@@ -163,6 +169,19 @@ export default function TicketDetailPage({
     !!ticket &&
     ["New", "Slot Pending", "Assigned", "Escalated"].includes(ticket.status) &&
     !(ticket.status === "Escalated" && ticket.technicianId);
+
+  /* Giving a penalty back. `isOps`, not `canAct`: a ticket closed since the
+     charge is still one whose charge can be unfair. The key is its own —
+     `penalties.reverse`, the four staff roles by default — and the server adds
+     the Area-Manager floor and the territory, which is what makes it "the
+     ticket's AM, else its RH, else a NH, else an Admin, or anyone senior".
+
+     `reversing` outlives `reverseOpen` on purpose: clearing the penalty the
+     moment the dialog starts to close would blank its sentence mid-animation. */
+  const canReversePenalty = isOps && has("penalties.reverse");
+  const [reverseOpen, setReverseOpen] = useState(false);
+  const [reversing, setReversing] = useState<TicketPenalty | null>(null);
+  const reversePenalty = useReversePenalty();
 
   return (
     <>
@@ -325,6 +344,18 @@ export default function TicketDetailPage({
                 ) : null
               }
             />
+            {/* Beside the technician panel it concerns. Ops-only; it renders
+                nothing on a ticket nobody was ever charged on. */}
+            {isOps ? (
+              <PenaltiesPanel
+                ticket={ticket}
+                canReverse={canReversePenalty}
+                onReverse={(penalty) => {
+                  setReversing(penalty);
+                  setReverseOpen(true);
+                }}
+              />
+            ) : null}
             <ProofPanel ticket={ticket} />
             {/* Only where there is a closure to justify. Ops-only: the whole
                 point of the record is that a colleague can audit the decision,
@@ -356,6 +387,34 @@ export default function TicketDetailPage({
               { onSuccess: () => setNoShowOpen(false) }
             )
           }
+        />
+      ) : null}
+
+      {/* Outside the loading branch for `NoShowDialog`'s reason. Closed only
+          on success — a 409 (somebody reversed it first) is the toaster's to
+          report, and closing over it would hide what was refused. */}
+      {ticket ? (
+        <ReversePenaltyDialog
+          open={reverseOpen}
+          onOpenChange={setReverseOpen}
+          penalty={reversing}
+          isPending={reversePenalty.isPending}
+          onConfirm={({ reason }) => {
+            if (!reversing) return;
+            const penalty = reversing;
+            reversePenalty.mutate(
+              { ticketId: ticket.id, entryId: penalty.id, reason },
+              {
+                onSuccess: () => {
+                  toast.add({
+                    title: "Penalty reversed",
+                    description: `${moneyPaise(penalty.amountPaise)} returned to ${penalty.technicianName}.`,
+                  });
+                  setReverseOpen(false);
+                },
+              }
+            );
+          }}
         />
       ) : null}
 

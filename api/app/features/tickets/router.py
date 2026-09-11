@@ -50,6 +50,7 @@ from app.features.tickets.schemas import (
     DashboardSummaryOut,
     ForceCloseRequest,
     NoShowRequest,
+    PenaltyReverseRequest,
     RenotifyOut,
     RescheduleRequest,
     SerialCorrectionRequest,
@@ -102,6 +103,20 @@ AreaManagerUp = Depends(require_min_rank(AREA_MANAGER))
 #: feature grant is overridable per company on Feature Access, and this one ends
 #: a job the customer never agreed was finished.
 CanForceClose = Annotated[Principal, Depends(require_feature("jobs.force_close"))]
+
+#: Giving a penalty back.
+#:
+#: Its own key rather than `jobs.assign`, which the no-show confirmation uses:
+#: charging somebody and refunding them are different decisions, and a company
+#: may reasonably let every Area Manager record a no-show while keeping refunds
+#: with the National Head — one Feature Access row, with no deploy.
+#:
+#: Paired with `AreaManagerUp`, because it returns pool money (hard rule 2).
+#: Together with `_load`'s territory scoping that is the whole of "the ticket's
+#: AM, else its RH, else a NH, else an Admin — or anyone senior".
+CanReversePenalty = Annotated[
+    Principal, Depends(require_feature("penalties.reverse"))
+]
 
 
 @router.get("", response_model=PaginatedEnvelope[TicketOut])
@@ -359,6 +374,34 @@ async def record_no_show(
     return envelope(
         await service.record_no_show(db, principal, ticket_id, note=body.note),
         message="No-show recorded",
+    )
+
+
+@router.post(
+    "/{ticket_id}/penalties/{entry_id}/reverse",
+    response_model=ApiEnvelope[TicketDetailOut],
+    dependencies=[AreaManagerUp],
+)
+async def reverse_penalty(
+    ticket_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    db: Db,
+    principal: CanReversePenalty,
+    body: PenaltyReverseRequest,
+) -> ApiEnvelope[TicketDetailOut]:
+    """Give one penalty on this ticket back to the technician — in full.
+
+    `entry_id` is the penalty's ledger id, from the ticket's `penalties` list: a
+    ticket can carry several, one per technician who cancelled it.
+
+    **404** — a ticket outside the caller's territory, or no such penalty on
+    it. **409 `PENALTY_ALREADY_REVERSED`** — somebody got there first.
+    """
+    return envelope(
+        await service.reverse_penalty(
+            db, principal, ticket_id, entry_id, reason=body.reason
+        ),
+        message="Penalty reversed",
     )
 
 

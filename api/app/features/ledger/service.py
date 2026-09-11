@@ -2,8 +2,9 @@
 
 Read-only, and that is not a stage it is passing through. Nothing here writes:
 a ledger entry is created by the act it records — a cancellation in
-`jobs.service.cancel`, a completed bonused job in `jobs.service.complete` — and
-it commits in that act's own transaction. An endpoint that could post an entry
+`jobs.service.cancel`, a completed bonused job in `jobs.service.complete`, a
+penalty given back in `tickets.service.reverse_penalty` — and it commits in
+that act's own transaction. An endpoint that could post an entry
 on its own would be a way to move money without anything happening.
 
 ## Scoped by company only
@@ -104,6 +105,22 @@ async def list_entries(
             .where(TechnicianProfile.id.in_({e.technician_id for e in rows}))
         )
     }
+    # Which penalties on this page have been given back. Asked of the reversal
+    # rows, across every page — the reversal is usually newer than its penalty
+    # and so sits on an EARLIER page than the charge it tags.
+    penalty_ids = {e.id for e in rows if e.kind == "penalty"}
+    reversed_ids = (
+        set(
+            await db.scalars(
+                select(LedgerEntry.reverses_id).where(
+                    LedgerEntry.company_id == company_id,
+                    LedgerEntry.reverses_id.in_(penalty_ids),
+                )
+            )
+        )
+        if penalty_ids
+        else set()
+    )
 
     return [
         LedgerEntryOut(
@@ -116,6 +133,7 @@ async def list_entries(
             ticketId=e.ticket_id,
             ticketCode=codes.get(e.ticket_id) or "—",
             reason=e.reason,
+            reversed=e.id in reversed_ids,
         )
         for e in rows
     ], total

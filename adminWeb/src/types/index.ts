@@ -55,7 +55,11 @@ export interface LedgerEntry {
   id: string;
   /** ISO instant. */
   at: string;
-  kind: "penalty" | "bonus";
+  /**
+   * `reversal` is a penalty a manager gave back: the technician's credit, the
+   * pool's money out. Its `reason` is the manager's own words.
+   */
+  kind: "penalty" | "bonus" | "reversal";
   /** PAISE, always positive. `kind` carries the direction. */
   amountPaise: number;
   technicianId: string;
@@ -65,6 +69,11 @@ export interface LedgerEntry {
   ticketCode: string;
   /** As recorded when the money moved, never re-derived. */
   reason: string;
+  /**
+   * On a `penalty`: a manager has since given it back. The row itself never
+   * changes — the `reversal` entry is the record — so this is only the tag.
+   */
+  reversed: boolean;
 }
 
 /* `Vendor` moved to `types/vendor.ts` when vendors became real. It used to

@@ -85,6 +85,10 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   // agreed to it — but is not a step forward either. `note` carries both
   // windows, so this is the one row that says what the time used to be.
   rescheduled: { icon: CalendarClock, tint: "bg-warn-bg text-warn" },
+  // A manager gave a penalty back. `ok`-toned beside the amber `released` and
+  // red `no_show` it answers: the charge above it stood corrected. `RotateCw`,
+  // the opposite turn of `reopened`'s arrow, so the two never read alike.
+  penalty_reversed: { icon: RotateCw, tint: "bg-ok-bg text-ok" },
 };
 
 /**

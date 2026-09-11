@@ -1353,6 +1353,18 @@ it is vocabulary the system is built from. Two removals make the line concrete:
 - **`technicianPayoutPaise` being null now means two things** — withheld from a vendor, or nobody
   has priced it yet — and `vendorPricePaise` can be null for the second reason. Render neither as a
   dash: "— to technician" reads as a number that failed to load. Omit the line.
+- **A penalty is reversed from the ticket page, never from the ledger.** `PenaltiesPanel` sits
+  under `TechnicianPanel` (ops-only; it renders nothing on a ticket nobody was charged on) and lists
+  every penalty — a ticket can carry several — with a **Reverse** button behind
+  `has("penalties.reverse")`. The Penalty & Bonus list is `earnings.view` (Admin/NH), so an Area
+  Manager could never have reached a button there; the ticket they can open. Deliberately NOT gated
+  on `canAct`: a ticket closed since the charge can still carry an unfair one.
+  "Reversible by {name} ({role}) or anyone senior" names `penaltyReviewer` — the server's AM → RH →
+  NH → Admin answer. It limits nobody; rank and territory do, server-side.
+  `ReversePenaltyDialog` is `RescheduleDialog`'s required-reason shape (3–160, the ledger column),
+  with the amount on the button like `NoShowDialog`. Full amount only; no undo. The ledger table
+  learned `reversal` ("Penalty reversed", `+`, info tone) and tags a charge "Reversed". All of this
+  copy is net-new — neither prototype has a reversal — and needs sign-off.
 - Force-closure **requires** attachments and records who, when, and on what basis. Audit is a
   stated requirement, not a nicety.
 - **A force-closure's attachments are staff-only; its proof images are not.** Proof is the work

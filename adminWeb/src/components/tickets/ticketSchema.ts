@@ -169,6 +169,24 @@ export type RescheduleFormValues = z.infer<typeof rescheduleSchema>;
 export const rescheduleResolver = zodResolver(rescheduleSchema);
 
 /**
+ * Giving a penalty back. Required for the same reason as a reschedule: nothing
+ * stands behind it but the manager, and it returns pool money.
+ *
+ * 160, not 255 — the ledger row keeps these words verbatim in its `reason`
+ * column, which is 160, and the API refuses anything longer.
+ */
+export const reversePenaltySchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Say why it is being reversed — this is kept with the money")
+    .max(160, "Keep it under 160 characters"),
+});
+
+export type ReversePenaltyFormValues = z.infer<typeof reversePenaltySchema>;
+export const reversePenaltyResolver = zodResolver(reversePenaltySchema);
+
+/**
  * The four service levels, as radio cards.
  *
  * The sub-line says what the number actually measures. The old copy read "Slot

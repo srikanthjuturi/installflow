@@ -23,11 +23,18 @@ import uuid
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, and_, case, func, or_, select, update
 from sqlalchemy import false as sql_false
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core import brand
 from app.core.config import settings
-from app.core.coverage import has_cap_room, ist_day_bounds, technicians_covering
+from app.core.coverage import (
+    has_cap_room,
+    ist_day_bounds,
+    nearest_manager_for,
+    technicians_covering,
+)
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.ledger import (
@@ -86,6 +93,7 @@ from app.features.tickets.schemas import (
     DashboardSummaryOut,
     ForceCloseRequest,
     FunnelOut,
+    PenaltyReviewerOut,
     RenotifyOut,
     SlaBreakdownOut,
     SlotOptionOut,
@@ -93,6 +101,7 @@ from app.features.tickets.schemas import (
     TicketCreateRequest,
     TicketDetailOut,
     TicketOut,
+    TicketPenaltyOut,
     TicketProofOut,
     TimelineEventOut,
 )
@@ -1182,6 +1191,8 @@ async def get_ticket(
     # Not fetched for a vendor: it is the same withheld fact as the payout, one
     # step later, and asking for it would be a query run purely to throw away.
     credited = None
+    penalties: list[TicketPenaltyOut] = []
+    reviewer: PenaltyReviewerOut | None = None
     if not principal.is_vendor:
         credited = await db.scalar(
             select(LedgerEntry.amount_paise).where(
@@ -1190,11 +1201,113 @@ async def get_ticket(
                 LedgerEntry.kind == "payout",
             )
         )
+        # What technicians were charged on this ticket, and whether it was
+        # given back. Staff only, for the payout's reason: a vendor is not a
+        # party to what a technician pays. The reviewer is resolved only when
+        # there is something to review — it is up to four queries.
+        penalties = await _penalties(db, row)
+        if penalties:
+            reviewer = await _penalty_reviewer(db, row)
     return TicketDetailOut(
         **base.model_dump(),
         technicianCreditedPaise=credited,
         timeline=await _timeline(db, row),
+        penalties=penalties,
+        penaltyReviewer=reviewer,
     )
+
+
+async def _penalties(db: AsyncSession, row: Ticket) -> list[TicketPenaltyOut]:
+    """Every penalty charged on this ticket, oldest first, each with its reversal.
+
+    One query for the pair — a penalty LEFT JOINed to the reversal that names
+    it, which `uq_ledger_entries_reverses` makes a probe — then two small name
+    lookups. The technician is read off the ledger row, not the ticket: a
+    cancellation clears `technician_id`, which is exactly when a penalty exists.
+    """
+    reversal = aliased(LedgerEntry)
+    pairs = (
+        await db.execute(
+            select(LedgerEntry, reversal)
+            .outerjoin(
+                reversal,
+                and_(
+                    reversal.company_id == LedgerEntry.company_id,
+                    reversal.reverses_id == LedgerEntry.id,
+                ),
+            )
+            .where(
+                LedgerEntry.company_id == row.company_id,
+                LedgerEntry.ticket_id == row.id,
+                LedgerEntry.kind == "penalty",
+            )
+            .order_by(LedgerEntry.created_at, LedgerEntry.id)
+        )
+    ).all()
+    if not pairs:
+        return []
+
+    technicians = {
+        tid: name
+        for tid, name in await db.execute(
+            select(TechnicianProfile.id, User.full_name)
+            .join(Membership, Membership.id == TechnicianProfile.membership_id)
+            .join(User, User.id == Membership.user_id)
+            .where(
+                TechnicianProfile.company_id == row.company_id,
+                TechnicianProfile.id.in_({p.technician_id for p, _ in pairs}),
+            )
+        )
+    }
+    deciders = {r.created_by for _, r in pairs if r is not None and r.created_by}
+    managers = (
+        {
+            uid: name
+            for uid, name in await db.execute(
+                select(User.id, User.full_name).where(User.id.in_(deciders))
+            )
+        }
+        if deciders
+        else {}
+    )
+    return [
+        TicketPenaltyOut(
+            id=p.id,
+            technicianName=technicians.get(p.technician_id) or "—",
+            amountPaise=p.amount_paise,
+            reason=p.reason,
+            chargedAt=p.created_at,
+            reversedAt=r.created_at if r is not None else None,
+            reversedByName=(
+                (managers.get(r.created_by) or "—") if r is not None else None
+            ),
+            reversalReason=r.reason if r is not None else None,
+        )
+        for p, r in pairs
+    ]
+
+
+async def _penalty_reviewer(
+    db: AsyncSession, row: Ticket
+) -> PenaltyReviewerOut | None:
+    """The person responsible for this ticket's penalties — AM, RH, NH, Admin.
+
+    Who the console NAMES, not who may act: anyone at that rank or above whose
+    territory covers the ticket can reverse, and `require_min_rank` plus `_load`
+    already say so. The two answers agree by construction — if no AM covers the
+    state, no AM can even see this ticket, so the RH named here is also the
+    lowest rank able to press the button.
+    """
+    user = await nearest_manager_for(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        require_phone=False,
+        include_admin=True,
+    )
+    if user is None:
+        return None
+    return PenaltyReviewerOut(name=user.full_name or user.email or "—", role=user.role)
 
 
 #: How a stored event kind reads on the timeline. The stored row keeps the fact;
@@ -1236,6 +1349,9 @@ _EVENT_TITLES = {
     # this names the ACT, so a reader scanning the trail sees at once that the
     # customer never closed this one.
     "force_closed": "Closed by a manager",
+    # Reads after the "Technician cancelled" / "Nobody turned up" row whose
+    # charge it gives back; the note names the amount and the technician.
+    "penalty_reversed": "Penalty reversed",
 }
 
 #: Kinds whose wording depends on WHO caused them, keyed `(kind, actor_kind)`.
@@ -2664,6 +2780,141 @@ async def record_no_show(
         ticket_id=row.id,
     )
     await db.commit()
+    return await get_ticket(db, principal, ticket_id)
+
+
+async def reverse_penalty(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    *,
+    reason: str,
+) -> TicketDetailOut:
+    """Give a penalty back — all of it, once, with a reason.
+
+    `record_no_show`'s shape, pointed the other way: that one takes a band off
+    a technician on a manager's word, this one returns it on a manager's word.
+
+    **Who.** The router's rank floor (Area Manager) and `_load`'s territory
+    scoping, together — the ticket's AM, its RH, any NH, any Admin. That IS the
+    chain "the AM, else the RH, else the NH, else the Admin" with seniors able
+    to act too: an AM who does not cover this ticket cannot even load it.
+
+    **What.** A NEW `reversal` row naming the penalty (`models/ledger.py` —
+    nothing in that table is ever edited), for the full amount. Every sum that
+    reads penalties already treats a reversed one as never charged: the cap
+    (`charged_this_month`), the pool, and the technician's own earnings.
+
+    **Once.** The technician's profile row is locked, as the cancel path locks
+    it, so a reversal and a new charge against the same monthly cap cannot
+    interleave. A second reversal of the same penalty is a 409 — checked here
+    in words, and guaranteed by `uq_ledger_entries_reverses` for the race.
+    """
+    row = await _load(db, principal, ticket_id)
+    penalty = await db.scalar(
+        select(LedgerEntry).where(
+            LedgerEntry.id == entry_id,
+            LedgerEntry.company_id == principal.company_id,
+            LedgerEntry.ticket_id == row.id,
+            LedgerEntry.kind == "penalty",
+        )
+    )
+    if penalty is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Penalty not found"
+        )
+    text = reason.strip()
+    if len(text) < 3:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Say why the penalty is being reversed",
+        )
+
+    profile = await db.scalar(
+        select(TechnicianProfile).where(
+            TechnicianProfile.id == penalty.technician_id,
+            TechnicianProfile.company_id == principal.company_id,
+        )
+    )
+    if profile is None:  # RESTRICT on the FK makes this unreachable today
+        raise _not_found()
+    await db.refresh(profile, with_for_update=True)
+
+    already = await db.scalar(
+        select(LedgerEntry.id).where(
+            LedgerEntry.company_id == principal.company_id,
+            LedgerEntry.reverses_id == penalty.id,
+        )
+    )
+    if already is not None:
+        raise _refused(
+            "PENALTY_ALREADY_REVERSED",
+            "This penalty has already been reversed. Reload the page to see "
+            "who reversed it.",
+        )
+
+    amount = penalty.amount_paise
+    name = await _technician_name(db, profile)
+    db.add(
+        ledger_entry(
+            company_id=principal.company_id,
+            technician_id=penalty.technician_id,
+            ticket_id=row.id,
+            kind="reversal",
+            amount_paise=amount,
+            # The manager's own words — the kind already says it is a reversal.
+            reason=text[:160],
+            by_user=principal.user_id,
+            reverses_id=penalty.id,
+        )
+    )
+    db.add(
+        record_event(
+            row,
+            "penalty_reversed",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            note=f"₹{amount // 100:,} penalty to {name} reversed · {text}",
+            by_user=principal.user_id,
+        )
+    )
+    await publish_ticket_changed(db, row)
+    # The technician's Earnings screen refetches on this frame, so the penalty
+    # disappears from their phone without a pull-to-refresh.
+    await publish_job_changed(
+        db,
+        company_id=principal.company_id,
+        technician_id=penalty.technician_id,
+        ticket_id=row.id,
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Two managers inside the same instant. The partial unique index kept
+        # the money right; this keeps the sentence right.
+        await db.rollback()
+        raise _refused(
+            "PENALTY_ALREADY_REVERSED",
+            "This penalty has already been reversed. Reload the page to see "
+            "who reversed it.",
+        ) from None
+
+    # Outbound, after the commit — a push cannot be rolled back.
+    #
+    # `type: "job"` WITHOUT a ticket id, deliberately. The app refreshes its
+    # earnings on any `job` push it receives, which is the point; but it routes
+    # a TAP to `/job/:id` only when an id is present, and the technician who
+    # cancelled no longer holds this job, so that screen would 404. With no id
+    # the tap simply opens the app.
+    await send_to_technician(
+        db,
+        company_id=principal.company_id,
+        technician_id=penalty.technician_id,
+        title=f"{row.code}: penalty reversed",
+        body=f"The ₹{amount // 100:,} penalty for {row.code} has been reversed.",
+        data={"type": "job"},
+    )
     return await get_ticket(db, principal, ticket_id)
 
 

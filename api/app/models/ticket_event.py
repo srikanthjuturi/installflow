@@ -181,6 +181,12 @@ EVENT_KINDS = (
     #: coming to it. Each of them now asks "…since the slot last moved", and
     #: this is the row they measure from. See `tickets/sweeps.py`.
     "rescheduled",
+    #: A manager gave back a penalty charged on this ticket — a cancellation's
+    #: or a no-show's. `note` carries the amount, the technician and the
+    #: manager's reason; the money itself is a `reversal` row in
+    #: `ledger_entries`, written in the same transaction. Its own kind because
+    #: the trail has to say the money came back, not just that it was taken.
+    "penalty_reversed",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -233,7 +239,7 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'feedback_requested', 'completed', 'feedback_received', "
             "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
             "'customer_notified', 'escalated', 'bonus_added', 'released', "
-            "'no_show', 'force_closed', 'rescheduled')",
+            "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed')",
             name="kind",
         ),
         CheckConstraint(

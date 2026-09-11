@@ -19,13 +19,28 @@ day.
 
 **A cap of 0 means NO cap**, not "charge nothing". A technician who should
 never be charged is one whose bands are zero.
+
+## A reversed penalty was never charged, for every sum here
+
+A manager can give a penalty back, which writes a `reversal` row naming it
+(`models/ledger.py`). Each reader decides what that means for its own question,
+out loud, the way each already applies its own sign:
+
+  * **the cap** skips a reversed penalty, keyed on the PENALTY's month — an
+    October reversal of a September charge frees September, not October;
+  * **the pool** treats a reversal as money out, like a bonus;
+  * **the technician's earnings** leave out both rows, so their screen reads
+    as if the charge never happened (`earnings.service`).
+
+`not_reversed()` is the one predicate all of them use.
 """
 
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.models.ledger import POOL_KINDS, LedgerEntry
@@ -161,6 +176,21 @@ def window_dates(
     return start.astimezone(IST).date(), last.astimezone(IST).date()
 
 
+def not_reversed():
+    """WHERE-clause: this `LedgerEntry` row has not been given back.
+
+    Correlated to the outer `LedgerEntry`, and answered by
+    `uq_ledger_entries_reverses` — the partial unique on `(company_id,
+    reverses_id)` — so it is an index probe per row, not a scan. Only a penalty
+    can ever be reversed, so on any other kind this is simply always true.
+    """
+    reversal = aliased(LedgerEntry)
+    return ~exists().where(
+        reversal.company_id == LedgerEntry.company_id,
+        reversal.reverses_id == LedgerEntry.id,
+    )
+
+
 async def charged_this_month(
     db: AsyncSession,
     *,
@@ -168,7 +198,12 @@ async def charged_this_month(
     technician_id: uuid.UUID,
     now: datetime.datetime | None = None,
 ) -> int:
-    """Penalties already charged to this technician in the current IST month."""
+    """Penalties charged to this technician in the current IST month and not given back.
+
+    A reversed penalty frees its room under the cap. Keyed on when the PENALTY
+    was written, not the reversal: giving back a September charge in October
+    must make September right again, not hand October extra headroom.
+    """
     now = now or datetime.datetime.now(datetime.timezone.utc)
     total = await db.scalar(
         select(func.coalesce(func.sum(LedgerEntry.amount_paise), 0)).where(
@@ -176,6 +211,7 @@ async def charged_this_month(
             LedgerEntry.technician_id == technician_id,
             LedgerEntry.kind == "penalty",
             LedgerEntry.created_at >= month_start(now),
+            not_reversed(),
         )
     )
     return int(total or 0)
@@ -220,6 +256,7 @@ def entry(
     amount_paise: int,
     reason: str,
     by_user: uuid.UUID | None = None,
+    reverses_id: uuid.UUID | None = None,
 ) -> LedgerEntry:
     """Build the row for money that just moved. The caller adds and commits it.
 
@@ -227,6 +264,9 @@ def entry(
     and for the same reason: money must commit with the thing it is about,
     never separately. A penalty that survived a rolled-back cancellation would
     charge somebody for a job they still hold.
+
+    `reverses_id` is for a `reversal` and nothing else — the CHECK
+    `reversal_points_back` holds the two together.
     """
     return LedgerEntry(
         company_id=company_id,
@@ -236,6 +276,7 @@ def entry(
         amount_paise=amount_paise,
         reason=reason,
         created_by=by_user,
+        reverses_id=reverses_id,
     )
 
 
@@ -269,12 +310,19 @@ async def pool(db: AsyncSession, *, company_id: uuid.UUID) -> dict[str, int]:
         .group_by(LedgerEntry.kind)
     )
     totals = {kind: (int(amount), int(count)) for kind, amount, count in rows}
-    penalties, cancellations = totals.get("penalty", (0, 0))
+    penalties, charged = totals.get("penalty", (0, 0))
+    returned, reversals = totals.get("reversal", (0, 0))
     bonuses, pickups = totals.get("bonus", (0, 0))
+    # A reversal is money back OUT of the pool, and it is netted into what was
+    # "collected" rather than shown as a third figure: a penalty given back was
+    # never really collected, and the console prints `collected − bonuses =
+    # balance` only while that arithmetic holds. Same for the count — one full
+    # reversal per penalty, so this is the penalties that still stand.
+    collected = penalties - returned
     return {
-        "balancePaise": penalties - bonuses,
-        "penaltiesCollectedPaise": penalties,
-        "cancellations": cancellations,
+        "balancePaise": collected - bonuses,
+        "penaltiesCollectedPaise": collected,
+        "cancellations": charged - reversals,
         "bonusesPaidPaise": bonuses,
         "pickups": pickups,
     }

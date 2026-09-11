@@ -21,7 +21,8 @@ accepts inside its company's window moves to `Escalated` — out of `pool_query`
 either assigns somebody or funds a bonus that re-publishes it. A technician can give a job back;
 the slot never moves, the band is charged, and inside the window it escalates immediately.
 `ledger_entries` is the pool both directions run through: `balance = penalties − bonuses`. A
-no-show is detected by a sweep that charges NOTHING and confirmed by a person.
+no-show is detected by a sweep that charges NOTHING and confirmed by a person. **A penalty can be
+given back** — in full, by the ticket's Area Manager or anyone senior — see "Reversing a penalty".
 
 Every operating number is per company in `company_rules`, edited on Configuration → Rules Config,
 **and any catalogue node may override any of them** in `product_node_rules` (every column
@@ -955,6 +956,48 @@ to offer "Edit category" on; it is always false for staff. There is still no por
 sub-category has no certified technicians, so every ticket raised there escalates immediately with
 nothing on screen saying why. The approvals queue therefore carries `technicianCount` and the
 console warns on zero **before** the decision.
+
+## Reversing a penalty
+
+A cancellation or no-show penalty can be given back — **in full, once, with a written reason** —
+from the ticket's page: `POST /tickets/{id}/penalties/{entryId}/reverse`. `entryId` names ONE
+penalty, because a ticket can carry several (each technician who cancels it pays their own band).
+
+**Who: the ticket's Area Manager, else its Regional Head, else a National Head, else an Admin — or
+anyone senior.** That needs no rule of its own. The route carries `penalties.reverse` (its own key,
+the four staff roles by default) with `require_min_rank(AREA_MANAGER)`, and `_load` scopes the
+ticket by territory. An AM who does not cover the ticket's state cannot load it; if no AM covers
+that state, no AM can, so the RH is automatically the lowest rank able to act — the chain falls out
+of rules that already existed. `TicketDetailOut.penaltyReviewer` NAMES the responsible person via
+`core.coverage.nearest_manager_for(require_phone=False, include_admin=True)`; it limits nobody.
+
+**A reversal is a new row, never an edit.** `ledger_entries.kind = 'reversal'` with `reverses_id`
+naming the penalty — the table's own rule ("a correction is a NEW entry"). The penalty keeps saying
+what was charged. `uq_ledger_entries_reverses` (partial unique on `(company_id, reverses_id)`) is
+what makes it *once*: the service checks in words, the index settles the race, and both answer
+409 `PENALTY_ALREADY_REVERSED`. The self-FK is composite, so `(company_id, id)` gained a UNIQUE.
+
+**Every reader treats a reversed penalty as never charged, and each had to be taught.** A new kind
+is invisible to anything that reads `totals.get("penalty")` by name, which is all of them:
+
+| Reader | What it does with a reversal |
+|---|---|
+| `core.ledger.charged_this_month` (the monthly cap) | skips reversed penalties, keyed on the PENALTY's month — an October reversal of a September charge frees September |
+| `core.ledger.pool` | `reversal` is in `POOL_KINDS`; `penaltiesCollectedPaise` and `cancellations` are NET of it, so `collected − bonuses = balance` still holds and the console's sum line survives |
+| `features/earnings` | leaves out both the reversal and the penalty it names (`_shown()`), so the technician's screen needs no new copy and no rebuild |
+| `features/ledger` | lists reversal rows; `LedgerEntryOut.reversed` tags the charge |
+
+`core.ledger.not_reversed()` is the one predicate they share. The cancel path's profile row lock is
+taken here too, so a reversal and a new charge against the same cap cannot interleave.
+
+`jobs_cancelled` is NOT decremented: the cancellation still happened; only the money came back.
+
+The technician is pushed `{"type": "job"}` with **no ticket id** — the app refreshes earnings on
+any `job` push but routes a tap only when an id is present, and the technician who cancelled no
+longer holds that job (`/job/:id` would 404). A `job.changed` frame refreshes an open screen.
+
+⚠ **The downgrade of `e8b2f47c19d3` refuses while any reversal exists.** Deleting one would silently
+re-charge a technician, so it stops and says how many — the `f4b28d1a67c3` shape.
 
 ## GSTIN lookup — where a vendor's details come from
 

@@ -284,8 +284,54 @@ class TimelineEventOut(AppModel):
     note: str | None = None
 
 
+class TicketPenaltyOut(AppModel):
+    """One penalty charged on this ticket, and whether it was given back.
+
+    A ticket can carry several — each technician who cancels it pays their own
+    band, and a confirmed no-show is one more — so this is a list, and a
+    reversal names ONE of them by `id`, never the ticket.
+    """
+
+    id: uuid.UUID
+    #: Who was charged. The ticket no longer points at them — a cancellation
+    #: clears `technician_id` — so this is read off the ledger row.
+    technicianName: str
+    #: PAISE, positive; a penalty is a debit to the technician.
+    amountPaise: int
+    #: What it was for, as recorded when it was charged — "Cancel 2–4h before
+    #: slot", "No-show".
+    reason: str
+    chargedAt: datetime.datetime
+    #: All three null while the penalty stands.
+    reversedAt: datetime.datetime | None = None
+    reversedByName: str | None = None
+    reversalReason: str | None = None
+
+
+class PenaltyReviewerOut(AppModel):
+    """Who is responsible for giving this ticket's penalties back.
+
+    The nearest of: the Area Manager whose states hold the ticket's pincode, the
+    Regional Head over its region, a National Head, an Admin — the chain the
+    business states. It NAMES the reviewer; it does not limit them. Anyone at
+    that rank or above whose territory covers the ticket can reverse, which is
+    what `require_min_rank` plus the territory-scoped load already enforce.
+    """
+
+    name: str
+    #: `area_manager` | `regional_head` | `national_head` | `admin`.
+    role: str
+
+
 class TicketDetailOut(TicketOut):
     timeline: list[TimelineEventOut] = []
+
+    #: Every penalty charged on this ticket, oldest first — staff only. Empty
+    #: for a vendor, who is not a party to what a technician is charged.
+    penalties: list[TicketPenaltyOut] = []
+    #: Who is responsible for reviewing them. Null when there are none to
+    #: review, and for a vendor.
+    penaltyReviewer: PenaltyReviewerOut | None = None
 
     #: What the technician was ACTUALLY credited for this job, in paise.
     #:
@@ -379,6 +425,19 @@ class NoShowRequest(AppModel):
     """
 
     note: str | None = Field(default=None, max_length=255)
+
+
+class PenaltyReverseRequest(AppModel):
+    """A manager giving a penalty back — all of it, with a reason.
+
+    The reason is **required**, the rule `RescheduleRequest` applies for the
+    same cause: nothing else stands behind this act but the person clicking,
+    and it returns pool money. It goes onto the trail and into the ledger row.
+    """
+
+    #: 160 — the ledger row's `reason` column, where these words are kept
+    #: verbatim beside the money. The trail carries them too.
+    reason: str = Field(min_length=3, max_length=160)
 
 
 class SlotOptionOut(AppModel):

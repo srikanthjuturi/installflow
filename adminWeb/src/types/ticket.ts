@@ -258,7 +258,8 @@ export interface TimelineEvent {
     | "released"
     | "no_show"
     | "force_closed"
-    | "rescheduled";
+    | "rescheduled"
+    | "penalty_reversed";
   title: string;
   /**
    * WHO caused it, as a value rather than as wording.
@@ -289,6 +290,45 @@ export interface TicketDetail extends Ticket {
    * same as the payout it settles.
    */
   technicianCreditedPaise: number | null;
+  /**
+   * Every penalty charged on this ticket, oldest first. Staff only — always
+   * empty on the vendor portal, who is not a party to what a technician pays.
+   */
+  penalties: TicketPenalty[];
+  /**
+   * Who is responsible for reviewing those penalties: the ticket's Area
+   * Manager, else its Regional Head, else a National Head, else an Admin.
+   * It NAMES them; anyone at that rank or above who can see the ticket may act.
+   * Null when there are no penalties.
+   */
+  penaltyReviewer: PenaltyReviewer | null;
+}
+
+/**
+ * One penalty charged on a ticket, and whether a manager gave it back.
+ *
+ * A ticket can carry several — each technician who cancels pays their own
+ * band, and a confirmed no-show is one more — so a reversal names ONE by `id`.
+ * A reversal is always the full amount.
+ */
+export interface TicketPenalty {
+  /** The ledger entry's id — what `reversePenalty` is called with. */
+  id: string;
+  technicianName: string;
+  /** PAISE, positive — a debit to the technician. */
+  amountPaise: number;
+  /** As recorded when charged — "Cancel 2–4h before slot", "No-show". */
+  reason: string;
+  chargedAt: string;
+  /** All three null while the penalty stands. */
+  reversedAt: string | null;
+  reversedByName: string | null;
+  reversalReason: string | null;
+}
+
+export interface PenaltyReviewer {
+  name: string;
+  role: "area_manager" | "regional_head" | "national_head" | "admin";
 }
 
 /**

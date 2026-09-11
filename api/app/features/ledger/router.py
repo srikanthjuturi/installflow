@@ -71,8 +71,8 @@ async def list_entries(
 ) -> PaginatedEnvelope[LedgerEntryOut]:
     """One page of movements, newest first.
 
-    `kind` filters to `penalty` or `bonus`, case-insensitively — the console
-    labels them "Penalty" and "Bonus". An unrecognised value matches no rows
+    `kind` filters to `penalty`, `bonus` or `reversal`, case-insensitively — the
+    console labels them "Penalty", "Bonus" and "Penalty reversed". An unrecognised value matches no rows
     and yields an empty page rather than a 422, which is the lesson from the
     vendor list: a stale bookmark carrying an old filter should show nothing,
     not break the screen.

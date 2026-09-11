@@ -28,9 +28,11 @@ class LedgerPoolOut(AppModel):
     #: be able to read back.
     balancePaise: int
     #: Positive. The debit sign belongs on the individual entry, not here.
+    #: NET of reversals — a penalty a manager gave back was never really
+    #: collected, and `balance = collected − bonuses` has to keep holding.
     penaltiesCollectedPaise: int
-    #: How many penalty entries, not how many tickets — a job cancelled twice
-    #: collected twice.
+    #: How many penalty entries still stand, not how many tickets — a job
+    #: cancelled twice collected twice; a reversed penalty no longer counts.
     cancellations: int
     bonusesPaidPaise: int
     pickups: int
@@ -41,8 +43,9 @@ class LedgerEntryOut(AppModel):
 
     id: uuid.UUID
     at: datetime.datetime
-    #: `penalty` | `bonus`. The console renders its own label and its own sign
-    #: from this — see `models/ledger.py` on why no sign is stored.
+    #: `penalty` | `bonus` | `reversal`. The console renders its own label and
+    #: its own sign from this — see `models/ledger.py` on why no sign is stored.
+    #: A `reversal` is a penalty given back: the technician's `+`, the pool's out.
     kind: str
     #: PAISE, always positive. `kind` carries the direction.
     amountPaise: int
@@ -55,3 +58,8 @@ class LedgerEntryOut(AppModel):
     #: labels and the amounts can both be changed by a ruling or a company, and
     #: a record of money says what was true when it moved.
     reason: str
+    #: On a `penalty`: whether a manager has since given it back. The penalty
+    #: row itself never changes — the `reversal` row is the record — so this is
+    #: read off that row, for the tag the console draws beside the charge.
+    #: Always false on the other kinds.
+    reversed: bool = False

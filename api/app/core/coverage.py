@@ -38,6 +38,7 @@ from app.core.scope import ALL_INDIA_ROLES
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.models.membership import Membership
 from app.models.role import (
+    ADMIN,
     AREA_MANAGER,
     NATIONAL_HEAD,
     REGIONAL_HEAD,
@@ -383,9 +384,24 @@ async def area_managers_covering(
 
 
 async def nearest_manager_for(
-    db: AsyncSession, *, company_id: uuid.UUID, pincode: str
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    pincode: str,
+    require_phone: bool = True,
+    include_admin: bool = False,
 ) -> User | None:
     """The one manager to interrupt about this pincode: AM, else RH, else NH.
+
+    ## Two keywords, for the second question it answers
+
+    Defaults are the WhatsApp question below, unchanged. A penalty's reviewer
+    asks a different one — "who is responsible for this ticket's ground" —
+    and passes `require_phone=False` (they act in the console, so a number is
+    beside the point) and `include_admin=True`, completing the chain the
+    business states: the ticket's Area Manager, else its Regional Head, else a
+    National Head, else an Admin. That answer is who the console NAMES; who may
+    act is decided elsewhere, by rank and territory.
 
     A DIFFERENT question from `area_managers_covering` above, and the difference
     is the fallback. That one is for escalation, where reaching only the Area
@@ -421,14 +437,14 @@ async def nearest_manager_for(
     )
 
     def reachable(stmt):
-        return stmt.where(
+        stmt = stmt.where(
             Membership.company_id == company_id,
             Membership.is_active.is_(True),
             Membership.deleted_at.is_(None),
             User.is_active.is_(True),
             User.deleted_at.is_(None),
-            User.phone.is_not(None),
         )
+        return stmt.where(User.phone.is_not(None)) if require_phone else stmt
 
     base = select(User).join(Membership, Membership.user_id == User.id)
 
@@ -444,6 +460,9 @@ async def nearest_manager_for(
         # A national head covers everything, so there is no territory to join.
         reachable(base).where(User.role == NATIONAL_HEAD),
     ]
+    if include_admin:
+        # The last rung, for the same reason: an admin covers everything.
+        tiers.append(reachable(base).where(User.role == ADMIN))
 
     for tier in tiers:
         found = (await db.scalars(tier.order_by(User.full_name).distinct())).first()
