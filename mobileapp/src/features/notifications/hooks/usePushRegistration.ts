@@ -183,6 +183,14 @@ export function usePushRegistration(): void {
         void queryClient.invalidateQueries({ queryKey: qk.earnings() });
         return;
       }
+      // A manager decided a UPI change. `qk.me()` is the prefix both the
+      // profile and the payout account live under, and the redeem card reads
+      // where money goes too.
+      if (type === 'upi_change') {
+        void queryClient.invalidateQueries({ queryKey: qk.me() });
+        void queryClient.invalidateQueries({ queryKey: qk.redeemable() });
+        return;
+      }
       if (type !== 'job') return;
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
       void queryClient.invalidateQueries({ queryKey: qk.earnings() });
@@ -205,6 +213,10 @@ export function usePushRegistration(): void {
       if (data?.type === 'redemption') {
         const redemptionId = data.redemptionId;
         if (typeof redemptionId === 'string') router.push(`/redeem/${redemptionId}`);
+        return;
+      }
+      if (data?.type === 'upi_change') {
+        router.push('/payout-account');
         return;
       }
 

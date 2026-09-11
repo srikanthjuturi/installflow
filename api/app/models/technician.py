@@ -276,7 +276,18 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     #: NOT unique. A shared family VPA is somebody else's policy question, and a
     #: unique index here would refuse a legitimate second technician with no
     #: screen able to explain why.
+    #:
+    #: ⚠ The technician can SET this once, proved by a WhatsApp code to their
+    #: own number; after that only a manager changes it, through a
+    #: `upi_change_requests` row or the console's edit form. See
+    #: `models/upi_change.py` for why.
     upi_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    #: The name on that UPI account — what a payer's UPI app shows when they
+    #: scan it, and so what they are told to check before paying. Read off the
+    #: QR's `pn` when scanned, typed otherwise. Nullable: accounts added before
+    #: this existed have none, and a redemption then falls back to the
+    #: technician's own name.
+    upi_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     # ── stats: NULL until the jobs slice measures them ───────────────────────
     #

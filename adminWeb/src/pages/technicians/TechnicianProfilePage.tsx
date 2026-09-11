@@ -6,6 +6,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
+import { UpiChangePanel } from "@/components/technicians/UpiChangePanel";
 import {
   TechOnboardingCard,
   TechOnboardingCardSkeleton,
@@ -110,6 +111,10 @@ export default function TechnicianProfilePage() {
           )}
 
           <div className="flex flex-col gap-3.5">
+            {/* First on the page when there is one: it is the work item the
+                bell sent a manager here for. */}
+            {tech ? <UpiChangePanel tech={tech} canDecide={canEdit} /> : null}
+
             {isLoading || !tech ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, i) => (

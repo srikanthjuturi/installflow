@@ -1,249 +1,394 @@
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
+import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Button, Checkbox, Input } from '@/components/ui';
+import { Button, Input } from '@/components/ui';
+import { OtpInput } from '@/features/auth/components/OtpInput';
+import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
+import type { PayoutAccount } from '@/features/payout/api/payout';
 import { UpiScanner } from '@/features/payout/components/UpiScanner';
+import {
+  usePayoutAccount,
+  useRequestUpiChange,
+  useSendPayoutCode,
+  useVerifyPayoutAccount,
+  useWithdrawUpiChange,
+} from '@/features/payout/hooks/usePayoutAccount';
 import { useMe } from '@/features/profile/hooks/useMe';
-import { useSetUpiId } from '@/features/payout/hooks/usePayoutAccount';
 import { color } from '@/theme/semantic';
 
 /**
  * The shape of a UPI VPA — `name@bank`.
  *
- * Checked here only so an obvious mistake (an email address, a bare name) is
- * caught before a round trip. The server validates the same rule in
- * `app/core/upi.py` and is the authority; this is not a second gate, it is a
- * faster message.
+ * A faster message, not a second gate: the server validates the same rule in
+ * `app/core/upi.py` and is the authority.
  */
 const VPA = /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}@[a-zA-Z][a-zA-Z0-9]{1,29}$/;
+const NAME_MIN = 2;
+const NAME_MAX = 80;
+
+/** "+919876543210" → "+91 98765 43210". */
+function prettyPhone(e164: string | undefined): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(e164 ?? '');
+  return m ? `+91 ${m[1]} ${m[2]}` : (e164 ?? '');
+}
+
+const CARD = {
+  backgroundColor: color.surfaceRaised,
+  borderWidth: 1,
+  borderColor: color.border,
+  borderRadius: 16,
+  padding: 18,
+} as const;
 
 /**
- * Profile → Payout account.
+ * Profile → Payout account — where a technician's earnings are paid.
  *
- * Where a technician's earnings are paid. One field, and an explicit **Save**
- * rather than the debounced auto-save the bandwidth stepper uses: that is a
- * number somebody nudges up and down, this is a credential typed once and
- * checked twice, and money going to a half-typed address is not a mistake worth
- * making quietly.
+ * ## Two ways in, one proof
  *
- * Empty is a real, common state — neither onboarding mode asks for a UPI id, so
- * a new technician has none. Saving an empty box CLEARS the account, which is
- * how somebody removes one they typed wrong without finding a manager.
+ * The UPI ID and the name on the account arrive either from a SCAN of the QR
+ * their UPI app or bank gave them (both fields filled from it) or TYPED. Either
+ * way it is saved only after a one-time code sent to their registered WhatsApp
+ * number is entered — the number is the account's, read by the server, never
+ * chosen here.
  *
- * Not having one costs only the ability to be PAID. The ledger credits a
- * technician for every job they close either way, so this screen never blocks
- * anything and never nags.
+ * ## After that, a manager changes it
  *
- * ## Nothing can check a UPI ID is real — so the screen does the honest things
+ * Once one is on file this screen shows it read-only. A change is a REQUEST
+ * carrying the new UPI ID and name; the Area Manager for their area (else the
+ * Regional Head, else a National Head, else an Admin) approves it, with no
+ * code. It is where money lands, and redirecting it is exactly what somebody
+ * holding a borrowed phone would try.
  *
- * No bank answers "does this address exist, and is it theirs?" without a
- * payment provider, so there is no green tick to show. Instead, from the
- * integration guide redemptions were built on:
- *
- *   * **a scan before a keyboard** — the address is already on a QR their
- *     bank gave them (`UpiScanner`);
- *   * **the payee as a UPI app shows it** — name above address. People do not
- *     proof-read their own typing; they do recognise their own name;
- *   * **a tick worded as their own claim**, required to save a new address.
- *     A scan fills the field and NEVER ticks the box — a scan can read the
- *     wrong QR — and any edit after ticking un-ticks it, because the claim was
- *     about the value that was there.
- *
- * Changes stay free. Each redemption freezes the address it was requested
- * with, so an edit here never redirects money already asked for.
+ * Net-new copy — the prototype drew this row as a static `••4432`.
  */
 export function PayoutAccountScreen() {
   const me = useMe();
-  const save = useSetUpiId();
-
-  const stored = me.data?.upiId ?? null;
-  /**
-   * `undefined` means "not edited yet", so the field follows the server until
-   * the technician touches it. Seeding state from `stored` directly would
-   * freeze the first render's value — which on a cold start is whatever the
-   * session store held, not what the profile fetch is about to return.
-   */
-  const [draft, setDraft] = useState<string | undefined>(undefined);
-  /** The name a scanned QR carried, shown on the payee card. */
-  const [scannedName, setScannedName] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const value = draft ?? stored ?? '';
-
-  const trimmed = value.trim();
-  const invalid = trimmed !== '' && !VPA.test(trimmed);
-  // Nothing to save until it actually differs from what is on file. Comparing
-  // against the normalised form the server stores, so re-typing the same
-  // address in capitals is correctly read as no change.
-  const next = trimmed === '' ? null : trimmed.toLowerCase();
-  const changed = next !== stored;
-  // Clearing needs no claim — there is no address to vouch for.
-  const needsClaim = changed && next !== null && !invalid;
-
-  const edit = (text: string) => {
-    setDraft(text);
-    setScannedName(null);
-    setConfirmed(false);
-  };
+  const account = usePayoutAccount();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
       <TitleBar title="Payout account" paddingBottom={14} />
 
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View
-          style={{
-            backgroundColor: color.surfaceRaised,
-            borderWidth: 1,
-            borderColor: color.border,
-            borderRadius: 16,
-            padding: 18,
-          }}
-        >
-          <Text
-            style={{
-              fontFamily: 'Roboto_400Regular',
-              fontSize: 13,
-              lineHeight: 20,
-              color: color.textLabel,
-              marginBottom: 16,
-            }}
-          >
-            {me.isPending
-              ? 'Loading your payout account…'
-              : 'Your earnings are paid to this UPI ID. You can change it whenever you need to.'}
-          </Text>
-
-          <Input
-            label="UPI ID"
-            value={value}
-            onChangeText={edit}
-            placeholder="e.g. 9822066301@ybl"
-            editable={!me.isPending && !save.isPending}
-            keyboardType="email-address"
-            maxLength={256}
-            error={invalid ? 'Enter a UPI ID like name@bank' : undefined}
-          />
-
-          <View style={{ marginTop: 12 }}>
-            <Button
-              label="Scan my UPI QR"
-              variant="outline"
-              leadingIcon="qr"
-              disabled={me.isPending || save.isPending}
-              onPress={() => setScanning(true)}
-            />
-          </View>
-
-          <Text
-            style={{
-              fontFamily: 'Roboto_400Regular',
-              fontSize: 12,
-              lineHeight: 18,
-              color: color.textMuted,
-              marginTop: 12,
-            }}
-          >
-            {/* Said plainly, because the alternative is somebody assuming an
-                empty box is why they have not been paid for work they did. */}
-            Leave it empty to remove the account. You still earn for every job
-            you finish — this only decides where the money goes.
-          </Text>
+      {account.isPending ? (
+        <View style={{ padding: 16, gap: 12 }}>
+          <Skeleton width="100%" height={150} rounded={16} />
+          <Skeleton width="100%" height={54} rounded={14} />
         </View>
+      ) : account.isError ? (
+        <ErrorState onRetry={() => account.refetch()} />
+      ) : account.data.upiId ? (
+        <OnFile account={account.data} ownName={me.data?.name ?? ''} />
+      ) : (
+        <AddUpi phone={me.data?.phone} ownName={me.data?.name ?? ''} />
+      )}
+    </View>
+  );
+}
 
-        {needsClaim && next ? (
-          <View
-            style={{
-              backgroundColor: color.surfaceRaised,
-              borderWidth: 1,
-              borderColor: color.border,
-              borderRadius: 16,
-              padding: 18,
-              marginTop: 14,
-              gap: 16,
-            }}
-          >
-            <PayeeCard name={scannedName ?? me.data?.name ?? '—'} vpa={next} />
-            <Checkbox
-              checked={confirmed}
-              onChange={setConfirmed}
-              label="This is my UPI ID and the name is mine"
-              disabled={save.isPending}
-            />
-          </View>
-        ) : null}
+// ── adding one ────────────────────────────────────────────────────────────────
 
-        <View style={{ marginTop: 16 }}>
-          <Button
-            label={save.isPending ? 'Saving…' : 'Save'}
-            disabled={
-              me.isPending || save.isPending || invalid || !changed || (needsClaim && !confirmed)
-            }
-            onPress={() => {
-              save.mutate(next, {
-                // Back to Profile, which shows the stored value in its own row —
-                // so the save is confirmed by the thing it changed rather than
-                // by a toast that says it happened.
-                onSuccess: () => router.back(),
-              });
-            }}
-          />
-        </View>
+function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string }) {
+  const draft = useUpiDraft(ownName);
+  const sendCode = useSendPayoutCode();
+  const verify = useVerifyPayoutAccount();
+  const timer = useResendTimer(30);
+  const [code, setCode] = useState('');
 
-        {save.isError ? (
-          <Text
-            style={{
-              fontFamily: 'Roboto_400Regular',
-              fontSize: 12.5,
-              lineHeight: 18,
-              color: color.debit,
-              marginTop: 12,
-              textAlign: 'center',
-            }}
-          >
-            {/* The server's own words: it knows why it refused, and a generic
-                "couldn't save" would send somebody guessing at a valid VPA. */}
-            {save.error instanceof Error
-              ? save.error.message
-              : "Couldn't save your payout account. Try again."}
+  const sent = sendCode.isSuccess;
+  const devCode = sendCode.data?.devCode ?? null;
+  const error = verify.error ?? sendCode.error;
+
+  const send = () => {
+    if (!draft.valid) return;
+    setCode('');
+    sendCode.mutate(
+      { upiId: draft.vpa, upiName: draft.name },
+      { onSuccess: () => timer.restart() },
+    );
+  };
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={CARD}>
+        <Text style={BODY}>
+          Add the UPI ID your earnings are paid to. Scan the QR from your UPI app,
+          or type it in.
+        </Text>
+        <UpiFields draft={draft} disabled={verify.isPending || sendCode.isPending} />
+      </View>
+
+      {draft.valid ? <PayeeCard name={draft.name} vpa={draft.vpa} /> : null}
+
+      {sent ? (
+        <View style={CARD}>
+          <Text style={BODY}>
+            We sent a 6-digit code to your WhatsApp, {prettyPhone(phone)}. Enter it
+            to save this UPI ID.
           </Text>
-        ) : null}
-      </ScrollView>
+          <OtpInput value={code} onChange={setCode} />
+          <Pressable
+            disabled={!timer.canResend || sendCode.isPending}
+            onPress={send}
+            style={{ marginTop: 14, alignSelf: 'flex-start' }}
+          >
+            <Text
+              style={{
+                fontFamily: 'Roboto_500Medium',
+                fontSize: 12.5,
+                color: timer.canResend ? color.actionBg : color.textMuted,
+              }}
+            >
+              {timer.canResend ? 'Send a new code' : `Send a new code in ${timer.label}`}
+            </Text>
+          </Pressable>
+          {devCode ? <DevCode code={devCode} onUse={() => setCode(devCode)} /> : null}
+        </View>
+      ) : null}
 
+      {error ? <ErrorLine error={error} /> : null}
+
+      {sent ? (
+        <Button
+          label="Verify & save"
+          loading={verify.isPending}
+          disabled={code.length < 6 || !draft.valid}
+          onPress={() => verify.mutate({ upiId: draft.vpa, upiName: draft.name, code })}
+        />
+      ) : (
+        <Button
+          label="Send code on WhatsApp"
+          loading={sendCode.isPending}
+          disabled={!draft.valid}
+          onPress={send}
+        />
+      )}
+    </ScrollView>
+  );
+}
+
+// ── one on file ───────────────────────────────────────────────────────────────
+
+function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string }) {
+  const [changing, setChanging] = useState(false);
+  const change = account.change;
+  const pending = change?.status === 'pending' ? change : null;
+  const rejected = change?.status === 'rejected' ? change : null;
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={CARD}>
+        <Text style={BODY}>
+          Your earnings are paid to this UPI ID. To change it, your manager
+          approves the new one.
+        </Text>
+        <PayeeCard
+          name={account.upiName || ownName || '—'}
+          vpa={account.upiId ?? '—'}
+          bare
+        />
+      </View>
+
+      {pending ? (
+        <PendingChange
+          name={pending.newUpiName}
+          vpa={pending.newUpiId}
+          reviewer={pending.reviewerLabel}
+        />
+      ) : changing ? (
+        <ChangeForm ownName={ownName} onDone={() => setChanging(false)} />
+      ) : (
+        <>
+          {rejected ? (
+            <View
+              style={[
+                CARD,
+                { backgroundColor: color.dangerSurface, borderColor: color.dangerSurfaceBorder },
+              ]}
+            >
+              <Text
+                style={{
+                  fontFamily: 'Roboto_500Medium',
+                  fontSize: 13,
+                  lineHeight: 19,
+                  color: color.dangerTextStrong,
+                }}
+              >
+                Your change to {rejected.newUpiId} was not approved:{' '}
+                {rejected.rejectReason ?? '—'}
+              </Text>
+            </View>
+          ) : null}
+          <Button label="Request a change" variant="outline" onPress={() => setChanging(true)} />
+        </>
+      )}
+    </ScrollView>
+  );
+}
+
+function PendingChange({ name, vpa, reviewer }: { name: string; vpa: string; reviewer: string }) {
+  const withdraw = useWithdrawUpiChange();
+  return (
+    <View style={CARD}>
+      <Text style={LABEL}>Change requested</Text>
+      <PayeeCard name={name} vpa={vpa} bare />
+      <Text style={[BODY, { marginTop: 12, marginBottom: 14 }]}>
+        Waiting for your {reviewer} to approve.
+      </Text>
+      <Button
+        label="Withdraw request"
+        variant="dangerOutline"
+        loading={withdraw.isPending}
+        onPress={() => withdraw.mutate()}
+      />
+      {withdraw.error ? <ErrorLine error={withdraw.error} /> : null}
+    </View>
+  );
+}
+
+function ChangeForm({ ownName, onDone }: { ownName: string; onDone: () => void }) {
+  const draft = useUpiDraft(ownName);
+  const request = useRequestUpiChange();
+
+  return (
+    <>
+      <View style={CARD}>
+        <Text style={LABEL}>New UPI ID</Text>
+        <UpiFields draft={draft} disabled={request.isPending} />
+      </View>
+      {draft.valid ? <PayeeCard name={draft.name} vpa={draft.vpa} /> : null}
+      {request.error ? <ErrorLine error={request.error} /> : null}
+      <Button
+        label="Send request"
+        loading={request.isPending}
+        disabled={!draft.valid}
+        onPress={() =>
+          request.mutate({ upiId: draft.vpa, upiName: draft.name }, { onSuccess: onDone })
+        }
+      />
+      <Button label="Cancel" variant="ghost" onPress={onDone} disabled={request.isPending} />
+    </>
+  );
+}
+
+// ── the two fields, and the scan that fills them ──────────────────────────────
+
+interface UpiDraft {
+  rawVpa: string;
+  setVpa: (v: string) => void;
+  /** What is in the box, spaces and all — so a space can be typed. */
+  rawName: string;
+  setName: (v: string) => void;
+  /** Trimmed, spaces collapsed — what is sent and shown on the payee card. */
+  name: string;
+  /** Lowercased, trimmed — what is sent. */
+  vpa: string;
+  vpaInvalid: boolean;
+  nameInvalid: boolean;
+  valid: boolean;
+  scanning: boolean;
+  setScanning: (v: boolean) => void;
+}
+
+function useUpiDraft(ownName: string): UpiDraft {
+  const [rawVpa, setVpa] = useState('');
+  // Their own name to start with — the commonest answer, and one they will
+  // correct if the account is in another form of it.
+  const [rawName, setName] = useState(ownName);
+  const [scanning, setScanning] = useState(false);
+
+  const vpa = rawVpa.trim().toLowerCase();
+  const cleanName = rawName.trim().replace(/\s+/g, ' ');
+  const vpaInvalid = vpa !== '' && !VPA.test(vpa);
+  const nameInvalid = cleanName.length < NAME_MIN || cleanName.length > NAME_MAX;
+  return {
+    rawVpa,
+    setVpa,
+    rawName,
+    setName,
+    name: cleanName,
+    vpa,
+    vpaInvalid,
+    nameInvalid,
+    valid: vpa !== '' && !vpaInvalid && !nameInvalid,
+    scanning,
+    setScanning,
+  };
+}
+
+function UpiFields({ draft, disabled }: { draft: UpiDraft; disabled: boolean }) {
+  return (
+    <View style={{ gap: 14, marginTop: 14 }}>
+      <Button
+        label="Scan my UPI QR"
+        variant="outline"
+        leadingIcon="qr"
+        disabled={disabled}
+        onPress={() => draft.setScanning(true)}
+      />
+      <Input
+        label="UPI ID"
+        value={draft.rawVpa}
+        onChangeText={draft.setVpa}
+        placeholder="e.g. 9822066301@ybl"
+        editable={!disabled}
+        keyboardType="email-address"
+        maxLength={256}
+        error={draft.vpaInvalid ? 'Enter a UPI ID like name@bank' : undefined}
+      />
+      <Input
+        label="Name on the UPI account"
+        value={draft.rawName}
+        onChangeText={draft.setName}
+        placeholder="As your UPI app shows it"
+        editable={!disabled}
+        maxLength={NAME_MAX}
+        error={
+          draft.rawName.trim() !== '' && draft.nameInvalid
+            ? 'Enter the name on the UPI account'
+            : undefined
+        }
+      />
       <UpiScanner
-        visible={scanning}
-        onClose={() => setScanning(false)}
+        visible={draft.scanning}
+        onClose={() => draft.setScanning(false)}
         onScanned={({ vpa, name }) => {
-          setScanning(false);
-          setDraft(vpa);
-          setScannedName(name);
-          // Deliberately NOT ticked: the scan may have read the wrong QR, and
-          // the tick is the technician's claim, not the camera's.
-          setConfirmed(false);
+          draft.setScanning(false);
+          // Both fields from the QR — the name only when it carried one, so a
+          // bare-address code does not wipe what they typed.
+          draft.setVpa(vpa);
+          if (name) draft.setName(name);
         }}
       />
     </View>
   );
 }
 
+// ── pieces ────────────────────────────────────────────────────────────────────
+
 /**
  * The payee, laid out the way a UPI app lays one out — name above address.
- *
- * The name is the one a scanned QR carried, or the technician's own when they
- * typed the address: either way, the thing they will recognise at a glance
- * when it is theirs, and notice when it is not.
+ * People do not proof-read their own typing; they do recognise their own name.
  */
-function PayeeCard({ name, vpa }: { name: string; vpa: string }) {
+function PayeeCard({ name, vpa, bare }: { name: string; vpa: string; bare?: boolean }) {
   const initial = name.trim().charAt(0).toUpperCase() || '?';
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <View
+      style={[
+        { flexDirection: 'row', alignItems: 'center', gap: 12 },
+        bare ? { marginTop: 14 } : CARD,
+      ]}
+    >
       <View
         style={{
           width: 44,
@@ -254,9 +399,7 @@ function PayeeCard({ name, vpa }: { name: string; vpa: string }) {
           justifyContent: 'center',
         }}
       >
-        <Text
-          style={{ fontFamily: 'Roboto_700Bold', fontSize: 18, color: color.statusUpcoming.fg }}
-        >
+        <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 18, color: color.statusUpcoming.fg }}>
           {initial}
         </Text>
       </View>
@@ -283,3 +426,63 @@ function PayeeCard({ name, vpa }: { name: string; vpa: string }) {
     </View>
   );
 }
+
+function ErrorLine({ error }: { error: unknown }) {
+  return (
+    <Text
+      style={{
+        fontFamily: 'Roboto_400Regular',
+        fontSize: 12.5,
+        lineHeight: 18,
+        color: color.textDanger,
+        textAlign: 'center',
+        marginTop: 4,
+      }}
+    >
+      {/* The server's own words — it knows why it refused. */}
+      {error instanceof Error ? error.message : "Couldn't save. Try again."}
+    </Text>
+  );
+}
+
+/**
+ * Development only — the server echoes the code when `OTP_DEV_ECHO` is on, the
+ * same panel the reschedule and joining screens show, for the same reason.
+ */
+function DevCode({ code, onUse }: { code: string; onUse: () => void }) {
+  return (
+    <Pressable
+      onPress={onUse}
+      style={{
+        marginTop: 14,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: color.borderStrong,
+        borderRadius: 12,
+        padding: 12,
+      }}
+    >
+      <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 10.5, color: color.textMuted }}>
+        DEVELOPMENT ONLY
+      </Text>
+      <Text
+        style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary, marginTop: 2 }}
+      >
+        {code}
+      </Text>
+    </Pressable>
+  );
+}
+
+const BODY = {
+  fontFamily: 'Roboto_400Regular',
+  fontSize: 13,
+  lineHeight: 20,
+  color: color.textLabel,
+} as const;
+
+const LABEL = {
+  fontFamily: 'Roboto_700Bold',
+  fontSize: 12,
+  color: color.textLabel,
+} as const;

@@ -70,6 +70,10 @@ export interface Technician {
    * the ability to be PAID; the ledger credits them either way.
    */
   upiId: string | null;
+  /** The name on that UPI account, when known — what a payer's app shows. */
+  upiName: string | null;
+  /** They asked for a new UPI ID and nobody has decided — see `UpiChange`. */
+  upiChangePending: boolean;
   /** Jobs held for TODAY, by slot date — the rule the daily cap is enforced on. */
   bwUsed: number;
   /** The technician's own decision: are they taking work at all. */
@@ -155,6 +159,8 @@ export interface CreateTechnicianInput {
   dailyJobCap?: number;
   /** Optional — a manager often does not have it. Null or omitted means none. */
   upiId?: string | null;
+  /** The name on that account. Optional even with a UPI ID. */
+  upiName?: string | null;
 }
 
 export interface UpdateTechnicianInput {
@@ -172,9 +178,34 @@ export interface UpdateTechnicianInput {
    */
   dailyJobCap?: number | null;
   /** Nullable for the same reason as the cap: `null` REMOVES a payout account
-   *  that was typed wrong, which omitting it could never do. */
+   *  that was typed wrong, which omitting it could never do. A manager changes
+   *  it with no code — they are the check a technician's own change needs. */
   upiId?: string | null;
+  upiName?: string | null;
   status?: TechnicianStatus;
+}
+
+/**
+ * A technician asking for their UPI ID to be changed.
+ *
+ * They add one themselves, proved by a WhatsApp code; after that a change is a
+ * request a manager decides with no code. The bell goes to the Area Manager
+ * for their area, else the Regional Head, else a National Head, else an Admin —
+ * but anybody who can edit the technician may decide it.
+ */
+export interface UpiChange {
+  id: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  oldUpiId: string;
+  oldUpiName: string | null;
+  newUpiId: string;
+  newUpiName: string;
+  reviewerRole: string;
+  reviewerLabel: string;
+  requestedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  rejectReason: string | null;
 }
 
 export interface InviteTechnicianInput {

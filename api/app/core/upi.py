@@ -101,6 +101,57 @@ UpiId = Annotated[
 ]
 
 
+#: Longest account name kept. UPI apps truncate well before this; a longer value
+#: is not a name anybody's app will show.
+NAME_MAX = 80
+
+
+def _required_name(value: str | None) -> str:
+    """The name on a UPI account: trimmed, spaces collapsed, 2–80 characters.
+
+    Deliberately NOT restricted to letters. A bank prints what the account is
+    registered as, and that includes initials with dots, a business's "&", and
+    digits — refusing any of those would refuse a real account holder's real
+    name. Control characters are the only thing stripped: they are never part
+    of a name and would render as nothing on the payer's screen.
+    """
+    raw = "".join(c for c in str(value or "") if c.isprintable())
+    out = " ".join(raw.split())
+    if len(out) < 2:
+        raise ValueError("Enter the name on the UPI account")
+    if len(out) > NAME_MAX:
+        raise ValueError(f"A UPI name cannot be longer than {NAME_MAX} characters")
+    return out
+
+
+def _required_vpa(value: str | None) -> str:
+    out = _optional_vpa(value)
+    if out is None:
+        raise ValueError("Enter a UPI ID like name@bank")
+    return out
+
+
+#: A REQUIRED UPI ID, for the routes where one is the whole point — adding one,
+#: or asking for it to be changed. `UpiId` above stays optional for the console
+#: forms, where "no account yet" is a real answer.
+RequiredUpiId = Annotated[str, BeforeValidator(_required_vpa)]
+
+#: The name on the account, required wherever a UPI ID is being set by its owner.
+UpiName = Annotated[str, BeforeValidator(_required_name)]
+
+
+def _optional_name(value: str | None) -> str | None:
+    if value is None or not str(value).strip():
+        return None
+    return _required_name(value)
+
+
+#: Optional twin, for the console's add/edit forms.
+OptionalUpiName = Annotated[
+    str | None, BeforeValidator(_optional_name), Field(default=None)
+]
+
+
 class InvalidVpa(ValueError):
     """The string is not shaped like a UPI address."""
 

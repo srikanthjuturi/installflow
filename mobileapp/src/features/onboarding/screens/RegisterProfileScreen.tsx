@@ -14,14 +14,6 @@ import {
 import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 
-/**
- * The shape of a UPI VPA — `name@bank`.
- *
- * A faster message, not a second gate: `app/core/upi.py` validates the same
- * rule and is the authority.
- */
-const VPA = /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}@[a-zA-Z][a-zA-Z0-9]{1,29}$/;
-
 const MIN_NAME = 2;
 
 /** "+919876543210" → "+91 98765 43210". */
@@ -40,6 +32,10 @@ function prettyPhone(e164: string): string {
  *
  * Both facts here are customer-facing: the name and photo are what a customer
  * sees when this technician turns up at their door.
+ *
+ * It used to offer an optional UPI ID box too. It no longer does: a UPI ID is
+ * added on Profile → Payout account, scanned or typed with the name on the
+ * account and proved by its own WhatsApp code — one path, one set of rules.
  */
 export function RegisterProfileScreen() {
   const router = useRouter();
@@ -52,7 +48,6 @@ export function RegisterProfileScreen() {
   const avatarUri = useProfileStore((s) => s.avatarUri);
 
   const [name, setName] = useState(draft?.fullName ?? '');
-  const [upiId, setUpiId] = useState(draft?.upiId ?? '');
 
   // Reachable only mid-registration. Any other way in means the draft was
   // cleared underneath us — send them back to the start rather than crash.
@@ -62,11 +57,7 @@ export function RegisterProfileScreen() {
   }
 
   const trimmed = name.trim();
-  const upi = upiId.trim();
-  // Optional, so only a TYPED value can be wrong. An empty box is a complete
-  // answer here and must never block Continue — see the field's own note.
-  const upiInvalid = upi !== '' && !VPA.test(upi);
-  const ready = trimmed.length >= MIN_NAME && !upiInvalid;
+  const ready = trimmed.length >= MIN_NAME;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surfaceRaised }}>
@@ -125,15 +116,9 @@ export function RegisterProfileScreen() {
             {/* Blocked, the hint IS the label — one control, always saying what
                 it needs. Same pattern as the coverage screen. */}
             <Button
-              label={
-                upiInvalid
-                  ? 'Check your UPI ID'
-                  : ready
-                    ? 'Continue'
-                    : 'Enter your full name'
-              }
+              label={ready ? 'Continue' : 'Enter your full name'}
               onPress={() => {
-                setProfile(trimmed, avatarUri, upi);
+                setProfile(trimmed, avatarUri);
                 router.push('/coverage');
               }}
               disabled={!ready}
@@ -223,35 +208,6 @@ export function RegisterProfileScreen() {
               }}
             >
               From your invite. Contact your ASM to change it.
-            </Text>
-          </View>
-
-          <View style={{ marginTop: 16 }}>
-            {/* Optional, and it has to stay that way: this is the last form of
-                a joining flow, and somebody standing in a customer's driveway
-                may not have their UPI handle to hand. Refusing to create the
-                account over it would strand them after they had already
-                proved their number. */}
-            <Input
-              label="UPI ID"
-              value={upiId}
-              onChangeText={setUpiId}
-              placeholder="e.g. 9822066301@ybl"
-              keyboardType="email-address"
-              maxLength={256}
-              error={upiInvalid ? 'Enter a UPI ID like name@bank' : undefined}
-            />
-            <Text
-              style={{
-                fontFamily: 'Roboto_400Regular',
-                fontSize: 12,
-                lineHeight: 17,
-                color: color.textFootnote,
-                marginTop: 6,
-              }}
-            >
-              Optional — where your earnings are paid. You can add it later
-              from your profile.
             </Text>
           </View>
         </View>

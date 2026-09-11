@@ -184,6 +184,10 @@ export function useTicketStream(): void {
             // screen refetches, so a reader with neither pays nothing.
             void queryClient.invalidateQueries({ queryKey: approvalKeys.all });
             void queryClient.invalidateQueries({ queryKey: ownBrandKeys.all });
+            // And a technician's profile: a UPI change request is a bell and
+            // nothing else, and the panel that decides it only draws once the
+            // profile says `upiChangePending`.
+            void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
             // And tell whoever wants to say so out loud. The listener does its
             // own read: this frame still carries nothing worth showing.
             emit("notification.raised");

@@ -39,7 +39,13 @@ export function TechProfileHeader({ tech }: { tech: Technician }) {
     [
       "UPI ID",
       tech.upiId ? (
-        <span className="font-mono text-[12px] break-all">{tech.upiId}</span>
+        <span className="flex flex-col items-end">
+          <span className="font-mono text-[12px] break-all">{tech.upiId}</span>
+          {/* The name on the account — what a payer's app shows on scanning. */}
+          {tech.upiName ? (
+            <span className="text-[11px] text-ink-3">{tech.upiName}</span>
+          ) : null}
+        </span>
       ) : (
         "—"
       ),

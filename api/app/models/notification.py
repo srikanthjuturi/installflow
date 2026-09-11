@@ -134,6 +134,12 @@ NOTIFICATION_KINDS = (
     "brand_submitted",
     "brand_approved",
     "brand_rejected",
+    #: A technician asked for their UPI ID to be changed. Once one is on file
+    #: only a manager changes it, so this is work for exactly one level of the
+    #: chain — the Area Manager for their area, else the Regional Head, else a
+    #: National Head, else an Admin — and it is raised ROLE-addressed to that
+    #: level (see `AUDIENCES`), never company-wide.
+    "upi_change",
 )
 
 #: Who a row is for when territory is the wrong question.
@@ -145,8 +151,15 @@ NOTIFICATION_KINDS = (
 #: time like everything else here — `core.coverage.payer_role` — so a company
 #: that appoints its first National Head moves the bell to them at once.
 #:
+#: A ROLE key — `area_manager`, `regional_head`, `national_head`, `admin` —
+#: addresses that one role, resolved when the row is WRITTEN: a UPI change goes
+#: to whichever level of the AM → RH → NH → Admin chain exists for the
+#: technician (`core.coverage.upi_reviewer`). For the two territory roles the
+#: row's pincode still applies, so an AM-addressed row reaches only the AM whose
+#: state holds it.
+#:
 #: NULL is every other row: the pincode rule above, unchanged.
-AUDIENCES = ("payers",)
+AUDIENCES = ("payers", "area_manager", "regional_head", "national_head", "admin")
 
 
 class Notification(Base, IdMixin, AuditMixin):

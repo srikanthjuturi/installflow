@@ -15,6 +15,7 @@ import {
   UserCheck,
   UserPlus,
   UserX,
+  WalletCards,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { NotificationKind } from "@/services/notifications";
@@ -89,6 +90,14 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: IndianRupee,
     wrap: "bg-warn-bg text-warn",
     label: "Redemption",
+  },
+  // A technician asked for a new UPI ID. Info rather than warn: nothing has
+  // gone wrong, somebody is waiting on a decision — and only the one level of
+  // the AM → RH → NH → Admin chain it was addressed to ever sees it.
+  upi_change: {
+    icon: WalletCards,
+    wrap: "bg-info-bg text-info",
+    label: "UPI change",
   },
   // Warn rather than danger, the same call `ApprovalBadge` makes: danger is
   // spoken for by the rows about a customer already let down, and a rejected

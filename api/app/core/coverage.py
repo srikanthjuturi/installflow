@@ -471,6 +471,77 @@ async def nearest_manager_for(
     return None
 
 
+async def upi_reviewer(
+    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
+) -> tuple[str, str | None]:
+    """Who is asked to approve a technician's UPI change: `(role, pincode)`.
+
+    The Area Manager whose states cover one of the technician's service
+    pincodes; if none does, the Regional Head of one of their regions; then a
+    National Head; then an Admin — the chain the business states, and the one
+    `nearest_manager_for` already walks for a single pincode. Here it is over
+    the technician's WHOLE coverage, because a technician is not one pincode.
+
+    The pincode comes back with the two territory roles so the notification can
+    carry it: that is what narrows an `area_manager`-addressed row to the AM
+    whose state holds it, rather than to every AM in the company. It is the
+    lowest-numbered covered pincode — deterministic, so a retry asks the same
+    person. National Heads and Admins cover everything, so they get None.
+
+    Active on both the membership and the user, as everywhere: a manager who
+    has left is not somebody who can be asked.
+    """
+    pincodes = select(TechnicianPincode.pincode).where(
+        TechnicianPincode.company_id == company_id,
+        TechnicianPincode.technician_id == technician_id,
+    )
+
+    def active(stmt):
+        return stmt.where(
+            Membership.company_id == company_id,
+            Membership.is_active.is_(True),
+            Membership.deleted_at.is_(None),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+
+    by_state = await db.scalar(
+        active(
+            select(Pincode.code)
+            .join(MembershipState, MembershipState.state_id == Pincode.state_id)
+            .join(Membership, Membership.id == MembershipState.membership_id)
+            .join(User, User.id == Membership.user_id)
+        )
+        .where(Pincode.code.in_(pincodes), User.role == AREA_MANAGER)
+        .order_by(Pincode.code)
+        .limit(1)
+    )
+    if by_state is not None:
+        return AREA_MANAGER, by_state
+
+    by_region = await db.scalar(
+        active(
+            select(Pincode.code)
+            .join(State, State.id == Pincode.state_id)
+            .join(MembershipRegion, MembershipRegion.region_id == State.region_id)
+            .join(Membership, Membership.id == MembershipRegion.membership_id)
+            .join(User, User.id == Membership.user_id)
+        )
+        .where(Pincode.code.in_(pincodes), User.role == REGIONAL_HEAD)
+        .order_by(Pincode.code)
+        .limit(1)
+    )
+    if by_region is not None:
+        return REGIONAL_HEAD, by_region
+
+    head = await db.scalar(
+        active(
+            select(Membership.id).join(User, User.id == Membership.user_id)
+        ).where(User.role == NATIONAL_HEAD).limit(1)
+    )
+    return (NATIONAL_HEAD, None) if head is not None else (ADMIN, None)
+
+
 async def payer_role(db: AsyncSession, *, company_id: uuid.UUID) -> str:
     """Who pays a technician their balance: National Head, else Admin.
 
@@ -543,9 +614,11 @@ async def users_notified_by(
       audience; it never narrows the staff one.
 
     And one rule ahead of all four: **a row with an `audience`** reaches that
-    audience and nobody else — for `'payers'`, the users holding
-    `payer_role`. It replaces the territory branches rather than adding to
-    them, exactly as `_visible` does.
+    audience and nobody else. `'payers'` is the users holding `payer_role`; a
+    ROLE key (`area_manager`, `regional_head`, `national_head`, `admin`) is that
+    role alone — still inside its territory for the two territory roles, which
+    is what the row's pincode is for. Either replaces the territory branches
+    rather than adding to them, exactly as `_visible` does.
 
     Note what the `EXISTS` clauses do to a company-wide row (`pincode IS NULL`):
     an area manager with no states assigned hears nothing at all, not even that.
@@ -555,28 +628,6 @@ async def users_notified_by(
 
     Returns user ids, which is what `web_push_subscriptions.user_id` keys on.
     """
-    if audience is not None:
-        # An addressed row. Unknown audiences reach nobody — failing closed, as
-        # `_visible` does, rather than falling through to the whole company.
-        if audience != "payers":
-            return []
-        role = await payer_role(db, company_id=company_id)
-        return list(
-            await db.scalars(
-                select(Membership.user_id)
-                .join(User, User.id == Membership.user_id)
-                .where(
-                    Membership.company_id == company_id,
-                    Membership.is_active.is_(True),
-                    Membership.deleted_at.is_(None),
-                    User.is_active.is_(True),
-                    User.deleted_at.is_(None),
-                    User.role == role,
-                )
-                .distinct()
-            )
-        )
-
     state_of_pincode = (
         select(Pincode.state_id).where(Pincode.code == pincode).scalar_subquery()
     )
@@ -601,15 +652,27 @@ async def users_notified_by(
             MembershipRegion.region_id == region_of_pincode
         )
 
-    audience = [
-        User.role.in_(ALL_INDIA_ROLES),
-        (User.role == AREA_MANAGER) & covers_state.exists(),
-        (User.role == REGIONAL_HEAD) & covers_region.exists(),
-    ]
-    if vendor_id is not None:
-        audience.append(
-            User.role.in_(VENDOR_ROLES) & (Membership.vendor_id == vendor_id)
-        )
+    if audience is not None:
+        # An ADDRESSED row. Unknown audiences reach nobody — failing closed, as
+        # `_visible` does, rather than falling through to the whole company.
+        if audience == "payers":
+            who = [User.role == await payer_role(db, company_id=company_id)]
+        elif audience == AREA_MANAGER:
+            who = [(User.role == AREA_MANAGER) & covers_state.exists()]
+        elif audience == REGIONAL_HEAD:
+            who = [(User.role == REGIONAL_HEAD) & covers_region.exists()]
+        elif audience in (NATIONAL_HEAD, ADMIN):
+            who = [User.role == audience]
+        else:
+            return []
+    else:
+        who = [
+            User.role.in_(ALL_INDIA_ROLES),
+            (User.role == AREA_MANAGER) & covers_state.exists(),
+            (User.role == REGIONAL_HEAD) & covers_region.exists(),
+        ]
+        if vendor_id is not None:
+            who.append(User.role.in_(VENDOR_ROLES) & (Membership.vendor_id == vendor_id))
 
     return list(
         await db.scalars(
@@ -621,7 +684,7 @@ async def users_notified_by(
                 Membership.deleted_at.is_(None),
                 User.is_active.is_(True),
                 User.deleted_at.is_(None),
-                or_(*audience),
+                or_(*who),
             )
             .distinct()
         )

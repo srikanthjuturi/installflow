@@ -1,76 +1,82 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-import { setUpiId } from '@/features/payout/api/payout';
-import { useMe } from '@/features/profile/hooks/useMe';
+import {
+  getPayoutAccount,
+  requestUpiChange,
+  sendPayoutCode,
+  verifyPayoutAccount,
+  withdrawUpiChange,
+  type PayoutAccount,
+} from '@/features/payout/api/payout';
 import { qk } from '@/lib/queryKeys';
 import { useSession } from '@/store/session.store';
 import type { TechnicianSession } from '@/types/domain';
 
 /**
- * The technician's own payout account, read from the profile the whole app
- * already shares. Server state, so Query rather than Zustand (hard rule 3) —
- * and reading it off `useMe` means Profile and this screen cannot disagree
- * about what is stored.
+ * The UPI ID on file, its name, and the latest change request.
  *
- * `null` is a real, common answer: neither onboarding mode requires a UPI id,
- * so a new technician has none and the screen says so rather than guessing.
+ * Under `qk.me()`'s prefix, so everything that already refreshes the profile —
+ * a `upi_change` push above all, which is how a manager's decision arrives —
+ * refreshes this too.
  */
-export function useUpiId(): string | null {
-  const { data } = useMe();
-  return data?.upiId ?? null;
+export function usePayoutAccount() {
+  return useQuery({
+    queryKey: qk.payoutAccount(),
+    queryFn: getPayoutAccount,
+    refetchOnWindowFocus: true,
+  });
 }
 
 /**
- * Save or clear it.
- *
- * Optimistic, and mirroring `useSetDailyJobCap` deliberately — the same four
- * phases in the same order, because this is the same kind of write: one field
- * of the technician's own profile, saved from a screen that shows it.
- *
- * `onSuccess` writes back the SERVER's value rather than the one that was
- * typed, which matters more here than for a number: the server trims and
- * lowercases a VPA, so `Sunil@OKAXIS` is stored as `sunil@okaxis` and the
- * screen must show what is actually on file.
- *
- * `useSession.setTechnician` too, not only the query cache: the session store
- * is what seeds `useMe` on a cold start, so skipping it would show the old
- * value for the first frame after every relaunch.
+ * Put a saved account where the rest of the app reads it: this screen's
+ * query, the profile the Profile row shows, and the session store that seeds
+ * that profile on a cold start (skipping it would show the old value for the
+ * first frame after every relaunch). The redeem card reads the UPI ID too.
  */
-export function useSetUpiId() {
-  const queryClient = useQueryClient();
+function writeBack(queryClient: QueryClient, account: PayoutAccount) {
+  queryClient.setQueryData<PayoutAccount>(qk.payoutAccount(), account);
+  const me = queryClient.getQueryData<TechnicianSession>(qk.me());
+  if (me) {
+    const next = { ...me, upiId: account.upiId, upiName: account.upiName };
+    queryClient.setQueryData<TechnicianSession>(qk.me(), next);
+    useSession.getState().setTechnician(next);
+  }
+  void queryClient.invalidateQueries({ queryKey: qk.redeemable() });
+}
 
+/** Step one of adding: a code to their own WhatsApp. */
+export function useSendPayoutCode() {
   return useMutation({
-    mutationFn: setUpiId,
+    mutationFn: ({ upiId, upiName }: { upiId: string; upiName: string }) =>
+      sendPayoutCode(upiId, upiName),
+  });
+}
 
-    onMutate: async (next: string | null) => {
-      await queryClient.cancelQueries({ queryKey: qk.me() });
-      const previous = queryClient.getQueryData<TechnicianSession>(qk.me());
-      if (previous) {
-        queryClient.setQueryData<TechnicianSession>(qk.me(), {
-          ...previous,
-          upiId: next,
-        });
-      }
-      return { previous };
-    },
+/** Step two: check the code and save. */
+export function useVerifyPayoutAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ upiId, upiName, code }: { upiId: string; upiName: string; code: string }) =>
+      verifyPayoutAccount(upiId, upiName, code),
+    onSuccess: (account) => writeBack(queryClient, account),
+  });
+}
 
-    onError: (_error, _next, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(qk.me(), context.previous);
-      }
-    },
+/** Ask the manager for their area to change it. */
+export function useRequestUpiChange() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ upiId, upiName }: { upiId: string; upiName: string }) =>
+      requestUpiChange(upiId, upiName),
+    onSuccess: (account) => queryClient.setQueryData(qk.payoutAccount(), account),
+  });
+}
 
-    onSuccess: (result) => {
-      const current = queryClient.getQueryData<TechnicianSession>(qk.me());
-      if (current) {
-        const next = { ...current, upiId: result.upiId };
-        queryClient.setQueryData<TechnicianSession>(qk.me(), next);
-        useSession.getState().setTechnician(next);
-      }
-    },
-
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: qk.me() });
-    },
+/** Take a pending change back. */
+export function useWithdrawUpiChange() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: withdrawUpiChange,
+    onSuccess: (account) => queryClient.setQueryData(qk.payoutAccount(), account),
   });
 }

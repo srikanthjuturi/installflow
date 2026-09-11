@@ -344,7 +344,8 @@ async def register(
         code=await tech_service.next_code(session, invite.company_id),
         region_id=invite.region_id,
         daily_job_cap=body.dailyJobCap or invite.daily_job_cap,
-        upi_id=body.upiId,
+        # `body.upiId` is deliberately NOT saved — see `RegisterRequest.upiId`.
+        # A UPI ID is added on Payout account, with its name and its own code.
         status=ACTIVE,
         onboarding_mode=MODE_INVITE,
         appointed_by_user_id=invite.invited_by_user_id,

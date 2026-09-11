@@ -130,6 +130,9 @@ TENANT_LINKS = [
     # a stranger, and a claim nobody could ever settle.
     ("redemptions", "technician_id", "technician_profiles"),
     ("redemption_events", "redemption_id", "redemptions"),
+    # Where money WILL land. A change request naming another company's
+    # technician would let one tenant's manager redirect a stranger's payouts.
+    ("upi_change_requests", "technician_id", "technician_profiles"),
     # Usage. A search counted against another company's vendor would put one
     # tenant's activity on a second tenant's bill review.
     ("vendor_address_searches", "vendor_id", "vendors"),

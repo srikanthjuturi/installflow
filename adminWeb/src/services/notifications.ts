@@ -27,10 +27,11 @@ export type NotificationKind =
   | "redemption"
   | "brand_submitted"
   | "brand_approved"
-  | "brand_rejected";
+  | "brand_rejected"
+  | "upi_change";
 
 /**
- * The same eighteen, in the order the filter offers them — loudest first.
+ * The same nineteen, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
  * The tail is the things that merely HAPPENED — a product was decided, a job
@@ -60,6 +61,9 @@ export const NOTIFICATION_KINDS = [
   "product_submitted",
   "brand_submitted",
   "redemption",
+  // Work for one manager — a technician waiting on a new UPI ID — so it sits
+  // with the other asks rather than with the news at the bottom.
+  "upi_change",
   "product_rejected",
   "brand_rejected",
   "product_approved",

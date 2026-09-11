@@ -81,6 +81,7 @@ class _Visibility:
         "user_id",
         "vendor_user",
         "payer",
+        "role",
         "_at",
     )
 
@@ -90,6 +91,8 @@ class _Visibility:
         self.vendor_id: uuid.UUID | None = None
         self.user_id: uuid.UUID | None = None
         self.vendor_user = False
+        #: For rows addressed to a role — see `hears_notification`.
+        self.role: str | None = None
         #: Holds `core.coverage.payer_role` — hears `audience='payers'` rows.
         #: Re-resolved with the rest on the TTL, so a company appointing its
         #: first National Head moves the bell within a minute.
@@ -107,6 +110,7 @@ class _Visibility:
         from app.features.tickets import service
 
         self.user_id = principal.user_id
+        self.role = principal.role
         if principal.is_vendor:
             self.vendor_id = principal.vendor_id
             self.vendor_user = principal.role == VENDOR_USER
@@ -150,11 +154,19 @@ class _Visibility:
         code would hand them every company-wide notification we write.
 
         An ADDRESSED row (`audience`) replaces both: it reaches that audience
-        and nobody else, mirroring `notifications.service._visible`. An
+        and nobody else, mirroring `notifications.service._visible`. `payers`
+        is the payer; a role key is that role, still inside its territory — the
+        row's pincode does that for an area manager or regional head. An
         audience this code does not know reaches nobody.
         """
         if audience is not None:
-            return audience == "payers" and self.vendor_id is None and self.payer
+            if self.vendor_id is not None:
+                return False
+            if audience == "payers":
+                return self.payer
+            if audience != self.role:
+                return False
+            return self.all_india or pincode is None or pincode in self.pincodes
         if self.vendor_id is not None:
             return vendor is not None and vendor == self.vendor_id
         if self.all_india or pincode is None:

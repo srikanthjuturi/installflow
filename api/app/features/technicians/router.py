@@ -9,11 +9,16 @@ import datetime
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import CompanyPrincipal, Principal, require_feature
+from app.core.deps import (
+    CompanyPrincipal,
+    Principal,
+    require_feature,
+    require_min_rank,
+)
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -22,13 +27,20 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
+from app.features.auth.schemas import OtpRequestResponse
 from app.features.technicians import service
+from app.models.role import AREA_MANAGER
 from app.features.technicians.schemas import (
     AppLinkOutcome,
     AvailabilityOut,
     AvailabilityRequest,
+    PayoutAccountCodeRequest,
     PayoutAccountOut,
     PayoutAccountRequest,
+    PayoutAccountVerifyRequest,
+    UpiChangeOut,
+    UpiChangeRequestIn,
+    UpiRejectRequest,
     DistrictBreakdownOut,
     InviteCreateRequest,
     TechnicianCreatedOut,
@@ -95,25 +107,85 @@ async def set_my_availability(
 async def set_my_payout_account(
     db: Db, principal: CompanyPrincipal, body: PayoutAccountRequest
 ) -> ApiEnvelope[PayoutAccountOut]:
-    """A technician setting where their money goes.
+    """The old free edit — now always 409 `UPDATE_APP`. See the service."""
+    return envelope(await service.set_payout_account(db, principal, body))
 
-    Profile → Payout account. Its own route rather than a field on the
-    availability PATCH: they are saved from different screens, and a request
-    named for availability is the wrong envelope for a payment credential.
 
-    No feature guard, for the same reason `/me` and `/me/availability` have
-    none — `PUT /technicians/{id}` requires `technicians.edit`, which the seeded
-    technician role does not hold, so a guard here would 403 every technician
-    against their own payout account.
+# ── the technician's own UPI ID ───────────────────────────────────────────────
+#
+# Add ONCE, proved by a WhatsApp code to the technician's registered number;
+# after that, ask a manager to change it. No feature guard on any of these, for
+# the reason `/me` has none — the seeded technician role holds no
+# `technicians.*` key — and only the caller's own row is reachable: the profile
+# comes from the bearer token and there is no id in any path.
 
-    Only the caller's own row is reachable: the profile is resolved from the
-    bearer token and there is no id in the path to guess at. That is load-bearing
-    here in a way it is not on availability — this field decides where cash
-    lands, so "you can only write your own" has to be structural.
+
+@router.get("/me/payout-account", response_model=ApiEnvelope[PayoutAccountOut])
+async def get_my_payout_account(
+    db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[PayoutAccountOut]:
+    """The UPI ID and name on file, and the latest change request if any."""
+    return envelope(await service.get_payout_account(db, principal))
+
+
+@router.post("/me/payout-account/code", response_model=ApiEnvelope[OtpRequestResponse])
+async def send_my_payout_code(
+    request: Request, db: Db, principal: CompanyPrincipal, body: PayoutAccountCodeRequest
+) -> ApiEnvelope[OtpRequestResponse]:
+    """Step one of adding a UPI ID: a code to the technician's own WhatsApp.
+
+    409 `UPI_ALREADY_SET` once one is on file — changing it is a request. The
+    OTP throttles apply, so a 429 is normal and says how long to wait.
     """
     return envelope(
-        await service.set_payout_account(db, principal, body),
-        message="Payout account updated",
+        await service.send_payout_code(
+            db,
+            principal,
+            body,
+            request_ip=request.client.host if request.client else None,
+        ),
+        message="Code sent",
+    )
+
+
+@router.post("/me/payout-account", response_model=ApiEnvelope[PayoutAccountOut])
+async def verify_my_payout_account(
+    db: Db, principal: CompanyPrincipal, body: PayoutAccountVerifyRequest
+) -> ApiEnvelope[PayoutAccountOut]:
+    """Step two: the code, and the UPI ID and name to save.
+
+    400 `BAD_CODE` for a wrong or expired code — never 401, which the app would
+    read as an expired session and replay.
+    """
+    return envelope(
+        await service.verify_payout_account(db, principal, body),
+        message="UPI ID added",
+    )
+
+
+@router.post(
+    "/me/payout-account/change-request", response_model=ApiEnvelope[PayoutAccountOut]
+)
+async def request_my_upi_change(
+    db: Db, principal: CompanyPrincipal, body: UpiChangeRequestIn
+) -> ApiEnvelope[PayoutAccountOut]:
+    """Propose a new UPI ID and name. The manager for their area decides."""
+    return envelope(
+        await service.request_upi_change(db, principal, body),
+        message="Change requested",
+    )
+
+
+@router.delete(
+    "/me/payout-account/change-request", response_model=ApiEnvelope[PayoutAccountOut]
+)
+async def withdraw_my_upi_change(
+    db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[PayoutAccountOut]:
+    """Take back a change nobody has decided yet."""
+    return envelope(
+        await service.withdraw_upi_change(db, principal),
+        message="Change withdrawn",
     )
 
 
@@ -273,3 +345,52 @@ async def delete_technician(
 ) -> ApiEnvelope[None]:
     await service.delete_technician(db, principal, technician_id)
     return envelope(None, message="Technician removed")
+
+
+# ── a technician's UPI change, decided by a manager ───────────────────────────
+#
+# Territory-scoped through the same `_load` as the profile, so a technician
+# outside your area is a 404. Deciding carries `technicians.edit` AND an
+# Area-Manager floor: it changes where somebody's money lands, and a Feature
+# Access override must not be able to hand that below the managers the business
+# named. Whoever's bell rang, any manager who can edit this technician may act.
+
+
+@router.get(
+    "/{technician_id}/upi-change", response_model=ApiEnvelope[UpiChangeOut | None]
+)
+async def get_upi_change(
+    technician_id: uuid.UUID, db: Db, principal: CanView
+) -> ApiEnvelope[UpiChangeOut | None]:
+    """The change waiting on this technician, or null."""
+    return envelope(await service.get_upi_change(db, principal, technician_id))
+
+
+@router.post(
+    "/{technician_id}/upi-change/approve",
+    response_model=ApiEnvelope[UpiChangeOut],
+    dependencies=[Depends(require_min_rank(AREA_MANAGER))],
+)
+async def approve_upi_change(
+    technician_id: uuid.UUID, db: Db, principal: CanEdit
+) -> ApiEnvelope[UpiChangeOut]:
+    """Apply the new UPI ID and name. No code — the manager is the check."""
+    return envelope(
+        await service.approve_upi_change(db, principal, technician_id),
+        message="UPI ID changed",
+    )
+
+
+@router.post(
+    "/{technician_id}/upi-change/reject",
+    response_model=ApiEnvelope[UpiChangeOut],
+    dependencies=[Depends(require_min_rank(AREA_MANAGER))],
+)
+async def reject_upi_change(
+    technician_id: uuid.UUID, body: UpiRejectRequest, db: Db, principal: CanEdit
+) -> ApiEnvelope[UpiChangeOut]:
+    """Refuse it, with a reason the technician reads. Their UPI ID stays."""
+    return envelope(
+        await service.reject_upi_change(db, principal, technician_id, body),
+        message="Change rejected",
+    )

@@ -69,15 +69,17 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
         )
 
     # Addressed rows first, and decided in Python so the SQL stays a literal:
-    # a reader who is the payer sees `'payers'` rows, everybody else sees only
-    # unaddressed ones. Resolved per read — see `payer_role` on why.
+    # a reader sees unaddressed rows, rows addressed to THEIR ROLE (a UPI change
+    # asked of the area manager, say — the territory filter below still keeps
+    # it to the AM whose state holds its pincode), and `'payers'` rows when
+    # they are the payer. Resolved per read — see `payer_role` on why.
     is_payer = principal.role in (ADMIN, NATIONAL_HEAD) and (
         principal.role == await payer_role(db, company_id=principal.company_id)
     )
-    addressed = (
-        Notification.audience.is_(None) | (Notification.audience == "payers")
-        if is_payer
-        else Notification.audience.is_(None)
+    addressed = or_(
+        Notification.audience.is_(None),
+        Notification.audience == principal.role,
+        *((Notification.audience == "payers",) if is_payer else ()),
     )
 
     pincodes = await visible_pincodes(db, principal)

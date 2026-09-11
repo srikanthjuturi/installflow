@@ -359,7 +359,12 @@ async def request(
         )
 
     user = await _technician_user(db, profile)
-    payee = (user.full_name or "").strip()[:120] or "Technician"
+    technician = (user.full_name or "").strip()[:120] or "Technician"
+    # The name ON THE UPI ACCOUNT when they gave one — it is what the payer's
+    # app shows on scanning, so it is what the QR's `pn` and the "check the
+    # name" line must match. Their own name for accounts added before names
+    # were captured.
+    payee = (locked.upi_name or "").strip()[:120] or technician
     code = await next_code(db, company_id, "redemption")
     row = Redemption(
         company_id=company_id,
@@ -378,7 +383,7 @@ async def request(
             redemption_id=row.id,
             kind="requested",
             actor_kind="technician",
-            actor_label=payee,
+            actor_label=technician,
             note=f"{_rupees(amount)} to {locked.upi_id}",
             created_by=principal.user_id,
         )
@@ -388,7 +393,7 @@ async def request(
         db,
         company_id=company_id,
         kind="redemption",
-        title=f"{payee} requested {_rupees(amount)}",
+        title=f"{technician} requested {_rupees(amount)}",
         detail=f"{code} · {locked.upi_id}",
         to=f"/redemptions/{row.id}",
         audience="payers",

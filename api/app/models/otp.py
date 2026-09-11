@@ -42,15 +42,19 @@ PURPOSE_LOGIN = "login"
 PURPOSE_INVITE = "invite"
 PURPOSE_PASSWORD_RESET = "password_reset"
 PURPOSE_RESCHEDULE = "reschedule"
+#: A technician adding their UPI ID proves it with a code to their OWN
+#: registered number — resolved from their account, never from the request.
+PURPOSE_PAYOUT_ACCOUNT = "payout_account"
 
-#: The one place the four are listed. The CHECK below and the wire schemas both
-#: read it, so adding a fifth cannot be done in one place and forgotten in the
+#: The one place the five are listed. The CHECK below and the wire schemas both
+#: read it, so adding a sixth cannot be done in one place and forgotten in the
 #: other.
 PURPOSES = (
     PURPOSE_LOGIN,
     PURPOSE_INVITE,
     PURPOSE_PASSWORD_RESET,
     PURPOSE_RESCHEDULE,
+    PURPOSE_PAYOUT_ACCOUNT,
 )
 
 

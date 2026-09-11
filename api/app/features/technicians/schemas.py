@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from app.core.images import ImageUrl
 from app.core.phone import Phone
 from app.core.schemas import AppModel
-from app.core.upi import UpiId
+from app.core.upi import OptionalUpiName, RequiredUpiId, UpiId, UpiName
 
 Pincode = Annotated[str, Field(pattern=r"^[0-9]{6}$")]
 #: Jobs per day. No ceiling — a technician may take as many as they will — and
@@ -54,6 +54,9 @@ class TechnicianCreateRequest(BaseModel):
     #: as the cap: a manager onboarding somebody usually does not have it. The
     #: technician adds it themselves on Profile → Payout account.
     upiId: UpiId = None
+    #: The name on that account. Optional even with a UPI ID — a manager may
+    #: not know it — and a redemption falls back to the technician's own name.
+    upiName: OptionalUpiName = None
 
 
 class TechnicianUpdateRequest(BaseModel):
@@ -69,7 +72,12 @@ class TechnicianUpdateRequest(BaseModel):
     #: CLEARABLE, so the service tests presence in the payload rather than
     #: `is not None` — an explicit null means "remove the account I typed
     #: wrong", which the other test would read as "leave it alone".
+    #:
+    #: A manager changes it with no code: they are the check a technician's own
+    #: change has to pass through (`models/upi_change.py`).
     upiId: UpiId = None
+    #: Clearable the same way, and tested for presence the same way.
+    upiName: OptionalUpiName = None
     status: TechnicianStatus | None = None
 
 
@@ -135,6 +143,11 @@ class TechnicianOut(AppModel):
     #: state for a new technician, rendered "—". It costs only the ability to be
     #: PAID; the ledger credits them either way.
     upiId: str | None
+    #: The name on that account, when known.
+    upiName: str | None = None
+    #: The technician has asked for it to be changed and nobody has decided —
+    #: the profile shows the request so a manager can.
+    upiChangePending: bool = False
     #: Jobs held for TODAY, by slot date — the same rule the daily cap is
     #: enforced with, so the bandwidth bar and the technician's own pool can
     #: never disagree about a day.
@@ -247,6 +260,8 @@ class TechnicianSessionOut(AppModel):
     #: is that it is now a fact about this technician rather than about the
     #: schema not having the column.
     upiId: str | None
+    #: The name on that account, when known.
+    upiName: str | None = None
     status: TechnicianStatus
     #: The three figures the Profile tab shows in its chrome header. Null
     #: rating means no closed jobs yet — the app renders a dash, because 0
@@ -313,29 +328,77 @@ class AvailabilityOut(AppModel):
 
 
 class PayoutAccountRequest(AppModel):
-    """The technician setting their OWN payout account.
-
-    Its own route rather than a field on `AvailabilityRequest`, even though both
-    are "the technician edits one thing about themselves". Availability is a
-    toggle and a cap that the app saves as you move them; a payout account is a
-    credential you type once and check twice, and a request named for
-    availability is the wrong place to carry it.
-
-    It cannot go through `PUT /technicians/{id}`: that needs `technicians.edit`,
-    which the seeded technician role deliberately does not hold — the same
-    reason `PATCH /technicians/me/availability` exists at all.
-
-    `upiId` is nullable here so a technician can REMOVE an account they typed
-    wrong, rather than being stuck with it until a manager intervenes.
-    """
+    """The OLD free-edit body. The route now refuses it — see
+    `set_payout_account` — and survives only so an installed build that still
+    sends it reads a sentence rather than a 405."""
 
     upiId: UpiId = None
 
 
+class PayoutAccountCodeRequest(AppModel):
+    """Adding a UPI ID, step one: send the code.
+
+    The UPI ID and name ride along so a malformed one is refused BEFORE a code
+    is spent on it. The code goes to the technician's own registered number,
+    which is read from their account — never from this body.
+    """
+
+    upiId: RequiredUpiId
+    upiName: UpiName
+
+
+class PayoutAccountVerifyRequest(AppModel):
+    """Adding a UPI ID, step two: the code from WhatsApp, and what to save."""
+
+    upiId: RequiredUpiId
+    upiName: UpiName
+    code: str = Field(min_length=4, max_length=8)
+
+
+class UpiChangeRequestIn(AppModel):
+    """The technician proposing a new UPI ID. A manager decides; no code."""
+
+    upiId: RequiredUpiId
+    upiName: UpiName
+
+
+class UpiRejectRequest(AppModel):
+    """Refusing a change, with a reason the technician reads."""
+
+    reason: str = Field(min_length=3, max_length=160)
+
+
+UpiChangeStatus = Literal["pending", "approved", "rejected", "cancelled"]
+
+
+class UpiChangeOut(AppModel):
+    """One change request — what it was, what they asked for, what became of it."""
+
+    id: uuid.UUID
+    status: UpiChangeStatus
+    oldUpiId: str
+    oldUpiName: str | None
+    newUpiId: str
+    newUpiName: str
+    #: Whose bell rang: `area_manager`, `regional_head`, `national_head`, `admin`.
+    reviewerRole: str
+    #: "Area Manager" — for "Waiting for your Area Manager".
+    reviewerLabel: str
+    requestedAt: datetime
+    decidedAt: datetime | None
+    decidedBy: str | None
+    rejectReason: str | None
+
+
 class PayoutAccountOut(AppModel):
-    """What the payout screen renders after a save."""
+    """What Profile → Payout account renders."""
 
     upiId: str | None
+    upiName: str | None = None
+    #: The latest change request, whatever became of it. Pending shows as
+    #: waiting; rejected shows its reason until the next request; approved or
+    #: withdrawn shows nothing.
+    change: UpiChangeOut | None = None
 
 
 class DistrictTechnicianCount(AppModel):

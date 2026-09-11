@@ -109,6 +109,18 @@ is the one thing that makes a redemption paid; no endpoint lets anybody else say
 **decline** before claiming — the technician has no cancel, because a payment can leave the payer's
 phone at any moment after the QR is showing. Full rules in `api/AGENTS.md`.
 
+**A technician adds their UPI ID ONCE, proved by a WhatsApp code — after that a manager changes
+it.** Two ways in on Profile → Payout account: **scan** the UPI QR their bank or UPI app gave them
+(which fills the UPI ID AND the name on the account, `technician_profiles.upi_name`) or **type**
+both; either way it saves only after a one-time code sent to their REGISTERED number
+(`otp_codes.purpose = 'payout_account'`, destination read from the account, never the request).
+Once one is on file the technician can only **request a change**, carrying the new UPI ID and name;
+it rings the **Area Manager for their area, else the Regional Head, else a National Head, else an
+Admin** (`core.coverage.upi_reviewer`, a role-addressed `notifications.audience`), and any manager
+who can edit the technician approves it on their profile — **no code**, the manager is the check.
+The console's add/edit form still sets it directly, for the same reason. Joining no longer asks.
+Why: it is where money lands, and redirecting it is exactly what a borrowed phone would try.
+
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.
 

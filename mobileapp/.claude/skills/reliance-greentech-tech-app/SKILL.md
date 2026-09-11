@@ -101,7 +101,7 @@ elsewhere as though the prototype had blessed the pattern — it did not.
 | — | `(app)/redeem/[id]` | **NEW** — one redemption: QR while unpaid, then proof + "I received it" / "Not yet" |
 | — | `(app)/redeem/index` | **NEW** — redemption history |
 | 16 | `(app)/(tabs)/profile` | Profile & settings |
-| — | `(app)/payout-account` | Payout account — UPI ID, **Scan my UPI QR**, payee card + confirm tick |
+| — | `(app)/payout-account` | Payout account — add once (scan or type UPI ID + name, WhatsApp code), then **request a change** a manager approves |
 | — | `avatar-options`, `crop-photo` | Photo modals — at the ROOT, not under `(app)` |
 
 ### The two onboarding paths
@@ -149,6 +149,7 @@ details in this link. Confirm they're correct.`, rows Full name · Technician ID
 
 ### R1b — Your name and photo  *(NEW — no approved copy)*
 The invite path only. Exists because the manager may have supplied only a phone number.
+It no longer has a UPI ID box — that is added on Payout account, with its own WhatsApp code.
 `Tell us who you are` / `Your name and photo are what the customer sees when you arrive for a job.`
 `Tap to add a clear face photo. You can change it later.` · field `Full name` /
 placeholder `As it appears on your ID` · field `Mobile` (read-only) /
@@ -286,8 +287,18 @@ Detail: `Redemption` · pills `Waiting for payment` / `Paid — confirm` / `Rece
 `I received it` · `Not yet` · `We told {name} it hasn't arrived.` · `Declined by {name}: {reason}` ·
 `Wrong UPI ID? Ask your {payer} to decline this, then request again.`
 History: `Redemptions` · empty `No redemptions yet` / `Requests you send appear here.`
-Payout account: `Scan my UPI QR` · `From a screenshot` · `That's not a UPI payment QR. Try another.` ·
-`This is my UPI ID and the name is mine`.
+Payout account — **add** (none on file): `Add the UPI ID your earnings are paid to. Scan the QR from
+your UPI app, or type it in.` · `Scan my UPI QR` · `From a screenshot` ·
+`That's not a UPI payment QR. Try another.` · fields `UPI ID` / `Name on the UPI account`
+(placeholder `As your UPI app shows it`) · `Send code on WhatsApp` ·
+`We sent a 6-digit code to your WhatsApp, {phone}. Enter it to save this UPI ID.` ·
+`Send a new code` / `Send a new code in {m:ss}` · `Verify & save`.
+**On file**: `Your earnings are paid to this UPI ID. To change it, your manager approves the new one.` ·
+`Request a change` → `New UPI ID` + the same fields → `Send request` / `Cancel` · pending:
+`Change requested` · `Waiting for your {reviewer} to approve.` · `Withdraw request` · rejected:
+`Your change to {id} was not approved: {reason}`.
+⚠ These add/change strings came with the 2026-09-11 rework and are NOT yet signed off — the
+"confirm tick" version above them was, and it is gone.
 `{payer}` is the server's `payerLabel` — "National Head", or "Admin" when the company has none.
 
 **The rules a screen must never bend:** the amount is the server's (the sheet sends back the figure

@@ -122,6 +122,7 @@ function TechnicianForm({
       photo: technician?.profileImageUrl ?? undefined,
       dailyJobCap: capOf(technician?.dailyJobCap ?? null),
       upiId: technician?.upiId ?? "",
+      upiName: technician?.upiName ?? "",
       status: technician?.status ?? "active",
     },
   });
@@ -146,8 +147,11 @@ function TechnicianForm({
           dailyJobCap:
             values.dailyJobCap === "" ? null : Number(values.dailyJobCap),
           // Same rule again: an empty box means "no payout account", sent as an
-          // explicit null so a manager can REMOVE one that was typed wrong.
+          // explicit null so a manager can REMOVE one that was typed wrong. A
+          // manager changes it with no code — they are the check a
+          // technician's own change has to pass through.
           upiId: values.upiId.trim() || null,
+          upiName: values.upiName.trim() || null,
           regionId: values.regionId,
           subcategoryIds: values.subcategoryIds,
           pincodes: values.pincodes,
@@ -183,6 +187,7 @@ function TechnicianForm({
         // person that a manager may already have, not a number nobody has a
         // basis for yet. Omitted when blank, which is the common case.
         upiId: values.upiId.trim() || null,
+        upiName: values.upiName.trim() || null,
         profileImageUrl: values.photo ?? null,
       },
       {
@@ -367,10 +372,31 @@ function TechnicianForm({
                 </FieldDescription>
               ) : (
                 <FieldDescription id="tech-upi-hint">
-                  Optional — where their earnings are paid. They can add or
-                  change it themselves in the app.
+                  Optional — where their earnings are paid. They can add it
+                  themselves in the app; after that, changes come to a manager.
                 </FieldDescription>
               )}
+            </Field>
+
+            <Field data-invalid={err("upiName") ? true : undefined}>
+              <FieldLabel htmlFor="tech-upi-name">Name on the UPI account</FieldLabel>
+              <Input
+                id="tech-upi-name"
+                autoComplete="off"
+                placeholder="As their UPI app shows it"
+                aria-invalid={err("upiName") ? true : undefined}
+                aria-describedby={err("upiName") ? "tech-upi-name-error" : undefined}
+                {...register("upiName")}
+              />
+              {err("upiName") ? (
+                <FieldDescription
+                  id="tech-upi-name-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {err("upiName")}
+                </FieldDescription>
+              ) : null}
             </Field>
           </FieldGroup>
         </FormSection>

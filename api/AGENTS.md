@@ -157,9 +157,22 @@ two people's word, kept apart:
   refuse it; Google Pay decodes it, which hides the bug from anybody testing on GPay alone. Test a
   change to `build_upi_uri` on BHIM or PhonePe.
 
-`upi_id` is still collected in four places (console add/edit, the joining flow and
-`PATCH /technicians/me/payout-account`) and is still free to change — each redemption freezes the
-address it was asked with, so an edit never redirects money already requested.
+**A UPI ID is added once, then changed by request** (`b7d2c9e41f60`). The technician adds it on
+`POST /technicians/me/payout-account/code` → `POST /technicians/me/payout-account`, with the name
+on the account (`technician_profiles.upi_name`) and a code to their own registered number
+(`otp_codes.purpose = 'payout_account'`; the 401 from `consume_code` is translated to 400
+`BAD_CODE`, as reschedule does). Refused with 409 `UPI_ALREADY_SET` once one is on file. After
+that, `POST …/change-request` creates a `upi_change_requests` row (one pending per technician)
+addressed to `core.coverage.upi_reviewer`'s role — the AM whose states cover one of the
+technician's pincodes, else the RH of one of their regions, else a National Head, else an Admin —
+and `POST /technicians/{id}/upi-change/approve|reject` decides it (`technicians.edit` + an
+Area-Manager floor, territory-scoped through `_load`; any manager who can edit the technician may
+act, whoever's bell rang). The old free `PATCH …/payout-account` now answers 409 `UPDATE_APP`;
+joining ignores a `upiId` if an old build sends one; the console's add/edit still sets it directly,
+no code — a manager IS the check. A redemption's payee name is `upi_name`, falling back to the
+technician's own. Each redemption still freezes the address it was asked with.
+⚠ The OTP throttle is per PHONE across purposes, so a code asked for within `OTP_RESEND_SECONDS`
+of signing in is a 429. Normal in tests, never in use.
 
 **A slot can move**, which is what finally clears the escalation queue's missed half. Two doors onto
 one mover in `core/reschedule.py` — the technician's, gated by a one-time code sent to the
@@ -967,8 +980,11 @@ committed write with a 404.
   is money only one role may pay, and a company-wide row would have rung every Area Manager for
   it — not cosmetic, the payer IS the audience. `'payers'` NARROWS a row to whoever holds
   `core.coverage.payer_role` (National Head, else Admin), resolved at READ time so a company's
-  first National Head inherits the bell at once. NULL is every other row, unchanged. ⚠ **Three
-  places apply it and must agree:** `notifications.service._visible`,
+  first National Head inherits the bell at once. A **role key** (`area_manager`, `regional_head`,
+  `national_head`, `admin`) addresses one role and is resolved at WRITE time — a UPI change goes
+  to whichever level of the AM → RH → NH → Admin chain exists — with the row's pincode keeping an
+  AM- or RH-addressed row inside the territory that holds it. NULL is every other row, unchanged.
+  ⚠ **Three places apply it and must agree:** `notifications.service._visible`,
   `core.coverage.users_notified_by` (web push — the relay passes `row.audience`) and the console
   socket's `_Visibility.hears_notification` (the `NotificationRaised` frame carries `audience`).
   An audience any of them does not know reaches nobody.

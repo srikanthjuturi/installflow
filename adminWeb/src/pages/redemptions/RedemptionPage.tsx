@@ -135,7 +135,10 @@ function Body({
               />
               <p className="max-w-sm text-center text-[13px] leading-relaxed text-ink-2">
                 Scan with any UPI app. Check the name it shows is{" "}
-                <span className="font-semibold text-ink">{r.technicianName}</span>{" "}
+                {/* The name ON THE UPI ACCOUNT, frozen on the redemption — it is
+                    what the payer's app will show, which the technician's own
+                    name may not be. */}
+                <span className="font-semibold text-ink">{r.payeeName}</span>{" "}
                 before you pay.
               </p>
             </>

@@ -115,6 +115,18 @@ export const technicianSchema = z.object({
       (v) => v === "" || /^[a-zA-Z0-9][a-zA-Z0-9._-]{1,48}@[a-zA-Z][a-zA-Z0-9]{1,29}$/.test(v),
       "Enter a UPI ID like name@bank, or leave it blank",
     ),
+  /**
+   * The name on that UPI account — what a payer's app shows when they scan it.
+   * Optional like the ID; ignored by the server when there is no ID. The same
+   * 2–80 rule `app/core/upi.py` holds, so the message lands on the field.
+   */
+  upiName: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === "" || (v.length >= 2 && v.length <= 80),
+      "Enter the name on the UPI account (2–80 characters), or leave it blank",
+    ),
   /** EDIT ONLY. Only an Active technician is offered work — see the dialog. */
   status: z.enum(TECHNICIAN_STATUSES),
 });

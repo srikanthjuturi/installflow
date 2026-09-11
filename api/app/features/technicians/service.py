@@ -21,14 +21,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, delete, func, literal, or_, select, union_all
+from sqlalchemy import case, delete, func, literal, or_, select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core import brand
 from app.core.config import settings
-from app.core.coverage import jobs_held_by_technician
+from app.core.coverage import jobs_held_by_technician, upi_reviewer
 from app.core.deps import Principal
+from app.core.errors import AppError
+from app.core.push import send_to_technician
 from app.core.schemas import ListParams
 from app.core.scope import (
     ALL_INDIA_ROLES,
@@ -45,12 +47,23 @@ from app.core.product_tree import CERTIFY_DEPTH
 from app.core.visibility import technician_scope
 from app.core.realtime import publish_notification, publish_technician_changed
 from app.core.sequences import next_code as allocate_code
+# Hard rule 4 says slices never import each other; one-time codes are the
+# documented exception (see the note in `jobs/service.py`, which names the
+# refactor that would retire it). This is its third outside caller: a technician
+# proving their UPI ID with a code to their own number.
+from app.features.auth.otp_service import consume_code, issue_code
+from app.features.auth.schemas import OtpRequestResponse
 from app.features.technicians.schemas import (
     AppLinkOutcome,
     AvailabilityOut,
     AvailabilityRequest,
+    PayoutAccountCodeRequest,
     PayoutAccountOut,
     PayoutAccountRequest,
+    PayoutAccountVerifyRequest,
+    UpiChangeOut,
+    UpiChangeRequestIn,
+    UpiRejectRequest,
     DistrictBreakdownOut,
     DistrictTechnicianCount,
     InviteCreateRequest,
@@ -66,8 +79,10 @@ from app.features.technicians.schemas import (
 from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
+from app.models.otp import PURPOSE_PAYOUT_ACCOUNT
 from app.models.product import ProductNode
 from app.models.role import AREA_MANAGER, ROLE_LABELS, TECHNICIAN
+from app.models.upi_change import UpiChangeRequest
 from app.models.technician import (
     ACTIVE,
     CANCELLED,
@@ -407,6 +422,20 @@ async def _technicians_out(
             on_day=on_day,
         )
 
+    # Who has a UPI change waiting on a manager — one query for the page, and
+    # scoped per company for the reason `used_today` is.
+    changing: set[uuid.UUID] = set()
+    for company_id, tech_ids in by_company.items():
+        changing |= set(
+            await session.scalars(
+                select(UpiChangeRequest.technician_id).where(
+                    UpiChangeRequest.company_id == company_id,
+                    UpiChangeRequest.technician_id.in_(tech_ids),
+                    UpiChangeRequest.status == "pending",
+                )
+            )
+        )
+
     out: list[TechnicianOut] = []
     for profile, membership, user in triples:
         appointer = appointers.get(profile.appointed_by_user_id)
@@ -427,6 +456,8 @@ async def _technicians_out(
                 pincodes=pins.get(profile.id, []),
                 dailyJobCap=profile.daily_job_cap,
                 upiId=profile.upi_id,
+                upiName=profile.upi_name,
+                upiChangePending=profile.id in changing,
                 bwUsed=used_today.get(profile.id, 0),
                 acceptingWork=profile.accepting_work,
                 online=is_online(profile),
@@ -984,35 +1015,29 @@ async def set_availability(
 async def set_payout_account(
     session: AsyncSession, principal: Principal, body: PayoutAccountRequest
 ) -> PayoutAccountOut:
-    """The technician's own payout account.
+    """The OLD free edit — refused now, with a sentence rather than a 405.
 
-    Scoped to the profile behind the bearer token, exactly as `set_availability`
-    is — there is no id in the request, so there is no path here to anybody
-    else's money. That matters more on this route than on that one: a UPI ID is
-    where cash actually lands.
-
-    A separate route rather than a field on the availability PATCH; see
-    `PayoutAccountRequest` for why.
-
-    An explicit null CLEARS it, and that is the point of allowing null at all: a
-    technician who mistyped their VPA needs to be able to take it off without
-    finding a manager. `model_fields_set` distinguishes that from a body that
-    never mentioned the field — which a PATCH is entitled to send and which must
-    not silently wipe the account.
-
-    Nothing is published to the console. Unlike availability, this changes no
-    fact a manager's screen is showing live; it is read where it is needed.
+    A technician used to set, change and clear their UPI ID here with no check
+    at all. Adding one now takes a WhatsApp code to their own number, and
+    changing one takes a manager (`models/upi_change.py`). This route stays
+    only so an installed build that still sends it is told what to do instead
+    of failing with a status code nobody can read.
     """
+    raise AppError(
+        status.HTTP_409_CONFLICT,
+        "UPDATE_APP",
+        "Update the app to add or change your UPI ID.",
+    )
+
+
+# ── the technician's own UPI ID: add once with a code, then ask to change ─────
+
+
+async def _own_profile(session: AsyncSession, principal: Principal) -> TechnicianProfile:
+    """The caller's profile, from the bearer token — never an id in the request."""
     if principal.role != TECHNICIAN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not a technician account"
-        )
-    if "upiId" not in body.model_fields_set:
-        # Same rule as `set_availability`: a PATCH that changes nothing must not
-        # answer 200, or the app reports a save that never happened.
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Nothing to update",
         )
     profile = await session.scalar(
         select(TechnicianProfile)
@@ -1022,14 +1047,358 @@ async def set_payout_account(
             TechnicianProfile.company_id == principal.company_id,
             Membership.deleted_at.is_(None),
         )
+        # The read-back after a write: sessions keep objects across a commit.
+        .execution_options(populate_existing=True)
     )
     if profile is None:
         raise _not_found("Technician profile")
+    return profile
 
-    profile.upi_id = body.upiId
-    profile.updated_by = principal.user_id
+
+def _change_out(row: UpiChangeRequest) -> UpiChangeOut:
+    return UpiChangeOut(
+        id=row.id,
+        status=row.status,
+        oldUpiId=row.old_upi_id,
+        oldUpiName=row.old_upi_name,
+        newUpiId=row.new_upi_id,
+        newUpiName=row.new_upi_name,
+        reviewerRole=row.reviewer_role,
+        reviewerLabel=ROLE_LABELS.get(row.reviewer_role, row.reviewer_role),
+        requestedAt=row.created_at,
+        decidedAt=row.decided_at,
+        decidedBy=row.decided_by_label,
+        rejectReason=row.reject_reason,
+    )
+
+
+async def _latest_change(
+    session: AsyncSession, profile: TechnicianProfile, *, pending_only: bool = False
+) -> UpiChangeRequest | None:
+    stmt = select(UpiChangeRequest).where(
+        UpiChangeRequest.company_id == profile.company_id,
+        UpiChangeRequest.technician_id == profile.id,
+    )
+    if pending_only:
+        stmt = stmt.where(UpiChangeRequest.status == "pending")
+    return await session.scalar(
+        stmt.order_by(UpiChangeRequest.created_at.desc(), UpiChangeRequest.id.desc())
+        .limit(1)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def _payout_account_out(
+    session: AsyncSession, profile: TechnicianProfile
+) -> PayoutAccountOut:
+    latest = await _latest_change(session, profile)
+    return PayoutAccountOut(
+        upiId=profile.upi_id,
+        upiName=profile.upi_name,
+        change=_change_out(latest) if latest is not None else None,
+    )
+
+
+async def get_payout_account(
+    session: AsyncSession, principal: Principal
+) -> PayoutAccountOut:
+    return await _payout_account_out(session, await _own_profile(session, principal))
+
+
+def _already_set() -> AppError:
+    return AppError(
+        status.HTTP_409_CONFLICT,
+        "UPI_ALREADY_SET",
+        "You already have a UPI ID. To change it, send a change request.",
+    )
+
+
+async def send_payout_code(
+    session: AsyncSession,
+    principal: Principal,
+    body: PayoutAccountCodeRequest,
+    *,
+    request_ip: str | None,
+) -> OtpRequestResponse:
+    """Adding a UPI ID, step one: a code to the technician's OWN WhatsApp.
+
+    Only while none is on file — after that the address is a manager's to
+    change. The number is read from their account, never from the request: a
+    client that could name the destination could send the code to itself.
+
+    The UPI ID and name are validated by the body before anything is spent,
+    and not stored: the code proves who is holding the phone, and the verify
+    step carries what to save.
+    """
+    profile = await _own_profile(session, principal)
+    if profile.upi_id:
+        raise _already_set()
+    phone = principal.user.phone
+    if not phone:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "NO_PHONE",
+            "Your account has no mobile number to send a code to. Ask your manager.",
+        )
+    return await issue_code(
+        session,
+        phone=phone,
+        purpose=PURPOSE_PAYOUT_ACCOUNT,
+        user_id=principal.user_id,
+        request_ip=request_ip,
+    )
+
+
+async def verify_payout_account(
+    session: AsyncSession, principal: Principal, body: PayoutAccountVerifyRequest
+) -> PayoutAccountOut:
+    """Adding a UPI ID, step two: check the code, then save the ID and name.
+
+    Everything that can refuse for free happens BEFORE the code is consumed —
+    `consume_code` commits, on a wrong guess too — so an account that already
+    has a UPI ID is refused without spending the code, the same ordering
+    `jobs.reschedule` keeps.
+
+    ⚠ The OTP machinery answers 401 for a bad code, which on an authenticated
+    route the app would read as an expired token and REPLAY, spending a second
+    attempt. It is translated to 400 `BAD_CODE` here, as reschedule does.
+
+    The write is guarded on `upi_id IS NULL`, so two verifies racing each other
+    cannot both land: the second finds one already there.
+    """
+    profile = await _own_profile(session, principal)
+    if profile.upi_id:
+        raise _already_set()
+    phone = principal.user.phone
+    if not phone:
+        raise AppError(status.HTTP_409_CONFLICT, "NO_PHONE", "No mobile number on file.")
+
+    try:
+        await consume_code(
+            session, phone=phone, code=body.code, purpose=PURPOSE_PAYOUT_ACCOUNT
+        )
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+            raise
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST, "BAD_CODE", str(exc.detail)
+        ) from exc
+
+    result = await session.execute(
+        update(TechnicianProfile)
+        .where(
+            TechnicianProfile.company_id == profile.company_id,
+            TechnicianProfile.id == profile.id,
+            TechnicianProfile.upi_id.is_(None),
+        )
+        .values(
+            upi_id=body.upiId,
+            upi_name=body.upiName,
+            updated_by=principal.user_id,
+        )
+    )
+    if result.rowcount == 0:
+        await session.rollback()
+        raise _already_set()
     await session.commit()
-    return PayoutAccountOut(upiId=profile.upi_id)
+    return await get_payout_account(session, principal)
+
+
+async def request_upi_change(
+    session: AsyncSession, principal: Principal, body: UpiChangeRequestIn
+) -> PayoutAccountOut:
+    """The technician proposing a new UPI ID. A manager applies it; no code.
+
+    Addressed along the chain `core.coverage.upi_reviewer` resolves — the AM
+    for their area, else the RH, else a National Head, else an Admin — and the
+    bell is role-addressed to exactly that (`notifications.audience`), carrying
+    the pincode that keeps an AM-addressed row to the AM whose state holds it.
+    """
+    profile = await _own_profile(session, principal)
+    if not profile.upi_id:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "NO_UPI_ID",
+            "Add your UPI ID first — a change request is for replacing one.",
+        )
+    if body.upiId == profile.upi_id and body.upiName == (profile.upi_name or ""):
+        raise AppError(
+            status.HTTP_409_CONFLICT, "SAME_UPI_ID", "That is already your UPI ID."
+        )
+    if await _latest_change(session, profile, pending_only=True) is not None:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "CHANGE_PENDING",
+            "You already have a change waiting. Withdraw it to ask for a different one.",
+        )
+
+    role, pincode = await upi_reviewer(
+        session, company_id=profile.company_id, technician_id=profile.id
+    )
+    name = (principal.user.full_name or "").strip() or profile.code
+    row = UpiChangeRequest(
+        company_id=profile.company_id,
+        technician_id=profile.id,
+        old_upi_id=profile.upi_id,
+        old_upi_name=profile.upi_name,
+        new_upi_id=body.upiId,
+        new_upi_name=body.upiName,
+        status="pending",
+        reviewer_role=role,
+        created_by=principal.user_id,
+    )
+    session.add(row)
+    await session.flush()
+
+    raised = await notify(
+        session,
+        company_id=profile.company_id,
+        kind="upi_change",
+        title=f"{name} asked to change their UPI ID",
+        detail=f"{profile.code} · {profile.upi_id} → {body.upiId}",
+        to=f"/technicians/{profile.id}",
+        pincode=pincode,
+        audience=role,
+    )
+    await publish_notification(
+        session,
+        company_id=profile.company_id,
+        pincode=pincode,
+        notification_id=raised.id,
+        audience=role,
+    )
+    await session.commit()
+    return await get_payout_account(session, principal)
+
+
+async def withdraw_upi_change(
+    session: AsyncSession, principal: Principal
+) -> PayoutAccountOut:
+    """The technician taking back a change nobody has decided yet."""
+    profile = await _own_profile(session, principal)
+    result = await session.execute(
+        update(UpiChangeRequest)
+        .where(
+            UpiChangeRequest.company_id == profile.company_id,
+            UpiChangeRequest.technician_id == profile.id,
+            UpiChangeRequest.status == "pending",
+        )
+        .values(
+            status="cancelled",
+            decided_at=_now(),
+            decided_by_user_id=principal.user_id,
+            decided_by_label=(principal.user.full_name or "")[:120] or None,
+            updated_by=principal.user_id,
+        )
+    )
+    if result.rowcount == 0:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "NO_PENDING_CHANGE",
+            "There is no change waiting — it may already have been decided.",
+        )
+    await session.commit()
+    return await get_payout_account(session, principal)
+
+
+# ── a manager deciding a UPI change ───────────────────────────────────────────
+
+
+async def get_upi_change(
+    session: AsyncSession, principal: Principal, technician_id: uuid.UUID
+) -> UpiChangeOut | None:
+    """The change waiting on this technician, or None.
+
+    Through `_load`, so it is the same territory rule as the profile page it
+    renders on: a technician outside your area reads 404, not an empty panel.
+    """
+    profile, _m, _u = await _load(session, principal, technician_id)
+    row = await _latest_change(session, profile, pending_only=True)
+    return _change_out(row) if row is not None else None
+
+
+async def _decide(
+    session: AsyncSession,
+    principal: Principal,
+    technician_id: uuid.UUID,
+    *,
+    approve: bool,
+    reason: str | None = None,
+) -> UpiChangeOut:
+    profile, _m, _u = await _load(session, principal, technician_id)
+    pending = await _latest_change(session, profile, pending_only=True)
+    if pending is None:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "NO_PENDING_CHANGE",
+            "There is no change waiting — it may have been withdrawn or decided.",
+        )
+
+    label = (principal.user.full_name or "").strip()[:120] or None
+    result = await session.execute(
+        update(UpiChangeRequest)
+        .where(
+            UpiChangeRequest.company_id == profile.company_id,
+            UpiChangeRequest.id == pending.id,
+            UpiChangeRequest.status == "pending",
+        )
+        .values(
+            status="approved" if approve else "rejected",
+            decided_at=_now(),
+            decided_by_user_id=principal.user_id,
+            decided_by_label=label,
+            reject_reason=None if approve else reason,
+            updated_by=principal.user_id,
+        )
+    )
+    if result.rowcount == 0:
+        # A colleague decided it, or the technician withdrew it, a moment ago.
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "NO_PENDING_CHANGE",
+            "This change was just decided or withdrawn. Reload to see how.",
+        )
+    if approve:
+        # No code: the manager IS the check. See `models/upi_change.py`.
+        profile.upi_id = pending.new_upi_id
+        profile.upi_name = pending.new_upi_name
+        profile.updated_by = principal.user_id
+    await session.commit()
+
+    # After the commit — a phone told its UPI ID changed by a save that then
+    # failed would be told something false.
+    await send_to_technician(
+        session,
+        company_id=profile.company_id,
+        technician_id=profile.id,
+        title="UPI ID changed" if approve else "UPI ID change not approved",
+        body=(
+            f"Your earnings now go to {pending.new_upi_id}."
+            if approve
+            else (reason or "Your manager did not approve the change.")
+        ),
+        data={"type": "upi_change"},
+    )
+    decided = await _latest_change(session, profile)
+    assert decided is not None
+    return _change_out(decided)
+
+
+async def approve_upi_change(
+    session: AsyncSession, principal: Principal, technician_id: uuid.UUID
+) -> UpiChangeOut:
+    return await _decide(session, principal, technician_id, approve=True)
+
+
+async def reject_upi_change(
+    session: AsyncSession,
+    principal: Principal,
+    technician_id: uuid.UUID,
+    body: UpiRejectRequest,
+) -> UpiChangeOut:
+    return await _decide(
+        session, principal, technician_id, approve=False, reason=body.reason.strip()
+    )
 
 
 async def technician_session(
@@ -1069,6 +1438,7 @@ async def technician_session(
         pincodes=pins,
         dailyJobCap=profile.daily_job_cap,
         upiId=profile.upi_id,
+        upiName=profile.upi_name,
         status=profile.status,
         rating=float(profile.rating) if profile.rating is not None else None,
         jobsCompleted=profile.jobs_completed,
@@ -1354,6 +1724,7 @@ async def create_technician(
             region_id=region.id,
             daily_job_cap=body.dailyJobCap,
             upi_id=body.upiId,
+            upi_name=body.upiName if body.upiId else None,
             status=ACTIVE,
             onboarding_mode=MODE_DIRECT,
             appointed_by_user_id=principal.user_id,
@@ -1368,6 +1739,7 @@ async def create_technician(
         profile.region_id = region.id
         profile.daily_job_cap = body.dailyJobCap
         profile.upi_id = body.upiId
+        profile.upi_name = body.upiName if body.upiId else None
         profile.status = ACTIVE
         profile.updated_by = principal.user_id
     await session.flush()
@@ -1477,8 +1849,15 @@ async def update_technician(
         profile.daily_job_cap = body.dailyJobCap
     # Same reasoning again: null means "clear the payout account", which a
     # manager needs when somebody's VPA was typed wrong and money is bouncing.
+    #
+    # No code, deliberately: a manager IS the check a technician's own change
+    # has to pass through — see `models/upi_change.py`.
     if "upiId" in body.model_fields_set:
         profile.upi_id = body.upiId
+        if body.upiId is None:
+            profile.upi_name = None
+    if "upiName" in body.model_fields_set and profile.upi_id is not None:
+        profile.upi_name = body.upiName
     if body.status is not None:
         profile.status = body.status
 

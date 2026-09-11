@@ -218,6 +218,15 @@ Two seams to know about:
   search placeholder, the empty states ("No redemptions yet" / "Requests technicians send appear
   here."), the decline dialog's title and description, and the validation line "Attach the payment
   screenshot".
+- **A technician's UPI change is decided on their profile.** A technician adds their UPI ID once in
+  the app, proved by a WhatsApp code; after that they can only ask for a new one, and the
+  `upi_change` bell reaches the Area Manager for their area (else RH, NH, Admin). It leads to
+  `/technicians/:id`, where `UpiChangePanel` sits first in the right column while
+  `upiChangePending` is true: now beside asked-for, **Approve change** (applies it, no code) and
+  **Reject** with a reason the technician reads. Anyone with `technicians.edit` may decide —
+  the API adds an Area-Manager floor. The add/edit form gained **Name on the UPI account** beside
+  the UPI ID, and still sets both directly. Copy on the panel and the new field is net-new and
+  awaiting sign-off.
 - **Editing a pincode by hand** (`PincodeFormDialog`, `SwitchOffPincodeDialog`, and the `Off` chip
   badge in `PincodeChips`) is in the same position: the prototype's Geography screen is read-only
   apart from the import, so **every string is net-new** and needs sign-off rather than extraction.

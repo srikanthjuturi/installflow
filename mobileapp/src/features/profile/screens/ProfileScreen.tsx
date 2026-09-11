@@ -241,11 +241,11 @@ export function ProfileScreen() {
               )}
             </Pressable>
 
-            {/* Where their money goes. A link rather than a value, because it
-                is theirs to change — the one place a technician can set it
-                without asking a manager. The VPA itself is shown beside the
-                chevron so the common question ("is it the right account?") is
-                answered without opening the screen. */}
+            {/* Where their money goes. A link rather than a value: the screen
+                behind it adds the first UPI ID (proved by a WhatsApp code) and
+                asks a manager for any change after that. The VPA itself is
+                shown beside the chevron so the common question ("is it the
+                right account?") is answered without opening the screen. */}
             <Pressable
               onPress={() => router.push('/payout-account')}
               accessibilityRole="button"

@@ -9,6 +9,7 @@ from app.models.otp import OtpCode
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
 from app.models.redemption import Redemption, RedemptionEvent
+from app.models.upi_change import UpiChangeRequest
 from app.models.role import Role
 from app.models.sequence import CompanySequence
 from app.models.technician import (
@@ -58,6 +59,7 @@ __all__ = [
     "ProductNodeRules",
     "Redemption",
     "RedemptionEvent",
+    "UpiChangeRequest",
     "RefreshToken",
     "Region",
     "Role",

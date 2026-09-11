@@ -5,14 +5,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  approveUpiChange,
   cancelInvite,
   createTechnician,
   deleteTechnician,
   getDistrictBreakdown,
   getTechnician,
+  getUpiChange,
   inviteTechnician,
   listCandidateTechnicians,
   listTechnicians,
+  rejectUpiChange,
   resendInvite,
   sendAppLink,
   updateTechnician,
@@ -35,7 +38,24 @@ export const technicianKeys = {
   detail: (id: string) => ["technicians", "detail", id] as const,
   districts: (stateId: string) =>
     ["technicians", "districts", stateId] as const,
+  /** Under the prefix, so every technician write — and the bell — refreshes it. */
+  upiChange: (id: string) => ["technicians", "upi-change", id] as const,
 };
+
+/**
+ * The UPI change waiting on this technician, or null.
+ *
+ * `enabled` is the profile's own `upiChangePending`, so a technician with
+ * nothing pending costs no request at all.
+ */
+export function useUpiChange(id: string, { enabled }: { enabled: boolean }) {
+  return useQuery({
+    queryKey: technicianKeys.upiChange(id),
+    queryFn: () => getUpiChange(id),
+    enabled: Boolean(id) && enabled,
+    refetchOnWindowFocus: true,
+  });
+}
 
 /**
  * Technicians per district for one state, for the territory panel.
@@ -111,6 +131,11 @@ export const useUpdateTechnician = () =>
   useTechnicianMutation(updateTechnician, "Couldn't save the technician");
 export const useDeleteTechnician = () =>
   useTechnicianMutation(deleteTechnician, "Couldn't remove the technician");
+
+export const useApproveUpiChange = () =>
+  useTechnicianMutation(approveUpiChange, "Couldn't change the UPI ID");
+export const useRejectUpiChange = () =>
+  useTechnicianMutation(rejectUpiChange, "Couldn't reject the change");
 
 export const useInviteTechnician = () =>
   useTechnicianMutation(inviteTechnician, "Couldn't create the invite");

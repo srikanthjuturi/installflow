@@ -106,10 +106,10 @@ class SelfRegisterRequest(BaseModel):
     #: Availability screen. Kept accepted (and unbounded above) so a client that
     #: does offer it is not refused, and null keeps whatever the invite held.
     dailyJobCap: int | None = Field(default=None, ge=1)
-    #: Where their money should go. OPTIONAL, and it must stay optional: this is
-    #: the last screen of a joining flow, and refusing to create the account
-    #: because somebody does not have their UPI handle to hand would strand them
-    #: on a form after they have already proved their phone. Left blank, they
-    #: add it later on Profile → Payout account.
+    #: **No longer collected, and ignored if sent.** A UPI ID is added on
+    #: Profile → Payout account, scanned or typed WITH the name on the account
+    #: and proved by its own WhatsApp code — one path with one set of rules.
+    #: Still accepted, so a build that sends it is not refused mid-registration
+    #: after it has already proved its phone; it is simply not saved.
     upiId: UpiId = None
 

@@ -32,13 +32,9 @@ export interface RegistrationDraft {
   fullName: string;
   /** A local file uri from the crop screen; uploaded material comes later. */
   photoUri: string | null;
-  /**
-   * Where their earnings should be paid — a UPI VPA. Optional, and empty is
-   * the normal answer: somebody joining on their phone may not have their UPI
-   * handle to hand, and the account must be creatable without it. They add it
-   * later on Profile → Payout account.
-   */
-  upiId: string;
+  // No UPI ID: joining no longer asks. It is added on Profile → Payout
+  // account, with the name on the account and its own WhatsApp code. A draft
+  // persisted while it did ask still carries a `upiId` key; nothing reads it.
   subcategoryIds: string[];
   pincodes: string[];
   /** Set once the OTP is verified; the register call needs it. */
@@ -48,7 +44,7 @@ export interface RegistrationDraft {
 interface RegistrationState {
   draft: RegistrationDraft | null;
   start: (token: string, invite: InviteDetails) => void;
-  setProfile: (fullName: string, photoUri: string | null, upiId: string) => void;
+  setProfile: (fullName: string, photoUri: string | null) => void;
   setCoverage: (subcategoryIds: string[], pincodes: string[]) => void;
   setRegistrationToken: (token: string) => void;
   clear: () => void;
@@ -71,7 +67,6 @@ export const useRegistration = create<RegistrationState>()(
                   invite,
                   fullName: '',
                   photoUri: null,
-                  upiId: '',
                   subcategoryIds: [],
                   pincodes: [],
                   registrationToken: null,
@@ -79,10 +74,8 @@ export const useRegistration = create<RegistrationState>()(
               },
         ),
 
-      setProfile: (fullName, photoUri, upiId) =>
-        set((s) =>
-          s.draft ? { draft: { ...s.draft, fullName, photoUri, upiId } } : s,
-        ),
+      setProfile: (fullName, photoUri) =>
+        set((s) => (s.draft ? { draft: { ...s.draft, fullName, photoUri } } : s)),
 
       setCoverage: (subcategoryIds, pincodes) =>
         set((s) =>

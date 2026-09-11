@@ -80,6 +80,12 @@ export interface TechnicianSession {
    */
   upiId: string | null;
   /**
+   * The name on that UPI account. Optional: a session persisted before the
+   * server sent it has no key, and an account added before names were
+   * captured has none.
+   */
+  upiName?: string | null;
+  /**
    * Jobs already held for TODAY, counted the way the cap is enforced.
    *
    * Not derived from `/jobs/today`: that list drops closed jobs, so it reads

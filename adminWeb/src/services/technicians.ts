@@ -21,6 +21,7 @@ import type {
   TechnicianInvite,
   TechnicianRow,
   UpdateTechnicianInput,
+  UpiChange,
 } from "@/types/technician";
 
 /**
@@ -86,6 +87,33 @@ export function updateTechnician({
 
 export function deleteTechnician(id: string): Promise<null> {
   return apiDelete<null>(`/technicians/${id}`);
+}
+
+/* ---------------------------------------------------------- UPI changes */
+
+/** The change waiting on this technician, or null. Territory-scoped: 404 outside it. */
+export function getUpiChange(id: string): Promise<UpiChange | null> {
+  return apiGet<UpiChange | null>(`/technicians/${id}/upi-change`);
+}
+
+/**
+ * Apply the new UPI ID and name — no code, the manager is the check. 409
+ * `NO_PENDING_CHANGE` when a colleague decided it, or the technician withdrew
+ * it, a moment ago.
+ */
+export function approveUpiChange(id: string): Promise<UpiChange> {
+  return apiPost<UpiChange>(`/technicians/${id}/upi-change/approve`);
+}
+
+/** Refuse it, with a reason the technician reads. Their UPI ID stays. */
+export function rejectUpiChange({
+  id,
+  reason,
+}: {
+  id: string;
+  reason: string;
+}): Promise<UpiChange> {
+  return apiPost<UpiChange>(`/technicians/${id}/upi-change/reject`, { reason });
 }
 
 /* --------------------------------------------------------------- invites */
