@@ -205,7 +205,7 @@ class NodePortalUpdateRequest(BaseModel):
     """What a VENDOR may change on a category it created.
 
     `NodeUpdateRequest` less `sortOrder`: sibling order is how the whole
-    company's tree reads, and where a category sits among other brands' is not
+    company's tree reads, and where a category sits among other vendors' is not
     one vendor's call. No `parentId` either, for the staff reason — a node
     cannot move. Which categories count as the vendor's own is decided by
     `service._load_own_node`, never by anything in this body.
@@ -700,6 +700,10 @@ class SerialMatchOut(AppModel):
 
     modelId: uuid.UUID
     modelName: str
+    #: The model's brand. Two brands of one vendor may each have a "43 inch LED"
+    #: in one category, and without this the form's "this serial belongs to …"
+    #: could name the very model already selected.
+    brandName: str
     nodeId: uuid.UUID
     #: Root first, INCLUDING the node's own name — the breadcrumb the form shows
     #: back so the vendor can see what it filled in and disagree with it.

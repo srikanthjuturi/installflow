@@ -93,7 +93,7 @@ export function updateVendor({ id, ...body }: UpdateVendorInput): Promise<Vendor
 
 /**
  * Soft delete. The server refuses with a 409 naming the count when the vendor
- * still brands product models — the toaster surfaces that message as-is.
+ * still supplies product models — the toaster surfaces that message as-is.
  */
 export function deleteVendor(id: string): Promise<null> {
   return apiDelete<null>(`/vendors/${id}`);

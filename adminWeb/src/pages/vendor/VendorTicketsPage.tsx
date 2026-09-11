@@ -9,7 +9,7 @@ import { useTickets } from "@/hooks/useTickets";
  *
  * The SAME table and the same filters the ops console uses — only the row
  * destination and the empty copy differ. What this account may see is decided
- * entirely by the server: a vendor gets every ticket raised against its brand,
+ * entirely by the server: a vendor gets every ticket raised against its products,
  * a vendor user only the ones they raised themselves.
  *
  * So there is no "mine / all" toggle and no "raised by" column. The API offers

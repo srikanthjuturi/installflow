@@ -10,8 +10,8 @@ they each get their own row, because the contact person, the GSTIN they buy
 against and whether the relationship is still live are all theirs alone.
 
 `is_active` (Active / Paused) and `deleted_at` (Removed) are kept apart for the
-same reason as in `product.py` — a paused vendor stays out of the brand picker
-but is still the brand on every model already attributed to it.
+same reason as in `product.py` — a paused vendor stays out of the vendor picker
+but still supplies every model already attributed to it.
 
 Case-insensitive uniqueness on the name and the GSTIN is a hand-written
 `lower()` index in the migration, partial on `deleted_at IS NULL` so removing a
@@ -38,14 +38,14 @@ from app.db.mixins import AuditMixin, IdMixin, SoftDeleteMixin
 
 
 class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
-    """A supplier company, used as the brand on a product model."""
+    """A supplier company. What it sells are its brands — see `VendorBrand`."""
 
     __tablename__ = "vendors"
 
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
-    #: The trading name, and the label the brand picker shows.
+    #: The trading name, and the label the vendor picker shows.
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     #: How this vendor's tickets reach us — one or more of

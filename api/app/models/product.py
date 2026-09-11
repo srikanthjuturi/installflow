@@ -530,7 +530,7 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             name="fk_product_models_company_node",
             ondelete="CASCADE",
         ),
-        # RESTRICT, not CASCADE: removing a vendor that still brands models must
+        # RESTRICT, not CASCADE: removing a vendor that still supplies models must
         # be refused with a message the user can act on, never take the models
         # down with it. Same reasoning as technician_nodes' node side, which
         # refuses to silently decertify somebody.

@@ -1074,7 +1074,14 @@ another vendor moves the brand with it: the FK allows nothing else.
 
 **A ticket reads its brand live through its model**, like `modelName` — `TicketOut.brandName`,
 joined in `_hydrate`. Nothing is stamped on the ticket; unlike a price, a brand is not a term
-anybody agreed to.
+anybody agreed to. The consequence to know: renaming a brand renames it on every old ticket too.
+
+**People search by the name on the unit.** `vendors.service.brand_hit` — a correlated EXISTS on
+the vendor AND its company, so it can only narrow a company-scoped query — makes both the Vendors
+screen's search and the global search (`search.service._vendors_stmt`) find a vendor by any of its
+live brands, waiting ones included. And `SerialMatchOut.brandName` lets the intake form's serial
+lookup name the brand: two brands may each have a "43 inch LED" in one category, and without it
+*"This serial belongs to 43 inch LED"* could name the model already selected.
 
 **Three notification kinds**, the product ones' twins: `brand_submitted` (staff, `pincode=NULL`,
 `to=/approvals?kind=brands`), `brand_approved` / `brand_rejected` (carry `vendor_id`,

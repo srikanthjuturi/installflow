@@ -9,7 +9,7 @@ import { notificationKeys } from "./useNotifications";
 import { redemptionKeys } from "./useRedemptions";
 import { technicianKeys } from "./useTechnicians";
 import { ticketKeys } from "./useTickets";
-import { ownBrandKeys } from "./useVendors";
+import { ownBrandKeys, vendorKeys } from "./useVendors";
 
 /**
  * Live ticket movement — and the bell — for the console and the vendor portal.
@@ -154,6 +154,9 @@ export function useTicketStream(): void {
             void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
             void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
             void queryClient.invalidateQueries({ queryKey: redemptionKeys.all });
+            void queryClient.invalidateQueries({ queryKey: approvalKeys.all });
+            void queryClient.invalidateQueries({ queryKey: ownBrandKeys.all });
+            void queryClient.invalidateQueries({ queryKey: vendorKeys.all });
             break;
           case "technician.changed":
             // Somebody toggled their availability or changed their daily cap.
@@ -179,11 +182,14 @@ export function useTicketStream(): void {
             // the backstop poll.
             void queryClient.invalidateQueries({ queryKey: redemptionKeys.all });
             // Likewise the approvals queue and its badge (a vendor submitted
-            // something), and a vendor's own brands (one was decided) — the
-            // bell is the only thing either side is told. Only what is on
-            // screen refetches, so a reader with neither pays nothing.
+            // something), a vendor's own brands (one was decided), and the
+            // vendors — a brand another manager approved joins the product
+            // form's Brand picker, whose list is otherwise cached for an hour.
+            // The bell is the only thing any of them is told. Only what is on
+            // screen refetches, so a reader with none of them pays nothing.
             void queryClient.invalidateQueries({ queryKey: approvalKeys.all });
             void queryClient.invalidateQueries({ queryKey: ownBrandKeys.all });
+            void queryClient.invalidateQueries({ queryKey: vendorKeys.all });
             // And a technician's profile: a UPI change request is a bell and
             // nothing else, and the panel that decides it only draws once the
             // profile says `upiChangePending`.

@@ -48,6 +48,7 @@ from app.features.search.schemas import (
     SearchPreviewOut,
     SearchType,
 )
+from app.features.vendors.service import brand_hit
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductNode
 from app.models.role import (
@@ -245,6 +246,8 @@ def _vendors_stmt(principal: Principal, term: str) -> Select:
                 func.lower(Vendor.contact_person).like(term),
                 func.lower(Vendor.phone).like(term),
                 func.lower(Vendor.city).like(term),
+                # A brand it sells — people know the name on the unit.
+                brand_hit(term),
             ),
         )
         .order_by(Vendor.name.asc(), Vendor.id)

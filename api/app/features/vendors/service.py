@@ -1,13 +1,13 @@
-"""Vendor service — the brand master, company-scoped.
+"""Vendor service — the vendor master and each vendor's brands, company-scoped.
 
 Every read and write filters on `principal.company_id` and `deleted_at IS NULL`,
 fetch-by-id included, so guessing another company's vendor id returns 404 and
 not a 403 that would confirm the row exists.
 
-No territory scoping: a brand list is company-wide, not regional. The seniority
+No territory scoping: a vendor list is company-wide, not regional. The seniority
 restriction lives in the router, not here.
 
-Deleting is soft and refuses to orphan — a vendor that still brands product
+Deleting is soft and refuses to orphan — a vendor that still supplies product
 models is a 409 naming the count, the same shape masters uses for a subcategory
 somebody is certified for.
 """
@@ -378,6 +378,25 @@ async def _one(db: AsyncSession, company_id: uuid.UUID, row: Vendor) -> VendorOu
 # ── read ──────────────────────────────────────────────────────────────────────
 
 
+def brand_hit(term: str):
+    """A vendor one of whose live brands matches — so "Sunview" finds Crestline.
+
+    Correlated on the vendor AND its company, so it can only ever narrow the
+    caller's own company-scoped query. Waiting and refused brands match too:
+    staff looking up a name from the Approvals queue are looking for its vendor.
+    """
+    return (
+        select(VendorBrand.id)
+        .where(
+            VendorBrand.vendor_id == Vendor.id,
+            VendorBrand.company_id == Vendor.company_id,
+            VendorBrand.deleted_at.is_(None),
+            func.lower(VendorBrand.name).like(term),
+        )
+        .exists()
+    )
+
+
 def _apply_search(stmt: Select, search: str | None) -> Select:
     if not search:
         return stmt
@@ -389,6 +408,7 @@ def _apply_search(stmt: Select, search: str | None) -> Select:
             func.lower(Vendor.contact_person).like(term),
             func.lower(Vendor.phone).like(term),
             func.lower(Vendor.city).like(term),
+            brand_hit(term),
         )
     )
 

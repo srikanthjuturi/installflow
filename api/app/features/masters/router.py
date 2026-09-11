@@ -136,7 +136,7 @@ async def get_nodes(
         str, Query(pattern="(?i)^(catalogue|intake)$")
     ] = "catalogue",
 ) -> ApiEnvelope[list[ProductNodeOut]]:
-    """The catalogue, whole or narrowed to one brand. Roots, nested downward.
+    """The catalogue, whole or narrowed to one vendor. Roots, nested downward.
 
     NOT staff-only, deliberately — a vendor calls this every time they open the
     intake form, and `get_tree` substitutes their own vendor id for whatever
@@ -635,7 +635,7 @@ async def update_own_node(
     """A vendor edits a category it CREATED. Not reviewed, same as the create.
 
     Only its own: a category is company-wide, so one somebody else added — staff
-    or another brand — is a 404 here, the way another vendor's product is. No
+    or another vendor — is a 404 here, the way another vendor's product is. No
     DELETE twin; removing a category stays with staff.
     """
     data = await service.update_own_node(db, principal, node_id, body)

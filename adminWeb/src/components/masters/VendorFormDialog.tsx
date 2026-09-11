@@ -875,7 +875,7 @@ function VendorForm({
           })}
           {/* Here rather than beside Status, and rather than with Ticket
               intake. This section means "what this vendor's portal IS"; intake
-              channels are how tickets ARRIVE, and Status is the brand's
+              channels are how tickets ARRIVE, and Status is the vendor's
               lifecycle. This is about the intake form itself. */}
           <Controller
             name="addressSearch"
@@ -897,7 +897,7 @@ function VendorForm({
           already names its question, and a heading over a single control only
           repeats it. They stay two different questions: the left one is how a
           technician's proof is verified out on site, which the vendor never
-          sees; the right one is the brand's lifecycle in this console. */}
+          sees; the right one is the vendor's lifecycle in this console. */}
       <FieldGrid className={PAIR}>
         <Controller
           name="locationCheck"

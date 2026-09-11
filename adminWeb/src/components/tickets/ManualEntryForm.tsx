@@ -191,7 +191,7 @@ export function ManualEntryForm({
     addressStatus === "unknown" || addressStatus === "checking";
 
   /* The whole picker is a cascade, and the vendor is the top of it: a ticket is
-     raised against a specific brand's product, so the categories on offer are
+     raised against a specific vendor's product, so the categories on offer are
      the ones that vendor actually makes something in. Narrowing on the server
      rather than filtering here means the empty case is a fact the API states,
      not something the form has to infer from an empty array.
@@ -264,20 +264,16 @@ export function ManualEntryForm({
     setValue("serviceType", "Installation + Demo", { shouldValidate: false });
   }
 
-  // The brand goes in front only where it tells two options apart — when this
-  // category holds more than one brand — and only when the name does not
-  // already start with it, which the seeded names mostly do ("Meridian 43"…").
-  const leafModels = chosen?.models ?? [];
-  const severalBrands = new Set(leafModels.map((m) => m.brandId)).size > 1;
+  // Whether a model's name needs its brand in front — see `modelLabel`. Worked
+  // out over the vendor's whole tree, not the chosen category, because the
+  // serial lookup below names models from anywhere in it and must call each one
+  // exactly what the model list calls it.
+  const severalBrands = brandCount(tree) > 1;
   const modelGroups: OptionGroup[] = [
     {
-      options: leafModels.map((m) => ({
+      options: (chosen?.models ?? []).map((m) => ({
         value: m.id,
-        label:
-          severalBrands &&
-          !m.name.toLowerCase().startsWith(m.brandName.toLowerCase())
-            ? `${m.brandName} · ${m.name}`
-            : m.name,
+        label: modelLabel(m.name, m.brandName, severalBrands),
       })),
     },
   ];
@@ -622,7 +618,8 @@ export function ManualEntryForm({
                             what it is — and choosing between two similar
                             numbers is exactly what this list is for. */}
                         <span className="block text-[11px] text-ink-3">
-                          {hit.modelName} · {hit.nodePath.join(" › ")}
+                          {modelLabel(hit.modelName, hit.brandName, severalBrands)}{" "}
+                          · {hit.nodePath.join(" › ")}
                         </span>
                       </li>
                     ))}
@@ -664,13 +661,17 @@ export function ManualEntryForm({
             {confirmed ? (
               <FieldDescription className="text-ok">
                 Matches {confirmed.nodePath.join(" › ")} ›{" "}
-                {confirmed.modelName}.
+                {modelLabel(confirmed.modelName, confirmed.brandName, severalBrands)}.
               </FieldDescription>
             ) : conflicting ? (
               <FieldDescription className="flex flex-wrap items-center gap-2 text-warn">
+                {/* With the brand where the vendor sells several: two brands may
+                    each have a "43 inch LED" here, and without it this sentence
+                    could name the very model already selected. */}
                 <span>
-                  This serial belongs to {conflicting.modelName}, not the model
-                  selected below.
+                  This serial belongs to{" "}
+                  {modelLabel(conflicting.modelName, conflicting.brandName, severalBrands)},
+                  not the model selected below.
                 </span>
                 <Button
                   type="button"
@@ -678,7 +679,7 @@ export function ManualEntryForm({
                   size="sm"
                   onClick={() => applyMatch(conflicting)}
                 >
-                  Use {conflicting.modelName}
+                  Use {modelLabel(conflicting.modelName, conflicting.brandName, severalBrands)}
                 </Button>
               </FieldDescription>
             ) : exactMatches.length > 1 ? (
@@ -1322,6 +1323,33 @@ function SelectShell({
       ) : null}
     </Field>
   );
+}
+
+/** How many brands this vendor's intake tree carries a product under. */
+function brandCount(nodes: ProductNode[] | undefined): number {
+  const brands = new Set<string>();
+  const walk = (node: ProductNode) => {
+    for (const m of node.models) brands.add(m.brandId);
+    node.children.forEach(walk);
+  };
+  (nodes ?? []).forEach(walk);
+  return brands.size;
+}
+
+/**
+ * A model's name as this form says it: with its brand in front only where
+ * that tells two apart — the vendor sells more than one brand — and only when
+ * the name does not already start with it, which the seeded names mostly do
+ * ("Meridian 43"…"). A vendor selling under one brand sees plain names.
+ *
+ * Tolerates a missing brand, so a reply from an API older than the field reads
+ * as the bare name rather than throwing.
+ */
+function modelLabel(name: string, brandName: string | undefined, several: boolean) {
+  if (!several || !brandName) return name;
+  return name.toLowerCase().startsWith(brandName.toLowerCase())
+    ? name
+    : `${brandName} · ${name}`;
 }
 
 /**

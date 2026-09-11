@@ -80,7 +80,7 @@ export interface LedgerEntry {
    describe a ticket-INTAKE source — intake channel, API credentials, lifetime
    ticket volume, "since" year — none of which has a backend source yet. A
    vendor is now the company whose products get installed, carrying a GSTIN and
-   a contact, and it is the brand on every product model. The intake facts
+   a contact, and it supplies product models under its brands. The intake facts
    return with the jobs slice that can supply them. */
 export * from "./vendor";
 

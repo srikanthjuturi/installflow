@@ -53,7 +53,7 @@ import type { ListParams, Page } from "@/types/api";
 export type TreePurpose = "catalogue" | "intake";
 
 /**
- * The catalogue, whole or narrowed to one brand. Roots, nested downward.
+ * The catalogue, whole or narrowed to one vendor. Roots, nested downward.
  *
  * `vendorId` returns only that vendor's models. For a VENDOR caller it is
  * ignored and their own id substituted server-side, so this cannot be widened
@@ -127,7 +127,7 @@ export function submitNode(input: CreateNodeInput): Promise<ProductNode> {
  * same as the create.
  *
  * Any other category is a 404: a category is company-wide, so renaming one a
- * vendor did not add would change the catalogue for every brand filing there.
+ * vendor did not add would change the catalogue for every vendor filing there.
  */
 export function updateOwnNode({
   id,

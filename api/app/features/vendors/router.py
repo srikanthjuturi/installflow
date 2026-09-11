@@ -1,4 +1,4 @@
-"""Vendor endpoints — the brand master.
+"""Vendor endpoints — the vendor master and each vendor's brands.
 
 Two guards on every route, and they are not redundant:
 
@@ -82,7 +82,7 @@ router = APIRouter(prefix="/vendors", tags=["vendors"])
 Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("vendors.view"))]
 CanEdit = Annotated[Principal, Depends(require_feature("vendors.edit"))]
-#: The brand picker on the product model form — see `list_vendor_options`.
+#: The Vendor and Brand pickers on the product model form — see `list_vendor_options`.
 CanPickBrand = Annotated[Principal, Depends(require_feature("masters.view"))]
 NationalHeadUp = Depends(require_min_rank(NATIONAL_HEAD))
 #: The portal's own caller — see `record_address_search`, the one route here

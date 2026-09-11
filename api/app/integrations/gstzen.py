@@ -55,7 +55,7 @@ class GstinLookup:
     subscription_issue: bool = False
 
     #: `trade_name`, falling back to `legal_name` — our `vendors.name` is the
-    #: trading name and the label the brand picker draws.
+    #: trading name, and the label the vendor picker draws.
     name: str | None = None
     #: Only worth carrying when it DIFFERS from `name`; the console shows it
     #: beside the status so a trading name is never mistaken for the legal one.
@@ -211,7 +211,7 @@ def map_response(gstin: str, body: Any) -> GstinLookup:
 
     return GstinLookup(
         outcome="found",
-        # The trading name is what a brand picker shows; the legal name is what
+        # The trading name is what a vendor picker shows; the legal name is what
         # the certificate says. They are usually identical and occasionally not
         # — and only the difference is worth sending, so a console that renders
         # both never has to compare two strings to decide whether to.

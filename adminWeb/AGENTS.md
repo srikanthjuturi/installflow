@@ -1392,8 +1392,12 @@ it is vocabulary the system is built from. Two removals make the line concrete:
     brand, and a single brand fills itself. A vendor gets no Vendor box and a Brand select of its
     own approved brands (`useOwnBrands`).
   The ceiling is **20 brands of any status** — waiting ones count, on both sides, so an approval can
-  never leave a vendor the staff form cannot save. ⚠ `useBrand` beside `useOwnBrands` is the company
-  WHITE-LABEL hook, a different idea entirely — never add a `useBrands`.
+  never leave a vendor the staff form cannot save.
+  The vendor's ticket form names a model with its brand in front (`modelLabel`) only when the vendor
+  sells more than one brand and the name does not already start with it — one rule for the model
+  list and for everything the serial lookup says, so a model is called the same thing in both.
+  ⚠ `useBrand` beside `useOwnBrands` is the company WHITE-LABEL hook, a different idea entirely —
+  never add a `useBrands`.
   All of its copy is net-new — neither prototype has brands — and was **approved as written on
   2026-09-11**: the vendor form's Brands section, My brands and its dialog, the product form's
   Vendor and Brand pickers, the Approvals Products | Brands switch and its brand dialogs, and the

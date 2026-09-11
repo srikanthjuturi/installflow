@@ -11,8 +11,8 @@ import { useRecordAddressSearch } from "@/hooks/useVendors";
 /**
  * Raise a ticket, with the vendor already known.
  *
- * The brand comes from `/auth/me`, not from `GET /vendors/options`: that
- * endpoint is gated on `masters.view` and for a staff caller lists every brand
+ * The vendor comes from `/auth/me`, not from `GET /vendors/options`: that
+ * endpoint is gated on `masters.view` and for a staff caller lists every vendor
  * in the company. A vendor should not ask a company-wide question to learn its
  * own name.
  */

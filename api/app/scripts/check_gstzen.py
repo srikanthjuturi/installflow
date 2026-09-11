@@ -66,7 +66,7 @@ VALID = {
 #:
 #:   · the legal name is a PERSON and differs from the trading name — this is a
 #:     proprietorship, so "SANDEEP SONI" is who signs and "DECCANSOFT SOFTWARE
-#:     SERVICES" is the brand a product model would carry
+#:     SERVICES" is the trading name the vendor is known by
 #:   · that legal name arrives with a DOUBLE SPACE
 #:   · `locality` and `addr2` are both empty, so the street line has a hole in
 #:     the middle of the parts it joins
@@ -159,7 +159,7 @@ def main() -> int:
     print("-- a real proprietorship (captured live) ---------------------")
     live = map_response(LIVE_GSTIN, LIVE)
     check("outcome", live.outcome, "found")
-    # The TRADING name is the brand a product model carries — never the
+    # The TRADING name is what the vendor is known by — never the
     # proprietor's own name, which is what `legal_name` holds here.
     check("name", live.name, "DECCANSOFT SOFTWARE SERVICES")
     # Sent because it differs, and with its double space collapsed.

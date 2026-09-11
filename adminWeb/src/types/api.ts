@@ -231,9 +231,9 @@ export interface MeResponse {
   /**
    * The vendor a portal account acts for; null for everyone else.
    *
-   * THIS is where the portal's fixed brand comes from — not
+   * THIS is where the portal's fixed vendor comes from — not
    * `GET /vendors/options`, which is gated on `masters.view` and for a staff
-   * caller lists every brand in the company.
+   * caller lists every vendor in the company.
    */
   vendor: MeVendor | null;
 }

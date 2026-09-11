@@ -55,7 +55,7 @@ function collectRejected(nodes: ProductNode[]): RejectedProduct[] {
  * just created vanish before they could file anything under it.
  *
  * The server substitutes their own vendor id whatever is asked for, so the
- * models here are theirs and no other brand's.
+ * models here are theirs and no other vendor's.
  */
 export default function VendorProductsPage() {
   const { data: me } = useMe();

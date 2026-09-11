@@ -62,7 +62,7 @@ export function addMenuItems(
  * actions.
  *
  * A category is company-wide, so a vendor may not rename one that staff or
- * another brand added — that would change the catalogue for everybody filing
+ * another vendor added — that would change the catalogue for everybody filing
  * there. `isOwn` is the server's answer to "did this vendor create it", and the
  * server refuses the edit on any other. There is no "Remove category" here:
  * deleting a category stays with staff.

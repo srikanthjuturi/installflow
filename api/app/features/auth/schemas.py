@@ -190,9 +190,9 @@ class MeStateOut(AppModel):
 class MeVendorOut(AppModel):
     """The vendor a portal account acts for.
 
-    This — not `GET /vendors/options` — is where the portal's fixed brand comes
+    This — not `GET /vendors/options` — is where the portal's fixed vendor comes
     from. That endpoint is gated on `masters.view` and, for a staff caller,
-    lists every brand in the company; a vendor should not have to ask a
+    lists every vendor in the company; a vendor should not have to ask a
     company-wide question to learn its own name.
     """
 

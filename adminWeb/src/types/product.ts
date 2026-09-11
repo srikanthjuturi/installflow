@@ -445,6 +445,9 @@ export interface SerialImportReport {
 export interface SerialMatch {
   modelId: string;
   modelName: string;
+  /** The model's brand — so two brands' identically named models can be told
+   *  apart in the lookup and in "this serial belongs to …". */
+  brandName: string;
   nodeId: string;
   /** Root first, including the node's own name — the breadcrumb shown back. */
   nodePath: string[];

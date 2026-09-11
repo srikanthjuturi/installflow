@@ -186,7 +186,7 @@ async def _load_own_node(
 
     A category is company-wide — every vendor files products into one tree — so
     a vendor may edit only the ones it added itself. Renaming a staff category,
-    or another brand's, would change the catalogue for everybody filing there.
+    or another vendor's, would change the catalogue for everybody filing there.
 
     404 and never 403, like `_load_own_model`. A row with no `created_by` was
     seeded, which makes it nobody's to edit from the portal.
@@ -548,7 +548,7 @@ async def get_tree(
     for n in nodes:
         parent = built.get(n.parent_id) if n.parent_id is not None else None
         if n.parent_id is not None and parent is None:
-            # Its parent was filtered out (paused, or another brand's branch).
+            # Its parent was filtered out (paused, or another vendor's branch).
             # Skipping it also skips everything below, because nothing will find
             # it in `built` either.
             continue
@@ -648,7 +648,7 @@ def _prune_empty_branches(node: ProductNodeOut) -> bool:
     when something below it has some.
 
     Named for what it does rather than for why it was first needed: it used to
-    run only when the tree was narrowed to one brand, so it was `_prune_to_vendor`.
+    run only when the tree was narrowed to one vendor, so it was `_prune_to_vendor`.
     It now also drops branches emptied by hiding unapproved products, and the
     rule underneath both is the same — a branch that offers nothing is not a
     choice.
@@ -2575,6 +2575,12 @@ async def lookup_serial(
         ).all()
     )
 
+    # The brand, so two brands' identically named models can be told apart in
+    # the dropdown and in "this serial belongs to …".
+    brand_names = await _brand_names(
+        db, principal.company_id, {m.brand_id for _, m in rows}
+    )
+
     out: list[SerialMatchOut] = []
     for stored, model in rows:
         node = nodes.get(model.node_id)
@@ -2586,6 +2592,7 @@ async def lookup_serial(
             SerialMatchOut(
                 modelId=model.id,
                 modelName=model.name,
+                brandName=brand_names.get(model.brand_id, ""),
                 nodeId=node.id,
                 nodePath=[
                     names[a] for a in (node.ancestor_ids or []) if a in names
