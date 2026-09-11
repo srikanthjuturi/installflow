@@ -55,9 +55,15 @@ weights 400/500/700/900 — headline numbers are 900.
 
 ## 2. Screen inventory
 
-18 screens in the prototype, 21 now. The prototype's own index numbering is kept so it's easy
-to cross-reference; the additions are marked NEW — two came with real onboarding, and one with
-rescheduling.
+18 screens in the prototype, 24 now. The prototype's own index numbering is kept so it's easy
+to cross-reference; the additions are marked NEW — two came with real onboarding, one with
+rescheduling, and three with redemption.
+
+⚠ **Redemption is NOT IN THE PROTOTYPE either** — the Earnings screen there has no redeem control,
+and nothing mentions UPI, a balance or being paid. Its copy was written fresh and approved with
+the plan on **2026-09-11**, with the same two consequences spelled out for Reschedule below. The
+Payout account row became a real screen at the same time, with a scan-your-own-UPI-QR step and a
+confirmation tick; the prototype drew that row as a static `••4432`.
 
 ⚠ **Reschedule is NOT IN THE PROTOTYPE.** It has no such screen and never mentions moving a
 time; the console's own prototype says the opposite outright ("Slot confirmed & locked"). Every
@@ -90,8 +96,12 @@ elsewhere as though the prototype had blessed the pattern — it did not.
 | — | `(app)/job/[id]/proof/verifying` | AI wait |
 | 14 | `(app)/job/[id]/proof/result` | AI result — 3 variants |
 | — | `(app)/job/[id]/proof/closure` | Feedback link sent |
-| 15 | `(app)/(tabs)/earnings` | Earnings ledger |
+| 15 | `(app)/(tabs)/earnings` | Earnings ledger — now with the **NEW** redeem card above the ledger |
+| — | `(app)/redeem-confirm` | **NEW** — "Redeem ₹X?" sheet (transparentModal) |
+| — | `(app)/redeem/[id]` | **NEW** — one redemption: QR while unpaid, then proof + "I received it" / "Not yet" |
+| — | `(app)/redeem/index` | **NEW** — redemption history |
 | 16 | `(app)/(tabs)/profile` | Profile & settings |
+| — | `(app)/payout-account` | Payout account — UPI ID, **Scan my UPI QR**, payee card + confirm tick |
 | — | `avatar-options`, `crop-photo` | Photo modals — at the ROOT, not under `(app)` |
 
 ### The two onboarding paths
@@ -263,6 +273,27 @@ documents. Every closure records who, when and why.` · CTA `Done — back to jo
 `Earnings` · `This week` `Mon–Sun` · net figure + `Net payout after penalties` ·
 tiles `Earned` / `Bonuses` / `Penalties` · `Transactions`.
 Ledger kinds: install credit (green) · `Reassignment bonus` (amber) · `Late cancellation penalty` (red).
+
+### Redeem  *(NEW — approved with the plan on 2026-09-11, not from the prototype)*
+Card on Earnings: `Available to redeem` · `Redemptions` link · amount · `To {upiId}` · `Redeem`
+(disabled hint `Nothing to redeem yet`) · no UPI ID: `Add a UPI ID to redeem` / `Add UPI ID` ·
+open: `{amount} requested · Waiting for payment` / `View` · claimed:
+`{amount} paid by {name} · Confirm you received it` / `Confirm`.
+Sheet: `Redeem {amount}?` / `It will be paid to {upiId}. Your {payer} will be asked to pay it.` ·
+`Send request` · `Cancel` · on a moved balance the server's `Your balance changed to {amount}.`
+Detail: `Redemption` · pills `Waiting for payment` / `Paid — confirm` / `Received` / `Declined` ·
+`Your {payer} can scan this to pay you` · `Paid by {name} · {date}` · `UTR {utr}` ·
+`I received it` · `Not yet` · `We told {name} it hasn't arrived.` · `Declined by {name}: {reason}` ·
+`Wrong UPI ID? Ask your {payer} to decline this, then request again.`
+History: `Redemptions` · empty `No redemptions yet` / `Requests you send appear here.`
+Payout account: `Scan my UPI QR` · `From a screenshot` · `That's not a UPI payment QR. Try another.` ·
+`This is my UPI ID and the name is mine`.
+`{payer}` is the server's `payerLabel` — "National Head", or "Admin" when the company has none.
+
+**The rules a screen must never bend:** the amount is the server's (the sheet sends back the figure
+it showed, never a sum it wants); the QR is drawn from the server's `upiUri`, never rebuilt; the QR
+disappears once claimed; `I received it` is the ONLY thing that makes a redemption paid; and there
+is no technician cancel — only the payer declines, before paying.
 
 ### 16 — Profile
 Avatar initials · name · `Technician` · `ID TCH-4021` · stats `Rating` / `Jobs done` /
