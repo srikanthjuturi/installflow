@@ -297,8 +297,10 @@ your UPI app, or type it in.` · `Scan my UPI QR` · `From a screenshot` ·
 `Request a change` → `New UPI ID` + the same fields → `Send request` / `Cancel` · pending:
 `Change requested` · `Waiting for your {reviewer} to approve.` · `Withdraw request` · rejected:
 `Your change to {id} was not approved: {reason}`.
-⚠ These add/change strings came with the 2026-09-11 rework and are NOT yet signed off — the
-"confirm tick" version above them was, and it is gone.
+Push when a manager decides: `UPI ID changed` / `Your earnings now go to {upiId}.` ·
+`UPI ID change not approved` / `{reason}`.
+These add/change strings came with the 2026-09-11 rework and were approved as written the same
+day. They replace the approved "confirm tick" version, which is gone.
 `{payer}` is the server's `payerLabel` — "National Head", or "Admin" when the company has none.
 
 **The rules a screen must never bend:** the amount is the server's (the sheet sends back the figure

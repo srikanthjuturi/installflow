@@ -225,8 +225,8 @@ Two seams to know about:
   `upiChangePending` is true: now beside asked-for, **Approve change** (applies it, no code) and
   **Reject** with a reason the technician reads. Anyone with `technicians.edit` may decide —
   the API adds an Area-Manager floor. The add/edit form gained **Name on the UPI account** beside
-  the UPI ID, and still sets both directly. Copy on the panel and the new field is net-new and
-  awaiting sign-off.
+  the UPI ID, and still sets both directly. Copy on the panel, its reject dialog, the new field and
+  the bell's **UPI change** label is net-new and was approved as written on **2026-09-11**.
 - **Editing a pincode by hand** (`PincodeFormDialog`, `SwitchOffPincodeDialog`, and the `Off` chip
   badge in `PincodeChips`) is in the same position: the prototype's Geography screen is read-only
   apart from the import, so **every string is net-new** and needs sign-off rather than extraction.

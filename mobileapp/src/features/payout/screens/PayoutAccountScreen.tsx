@@ -61,7 +61,8 @@ const CARD = {
  * code. It is where money lands, and redirecting it is exactly what somebody
  * holding a borrowed phone would try.
  *
- * Net-new copy — the prototype drew this row as a static `••4432`.
+ * Net-new copy, approved 2026-09-11 — the prototype drew this row as a static
+ * `••4432`.
  */
 export function PayoutAccountScreen() {
   const me = useMe();
