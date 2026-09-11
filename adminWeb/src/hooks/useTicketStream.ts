@@ -5,6 +5,7 @@ import { BASE_URL } from "@/services/http";
 import { useSession } from "@/store/session";
 import { dashboardKeys } from "./useDashboard";
 import { notificationKeys } from "./useNotifications";
+import { redemptionKeys } from "./useRedemptions";
 import { technicianKeys } from "./useTechnicians";
 import { ticketKeys } from "./useTickets";
 
@@ -150,6 +151,7 @@ export function useTicketStream(): void {
             });
             void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
             void queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+            void queryClient.invalidateQueries({ queryKey: redemptionKeys.all });
             break;
           case "technician.changed":
             // Somebody toggled their availability or changed their daily cap.
@@ -169,6 +171,11 @@ export function useTicketStream(): void {
             void queryClient.invalidateQueries({
               queryKey: notificationKeys.all,
             });
+            // The only frame a redemption rings — a new request, or a
+            // technician saying the money has not arrived — so the rail badge
+            // and an open redemption page refresh on it rather than waiting for
+            // the backstop poll.
+            void queryClient.invalidateQueries({ queryKey: redemptionKeys.all });
             // And tell whoever wants to say so out loud. The listener does its
             // own read: this frame still carries nothing worth showing.
             emit("notification.raised");

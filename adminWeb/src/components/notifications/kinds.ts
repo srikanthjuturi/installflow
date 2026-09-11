@@ -5,6 +5,7 @@ import {
   Bell,
   CalendarClock,
   Clock,
+  IndianRupee,
   MailX,
   PackagePlus,
   Play,
@@ -72,6 +73,14 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: PackagePlus,
     wrap: "bg-info-bg text-info",
     label: "Product submitted",
+  },
+  // A technician asked to be paid, or said a payment has not arrived. Warn,
+  // like the other rows that are a task with a fix — and only the payer (the
+  // National Head, else an Admin) ever sees one: the server addresses it.
+  redemption: {
+    icon: IndianRupee,
+    wrap: "bg-warn-bg text-warn",
+    label: "Redemption",
   },
   // Warn rather than danger, the same call `ApprovalBadge` makes: danger is
   // spoken for by the rows about a customer already let down, and a rejected

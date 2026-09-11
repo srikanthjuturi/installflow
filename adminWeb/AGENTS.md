@@ -45,8 +45,8 @@ prefilled (`ravi.sharma@reliancegreentech.in` / `demopass`); any 6 digits pass O
 **the geography master** (`/geo/*`, including the Excel importer), the **product master**
 (`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
 
-Tickets, escalations, the ledger, vendors, notifications, search, earnings and Rules config are
-live too. What is still mock is **AI review** (`services/ai.ts`), the bulk **importer**, and two
+Tickets, escalations, the ledger, vendors, notifications, search, earnings, redemptions and Rules
+config are live too. What is still mock is **AI review** (`services/ai.ts`), the bulk **importer**, and two
 functions in `services/settings.ts` (`inviteUser` and its sibling) — so binding each stays a
 one-line change and loading / empty / error states are already there.
 
@@ -195,6 +195,29 @@ Two seams to know about:
   extracted from the prototype either and needs the same treatment. `NoShowDialog` is in the same
   position and still awaiting its own. The missed half's subtitle changed too: it used to say the
   rows could not be rescued, which this made false.
+- **Redemptions are real — and the console can never say one is paid.** A technician asks for their
+  balance in the app; the bell rings for the company's **National Heads, or its Admins when it has
+  none** (`notifications.audience = 'payers'`, resolved server-side — see `api/AGENTS.md`), and the
+  payer scans the QR on their OWN phone. There is no gateway, so the console records only the
+  payer's CLAIM: `POST /redemptions/{id}/claim` with a screenshot uploaded first through
+  `POST /uploads?kind=attachment` (private, blob names) and an optional UTR. **Only the technician
+  confirms** it arrived, from the app — `services/redemptions.ts` has no confirm and must never
+  grow one; an admin confirming would be inventing a fact nobody in the console can see.
+  Three things about the screen are load-bearing:
+  - **`UpiQr` draws the server's `upiUri` itself** (`qrcode.create` → one `<path>` in
+    `currentColor`, `bg-white text-black` plate in every theme). Never a QR-image service, never
+    `dangerouslySetInnerHTML`, never a rebuilt string. `qrcode` is imported only there, so it rides
+    in `RedemptionPage`'s lazy chunk. Verified by decoding a screenshot back to the exact string.
+  - **The QR shows only while nothing is claimed**, and the claim form only then or after the
+    technician says "not yet" (`deniedAt`). Straight after a claim either one invites paying twice;
+    a payer whose payment genuinely failed still has the UPI ID printed to pay by hand.
+  - **Decline is before a claim only** — the server 409s it after, because money may have moved.
+  ⚠ Every string is **net-new**; the prototype has no redemption screen. The core copy was approved
+  with the plan on **2026-09-11**. NOT in that approval and still awaiting sign-off: the two page
+  subtitles in `routeMeta` ("Technician payouts by UPI", "Pay by UPI · record the proof"), the
+  search placeholder, the empty states ("No redemptions yet" / "Requests technicians send appear
+  here."), the decline dialog's title and description, and the validation line "Attach the payment
+  screenshot".
 - **Editing a pincode by hand** (`PincodeFormDialog`, `SwitchOffPincodeDialog`, and the `Off` chip
   badge in `PincodeChips`) is in the same position: the prototype's Geography screen is read-only
   apart from the import, so **every string is net-new** and needs sign-off rather than extraction.
@@ -636,6 +659,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot, in two halves under date dividers; search · Still savable/Missed · slot-date range · Refresh; loads on scroll |
 | `/escalations/:id/bonus` · `/escalations/:id/assign` | — | param-preserving **redirects** to their `/tickets/:id/…` twins. The mock queue owned duplicates of both; deleting a route does not close a path (hard rule 0a) |
 | `/approvals` | `ApprovalsPage` | products vendors submitted, unpriced and unticketable until decided; `masters.approve` + a National-Head rank floor. Server-paged, Pending/Approved/Rejected pills, and a **Certified** column whose zero is the warning — a product filed under a sub-category nobody covers escalates the moment a ticket is raised |
+| `/redemptions` | `RedemptionsPage` | technicians asking to be paid their balance; `redemptions.pay` (admin + national_head) + a National-Head rank floor. Server-paged, To pay / Awaiting technician / Settled / Declined pills, starting on **To pay**, which the server orders OLDEST first. Rail badge = how many nobody has paid |
+| `/redemptions/:id` | `RedemptionPage` | payee, amount and the **UPI QR** (while nothing is claimed) · **Mark as paid** (one screenshot, no crop, optional UTR) · **Decline** with a reason (before a claim only) · the trail. There is deliberately **no confirm** — see below |
 | `/portal/products` | `VendorProductsPage` | a vendor's own catalogue: add a category, submit a product, see what is Pending and what was sent back with a reason. `vendor.catalogue`, `vendor` only |
 | ~~`/ai-review`~~ | `AiQueuePage` | below-threshold or unreadable. **Route commented out** — the page exists, nothing reaches it |
 | ~~`/ai-review/:id`~~ | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake. **Commented out** with the queue |

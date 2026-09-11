@@ -10,6 +10,7 @@ import { useFeatureAccess } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
 import { useApprovalsBadge } from "@/hooks/useApprovals";
 import { useEscalations } from "@/hooks/useEscalations";
+import { useRedemptionsBadge } from "@/hooks/useRedemptions";
 
 function isActive(pathname: string, to: string, match?: string[]) {
   if (to === "/") return pathname === "/";
@@ -89,6 +90,12 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
     enabled: has("masters.approve"),
   });
 
+  // The same shape as approvals, for the same reason: its own count endpoint,
+  // gated on the feature so nobody without it polls a 403.
+  const { data: redemptionCount = 0 } = useRedemptionsBadge({
+    enabled: has("redemptions.pay"),
+  });
+
   const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
     .map((g) => ({
       ...g,
@@ -99,7 +106,9 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
             ? { ...i, badge: escalationCount }
             : i.to === "/approvals"
               ? { ...i, badge: approvalCount }
-              : i
+              : i.to === "/redemptions"
+                ? { ...i, badge: redemptionCount }
+                : i
         ),
     }))
     .filter((g) => g.items.length > 0);

@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Boxes,
   Coins,
+  IndianRupee,
   LayoutDashboard,
   ListFilter,
   Map,
@@ -108,6 +109,23 @@ export const NAV_GROUPS: NavGroup[] = [
         // Feature Access override can lift. Hard rule 8: this hides the link,
         // the server refuses the act.
         feature: "masters.approve",
+      },
+      {
+        label: "Redemptions",
+        to: "/redemptions",
+        icon: IndianRupee,
+        // Overridden by `Sidebar` with how many nobody has paid yet. Zero here:
+        // an unloaded badge must not claim there is work.
+        badge: 0,
+        match: ["/redemptions/"],
+        // In OPERATIONS for the reason Approvals is: it is a queue of things
+        // waiting for a manager, which is what the badges here mean.
+        //
+        // Paying one spends company money, so the API pairs this key with a
+        // National-Head rank floor no Feature Access override can lift — the
+        // key is seeded to admin and national_head only. Hard rule 8: this
+        // hides the link, the server refuses the act.
+        feature: "redemptions.pay",
       },
       /* AI Review — hidden for now, not deleted. The slice is not built:
          nothing writes the `AI Review` status and `services/ai.ts` is still

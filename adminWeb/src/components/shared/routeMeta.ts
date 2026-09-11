@@ -22,6 +22,12 @@ const STATIC: Record<string, Meta> = {
     title: "Product approvals",
     subtitle: "Vendor-submitted products awaiting a price",
   },
+  /* Net-new — the prototype has no redemption screen. Approved with the plan
+     on 2026-09-11. */
+  "/redemptions": {
+    title: "Redemptions",
+    subtitle: "Technician payouts by UPI",
+  },
   // Hidden with the route — see `nav.ts`.
   // "/ai-review": { title: "AI review queue", subtitle: "Flagged verifications" },
   "/technicians": { title: "Technicians", subtitle: "Technician master list" },
@@ -83,6 +89,10 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
   [
     /^\/technicians\/[^/]+$/,
     { title: "Technician profile", subtitle: "Category · pincode · bandwidth" },
+  ],
+  [
+    /^\/redemptions\/[^/]+$/,
+    { title: "Redemption", subtitle: "Pay by UPI · record the proof" },
   ],
 ];
 

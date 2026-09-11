@@ -30,6 +30,10 @@ const EscalationQueuePage = lazy(
   () => import("@/pages/escalations/EscalationQueuePage")
 );
 const ApprovalsPage = lazy(() => import("@/pages/approvals/ApprovalsPage"));
+const RedemptionsPage = lazy(
+  () => import("@/pages/redemptions/RedemptionsPage")
+);
+const RedemptionPage = lazy(() => import("@/pages/redemptions/RedemptionPage"));
 const VendorProductsPage = lazy(
   () => import("@/pages/vendor/VendorProductsPage")
 );
@@ -277,6 +281,10 @@ export const routes: RouteObject[] = [
               // Guarded by `masters.approve`, which `RequireFeature` reads off
               // the nav table — no guard change needed here.
               { path: "approvals", element: <ApprovalsPage /> },
+              // Guarded by `redemptions.pay` off the nav table, the detail
+              // route through the entry's `match` prefix.
+              { path: "redemptions", element: <RedemptionsPage /> },
+              { path: "redemptions/:id", element: <RedemptionPage /> },
               // Where those two used to live. See `RedirectToTicket`.
               {
                 path: "escalations/:id/bonus",
