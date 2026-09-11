@@ -22,7 +22,7 @@ skill in `mobileapp/.claude/skills/`.
 
 The API is real for **auth, companies, users, territory, the product master, technician
 onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation,
-force-closure, the penalty pool, earnings, Rules configuration and the console dashboard**
+force-closure, the penalty pool, earnings, redemptions, Rules configuration and the console dashboard**
 (`GET /tickets/summary` — counted, territory-scoped, and deliberately carrying no movement deltas,
 because nothing records what a count was yesterday). What is left on typed mock data behind a
 TanStack Query hook is **AI review**, so binding it stays a one-line change and we keep loading /
@@ -97,6 +97,17 @@ What is still unpriced: nothing. What a **force-closure** pays is the manager's 
 on the force-close form and capped at the job's price — a technician who travelled and found nobody
 home is owed something, one whose customer never confirmed a slot is owed nothing, and only the
 person closing it knows which.
+
+**A technician cashes out by REDEEMING, paid by UPI with no gateway.** The balance is everything
+ever credited (`payouts + bonuses − penalties`) less every redemption not declined, and one request
+is for all of it, capped at ₹1,00,000 — UPI's per-transaction limit. The server builds the
+`upi://pay?…` string and both clients draw the QR from it; the payer — the company's **National
+Head, or its Admin when it has none** — scans it on their own phone. Because nothing in this system
+can see the money, two people's word is recorded and never confused: the payer **claims** "I paid"
+with a screenshot (UTR optional), and **only the technician confirms** it arrived. That confirmation
+is the one thing that makes a redemption paid; no endpoint lets anybody else say so. The payer may
+**decline** before claiming — the technician has no cancel, because a payment can leave the payer's
+phone at any moment after the QR is showing. Full rules in `api/AGENTS.md`.
 
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.

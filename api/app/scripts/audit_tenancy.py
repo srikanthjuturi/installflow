@@ -125,6 +125,11 @@ TENANT_LINKS = [
     # is wrong twice, in opposite directions, and it settles.
     ("ledger_entries", "technician_id", "technician_profiles"),
     ("ledger_entries", "ticket_id", "tickets"),
+    # Money out. A redemption naming another company's technician would put
+    # one tenant's payer in front of a second tenant's UPI ID — a QR that pays
+    # a stranger, and a claim nobody could ever settle.
+    ("redemptions", "technician_id", "technician_profiles"),
+    ("redemption_events", "redemption_id", "redemptions"),
     # Usage. A search counted against another company's vendor would put one
     # tenant's activity on a second tenant's bill review.
     ("vendor_address_searches", "vendor_id", "vendors"),

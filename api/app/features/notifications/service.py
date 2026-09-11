@@ -6,6 +6,12 @@ rule is the one that goes wrong.
 
 A notification with no `pincode` is company-wide. That is deliberate and is what
 anything not tied to a place should use; it is not a way to skip scoping.
+
+A notification with an `audience` is ADDRESSED, and the territory rule does not
+apply to it at all: `'payers'` reaches whoever holds `core.coverage.payer_role`
+— the company's National Heads, or its Admins when it has none — and nobody
+else, however wide their territory. Three places decide who hears a row and all
+three apply this; see `models.notification.Notification.audience`.
 """
 
 import datetime
@@ -15,8 +21,10 @@ from sqlalchemy import Select, false as sql_false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.core.coverage import payer_role
 from app.core.deps import Principal
 from app.core.scope import visible_pincodes
+from app.models.role import ADMIN, NATIONAL_HEAD
 from app.features.notifications.schemas import NotificationKind, NotificationOut
 from app.models.notification import Notification, NotificationRead
 
@@ -60,10 +68,23 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
             *_NEWEST_FIRST
         )
 
+    # Addressed rows first, and decided in Python so the SQL stays a literal:
+    # a reader who is the payer sees `'payers'` rows, everybody else sees only
+    # unaddressed ones. Resolved per read — see `payer_role` on why.
+    is_payer = principal.role in (ADMIN, NATIONAL_HEAD) and (
+        principal.role == await payer_role(db, company_id=principal.company_id)
+    )
+    addressed = (
+        Notification.audience.is_(None) | (Notification.audience == "payers")
+        if is_payer
+        else Notification.audience.is_(None)
+    )
+
     pincodes = await visible_pincodes(db, principal)
     if isinstance(pincodes, list):
         # Covers nothing, so hears nothing. Fail closed.
         return stmt.where(sql_false())
+    stmt = stmt.where(addressed)
     if pincodes is not None:
         # Company-wide rows (no pincode) reach everyone; the rest are territory.
         stmt = stmt.where(

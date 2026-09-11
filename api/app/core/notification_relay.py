@@ -130,6 +130,7 @@ class NotificationRelay:
                 company_id=row.company_id,
                 pincode=row.pincode,
                 vendor_id=row.vendor_id,
+                audience=row.audience,
             )
             if not user_ids:
                 return

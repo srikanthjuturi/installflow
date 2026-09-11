@@ -8,6 +8,7 @@ from app.models.membership import Membership
 from app.models.otp import OtpCode
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
+from app.models.redemption import Redemption, RedemptionEvent
 from app.models.role import Role
 from app.models.sequence import CompanySequence
 from app.models.technician import (
@@ -54,6 +55,8 @@ __all__ = [
     "ProductModelSerial",
     "ProductNode",
     "ProductNodeRules",
+    "Redemption",
+    "RedemptionEvent",
     "RefreshToken",
     "Region",
     "Role",

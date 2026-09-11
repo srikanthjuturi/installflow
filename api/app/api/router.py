@@ -17,6 +17,7 @@ from app.features.masters.router import router as masters_router
 from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
+from app.features.redemptions.router import router as redemptions_router
 from app.features.search.router import router as search_router
 from app.features.settings.router import router as settings_router
 from app.features.technicians.router import router as technicians_router
@@ -67,5 +68,8 @@ api_router.include_router(search_router)
 # threshold, and the five clocks the sweeps run on. Per company, which is why
 # they are a table and no longer `Settings`.
 api_router.include_router(earnings_router)
+# A technician cashing out, paid by UPI: the payer claims, the technician
+# confirms, and nothing else can say a redemption is paid.
+api_router.include_router(redemptions_router)
 api_router.include_router(ledger_router)
 api_router.include_router(settings_router)

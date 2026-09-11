@@ -45,6 +45,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 KINDS: dict[str, str] = {
     "ticket": "INST",
     "technician": "TCH",
+    #: A technician cashing out their balance — `RGT-RDM-0001`. Also the UPI
+    #: `tr` reference with the hyphens stripped, which is what lands on both
+    #: bank statements, so it is the handle a payer and a technician quote to
+    #: each other when a payment is argued about.
+    "redemption": "RDM",
 }
 
 #: Zero-padding for the counter. A MINIMUM width, not a cap: the 10,000th

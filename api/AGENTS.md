@@ -125,9 +125,41 @@ Three things about it are load-bearing:
 - **`net = earned + bonuses − penalties`**, in one grouped query in `earnings.summary`, so the
   three tiles and the hero figure cannot come from different reads. It may be negative.
 
-Still to come: **AI review**, the **dashboard**, and the **redeem-cash flow** — a technician's
-`upi_id` is collected (console add/edit, the joining flow, and `PATCH /technicians/me/payout-account`)
-but nothing spends against it yet.
+Still to come: **AI review** and the **dashboard**.
+
+**A technician redeems their balance by UPI — the payer claims, the technician confirms.**
+`features/redemptions`, tables `redemptions` + `redemption_events`. There is no gateway: the server
+builds the `upi://pay?…` string (`core.upi.build_upi_uri`), both clients draw the QR themselves,
+and the payer pays from their own phone. Nothing here can see money move, so what is recorded is
+two people's word, kept apart:
+
+- The **payer** — the company's National Heads, or its Admins when it has none
+  (`core.coverage.payer_role`) — **claims** "I paid" with a screenshot (required, a private
+  `attachment/<company>/` blob) and a UTR (optional). A claim can repeat; the row holds the latest,
+  the events hold every one.
+- The **technician confirms** it arrived. **`confirmed_at IS NOT NULL` is what "paid" means**, not
+  a status value, and there is no endpoint that marks a redemption paid any other way — an admin
+  confirming would be inventing a fact. "Not yet" writes a `denied` event and rings the payers; it
+  changes nothing else.
+- **Only the payer declines, and only before claiming.** The technician has no cancel: a payment can
+  leave the payer's phone at any moment after the QR is up, and a cancel landing meanwhile would free
+  the balance for the same money to be asked for twice.
+- **The amount is the server's, frozen** — `credited − reserved`, capped at `UPI_MAX_PAISE`
+  (₹1,00,000, the UPI per-transaction limit). `credited` is `core.ledger.credited`, sharing
+  `shown_to_technician()` with the Earnings screen so the two can never disagree; `reserved` is every
+  redemption not declined. The request body carries the figure the app SHOWED, and a mismatch is 409
+  `BALANCE_CHANGED`, never a request for a sum nobody saw. The UPI ID and name are frozen on the row.
+- **One open redemption per technician** (`uq_redemptions_one_open`), and nothing auto-confirms on
+  silence, for `sweep_force_close`'s reason.
+- **Not a ledger row.** `ledger_entries.ticket_id` is NOT NULL, installed APKs crash on an unknown
+  ledger kind, and a withdrawal inside a week would make the Earnings net read as a week of no work.
+- ⚠ **`pa` is never percent-encoded.** BHIM, PhonePe and Paytm read `pa=name%40bank` literally and
+  refuse it; Google Pay decodes it, which hides the bug from anybody testing on GPay alone. Test a
+  change to `build_upi_uri` on BHIM or PhonePe.
+
+`upi_id` is still collected in four places (console add/edit, the joining flow and
+`PATCH /technicians/me/payout-account`) and is still free to change — each redemption freezes the
+address it was asked with, so an edit never redirects money already requested.
 
 **A slot can move**, which is what finally clears the escalation queue's missed half. Two doors onto
 one mover in `core/reschedule.py` — the technician's, gated by a one-time code sent to the
@@ -931,6 +963,15 @@ committed write with a 404.
   `_visible()`, using `core.features.effective_features`. It was left out because it changes the
   one function that must never be wrong, not because it is unthinkable. Do it the day somebody
   complains, and do it there.
+  **A third dimension did land, for a different reason: `notifications.audience`.** A redemption
+  is money only one role may pay, and a company-wide row would have rung every Area Manager for
+  it — not cosmetic, the payer IS the audience. `'payers'` NARROWS a row to whoever holds
+  `core.coverage.payer_role` (National Head, else Admin), resolved at READ time so a company's
+  first National Head inherits the bell at once. NULL is every other row, unchanged. ⚠ **Three
+  places apply it and must agree:** `notifications.service._visible`,
+  `core.coverage.users_notified_by` (web push — the relay passes `row.audience`) and the console
+  socket's `_Visibility.hears_notification` (the `NotificationRaised` frame carries `audience`).
+  An audience any of them does not know reaches nobody.
 - The two decision kinds carry `vendor_id`, which **widens and never narrows**, so they land in
   staff feeds too with a `to` pointing at the portal. `assigned` already ships the same compromise.
   Two mitigations: the wording — *"43 inch LED (Samsung) approved"* is true on a manager's screen

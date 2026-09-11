@@ -120,7 +120,24 @@ NOTIFICATION_KINDS = (
     #: is coming, this says WHEN changed, and a reader scanning the feed has to
     #: tell those apart without opening the row.
     "rescheduled",
+    #: A technician asked to be paid their balance, or said a payment the payer
+    #: claimed has not arrived. Both are work for one person — whoever pays —
+    #: so it is always raised with `audience='payers'` and never reaches a
+    #: territory manager's bell. See `AUDIENCES`.
+    "redemption",
 )
+
+#: Who a row is for when territory is the wrong question.
+#:
+#: `payers` — the company's National Heads, or its Admins when it has no active
+#: National Head. A redemption is not tied to a place (a technician is paid
+#: once, not per pincode), and a company-wide row would ring every Area Manager
+#: and Regional Head for money none of them may pay. It is resolved at READ
+#: time like everything else here — `core.coverage.payer_role` — so a company
+#: that appoints its first National Head moves the bell to them at once.
+#:
+#: NULL is every other row: the pincode rule above, unchanged.
+AUDIENCES = ("payers",)
 
 
 class Notification(Base, IdMixin, AuditMixin):
@@ -158,6 +175,15 @@ class Notification(Base, IdMixin, AuditMixin):
     #: time, which is the thing that design avoids.
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
+    #: NARROWS the staff audience to one role, where `vendor_id` widens it.
+    #: NULL for every row but a redemption's. See `AUDIENCES`.
+    #:
+    #: ⚠ Three places decide who hears a row, and all three read this:
+    #: `notifications.service._visible` (the feed and the count),
+    #: `core.coverage.users_notified_by` (web push) and the console socket's
+    #: `_Visibility.hears_notification`. A fourth reader must too.
+    audience: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
     __table_args__ = (
         # Built FROM the tuple above rather than spelled out beside it. It was
         # spelled out until there were thirteen of them, and a hand-kept second
@@ -167,6 +193,12 @@ class Notification(Base, IdMixin, AuditMixin):
         CheckConstraint(
             "kind IN (" + ", ".join(f"'{k}'" for k in NOTIFICATION_KINDS) + ")",
             name="kind",
+        ),
+        CheckConstraint(
+            "audience IS NULL OR audience IN ("
+            + ", ".join(f"'{a}'" for a in AUDIENCES)
+            + ")",
+            name="audience",
         ),
         # The feed: one company's notifications, newest first.
         Index("ix_notifications_company_created", "company_id", "created_at"),

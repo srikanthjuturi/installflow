@@ -471,12 +471,45 @@ async def nearest_manager_for(
     return None
 
 
+async def payer_role(db: AsyncSession, *, company_id: uuid.UUID) -> str:
+    """Who pays a technician their balance: National Head, else Admin.
+
+    The role, not a person. A company may have several National Heads and any
+    of them may pay, so the bell goes to all of them; the Admins hear it only
+    when there is no National Head to — the business's own fallback, and the
+    reason this is a query rather than a constant.
+
+    Asked at READ time, every time, like the rest of the notification audience:
+    a company that appoints its first National Head moves every redemption's
+    bell to them at once, rather than leaving the Admins holding requests nobody
+    told the new payer about.
+
+    Active and not deleted on both rows — a National Head who has left is not
+    somebody who can pay, and counting them would silence the Admins for good.
+    """
+    has_head = await db.scalar(
+        select(Membership.id)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            Membership.company_id == company_id,
+            Membership.is_active.is_(True),
+            Membership.deleted_at.is_(None),
+            User.role == NATIONAL_HEAD,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    return NATIONAL_HEAD if has_head is not None else ADMIN
+
+
 async def users_notified_by(
     db: AsyncSession,
     *,
     company_id: uuid.UUID,
     pincode: str | None,
     vendor_id: uuid.UUID | None = None,
+    audience: str | None = None,
 ) -> list[uuid.UUID]:
     """Whose browsers should be pushed about this notification.
 
@@ -509,6 +542,11 @@ async def users_notified_by(
     * **A vendor's people** hear a row that NAMES their vendor. It widens the
       audience; it never narrows the staff one.
 
+    And one rule ahead of all four: **a row with an `audience`** reaches that
+    audience and nobody else — for `'payers'`, the users holding
+    `payer_role`. It replaces the territory branches rather than adding to
+    them, exactly as `_visible` does.
+
     Note what the `EXISTS` clauses do to a company-wide row (`pincode IS NULL`):
     an area manager with no states assigned hears nothing at all, not even that.
     That is not an oversight — it is `_visible` failing closed on an empty
@@ -517,6 +555,28 @@ async def users_notified_by(
 
     Returns user ids, which is what `web_push_subscriptions.user_id` keys on.
     """
+    if audience is not None:
+        # An addressed row. Unknown audiences reach nobody — failing closed, as
+        # `_visible` does, rather than falling through to the whole company.
+        if audience != "payers":
+            return []
+        role = await payer_role(db, company_id=company_id)
+        return list(
+            await db.scalars(
+                select(Membership.user_id)
+                .join(User, User.id == Membership.user_id)
+                .where(
+                    Membership.company_id == company_id,
+                    Membership.is_active.is_(True),
+                    Membership.deleted_at.is_(None),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                    User.role == role,
+                )
+                .distinct()
+            )
+        )
+
     state_of_pincode = (
         select(Pincode.state_id).where(Pincode.code == pincode).scalar_subquery()
     )

@@ -191,6 +191,51 @@ def not_reversed():
     )
 
 
+def shown_to_technician():
+    """What a technician's own money includes: everything but a given-back penalty.
+
+    The `reversal` row and the penalty it names both drop out, so their screen
+    reads as if the charge never happened. Lives here rather than in
+    `earnings.service` because two readers now need the SAME answer: the
+    Earnings screen's figures and the balance a redemption is cut from. If they
+    ever filtered differently, a technician could be offered a sum their own
+    screen does not add up to.
+
+    A function, not a module constant, because `not_reversed()` builds a fresh
+    correlated alias each time and a shared one would be reused across unrelated
+    statements.
+    """
+    return (LedgerEntry.kind != "reversal", not_reversed())
+
+
+async def credited(
+    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
+) -> int:
+    """Everything this technician has ever been owed: payouts + bonuses − penalties.
+
+    All time, and on purpose — this is the other half of a balance, not a
+    screen's period figure. The kinds are read by name, so a kind added later
+    moves nothing here until somebody decides which way it points.
+
+    May be negative: a technician with heavy cancellations and little work owes
+    the difference, and it carries forward against the next payout.
+    """
+    rows = await db.execute(
+        select(
+            LedgerEntry.kind,
+            func.coalesce(func.sum(LedgerEntry.amount_paise), 0),
+        )
+        .where(
+            LedgerEntry.company_id == company_id,
+            LedgerEntry.technician_id == technician_id,
+            *shown_to_technician(),
+        )
+        .group_by(LedgerEntry.kind)
+    )
+    totals = {kind: int(amount) for kind, amount in rows}
+    return totals.get("payout", 0) + totals.get("bonus", 0) - totals.get("penalty", 0)
+
+
 async def charged_this_month(
     db: AsyncSession,
     *,

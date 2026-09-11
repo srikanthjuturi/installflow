@@ -27,6 +27,7 @@ async def notify(
     ticket_id: uuid.UUID | None = None,
     pincode: str | None = None,
     vendor_id: uuid.UUID | None = None,
+    audience: str | None = None,
 ) -> Notification:
     """Ring the bell. Adds to the caller's transaction; does NOT commit.
 
@@ -43,9 +44,15 @@ async def notify(
     spectator of it — a serial mismatch they can correct, not an escalation
     about our own staffing.
 
+    `audience` NARROWS the staff audience to one role instead — `'payers'` is
+    the company's National Heads, or its Admins when it has none. For work only
+    one kind of person can do, where a company-wide row would ring everybody.
+    See `models.notification.AUDIENCES`.
+
     The realtime frame is the caller's to publish. See
     `core.realtime.publish_notification`, and pass it the returned row's `id` —
-    web push needs it to find the row again and to deduplicate across workers.
+    web push needs it to find the row again and to deduplicate across workers —
+    and the same `audience`, or the console socket rings the wrong people.
     """
     row = Notification(
         company_id=company_id,
@@ -56,6 +63,7 @@ async def notify(
         ticket_id=ticket_id,
         pincode=pincode,
         vendor_id=vendor_id,
+        audience=audience,
     )
     db.add(row)
     # `id` is a DB-side `gen_random_uuid()` default and sessions run

@@ -39,6 +39,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.coverage import payer_role
 from app.core.database import AsyncSessionLocal
 from app.core.deps import Principal
 from app.core.realtime import (
@@ -49,7 +50,14 @@ from app.core.realtime import (
 )
 from app.core.security import decode_token
 from app.models.membership import Membership
-from app.models.role import ROLE_RANKS, SUPERADMIN, TECHNICIAN, VENDOR_USER
+from app.models.role import (
+    ADMIN,
+    NATIONAL_HEAD,
+    ROLE_RANKS,
+    SUPERADMIN,
+    TECHNICIAN,
+    VENDOR_USER,
+)
 from app.models.user import User
 
 log = logging.getLogger(__name__)
@@ -66,7 +74,15 @@ _CLOSE_AUTH_FAILED = 4401
 class _Visibility:
     """Who this viewer may hear about. Mirrors `service.scoped`, in memory."""
 
-    __slots__ = ("all_india", "pincodes", "vendor_id", "user_id", "vendor_user", "_at")
+    __slots__ = (
+        "all_india",
+        "pincodes",
+        "vendor_id",
+        "user_id",
+        "vendor_user",
+        "payer",
+        "_at",
+    )
 
     def __init__(self) -> None:
         self.all_india = False
@@ -74,6 +90,10 @@ class _Visibility:
         self.vendor_id: uuid.UUID | None = None
         self.user_id: uuid.UUID | None = None
         self.vendor_user = False
+        #: Holds `core.coverage.payer_role` — hears `audience='payers'` rows.
+        #: Re-resolved with the rest on the TTL, so a company appointing its
+        #: first National Head moves the bell within a minute.
+        self.payer = False
         self._at = 0.0
 
     @property
@@ -93,6 +113,10 @@ class _Visibility:
             self._at = time.monotonic()
             return
 
+        self.payer = principal.role in (ADMIN, NATIONAL_HEAD) and (
+            principal.role
+            == await payer_role(db, company_id=principal.company_id)
+        )
         visible = await service._visible_pincodes(db, principal)
         if visible is None:
             # All-India role — everything in the company.
@@ -108,7 +132,10 @@ class _Visibility:
         self._at = time.monotonic()
 
     def hears_notification(
-        self, pincode: str | None, vendor: uuid.UUID | None
+        self,
+        pincode: str | None,
+        vendor: uuid.UUID | None,
+        audience: str | None = None,
     ) -> bool:
         """Whether this viewer is in a notification's audience.
 
@@ -121,7 +148,13 @@ class _Visibility:
         The vendor test is `==` on their own id and never falls through to the
         territory branch. A vendor has no territory, and letting one reach that
         code would hand them every company-wide notification we write.
+
+        An ADDRESSED row (`audience`) replaces both: it reaches that audience
+        and nobody else, mirroring `notifications.service._visible`. An
+        audience this code does not know reaches nobody.
         """
+        if audience is not None:
+            return audience == "payers" and self.vendor_id is None and self.payer
         if self.vendor_id is not None:
             return vendor is not None and vendor == self.vendor_id
         if self.all_india or pincode is None:
@@ -256,7 +289,9 @@ async def ticket_stream(ws: WebSocket) -> None:
                         with contextlib.suppress(Exception):
                             async with AsyncSessionLocal() as db:
                                 await visibility.load(db, principal)
-                    if visibility.hears_notification(event.pincode, event.vendor_id):
+                    if visibility.hears_notification(
+                        event.pincode, event.vendor_id, event.audience
+                    ):
                         # No id and no text: the bell is a count, and the feed
                         # behind it applies the audience rule properly.
                         await ws.send_json({"type": "notification.raised"})

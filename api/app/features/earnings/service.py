@@ -19,8 +19,9 @@ rather than a filter somebody could forget.
 Both reads leave out a reversed penalty AND the `reversal` row that returned
 it, so the screen reads as if the charge never happened — its totals, its net
 and its list agree, and none of them needs a word of copy the approved design
-does not have. `_shown()` is that one filter, applied to both reads so the
-hero figures and the list under them can never disagree about it.
+does not have. `core.ledger.shown_to_technician()` is that one filter, applied
+to both reads so the hero figures and the list under them can never disagree
+about it — and shared with the redeemable balance, for the same reason.
 """
 
 import datetime
@@ -29,7 +30,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.ledger import not_reversed, window_dates
+from app.core.ledger import shown_to_technician, window_dates
 from app.core.rules import CANCEL_PENALTY_BANDS
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.features.earnings.schemas import EarningsSummaryOut, TransactionOut
@@ -46,16 +47,6 @@ IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES)
 #: hero figures and the list under them describing the same span: one decision,
 #: made once, passed to both.
 Window = tuple[datetime.datetime, datetime.datetime]
-
-
-def _shown():
-    """What a technician's own earnings include: everything but a given-back penalty.
-
-    The `reversal` row and the penalty it names both drop out. A function, not
-    a module constant, because `not_reversed()` builds a fresh correlated alias
-    each time and a shared one would be reused across unrelated statements.
-    """
-    return (LedgerEntry.kind != "reversal", not_reversed())
 
 
 async def summary(
@@ -82,7 +73,7 @@ async def summary(
             LedgerEntry.technician_id == technician_id,
             LedgerEntry.created_at >= start,
             LedgerEntry.created_at < end,
-            *_shown(),
+            *shown_to_technician(),
         )
         .group_by(LedgerEntry.kind)
     )
@@ -175,7 +166,7 @@ async def transactions(
                 LedgerEntry.technician_id == technician_id,
                 LedgerEntry.created_at >= start,
                 LedgerEntry.created_at < end,
-                *_shown(),
+                *shown_to_technician(),
             )
             .order_by(LedgerEntry.created_at.desc(), LedgerEntry.id.desc())
         )
