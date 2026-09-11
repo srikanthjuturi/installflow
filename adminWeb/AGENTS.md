@@ -212,12 +212,12 @@ Two seams to know about:
     technician says "not yet" (`deniedAt`). Straight after a claim either one invites paying twice;
     a payer whose payment genuinely failed still has the UPI ID printed to pay by hand.
   - **Decline is before a claim only** — the server 409s it after, because money may have moved.
-  ⚠ Every string is **net-new**; the prototype has no redemption screen. The core copy was approved
-  with the plan on **2026-09-11**. NOT in that approval and still awaiting sign-off: the two page
+  Every string is **net-new**; the prototype has no redemption screen. The core copy was approved
+  with the plan on **2026-09-11**, and the rest was approved as written the same day: the two page
   subtitles in `routeMeta` ("Technician payouts by UPI", "Pay by UPI · record the proof"), the
   search placeholder, the empty states ("No redemptions yet" / "Requests technicians send appear
   here."), the decline dialog's title and description, and the validation line "Attach the payment
-  screenshot".
+  screenshot". A new string here still needs sign-off.
 - **A technician's UPI change is decided on their profile.** A technician adds their UPI ID once in
   the app, proved by a WhatsApp code; after that they can only ask for a new one, and the
   `upi_change` bell reaches the Area Manager for their area (else RH, NH, Admin). It leads to
