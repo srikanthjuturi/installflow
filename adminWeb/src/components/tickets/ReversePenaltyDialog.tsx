@@ -33,7 +33,8 @@ import {
  * Earnings screen each exactly as if the charge never happened. There is no
  * undo here — a reversal is money history like the charge it cancels.
  *
- * ⚠ Net-new copy, NOT from either prototype. Needs sign-off.
+ * Net-new copy, NOT from either prototype — **approved as written on
+ * 2026-09-11.** A new string here needs the same sign-off.
  */
 export function ReversePenaltyDialog({
   open,

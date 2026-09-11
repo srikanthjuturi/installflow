@@ -30,7 +30,8 @@ const KIND_CHIP: Record<LedgerEntry["kind"], string> = {
 
 /**
  * The wire value is lower case; the column prints the approved label.
- * "Penalty reversed" is net-new — neither prototype has a reversal.
+ * "Penalty reversed" is net-new — neither prototype has a reversal — and was
+ * approved as written on 2026-09-11.
  */
 const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
   penalty: "Penalty",

@@ -42,8 +42,9 @@ const REVIEWER_ROLE: Record<PenaltyReviewer["role"], string> = {
  * the server is what enforces it. `canReverse` only decides whether to draw
  * the button for THIS viewer.
  *
- * ⚠ Net-new copy — neither prototype has a reversal anywhere. Every string here
- * needs sign-off, the same position `NoShowDialog` is in.
+ * Net-new copy — neither prototype has a reversal anywhere — **approved as
+ * written on 2026-09-11.** A NEW string added here needs the same sign-off;
+ * there is nothing in the design artifact to copy from.
  */
 export function PenaltiesPanel({
   ticket,

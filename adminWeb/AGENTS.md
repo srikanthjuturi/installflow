@@ -1364,7 +1364,9 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   `ReversePenaltyDialog` is `RescheduleDialog`'s required-reason shape (3–160, the ledger column),
   with the amount on the button like `NoShowDialog`. Full amount only; no undo. The ledger table
   learned `reversal` ("Penalty reversed", `+`, info tone) and tags a charge "Reversed". All of this
-  copy is net-new — neither prototype has a reversal — and needs sign-off.
+  copy is net-new — neither prototype has a reversal — and was **approved as written on
+  2026-09-11**, together with the vendor-edit and "Send app link" wording; a new string still
+  needs sign-off.
 - Force-closure **requires** attachments and records who, when, and on what basis. Audit is a
   stated requirement, not a nicety.
 - **A force-closure's attachments are staff-only; its proof images are not.** Proof is the work
