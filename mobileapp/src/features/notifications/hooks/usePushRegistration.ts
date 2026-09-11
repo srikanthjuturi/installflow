@@ -175,7 +175,15 @@ export function usePushRegistration(): void {
     // The banner still shows. Invalidation only refetches queries that are
     // mounted, so this costs a request for the screen in front of them.
     const sub = Notifications.addNotificationReceivedListener((n) => {
-      if (n.request.content.data?.type !== 'job') return;
+      const type = n.request.content.data?.type;
+      // A payer said they paid, or declined. Nothing on the pool socket carries
+      // money, so this push is the only live signal the redeem card and the
+      // redemption screen get — `qk.earnings()` is the prefix both live under.
+      if (type === 'redemption') {
+        void queryClient.invalidateQueries({ queryKey: qk.earnings() });
+        return;
+      }
+      if (type !== 'job') return;
       void queryClient.invalidateQueries({ queryKey: ['jobs'] });
       void queryClient.invalidateQueries({ queryKey: qk.earnings() });
       void queryClient.invalidateQueries({ queryKey: qk.me() });
@@ -191,6 +199,15 @@ export function usePushRegistration(): void {
     if (Platform.OS === 'web') return;
 
     const open = (data: Record<string, unknown> | undefined) => {
+      // A redemption names no ticket, so it is routed before the ticket test
+      // below would drop it. The screen fetches the rest — including the
+      // payer's screenshot, which never travels in a push.
+      if (data?.type === 'redemption') {
+        const redemptionId = data.redemptionId;
+        if (typeof redemptionId === 'string') router.push(`/redeem/${redemptionId}`);
+        return;
+      }
+
       // Routing only — the frame carries no customer details, so the screen
       // this lands on fetches the offer through the authenticated API.
       const id = data?.ticketId;

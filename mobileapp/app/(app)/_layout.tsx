@@ -49,6 +49,11 @@ export default function AppLayout() {
         name="earnings-dates"
         options={{ presentation: 'transparentModal', animation: 'fade' }}
       />
+      {/* The redeem confirmation, over Earnings. Same treatment again. */}
+      <Stack.Screen
+        name="redeem-confirm"
+        options={{ presentation: 'transparentModal', animation: 'fade' }}
+      />
     </Stack>
   );
 }

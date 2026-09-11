@@ -78,7 +78,9 @@ export type IconName =
   | 'camera'
   | 'cameraOff'
   | 'mapCheck'
-  | 'rotate';
+  | 'rotate'
+  // redemption — not in the prototype, traced in the same house style
+  | 'qr';
 
 export interface IconProps {
   name: IconName;
@@ -568,6 +570,17 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
           <Rect x={3} y={6} width={18} height={14} rx={2.5} {...p} />
           <Path d="M8 6l1.4-2.2h5.2L16 6" {...p} />
           <Path d="M4 4l16 18" {...p} />
+        </>
+      );
+
+    // Three finder squares and a scatter of modules — "scan a code".
+    case 'qr':
+      return (
+        <>
+          <Rect x={4} y={4} width={6} height={6} rx={1.2} {...p} />
+          <Rect x={14} y={4} width={6} height={6} rx={1.2} {...p} />
+          <Rect x={4} y={14} width={6} height={6} rx={1.2} {...p} />
+          <Path d="M14 14h2.5v2.5M20 14v.01M14 20h.01M17.5 17.5H20V20" {...p} />
         </>
       );
   }

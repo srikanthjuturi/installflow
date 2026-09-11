@@ -39,6 +39,13 @@ export const qk = {
    * default did.
    */
   earnings: () => ['earnings'] as const,
+  // Under `['earnings']` on purpose, like everything money-shaped: a closure
+  // that credits a payout moves the redeemable balance too, and every place
+  // that already invalidates `qk.earnings()` — the socket, a `job` push, a
+  // cancellation — then clears these without having to know they exist.
+  redeemable: () => ['earnings', 'redemption', 'balance'] as const,
+  redemptions: () => ['earnings', 'redemption', 'history'] as const,
+  redemption: (id: string) => ['earnings', 'redemption', id] as const,
 
   categories: () => ['catalog', 'categories'] as const,
 } as const;

@@ -174,6 +174,16 @@ export const color = {
   // ── availability ────────────────────────────────────────────────────────
   online: palette.success[400],
   offline: palette.neutral[350],
+
+  // ── payment QR ──────────────────────────────────────────────────────────
+  /**
+   * The modules of a UPI QR, and the plate behind them. Fixed dark-on-white
+   * rather than following the brand: a scanner wants contrast and a quiet
+   * zone, and a re-skin that tinted the plate would produce a code a second
+   * phone cannot read — which is the one job the QR has.
+   */
+  qrInk: palette.neutral[950],
+  qrPlate: palette.neutral[0],
 } as const;
 
 export type SemanticColor = typeof color;

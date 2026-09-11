@@ -11,6 +11,7 @@ import {
   listTransactions,
   windowQuery,
 } from '@/features/earnings/api/earnings';
+import { RedeemCard } from '@/features/redeem/components/RedeemCard';
 import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useEarningsWindow } from '@/store/earnings.store';
@@ -275,6 +276,12 @@ export function EarningsScreen() {
         </View>
 
         <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+          {/* Above the ledger rather than inside the hero: the hero is one
+              period's net, and this is a different number — everything owed
+              and not yet asked for. Side by side on the dark panel they would
+              read as the same figure twice. */}
+          <RedeemCard />
+
           <Text
             style={{
               fontFamily: 'Roboto_700Bold',
