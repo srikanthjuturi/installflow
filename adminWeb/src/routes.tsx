@@ -37,6 +37,7 @@ const RedemptionPage = lazy(() => import("@/pages/redemptions/RedemptionPage"));
 const VendorProductsPage = lazy(
   () => import("@/pages/vendor/VendorProductsPage")
 );
+const VendorBrandsPage = lazy(() => import("@/pages/vendor/VendorBrandsPage"));
 const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const AssignTechnicianPage = lazy(
   () => import("@/pages/tickets/AssignTechnicianPage")
@@ -228,6 +229,8 @@ export const routes: RouteObject[] = [
               // guard DENIES anything that table does not name, so a route
               // added here alone would be silently unreachable.
               { path: "portal/products", element: <VendorProductsPage /> },
+              // `vendor.catalogue` too, through the same table.
+              { path: "portal/brands", element: <VendorBrandsPage /> },
               // The bell is in the shared Topbar, so a vendor has always been
               // able to see it. Without this route it linked into the ops tree,
               // where `RequireOps` bounced them straight back to /portal — a

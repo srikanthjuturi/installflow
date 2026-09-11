@@ -17,6 +17,9 @@ import type { TicketDetail } from "@/types/ticket";
 export function FactGrid({ ticket }: { ticket: TicketDetail }) {
   const facts: Array<[string, string]> = [
     ["Vendor", ticket.vendorName],
+    // Read live through the model, like its name — a vendor may sell several
+    // brands, and this is the one printed on the unit.
+    ["Brand", ticket.brandName ?? EMPTY],
     ["Category", ticket.subcategoryName],
     ["Product model", ticket.modelName],
     ["Service type", ticket.serviceType],

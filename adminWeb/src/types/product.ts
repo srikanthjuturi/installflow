@@ -45,10 +45,16 @@ export interface ProductModel {
   id: string;
   /** The catalogue node this product sits under. Always at depth >= 1. */
   nodeId: string;
-  /** The brand — a vendor of this company. Mandatory. */
+  /** The VENDOR who supplies it — a company this company installs for. */
   vendorId: string;
   /** Resolved by the API, so no list fetches the vendor list to draw a row. */
   vendorName: string;
+  /**
+   * The brand printed on the unit — one of that vendor's approved brands.
+   * Mandatory, and what a row shows; the vendor is the company behind it.
+   */
+  brandId: string;
+  brandName: string;
   name: string;
   /** At least one, always in catalogue order — the API normalises it. */
   serviceTypes: ServiceType[];
@@ -205,6 +211,8 @@ export interface CreateModelInput {
   nodeId: string;
   name: string;
   vendorId: string;
+  /** One of that vendor's APPROVED brands — the server refuses anything else. */
+  brandId: string;
   serviceTypes: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
@@ -238,6 +246,8 @@ export interface CreateModelInput {
 export interface SubmitModelInput {
   nodeId: string;
   name: string;
+  /** One of the vendor's OWN approved brands. */
+  brandId: string;
   serviceTypes: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
@@ -257,8 +267,10 @@ export type ResubmitModelInput = { id: string } & Partial<
 export interface UpdateModelInput {
   id: string;
   name?: string;
-  /** Re-branding is allowed; clearing the brand is not. */
+  /** Moving it to another vendor is allowed, and needs a brand of that vendor. */
   vendorId?: string;
+  /** Re-branding is allowed; clearing the brand is not. */
+  brandId?: string;
   /** Sent whole — omit to leave alone; an empty array is refused. */
   serviceTypes?: ServiceType[];
   capacity?: string | null;

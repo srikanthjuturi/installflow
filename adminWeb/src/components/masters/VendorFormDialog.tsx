@@ -41,6 +41,7 @@ import type {
 } from "@/types/vendor";
 import { TemporaryPasswordPanel } from "@/components/shared/TemporaryPasswordPanel";
 import { AddressSearchField } from "./AddressSearchField";
+import { BrandRowsField } from "./BrandRowsField";
 import { LocationCheckField } from "./LocationCheckField";
 import { StatusField } from "./StatusField";
 import {
@@ -324,8 +325,37 @@ function VendorForm({
       // for sites that cannot produce a GPS fix at all, where the alternative is
       // a technician who cannot start a job they are standing at.
       locationCheck: locationCheckOf(vendor?.locationCheckEnabled ?? true),
+      // One row to start from on ADD, kept in step with the company name below
+      // until somebody types in it — most vendors sell under their own name
+      // first. On EDIT, every live brand; the vendor's waiting ones read-only.
+      brands: vendor
+        ? vendor.brands.map((b) => ({
+            brandId: b.id,
+            name: b.name,
+            waiting: b.approvalStatus === "approved" ? undefined : b.approvalStatus,
+          }))
+        : [{ name: "" }],
     },
   });
+
+  /*
+   * On ADD, the first brand follows the company name until somebody edits it —
+   * so a vendor that sells under its own name needs no second typing, and one
+   * that does not simply overwrites the row. Tracked by what WE last wrote, so
+   * the moment the row differs from that, it is the user's and is left alone.
+   */
+  const companyName = useWatch({ control, name: "name" });
+  const firstBrand = useWatch({ control, name: "brands.0.name" });
+  const syncedBrand = useRef("");
+  useEffect(() => {
+    if (isEdit) return;
+    const current = firstBrand ?? "";
+    if (current !== "" && current !== syncedBrand.current) return;
+    const next = (companyName ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
+    if (next === current) return;
+    syncedBrand.current = next;
+    setValue("brands.0.name", next, { shouldDirty: true });
+  }, [companyName, firstBrand, isEdit, setValue]);
 
   // A GSTIN clash is only knowable at the server: it can be the number of
   // another vendor here, or the company's own. Both come back 409 and belong on
@@ -630,6 +660,10 @@ function VendorForm({
       addressSearchEnabled: values.addressSearch === "On",
       locationCheckEnabled: values.locationCheck === "On",
     };
+    // Only the brands the office decides here. A vendor's waiting brands are
+    // left out on purpose — the server leaves them alone when they are absent,
+    // and they are decided on Approvals.
+    const ownBrands = values.brands.filter((b) => !b.waiting);
     const done = (saved: Vendor) => {
       // On ADD the reply is a CreatedVendor and may carry an undelivered
       // password; on edit it is a plain Vendor and never does.
@@ -658,12 +692,17 @@ function VendorForm({
         {
           id: vendor.id,
           ...body,
+          brands: ownBrands.map((b) => ({ id: b.brandId, name: b.name })),
         },
         { onSuccess: done, onError }
       );
     } else {
       create.mutate(
-        { ...body, loginEmail: values.loginEmail },
+        {
+          ...body,
+          loginEmail: values.loginEmail,
+          brands: ownBrands.map((b) => b.name),
+        },
         { onSuccess: done, onError }
       );
     }
@@ -674,8 +713,8 @@ function VendorForm({
       <DialogHeader>
         <DialogTitle>{isEdit ? "Edit vendor" : "Add vendor"}</DialogTitle>
         <DialogDescription>
-          The company whose products you install. A vendor becomes a brand you
-          can pick when adding a product model.
+          The company whose products you install. Add the brands it sells — each
+          product you add is filed under one of them.
         </DialogDescription>
       </DialogHeader>
 
@@ -739,7 +778,7 @@ function VendorForm({
           {renderField("name", "Company name", {
             required: true,
             placeholder: "e.g. Sunview Appliances Pvt Ltd",
-            hint: "This is the brand shown on every product model you attribute to it.",
+            hint: "The company's trading name. The brands it sells are listed below.",
           })}
           {renderField("contactPerson", "Contact person", {
             required: true,
@@ -755,6 +794,21 @@ function VendorForm({
             hint: "10 digits. Spaces and a +91 are fine.",
           })}
         </FieldGrid>
+      </FormSection>
+
+      {/* Right after Company: the brands are the one thing about a vendor a
+          technician and a customer actually read, and they follow from who the
+          company is. */}
+      <FormSection
+        legend="Brands"
+        hint="What it sells, as printed on the product. Brands you add here are approved at once; brands the vendor adds from its portal wait for approval."
+      >
+        <BrandRowsField
+          control={control}
+          register={register}
+          errors={errors}
+          saved={vendor?.brands ?? []}
+        />
       </FormSection>
 
       <FormSection legend="Registered address">
@@ -865,7 +919,7 @@ function VendorForm({
             <StatusField
               value={field.value}
               onChange={field.onChange}
-              description="Paused vendors stay out of the brand picker. Models already carrying the brand keep it."
+              description="A paused vendor can't be picked for new products. Products it already supplies keep it."
               error={errors.status?.message}
               errorId="vendor-status-error"
             />

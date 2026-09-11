@@ -3,11 +3,13 @@ import { useEffect, useRef } from "react";
 
 import { BASE_URL } from "@/services/http";
 import { useSession } from "@/store/session";
+import { approvalKeys } from "./useApprovals";
 import { dashboardKeys } from "./useDashboard";
 import { notificationKeys } from "./useNotifications";
 import { redemptionKeys } from "./useRedemptions";
 import { technicianKeys } from "./useTechnicians";
 import { ticketKeys } from "./useTickets";
+import { ownBrandKeys } from "./useVendors";
 
 /**
  * Live ticket movement — and the bell — for the console and the vendor portal.
@@ -176,6 +178,12 @@ export function useTicketStream(): void {
             // and an open redemption page refresh on it rather than waiting for
             // the backstop poll.
             void queryClient.invalidateQueries({ queryKey: redemptionKeys.all });
+            // Likewise the approvals queue and its badge (a vendor submitted
+            // something), and a vendor's own brands (one was decided) — the
+            // bell is the only thing either side is told. Only what is on
+            // screen refetches, so a reader with neither pays nothing.
+            void queryClient.invalidateQueries({ queryKey: approvalKeys.all });
+            void queryClient.invalidateQueries({ queryKey: ownBrandKeys.all });
             // And tell whoever wants to say so out loud. The listener does its
             // own read: this frame still carries nothing worth showing.
             emit("notification.raised");

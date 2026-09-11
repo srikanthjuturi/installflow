@@ -19,8 +19,8 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Unassigned within 4h of slot",
   },
   "/approvals": {
-    title: "Product approvals",
-    subtitle: "Vendor-submitted products awaiting a price",
+    title: "Approvals",
+    subtitle: "Vendor-submitted products and brands awaiting a decision",
   },
   /* Net-new — the prototype has no redemption screen. Approved with the plan
      on 2026-09-11. */

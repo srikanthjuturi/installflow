@@ -276,14 +276,23 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: tree merged; the values never changed. The FK is COMPOSITE — see
     #: __table_args__.
     node_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    #: The brand. Mandatory: a model nobody makes is not a model anybody can be
-    #: sent to install. Also a COMPOSITE FK — see __table_args__.
-    #:
-    #: This is also why a parameter on a product needs no `vendor_id` of its
-    #: own: Samsung's "32 inch Android" and LG's are two rows under one node,
-    #: each already naming its brand. Storing it twice would let the two
-    #: disagree.
+    #: The VENDOR — the company that supplies it and raises its tickets. It used
+    #: to be documented as "the brand", and was, until a vendor could sell more
+    #: than one; the brand is `brand_id` below now. Mandatory, and a COMPOSITE
+    #: FK — see __table_args__.
     vendor_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: The brand printed on the unit — one of `vendor_id`'s `vendor_brands`.
+    #: Mandatory: a model nobody makes is not a model anybody can be sent to
+    #: install.
+    #:
+    #: The FK is `(company_id, vendor_id, brand_id)`, so this CANNOT name another
+    #: vendor's brand — the database refuses it rather than a service remembering
+    #: to. Only an approved brand is ever set here; `masters._validate_brand`.
+    #:
+    #: A model's name is unique per brand under its node
+    #: (`uq_product_models_node_brand_name_lower`, hand-written), so Meridian's
+    #: "43 inch LED" and Sunview's can sit in one category.
+    brand_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     #: What a technician can be sent to do with this model — one or more of
     #: `app.core.service_types.SERVICE_TYPES`, in catalogue order.
@@ -505,6 +514,13 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # cross-company lookups; these serve the FK checks, which match on both.
         Index("ix_product_models_company_node", "company_id", "node_id"),
         Index("ix_product_models_company_vendor", "company_id", "vendor_id"),
+        # The covering index for the brand FK below, in its column order.
+        Index(
+            "ix_product_models_company_vendor_brand",
+            "company_id",
+            "vendor_id",
+            "brand_id",
+        ),
         # What a ticket's composite FK points at. Added when tickets landed —
         # until then nothing hung off a model, so there was nothing to point.
         UniqueConstraint("company_id", "id", name="uq_product_models_company_id_id"),
@@ -522,6 +538,19 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ["company_id", "vendor_id"],
             ["vendors.company_id", "vendors.id"],
             name="fk_product_models_company_vendor",
+            ondelete="RESTRICT",
+        ),
+        # Three columns, not two: the brand must be THIS vendor's. RESTRICT for
+        # the vendor FK's reason — a brand still on a product is refused
+        # removal with a message, never removed from under it.
+        ForeignKeyConstraint(
+            ["company_id", "vendor_id", "brand_id"],
+            [
+                "vendor_brands.company_id",
+                "vendor_brands.vendor_id",
+                "vendor_brands.id",
+            ],
+            name="fk_product_models_company_vendor_brand",
             ondelete="RESTRICT",
         ),
     )

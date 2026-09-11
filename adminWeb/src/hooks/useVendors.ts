@@ -4,12 +4,17 @@ import {
   reissueVendorPassword,
   deleteVendor,
   listIntakeChannels,
+  listOwnBrands,
   listVendorOptions,
   listVendors,
   recordAddressSearch,
+  submitOwnBrand,
+  updateOwnBrand,
   updateVendor,
+  withdrawOwnBrand,
 } from "@/services/vendors";
 import type { ListParams } from "@/types/api";
+import type { VendorBrand } from "@/types/vendor";
 
 export const vendorKeys = {
   /** Prefix — invalidating this catches every page, filter and the options. */
@@ -34,10 +39,12 @@ export function useVendors(params: ListParams) {
 }
 
 /**
- * Every selectable brand, for the product model form's picker.
+ * Every selectable vendor with its approved brands, for the product form's two
+ * pickers.
  *
- * Cached long, like the category tree: the brand list changes a few times a
- * year, and this is fetched every time somebody opens the model dialog.
+ * Cached long, like the category tree: the list changes a few times a year,
+ * and this is fetched every time somebody opens the model dialog. Every vendor
+ * write below invalidates it, and a brand decided on Approvals does too.
  */
 export function useVendorOptions() {
   return useQuery({
@@ -140,3 +147,52 @@ export function useRecordAddressSearch() {
     meta: { suppressErrorToast: true },
   });
 }
+
+/* ── a vendor's own brands (the portal) ──────────────────────────────────────
+ *
+ * Their own cache key, OUTSIDE the `vendors` prefix, for the reason
+ * `useRecordAddressSearch` gives: invalidating that prefix from the portal
+ * would refetch staff-only lists a vendor gets a 403 on. Named "own", never
+ * `useBrands` — `useBrand` beside it is the company WHITE-LABEL hook, a
+ * different idea entirely. */
+
+export const ownBrandKeys = {
+  all: ["vendor-brands", "mine"] as const,
+};
+
+/** Every brand this vendor has, approved or waiting. */
+export function useOwnBrands(enabled = true) {
+  return useQuery({
+    queryKey: ownBrandKeys.all,
+    queryFn: listOwnBrands,
+    enabled,
+  });
+}
+
+/**
+ * A write to the vendor's own brands. The reply IS the new list, so it seeds
+ * the cache directly; the options (the product form's Brand picker) and the
+ * catalogue are refetched because an approved brand's name shows on both.
+ */
+function useOwnBrandMutation<TVars>(
+  fn: (vars: TVars) => Promise<VendorBrand[]>,
+  errorTitle: string
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle },
+    mutationFn: fn,
+    onSuccess: (brands) => {
+      queryClient.setQueryData(ownBrandKeys.all, brands);
+      queryClient.invalidateQueries({ queryKey: vendorKeys.options() });
+      queryClient.invalidateQueries({ queryKey: ["product-master"] });
+    },
+  });
+}
+
+export const useSubmitOwnBrand = () =>
+  useOwnBrandMutation(submitOwnBrand, "Couldn't add the brand");
+export const useUpdateOwnBrand = () =>
+  useOwnBrandMutation(updateOwnBrand, "Couldn't save the brand");
+export const useWithdrawOwnBrand = () =>
+  useOwnBrandMutation(withdrawOwnBrand, "Couldn't withdraw the brand");

@@ -47,8 +47,11 @@ export interface ProductSubmission {
   nodeId: string;
   /** Root first, including the node's own name: Electronics › TV › OLED. */
   nodePath: string[];
+  /** Who submitted it — the company. */
   vendorId: string;
   vendorName: string;
+  /** The brand it will carry — what the approver is agreeing to put on the unit. */
+  brandName: string;
   name: string;
   serviceTypes: ServiceType[];
   capacity: string | null;
@@ -85,6 +88,30 @@ export interface ProductSubmission {
   /** Null on a product nobody ever reviewed. Rendered as "—". */
   decidedByName: string | null;
 }
+
+/**
+ * One row of the BRANDS half of the queue — a brand a vendor added from its
+ * portal. Staff-added brands never appear: they are approved as they are typed.
+ *
+ * Nothing to price, so approving is a yes and nothing more: the vendor may now
+ * put this brand on its products. A refusal carries a reason, as a product's
+ * does.
+ */
+export interface BrandSubmission {
+  id: string;
+  name: string;
+  vendorId: string;
+  vendorName: string;
+  approvalStatus: ApprovalStatus;
+  rejectionReason: string | null;
+  /** When it last ENTERED pending — a rename after a refusal restarts it. */
+  submittedAt: string | null;
+  decidedAt: string | null;
+  decidedByName: string | null;
+}
+
+/** Which half of the queue is on screen — `?kind=` in the URL. */
+export type ApprovalKind = "products" | "brands";
 
 export interface ApproveProductInput {
   id: string;

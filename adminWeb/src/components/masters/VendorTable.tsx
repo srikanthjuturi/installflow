@@ -147,8 +147,29 @@ export function VendorTable({
       ),
     },
     {
+      id: "brands",
+      header: "Brands",
+      // Approved ones by name — what a technician and a customer read. A
+      // vendor's own additions still waiting are counted, not named, so the
+      // cell says there is something on Approvals without looking final.
+      cell: (v) => {
+        const approved = v.brands.filter((b) => b.approvalStatus === "approved");
+        const waiting = v.brands.filter((b) => b.approvalStatus === "pending").length;
+        return (
+          <div className="leading-tight">
+            <div>{approved.map((b) => b.name).join(", ") || "—"}</div>
+            {waiting > 0 ? (
+              <div className="text-xs text-warn">
+                {waiting} waiting for approval
+              </div>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
       id: "models",
-      header: "Models branded",
+      header: "Products",
       cellClassName: "tabular-nums",
       // A real COUNT from the API. Zero is a fact worth showing, not a gap.
       cell: (v) => v.modelCount,
@@ -274,7 +295,7 @@ export function VendorTable({
   return (
     <DataTable
       errorTitle="Couldn't load vendors"
-      caption="Vendors, with their GSTIN, contact person, city, how their tickets arrive, how many product models carry the brand, lifetime ticket volume, lifetime address searches and status"
+      caption="Vendors, with their GSTIN, contact person, city, how their tickets arrive, the brands they sell, how many product models they supply, lifetime ticket volume, lifetime address searches and status"
       data={vendors}
       columns={columns}
       getRowId={(v) => v.id}
@@ -293,7 +314,7 @@ export function VendorTable({
          otherwise squeeze the sticky-scroll container. */
       minWidth="80rem"
       emptyTitle="No vendors yet"
-      emptyDescription="Add the companies whose products you install. Each one becomes a brand you can pick when adding a product model."
+      emptyDescription="Add the companies whose products you install, and the brands each one sells."
       filteredEmptyTitle="No vendors match those filters"
       filteredEmptyDescription="Try a different intake channel or status, or clear the search."
     />

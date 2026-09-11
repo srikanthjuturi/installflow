@@ -171,7 +171,8 @@ export const rupees = (missing: string) =>
  *
  * `withPricing` is false for a VENDOR submitting to their own book. They never
  * set a price — a National Head types both at approval — so the boxes are
- * absent, and `vendorId` is theirs and shown rather than offered.
+ * absent, and `vendorId` is theirs and shown rather than offered. The BRAND is
+ * still theirs to pick, from their own approved brands.
  */
 export const modelSchema = (withPricing = true) =>
   baseModelSchema.extend(
@@ -193,12 +194,14 @@ export const modelSchema = (withPricing = true) =>
 
 const baseModelSchema = z.object({
   name: z.string().trim().min(1, "Model name is required"),
-  /** The brand. Required — a model with no maker names nothing a technician
-   *  can be sent to install, and a brand backfilled later is one nobody
-   *  remembers. `min(1)` rather than `.uuid()`: the control stores "" when
-   *  empty, and "Select a brand" is the message that belongs on an empty
-   *  dropdown, not "invalid uuid". */
-  vendorId: z.string().min(1, "Select a brand"),
+  /** The vendor who supplies it. Required — a product nobody supplies is one
+   *  no ticket can be raised against. `min(1)` rather than `.uuid()`: the
+   *  control stores "" when empty, and "Select a vendor" is the message that
+   *  belongs on an empty dropdown, not "invalid uuid". */
+  vendorId: z.string().min(1, "Select a vendor"),
+  /** One of that vendor's approved brands — what is printed on the unit, and
+   *  what every row shows. Required for the same reason as the vendor. */
+  brandId: z.string().min(1, "Select a brand"),
   /** At least one — a model nobody can be sent to do anything with is not a
    *  model. Order does not matter here; the API stores catalogue order. */
   serviceTypes: z

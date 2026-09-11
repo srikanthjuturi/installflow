@@ -35,6 +35,7 @@ from app.models.token import RefreshToken
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_address_search import VendorAddressSearch
+from app.models.vendor_brand import VendorBrand
 from app.models.web_push_subscription import WebPushSubscription
 
 __all__ = [
@@ -75,5 +76,6 @@ __all__ = [
     "User",
     "Vendor",
     "VendorAddressSearch",
+    "VendorBrand",
     "WebPushSubscription",
 ]

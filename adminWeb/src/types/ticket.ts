@@ -90,6 +90,9 @@ export interface Ticket {
   nodePath: string[];
   modelId: string;
   modelName: string;
+  /** The model's brand, read live like `modelName`. Null only if the model
+   *  itself can no longer be resolved. */
+  brandName: string | null;
 
   /** Constrained to what the chosen model declares it supports. */
   serviceType: ServiceType;

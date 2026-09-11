@@ -1,9 +1,10 @@
 /**
- * Vendors — the brands the company stocks, and who to call about them.
+ * Vendors — the companies that supply the products, and who to call about them.
  *
- * BOTH a record and an account. Every product model points at exactly one,
- * which is how a model gets its brand; and a vendor signs in to the portal at
- * `/portal`, where it raises tickets against itself and manages its own users.
+ * BOTH a record and an account. Every product model points at exactly one, and
+ * carries one of its BRANDS — a vendor may sell several (Crestline Distributors
+ * sells Meridian and Sunview). A vendor signs in to the portal at `/portal`,
+ * where it raises tickets, manages its own users and asks for new brands.
  * `intakeChannels` decides which entry screens it gets.
  *
  * This replaced an earlier mock-only `Vendor` that modelled a ticket-INTAKE
@@ -24,9 +25,26 @@ import type { EmailOutcome } from "./user";
 /** §4 of the requirement document. Mirrors INTAKE_CHANNELS in app/core/intake.py. */
 export type IntakeChannel = "API" | "Excel" | "Manual";
 
+/** `pending` | `approved` | `rejected` — a vendor-added brand waits for approval. */
+export type BrandStatus = "pending" | "approved" | "rejected";
+
+/** One of a vendor's brands — what is printed on the unit. */
+export interface VendorBrand {
+  id: string;
+  name: string;
+  /** Only an approved brand can be put on a product. Staff-added ones are
+   *  approved at once; a vendor's own wait on Approvals. */
+  approvalStatus: BrandStatus;
+  /** Why it was refused, when it was. The vendor reads this. */
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  /** Live products carrying it — a brand with any cannot be removed. */
+  productCount: number;
+}
+
 export interface Vendor {
   id: string;
-  /** The trading name, and the label the brand picker shows. */
+  /** The company's trading name. Not a brand any more — see `brands`. */
   name: string;
   gstNumber: string;
   /**
@@ -77,8 +95,10 @@ export interface Vendor {
    * is correct rather than a bug.
    */
   addressSearchCount: number;
-  /** Live product models carrying this brand. A real COUNT, not seed data. */
+  /** Live product models this vendor supplies. A real COUNT, not seed data. */
   modelCount: number;
+  /** Every live brand, approved first then waiting, A–Z within each. */
+  brands: VendorBrand[];
   /** The address this vendor signs in with. */
   loginEmail: string | null;
   /**
@@ -98,10 +118,12 @@ export interface IntakeChannelOption {
   unavailableReason: string | null;
 }
 
-/** Just enough to draw the brand picker on the product model form. */
+/** Just enough to draw the product form's Vendor and Brand pickers. */
 export interface VendorOption {
   id: string;
   name: string;
+  /** APPROVED brands only — the ones a product may carry. */
+  brands: { id: string; name: string }[];
 }
 
 /** `POST /vendors` and the reissue only — elsewhere it is a plain `Vendor`. */
@@ -126,6 +148,9 @@ export interface CreateVendorInput {
   isActive: boolean;
   addressSearchEnabled: boolean;
   locationCheckEnabled: boolean;
+  /** The brands it sells, approved as written. Empty means it sells under its
+   *  own name — the server then gives it one brand called what it is called. */
+  brands: string[];
 }
 
 export interface UpdateVendorInput {
@@ -147,4 +172,11 @@ export interface UpdateVendorInput {
   isActive?: boolean;
   addressSearchEnabled?: boolean;
   locationCheckEnabled?: boolean;
+  /**
+   * The APPROVED brands, sent whole: a row with an `id` is kept (renamed if the
+   * name changed), one without is new, and an approved brand left out is
+   * removed — a 409 while a live product carries it. A vendor's waiting brands
+   * are decided on Approvals; leaving them out does nothing to them.
+   */
+  brands?: { id?: string; name: string }[];
 }

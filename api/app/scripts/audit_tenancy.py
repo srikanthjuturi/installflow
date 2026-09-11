@@ -133,6 +133,11 @@ TENANT_LINKS = [
     # Usage. A search counted against another company's vendor would put one
     # tenant's activity on a second tenant's bill review.
     ("vendor_address_searches", "vendor_id", "vendors"),
+    # Brands. One company's product carrying another company's brand would put
+    # a competitor's name on a technician's job card; the product FK is
+    # three-column, so it also pins the brand to the product's own vendor.
+    ("vendor_brands", "vendor_id", "vendors"),
+    ("product_models", "brand_id", "vendor_brands"),
 ]
 
 
@@ -167,17 +172,39 @@ async def audit() -> int:
 
         print("\n-- parent links that must be composite ------------------------")
         for child, column, parent in TENANT_LINKS:
+            # Composite means: the FK carries `company_id` onto the PARENT's
+            # `company_id`, and carries the named column. It used to test only
+            # `array_length(conkey) = 2`, which never looked at which two
+            # columns — and refused `product_models.brand_id`, whose FK is
+            # `(company_id, vendor_id, brand_id)` precisely so a product's brand
+            # is also pinned to its own vendor: stronger than two, not weaker.
             composite = await s.scalar(
                 text(
                     """
-                    SELECT count(*) FROM pg_constraint
-                    WHERE contype = 'f'
-                      AND conrelid = CAST(:child AS regclass)
-                      AND confrelid = CAST(:parent AS regclass)
-                      AND array_length(conkey, 1) = 2
+                    SELECT count(*) FROM pg_constraint c
+                    WHERE c.contype = 'f'
+                      AND c.conrelid = CAST(:child AS regclass)
+                      AND c.confrelid = CAST(:parent AS regclass)
+                      AND array_length(c.conkey, 1) >= 2
+                      AND EXISTS (
+                          SELECT 1
+                          FROM unnest(c.conkey, c.confkey) AS k(child_att, parent_att)
+                          JOIN pg_attribute ca
+                            ON ca.attrelid = c.conrelid AND ca.attnum = k.child_att
+                          JOIN pg_attribute pa
+                            ON pa.attrelid = c.confrelid AND pa.attnum = k.parent_att
+                          WHERE ca.attname = 'company_id'
+                            AND pa.attname = 'company_id'
+                      )
+                      AND EXISTS (
+                          SELECT 1 FROM unnest(c.conkey) AS k(att)
+                          JOIN pg_attribute ca
+                            ON ca.attrelid = c.conrelid AND ca.attnum = k.att
+                          WHERE ca.attname = CAST(:column AS name)
+                      )
                     """
                 ),
-                {"child": child, "parent": parent},
+                {"child": child, "parent": parent, "column": column},
             )
             if composite:
                 print(f"  ok      {child}.{column} -> {parent}")

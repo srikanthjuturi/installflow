@@ -43,7 +43,7 @@ export default function VendorsPage() {
         toast.add({ title: `${vendor.name} removed` });
         setDialog(null);
       },
-      // A failure — a vendor that still brands models comes back as a 409
+      // A failure — a vendor that still supplies models comes back as a 409
       // naming the count — is reported by the toaster in App.tsx. The dialog
       // stays open so the message is read next to the thing it is about.
     });
@@ -103,10 +103,10 @@ export default function VendorsPage() {
         title={`Remove ${dialog?.kind === "delete" ? dialog.vendor.name : "vendor"}?`}
         description={
           dialog?.kind === "delete" && dialog.vendor.modelCount > 0
-            ? `${dialog.vendor.name} is the brand on ${dialog.vendor.modelCount} product model${
+            ? `${dialog.vendor.name} still supplies ${dialog.vendor.modelCount} product model${
                 dialog.vendor.modelCount === 1 ? "" : "s"
               }. Reassign them to another vendor first — this will be refused otherwise.`
-            : "The vendor stops appearing in the brand picker. Product models that already carry the brand keep it."
+            : "The vendor and its brands stop appearing when adding products."
         }
         confirmLabel="Remove vendor"
         onConfirm={() =>

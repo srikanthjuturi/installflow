@@ -94,9 +94,16 @@ export function ApprovalTable({
       ),
     },
     {
-      id: "vendor",
+      id: "brand",
       header: "Brand",
-      cell: (s) => s.vendorName,
+      // What goes on the unit, with who submitted it under it — a vendor may
+      // sell several brands, so the two are no longer one name.
+      cell: (s) => (
+        <div className="leading-tight">
+          <div>{s.brandName}</div>
+          <div className="text-xs text-ink-3">{s.vendorName}</div>
+        </div>
+      ),
     },
     {
       id: "category",
@@ -207,7 +214,7 @@ export function ApprovalTable({
   return (
     <DataTable
       errorTitle="Couldn't load approvals"
-      caption="Products vendors have submitted, with the brand, where each is filed, how many technicians are certified for it, when it arrived and whether it has been decided"
+      caption="Products vendors have submitted, with the brand and vendor, where each is filed, how many technicians are certified for it, when it arrived and whether it has been decided"
       data={submissions}
       columns={columns}
       getRowId={(s) => s.id}
@@ -215,7 +222,7 @@ export function ApprovalTable({
       error={error}
       onRetry={onRetry}
       search={{
-        placeholder: "Search product, brand or category…",
+        placeholder: "Search product, brand, vendor or category…",
         value: params.search ?? "",
         onChange: (v) => write((p) => withSearch(p, v)),
       }}

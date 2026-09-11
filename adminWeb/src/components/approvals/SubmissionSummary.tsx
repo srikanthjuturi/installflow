@@ -46,7 +46,8 @@ export function SubmissionSummary({
       )}
 
       <dl className="grid gap-1.5">
-        <Row label="Brand" value={s.vendorName} />
+        <Row label="Brand" value={s.brandName} />
+        <Row label="Vendor" value={s.vendorName} />
         <Row label="Category" value={s.nodePath.join(" › ")} />
         <Row label="Service types" value={s.serviceTypes.join(", ")} />
         {s.capacity ? <Row label="Capacity" value={s.capacity} /> : null}

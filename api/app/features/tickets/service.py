@@ -121,6 +121,7 @@ from app.models.ticket import Ticket, TicketAttachment, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.vendor_brand import VendorBrand
 
 
 def _now() -> datetime.datetime:
@@ -558,14 +559,18 @@ async def _hydrate(
             )
         )
     }
-    model_names = {
-        r[0]: r[1]
-        for r in await db.execute(
-            select(ProductModel.id, ProductModel.name).where(
-                ProductModel.id.in_({t.model_id for t in rows})
-            )
-        )
-    }
+    # The model's name and the brand it carries, in one join. Read live, like the
+    # name: nothing about a product is stamped on a ticket but its two prices.
+    model_names: dict[uuid.UUID, str] = {}
+    brand_names: dict[uuid.UUID, str] = {}
+    for model_id, model_name, brand_name in await db.execute(
+        select(ProductModel.id, ProductModel.name, VendorBrand.name)
+        .outerjoin(VendorBrand, VendorBrand.id == ProductModel.brand_id)
+        .where(ProductModel.id.in_({t.model_id for t in rows}))
+    ):
+        model_names[model_id] = model_name
+        if brand_name:
+            brand_names[model_id] = brand_name
     # The breadcrumb. Every id on every ticket's path in ONE query — the ticket
     # stamped its own `node_path_ids`, so there is nothing to walk and no
     # recursive CTE, however deep the catalogue goes.
@@ -626,6 +631,7 @@ async def _hydrate(
                 nodePath=path,
                 modelId=t.model_id,
                 modelName=model_names.get(t.model_id, ""),
+                brandName=brand_names.get(t.model_id),
                 serviceType=t.service_type,
                 description=t.description,
                 serialNumber=t.serial_number,

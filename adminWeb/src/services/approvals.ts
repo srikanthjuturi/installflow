@@ -17,6 +17,7 @@
 
 import type {
   ApproveProductInput,
+  BrandSubmission,
   ProductSubmission,
   RejectProductInput,
 } from "@/types/approval";
@@ -86,4 +87,30 @@ export function rejectProduct({
   reason,
 }: RejectProductInput): Promise<ProductSubmission> {
   return apiPost<ProductSubmission>(`/masters/models/${id}/reject`, { reason });
+}
+
+/* ── brands ──────────────────────────────────────────────────────────────────
+ *
+ * The same queue's other half: brands a vendor added from its portal. Same
+ * guards, same ordering, same `status` filter and the same 409
+ * `ALREADY_DECIDED` — only nothing is priced. */
+
+/** One page of vendor-added brands. `filters.status` defaults to `pending`. */
+export function listBrandApprovals(
+  params: ListParams = {}
+): Promise<Page<BrandSubmission>> {
+  return apiGetPage<BrandSubmission>("/masters/brand-approvals", params);
+}
+
+/** Agree the vendor sells it. Its products may carry it from now on. */
+export function approveBrand(id: string): Promise<BrandSubmission> {
+  return apiPost<BrandSubmission>(`/masters/brands/${id}/approve`);
+}
+
+/** Refuse it, with a reason. The vendor may rename it, which resubmits it. */
+export function rejectBrand({
+  id,
+  reason,
+}: RejectProductInput): Promise<BrandSubmission> {
+  return apiPost<BrandSubmission>(`/masters/brands/${id}/reject`, { reason });
 }

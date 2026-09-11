@@ -50,8 +50,7 @@ import {
   useSubmitModel,
   useUpdateModel,
 } from "@/hooks/useProductMaster";
-import { useVendorOptions } from "@/hooks/useVendors";
-import type { VendorOption } from "@/types/vendor";
+import { useOwnBrands, useVendorOptions } from "@/hooks/useVendors";
 import type { ApprovalStatus } from "@/types/approval";
 import type { ProductModel, ProductNode, ServiceType } from "@/types/product";
 import { ParameterFields } from "./ParameterFields";
@@ -69,10 +68,10 @@ import {
 /**
  * Who is filling this in.
  *
- * Absent → the ops console: both prices are asked for and the brand is a
- * picker. Present → a VENDOR submitting to their own book, where there are no
- * price fields at all (a National Head types both at approval) and the brand is
- * theirs, shown rather than offered.
+ * Absent → the ops console: both prices are asked for, and the vendor and its
+ * brand are two pickers. Present → a VENDOR submitting to their own book, where
+ * there are no price fields at all (a National Head types both at approval),
+ * no vendor box (it is them), and the brand is one of their own approved ones.
  *
  * A PROP rather than a component that reads `useMe()` itself, for the reason
  * `shared/AddressFields` records: a control that looked up the session could not
@@ -187,6 +186,7 @@ function ModelForm({
     defaultValues: {
       name: model?.name ?? "",
       vendorId: model?.vendorId ?? submitter?.vendorId ?? "",
+      brandId: model?.brandId ?? "",
       // Installation + demo is what this product exists for, so it is the
       // starting point for a new model rather than an empty set.
       serviceTypes: model?.serviceTypes ?? ["Installation + Demo"],
@@ -216,6 +216,8 @@ function ModelForm({
   // form out of the React Compiler.
   const imageUrls = useWatch({ control, name: "imageUrls" }) ?? [];
   const full = imageUrls.length >= MAX_MODEL_IMAGES;
+  // The Brand picker offers the chosen vendor's brands, so it follows this.
+  const vendorId = useWatch({ control, name: "vendorId" });
 
   function setImages(next: string[]) {
     setValue("imageUrls", next, { shouldValidate: true, shouldDirty: true });
@@ -246,6 +248,7 @@ function ModelForm({
   function submit(values: ModelFormValues) {
     const shared = {
       name: values.name,
+      brandId: values.brandId,
       serviceTypes: values.serviceTypes,
       // An empty box means "not recorded", which the API stores as null —
       // never an empty string, so "unknown" and "blank" cannot diverge.
@@ -335,7 +338,12 @@ function ModelForm({
             // new id is found by walking it. If it cannot be found the dialog
             // simply closes as it always did: a missing id is no reason to trap
             // somebody in a form whose product HAS been saved.
-            const created = findModel(root, node.id, values.name.trim());
+            const created = findModel(
+              root,
+              node.id,
+              values.brandId,
+              values.name.trim()
+            );
             toast.add({
               title: `${values.name} added`,
               description: `In ${node.path.join(" › ")}.`,
@@ -401,12 +409,17 @@ function ModelForm({
       </DialogHeader>
 
       <FieldGroup className="gap-5">
-        {/* Name and brand together: they are the two required fields and the
-            pair that identifies the unit — "Samsung 43-inch" is one thought,
-            and splitting them across two rows hides that the brand is not
-            optional detail like the two below. */}
+        {/* Name, vendor and brand together: they are the required fields and
+            what identifies the unit — "Sunview 43-inch" is one thought. Staff
+            pick the vendor BEFORE the brand, because the brands on offer are
+            that vendor's, so the name takes the whole first row and the
+            dependent pair sits side by side under it. A vendor has no vendor
+            to pick, so for them it is name and brand on one row. */}
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field data-invalid={errors.name ? true : undefined}>
+          <Field
+            data-invalid={errors.name ? true : undefined}
+            className={submitter ? undefined : "sm:col-span-2"}
+          >
             <FieldLabel htmlFor="model-name" required>
               Model name
             </FieldLabel>
@@ -429,28 +442,27 @@ function ModelForm({
             ) : null}
           </Field>
 
-          <Field data-invalid={errors.vendorId ? true : undefined}>
-            <FieldLabel htmlFor="model-vendor" required>
-              Brand
-            </FieldLabel>
-            {submitter ? (
-              /* Shown, not offered — a vendor has exactly one answer, and the
-                 server reads it off the session in any case. The same
-                 read-only treatment `ManualEntryForm` gives its vendor box. */
-              <Input
-                id="model-vendor"
-                value={submitter.vendorName}
-                readOnly
-                disabled
-              />
-            ) : (
+          {/* No Vendor box for a vendor: they have exactly one answer, and the
+              server reads it off the session in any case. */}
+          {submitter ? null : (
+            <Field data-invalid={errors.vendorId ? true : undefined}>
+              <FieldLabel htmlFor="model-vendor" required>
+                Vendor
+              </FieldLabel>
               <Controller
                 name="vendorId"
                 control={control}
                 render={({ field }) => (
-                  <BrandSelect
+                  <VendorSelect
                     value={field.value}
-                    onChange={field.onChange}
+                    onChange={(next) => {
+                      // A brand belongs to ONE vendor, so a new vendor clears
+                      // it — the next vendor's only brand then fills itself.
+                      if (next !== field.value) {
+                        setValue("brandId", "", { shouldDirty: true });
+                      }
+                      field.onChange(next);
+                    }}
                     invalid={errors.vendorId !== undefined}
                     current={
                       model
@@ -460,18 +472,64 @@ function ModelForm({
                   />
                 )}
               />
-            )}
-            {errors.vendorId ? (
+              {errors.vendorId ? (
+                <FieldDescription
+                  id="model-vendor-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.vendorId.message}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="model-vendor-hint">
+                  The company that supplies it.
+                </FieldDescription>
+              )}
+            </Field>
+          )}
+
+          <Field data-invalid={errors.brandId ? true : undefined}>
+            <FieldLabel htmlFor="model-brand" required>
+              Brand
+            </FieldLabel>
+            <Controller
+              name="brandId"
+              control={control}
+              render={({ field }) =>
+                submitter ? (
+                  <OwnBrandSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    invalid={errors.brandId !== undefined}
+                  />
+                ) : (
+                  <VendorBrandSelect
+                    vendorId={vendorId}
+                    value={field.value}
+                    onChange={field.onChange}
+                    invalid={errors.brandId !== undefined}
+                    current={
+                      model && model.vendorId === vendorId
+                        ? { id: model.brandId, name: model.brandName }
+                        : undefined
+                    }
+                  />
+                )
+              }
+            />
+            {errors.brandId ? (
               <FieldDescription
-                id="model-vendor-error"
+                id="model-brand-error"
                 role="alert"
                 className="text-danger"
               >
-                {errors.vendorId.message}
+                {errors.brandId.message}
               </FieldDescription>
             ) : (
-              <FieldDescription id="model-vendor-hint">
-                {submitter ? "Your products carry your own brand." : "The vendor who makes it."}
+              <FieldDescription id="model-brand-hint">
+                {submitter
+                  ? "One of your approved brands. Ask for another on My brands."
+                  : "What is printed on the unit — one of this vendor's approved brands."}
               </FieldDescription>
             )}
           </Field>
@@ -862,19 +920,23 @@ function ModelForm({
  *
  * Every master write answers with the affected ROOT and its whole subtree
  * rather than the row that changed, so a new model's id has to be recovered
- * from it. Matched on node AND name, which is unique among a node's models —
- * `uq_product_models_node_name_lower` says so, and the form would have been
- * refused with a 409 otherwise.
+ * from it. Matched on node, brand AND name, which together are unique —
+ * `uq_product_models_node_brand_name_lower` says so, and the form would have
+ * been refused with a 409 otherwise. Two brands may each have a "43 inch LED"
+ * in one category, which is why the brand is part of the match.
  */
 function findModel(
   root: ProductNode,
   nodeId: string,
+  brandId: string,
   name: string
 ): ProductModel | null {
   const wanted = name.toLowerCase();
   const walk = (n: ProductNode): ProductModel | null => {
     if (n.id === nodeId) {
-      const hit = n.models.find((m) => m.name.toLowerCase() === wanted);
+      const hit = n.models.find(
+        (m) => m.brandId === brandId && m.name.toLowerCase() === wanted
+      );
       if (hit) return hit;
     }
     for (const child of n.children) {
@@ -996,58 +1058,47 @@ function ServiceTypeField({
   );
 }
 
+/** One choice in either picker below — just what a menu row needs. */
+interface PickerOption {
+  id: string;
+  name: string;
+}
+
 /**
- * The brand picker, driven by the active vendors.
- *
- * Its empty state matters more than usual: a brand is required, so a company
- * with no vendors yet cannot add a model at all. Saying that — and where to go
- * — beats an empty menu that reads as a broken control.
+ * The one dropdown both pickers draw: a single-option list fills itself, and
+ * the placeholder says WHY a list is empty rather than showing an empty menu
+ * that reads as a broken control.
  */
-function BrandSelect({
+function OptionSelect({
+  id,
+  options,
   value,
   onChange,
   invalid,
-  current,
+  unavailable,
+  placeholder,
 }: {
+  id: string;
+  options: PickerOption[];
   value: string;
   onChange: (v: string) => void;
   invalid?: boolean;
-  /**
-   * The brand this model already carries, if any. `/vendors/options` returns
-   * only ACTIVE vendors, so without this a model branded with a paused vendor
-   * would render as "Select a brand" — indistinguishable from a new model that
-   * has none, and one careless save away from being silently re-branded.
-   */
-  current?: VendorOption;
+  /** Loading, failed, or nothing to pick — the placeholder says which. */
+  unavailable: boolean;
+  placeholder: string;
 }) {
-  const { data, isPending, isError } = useVendorOptions();
-  const active: VendorOption[] = data ?? [];
-  // Kept selectable so re-saving the model does not force a brand change; the
-  // API accepts the unchanged id even when the vendor is paused.
-  const vendors =
-    current && !active.some((v) => v.id === current.id)
-      ? [current, ...active]
-      : active;
-  const disabled = isPending || isError || vendors.length === 0;
+  const disabled = unavailable || options.length === 0;
 
   // Hard rule 10 — a single-option dropdown fills itself. Held off while the
   // list is still loading, or one arriving option would look like "the only one".
   useAutoSelectSingle(
-    vendors.map((v) => v.id),
+    options.map((o) => o.id),
     value,
     onChange,
     !disabled
   );
 
-  const selected = vendors.find((v) => v.id === value);
-
-  const placeholder = isPending
-    ? "Loading brands…"
-    : isError
-      ? "Couldn't load brands"
-      : vendors.length === 0
-        ? "No vendors yet — add one first"
-        : "Select a brand";
+  const selected = options.find((o) => o.id === value);
 
   return (
     <Select
@@ -1056,10 +1107,10 @@ function BrandSelect({
       disabled={disabled}
     >
       <SelectTrigger
-        id="model-vendor"
+        id={id}
         className="w-full"
         aria-invalid={invalid ? true : undefined}
-        aria-describedby={invalid ? "model-vendor-error" : "model-vendor-hint"}
+        aria-describedby={invalid ? `${id}-error` : `${id}-hint`}
       >
         <SelectValue placeholder={placeholder}>
           {() => selected?.name ?? placeholder}
@@ -1067,13 +1118,154 @@ function BrandSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          {vendors.map((v) => (
-            <SelectItem key={v.id} value={v.id}>
-              {v.name}
+          {options.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              {o.name}
             </SelectItem>
           ))}
         </SelectGroup>
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * Keep what a saved model already carries on the list, even when the server no
+ * longer offers it — a paused vendor drops out of `/vendors/options`. Without
+ * this the box would read "Select a vendor", indistinguishable from a new model
+ * that has none, and one careless save away from silently moving it. The API
+ * accepts an unchanged id either way.
+ */
+function withCurrent(options: PickerOption[], current?: PickerOption) {
+  return current && !options.some((o) => o.id === current.id)
+    ? [current, ...options]
+    : options;
+}
+
+/**
+ * The vendor picker, driven by the active vendors.
+ *
+ * Its empty state matters more than usual: a vendor is required, so a company
+ * with none yet cannot add a model at all. Saying that — and where to go —
+ * beats an empty menu.
+ */
+function VendorSelect({
+  value,
+  onChange,
+  invalid,
+  current,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+  /** The vendor this model already has, if any. */
+  current?: PickerOption;
+}) {
+  const { data, isPending, isError } = useVendorOptions();
+  const vendors = withCurrent(data ?? [], current);
+
+  return (
+    <OptionSelect
+      id="model-vendor"
+      options={vendors}
+      value={value}
+      onChange={onChange}
+      invalid={invalid}
+      unavailable={isPending || isError}
+      placeholder={
+        isPending
+          ? "Loading vendors…"
+          : isError
+            ? "Couldn't load vendors"
+            : vendors.length === 0
+              ? "No vendors yet — add one first"
+              : "Select a vendor"
+      }
+    />
+  );
+}
+
+/**
+ * The staff Brand picker: the APPROVED brands of the vendor chosen beside it.
+ *
+ * The same cached `/vendors/options` the vendor picker reads, so choosing a
+ * vendor costs no request. Most vendors sell under one brand, which then fills
+ * itself.
+ */
+function VendorBrandSelect({
+  vendorId,
+  value,
+  onChange,
+  invalid,
+  current,
+}: {
+  vendorId: string;
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+  /** The brand this model already carries — only while its vendor is chosen. */
+  current?: PickerOption;
+}) {
+  const { data, isPending, isError } = useVendorOptions();
+  const vendor = data?.find((v) => v.id === vendorId);
+  const brands = withCurrent(vendor?.brands ?? [], current);
+
+  return (
+    <OptionSelect
+      id="model-brand"
+      options={vendorId ? brands : []}
+      value={value}
+      onChange={onChange}
+      invalid={invalid}
+      unavailable={isPending || isError || !vendorId}
+      placeholder={
+        !vendorId
+          ? "Pick the vendor first"
+          : isPending
+            ? "Loading brands…"
+            : isError
+              ? "Couldn't load brands"
+              : brands.length === 0
+                ? "This vendor has no approved brand"
+                : "Select a brand"
+      }
+    />
+  );
+}
+
+/**
+ * A vendor's own Brand picker: its APPROVED brands only. A waiting one is on
+ * My brands with its status, and the server would refuse it here anyway.
+ */
+function OwnBrandSelect({
+  value,
+  onChange,
+  invalid,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid?: boolean;
+}) {
+  const { data, isPending, isError } = useOwnBrands();
+  const brands = (data ?? []).filter((b) => b.approvalStatus === "approved");
+
+  return (
+    <OptionSelect
+      id="model-brand"
+      options={brands}
+      value={value}
+      onChange={onChange}
+      invalid={invalid}
+      unavailable={isPending || isError}
+      placeholder={
+        isPending
+          ? "Loading brands…"
+          : isError
+            ? "Couldn't load your brands"
+            : brands.length === 0
+              ? "No approved brands yet — add one on My brands"
+              : "Select a brand"
+      }
+    />
   );
 }

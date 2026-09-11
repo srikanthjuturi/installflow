@@ -125,6 +125,15 @@ NOTIFICATION_KINDS = (
     #: so it is always raised with `audience='payers'` and never reaches a
     #: territory manager's bell. See `AUDIENCES`.
     "redemption",
+    #: The product trio's twins, for a vendor's BRAND: submitted from the
+    #: portal (staff-only, no `vendor_id` — the vendor is the author), then
+    #: approved or rejected by a National Head or Admin (carrying `vendor_id`,
+    #: so the vendor learns the outcome). Their own kinds rather than reusing
+    #: the product ones, because the row has to say which of the two it is
+    #: about and where to go — a brand is dealt with on a different tab.
+    "brand_submitted",
+    "brand_approved",
+    "brand_rejected",
 )
 
 #: Who a row is for when territory is the wrong question.

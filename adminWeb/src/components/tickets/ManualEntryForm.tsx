@@ -66,15 +66,15 @@ interface ManualEntryFormProps {
   onCancel: () => void;
   isSubmitting: boolean;
   /**
-   * The brand this ticket is raised against, already known.
+   * The vendor this ticket is raised by, already known.
    *
    * REQUIRED, because the only caller is the vendor portal — a vendor does not
    * choose which vendor it is. Passing it replaces the vendor select with a
    * read-only field and skips `useVendorOptions()` entirely: that endpoint is
-   * gated on `masters.view` and, for a staff caller, lists every brand in the
+   * gated on `masters.view` and, for a staff caller, lists every vendor in the
    * company. A vendor must neither need it nor see its result.
    */
-  vendor: VendorOption;
+  vendor: Pick<VendorOption, "id" | "name">;
   /**
    * Whether this vendor is offered the address search, and where to report a
    * session so the console can count it.
@@ -264,11 +264,20 @@ export function ManualEntryForm({
     setValue("serviceType", "Installation + Demo", { shouldValidate: false });
   }
 
+  // The brand goes in front only where it tells two options apart — when this
+  // category holds more than one brand — and only when the name does not
+  // already start with it, which the seeded names mostly do ("Meridian 43"…").
+  const leafModels = chosen?.models ?? [];
+  const severalBrands = new Set(leafModels.map((m) => m.brandId)).size > 1;
   const modelGroups: OptionGroup[] = [
     {
-      options: (chosen?.models ?? []).map((m) => ({
+      options: leafModels.map((m) => ({
         value: m.id,
-        label: m.name,
+        label:
+          severalBrands &&
+          !m.name.toLowerCase().startsWith(m.brandName.toLowerCase())
+            ? `${m.brandName} · ${m.name}`
+            : m.name,
       })),
     },
   ];

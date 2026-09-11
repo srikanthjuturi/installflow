@@ -43,6 +43,8 @@ from app.core.gst_lookup import GstinLookupOut, GstinLookupRequest, lookup_gstin
 from app.features.vendors.schemas import (
     AddressSearchRequest,
     IntakeChannelOut,
+    OwnBrandRequest,
+    VendorBrandOut,
     VendorCreateRequest,
     VendorCreatedOut,
     VendorOptionOut,
@@ -86,6 +88,9 @@ NationalHeadUp = Depends(require_min_rank(NATIONAL_HEAD))
 #: The portal's own caller — see `record_address_search`, the one route here
 #: whose caller is a vendor rather than company staff.
 CanRaiseTicket = Annotated[Principal, Depends(require_feature("jobs.create"))]
+#: A vendor shaping its own catalogue — its brands, here, as its products are
+#: in `masters/router.py`. Seeded to `vendor`, not `vendor_user`.
+CanContribute = Annotated[Principal, Depends(require_feature("vendor.catalogue"))]
 IsVendor = Depends(require_vendor_principal)
 
 
@@ -236,6 +241,78 @@ async def record_address_search(
     """
     await service.record_address_search(db, principal, body)
     return envelope(None, message="Recorded")
+
+
+# ── a vendor's own brands ─────────────────────────────────────────────────────
+#
+# `vendor.catalogue` + `IsVendor`, the pair the vendor's own product writes use:
+# naming a brand is shaping the catalogue, which is the vendor account's job and
+# not a sub-user's by default. Every answer is the vendor's whole brand list, so
+# the portal redraws from one reply. All four sit above `/{vendor_id}`, which
+# would otherwise swallow `me` as a UUID and 422.
+
+
+@router.get(
+    "/me/brands",
+    response_model=ApiEnvelope[list[VendorBrandOut]],
+    dependencies=[IsVendor],
+)
+async def list_own_brands(
+    db: Db, principal: CanContribute
+) -> ApiEnvelope[list[VendorBrandOut]]:
+    """Every brand this vendor has, approved or waiting, with any refusal's reason."""
+    return envelope(await service.list_own_brands(db, principal))
+
+
+@router.post(
+    "/me/brands",
+    response_model=ApiEnvelope[list[VendorBrandOut]],
+    status_code=201,
+    dependencies=[IsVendor],
+)
+async def submit_own_brand(
+    body: OwnBrandRequest, db: Db, principal: CanContribute
+) -> ApiEnvelope[list[VendorBrandOut]]:
+    """Add a brand. It waits for a National Head or an Admin to approve it."""
+    return envelope(
+        await service.submit_own_brand(db, principal, body),
+        message="Brand sent for approval",
+        status_code=201,
+    )
+
+
+@router.put(
+    "/me/brands/{brand_id}",
+    response_model=ApiEnvelope[list[VendorBrandOut]],
+    dependencies=[IsVendor],
+)
+async def update_own_brand(
+    brand_id: uuid.UUID, body: OwnBrandRequest, db: Db, principal: CanContribute
+) -> ApiEnvelope[list[VendorBrandOut]]:
+    """Rename a waiting brand, or fix a refused one — which sends it back for approval.
+
+    **409** on an approved brand: the office renames those, since products may
+    already carry it.
+    """
+    return envelope(
+        await service.update_own_brand(db, principal, brand_id, body),
+        message="Brand saved",
+    )
+
+
+@router.delete(
+    "/me/brands/{brand_id}",
+    response_model=ApiEnvelope[list[VendorBrandOut]],
+    dependencies=[IsVendor],
+)
+async def withdraw_own_brand(
+    brand_id: uuid.UUID, db: Db, principal: CanContribute
+) -> ApiEnvelope[list[VendorBrandOut]]:
+    """Withdraw a waiting or refused brand. **409** on an approved one."""
+    return envelope(
+        await service.withdraw_own_brand(db, principal, brand_id),
+        message="Brand withdrawn",
+    )
 
 
 @router.get(

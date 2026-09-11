@@ -347,8 +347,18 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   work tickets but can no longer create them. A vendor sees every ticket its people raised; a
   vendor's sub-user sees only the ones they raised themselves.
 - A vendor's **login is created with the vendor**, on the Vendors screen, by a National Head or
-  above. It is required: only a vendor raises tickets, so a vendor without an account is a brand
+  above. It is required: only a vendor raises tickets, so a vendor without an account is a vendor
   nobody could ever raise a ticket against.
+- **A vendor sells several BRANDS; a product carries exactly one.** The vendor is the company
+  (Crestline Distributors); the brand is what is printed on the unit (*Meridian*, *Sunview*), and
+  it is what every product and ticket screen shows. Brands staff add on the vendor form are approved
+  at once; brands a vendor adds from its portal wait for a National Head or Admin on Approvals, and
+  only an APPROVED brand can go on a product. Up to 20 per vendor, waiting ones included. A
+  database FK on `(company_id, vendor_id, brand_id)` makes a product carrying another vendor's
+  brand impossible rather than merely refused. Every vendor's old name became its first brand, so
+  nothing changed on the day it shipped. Detail: `api/AGENTS.md` → Vendor brands.
+  ⚠ Not to be confused with the product's WHITE-LABEL brand above — that is the tenant company,
+  resolved by `useBrand` / `core/brand.py`. Never name a vendor-brand symbol a bare `brand`.
 - A vendor's **`intake_channels` decide which entry screens its portal offers.** Manual today;
   Excel appears when the bulk importer exists; API is somebody else's application calling ours.
 - A vendor's **`address_search_enabled` decides whether its ticket form offers the Google address

@@ -13,6 +13,7 @@ import type {
   IntakeChannelOption,
   UpdateVendorInput,
   Vendor,
+  VendorBrand,
   VendorOption,
 } from "@/types/vendor";
 import type { ListParams, Page } from "@/types/api";
@@ -23,10 +24,12 @@ export function listVendors(params: ListParams = {}): Promise<Page<Vendor>> {
 }
 
 /**
- * Every selectable brand, unpaginated — the model form needs them all.
+ * Every selectable vendor with its APPROVED brands, unpaginated — the product
+ * form's Vendor and Brand pickers need them all.
  *
  * Paused vendors are excluded by the server: this drives a picker for NEW
  * attributions, and a paused vendor is precisely one to stop attributing to.
+ * A vendor caller gets only itself.
  */
 export function listVendorOptions(): Promise<VendorOption[]> {
   return apiGet<VendorOption[]>("/vendors/options");
@@ -109,4 +112,39 @@ export function deleteVendor(id: string): Promise<null> {
  */
 export function recordAddressSearch(sessionId: string): Promise<null> {
   return apiPost<null>("/vendors/me/address-searches", { sessionId });
+}
+
+/* ── a vendor's own brands (the portal) ──────────────────────────────────────
+ *
+ * Pinned to the session's vendor on the server — there is no vendor id to send.
+ * Every call answers with the vendor's whole brand list, so the page redraws
+ * from one reply. */
+
+/** Every brand this vendor has, approved or waiting, with any refusal's reason. */
+export function listOwnBrands(): Promise<VendorBrand[]> {
+  return apiGet<VendorBrand[]>("/vendors/me/brands");
+}
+
+/** Name a new brand. It waits for a National Head or an Admin to approve it. */
+export function submitOwnBrand(name: string): Promise<VendorBrand[]> {
+  return apiPost<VendorBrand[]>("/vendors/me/brands", { name });
+}
+
+/**
+ * Rename a waiting brand, or fix a refused one — which sends it back for
+ * approval. The server refuses an approved brand: the office renames those.
+ */
+export function updateOwnBrand({
+  id,
+  name,
+}: {
+  id: string;
+  name: string;
+}): Promise<VendorBrand[]> {
+  return apiPut<VendorBrand[]>(`/vendors/me/brands/${id}`, { name });
+}
+
+/** Withdraw a waiting or refused brand. Refused on an approved one. */
+export function withdrawOwnBrand(id: string): Promise<VendorBrand[]> {
+  return apiDelete<VendorBrand[]>(`/vendors/me/brands/${id}`);
 }

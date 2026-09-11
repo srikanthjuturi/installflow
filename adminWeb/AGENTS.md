@@ -658,10 +658,11 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets/:id/bonus` | `BonusSetupPage` | bands from Rules config; pool balance shown, not enforced; re-notify reports the technicians actually reached |
 | `/escalations` | `EscalationQueuePage` | unassigned within 4h of slot, in two halves under date dividers; search · Still savable/Missed · slot-date range · Refresh; loads on scroll |
 | `/escalations/:id/bonus` · `/escalations/:id/assign` | — | param-preserving **redirects** to their `/tickets/:id/…` twins. The mock queue owned duplicates of both; deleting a route does not close a path (hard rule 0a) |
-| `/approvals` | `ApprovalsPage` | products vendors submitted, unpriced and unticketable until decided; `masters.approve` + a National-Head rank floor. Server-paged, Pending/Approved/Rejected pills, and a **Certified** column whose zero is the warning — a product filed under a sub-category nobody covers escalates the moment a ticket is raised |
+| `/approvals` | `ApprovalsPage` | products vendors submitted, unpriced and unticketable until decided; `masters.approve` + a National-Head rank floor. Server-paged, Pending/Approved/Rejected pills, and a **Certified** column whose zero is the warning — a product filed under a sub-category nobody covers escalates the moment a ticket is raised. A **Products \| Brands** switch above it, held as `?kind=brands` so a brand notification lands on that half; each button carries its own pending count, because the rail badge is one total and cannot say which half has the work |
 | `/redemptions` | `RedemptionsPage` | technicians asking to be paid their balance; `redemptions.pay` (admin + national_head) + a National-Head rank floor. Server-paged, To pay / Awaiting technician / Settled / Declined pills, starting on **To pay**, which the server orders OLDEST first. Rail badge = how many nobody has paid |
 | `/redemptions/:id` | `RedemptionPage` | payee, amount and the **UPI QR** (while nothing is claimed) · **Mark as paid** (one screenshot, no crop, optional UTR) · **Decline** with a reason (before a claim only) · the trail. There is deliberately **no confirm** — see below |
 | `/portal/products` | `VendorProductsPage` | a vendor's own catalogue: add a category, submit a product, see what is Pending and what was sent back with a reason. `vendor.catalogue`, `vendor` only |
+| `/portal/brands` | `VendorBrandsPage` | a vendor's brands with their status. **Add brand** sends one for approval; a pending one can be renamed or withdrawn, a rejected one fixed and resubmitted; an approved one offers nothing — it is the office's. `vendor.catalogue`, through `portalNav.ts` |
 | ~~`/ai-review`~~ | `AiQueuePage` | below-threshold or unreadable. **Route commented out** — the page exists, nothing reaches it |
 | ~~`/ai-review/:id`~~ | `AiReviewDetailPage` | 4 proof images · expected vs detected serial · Approve / Reject·retake. **Commented out** with the queue |
 | `/technicians` | `TechnicianListPage` | add · invite · **edit** — one `TechnicianFormDialog` for add and edit, pointed by an optional `technician` prop. Edit is `technicians.edit` and offered on REGISTERED rows only: an invite is a phone number and nothing else yet |
@@ -1368,6 +1369,22 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   is the resubmission. Tickets already raised are unaffected either way, because both prices are
   stamped on the ticket at intake. Everything that existed before this shipped was backfilled as
   approved.
+- **A vendor sells several BRANDS, and a product carries one.** The vendor is the company; the
+  brand is what is printed on the unit, and it is what a product chip, the approvals row and the
+  ticket's facts show (the vendor moves to the tooltip / a second line). Where each is edited:
+  - **Vendors → the vendor form's Brands rows** (`BrandRowsField`, `ParameterFields`' row pattern).
+    Staff-added brands are approved at once. A vendor's own waiting brands show read-only with a
+    chip; an approved brand that products carry shows its count and has no Remove, since the save
+    would 409. On ADD the first row follows the company name until somebody edits it. Rows use
+    `brandId`, never `id` — `useFieldArray` owns that key and would overwrite ours.
+  - **Portal → My brands**, where a vendor's additions wait for Approvals → Brands.
+  - **`ModelFormDialog`**: staff pick a **Vendor**, then a **Brand** from that vendor's approved
+    brands (`/vendors/options` carries them, so it costs no request); changing the vendor clears the
+    brand, and a single brand fills itself. A vendor gets no Vendor box and a Brand select of its
+    own approved brands (`useOwnBrands`).
+  The ceiling is **20 brands of any status** — waiting ones count, on both sides, so an approval can
+  never leave a vendor the staff form cannot save. ⚠ `useBrand` beside `useOwnBrands` is the company
+  WHITE-LABEL hook, a different idea entirely — never add a `useBrands`.
 - **A vendor-created CATEGORY is not reviewed**, only a product — and the vendor can EDIT the
   categories it created, not reviewed either. A category is company-wide, so the portal's row menu
   (`portalMenuItems`, through `CategoryTree`'s `menuFor`) offers "Edit category" only where the

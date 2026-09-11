@@ -129,6 +129,69 @@ export const locationCheckOf = (enabled: boolean): LocationCheck =>
 const upper = (v: string) => v.trim().toUpperCase();
 const squash = (v: string) => v.replace(/\s+/g, "");
 
+/** The API's ceilings — `MAX_BRANDS` and `MAX_BRAND_NAME` in `api/app`. */
+export const MAX_BRANDS = 20;
+export const MAX_BRAND_NAME = 120;
+
+/**
+ * One row of the Brands section.
+ *
+ * `brandId` is set for a brand the vendor already has; a row without one is
+ * new. Not `id`: `useFieldArray` reserves that name for its own row key and
+ * would overwrite ours. `waiting` marks a brand the VENDOR added that is still
+ * pending or was refused — shown so staff can see it, never editable here,
+ * because it is decided on the Approvals screen. It carries its status for the
+ * chip.
+ */
+export const brandRowSchema = z.object({
+  brandId: z.string().optional(),
+  name: z
+    .string()
+    .transform((v) => v.trim().replace(/\s+/g, " "))
+    .pipe(
+      z
+        .string()
+        .min(2, "A brand name needs at least 2 characters")
+        .max(MAX_BRAND_NAME, `Keep it under ${MAX_BRAND_NAME} characters`)
+    ),
+  waiting: z.enum(["pending", "rejected"]).optional(),
+});
+
+export type BrandRow = z.infer<typeof brandRowSchema>;
+
+/**
+ * At least one brand the office stands behind, and no name twice. The same two
+ * rules the API enforces, so the form refuses what the save would.
+ */
+const brandRowsSchema = z
+  .array(brandRowSchema)
+  // Waiting rows count — the server's rule, so approving one can never leave a
+  // vendor with more brands than this form may send back.
+  .max(
+    MAX_BRANDS,
+    `A vendor can have up to ${MAX_BRANDS} brands, counting any waiting for approval`
+  )
+  .superRefine((rows, ctx) => {
+    if (!rows.some((r) => !r.waiting)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Add at least one brand — every product needs one.",
+      });
+    }
+    const seen = new Set<string>();
+    rows.forEach((r, index) => {
+      const key = r.name.toLowerCase();
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [index, "name"],
+          message: "This brand is already on the list",
+        });
+      }
+      seen.add(key);
+    });
+  });
+
 export const vendorSchema = z.object({
   name: z.string().trim().min(2, "Vendor name is required"),
   /**
@@ -201,6 +264,7 @@ export const vendorSchema = z.object({
   status: z.enum(VENDOR_STATUSES),
   addressSearch: z.enum(ADDRESS_SEARCH),
   locationCheck: z.enum(LOCATION_CHECK),
+  brands: brandRowsSchema,
 });
 
 export type VendorFormValues = z.infer<typeof vendorSchema>;

@@ -144,6 +144,10 @@ class TicketOut(AppModel):
     nodePath: list[str] = []
     modelId: uuid.UUID
     modelName: str
+    #: The brand the product carries — which of a multi-brand vendor's labels
+    #: this job is for. Read through the model, live, like `modelName`. Null
+    #: only if the model could not be read.
+    brandName: str | None = None
 
     serviceType: str
     description: str | None

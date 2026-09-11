@@ -23,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import brand
 from app.core.deps import Principal
 from app.core.gst import assert_gstin_free_for_vendor
+from app.core.notifications import notify
+from app.core.product_tree import APPROVED, PENDING, REJECTED
+from app.core.realtime import publish_notification
 from app.core.intake import (
     CHANNEL_DESCRIPTION,
     INTAKE_CHANNELS,
@@ -33,8 +36,13 @@ from app.core.schemas import EmailStatus, ListParams
 from app.db.repository import paginate
 from app.emails import send_temporary_password
 from app.features.vendors.schemas import (
+    MAX_BRANDS,
     AddressSearchRequest,
     IntakeChannelOut,
+    OwnBrandRequest,
+    VendorBrandIn,
+    VendorBrandOptionOut,
+    VendorBrandOut,
     VendorCreateRequest,
     VendorCreatedOut,
     VendorOptionOut,
@@ -51,6 +59,7 @@ from app.models.ticket import Ticket
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_address_search import VendorAddressSearch
+from app.models.vendor_brand import MAX_BRAND_NAME, VendorBrand
 
 SORTABLE = {
     "name": Vendor.name,
@@ -248,12 +257,70 @@ async def _address_search_counts(
     return {vendor_id: count for vendor_id, count in rows}
 
 
+#: Approved first — they are what products can carry — then the waiting ones.
+_BRAND_ORDER = {APPROVED: 0, PENDING: 1, REJECTED: 2}
+
+
+async def _brand_product_counts(
+    db: AsyncSession, company_id: uuid.UUID, brand_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Live products per brand — one grouped query. What a removal is refused over."""
+    if not brand_ids:
+        return {}
+    rows = await db.execute(
+        select(ProductModel.brand_id, func.count(ProductModel.id))
+        .where(
+            ProductModel.company_id == company_id,
+            ProductModel.brand_id.in_(brand_ids),
+            ProductModel.deleted_at.is_(None),
+        )
+        .group_by(ProductModel.brand_id)
+    )
+    return {brand_id: count for brand_id, count in rows}
+
+
+def _brand_out(row: VendorBrand, product_count: int = 0) -> VendorBrandOut:
+    return VendorBrandOut(
+        id=row.id,
+        name=row.name,
+        approvalStatus=row.approval_status,
+        rejectionReason=row.rejection_reason,
+        submittedAt=row.submitted_at,
+        productCount=product_count,
+    )
+
+
+async def _brands_by_vendor(
+    db: AsyncSession, company_id: uuid.UUID, vendor_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[VendorBrandOut]]:
+    """Every live brand of these vendors, ordered approved-then-waiting, A–Z."""
+    if not vendor_ids:
+        return {}
+    rows = list(
+        await db.scalars(
+            select(VendorBrand).where(
+                VendorBrand.company_id == company_id,
+                VendorBrand.vendor_id.in_(vendor_ids),
+                VendorBrand.deleted_at.is_(None),
+            )
+        )
+    )
+    counts = await _brand_product_counts(db, company_id, [b.id for b in rows])
+    out: dict[uuid.UUID, list[VendorBrandOut]] = {}
+    for row in sorted(
+        rows, key=lambda b: (_BRAND_ORDER.get(b.approval_status, 9), b.name.lower())
+    ):
+        out.setdefault(row.vendor_id, []).append(_brand_out(row, counts.get(row.id, 0)))
+    return out
+
+
 def _to_out(
     row: Vendor,
     model_count: int,
     ticket_count: int = 0,
     login_email: str | None = None,
     address_search_count: int = 0,
+    brands: list[VendorBrandOut] | None = None,
 ) -> VendorOut:
     return VendorOut(
         id=row.id,
@@ -276,6 +343,7 @@ def _to_out(
         modelCount=model_count,
         ticketCount=ticket_count,
         loginEmail=login_email,
+        brands=brands or [],
         createdAt=row.created_at,
     )
 
@@ -283,12 +351,13 @@ def _to_out(
 async def _hydrate(
     db: AsyncSession, company_id: uuid.UUID, rows: list[Vendor]
 ) -> list[VendorOut]:
-    """Resolve the four derived figures for a page — four queries, not 4N."""
+    """Resolve the derived figures for a page — one query each, not N."""
     ids = [r.id for r in rows]
     models = await _model_counts(db, ids)
     tickets = await _ticket_counts(db, company_id, ids)
     logins = await _login_emails(db, company_id, ids)
     searches = await _address_search_counts(db, company_id, ids)
+    brands = await _brands_by_vendor(db, company_id, ids)
     return [
         _to_out(
             r,
@@ -296,6 +365,7 @@ async def _hydrate(
             tickets.get(r.id, 0),
             logins.get(r.id),
             searches.get(r.id, 0),
+            brands.get(r.id, []),
         )
         for r in rows
     ]
@@ -397,11 +467,14 @@ def list_channels() -> list[IntakeChannelOut]:
 async def list_options(
     db: AsyncSession, principal: Principal
 ) -> list[VendorOptionOut]:
-    """Every selectable brand, unpaginated — the model form needs them all.
+    """Every selectable vendor with its approved brands — the product form's two pickers.
 
     Paused and removed vendors are excluded: this drives a picker for NEW
     attributions, and a paused vendor is precisely one you should stop
-    attributing to. Models already branded with it keep their brand.
+    attributing to. Models already carrying it keep it.
+
+    Only APPROVED brands ride along: a product may carry nothing else, and a
+    vendor's pending brand is not a choice until somebody has agreed to it.
 
     A VENDOR caller gets only itself. This endpoint is gated on `masters.view`
     rather than `vendors.view` — deliberately, so the product-model form is not
@@ -415,8 +488,28 @@ async def list_options(
     )
     if principal.is_vendor:
         stmt = stmt.where(Vendor.id == principal.vendor_id)
-    rows = await db.scalars(stmt.order_by(Vendor.name))
-    return [VendorOptionOut(id=r.id, name=r.name) for r in rows]
+    rows = list(await db.scalars(stmt.order_by(Vendor.name)))
+    if not rows:
+        return []
+
+    by_vendor: dict[uuid.UUID, list[VendorBrandOptionOut]] = {}
+    for vendor_id, brand_id, brand_name in await db.execute(
+        select(VendorBrand.vendor_id, VendorBrand.id, VendorBrand.name)
+        .where(
+            VendorBrand.company_id == principal.company_id,
+            VendorBrand.vendor_id.in_([r.id for r in rows]),
+            VendorBrand.deleted_at.is_(None),
+            VendorBrand.approval_status == APPROVED,
+        )
+        .order_by(func.lower(VendorBrand.name))
+    ):
+        by_vendor.setdefault(vendor_id, []).append(
+            VendorBrandOptionOut(id=brand_id, name=brand_name)
+        )
+    return [
+        VendorOptionOut(id=r.id, name=r.name, brands=by_vendor.get(r.id, []))
+        for r in rows
+    ]
 
 
 # ── write ─────────────────────────────────────────────────────────────────────
@@ -467,6 +560,20 @@ async def create_vendor(
     db.add(row)
     # autoflush is OFF (hard rule 9) and the membership needs the vendor's id.
     await db.flush()
+
+    # Its brands, approved as written — the people adding a vendor are the
+    # people who would approve them. None given means it sells under its own
+    # name, which is what every vendor from before brands was given.
+    for brand_name in body.brands or [" ".join(name.split())[:MAX_BRAND_NAME]]:
+        db.add(
+            VendorBrand(
+                company_id=company_id,
+                vendor_id=row.id,
+                name=brand_name,
+                approval_status=APPROVED,
+                created_by=principal.user_id,
+            )
+        )
 
     # Stays None when an existing identity is reused — that account keeps the
     # password it already signs in with everywhere else.
@@ -648,10 +755,122 @@ async def update_vendor(
         row.address_search_enabled = body.addressSearchEnabled
     if body.locationCheckEnabled is not None:
         row.location_check_enabled = body.locationCheckEnabled
+    if body.brands is not None:
+        await _apply_brands(db, principal, row, body.brands)
     row.updated_by = principal.user_id
 
     await db.commit()
     return await _one(db, principal.company_id, row)
+
+
+async def _apply_brands(
+    db: AsyncSession,
+    principal: Principal,
+    vendor: Vendor,
+    rows: list[VendorBrandIn],
+) -> None:
+    """Make this vendor's APPROVED brands match the list the staff form sent.
+
+    Rows with an `id` keep that brand (renamed if the name changed); rows without
+    one are new, approved at once. An approved brand missing from the list is
+    removed — but never while a live product carries it: that is a 409 naming
+    the brand and how many, since removing it would leave products under a brand
+    nobody can see.
+
+    A vendor's WAITING brands (pending or rejected) are not this form's to
+    decide — they belong to the Approvals screen. A row naming one is taken as
+    "keep it" and its name is left as the vendor wrote it; leaving one out of
+    the list does nothing to it.
+
+    At least one approved brand must remain, because every product needs one.
+    Deletions flush before renames and renames before inserts, so a name freed
+    by a removal can be reused in the same save.
+    """
+    live = list(
+        await db.scalars(
+            select(VendorBrand).where(
+                VendorBrand.company_id == vendor.company_id,
+                VendorBrand.vendor_id == vendor.id,
+                VendorBrand.deleted_at.is_(None),
+            )
+        )
+    )
+    by_id = {b.id: b for b in live}
+    kept = {r.id for r in rows if r.id is not None}
+    if kept - by_id.keys():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One of those brands is not this vendor's. Reload and try again.",
+        )
+
+    removing = [b for b in live if b.approval_status == APPROVED and b.id not in kept]
+    if removing:
+        counts = await _brand_product_counts(
+            db, vendor.company_id, [b.id for b in removing]
+        )
+        for b in removing:
+            carried = counts.get(b.id, 0)
+            if carried:
+                raise _conflict(
+                    f"{b.name} is on {carried} product{'' if carried == 1 else 's'}. "
+                    "Move them to another brand before removing it."
+                )
+
+    def final_name(r: VendorBrandIn) -> str:
+        existing = by_id.get(r.id) if r.id is not None else None
+        # A waiting brand keeps the vendor's own spelling.
+        if existing is not None and existing.approval_status != APPROVED:
+            return existing.name
+        return r.name
+
+    untouched = [b.name for b in live if b.approval_status != APPROVED and b.id not in kept]
+    names = [final_name(r).lower() for r in rows] + [n.lower() for n in untouched]
+    if len(set(names)) != len(names):
+        raise _conflict(
+            "Two brands would share a name — including one waiting for approval."
+        )
+    approved_after = sum(
+        1 for r in rows if r.id is None or by_id[r.id].approval_status == APPROVED
+    )
+    if not approved_after:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keep at least one approved brand — every product needs one.",
+        )
+    # The ceiling counts the vendor's waiting brands too — they are rows on the
+    # same list, and approving one must never push a vendor past what this form
+    # can send back. `submit_own_brand` holds the other end of the same rule.
+    waiting = sum(1 for b in live if b.approval_status != APPROVED)
+    if approved_after + waiting > MAX_BRANDS:
+        raise _conflict(
+            f"A vendor can have up to {MAX_BRANDS} brands, counting any waiting "
+            "for approval."
+        )
+
+    now = _now()
+    for b in removing:
+        b.deleted_at = now
+        b.updated_by = principal.user_id
+    await db.flush()
+    for r in rows:
+        if r.id is None:
+            continue
+        existing = by_id[r.id]
+        if existing.approval_status == APPROVED and existing.name != r.name:
+            existing.name = r.name
+            existing.updated_by = principal.user_id
+    await db.flush()
+    for r in rows:
+        if r.id is None:
+            db.add(
+                VendorBrand(
+                    company_id=vendor.company_id,
+                    vendor_id=vendor.id,
+                    name=r.name,
+                    approval_status=APPROVED,
+                    created_by=principal.user_id,
+                )
+            )
 
 
 async def delete_vendor(
@@ -659,17 +878,28 @@ async def delete_vendor(
 ) -> None:
     row = await _load(db, principal.company_id, vendor_id)
 
-    branded = (await _model_counts(db, [vendor_id])).get(vendor_id, 0)
-    if branded:
+    supplied = (await _model_counts(db, [vendor_id])).get(vendor_id, 0)
+    if supplied:
         raise _conflict(
-            f"{row.name} is the brand on {branded} product model"
-            f"{'' if branded == 1 else 's'}. Reassign them first."
+            f"{row.name} still supplies {supplied} product model"
+            f"{'' if supplied == 1 else 's'}. Reassign them first."
         )
 
     now = _now()
     row.deleted_at = now
     row.is_active = False
     row.updated_by = principal.user_id
+    # Its brands go with it — none is on a live product (refused above), and a
+    # removed vendor's live brands would hold their names for nobody.
+    for vendor_brand in await db.scalars(
+        select(VendorBrand).where(
+            VendorBrand.company_id == row.company_id,
+            VendorBrand.vendor_id == row.id,
+            VendorBrand.deleted_at.is_(None),
+        )
+    ):
+        vendor_brand.deleted_at = now
+        vendor_brand.updated_by = principal.user_id
 
     # Close the accounts with it. Without this the vendor and its sub-users keep
     # authenticating against a vendor that no longer exists, and the first thing
@@ -755,3 +985,178 @@ async def record_address_search(
     )
     await db.execute(stmt)
     await db.commit()
+
+
+# ── a vendor's own brands ─────────────────────────────────────────────────────
+#
+# The portal's half. Pinned to `principal.vendor_id` throughout — there is no
+# vendor id in any path or body for a caller to change (hard rule 0) — and a
+# brand of another vendor is a 404, never a refusal that confirms it exists.
+#
+# A vendor ADDS a brand and waits: a National Head or an Admin decides it on the
+# Approvals screen (`masters.approve_brand` / `reject_brand`), the way a
+# vendor-submitted product waits. What a vendor may do to its own brands after
+# that is deliberately small: rename or withdraw one that is still waiting, or
+# fix and resubmit one that was refused. An APPROVED brand is the office's —
+# products may already carry it, and renaming it would rename them.
+
+
+async def _load_own_brand(
+    db: AsyncSession, principal: Principal, brand_id: uuid.UUID
+) -> VendorBrand:
+    row = await db.scalar(
+        select(VendorBrand).where(
+            VendorBrand.id == brand_id,
+            VendorBrand.company_id == principal.company_id,
+            VendorBrand.vendor_id == principal.vendor_id,
+            VendorBrand.deleted_at.is_(None),
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Brand not found"
+        )
+    return row
+
+
+async def _assert_own_brand_name_free(
+    db: AsyncSession,
+    principal: Principal,
+    name: str,
+    *,
+    exclude_id: uuid.UUID | None = None,
+) -> None:
+    """A clear 409 before the unique index has to be the one to say it."""
+    stmt = select(VendorBrand.id).where(
+        VendorBrand.company_id == principal.company_id,
+        VendorBrand.vendor_id == principal.vendor_id,
+        VendorBrand.deleted_at.is_(None),
+        func.lower(VendorBrand.name) == name.lower(),
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(VendorBrand.id != exclude_id)
+    if await db.scalar(stmt) is not None:
+        raise _conflict(f"You already have a brand called {name}.")
+
+
+async def _notify_brand_submitted(
+    db: AsyncSession, principal: Principal, row: VendorBrand
+) -> uuid.UUID:
+    """Tell staff there is a brand to decide.
+
+    `product_submitted`'s shape and its two accepted costs: `pincode=None`,
+    because a vendor's brands are company-wide, and no `vendor_id`, because the
+    vendor is the AUTHOR of this event rather than a party to it.
+    """
+    vendor_name = await db.scalar(select(Vendor.name).where(Vendor.id == row.vendor_id))
+    raised = await notify(
+        db,
+        company_id=principal.company_id,
+        kind="brand_submitted",
+        title=f"{vendor_name or 'A vendor'} added the brand {row.name}",
+        detail="Approve it so their products can carry it.",
+        to="/approvals?kind=brands",
+    )
+    return raised.id
+
+
+async def list_own_brands(
+    db: AsyncSession, principal: Principal
+) -> list[VendorBrandOut]:
+    """This vendor's live brands, every status — the portal's My brands page."""
+    by_vendor = await _brands_by_vendor(db, principal.company_id, [principal.vendor_id])
+    return by_vendor.get(principal.vendor_id, [])
+
+
+async def submit_own_brand(
+    db: AsyncSession, principal: Principal, body: OwnBrandRequest
+) -> list[VendorBrandOut]:
+    """A vendor names a new brand. It waits for approval, and staff are told.
+
+    Refused at the ceiling, which counts every live brand whatever its status —
+    the rule `_apply_brands` holds, so an approval can never leave a vendor with
+    more brands than the staff form is allowed to send.
+    """
+    held = await db.scalar(
+        select(func.count())
+        .select_from(VendorBrand)
+        .where(
+            VendorBrand.company_id == principal.company_id,
+            VendorBrand.vendor_id == principal.vendor_id,
+            VendorBrand.deleted_at.is_(None),
+        )
+    )
+    if (held or 0) >= MAX_BRANDS:
+        raise _conflict(
+            f"You have {MAX_BRANDS} brands already. Withdraw one you no longer "
+            "need before adding another."
+        )
+    await _assert_own_brand_name_free(db, principal, body.name)
+    row = VendorBrand(
+        company_id=principal.company_id,
+        vendor_id=principal.vendor_id,
+        name=body.name,
+        approval_status=PENDING,
+        submitted_at=_now(),
+        created_by=principal.user_id,
+    )
+    db.add(row)
+    # autoflush is off, and the notification names the row.
+    await db.flush()
+    raised = await _notify_brand_submitted(db, principal, row)
+    await db.commit()
+    await publish_notification(
+        db, company_id=principal.company_id, pincode=None, notification_id=raised
+    )
+    return await list_own_brands(db, principal)
+
+
+async def update_own_brand(
+    db: AsyncSession, principal: Principal, brand_id: uuid.UUID, body: OwnBrandRequest
+) -> list[VendorBrandOut]:
+    """Rename a brand that is still waiting — or fix a refused one and resubmit it.
+
+    A REJECTED brand that is edited goes back to pending and rings staff again,
+    clearing the old decision and reason (the CHECKs insist). A PENDING one is
+    simply renamed. An APPROVED one is refused: it is the office's now.
+    """
+    row = await _load_own_brand(db, principal, brand_id)
+    if row.approval_status == APPROVED:
+        raise _conflict(
+            f"{row.name} is approved. Ask the office to rename it — products may "
+            "already carry it."
+        )
+    await _assert_own_brand_name_free(db, principal, body.name, exclude_id=row.id)
+
+    resubmitted = row.approval_status == REJECTED
+    row.name = body.name
+    if resubmitted:
+        row.approval_status = PENDING
+        row.submitted_at = _now()
+        row.decided_at = None
+        row.decided_by = None
+        row.rejection_reason = None
+    row.updated_by = principal.user_id
+
+    raised = await _notify_brand_submitted(db, principal, row) if resubmitted else None
+    await db.commit()
+    if raised is not None:
+        await publish_notification(
+            db, company_id=principal.company_id, pincode=None, notification_id=raised
+        )
+    return await list_own_brands(db, principal)
+
+
+async def withdraw_own_brand(
+    db: AsyncSession, principal: Principal, brand_id: uuid.UUID
+) -> list[VendorBrandOut]:
+    """Take back a brand that is waiting or was refused. Nothing carries it yet."""
+    row = await _load_own_brand(db, principal, brand_id)
+    if row.approval_status == APPROVED:
+        raise _conflict(
+            f"{row.name} is approved, so only the office can remove it."
+        )
+    row.deleted_at = _now()
+    row.updated_by = principal.user_id
+    await db.commit()
+    return await list_own_brands(db, principal)

@@ -14,8 +14,8 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useRejectProduct } from "@/hooks/useApprovals";
-import type { ProductSubmission } from "@/types/approval";
+import { useRejectBrand, useRejectProduct } from "@/hooks/useApprovals";
+import type { BrandSubmission, ProductSubmission } from "@/types/approval";
 import { rejectSchema, type RejectFormValues } from "./approvalSchema";
 
 /**
@@ -38,13 +38,81 @@ export function RejectProductDialog({
   onOpenChange: (open: boolean) => void;
   submission?: ProductSubmission;
 }) {
+  const reject = useRejectProduct();
+  return (
+    <RejectReasonDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      subject={
+        submission
+          ? {
+              id: submission.id,
+              name: submission.name,
+              vendorName: submission.vendorName,
+            }
+          : undefined
+      }
+      description="will see your reason and can edit and resubmit. Nothing is deleted."
+      placeholder="e.g. The capacity does not match the model number — check the invoice."
+      confirmLabel="Reject product"
+      isPending={reject.isPending}
+      onReject={(input, onSuccess) => reject.mutate(input, { onSuccess })}
+    />
+  );
+}
+
+/**
+ * The same refusal for a brand a vendor added. The vendor may rename it and
+ * send it again, which is what the reason is for.
+ */
+export function RejectBrandDialog({
+  open,
+  onOpenChange,
+  submission,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  submission?: BrandSubmission;
+}) {
+  const reject = useRejectBrand();
+  return (
+    <RejectReasonDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      subject={submission}
+      description="will see your reason and can correct the name and resubmit. Nothing is deleted."
+      placeholder="e.g. We only list brands you hold a distribution agreement for — send it with the agreement."
+      confirmLabel="Reject brand"
+      isPending={reject.isPending}
+      onReject={(input, onSuccess) => reject.mutate(input, { onSuccess })}
+    />
+  );
+}
+
+interface RejectSubject {
+  id: string;
+  name: string;
+  vendorName: string;
+}
+
+function RejectReasonDialog({
+  open,
+  onOpenChange,
+  subject,
+  ...form
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subject?: RejectSubject;
+} & Omit<RejectFormProps, "subject" | "onDone">) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        {submission ? (
+        {subject ? (
           <RejectForm
-            submission={submission}
+            subject={subject}
             onDone={() => onOpenChange(false)}
+            {...form}
           />
         ) : null}
       </DialogContent>
@@ -52,14 +120,29 @@ export function RejectProductDialog({
   );
 }
 
-function RejectForm({
-  submission,
-  onDone,
-}: {
-  submission: ProductSubmission;
+interface RejectFormProps {
+  subject: RejectSubject;
+  /** Follows the vendor's name: "Crestline will see your reason and…". */
+  description: string;
+  placeholder: string;
+  confirmLabel: string;
+  isPending: boolean;
+  onReject: (
+    input: { id: string; reason: string },
+    onSuccess: () => void
+  ) => void;
   onDone: () => void;
-}) {
-  const reject = useRejectProduct();
+}
+
+function RejectForm({
+  subject,
+  description,
+  placeholder,
+  confirmLabel,
+  isPending,
+  onReject,
+  onDone,
+}: RejectFormProps) {
   const {
     register,
     handleSubmit,
@@ -70,24 +153,18 @@ function RejectForm({
   });
 
   function submit(values: RejectFormValues) {
-    reject.mutate(
-      { id: submission.id, reason: values.reason },
-      {
-        onSuccess: () => {
-          toast.add({ title: `${submission.name} rejected` });
-          onDone();
-        },
-      }
-    );
+    onReject({ id: subject.id, reason: values.reason }, () => {
+      toast.add({ title: `${subject.name} rejected` });
+      onDone();
+    });
   }
 
   return (
     <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>Reject {submission.name}?</DialogTitle>
+        <DialogTitle>Reject {subject.name}?</DialogTitle>
         <DialogDescription>
-          {submission.vendorName} will see your reason and can edit and
-          resubmit. Nothing is deleted.
+          {subject.vendorName} {description}
         </DialogDescription>
       </DialogHeader>
 
@@ -99,7 +176,7 @@ function RejectForm({
           id="reject-reason"
           rows={3}
           autoFocus
-          placeholder="e.g. The capacity does not match the model number — check the invoice."
+          placeholder={placeholder}
           aria-invalid={errors.reason ? true : undefined}
           aria-describedby={
             errors.reason ? "reject-reason-error" : "reject-reason-hint"
@@ -124,14 +201,14 @@ function RejectForm({
       <DialogFooter>
         <DialogClose
           render={
-            <Button type="button" variant="outline" disabled={reject.isPending}>
+            <Button type="button" variant="outline" disabled={isPending}>
               Cancel
             </Button>
           }
         />
-        <Button type="submit" variant="destructive" disabled={reject.isPending}>
-          {reject.isPending ? <Spinner /> : null}
-          Reject product
+        <Button type="submit" variant="destructive" disabled={isPending}>
+          {isPending ? <Spinner /> : null}
+          {confirmLabel}
         </Button>
       </DialogFooter>
     </form>

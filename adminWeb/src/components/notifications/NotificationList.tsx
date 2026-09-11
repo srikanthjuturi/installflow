@@ -34,7 +34,7 @@ type Rewrite = [prefix: string, rewrite: (path: string) => string];
  * Where each route lands for a PORTAL reader, first match wins.
  *
  * An ordered table rather than a chain of ifs, because the list grows:
- * `vendor_id` widens a notification to a vendor's portal, and four kinds
+ * `vendor_id` widens a notification to a vendor's portal, and six kinds
  * already carry one.
  */
 const PORTAL_ROUTES: Rewrite[] = [
@@ -43,6 +43,8 @@ const PORTAL_ROUTES: Rewrite[] = [
   // is the ops queue; their copy of that product is on their own screen.
   ["/approvals", () => "/portal/products"],
   ["/portal/products", (path) => path],
+  // A decision on a brand they added.
+  ["/portal/brands", (path) => path],
 ];
 
 /**
@@ -54,7 +56,11 @@ const PORTAL_ROUTES: Rewrite[] = [
  * `/portal/products`, which `RequirePortal` bounces straight back to `/` — a
  * bell that leads nowhere, which is the one thing a notification must not be.
  */
-const OPS_ROUTES: Rewrite[] = [["/portal/products", () => "/approvals"]];
+const OPS_ROUTES: Rewrite[] = [
+  ["/portal/products", () => "/approvals"],
+  // The Brands half of the same queue.
+  ["/portal/brands", () => "/approvals?kind=brands"],
+];
 
 /**
  * The server stores ONE route per notification. Most are written for the

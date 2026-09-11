@@ -998,6 +998,79 @@ sub-category has no certified technicians, so every ticket raised there escalate
 nothing on screen saying why. The approvals queue therefore carries `technicianCount` and the
 console warns on zero **before** the decision.
 
+## Vendor brands — a vendor sells several, a product carries one
+
+A vendor is a COMPANY; a brand is what is printed on the unit, and one company sells several
+(Crestline Distributors sells *Meridian* and *Sunview*). Until `a4d8e61f2c07` the vendor's name WAS
+the brand — `product_models.vendor_id` was documented as "the brand" and `/vendors/options` was
+"the brand picker". Now:
+
+    vendor_brands            one row per brand, per vendor; approval_status pending|approved|rejected
+    product_models.brand_id  NOT NULL; FK (company_id, vendor_id, brand_id)
+                             -> vendor_brands (company_id, vendor_id, id)
+
+**The three-column FK is the point.** It makes a product whose brand belongs to a different vendor
+structurally impossible, not merely refused by a service check. `uq_vendor_brands_company_vendor_id`
+exists to be its target and doubles as the covering index for the vendor FK. `audit_tenancy`'s
+composite check was widened to accept it: it now requires `company_id → company_id` plus the named
+column, rather than exactly two columns.
+
+**Backfill: every vendor's name became its first APPROVED brand, and every product got it.** So
+nothing looked different on the day it shipped. The downgrade refuses (with counts) while any live
+brand is not that vendor-named approved one, or while two brands' products share a name in one
+category — dropping the column would silently merge them.
+
+**Model names are unique per `(node_id, brand_id, lower(name))`** — two brands may each have a
+"43 inch LED" in one category. `_assert_model_name_free` is scoped by brand to match, and so is the
+console's `findModel`. Hand-written index, like every `lower()` one: autogenerate mistakes it for
+stale.
+
+**Two ways a brand appears, and only one is reviewed:**
+
+| Who | Where | Status |
+|---|---|---|
+| Staff (`vendors.edit`, NH floor) | Vendors → the vendor form's Brands rows, `brands` on `POST`/`PUT /vendors` | **approved** at once — the people setting up the vendor are the approvers |
+| The vendor (`vendor.catalogue`) | Portal → My brands, `/vendors/me/brands` | **pending** until an NH/Admin decides on Approvals → Brands |
+
+A vendor's own brand follows the product approval flow above exactly — same guards (`CanApprove` +
+`NationalHeadUp`), same ordering and `status` filter on `GET /masters/brand-approvals`, same 409
+`ALREADY_DECIDED`, same reason rules, and `pending_count` (the rail badge) counts both kinds. A
+vendor may rename a pending brand, fix-and-resubmit a rejected one (it goes back to pending and
+rings staff again), and withdraw either. An **approved** brand is the office's: products may carry
+it, so the portal routes 409 on it.
+
+`PUT /vendors` sends the APPROVED brands whole (`[{id?, name}]`): a row with an id is kept or
+renamed, one without is new, an approved brand left out is soft-deleted — **409 while a live
+product carries it**, naming the brand and the count. Waiting brands are not that form's to decide;
+leaving one out does nothing to it. At least one approved brand must remain.
+
+**The ceiling (20) counts every live brand, waiting ones included**, in both `_apply_brands` and
+`submit_own_brand`. Counting only approved ones would let a vendor hold 20 approved plus a pending
+21st; approving it would leave a vendor the staff form cannot save, because `VendorBrandRows` caps
+what it may send at 20.
+
+**Only an APPROVED brand can go on a product.** `masters._resolve_brand` is the one check, used by
+all four product writers: a given `brandId` must be this vendor's, live and approved, else a 400
+that says which. **Omitted, it falls back to the vendor's only approved brand** — which is every
+vendor from before brands existed, and what keeps an older console (and `deck/seed/seed_dev.mjs`)
+saving products without knowing the field. With several, the caller must choose. A staff move to
+another vendor moves the brand with it: the FK allows nothing else.
+
+**A ticket reads its brand live through its model**, like `modelName` — `TicketOut.brandName`,
+joined in `_hydrate`. Nothing is stamped on the ticket; unlike a price, a brand is not a term
+anybody agreed to.
+
+**Three notification kinds**, the product ones' twins: `brand_submitted` (staff, `pincode=NULL`,
+`to=/approvals?kind=brands`), `brand_approved` / `brand_rejected` (carry `vendor_id`,
+`to=/portal/brands`, rewritten for a staff reader by `NotificationList.routeFor`).
+
+⚠ **Never name anything bare `brand`.** `app.core.brand` is the company WHITE-LABEL module (see the
+root AGENTS.md) and `tickets`, `jobs` and `vendors` already import it. It is `VendorBrand`,
+`brand_names`, `brandName` here; `useOwnBrands`, never `useBrands`, in the console.
+
+**Deliberately unchanged:** the technician app (it shows `modelName` only, and model names already
+begin with the brand — prefixing it would double it), WhatsApp wording, and payout reasons.
+
 ## Reversing a penalty
 
 A cancellation or no-show penalty can be given back — **in full, once, with a written reason** —

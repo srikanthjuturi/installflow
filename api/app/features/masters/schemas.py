@@ -240,9 +240,14 @@ class ModelCreateRequest(BaseModel):
     """
 
     name: Name120
-    #: The vendor whose brand this model carries. Validated against the caller's
-    #: own company in the service — an id in a body is an assertion, not a fact.
+    #: The vendor that supplies it. Validated against the caller's own company
+    #: in the service — an id in a body is an assertion, not a fact.
     vendorId: uuid.UUID
+    #: The brand it carries — one of that vendor's APPROVED brands
+    #: (`service._resolve_brand`). Omit it only when the vendor has exactly one,
+    #: which is every vendor from before brands existed: that keeps an older
+    #: console, which has never heard of this field, saving products.
+    brandId: uuid.UUID | None = None
     #: What a technician can be sent to do with it. Defaults to installation and
     #: demo, which is the work this product was built around.
     serviceTypes: ServiceTypes = Field(
@@ -275,9 +280,13 @@ class ModelCreateRequest(BaseModel):
 
 class ModelUpdateRequest(BaseModel):
     name: Name120 | None = None
-    #: Re-branding is allowed; clearing the brand is not, so this is optional
-    #: rather than clearable.
+    #: Moving it to another vendor is allowed; clearing the vendor is not, so
+    #: this is optional rather than clearable. A move needs a `brandId` of the
+    #: NEW vendor, unless that vendor has exactly one approved brand.
     vendorId: uuid.UUID | None = None
+    #: Re-branding within the vendor (or with the move above). Optional rather
+    #: than clearable, for `vendorId`'s reason.
+    brandId: uuid.UUID | None = None
     #: Sent whole — omitting it leaves the list alone, and an empty list is
     #: refused rather than clearing it. A model does nothing is not a model.
     serviceTypes: ServiceTypes | None = None
@@ -309,10 +318,15 @@ class ProductModelOut(AppModel):
     id: uuid.UUID
     #: The catalogue node this product sits under.
     nodeId: uuid.UUID
-    #: The brand. `vendorName` is resolved here so no client fetches the vendor
-    #: list just to render a row.
+    #: The vendor that supplies it. `vendorName` is resolved here so no client
+    #: fetches the vendor list just to render a row.
     vendorId: uuid.UUID
     vendorName: str
+    #: The brand printed on it — what a product chip shows. One of the vendor's
+    #: approved brands; for every product from before brands existed, the brand
+    #: named after its vendor.
+    brandId: uuid.UUID
+    brandName: str
     name: str
     #: What a technician can be sent to do with it, in catalogue order.
     serviceTypes: list[str]
@@ -416,10 +430,14 @@ ProductNodeOut.model_rebuild()
 
 
 class ProductSubmitRequest(BaseModel):
-    """What a VENDOR submits. No brand, no prices, no pause switch.
+    """What a VENDOR submits. No vendor, no prices, no pause switch.
 
     All three are absent by construction rather than by validation — there is no
     field for them to arrive in, so no branch has to remember to ignore one.
+
+    The BRAND is theirs to pick, from their own approved brands
+    (`service._resolve_brand` pins it to the caller's vendor), and may be omitted
+    only while they have exactly one.
 
       * **`vendorId`** — the caller's own vendor is the only possible answer,
         and the service reads it off the principal. An id in a body is an
@@ -436,6 +454,8 @@ class ProductSubmitRequest(BaseModel):
     """
 
     name: Name120
+    #: One of the caller's own APPROVED brands. See the note above.
+    brandId: uuid.UUID | None = None
     serviceTypes: ServiceTypes = Field(
         default_factory=lambda: list(DEFAULT_SERVICE_TYPES)
     )
@@ -456,6 +476,8 @@ class ProductResubmitRequest(BaseModel):
     """
 
     name: Name120 | None = None
+    #: Move it to another of the caller's own approved brands. Omit to keep it.
+    brandId: uuid.UUID | None = None
     serviceTypes: ServiceTypes | None = None
     capacity: Capacity = None
     warrantyMonths: WarrantyMonths = None
@@ -507,6 +529,9 @@ class ProductApprovalOut(AppModel):
     nodePath: list[str]
     vendorId: uuid.UUID
     vendorName: str
+    #: The brand it will carry — what the reviewer is actually agreeing to put
+    #: on the unit. The vendor above is who submitted it.
+    brandName: str
     name: str
     serviceTypes: list[str]
     capacity: str | None
@@ -537,6 +562,25 @@ class ProductApprovalOut(AppModel):
     decidedAt: datetime.datetime | None
     #: Null on a product that never went through approval — every product that
     #: predates this feature. Both clients render it as "—".
+    decidedByName: str | None
+
+
+class BrandApprovalOut(AppModel):
+    """One row of the brands half of the approvals queue.
+
+    Nothing to price, so nothing to type: approving a brand only says "yes,
+    they sell this, their products may carry it". A refusal carries a reason
+    the vendor reads, through the same `RejectionRequest` a product's does.
+    """
+
+    id: uuid.UUID
+    name: str
+    vendorId: uuid.UUID
+    vendorName: str
+    approvalStatus: str
+    rejectionReason: str | None
+    submittedAt: datetime.datetime | None
+    decidedAt: datetime.datetime | None
     decidedByName: str | None
 
 

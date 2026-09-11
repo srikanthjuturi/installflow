@@ -11,6 +11,7 @@ import {
   Play,
   ScanLine,
   ShieldCheck,
+  Tags,
   UserCheck,
   UserPlus,
   UserX,
@@ -74,6 +75,13 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     wrap: "bg-info-bg text-info",
     label: "Product submitted",
   },
+  // The same, for a brand a vendor added: none of its products can carry it
+  // until somebody says yes.
+  brand_submitted: {
+    icon: Tags,
+    wrap: "bg-info-bg text-info",
+    label: "Brand submitted",
+  },
   // A technician asked to be paid, or said a payment has not arrived. Warn,
   // like the other rows that are a task with a fix — and only the payer (the
   // National Head, else an Admin) ever sees one: the server addresses it.
@@ -90,6 +98,11 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     wrap: "bg-warn-bg text-warn",
     label: "Product rejected",
   },
+  brand_rejected: {
+    icon: BadgeX,
+    wrap: "bg-warn-bg text-warn",
+    label: "Brand rejected",
+  },
   // A confirmed visit moved. Amber rather than red: the customer agreed to it,
   // so it is not a failure — but somebody is now expecting a technician on a
   // different day, and the vendor reading this feed is the party who had no
@@ -103,15 +116,21 @@ export const KIND: Record<NotificationKind, KindMeta> = {
   // describe rather than like a warning: a manager scanning the feed should be
   // able to tell at a glance which rows need them and which are just news.
   //
-  // FOUR kinds widen to a vendor's portal — `serial_mismatch`, `assigned`, and
-  // both product decisions. `vendor_id` on a notification widens the audience
-  // and never narrows it, so every one of these lands in the staff feed too;
-  // that is why their titles name the product or the ticket rather than saying
-  // "your", which would be false on a manager's screen.
+  // SIX kinds widen to a vendor's portal — `serial_mismatch`, `assigned`, and
+  // both decisions on a product and on a brand. `vendor_id` on a notification
+  // widens the audience and never narrows it, so every one of these lands in
+  // the staff feed too; that is why their titles name the product, the brand or
+  // the ticket rather than saying "your", which would be false on a manager's
+  // screen.
   product_approved: {
     icon: BadgeCheck,
     wrap: "bg-success-bg text-success",
     label: "Product approved",
+  },
+  brand_approved: {
+    icon: BadgeCheck,
+    wrap: "bg-success-bg text-success",
+    label: "Brand approved",
   },
   assigned: {
     icon: UserCheck,

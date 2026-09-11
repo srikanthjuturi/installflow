@@ -61,6 +61,7 @@ from app.core.schemas import (
 from app.features.masters import service
 from app.features.masters.schemas import (
     ApprovalRequest,
+    BrandApprovalOut,
     ModelCreateRequest,
     ModelUpdateRequest,
     NodeCreateRequest,
@@ -534,6 +535,57 @@ async def reject_model(
     """Refuse it, with a reason the vendor reads and can act on."""
     data = await service.reject_model(db, principal, model_id, body)
     return envelope(data, message="Product rejected")
+
+
+# ── brand approvals ───────────────────────────────────────────────────────────
+#
+# The brands a vendor named in its portal, decided by the same people under the
+# same two guards as its products. `/approvals/count` above already includes
+# them — one rail badge for one person's queue.
+
+
+@router.get(
+    "/brand-approvals",
+    response_model=PaginatedEnvelope[BrandApprovalOut],
+    dependencies=[NationalHeadUp],
+)
+async def list_brand_approvals(
+    db: Db,
+    principal: CanApprove,
+    params: Annotated[ListParams, Depends(list_params)],
+    status: Annotated[str | None, Query()] = None,
+) -> PaginatedEnvelope[BrandApprovalOut]:
+    """Brands vendors added, longest wait first. `status` behaves as it does on `/approvals`."""
+    rows, total = await service.list_brand_approvals(
+        db, principal, params, status_filter=status
+    )
+    return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.post(
+    "/brands/{brand_id}/approve",
+    response_model=ApiEnvelope[BrandApprovalOut],
+    dependencies=[NationalHeadUp],
+)
+async def approve_brand(
+    brand_id: uuid.UUID, db: Db, principal: CanApprove
+) -> ApiEnvelope[BrandApprovalOut]:
+    """Agree the vendor sells this brand. No body — there is nothing to price."""
+    data = await service.approve_brand(db, principal, brand_id)
+    return envelope(data, message="Brand approved")
+
+
+@router.post(
+    "/brands/{brand_id}/reject",
+    response_model=ApiEnvelope[BrandApprovalOut],
+    dependencies=[NationalHeadUp],
+)
+async def reject_brand(
+    brand_id: uuid.UUID, body: RejectionRequest, db: Db, principal: CanApprove
+) -> ApiEnvelope[BrandApprovalOut]:
+    """Refuse it, with a reason the vendor reads and can act on."""
+    data = await service.reject_brand(db, principal, brand_id, body)
+    return envelope(data, message="Brand rejected")
 
 
 # ── a vendor's own catalogue ──────────────────────────────────────────────────

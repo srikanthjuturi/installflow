@@ -5,19 +5,37 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  approveBrand,
   approveProduct,
   listApprovals,
+  listBrandApprovals,
   pendingApprovalCount,
+  rejectBrand,
   rejectProduct,
 } from "@/services/approvals";
 import type { ListParams } from "@/types/api";
 import { productKeys } from "./useProductMaster";
+import { vendorKeys } from "./useVendors";
 import { BACKSTOP_REFETCH_MS } from "./liveness";
 
+/**
+ * Brands sit under the same prefix as products on purpose: the rail badge
+ * counts both halves, so a decision on either must refetch it, and one
+ * `invalidateQueries(approvalKeys.all)` does.
+ */
 export const approvalKeys = {
   all: ["product-approvals"] as const,
   list: (params: ListParams) => ["product-approvals", "list", params] as const,
+  brands: (params: ListParams) =>
+    ["product-approvals", "brands", params] as const,
   count: () => ["product-approvals", "count"] as const,
+};
+
+/** The two halves' pending totals, for the switch between them. */
+const PENDING_ONLY: ListParams = {
+  page: 1,
+  limit: 1,
+  filters: { status: "pending" },
 };
 
 /**
@@ -98,3 +116,66 @@ export const useApproveProduct = () =>
 
 export const useRejectProduct = () =>
   useDecision(rejectProduct, "Couldn't reject the product");
+
+/** One page of vendor-added brands, server-paged like the products half. */
+export function useBrandApprovals(params: ListParams) {
+  return useQuery({
+    queryKey: approvalKeys.brands(params),
+    queryFn: () => listBrandApprovals(params),
+    placeholderData: keepPreviousData,
+    staleTime: 10_000,
+  });
+}
+
+/**
+ * How many of EACH half are waiting — the numbers on the Products | Brands
+ * switch. The rail badge is one total, so without these somebody who followed
+ * it here could land on an empty Products list with the waiting brand one click
+ * away and nothing saying so.
+ *
+ * A one-row page of each rather than a new endpoint: `totalRecords` is the
+ * count, and the server already answers it.
+ */
+export function usePendingSplit() {
+  const products = useQuery({
+    queryKey: approvalKeys.list(PENDING_ONLY),
+    queryFn: () => listApprovals(PENDING_ONLY),
+    staleTime: 10_000,
+  });
+  const brands = useQuery({
+    queryKey: approvalKeys.brands(PENDING_ONLY),
+    queryFn: () => listBrandApprovals(PENDING_ONLY),
+    staleTime: 10_000,
+  });
+  return {
+    products: products.data?.pagination.totalRecords,
+    brands: brands.data?.pagination.totalRecords,
+  };
+}
+
+/**
+ * A brand decision refetches the queue and the rail badge, and the vendors: an
+ * approved brand joins the product form's Brand picker (`/vendors/options`) and
+ * the Vendors table's Brands column. No product changes, so the catalogue
+ * stays cached.
+ */
+function useBrandDecision<TVars, TData>(
+  fn: (vars: TVars) => Promise<TData>,
+  errorTitle: string
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle },
+    mutationFn: fn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: approvalKeys.all });
+      queryClient.invalidateQueries({ queryKey: vendorKeys.all });
+    },
+  });
+}
+
+export const useApproveBrand = () =>
+  useBrandDecision(approveBrand, "Couldn't approve the brand");
+
+export const useRejectBrand = () =>
+  useBrandDecision(rejectBrand, "Couldn't reject the brand");

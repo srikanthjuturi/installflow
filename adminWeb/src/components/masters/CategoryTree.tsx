@@ -410,7 +410,12 @@ function ModelChip({
      at a glance; warranty is a detail you go looking for, so it stays in the
      tooltip rather than making every chip a third longer. */
   const detail = [
-    model.vendorName || null,
+    model.brandName || null,
+    // The vendor is the company behind the brand. Said only when it is a
+    // different name — a vendor selling under its own name would read twice.
+    model.vendorName && model.vendorName !== model.brandName
+      ? `Supplied by ${model.vendorName}`
+      : null,
     model.capacity,
     model.warrantyMonths === null
       ? null
@@ -470,10 +475,12 @@ function ModelChip({
         {model.name}
       </span>
       {/* The brand is what a technician reads first on a job card, so it earns
-          its place on the chip rather than living only in the tooltip. */}
-      {model.vendorName ? (
+          its place on the chip rather than living only in the tooltip. The
+          brand, not the vendor: a vendor may sell several, and the vendor is
+          in the tooltip. */}
+      {model.brandName ? (
         <span className="text-[11px] font-medium text-brand-400">
-          {model.vendorName}
+          {model.brandName}
         </span>
       ) : null}
       {model.capacity ? (

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FileText, ListFilter, Package, UserCog } from "lucide-react";
+import { FileText, ListFilter, Package, Tags, UserCog } from "lucide-react";
 import type { IntakeChannel } from "@/types/vendor";
 
 /**
@@ -13,8 +13,8 @@ import type { IntakeChannel } from "@/types/vendor";
  *    deciding both, and Ticket List's `match: ["/tickets/"]` prefix is exactly
  *    the kind of rule that shadows a sibling. Two tables, two guards, neither
  *    can leak into the other.
- * 2. That table is grouped for a fourteen-item rail. This has four items and no
- *    groups.
+ * 2. That table is grouped for a fourteen-item rail. This has a handful of
+ *    items and no groups.
  * 3. **`feature` is REQUIRED here.** `useFeatureAccess().has(undefined)` returns
  *    TRUE, so an optional key silently means "visible to every signed-in user"
  *    — which is how the ops rail ended up showing Dashboard, the Escalation
@@ -60,6 +60,14 @@ const ALWAYS: PortalNavItem[] = [
     // `vendor_user` — the line `vendor.users` already draws. A sub-user raises
     // tickets; shaping the book is a vendor-admin act. One Feature Access row
     // widens it per company, with no deploy.
+    feature: "vendor.catalogue",
+  },
+  {
+    label: "My brands",
+    to: "/portal/brands",
+    icon: Tags,
+    // The same key as My products: a brand is part of the book, and a
+    // sub-user who only raises tickets has no brand to ask for.
     feature: "vendor.catalogue",
   },
   {
