@@ -1343,7 +1343,8 @@ function brandCount(nodes: ProductNode[] | undefined): number {
  * ("Meridian 43"…"). A vendor selling under one brand sees plain names.
  *
  * Tolerates a missing brand, so a reply from an API older than the field reads
- * as the bare name rather than throwing.
+ * as the bare name rather than throwing. The technician's job card says it the
+ * same way — `model_label` in `api/app/core/product_label.py`; keep them in step.
  */
 function modelLabel(name: string, brandName: string | undefined, several: boolean) {
   if (!several || !brandName) return name;

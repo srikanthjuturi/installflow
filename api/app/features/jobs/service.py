@@ -45,6 +45,7 @@ from app.core.ledger import (
     entry as ledger_entry,
 )
 from app.core.notifications import notify
+from app.core.product_label import model_label, vendors_with_several_brands
 from app.core.push import announce_pool_job
 from app.core.realtime import (
     publish_notification,
@@ -108,6 +109,7 @@ from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.vendor_brand import VendorBrand
 
 log = logging.getLogger(__name__)
 
@@ -321,18 +323,30 @@ async def _hydrate(
             )
         )
     }
-    # Name, specs and notes in ONE query — the same one that already fetched the
-    # name. A second query per page would be an N+1 waiting to be written.
-    models = {
-        r[0]: (r[1], r[2], r[3])
-        for r in await db.execute(
+    # Name, brand, specs and notes in ONE query — the same one that already
+    # fetched the name. A second query per page would be an N+1 waiting to be
+    # written.
+    model_rows = (
+        await db.execute(
             select(
                 ProductModel.id,
                 ProductModel.name,
                 ProductModel.parameters,
                 ProductModel.notes,
-            ).where(ProductModel.id.in_({t.model_id for t in rows}))
+                ProductModel.vendor_id,
+                VendorBrand.name,
+            )
+            .outerjoin(VendorBrand, VendorBrand.id == ProductModel.brand_id)
+            .where(ProductModel.id.in_({t.model_id for t in rows}))
         )
+    ).all()
+    # The brand goes in front of the name only for a vendor whose products span
+    # several brands — `core.product_label`. The app draws this string as is, so
+    # it needed no rebuild to learn it.
+    several = await vendors_with_several_brands(db, {r[4] for r in model_rows})
+    models = {
+        r[0]: (model_label(r[1], r[5], r[4] in several), r[2], r[3])
+        for r in model_rows
     }
 
     return [_offer_out(t, sub_names, models) for t in rows], models

@@ -1091,8 +1091,15 @@ lookup name the brand: two brands may each have a "43 inch LED" in one category,
 root AGENTS.md) and `tickets`, `jobs` and `vendors` already import it. It is `VendorBrand`,
 `brand_names`, `brandName` here; `useOwnBrands`, never `useBrands`, in the console.
 
-**Deliberately unchanged:** the technician app (it shows `modelName` only, and model names already
-begin with the brand — prefixing it would double it), WhatsApp wording, and payout reasons.
+**The technician's job card names the brand only where it has to** — `core.product_label`. The app
+draws `modelName` as it arrives, so `jobs._hydrate` sends *"Sunview · 43 inch LED"* when the
+vendor's live products span more than one brand and the name does not already start with it, and
+the bare name otherwise. No rebuild, and a single-brand vendor (every vendor from before brands)
+reads exactly as before. Counted over products rather than approved brands: a second brand with
+nothing filed under it cannot make two cards ambiguous. The console's `modelLabel` is the twin.
+
+**Deliberately unchanged:** WhatsApp wording (the customer knows what they bought) and payout
+reasons (written once at closure; an Earnings row is not where two units get confused).
 
 ## Reversing a penalty
 
