@@ -5,12 +5,17 @@ the token pair `login` issues, so `sign_in` delegates to `issue_session` rather
 than duplicating token logic — and the rule that slices never import each other
 stays intact.
 
-Everything here is shared by four callers:
+Everything here is shared by five callers:
   * technician sign-in            purpose='login',          phone, keyed on a user
   * self-registration             purpose='invite',         phone, keyed on an invite
   * console password reset        purpose='password_reset',  EMAIL, keyed on a user
   * a customer agreeing to a new slot
                                   purpose='reschedule',     phone, keyed on a TICKET
+  * a technician adding their first UPI ID
+                                  purpose='payout_account', phone, keyed on a user
+
+Every phone code goes out on the one OTP template whatever its purpose, so a
+new purpose needs no WhatsApp template of its own.
 
 The fourth is the odd one and worth reading twice. Its recipient has no account
 here, so `user_id` is null and `ticket_id` carries the identity instead. It is
