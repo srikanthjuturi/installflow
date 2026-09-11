@@ -150,9 +150,11 @@ const config: ExpoConfig = {
     [
       'expo-camera',
       {
-        // Proof capture — doc §8. Gallery uploads are never accepted.
+        // Proof capture — doc §8. Gallery uploads are never accepted. Also
+        // the payout account's QR scan, which reads a UPI ID and stores no
+        // picture. Takes effect on the next native build, not in Expo Go.
         cameraPermission:
-          `${BRAND_NAME} Technician needs the camera to capture installation proof.`,
+          `${BRAND_NAME} Technician needs the camera to capture installation proof and to scan your UPI QR.`,
         recordAudioAndroid: false,
       },
     ],
@@ -160,7 +162,7 @@ const config: ExpoConfig = {
       'expo-image-picker',
       {
         photosPermission:
-          `${BRAND_NAME} Technician needs your photos so you can set a profile picture.`,
+          `${BRAND_NAME} Technician needs your photos so you can set a profile picture or read your UPI QR from a screenshot.`,
         cameraPermission:
           `${BRAND_NAME} Technician needs the camera to take your profile picture.`,
       },
