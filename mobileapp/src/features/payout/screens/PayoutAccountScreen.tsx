@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
-import { ScreenStatusBar, TitleBar } from '@/components/layout';
+import { KeyboardFlow, ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button, Input } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
@@ -97,6 +97,7 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   const verify = useVerifyPayoutAccount();
   const timer = useResendTimer(30);
   const [code, setCode] = useState('');
+  const [typingCode, setTypingCode] = useState(false);
 
   const sent = sendCode.isSuccess;
   const devCode = sendCode.data?.devCode ?? null;
@@ -112,65 +113,72 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={CARD}>
-        <Text style={BODY}>
-          Add the UPI ID your earnings are paid to. Scan the QR from your UPI app,
-          or type it in.
-        </Text>
-        <UpiFields draft={draft} disabled={verify.isPending || sendCode.isPending} />
-      </View>
-
-      {draft.valid ? <PayeeCard name={draft.name} vpa={draft.vpa} /> : null}
-
-      {sent ? (
+    // The code card and "Verify & save" are the last things on the screen, so
+    // while the code is being typed the end of the scroll is held above the
+    // keyboard — the boxes and the button both in sight. The UPI fields above
+    // get the ordinary behaviour: the focused one scrolled into view.
+    <KeyboardFlow pinEndAboveKeyboard={sent && typingCode}>
+      <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
         <View style={CARD}>
           <Text style={BODY}>
-            We sent a 6-digit code to your WhatsApp, {prettyPhone(phone)}. Enter it
-            to save this UPI ID.
+            Add the UPI ID your earnings are paid to. Scan the QR from your UPI app,
+            or type it in.
           </Text>
-          <OtpInput value={code} onChange={setCode} />
-          <Pressable
-            disabled={!timer.canResend || sendCode.isPending}
-            onPress={send}
-            style={{ marginTop: 14, alignSelf: 'flex-start' }}
-          >
-            <Text
-              style={{
-                fontFamily: 'Roboto_500Medium',
-                fontSize: 12.5,
-                color: timer.canResend ? color.actionBg : color.textMuted,
-              }}
-            >
-              {timer.canResend ? 'Send a new code' : `Send a new code in ${timer.label}`}
-            </Text>
-          </Pressable>
-          {devCode ? <DevCode code={devCode} onUse={() => setCode(devCode)} /> : null}
+          <UpiFields draft={draft} disabled={verify.isPending || sendCode.isPending} />
         </View>
-      ) : null}
 
-      {error ? <ErrorLine error={error} /> : null}
+        {draft.valid ? <PayeeCard name={draft.name} vpa={draft.vpa} /> : null}
 
-      {sent ? (
-        <Button
-          label="Verify & save"
-          loading={verify.isPending}
-          disabled={code.length < 6 || !draft.valid}
-          onPress={() => verify.mutate({ upiId: draft.vpa, upiName: draft.name, code })}
-        />
-      ) : (
-        <Button
-          label="Send code on WhatsApp"
-          loading={sendCode.isPending}
-          disabled={!draft.valid}
-          onPress={send}
-        />
-      )}
-    </ScrollView>
+        {sent ? (
+          <View style={CARD}>
+            <Text style={BODY}>
+              We sent a 6-digit code to your WhatsApp, {prettyPhone(phone)}. Enter it
+              to save this UPI ID.
+            </Text>
+            <OtpInput
+              value={code}
+              onChange={setCode}
+              onFocus={() => setTypingCode(true)}
+              onBlur={() => setTypingCode(false)}
+            />
+            <Pressable
+              disabled={!timer.canResend || sendCode.isPending}
+              onPress={send}
+              style={{ marginTop: 14, alignSelf: 'flex-start' }}
+            >
+              <Text
+                style={{
+                  fontFamily: 'Roboto_500Medium',
+                  fontSize: 12.5,
+                  color: timer.canResend ? color.actionBg : color.textMuted,
+                }}
+              >
+                {timer.canResend ? 'Send a new code' : `Send a new code in ${timer.label}`}
+              </Text>
+            </Pressable>
+            {devCode ? <DevCode code={devCode} onUse={() => setCode(devCode)} /> : null}
+          </View>
+        ) : null}
+
+        {error ? <ErrorLine error={error} /> : null}
+
+        {sent ? (
+          <Button
+            label="Verify & save"
+            loading={verify.isPending}
+            disabled={code.length < 6 || !draft.valid}
+            onPress={() => verify.mutate({ upiId: draft.vpa, upiName: draft.name, code })}
+          />
+        ) : (
+          <Button
+            label="Send code on WhatsApp"
+            loading={sendCode.isPending}
+            disabled={!draft.valid}
+            onPress={send}
+          />
+        )}
+      </View>
+    </KeyboardFlow>
   );
 }
 
@@ -183,57 +191,57 @@ function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string 
   const rejected = change?.status === 'rejected' ? change : null;
 
   return (
-    <ScrollView
-      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={CARD}>
-        <Text style={BODY}>
-          Your earnings are paid to this UPI ID. To change it, your manager
-          approves the new one.
-        </Text>
-        <PayeeCard
-          name={account.upiName || ownName || '—'}
-          vpa={account.upiId ?? '—'}
-          bare
-        />
-      </View>
+    // No pin here: the change form's fields are the ones being typed into, and
+    // holding the end in view would carry them out of sight.
+    <KeyboardFlow>
+      <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
+        <View style={CARD}>
+          <Text style={BODY}>
+            Your earnings are paid to this UPI ID. To change it, your manager
+            approves the new one.
+          </Text>
+          <PayeeCard
+            name={account.upiName || ownName || '—'}
+            vpa={account.upiId ?? '—'}
+            bare
+          />
+        </View>
 
-      {pending ? (
-        <PendingChange
-          name={pending.newUpiName}
-          vpa={pending.newUpiId}
-          reviewer={pending.reviewerLabel}
-        />
-      ) : changing ? (
-        <ChangeForm ownName={ownName} onDone={() => setChanging(false)} />
-      ) : (
-        <>
-          {rejected ? (
-            <View
-              style={[
-                CARD,
-                { backgroundColor: color.dangerSurface, borderColor: color.dangerSurfaceBorder },
-              ]}
-            >
-              <Text
-                style={{
-                  fontFamily: 'Roboto_500Medium',
-                  fontSize: 13,
-                  lineHeight: 19,
-                  color: color.dangerTextStrong,
-                }}
+        {pending ? (
+          <PendingChange
+            name={pending.newUpiName}
+            vpa={pending.newUpiId}
+            reviewer={pending.reviewerLabel}
+          />
+        ) : changing ? (
+          <ChangeForm ownName={ownName} onDone={() => setChanging(false)} />
+        ) : (
+          <>
+            {rejected ? (
+              <View
+                style={[
+                  CARD,
+                  { backgroundColor: color.dangerSurface, borderColor: color.dangerSurfaceBorder },
+                ]}
               >
-                Your change to {rejected.newUpiId} was not approved:{' '}
-                {rejected.rejectReason ?? '—'}
-              </Text>
-            </View>
-          ) : null}
-          <Button label="Request a change" variant="outline" onPress={() => setChanging(true)} />
-        </>
-      )}
-    </ScrollView>
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 13,
+                    lineHeight: 19,
+                    color: color.dangerTextStrong,
+                  }}
+                >
+                  Your change to {rejected.newUpiId} was not approved:{' '}
+                  {rejected.rejectReason ?? '—'}
+                </Text>
+              </View>
+            ) : null}
+            <Button label="Request a change" variant="outline" onPress={() => setChanging(true)} />
+          </>
+        )}
+      </View>
+    </KeyboardFlow>
   );
 }
 

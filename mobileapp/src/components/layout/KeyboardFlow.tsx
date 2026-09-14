@@ -1,8 +1,8 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useKeyboardVisible } from './keyboard';
+import { useKeyboardHeight } from './keyboard';
 
 export interface KeyboardFlowProps {
   children: ReactNode;
@@ -12,6 +12,19 @@ export interface KeyboardFlowProps {
    * must NOT add `insets.bottom` itself.
    */
   footer?: ReactNode;
+  /**
+   * While true and the keyboard is up, keep the END of the content in view.
+   *
+   * For a screen whose field and its CTA are the last things in the scroll —
+   * a one-time code above "Verify & save". The padding below makes room, but
+   * nothing brings them into it: Android scrolls only the FOCUSED input into
+   * view, which leaves the button under the keys, and iOS scrolls nothing.
+   *
+   * Off unless asked for, and a screen should turn it on only while the field
+   * at the end is the one being typed into — scrolling to the end while
+   * somebody is typing into a field near the top carries it out of sight.
+   */
+  pinEndAboveKeyboard?: boolean;
 }
 
 /**
@@ -55,13 +68,35 @@ export interface KeyboardFlowProps {
  * `automaticallyAdjustKeyboardInsets` — that is the iOS half of the same double
  * count.
  */
-export function KeyboardFlow({ children, footer }: KeyboardFlowProps) {
+export function KeyboardFlow({ children, footer, pinEndAboveKeyboard = false }: KeyboardFlowProps) {
   const insets = useSafeAreaInsets();
-  const keyboardVisible = useKeyboardVisible();
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardVisible = keyboardHeight > 0;
+  const scrollRef = useRef<ScrollView>(null);
+  const pinned = pinEndAboveKeyboard && keyboardVisible;
+
+  const scrollToEnd = useCallback(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, []);
+
+  // Once when the pin takes hold, and again when the keyboard changes height
+  // (number pad to letters, a suggestion strip). Not enough on its own: the
+  // avoiding view applies its padding only after it has measured, a frame or
+  // more after the keyboard event, and scrolling before that aims at the old
+  // viewport. `onLayout` below catches that resize; `onContentSizeChange`
+  // catches something appearing at the end, such as an error under the code.
+  useEffect(() => {
+    if (!pinned) return;
+    const frame = requestAnimationFrame(scrollToEnd);
+    return () => cancelAnimationFrame(frame);
+  }, [pinned, keyboardHeight, scrollToEnd]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <ScrollView
+        ref={scrollRef}
+        onLayout={pinned ? scrollToEnd : undefined}
+        onContentSizeChange={pinned ? scrollToEnd : undefined}
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         // Taps on the CTA land the first time instead of being eaten by the

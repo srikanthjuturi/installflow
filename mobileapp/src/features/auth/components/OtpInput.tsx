@@ -9,6 +9,9 @@ export interface OtpInputProps {
   onChange: (next: string) => void;
   length?: number;
   autoFocus?: boolean;
+  /** For a screen that moves its layout while the code is being typed. */
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 /**
@@ -22,7 +25,14 @@ export interface OtpInputProps {
  * Box metrics come from the prototype: 56px tall, radius 12, 1.5px border,
  * 9px gutter, 22px/700 digits, filled cells tinted primary-50.
  */
-export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpInputProps) {
+export function OtpInput({
+  value,
+  onChange,
+  length = 6,
+  autoFocus = true,
+  onFocus,
+  onBlur,
+}: OtpInputProps) {
   const inputRef = useRef<TextInput>(null);
   const cells = Array.from({ length }, (_, i) => value[i] ?? '');
 
@@ -66,6 +76,8 @@ export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpI
         autoComplete="sms-otp"
         maxLength={length}
         autoFocus={autoFocus}
+        onFocus={onFocus}
+        onBlur={onBlur}
         caretHidden
         style={{ position: 'absolute', opacity: 0, height: 56, width: '100%' }}
       />
