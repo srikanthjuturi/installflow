@@ -97,7 +97,6 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   const verify = useVerifyPayoutAccount();
   const timer = useResendTimer(30);
   const [code, setCode] = useState('');
-  const [typingCode, setTypingCode] = useState(false);
 
   const sent = sendCode.isSuccess;
   const devCode = sendCode.data?.devCode ?? null;
@@ -113,11 +112,10 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   };
 
   return (
-    // The code card and "Verify & save" are the last things on the screen, so
-    // while the code is being typed the end of the scroll is held above the
-    // keyboard — the boxes and the button both in sight. The UPI fields above
-    // get the ordinary behaviour: the focused one scrolled into view.
-    <KeyboardFlow pinEndAboveKeyboard={sent && typingCode}>
+    // KeyboardFlow keeps whichever field is being typed into in sight above the
+    // keyboard — for the code, that is the boxes with "Verify & save" under
+    // them, the last things on the screen.
+    <KeyboardFlow>
       <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
         <View style={CARD}>
           <Text style={BODY}>
@@ -135,12 +133,7 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
               We sent a 6-digit code to your WhatsApp, {prettyPhone(phone)}. Enter it
               to save this UPI ID.
             </Text>
-            <OtpInput
-              value={code}
-              onChange={setCode}
-              onFocus={() => setTypingCode(true)}
-              onBlur={() => setTypingCode(false)}
-            />
+            <OtpInput value={code} onChange={setCode} />
             <Pressable
               disabled={!timer.canResend || sendCode.isPending}
               onPress={send}
@@ -191,8 +184,6 @@ function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string 
   const rejected = change?.status === 'rejected' ? change : null;
 
   return (
-    // No pin here: the change form's fields are the ones being typed into, and
-    // holding the end in view would carry them out of sight.
     <KeyboardFlow>
       <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
         <View style={CARD}>
@@ -277,15 +268,30 @@ function ChangeForm({ ownName, onDone }: { ownName: string; onDone: () => void }
       </View>
       {draft.valid ? <PayeeCard name={draft.name} vpa={draft.vpa} /> : null}
       {request.error ? <ErrorLine error={request.error} /> : null}
-      <Button
-        label="Send request"
-        loading={request.isPending}
-        disabled={!draft.valid}
-        onPress={() =>
-          request.mutate({ upiId: draft.vpa, upiName: draft.name }, { onSuccess: onDone })
-        }
-      />
-      <Button label="Cancel" variant="ghost" onPress={onDone} disabled={request.isPending} />
+      {/* A pair, side by side and the same height. A ghost "Cancel" under the
+          CTA is right on a white sheet, where the app uses it; on this grey
+          screen, between cards, it read as stray grey text. `secondary` is the
+          app's button for a second choice on a grey screen. */}
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Cancel"
+            variant="secondary"
+            onPress={onDone}
+            disabled={request.isPending}
+          />
+        </View>
+        <View style={{ flex: 2 }}>
+          <Button
+            label="Send request"
+            loading={request.isPending}
+            disabled={!draft.valid}
+            onPress={() =>
+              request.mutate({ upiId: draft.vpa, upiName: draft.name }, { onSuccess: onDone })
+            }
+          />
+        </View>
+      </View>
     </>
   );
 }

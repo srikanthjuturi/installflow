@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
+import { useKeyboardReveal } from '@/components/layout/keyboardReveal';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 
@@ -39,6 +40,9 @@ export function Input({
   autoFocus = false,
 }: InputProps) {
   const [focused, setFocused] = useState(false);
+  // Inside a KeyboardFlow, keeps this field in sight above the keyboard —
+  // including when focus moves here from another field with the keyboard up.
+  const reveal = useKeyboardReveal();
 
   const borderColor = error ? color.debit : focused ? color.borderFocus : color.border;
 
@@ -98,7 +102,10 @@ export function Input({
           maxLength={maxLength}
           editable={editable}
           autoFocus={autoFocus}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            reveal();
+          }}
           onBlur={() => setFocused(false)}
           style={{
             flex: 1,

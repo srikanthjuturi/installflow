@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 
+import { useKeyboardReveal } from '@/components/layout';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -9,9 +10,6 @@ export interface OtpInputProps {
   onChange: (next: string) => void;
   length?: number;
   autoFocus?: boolean;
-  /** For a screen that moves its layout while the code is being typed. */
-  onFocus?: () => void;
-  onBlur?: () => void;
 }
 
 /**
@@ -25,15 +23,11 @@ export interface OtpInputProps {
  * Box metrics come from the prototype: 56px tall, radius 12, 1.5px border,
  * 9px gutter, 22px/700 digits, filled cells tinted primary-50.
  */
-export function OtpInput({
-  value,
-  onChange,
-  length = 6,
-  autoFocus = true,
-  onFocus,
-  onBlur,
-}: OtpInputProps) {
+export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpInputProps) {
   const inputRef = useRef<TextInput>(null);
+  // Inside a KeyboardFlow, keeps the boxes — and the button under them when
+  // there is room — in sight above the number pad.
+  const reveal = useKeyboardReveal();
   const cells = Array.from({ length }, (_, i) => value[i] ?? '');
 
   return (
@@ -76,8 +70,7 @@ export function OtpInput({
         autoComplete="sms-otp"
         maxLength={length}
         autoFocus={autoFocus}
-        onFocus={onFocus}
-        onBlur={onBlur}
+        onFocus={reveal}
         caretHidden
         style={{ position: 'absolute', opacity: 0, height: 56, width: '100%' }}
       />

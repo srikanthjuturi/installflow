@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { BackHandler, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
+import { KeyboardFlow, ScreenStatusBar, useKeyboardReveal } from '@/components/layout';
 import { BrandMark, Button } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
@@ -182,6 +182,9 @@ interface PhoneStepProps {
 
 function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
   const [focused, setFocused] = useState(false);
+  // A bare TextInput rather than `Input`, so it reports focus to the flow
+  // itself — see KeyboardFlow.
+  const reveal = useKeyboardReveal();
   const valid = phone.length === PHONE_LENGTH;
 
   return (
@@ -221,7 +224,10 @@ function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
         <TextInput
           value={phone}
           onChangeText={(v) => setPhone(v.replace(/\D/g, '').slice(0, PHONE_LENGTH))}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            reveal();
+          }}
           onBlur={() => setFocused(false)}
           placeholder="98765 43210"
           placeholderTextColor={color.textMuted}
