@@ -1,0 +1,87 @@
+name: Deploy adminWeb — production
+
+# Manual only, same reasoning as the API's prod-deploy.yml: merging to main is
+# a separate human action from putting that build in front of live users.
+#
+# adminWeb is a static Vite build (npm run build -> dist/). VITE_* values are
+# baked into the bundle at BUILD time, not read at runtime, so the production
+# .env.production has to exist before `npm run build` runs, and any change to
+# it requires a rebuild+redeploy, not a config change on the App Service.
+#
+# Netlify (https://reliancegreentech.netlify.app) still auto-deploys from git
+# — it now tracks `dev` only, this workflow is what serves production. See
+# .github/DEPLOYMENT.md.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to proceed'
+        required: true
+      allow_non_main_branch:
+        description: 'Allow running from a branch other than main (hotfix use only)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-web-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (production)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adminWeb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm intent
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "deploy" ]; then
+            echo 'Input must be exactly "deploy" — refusing.' >&2
+            exit 1
+          fi
+
+      - name: Refuse to run off any ref but main, unless overridden
+        env:
+          ALLOW_NON_MAIN: ${{ github.event.inputs.allow_non_main_branch }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$ALLOW_NON_MAIN" != "true" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "This workflow only runs against main (got $REF) unless allow_non_main_branch is ticked." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: adminWeb/.nvmrc
+          cache: npm
+          cache-dependency-path: adminWeb/package-lock.json
+
+      - run: npm ci
+
+      - name: Write production configuration
+        # Same env: routing as the API workflows — ${{ }} pastes raw text
+        # into the shell command before parsing; env: hands it over as an
+        # already-set variable so quotes/newlines in the secret can't break
+        # the write.
+        env:
+          CONTENT: ${{ secrets.WEB_ENV_FILE_PROD }}
+        run: printf '%s' "$CONTENT" > .env.production
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: installflowweb
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PROD }}
+          package: adminWeb/dist
+
+      - name: Clean up secrets from the runner's disk
+        if: always()
+        run: rm -f .env.production

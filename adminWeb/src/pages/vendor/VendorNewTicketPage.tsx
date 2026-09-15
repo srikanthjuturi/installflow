@@ -9,6 +9,12 @@ import { useMe } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
 import { useCreateTicket, useIntakeStatus } from "@/hooks/useTickets";
 import { useRecordAddressSearch } from "@/hooks/useVendors";
+import {
+  trackTicketRaiseFailed,
+  trackTicketRaised,
+} from "@/lib/analytics/events";
+import { ApiError } from "@/services/client";
+import { useSession } from "@/store/session";
 
 /**
  * Raise a ticket, with the vendor already known.
@@ -25,6 +31,7 @@ import { useRecordAddressSearch } from "@/hooks/useVendors";
  */
 export default function VendorNewTicketPage() {
   const navigate = useNavigate();
+  const activeCompanyId = useSession((s) => s.activeCompanyId);
   const { data: me, isPending, isError, error, refetch } = useMe();
   const intake = useIntakeStatus();
   const brand = useBrand();
@@ -98,10 +105,20 @@ export default function VendorNewTicketPage() {
           create.mutate(values, {
             onSuccess: (ticket) => {
               toast.add({ title: `${ticket.code} raised` });
+              if (activeCompanyId) {
+                trackTicketRaised(ticket.id, activeCompanyId);
+              }
               navigate("/portal/tickets");
             },
-            // A failure is reported by the global mutation handler; the form
-            // stays as it was so nothing typed is lost.
+            // The failure itself is reported by the global mutation handler
+            // (toast + `trackApiError`, both in `App.tsx`); this adds the
+            // conversion-funnel signal that a raise specifically failed, and
+            // why — the form stays as it was so nothing typed is lost.
+            onError: (err) => {
+              trackTicketRaiseFailed(
+                err instanceof ApiError ? (err.code ?? err.message) : "unknown"
+              );
+            },
           })
         }
       />

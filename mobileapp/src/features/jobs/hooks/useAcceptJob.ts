@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { acceptJob } from '@/features/jobs/api/accept';
+import { acceptJob, isJobTaken } from '@/features/jobs/api/accept';
+import { trackJobAccepted, trackJobAcceptLostRace } from '@/lib/analytics/events';
 import { qk } from '@/lib/queryKeys';
 
 /**
@@ -26,10 +27,16 @@ export function useAcceptJob(jobId: string) {
 
       queryClient.invalidateQueries({ queryKey: qk.pool() });
       queryClient.invalidateQueries({ queryKey: ['jobs', 'mine'] });
+
+      trackJobAccepted(jobId);
     },
-    onError: () => {
+    onError: (error) => {
       // Whether it was taken or genuinely failed, the pool is now stale.
       queryClient.invalidateQueries({ queryKey: qk.pool() });
+
+      // Losing the race is a normal outcome (doc §6), not an error worth GA's
+      // conversion metric — PostHog only, as funnel-diagnostic detail.
+      if (isJobTaken(error)) trackJobAcceptLostRace(jobId);
     },
   });
 }

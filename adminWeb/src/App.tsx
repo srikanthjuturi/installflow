@@ -11,6 +11,8 @@ import { Toaster, ToastProvider } from "@/components/ui/toast";
 import { ApiError } from "@/services/client";
 import { toastApiError } from "@/lib/apiError";
 import { dismissBootSplash } from "@/lib/bootSplash";
+import { AnalyticsProvider } from "@/lib/analytics/AnalyticsProvider";
+import { trackApiError } from "@/lib/analytics/events";
 
 /**
  * Every API failure — query or mutation — is reported in the toaster from
@@ -22,12 +24,16 @@ import { dismissBootSplash } from "@/lib/bootSplash";
 const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error, query) => {
+      // PostHog gets every failure, toasted or not — it is the error-tracking
+      // backend, and a suppressed toast is still a real failure to diagnose.
+      trackApiError(error, { queryKey: query.queryKey });
       if (query.meta?.suppressErrorToast) return;
       toastApiError(error, query.meta?.errorTitle);
     },
   }),
   mutationCache: new MutationCache({
     onError: (error, _variables, _context, mutation) => {
+      trackApiError(error, { mutationKey: mutation.options.mutationKey });
       if (mutation.meta?.suppressErrorToast) return;
       toastApiError(error, mutation.meta?.errorTitle);
     },
@@ -71,24 +77,32 @@ export function App() {
       <ToastProvider>
         <BrowserRouter>
           {/*
-            * No fallback here, deliberately.
-            *
-            * This is the OUTERMOST boundary — it catches a lazy page that has
-            * no shell around it yet, which in practice means the login screen.
-            * A generic toolbar-and-panel skeleton is the wrong shape for a
-            * split brand panel and a sign-in form, and reads as clumsy rather
-            * than as loading.
-            *
-            * Nothing is lost by leaving it empty: the boot splash in index.html
-            * is still on top at this point and stays until #root actually holds
-            * a page, so the sequence is splash → the real screen, with no
-            * shape-shifting in between. The shells keep their own PageSkeleton,
-            * where it belongs — there the chrome is already on screen and the
-            * skeleton stands in for a page inside it.
+            * AnalyticsProvider lives inside BrowserRouter, not outside it: it
+            * calls `useLocation` to fire a page view on every route change, so
+            * it needs a router above it. It renders `children` straight
+            * through — it is a logic-only wrapper, not a visual one.
             */}
-          <Suspense fallback={null}>
-            <Routes />
-          </Suspense>
+          <AnalyticsProvider>
+            {/*
+              * No fallback here, deliberately.
+              *
+              * This is the OUTERMOST boundary — it catches a lazy page that has
+              * no shell around it yet, which in practice means the login screen.
+              * A generic toolbar-and-panel skeleton is the wrong shape for a
+              * split brand panel and a sign-in form, and reads as clumsy rather
+              * than as loading.
+              *
+              * Nothing is lost by leaving it empty: the boot splash in index.html
+              * is still on top at this point and stays until #root actually holds
+              * a page, so the sequence is splash → the real screen, with no
+              * shape-shifting in between. The shells keep their own PageSkeleton,
+              * where it belongs — there the chrome is already on screen and the
+              * skeleton stands in for a page inside it.
+              */}
+            <Suspense fallback={null}>
+              <Routes />
+            </Suspense>
+          </AnalyticsProvider>
         </BrowserRouter>
         <Toaster />
       </ToastProvider>

@@ -20,6 +20,7 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { trackRuleUpdated } from "@/lib/analytics/events";
 import { useNodeOptions } from "@/hooks/useProductMaster";
 import type { NodeOption } from "@/types/product";
 import {
@@ -181,12 +182,14 @@ export default function RulesConfigPage() {
               isSaving={saveNode.isPending}
               onSubmit={(values) =>
                 saveNode.mutate(toNodeDraft(values), {
-                  onSuccess: () =>
+                  onSuccess: () => {
                     toast.add({
                       title: `Rules saved for ${nodeRules.data.path.at(-1)}`,
                       description:
                         "Tickets raised in this category from now on carry these numbers.",
-                    }),
+                    });
+                    trackRuleUpdated(nodeId ?? COMPANY);
+                  },
                 })
               }
               onReset={() =>
@@ -239,7 +242,7 @@ export default function RulesConfigPage() {
             isSaving={save.isPending}
             onSubmit={(values) =>
               save.mutate(toDraft(values), {
-                onSuccess: () =>
+                onSuccess: () => {
                   toast.add({
                     title: "Rules configuration saved",
                     // It said "Applied for this session" while Save wrote to a
@@ -248,7 +251,9 @@ export default function RulesConfigPage() {
                     // tick — so the copy says what actually happens.
                     description:
                       "In effect for this company from the next sweep.",
-                  }),
+                  });
+                  trackRuleUpdated(COMPANY);
+                },
               })
             }
           />
