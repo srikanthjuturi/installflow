@@ -22,6 +22,13 @@ name: Deploy adminWeb — production
 # fail-fast check — a TypeScript error shows up here in seconds instead of
 # buried in Azure's Oryx build log; its output is discarded before packaging.
 #
+# A zip deploy does NOT trigger an Oryx build on its own — that's opt-in per
+# App Service via SCM_DO_BUILD_DURING_DEPLOYMENT / ENABLE_ORYX_BUILD, off by
+# default. api/scripts/publish.py already knows this and flips both on before
+# every api deploy; this workflow has to do the same thing explicitly rather
+# than assume it, or Kudu just extracts the source into wwwroot unbuilt —
+# same missing-server.mjs crash as deploying dist/ alone.
+#
 # Netlify (https://reliancegreentech.netlify.app) still auto-deploys from git
 # — it now tracks `dev` only, this workflow is what serves production. See
 # .github/DEPLOYMENT.md.
@@ -95,6 +102,28 @@ jobs:
         # throws away, and dist/ is regenerated remotely too. .env.production
         # stays; Oryx's `vite build` needs it.
         run: rm -rf node_modules dist
+
+      - name: Enable the Oryx remote build
+        # Same call api/scripts/publish.py makes before every api deploy — see
+        # the comment above. Credentials come straight out of the publish
+        # profile secret (its username/password are Kudu's own Basic Auth),
+        # routed through env: for the same quoting reasons as everywhere else
+        # in this file rather than interpolated with ${{ }}.
+        env:
+          PROFILE_XML: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PROD }}
+        run: |
+          KUDU_USER=$(grep -o 'userName="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/userName="//;s/"$//')
+          KUDU_PASS=$(grep -o 'userPWD="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/userPWD="//;s/"$//')
+          status=$(curl -s -o /tmp/kudu-settings.out -w '%{http_code}' \
+            -u "$KUDU_USER:$KUDU_PASS" \
+            -X POST -H "Content-Type: application/json" \
+            -d '{"SCM_DO_BUILD_DURING_DEPLOYMENT": "true", "ENABLE_ORYX_BUILD": "true"}' \
+            "https://installflowweb-hhhga9gnbrc8etfx.scm.centralindia-01.azurewebsites.net/api/settings")
+          cat /tmp/kudu-settings.out
+          if [ "$status" != "200" ] && [ "$status" != "204" ]; then
+            echo "Could not enable the remote build (HTTP $status)" >&2
+            exit 1
+          fi
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
