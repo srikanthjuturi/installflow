@@ -115,6 +115,15 @@ export function createTicket(input: CreateTicketInput): Promise<Ticket> {
   return apiPost<Ticket>("/tickets", input);
 }
 
+/**
+ * For a vendor about to raise a ticket: would it be refused right now for
+ * want of credits? A yes or no — the company's balance is not the vendor's to
+ * see. `POST /tickets` still decides for real, with 409 `OUT_OF_CREDITS`.
+ */
+export function getIntakeStatus(): Promise<{ paused: boolean }> {
+  return apiGet<{ paused: boolean }>("/tickets/intake-status");
+}
+
 /** One already-uploaded file. A blob NAME, never a URL — see `uploads.ts`. */
 export interface ForceCloseAttachment {
   blobName: string;

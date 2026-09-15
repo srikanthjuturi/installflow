@@ -15,7 +15,7 @@ run one way: slots → coverage → tickets.
 import datetime
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.coverage import CAP_EXEMPT_STATUSES
@@ -28,6 +28,46 @@ from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
 
 IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
+
+#: Where a CUSTOMER may still choose the time of their visit — and so where their
+#: silence about it is still worth chasing, and where the link asking them is
+#: still worth showing.
+#:
+#: The statuses somebody can still be sent to a job from (`tickets.service.
+#: ASSIGNABLE_STATUSES`), for the reason `RESCHEDULABLE_STATUSES` there gives:
+#: "a technician can still be sent" and "a time can still be set" are one
+#: question. Past `Assigned` the technician is on site with proof captured.
+#:
+#: ⚠ This used to be "anything not terminal", everywhere a missing slot was
+#: acted on, and that stopped being the same question when the pool began
+#: offering jobs before a time was agreed. A technician can accept one of those
+#: and START it. The customer's link still asked them to pick a time, and
+#: picking one wrote `Assigned` over `In Progress` — the job un-started itself,
+#: offered "Start job" again, and armed the no-show sweep against somebody
+#: standing in the kitchen. Two sweeps meanwhile chased a customer for a time
+#: about work already under way, and one of them spent the ticket's only
+#: `force_close` bell doing it.
+CHOOSABLE_STATUSES = ("Slot Pending", "New", "Assigned", "Escalated")
+
+
+def time_is_choosable(status: str, technician_id: uuid.UUID | None) -> bool:
+    """Whether the customer may still pick this ticket's time. See the SQL twin.
+
+    `Escalated` counts only with nobody holding it. WITH a technician it means
+    the customer refused a closure — `tickets.service._load_reschedulable`
+    argues why booking a time there would turn a complaint into an appointment.
+    """
+    if status not in CHOOSABLE_STATUSES:
+        return False
+    return not (status == "Escalated" and technician_id is not None)
+
+
+def time_is_choosable_clause() -> ColumnElement[bool]:
+    """`time_is_choosable`, for a WHERE clause. Change the two together."""
+    return and_(
+        Ticket.status.in_(CHOOSABLE_STATUSES),
+        or_(Ticket.status != "Escalated", Ticket.technician_id.is_(None)),
+    )
 
 
 def _now() -> datetime.datetime:

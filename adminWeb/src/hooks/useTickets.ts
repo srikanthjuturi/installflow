@@ -8,6 +8,7 @@ import {
   assignTechnician,
   correctTicketSerial,
   createTicket,
+  getIntakeStatus,
   forceCloseTicket,
   getRescheduleSlots,
   getTicket,
@@ -220,6 +221,28 @@ export function useCreateTicket() {
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
+    // A refusal for want of credits means the intake banner is stale — ask
+    // again, so the notice appears over the form the vendor is looking at.
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: INTAKE_STATUS_KEY });
+    },
+  });
+}
+
+/** Not under `ticketKeys.all`: it is the company's state, not a ticket's. */
+const INTAKE_STATUS_KEY = ["tickets-intake-status"] as const;
+
+/**
+ * Whether this vendor's company may raise a ticket now. Asked every time the
+ * New ticket page opens and on focus — a recharge elsewhere should lift the
+ * notice without a reload, and nothing else would tell this tab.
+ */
+export function useIntakeStatus() {
+  return useQuery({
+    queryKey: INTAKE_STATUS_KEY,
+    queryFn: getIntakeStatus,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 

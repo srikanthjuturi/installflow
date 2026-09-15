@@ -8,11 +8,13 @@ sitting, which is the only way anyone will notice if it grows.
 """
 
 import datetime
+import math
 import uuid
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.ledger import entry as ledger_entry, payout_reason
 from app.core.notifications import notify
@@ -22,10 +24,11 @@ from app.core.realtime import (
     publish_notification,
     publish_ticket_changed,
 )
+from app.core.tickets import NO_SHOW_GRACE_MINUTES
 from app.models.membership import Membership
 from app.models.product import ProductModel
 from app.models.technician import TechnicianProfile
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 
@@ -287,25 +290,102 @@ def _feedback_note(confirmed: bool, rating: int | None, comment: str | None) -> 
 async def refresh_technician_stats(
     db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
 ) -> None:
-    """Recompute this technician's rating and completed count from the tickets.
+    """Recompute this technician's rating, completed count and on-time share.
 
     Recomputed rather than incremented. An average kept by adding to a running
     total drifts the first time a row is corrected or a ticket is soft-deleted,
     and there is no volume here that makes one aggregate per closure expensive.
 
-    These two columns have existed since the initial migration with **nothing
-    writing them**, which is why every technician's profile shows `—`. This is
-    their first writer. Null stays null when there is genuinely nothing to say:
-    a technician with closed jobs but no ratings gets a count and no score.
+    These columns existed since the initial migration with **nothing writing
+    them**, which is why every technician's profile showed `—`. This is their
+    first writer. Null stays null when there is genuinely nothing to say: a
+    technician with closed jobs but no ratings gets a count and no score.
+
+    ## On time
+
+    The share of their closed jobs where they ARRIVED no later than
+    `NO_SHOW_GRACE_MINUTES` after the slot closed. Early counts: arriving
+    before the window is not lateness.
+
+    **Arrival is the live photo's `captured_at`** — the phone's clock at the
+    shutter, from the proof set that started the job. Not the `started` event's
+    time, which is when the upload reached us: `ProofArtifactIn` says in as many
+    words that a technician can be offline for an hour between the two, and the
+    sites that do that — basements, plant rooms, dead spots — are the ones
+    `location_check_enabled` exists for. Marking them late for the signal would
+    be the same unfairness in a different column.
+
+    The phone's clock is a claim, and only one side of it is bounded: never
+    later than the server received the photos, so a fast clock cannot make
+    somebody late. A clock set BACK can make somebody look on time, and that is
+    accepted rather than guessed at — any cut-off would be an invented number
+    that brands the genuinely offline technician late again. It is not hidden
+    either: the ticket shows the photo's time beside the time work started, and
+    a gap of hours between them is exactly what a manager reading it will see.
+    (A lower clamp at the assignment was tried and removed: the second rule
+    below already means a job was held before its slot closed, so an earlier
+    capture could only ever read as on time with or without it.)
+
+    The grace is the no-show sweep's own, on purpose. It is the width of "at the
+    door and photographing the barcode", so an arrival that sweep would not call
+    absent is one this does not call late.
+
+    A closed job is MEASURED only when all three hold, and is otherwise left
+    out of both sides — never counted as late:
+
+    * **It has a slot.** A job accepted before any time was agreed had no
+      window to miss.
+    * **They held it before the slot closed** — the latest `assigned` event
+      predates `slot_end`, the no-show sweep's own test. A manager may send
+      somebody to a window that has already shut, because late beats nobody;
+      the person who agreed to go is not late for it. No `assigned` event at all
+      means we cannot say when they took it, which is the sweep's call too.
+    * **They started it after they were given it and after its time was last
+      set** — the first `started` event past the latest `assigned`,
+      `slot_confirmed` or `rescheduled` (by `seq`). That excludes a start by the
+      previous holder of a re-assigned ticket, a force-closure nobody started,
+      and a start that a slot was booked onto afterwards.
+
+    Measured against the CURRENT slot, which is exact rather than a shortcut:
+    the third rule means no slot change can come after the start being judged.
 
     Public because force-closure calls it too — see
     `service.force_close_ticket`. It was private while the customer was the
     only one who could end a job.
     """
+
+    assigned = aliased(TicketEvent)
+    held_from = (
+        select(func.max(assigned.created_at))
+        .where(
+            assigned.company_id == Ticket.company_id,
+            assigned.ticket_id == Ticket.id,
+            assigned.kind == "assigned",
+        )
+        .correlate(Ticket)
+        .scalar_subquery()
+    )
+    # The last moment the job changed hands or changed time. A start is only
+    # this technician's, against this window, if it comes after.
+    changed = aliased(TicketEvent)
+    settled_seq = (
+        select(func.coalesce(func.max(changed.seq), 0))
+        .where(
+            changed.company_id == Ticket.company_id,
+            changed.ticket_id == Ticket.id,
+            changed.kind.in_(("assigned", "slot_confirmed", "rescheduled")),
+        )
+        .correlate(Ticket)
+        .scalar_subquery()
+    )
     closed = (
         select(
-            func.count(Ticket.id),
-            func.avg(Ticket.customer_rating),
+            Ticket.id,
+            Ticket.company_id,
+            Ticket.customer_rating,
+            Ticket.slot_end,
+            held_from.label("held_from"),
+            settled_seq.label("settled_seq"),
         )
         .where(
             Ticket.company_id == company_id,
@@ -322,8 +402,62 @@ async def refresh_technician_stats(
             Ticket.status.in_(("Closed", "Force-Closed")),
             Ticket.deleted_at.is_(None),
         )
+        .subquery()
     )
-    count, average = (await db.execute(closed)).one()
+
+    began = aliased(TicketEvent)
+    started_at = (
+        select(began.created_at)
+        .where(
+            began.company_id == closed.c.company_id,
+            began.ticket_id == closed.c.id,
+            began.kind == "started",
+            began.seq > closed.c.settled_seq,
+        )
+        .order_by(began.seq)
+        .limit(1)
+        .correlate(closed)
+        .scalar_subquery()
+    )
+    jobs = select(closed, started_at.label("started_at")).subquery()
+
+    # That start's live photo. Proof rows and the `started` event commit in one
+    # transaction, and `created_at` is the transaction's `now()`, so equality
+    # picks out exactly this proof set — a re-assigned ticket carries the
+    # previous holder's photos too.
+    live = aliased(TicketProof)
+    captured_at = (
+        select(func.min(live.captured_at))
+        .where(
+            live.company_id == jobs.c.company_id,
+            live.ticket_id == jobs.c.id,
+            live.kind == "live",
+            live.created_at == jobs.c.started_at,
+        )
+        .correlate(jobs)
+        .scalar_subquery()
+    )
+    # Never later than the server received it: a phone clock running fast must
+    # not make somebody late. `least` skips a NULL, so a proof set with no live
+    # row reads as the upload time.
+    arrived_at = func.least(jobs.c.started_at, captured_at)
+    # NULL compares to nothing, so each missing piece drops the job out.
+    measurable = and_(
+        jobs.c.slot_end.is_not(None),
+        jobs.c.held_from < jobs.c.slot_end,
+        jobs.c.started_at.is_not(None),
+    )
+    grace = datetime.timedelta(minutes=NO_SHOW_GRACE_MINUTES)
+    count, average, measured, on_time = (
+        await db.execute(
+            select(
+                func.count(),
+                func.avg(jobs.c.customer_rating),
+                func.count().filter(measurable),
+                func.count().filter(measurable, arrived_at <= jobs.c.slot_end + grace),
+            )
+        )
+    ).one()
 
     await db.execute(
         update(TechnicianProfile)
@@ -334,9 +468,26 @@ async def refresh_technician_stats(
         .values(
             jobs_completed=count,
             rating=round(float(average), 2) if average is not None else None,
+            on_time_pct=on_time_percent(on_time, measured),
         )
     )
     await db.commit()
+
+
+def on_time_percent(on_time: int, measured: int) -> int | None:
+    """A whole percentage that never rounds to a claim the jobs do not support.
+
+    Half up, not Python's half-to-even `round` — 1 of 8 is 13%, the answer the
+    backfill migration's SQL gives. But pinned inside 1–99 unless every job, or
+    none, was on time: 199 of 200 rounds to 100%, and "100%" says they have
+    never been late, which one of those 200 says they have. 1 of 200 is not 0%
+    for the same reason.
+    """
+    if not measured:
+        return None
+    if on_time in (0, measured):
+        return 100 if on_time else 0
+    return min(99, max(1, math.floor(100 * on_time / measured + 0.5)))
 
 
 def _closed_body(rating: int | None) -> str:

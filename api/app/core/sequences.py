@@ -50,6 +50,9 @@ KINDS: dict[str, str] = {
     #: bank statements, so it is the handle a payer and a technician quote to
     #: each other when a payment is argued about.
     "redemption": "RDM",
+    #: A company topping up its credits — `MA-RCH-0001`. The UPI `tr` too, for
+    #: the same reason as a redemption's: it is on the platform's statement.
+    "recharge": "RCH",
 }
 
 #: Zero-padding for the counter. A MINIMUM width, not a cap: the 10,000th

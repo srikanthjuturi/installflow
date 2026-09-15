@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
 from app.core.database import get_db
+from app.core.slots import time_is_choosable
 from app.features.tickets import service
 from app.models.company import Company
 from app.models.product import ProductModel
@@ -103,12 +104,13 @@ def _page(title: str, body: str, *, mark: str | None = None) -> HTMLResponse:
     )
 
 
-def _closed(heading: str, message: str) -> HTMLResponse:
+def _closed(heading: str, message: str, *, mark: str | None = None) -> HTMLResponse:
     return _page(
         heading,
         f"<h1>{html.escape(heading)}</h1><p>{html.escape(message)}</p>"
         '<p class="note">If this is not what you expected, please call the '
         "number on your order confirmation.</p>",
+        mark=mark,
     )
 
 
@@ -143,6 +145,18 @@ async def _render(db: AsyncSession, token: str, *, just_confirmed: bool):
             '<p class="note">Our technician will call before arriving. '
             "To change the time, please call us &mdash; this link can only be "
             "used once.</p>",
+            mark=mark,
+        )
+
+    # No time, and none can be chosen any more: the job is under way, refused or
+    # settled. Drawing the picker anyway was the bug — the customer tapped a
+    # window, `confirm_slot` refused, and the page re-rendered the same picker,
+    # for ever. The words are the invalid-link page's own, because that is what
+    # this link now is, and they stay under the company's mark since it is known.
+    if not time_is_choosable(row.status, row.technician_id):
+        return _closed(
+            "Link not valid",
+            "This scheduling link has expired or has already been used.",
             mark=mark,
         )
 

@@ -8,6 +8,8 @@ from fastapi import APIRouter
 
 from app.features.auth.router import router as auth_router
 from app.features.companies.router import router as companies_router
+from app.features.credits.platform_router import router as platform_router
+from app.features.credits.router import router as credits_router
 from app.features.earnings.router import router as earnings_router
 from app.features.geo.router import router as geo_router
 from app.features.jobs.router import router as jobs_router
@@ -73,3 +75,8 @@ api_router.include_router(earnings_router)
 api_router.include_router(redemptions_router)
 api_router.include_router(ledger_router)
 api_router.include_router(settings_router)
+# What a company pays for tickets with. The company's side (`/credits`) claims a
+# recharge; the superadmin's (`/platform`) holds the rules and confirms it —
+# the only door through which credits are bought.
+api_router.include_router(credits_router)
+api_router.include_router(platform_router)

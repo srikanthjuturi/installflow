@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { BASE_URL } from "@/services/http";
 import { useSession } from "@/store/session";
 import { approvalKeys } from "./useApprovals";
+import { creditKeys } from "./useCredits";
 import { dashboardKeys } from "./useDashboard";
 import { notificationKeys } from "./useNotifications";
 import { redemptionKeys } from "./useRedemptions";
@@ -157,6 +158,7 @@ export function useTicketStream(): void {
             void queryClient.invalidateQueries({ queryKey: approvalKeys.all });
             void queryClient.invalidateQueries({ queryKey: ownBrandKeys.all });
             void queryClient.invalidateQueries({ queryKey: vendorKeys.all });
+            void queryClient.invalidateQueries({ queryKey: creditKeys.all });
             break;
           case "technician.changed":
             // Somebody toggled their availability or changed their daily cap.
@@ -194,6 +196,9 @@ export function useTicketStream(): void {
             // nothing else, and the panel that decides it only draws once the
             // profile says `upiChangePending`.
             void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+            // And the company's credits: a recharge the superadmin decided, or
+            // the balance crossing a line, reaches this console only as a bell.
+            void queryClient.invalidateQueries({ queryKey: creditKeys.all });
             // And tell whoever wants to say so out loud. The listener does its
             // own read: this frame still carries nothing worth showing.
             emit("notification.raised");

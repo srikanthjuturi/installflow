@@ -22,7 +22,7 @@ skill in `mobileapp/.claude/skills/`.
 
 The API is real for **auth, companies, users, territory, the product master, technician
 onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation,
-force-closure, the penalty pool, earnings, redemptions, Rules configuration and the console dashboard**
+force-closure, the penalty pool, earnings, redemptions, company credits, Rules configuration and the console dashboard**
 (`GET /tickets/summary` — counted, territory-scoped, and deliberately carrying no movement deltas,
 because nothing records what a count was yesterday). What is left on typed mock data behind a
 TanStack Query hook is **AI review**, so binding it stays a one-line change and we keep loading /
@@ -120,6 +120,19 @@ Admin** (`core.coverage.upi_reviewer`, a role-addressed `notifications.audience`
 who can edit the technician approves it on their profile — **no code**, the manager is the check.
 The console's add/edit form still sets it directly, for the same reason. Joining no longer asks.
 Why: it is where money lands, and redirecting it is exactly what a borrowed phone would try.
+
+**A company pays for tickets in CREDITS, and recharges by UPI to the platform.** One credit is a
+rupee's worth. A new company is given free credits (1000 by default); every ticket costs credits the
+moment it is RAISED (10 by default) and never gives them back, a cancellation included; the balance
+may go below zero down to a floor (−500 by default), and a ticket that would pass it is refused with
+409 `OUT_OF_CREDITS` while every ticket already raised carries on. The vendor's New ticket page says
+intake is paused BEFORE the form is filled, and never shows the balance. The company's **Admin or
+National Head** recharges on **Credits**: an amount, a UPI QR built from the **platform's** UPI ID,
+then the UTR and a screenshot — and only the **superadmin** confirms it arrived, which is the one
+thing that adds credits. The numbers and the UPI ID are the superadmin's **Rules** page
+(`platform_settings`, one row belonging to no company): free credits reach companies created after a
+change; the ticket charge and the floor reach every company from its next ticket. Every existing
+company was given the free credits on the day it shipped. Detail: `api/AGENTS.md` → Credits.
 
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.

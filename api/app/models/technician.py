@@ -300,6 +300,12 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     #
     # `rating` and `on_time_pct` were already nullable and already rendered as
     # `—`; these two now match them.
+    #
+    # All four are written now — the cancel count as it happens, the other
+    # three by `tickets.feedback_service.refresh_technician_stats` on every
+    # closure, which is also where "on time" is defined. Null still means
+    # nothing to measure: no closed job, no rating, or no closed job that
+    # qualifies for an on-time judgement.
     rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
     jobs_completed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     jobs_cancelled: Mapped[int | None] = mapped_column(Integer, nullable=True)

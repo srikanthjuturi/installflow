@@ -55,6 +55,12 @@ GLOBAL_TABLES: dict[str, str] = {
     "pincode_districts": "geography - joins two global tables",
     "membership_regions": "scoped through membership_id, which is company-scoped",
     "refresh_tokens": "belongs to a user, not a company; the token's claim carries the company",
+    "platform_settings": (
+        "the platform's own configuration, one row, set by the superadmin - what a "
+        "new company is given, what a ticket costs, the floor, and the platform's "
+        "UPI ID. It belongs to no company and holds nothing about one; every "
+        "company's credits live in credit_entries, which is tenant data"
+    ),
     "otp_codes": (
         "issued before a company is selected - auth precedes tenancy. Its "
         "ticket_id (a 'reschedule' code names the visit it authorises) is "
@@ -133,6 +139,11 @@ TENANT_LINKS = [
     # Where money WILL land. A change request naming another company's
     # technician would let one tenant's manager redirect a stranger's payouts.
     ("upi_change_requests", "technician_id", "technician_profiles"),
+    # What a company spends and tops up. A charge naming another company's
+    # ticket would bill one tenant for a second tenant's work; a credit naming
+    # another company's recharge would hand one tenant another's payment.
+    ("credit_entries", "ticket_id", "tickets"),
+    ("credit_entries", "recharge_id", "credit_recharges"),
     # Usage. A search counted against another company's vendor would put one
     # tenant's activity on a second tenant's bill review.
     ("vendor_address_searches", "vendor_id", "vendors"),

@@ -34,6 +34,15 @@ const RedemptionsPage = lazy(
   () => import("@/pages/redemptions/RedemptionsPage")
 );
 const RedemptionPage = lazy(() => import("@/pages/redemptions/RedemptionPage"));
+const CreditsPage = lazy(() => import("@/pages/credits/CreditsPage"));
+const RechargePage = lazy(() => import("@/pages/credits/RechargePage"));
+const PlatformRulesPage = lazy(() => import("@/pages/superadmin/PlatformRulesPage"));
+const PlatformRechargesPage = lazy(
+  () => import("@/pages/superadmin/PlatformRechargesPage")
+);
+const PlatformRechargePage = lazy(
+  () => import("@/pages/superadmin/PlatformRechargePage")
+);
 const VendorProductsPage = lazy(
   () => import("@/pages/vendor/VendorProductsPage")
 );
@@ -202,6 +211,11 @@ export const routes: RouteObject[] = [
           // tenant one, which is why it lives on this surface and not under
           // Master Data in the ops app.
           { path: "geography", element: <GeographyPage /> },
+          // The platform's own rules — what a company is given and what a
+          // ticket costs — and the recharges companies pay against them.
+          { path: "rules", element: <PlatformRulesPage /> },
+          { path: "recharges", element: <PlatformRechargesPage /> },
+          { path: "recharges/:id", element: <PlatformRechargePage /> },
         ],
       },
     ],
@@ -315,6 +329,10 @@ export const routes: RouteObject[] = [
               { path: "territory", element: <TerritoryPage /> },
               { path: "settings/rules", element: <RulesConfigPage /> },
               { path: "settings/users", element: <UsersRolesPage /> },
+              // Guarded by `credits.manage` off the nav table, the recharge
+              // route through the entry's `match` prefix.
+              { path: "credits", element: <CreditsPage /> },
+              { path: "credits/recharges/:id", element: <RechargePage /> },
               { path: "notifications", element: <NotificationsPage /> },
               { path: "account", element: <AccountPage /> },
               { path: "account/password", element: <ChangePasswordPage /> },

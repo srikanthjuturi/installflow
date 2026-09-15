@@ -2,6 +2,7 @@
 
 from app.models.company import Company
 from app.models.company_rules import CompanyRules
+from app.models.credits import CreditEntry, CreditRecharge, PlatformSettings
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
@@ -44,6 +45,8 @@ __all__ = [
     "CompanyRoleFeature",
     "CompanyRules",
     "CompanySequence",
+    "CreditEntry",
+    "CreditRecharge",
     "District",
     "Feature",
     "LedgerEntry",
@@ -53,6 +56,7 @@ __all__ = [
     "OtpCode",
     "Pincode",
     "PincodeDistrict",
+    "PlatformSettings",
     "ProductModel",
     "ProductModelSerial",
     "ProductNode",

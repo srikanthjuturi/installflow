@@ -89,11 +89,18 @@ export interface Technician {
   online: boolean;
   rating: number | null;
   /**
-   * All three are null until the jobs slice measures them. Null means "not
-   * measured", which is not the same claim as 0 — render it as an em dash.
+   * All three are null until there is something to measure — a first closure,
+   * a first cancellation. Null means "not measured", which is not the same
+   * claim as 0 — render it as an em dash.
    */
   jobsCompleted: number | null;
   jobsCancelled: number | null;
+  /**
+   * Share of closed jobs where the live proof photo was taken no later than
+   * 30 minutes after the slot closed. Worked out by the server on every
+   * closure (`refresh_technician_stats` argues the rules); null until a closed
+   * job qualifies.
+   */
   onTimePct: number | null;
 
   onboarding: TechnicianOnboarding;

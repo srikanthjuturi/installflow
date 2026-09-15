@@ -174,13 +174,83 @@ technician's own. Each redemption still freezes the address it was asked with.
 ⚠ The OTP throttle is per PHONE across purposes, so a code asked for within `OTP_RESEND_SECONDS`
 of signing in is a 429. Normal in tests, never in use.
 
-**A slot can move**, which is what finally clears the escalation queue's missed half. Two doors onto
-one mover in `core/reschedule.py` — the technician's, gated by a one-time code sent to the
+**Credits — a company pays for tickets, and recharges by UPI to the platform** (`e4b9d2a7c1f8`).
+`models/credits.py`, `core/credits.py`, `features/credits` (two routers: `/credits` for the company,
+`/platform` for the superadmin).
+
+- **`platform_settings` is ONE row belonging to no company** (`id = 1` by CHECK), and is in
+  `GLOBAL_TABLES` for that reason: free credits, credits per ticket, the minus limit, the minimum
+  recharge, and the platform's own UPI ID and name. Defaults live in `PLATFORM_DEFAULTS` and
+  `load_platform_settings` rebuilds a missing row — `rules.load_rules`'s shape.
+- **The balance is summed, never stored.** `credit_entries` is append-only (`free`, `ticket`,
+  `recharge`; unsigned `credits`, `kind` carries the direction, as `ledger_entries` does), with
+  partial uniques that make one charge per ticket, one credit per recharge and one gift per company
+  structural rather than careful.
+- **The charge is at CREATION** — `tickets.service.create_ticket` calls `charge_ticket` right after
+  the ticket's flush, inside its transaction, so a refusal (409 `OUT_OF_CREDITS`) rolls the ticket
+  and its code back and a charged ticket can never exist without its entry. Never refunded.
+  `GET /tickets/intake-status` tells a vendor `{paused}` and nothing more.
+- **Serialised with `pg_advisory_xact_lock`, keyed on the company — NOT `SELECT … FOR UPDATE` on
+  `companies`.** `FOR UPDATE` conflicts with the `KEY SHARE` lock every foreign-key insert takes on
+  its parent, so holding it would stall every write to every tenant table for that company while a
+  ticket was raised. Tested: two tickets racing for the last charge above the floor — exactly one
+  lands, and the balance stops on the floor.
+- **Bells ring at the crossing, never per ticket** — `credits` when the balance first reaches zero,
+  and when a ticket leaves too little for the next (only the second when one ticket does both).
+  **A REFUSAL rings too**, because a company can reach the floor with no ticket crossing it — the
+  superadmin raises the charge or lowers the limit — and then the first anybody heard was a vendor
+  turned away. That bell is written in its OWN session (`_ring_refusal`), since the refusal rolls the
+  ticket's transaction back; it is deduped on the paused title for 12 hours, so a vendor retrying all
+  afternoon rings once, and it swallows its own errors so it can never turn the 409 into a 500.
+- **A recharge is two people's word**, as a redemption is: the company CLAIMS (UTR required,
+  screenshot required, an `attachment/<company>/` blob with no `..`), and only the superadmin
+  CONFIRMS, which is the one thing that adds credits. Reject is final and needs a reason; the company
+  may cancel only before claiming. One open recharge per company. The platform's UPI ID and name are
+  frozen on the row — so a to-pay recharge started before the superadmin changed the UPI ID still
+  shows the OLD one; cancel it and start again. The outcome rings `recharge`.
+- **One UTR buys credits once.** A UPI payment has one UTR, so the same UTR on a second recharge is
+  either a resubmission after a rejection (allowed — the rejected one never credited) or the same
+  money claimed twice. `uq_credit_recharges_credited_utr` (partial on `confirmed_at IS NOT NULL`)
+  makes the double credit impossible; the service says so first — 409 `UTR_ALREADY_CREDITED` on the
+  company's claim (checked against its OWN recharges only, so it learns nothing about another
+  company's payments) and on the superadmin's confirm (any company). The superadmin's detail carries
+  `utrAlsoOn`, every other recharge with that UTR, which the console shows as a warning.
+- **A payment that does not match — short, over, or to the wrong account — is REJECTED**, with the
+  reason. There is no partial credit and no refund path in the product; money that left somebody's
+  account is settled outside it.
+- **The superadmin has no notifications feed** — a notification belongs to a company. Their bell
+  and badge read `GET /platform/recharges/count` and `/waiting`, polled; a waiting recharge leaves
+  it when decided.
+- **`audience='billing'`** is Admins AND National Heads together — either may recharge, so both
+  hear the balance and the outcome. It is in all three audience readers (see the note on
+  `notifications.audience` below).
+- Free credits are a one-time gift stamped at `create_company`, so changing the figure re-gifts
+  nobody; the charge and the floor are read live, so a change reaches every company at once. The
+  migration gave every existing company 1000, and its downgrade refuses once anything was charged or
+  a recharge exists.
+  ⚠ **Migrate production, then publish PROMPTLY.** A company created by the OLD code in between gets
+  no gift (the old `create_company` never calls `grant_free`), and then starts at 0 with the charge
+  already live the moment the new code ships. After publishing, this is safe to run any number of
+  times — `uq_credit_entries_company_free` makes a second gift impossible:
+  ```sql
+  INSERT INTO credit_entries (company_id, kind, credits)
+  SELECT c.id, 'free', s.free_credits
+  FROM companies c CROSS JOIN platform_settings s
+  WHERE s.id = 1 AND s.free_credits > 0
+    AND NOT EXISTS (SELECT 1 FROM credit_entries e WHERE e.company_id = c.id AND e.kind = 'free');
+  ```
+- **The superadmin hears a claim only while the console is open** — the bell polls every 30 s and
+  there is no socket, email or push for a superadmin. A claim made overnight waits for somebody to
+  look. Deliberate for now; say so before promising a turnaround.
+
+**A slot can move**, which is what finally clears the escalation queue's missed half. Two doors move
+it through one mover in `core/reschedule.py` (a third, the customer's link, only ever books a
+first time through it — below) — the technician's, gated by a one-time code sent to the
 **customer's** phone (`otp_codes.purpose = 'reschedule'`, keyed on `ticket_id`) and read back to
 them; and the console's, `jobs.reschedule` + an Area-Manager floor, no code and a required reason.
 Nothing is charged either way: the customer agreed.
 
-Six things about it are load-bearing:
+Eight things about it are load-bearing:
 
 - **`sla_due_at` is FROZEN, never re-based.** The promise made at intake is a fact, and a ticket
   that is rescheduled goes on reading as breached — which is true. The replacement window is
@@ -214,6 +284,18 @@ Six things about it are load-bearing:
   for the visit and were the one party a move never reached. A code sent to a number that is also
   the technician's own is allowed, recorded on the trail and rung to the area manager: refusing
   would punish a technician installing at their own address with a cancellation penalty.
+- **The customer's own link is a third door, and it books through the same mover.**
+  `confirm_slot` calls `move_slot(customer_agreed=True)`: a first booking by the one party whose word
+  `slot_confirmed_at` records. It used to be an unguarded write of its own. That raced a technician
+  accepting, leaving the ticket `New` with a technician on it, and a technician starting, which
+  wrote `Assigned` over `In Progress`.
+- **A time can be chosen only in `core.slots.CHOOSABLE_STATUSES`** — the assignable four, minus
+  `Escalated` with a technician. Never "anything not terminal". A job accepted before its time was
+  agreed can be STARTED. Its link then booked a slot and un-started it: the job showed "Start job"
+  again and the no-show sweep was armed against somebody on site. `time_is_choosable` and its SQL
+  twin now gate the slot page's picker, `confirm_slot`, the console's `slotLink`, both
+  missing-slot sweeps and the two dashboard tiles that must match them. The expired-window sweep
+  mattered most: it had been spending a started job's only `force_close` bell.
 
 One thing nothing clears yet, deliberate and needing a product decision rather than code: the
 vendor is never told their customer's slot is at risk.
@@ -540,6 +622,26 @@ of exactly zero that had never been counted. They are nullable now: **null means
 which is a different claim from 0**, and both clients render it as `—`. This is the same rule as
 "do not fake a number that has a real source", applied to the case where the source does not exist
 yet.
+
+`on_time_pct` was the last of the four to get a writer (`c5e8a1d3f7b2`, which also backfills it).
+`feedback_service.refresh_technician_stats` recomputes it on every closure beside the count and the
+rating: **the share of Closed and Force-Closed jobs where the live proof photo was taken no later
+than `NO_SHOW_GRACE_MINUTES` after `slot_end`**. That's the no-show sweep's own grace, so an arrival
+that sweep would not call absent is never called late.
+
+- **The photo's time, not the upload's.** A technician can be offline between the two, so the
+  phone's `captured_at` is used, capped at the server's `started` time. A clock set back is the
+  accepted risk; the ticket shows both times side by side.
+- **A job is left out, never counted late,** when it has no slot, or its latest `assigned`
+  post-dates `slot_end` (the sweep's own test, for the technician sent to a window already shut),
+  or no `started` event follows the latest `assigned` / `slot_confirmed` / `rescheduled` (a
+  re-assigned job's previous holder, a force-closure nobody started, a slot booked after work
+  began).
+- **Rounding never overstates:** 199 of 200 shows 99%, not 100%. Null is still "nothing to measure",
+  never 0.
+
+The docstring argues each clause. The migration restates the same rule in SQL, so change both
+together.
 
 When a table is genuinely needed before its writer lands, write the writer in the same change.
 `ticket_events` declares only the four `kind` values the code writes TODAY; assignment and release
@@ -983,7 +1085,9 @@ committed write with a 404.
   first National Head inherits the bell at once. A **role key** (`area_manager`, `regional_head`,
   `national_head`, `admin`) addresses one role and is resolved at WRITE time — a UPI change goes
   to whichever level of the AM → RH → NH → Admin chain exists — with the row's pincode keeping an
-  AM- or RH-addressed row inside the territory that holds it. NULL is every other row, unchanged.
+  AM- or RH-addressed row inside the territory that holds it. `'billing'` is Admins and National
+  Heads together, with no fallback — either may recharge the company's credits. NULL is every other
+  row, unchanged.
   ⚠ **Three places apply it and must agree:** `notifications.service._visible`,
   `core.coverage.users_notified_by` (web push — the relay passes `row.audience`) and the console
   socket's `_Visibility.hears_notification` (the `NotificationRaised` frame carries `audience`).

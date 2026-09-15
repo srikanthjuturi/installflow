@@ -4,6 +4,7 @@ import { SidebarCollapseToggle } from "@/components/shared/SidebarCollapseToggle
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMe } from "@/hooks/useAuth";
+import { useWaitingRechargeCount } from "@/hooks/usePlatform";
 import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
@@ -15,7 +16,7 @@ import { SUPERADMIN_NAV, activeSuperadminPath } from "./superadminNav";
  * Same rail as the ops console's and the vendor portal's — same gradient, same
  * widths, same active treatment, same account footer — because it is the same
  * product and a third navigation idiom would be one more to learn for no
- * reason. What differs is the contents: two destinations and no groups.
+ * reason. What differs is the contents: a handful of destinations, no groups.
  *
  * It does NOT reuse `shared/Sidebar`, for the reason `VendorSidebar` gives:
  * that component reads `NAV_GROUPS` and filters on `useFeatureAccess`, and
@@ -33,6 +34,8 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
   const { pathname } = useLocation();
   const { setSidebarOpen, toggleSidebarCollapsed } = useSession();
   const { data: me, isPending } = useMe();
+  // The same query the header's bell reads, so the two never disagree.
+  const { data: waitingRecharges = 0 } = useWaitingRechargeCount();
 
   const active = activeSuperadminPath(pathname);
   const name = me?.user.fullName ?? me?.user.email ?? "";
@@ -99,6 +102,7 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
         {SUPERADMIN_NAV.map((item) => {
           const isActive = item.to === active;
           const Icon = item.icon;
+          const badge = item.badge === "waitingRecharges" ? waitingRecharges : 0;
           return (
             <NavLink
               key={item.to}
@@ -123,6 +127,19 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
               >
                 {item.label}
               </span>
+              {badge ? (
+                <span
+                  className={cn(
+                    "bg-brand-accent text-[10px] font-bold text-white",
+                    collapsed
+                      ? "absolute top-1 right-1 grid size-4 place-items-center rounded-full"
+                      : "rounded-full px-1.5 py-px"
+                  )}
+                >
+                  {badge}
+                  <span className="sr-only"> waiting</span>
+                </span>
+              ) : null}
             </NavLink>
           );
         })}
@@ -135,9 +152,8 @@ export function SuperadminSidebar({ collapsed = false }: { collapsed?: boolean }
         )}
       >
         {/* A block, not a link — unlike the other two rails. There is no
-            account route on this surface (`routes.tsx` gives a superadmin only
-            Companies and Geography), and a footer that looks clickable and is
-            not is worse than one that plainly reports who is signed in. */}
+            account route on this surface, and a footer that looks clickable and
+            is not is worse than one that plainly reports who is signed in. */}
         <div
           className={cn(
             "flex w-full items-center rounded-md",

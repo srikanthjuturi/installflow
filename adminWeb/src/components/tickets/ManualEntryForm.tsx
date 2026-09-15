@@ -87,6 +87,11 @@ interface ManualEntryFormProps {
     enabled: boolean;
     onSearch: (sessionId: string) => void;
   };
+  /**
+   * The company has no credits left for another ticket. The page says why
+   * above the form; this only stops a submit the server would refuse.
+   */
+  paused?: boolean;
 }
 
 export function ManualEntryForm({
@@ -95,6 +100,7 @@ export function ManualEntryForm({
   isSubmitting,
   vendor,
   addressSearch,
+  paused = false,
 }: ManualEntryFormProps) {
 
   const {
@@ -493,7 +499,7 @@ export function ManualEntryForm({
   function submit(values: TicketFormValues) {
     // The button is disabled in this state, but a form can still be submitted
     // by keyboard while a check is in flight.
-    if (addressBlocked) return;
+    if (addressBlocked || paused) return;
     onSubmit({
       vendorId: values.vendorId,
       subcategoryId: values.subcategoryId,
@@ -1021,7 +1027,7 @@ export function ManualEntryForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting || addressBlocked}>
+        <Button type="submit" disabled={isSubmitting || addressBlocked || paused}>
           {isSubmitting && <Spinner data-icon="inline-start" />}
           {/* Follows the slot, like the banner above: with a time already
               agreed there is no request to send. */}

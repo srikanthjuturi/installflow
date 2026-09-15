@@ -73,13 +73,17 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
     # asked of the area manager, say — the territory filter below still keeps
     # it to the AM whose state holds its pincode), and `'payers'` rows when
     # they are the payer. Resolved per read — see `payer_role` on why.
+    # `'billing'` rows reach Admins and National Heads alike: either may
+    # recharge the company's credits (`AUDIENCES`).
     is_payer = principal.role in (ADMIN, NATIONAL_HEAD) and (
         principal.role == await payer_role(db, company_id=principal.company_id)
     )
+    is_billing = principal.role in (ADMIN, NATIONAL_HEAD)
     addressed = or_(
         Notification.audience.is_(None),
         Notification.audience == principal.role,
         *((Notification.audience == "payers",) if is_payer else ()),
+        *((Notification.audience == "billing",) if is_billing else ()),
     )
 
     pincodes = await visible_pincodes(db, principal)

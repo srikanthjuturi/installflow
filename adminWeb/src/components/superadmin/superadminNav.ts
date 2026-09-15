@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Building2, Globe2 } from "lucide-react";
+import { BadgeIndianRupee, Building2, Globe2, SlidersHorizontal } from "lucide-react";
 
 /**
  * The superadmin console's navigation.
@@ -19,10 +19,22 @@ export interface SuperadminNavItem {
   label: string;
   to: string;
   icon: LucideIcon;
+  /** Draws a live count beside the label — see `SuperadminSidebar`. */
+  badge?: "waitingRecharges";
 }
 
 export const SUPERADMIN_NAV: SuperadminNavItem[] = [
   { label: "Companies", to: "/companies", icon: Building2 },
+  // Companies that say they have paid for credits. The badge is how many are
+  // waiting for a decision — the same number the header's bell carries.
+  {
+    label: "Recharges",
+    to: "/recharges",
+    icon: BadgeIndianRupee,
+    badge: "waitingRecharges",
+  },
+  // What a company is given and what a ticket costs, and where recharges are paid.
+  { label: "Rules", to: "/rules", icon: SlidersHorizontal },
   { label: "Geography", to: "/geography", icon: Globe2 },
 ];
 

@@ -14,6 +14,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import company_code
+from app.core.credits import balance as credit_balance
+from app.core.credits import balances as credit_balances
+from app.core.credits import grant_free
 from app.core.deps import Principal
 from app.core.gst import assert_gstin_free_for_company
 from app.core.rules import load_rules
@@ -111,7 +114,11 @@ async def _unique_code(
 
 
 def _company_out(
-    company: Company, *, admin_email: str | None = None, user_count: int | None = None
+    company: Company,
+    *,
+    admin_email: str | None = None,
+    user_count: int | None = None,
+    credit_balance: int | None = None,
 ) -> CompanyOut:
     return CompanyOut(
         id=company.id,
@@ -130,6 +137,7 @@ def _company_out(
         pincode=company.pincode,
         adminEmail=admin_email,
         userCount=user_count,
+        creditBalance=credit_balance,
         createdAt=company.created_at,
     )
 
@@ -205,6 +213,9 @@ async def create_company(
     # same transaction as the company, rather than left to the first person who
     # opens Rules configuration.
     await load_rules(session, company.id)
+    # The free credits, in the same transaction for the same reason: a company
+    # that exists without its gift is one whose first ticket is refused.
+    await grant_free(session, company.id, by_user=principal.user_id)
 
     # Stays None on the reuse branch: that admin already has a password, and
     # `users` is global, so minting a new one would sign them out of every other
@@ -244,7 +255,12 @@ async def create_company(
     )
     await session.commit()
     await session.refresh(company)
-    base = _company_out(company, admin_email=admin_user.email, user_count=1)
+    base = _company_out(
+        company,
+        admin_email=admin_user.email,
+        user_count=1,
+        credit_balance=await credit_balance(session, company.id),
+    )
 
     # After the commit — see `users.service.create_user` for the ordering. The
     # company is named as itself here, not as the superadmin's tenant: this
@@ -294,7 +310,9 @@ async def list_companies(
     stmt = stmt.order_by(sort_col.desc() if params.sortDir == "desc" else sort_col.asc())
 
     rows, total = await paginate(session, stmt, page=params.page, limit=params.limit)
-    return [_company_out(c) for c in rows], total
+    # One grouped query for the page, not one per row.
+    owed = await credit_balances(session, [c.id for c in rows])
+    return [_company_out(c, credit_balance=owed.get(c.id)) for c in rows], total
 
 
 async def get_company(session: AsyncSession, company_id: uuid.UUID) -> CompanyOut:
@@ -303,6 +321,7 @@ async def get_company(session: AsyncSession, company_id: uuid.UUID) -> CompanyOu
         company,
         admin_email=await _admin_email(session, company_id),
         user_count=await _user_count(session, company_id),
+        credit_balance=await credit_balance(session, company_id),
     )
 
 

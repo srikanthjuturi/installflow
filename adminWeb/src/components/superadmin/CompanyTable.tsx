@@ -11,6 +11,7 @@ import { useParamsWriter, withSearch } from "@/hooks/useListParams";
 import { cn } from "@/lib/utils";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { Company } from "@/types/company";
+import { formatCredits } from "@/utils/credits";
 import { CompanyFormDialog } from "./CompanyFormDialog";
 import { DeleteCompanyDialog } from "./DeleteCompanyDialog";
 
@@ -126,6 +127,18 @@ export function CompanyTable({
           </p>
           <p className="text-[11px] tabular-nums text-ink-3">{c.pincode}</p>
         </div>
+      ),
+    },
+    {
+      id: "credits",
+      header: "Credits",
+      align: "right",
+      // Negative is a normal state — minus credits — so it is not coloured as
+      // an error; the figure itself carries the sign.
+      cell: (c) => (
+        <span className="font-semibold tabular-nums text-ink">
+          {c.creditBalance === null ? "—" : formatCredits(c.creditBalance)}
+        </span>
       ),
     },
     {

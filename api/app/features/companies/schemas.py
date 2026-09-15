@@ -82,6 +82,9 @@ class CompanyOut(AppModel):
     pincode: str
     adminEmail: str | None = None
     userCount: int | None = None
+    #: Credits left, summed live — negative once the company is using minus
+    #: credits. Null on the responses that do not compute it (update, status).
+    creditBalance: int | None = None
     createdAt: datetime
 
 

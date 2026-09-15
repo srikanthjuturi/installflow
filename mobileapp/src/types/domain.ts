@@ -95,7 +95,17 @@ export interface TechnicianSession {
   status: 'active' | 'inactive' | 'suspended';
   /** Null until they have closed a job — a dash, not a zero. */
   rating: number | null;
-  jobsCompleted: number;
+  /**
+   * Null until their first job closes — the server first writes it then, so a
+   * new technician's profile has never been counted. A dash, not "null".
+   */
+  jobsCompleted: number | null;
+  /**
+   * Share of their closed jobs where the live proof photo was taken no later
+   * than 30 minutes after the slot closed. Worked out by the server on every
+   * closure (`refresh_technician_stats` argues the rules); null until a closed
+   * job qualifies — a dash, not 0.
+   */
   onTimePct: number | null;
   /**
    * Whether this technician currently wants work — the Home screen's toggle.

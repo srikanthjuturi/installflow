@@ -35,6 +35,9 @@ from app.core.coverage import (
     nearest_manager_for,
     technicians_covering,
 )
+from app.core.credits import balance as credit_balance
+from app.core.credits import charge_ticket, load_platform_settings
+from app.core.credits import paused as credits_paused
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.ledger import (
@@ -74,6 +77,8 @@ from app.core.slots import (
     clock_range,
     day_label,
     offered_slots,
+    time_is_choosable,
+    time_is_choosable_clause,
     when_label,
 )
 from app.core.reschedule import (
@@ -91,6 +96,7 @@ from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
     AttentionOut,
     DashboardSummaryOut,
+    IntakeStatusOut,
     ForceCloseRequest,
     FunnelOut,
     PenaltyReviewerOut,
@@ -697,10 +703,13 @@ async def _hydrate(
                 ),
                 # Only while it is still the customer's to pick. Once used the
                 # token is spent, and a link that does nothing is worse than
-                # none at all.
+                # none at all — which is also why a job already under way, or
+                # refused, offers none: its page no longer draws a picker.
                 slotLink=(
                     slot_link(t.slot_token)
-                    if t.slot_token and t.slot_confirmed_at is None
+                    if t.slot_token
+                    and t.slot_confirmed_at is None
+                    and time_is_choosable(t.status, t.technician_id)
                     else None
                 ),
                 createdAt=t.created_at,
@@ -1111,9 +1120,10 @@ async def dashboard_summary(
                 ),
                 # The customer never picked a time and the window has shut, so
                 # they can no longer pick one. Nothing they or a technician does
-                # moves this ticket now.
+                # moves this ticket now. Only where a time was still theirs to
+                # pick — `sweeps._sweep_expired_without_slot`'s own predicate.
                 and_(
-                    Ticket.status.not_in(TERMINAL_STATUSES),
+                    time_is_choosable_clause(),
                     Ticket.slot_start.is_(None),
                     Ticket.sla_due_at < now,
                 ),
@@ -1136,7 +1146,10 @@ async def dashboard_summary(
             # ticket is `Assigned` with no time, still needs chasing, and would
             # have vanished from this tile at the moment it gained a technician
             # waiting to be told where to go.
-            Ticket.status.not_in(TERMINAL_STATUSES),
+            #
+            # But not "anything live" either: a job already STARTED with no
+            # time is not waiting on the customer — see `core.slots`.
+            time_is_choosable_clause(),
             Ticket.slot_start.is_(None),
             _last_event_at("slot_requested").is_not(None),
             _last_event_at("slot_requested")
@@ -1565,6 +1578,26 @@ async def confirm_slot(
     The chosen start must be one of the windows still on offer, recomputed here
     rather than trusted from the request — the page was rendered at some point
     in the past, and a window that was open then may have passed since.
+
+    ## Only while a time can still be chosen
+
+    Not merely "not terminal". A job accepted before its time was agreed can be
+    STARTED, and this used to book a slot onto it and write `Assigned` over
+    `In Progress` — see `core.slots.CHOOSABLE_STATUSES` for what that broke.
+    The page refuses to draw the picker for the same shape, so this is the
+    guard behind it rather than the only one.
+
+    ## Written through `core.reschedule.move_slot`
+
+    Which is a first booking by the one party whose word `slot_confirmed_at`
+    records, and so exactly `move_slot(customer_agreed=True)`. It used to be an
+    unguarded ORM write of its own, and it raced the two things that change a
+    ticket under a customer: a technician accepting (it then wrote `New` beside a
+    `technician_id` — the shape its own comment warned about) and a technician
+    starting (it wrote `Assigned` over `In Progress`). `move_slot`'s UPDATE is
+    guarded on the status, the holder and the empty slot it read, and lands in
+    `Assigned` for a held job and `New` for an unheld one — this function's
+    rule, verbatim, which is why it moved there.
     """
     row = await load_by_token(db, token)
 
@@ -1578,6 +1611,11 @@ async def confirm_slot(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="This visit is no longer open",
         )
+    if not time_is_choosable(row.status, row.technician_id):
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"A time can no longer be chosen — this visit is {row.status}",
+        )
 
     # `bookable_slots`, not `offered_slots` — re-derived from the SAME list the
     # page rendered, which now excludes anything the assigned technician cannot
@@ -1589,44 +1627,24 @@ async def confirm_slot(
             detail="That time is no longer available — please pick another",
         )
 
-    was = row.status
-    row.slot_start, row.slot_end = match
-    row.slot_confirmed_at = _now()
-    # ⚠ NOT unconditionally "New". A technician may already hold this ticket:
-    # since the pool started offering jobs with no time agreed, acceptance and
-    # confirmation race each other, and either can land first.
-    #
-    # Writing "New" over an accepted job would un-assign somebody who is
-    # committed to it while LEAVING `technician_id` set — a shape no query
-    # expects, and one the pool would then offer to a second technician while
-    # the first still has it in My Jobs.
-    #
-    # With a technician: the missing piece was the time, and it has arrived.
-    # Without: Slot Pending was the only thing holding it back.
-    row.status = "New" if row.technician_id is None else "Assigned"
-    # The customer has no user row, which is exactly why the event records an
-    # actor KIND as well as a label — `created_by` cannot answer this one.
-    db.add(
-        record_event(
-            row,
-            "slot_confirmed",
-            actor_kind="customer",
-            actor_label=row.customer_name,
-            note=when_label(*match),
-            from_status=was,
-            to_status=row.status,
-        )
-    )
-    # Eligible technicians are now allowed to see this. The notify joins
-    # THIS transaction, so it reaches their phones only if the ticket is
-    # really saved, and it reaches every worker rather than only this one.
-    await publish_pool_changed(
+    # Publishes the ticket, and the technician's job or the pool, inside this
+    # transaction — so eligible technicians hear of it only if it really saved.
+    moved = await move_slot(
         db,
-        company_id=row.company_id,
-        pincode=row.pincode,
-        node_path_ids=row.node_path_ids,
+        row,
+        start=match[0],
+        end=match[1],
+        # The customer has no user row, which is exactly why the event records
+        # an actor KIND as well as a label — `created_by` cannot answer this one.
+        actor_kind="customer",
+        actor_label=row.customer_name,
+        customer_agreed=True,
     )
-    await publish_ticket_changed(db, row)
+    if moved is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="This visit changed while the page was open",
+        )
     await db.commit()
 
     # After the commit, and never inside it: this is a network call to Expo,
@@ -1674,6 +1692,19 @@ async def _assert_pincode_known(db: AsyncSession, code: str) -> None:
             f"{code} is not a pincode we cover — check it, or ask for it to be "
             "added to the geography master."
         )
+
+
+async def intake_status(db: AsyncSession, principal: Principal) -> IntakeStatusOut:
+    """Whether the next ticket this vendor's company raises would be refused.
+
+    Asked before the form is filled, so nobody types a whole ticket for a 409.
+    Says paused or not and nothing else — the balance is the company's business,
+    not its vendor's.
+    """
+    assert principal.company_id is not None
+    settings = await load_platform_settings(db)
+    current = await credit_balance(db, principal.company_id)
+    return IntakeStatusOut(paused=credits_paused(current, settings))
 
 
 async def create_ticket(
@@ -1771,6 +1802,17 @@ async def create_ticket(
     db.add(row)
     # autoflush is OFF (hard rule 8) and the event needs the ticket's id.
     await db.flush()
+
+    # The ticket's credits, charged at creation — or a 409 that rolls this
+    # whole transaction back, the ticket and its code with it. Here, after the
+    # flush, because the charge names the ticket; before every event, ring and
+    # commit, so a refused ticket leaves no trace anywhere. See `core.credits`.
+    await charge_ticket(
+        db,
+        company_id=principal.company_id,
+        ticket_id=row.id,
+        by_user=principal.user_id,
+    )
 
     # The vendor's own name, not the person's: a sub-user leaves, the ticket
     # stays, and "who raised this" should still answer with the party that is

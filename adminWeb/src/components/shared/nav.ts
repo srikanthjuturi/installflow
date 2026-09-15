@@ -11,6 +11,7 @@ import {
   Tags,
   UserCog,
   Users,
+  Wallet,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Role } from "@/types";
@@ -202,6 +203,17 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/settings/users",
         icon: UserCog,
         feature: "users.view",
+      },
+      {
+        label: "Credits",
+        to: "/credits",
+        icon: Wallet,
+        match: ["/credits/"],
+        // What the company pays for tickets with, and topping it up. Seeded to
+        // admin and national_head only, and the API adds a National-Head rank
+        // floor no Feature Access override can lift: a recharge spends company
+        // money. Hard rule 8: this hides the link, the server refuses the act.
+        feature: "credits.manage",
       },
     ],
   },

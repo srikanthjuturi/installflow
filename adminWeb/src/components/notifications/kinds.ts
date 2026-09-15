@@ -1,10 +1,12 @@
 import {
   AlertTriangle,
   BadgeCheck,
+  BadgeIndianRupee,
   BadgeX,
   Bell,
   CalendarClock,
   Clock,
+  Coins,
   IndianRupee,
   MailX,
   PackagePlus,
@@ -98,6 +100,22 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: WalletCards,
     wrap: "bg-info-bg text-info",
     label: "UPI change",
+  },
+  // The company's credits crossed a line — used up, or tickets paused. Warn:
+  // a paused company is one whose vendors cannot raise tickets, a task with a
+  // fix (recharge) rather than a customer let down.
+  credits: {
+    icon: Coins,
+    wrap: "bg-warn-bg text-warn",
+    label: "Credits",
+  },
+  // A recharge the platform decided — credited, or not approved with a reason.
+  // Info rather than ok: one kind carries both outcomes, and a green tint over
+  // "not approved" would say the opposite of its title.
+  recharge: {
+    icon: BadgeIndianRupee,
+    wrap: "bg-info-bg text-info",
+    label: "Recharge",
   },
   // Warn rather than danger, the same call `ApprovalBadge` makes: danger is
   // spoken for by the rows about a customer already let down, and a rejected

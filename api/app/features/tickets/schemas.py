@@ -615,6 +615,17 @@ class AttentionOut(AppModel):
     slotSilenceHours: int
 
 
+class IntakeStatusOut(AppModel):
+    """For a vendor about to raise a ticket: would it be refused right now?
+
+    A yes or no and nothing else. Whether the company is paused is something
+    its vendor needs to know before filling a form; how many credits it has is
+    not their business.
+    """
+
+    paused: bool
+
+
 class DashboardSummaryOut(AppModel):
     """Every figure the console's dashboard draws, in one round trip.
 

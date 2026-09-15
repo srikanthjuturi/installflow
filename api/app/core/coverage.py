@@ -657,6 +657,9 @@ async def users_notified_by(
         # `_visible` does, rather than falling through to the whole company.
         if audience == "payers":
             who = [User.role == await payer_role(db, company_id=company_id)]
+        elif audience == "billing":
+            # Whoever can recharge the company's credits — both, never a fallback.
+            who = [User.role.in_((ADMIN, NATIONAL_HEAD))]
         elif audience == AREA_MANAGER:
             who = [(User.role == AREA_MANAGER) & covers_state.exists()]
         elif audience == REGIONAL_HEAD:

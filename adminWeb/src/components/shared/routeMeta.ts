@@ -49,6 +49,8 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Penalty · bonus · AI · timing",
   },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
+  /* Net-new — no prototype has credits. Awaiting sign-off. */
+  "/credits": { title: "Credits", subtitle: "Balance · statement · recharge" },
   /* Net-new — the prototype has no account or notifications screen. */
   "/notifications": {
     title: "Notifications",
@@ -93,6 +95,10 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
   [
     /^\/redemptions\/[^/]+$/,
     { title: "Redemption", subtitle: "Pay by UPI · record the proof" },
+  ],
+  [
+    /^\/credits\/recharges\/[^/]+$/,
+    { title: "Recharge", subtitle: "Pay by UPI · submit the proof" },
   ],
 ];
 

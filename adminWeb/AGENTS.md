@@ -227,6 +227,26 @@ Two seams to know about:
   the API adds an Area-Manager floor. The add/edit form gained **Name on the UPI account** beside
   the UPI ID, and still sets both directly. Copy on the panel, its reject dialog, the new field and
   the bell's **UPI change** label is net-new and was approved as written on **2026-09-11**.
+- **Credits: a company pays for tickets, and recharges by UPI to the platform.** Two surfaces.
+  - **Company (Admin, National Head):** `/credits` — the balance (negative is normal: minus
+    credits), the per-ticket charge and floor, the open recharge, and two server-paged tables. A
+    recharge is `RechargeDialog` (whole rupees, the server's bounds) → `/credits/recharges/:id`, laid
+    out like a redemption: the QR while unclaimed, then the proof. The console has NO way to add
+    credits — the superadmin confirms. Refreshed on `notification.raised` (`creditKeys.all`).
+    A rejected recharge says how to resubmit without paying twice — a new recharge, the same UTR.
+  - **Superadmin:** **Rules** (`PlatformRulesPage`), **Recharges** with a badge, and
+    `SuperadminBell` in the header. The bell is NOT the ops `NotificationBell` — a notification
+    belongs to a company — it lists waiting recharges from `/platform/recharges/waiting`, polled
+    every 30 s because this surface has no socket. ⚠ Its `DropdownMenuLabel` sits inside a
+    `DropdownMenuGroup`: Base UI's `MenuGroupLabel` throws without one and the menu never opens.
+    `PlatformRechargePage` warns **"This UTR is also on"** from `utrAlsoOn`, linking each other
+    recharge with that UTR; confirming one whose UTR is already credited is a 409 anyway.
+  - **Vendor:** `VendorNewTicketPage` asks `GET /tickets/intake-status` and, when paused, shows a
+    notice above the form and passes `paused` to `ManualEntryForm`, which disables submit.
+  - `PaymentProofForm` (shared) is the screenshot + UTR form for both a redemption claim (UTR
+    optional) and a recharge (UTR required); `UpiQr` moved to `shared/` for the same reason.
+  - The Companies table gained **Credits**. Every string on these screens is net-new and awaiting
+    sign-off.
 - **Editing a pincode by hand** (`PincodeFormDialog`, `SwitchOffPincodeDialog`, and the `Off` chip
   badge in `PincodeChips`) is in the same position: the prototype's Geography screen is read-only
   apart from the import, so **every string is net-new** and needs sign-off rather than extraction.
@@ -679,7 +699,9 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/ledger` | `LedgerPage` | pool balance, penalties collected, bonuses paid, transactions |
 | `/vendors` · `/territory` · `/categories` | masters | territory is Region → RSH → ASM → **states**; unassigned states are named. The vendor row carries an **Address searches** column — a lifetime COUNT, always a number and never a dash, and independent of the switch that produced it |
 | `/companies` · `/geography` | superadmin | the platform surface. Geography is the region → state → district → pincode master, with **two ways in**: a spreadsheet import for the country, and `PincodeFormDialog` for the one code somebody is stuck on (a chip is a button; switching off replaces deleting). Drill-down state lives in the query string (`?region=&state=&district=`) so a view is a link. Its copy is **net-new, not from the prototype** — see below |
+| `/rules` · `/recharges` · `/recharges/:id` | superadmin | the platform's credit rules and UPI ID (`PlatformRulesPage`), and every company's recharges — the queue starts on **Waiting**, oldest first; a recharge shows the UTR and screenshot beside **Confirm & add credits** and **Reject** |
 | `/settings/rules` · `/settings/users` | settings | |
+| `/credits` · `/credits/recharges/:id` | credits | the company's balance, recharges and statement; `credits.manage` (admin + national_head) + a National-Head rank floor. A recharge page is the QR and the **I've paid** form (UTR and screenshot, both required) |
 | `*` | `NotFoundPage` | every unmatched URL. Renders — it does not redirect |
 
 **The `*` route renders a page; it does not redirect.** Bouncing an unknown URL to the dashboard

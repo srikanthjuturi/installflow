@@ -9,6 +9,10 @@ must not drift:
   * **a manager who has already spoken to them** — `tickets.service.reschedule`,
     which carries no code and a written reason instead.
 
+A third caller only ever makes a FIRST booking: **the customer's own slot link**,
+`tickets.service.confirm_slot`. It used to write the slot itself, unguarded, and
+lost both races this function's UPDATE exists for — see its docstring.
+
 In `core/` for `core.escalation`'s exact reason: those are two slices and hard
 rule 4 forbids them importing each other. A second copy of "move the slot" would
 be a second answer to "what status does it land in", and the two would disagree

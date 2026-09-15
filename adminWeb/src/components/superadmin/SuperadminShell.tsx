@@ -9,6 +9,7 @@ import { useCurrentUser, useSignOut } from "@/hooks/useAuth";
 import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/store/session";
+import { SuperadminBell } from "./SuperadminBell";
 import { SuperadminSidebar } from "./SuperadminSidebar";
 
 /**
@@ -21,19 +22,19 @@ import { SuperadminSidebar } from "./SuperadminSidebar";
  * using them. The platform surface will keep gaining records that belong to
  * nobody's company, and the rail has room for them.
  *
- * Three things `AppShell` has that are deliberately absent, for the same
- * reasons the vendor portal omits them:
+ * Two things `AppShell` has that are deliberately absent:
  *
  *   * **the company switcher** — a superadmin holds no membership at all, so
  *     there is nothing to switch between.
- *   * **the notification bell** — still backed by a mock, and a fabricated
- *     count is not a placeholder.
- *   * **the search box** — `Topbar`'s input is wired to nothing, and a new
- *     surface must not inherit a dead control.
+ *   * **the search box** — `Topbar`'s input searches one company, and a
+ *     superadmin has none to search.
+ *
+ * The bell is NOT `AppShell`'s: a notification belongs to a company and a
+ * superadmin to none, so `SuperadminBell` lists the recharges waiting for a
+ * decision instead, polled, because this surface has no socket either.
  *
  * Sign out stays on the bar rather than a click deep on an account page,
- * because this surface has no account page: `routes.tsx` gives a superadmin
- * Companies and Geography and nothing else.
+ * because this surface has no account page.
  */
 export function SuperadminShell() {
   const { pathname } = useLocation();
@@ -127,6 +128,7 @@ export function SuperadminShell() {
             </span>
           ) : null}
           <ThemeToggle />
+          <SuperadminBell />
           <Button
             type="button"
             variant="outline"

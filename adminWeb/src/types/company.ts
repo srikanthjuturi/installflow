@@ -33,6 +33,11 @@ export interface Company {
   adminEmail: string | null;
   /** Active membership count, present on detail responses. */
   userCount: number | null;
+  /**
+   * Credits left, summed live on the server — negative once the company is
+   * using minus credits. On the list and detail; null on update responses.
+   */
+  creditBalance: number | null;
   createdAt: string;
 }
 

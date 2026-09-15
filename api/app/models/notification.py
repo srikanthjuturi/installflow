@@ -140,6 +140,14 @@ NOTIFICATION_KINDS = (
     #: National Head, else an Admin — and it is raised ROLE-addressed to that
     #: level (see `AUDIENCES`), never company-wide.
     "upi_change",
+    #: The company's credit balance crossed a line: its credits are used up and
+    #: tickets now spend minus credits, or the next ticket would pass the floor
+    #: and new tickets are paused. Raised once, at the crossing, never per
+    #: ticket — and only to the people who can recharge (`audience='billing'`).
+    "credits",
+    #: The superadmin decided a recharge the company claimed: credited, or not
+    #: approved with a reason. `audience='billing'`, like `credits`.
+    "recharge",
 )
 
 #: Who a row is for when territory is the wrong question.
@@ -158,8 +166,20 @@ NOTIFICATION_KINDS = (
 #: row's pincode still applies, so an AM-addressed row reaches only the AM whose
 #: state holds it.
 #:
+#: `billing` — the company's Admins AND National Heads, together: the people
+#: who can recharge its credits. Unlike `payers` it does not fall back from one
+#: to the other — either may recharge, so both hear about the balance and the
+#: outcome of a recharge whichever of them asked.
+#:
 #: NULL is every other row: the pincode rule above, unchanged.
-AUDIENCES = ("payers", "area_manager", "regional_head", "national_head", "admin")
+AUDIENCES = (
+    "payers",
+    "area_manager",
+    "regional_head",
+    "national_head",
+    "admin",
+    "billing",
+)
 
 
 class Notification(Base, IdMixin, AuditMixin):

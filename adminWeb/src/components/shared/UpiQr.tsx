@@ -18,8 +18,8 @@ const QUIET_ZONE = 2;
  * a scanner wants contrast and a quiet zone, and a dark-mode plate would be a
  * code the payer's phone cannot read — the one thing it exists for.
  *
- * Only the redemption detail page imports this, so `qrcode` rides in that
- * page's lazy chunk and never in the vendor bundle.
+ * Two pages import it — a redemption, and a company's credit recharge — both
+ * lazy, so `qrcode` rides in their chunks and never in the vendor bundle.
  */
 export function UpiQr({
   value,

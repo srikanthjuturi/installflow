@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -5,7 +6,8 @@ import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { ManualEntryForm } from "@/components/tickets/ManualEntryForm";
 import { toast } from "@/components/ui/toast";
 import { useMe } from "@/hooks/useAuth";
-import { useCreateTicket } from "@/hooks/useTickets";
+import { useBrand } from "@/hooks/useBrand";
+import { useCreateTicket, useIntakeStatus } from "@/hooks/useTickets";
 import { useRecordAddressSearch } from "@/hooks/useVendors";
 
 /**
@@ -15,10 +17,17 @@ import { useRecordAddressSearch } from "@/hooks/useVendors";
  * endpoint is gated on `masters.view` and for a staff caller lists every vendor
  * in the company. A vendor should not ask a company-wide question to learn its
  * own name.
+ *
+ * When the company has no credits left for another ticket, the page says so
+ * ABOVE the form and the form will not submit — nobody should fill in a whole
+ * ticket to be told no. The vendor sees that intake is paused and nothing about
+ * the balance behind it.
  */
 export default function VendorNewTicketPage() {
   const navigate = useNavigate();
   const { data: me, isPending, isError, error, refetch } = useMe();
+  const intake = useIntakeStatus();
+  const brand = useBrand();
   const create = useCreateTicket();
   const recordSearch = useRecordAddressSearch();
 
@@ -44,6 +53,8 @@ export default function VendorNewTicketPage() {
     );
   }
 
+  const paused = intake.data?.paused === true;
+
   return (
     <>
       <PageMeta
@@ -52,6 +63,21 @@ export default function VendorNewTicketPage() {
       />
 
       <h2 className="mb-4 text-lg font-semibold">Raise a ticket</h2>
+
+      {paused ? (
+        <section
+          role="status"
+          className="mb-3.5 flex items-start gap-2.5 rounded-md border border-warn/30 bg-warn-bg p-3.5 text-warn"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <div>
+            <p className="text-sm font-semibold">New tickets are paused</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed">
+              {brand.name} needs to recharge before new tickets can be raised.
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       <ManualEntryForm
         vendor={{ id: me.vendor.id, name: me.vendor.name }}
@@ -65,6 +91,7 @@ export default function VendorNewTicketPage() {
           enabled: me.vendor.addressSearchEnabled,
           onSearch: (sessionId) => recordSearch.mutate(sessionId),
         }}
+        paused={paused}
         isSubmitting={create.isPending}
         onCancel={() => navigate("/portal/tickets")}
         onSubmit={(values) =>

@@ -162,7 +162,12 @@ export function ProfileScreen() {
                   value={me.rating === null ? '—' : me.rating.toFixed(1)}
                   label="Rating"
                 />
-                <ChromeStat value={String(me.jobsCompleted)} label="Jobs done" />
+                {/* Null until the first closure is counted — `String(null)`
+                    used to print the word "null" here. */}
+                <ChromeStat
+                  value={me.jobsCompleted === null ? '—' : String(me.jobsCompleted)}
+                  label="Jobs done"
+                />
                 <ChromeStat
                   value={me.onTimePct === null ? '—' : `${me.onTimePct}%`}
                   label="On-time"

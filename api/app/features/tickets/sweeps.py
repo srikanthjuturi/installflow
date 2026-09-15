@@ -94,11 +94,10 @@ from app.core.rules import (
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.realtime import publish_notification, publish_ticket_changed
-from app.core.slots import clock, when_label
+from app.core.slots import clock, time_is_choosable_clause, when_label
 from app.core.tickets import (
     NO_SHOW_GRACE_MINUTES,
     NO_SHOW_LOOKBACK_HOURS,
-    TERMINAL_STATUSES,
 )
 from app.integrations import whatsapp
 from app.models.company import Company
@@ -406,9 +405,11 @@ async def sweep_silent_slots(db: AsyncSession) -> int:
     chase, the only thing watching for a customer who has gone quiet, would have
     stopped precisely when somebody was waiting to be told where to go.
 
-    Any live status, then, and the absence of a slot is the whole condition.
-    `TERMINAL_STATUSES` is excluded because a cancelled or closed ticket needs
-    no time.
+    Any status where the customer can still choose a time, then, and the absence
+    of a slot is the rest of the condition. That was "any live status" until it
+    was noticed that a slotless job can be STARTED: chasing its customer for a
+    time about work already under way is noise at best, and their link no longer
+    offers one. `core.slots.time_is_choosable_clause` is the one definition.
 
     The vendor is told as well as us: it is their customer who has gone quiet,
     and they are usually the ones with another number to try.
@@ -431,7 +432,7 @@ async def sweep_silent_slots(db: AsyncSession) -> int:
         await db.execute(
             select(Ticket, _rule("slot_silence_hours"))
             .where(
-                Ticket.status.not_in(TERMINAL_STATUSES),
+                time_is_choosable_clause(),
                 Ticket.deleted_at.is_(None),
                 Ticket.slot_start.is_(None),
                 asked.is_not(None),
@@ -539,11 +540,17 @@ async def _sweep_expired_without_slot(db: AsyncSession) -> int:
 
     Assigned or not: an accepted job with no time is if anything worse, because
     a technician is holding capacity for work that can no longer happen.
+
+    But only where the time was still the customer's to choose. A slotless job
+    already STARTED can proceed perfectly well — the technician finishes and the
+    customer confirms — and flagging it here did worse than mislead: the dedupe
+    below is "ever", so it spent the ticket's one `force_close` bell, and the
+    customer who later went silent on the finished work raised none.
     """
     rows = list(
         await db.scalars(
             select(Ticket).where(
-                Ticket.status.not_in(TERMINAL_STATUSES),
+                time_is_choosable_clause(),
                 Ticket.deleted_at.is_(None),
                 Ticket.slot_start.is_(None),
                 # The window is shut. Not "nearly" — while there is a minute

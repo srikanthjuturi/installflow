@@ -4,10 +4,10 @@ import { Link, useLocation, useParams } from "react-router";
 import { ClaimPaymentForm } from "@/components/redemptions/ClaimPaymentForm";
 import { DeclineRedemptionDialog } from "@/components/redemptions/DeclineRedemptionDialog";
 import { RedemptionBadge } from "@/components/redemptions/RedemptionBadge";
-import { UpiQr } from "@/components/redemptions/UpiQr";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
+import { UpiQr } from "@/components/shared/UpiQr";
 import { Button } from "@/components/ui/button";
 import {
   Card,

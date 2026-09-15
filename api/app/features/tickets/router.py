@@ -49,6 +49,7 @@ from app.features.tickets.schemas import (
     BonusRequest,
     DashboardSummaryOut,
     ForceCloseRequest,
+    IntakeStatusOut,
     NoShowRequest,
     PenaltyReverseRequest,
     RenotifyOut,
@@ -180,6 +181,21 @@ async def list_tickets(
         closed_within_days=closedWithinDays,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.get(
+    "/intake-status",
+    response_model=ApiEnvelope[IntakeStatusOut],
+    dependencies=[IsVendor],
+)
+async def intake_status(db: Db, principal: CanCreate) -> ApiEnvelope[IntakeStatusOut]:
+    """Whether a ticket raised now would be refused for want of credits.
+
+    The vendor portal asks before drawing the form. `POST` still decides for
+    real — this can go stale between the two — and answers 409 `OUT_OF_CREDITS`.
+    Declared above `/{ticket_id}`, like `/summary`.
+    """
+    return envelope(await service.intake_status(db, principal))
 
 
 @router.get("/summary", response_model=ApiEnvelope[DashboardSummaryOut])

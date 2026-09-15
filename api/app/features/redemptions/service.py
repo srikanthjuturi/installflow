@@ -84,6 +84,21 @@ def _refused(code: str, detail: str) -> AppError:
     return AppError(409, code, detail)
 
 
+def _proof_ok(company_id: uuid.UUID, blob_name: str) -> bool:
+    """Uploaded under this company's own private prefix, and nowhere else."""
+    return (
+        blob_name.startswith(f"{_PROOF_PREFIX}/{company_id}/") and ".." not in blob_name
+    )
+
+
+def _proof_url(row: Redemption) -> str | None:
+    # Checked again on the way OUT, as the ticket and job proofs are: a link is
+    # signed only for a blob that is provably this company's.
+    if not row.proof_blob_name or not _proof_ok(row.company_id, row.proof_blob_name):
+        return None
+    return signed_url(row.proof_blob_name)
+
+
 def state_of(row: Redemption) -> str:
     """The one place the timestamps become a word. See `RedemptionState`."""
     if row.declined_at is not None:
@@ -268,7 +283,7 @@ async def _my_detail(
         upiUri=await _upi_uri(db, row) if state_of(row) == "to_pay" else None,
         # The technician is the payee — the screenshot is proof of a payment
         # TO them, and exactly what they check their bank against.
-        proofUrl=signed_url(row.proof_blob_name) if row.proof_blob_name else None,
+        proofUrl=_proof_url(row),
         events=[_event_out(e) for e in events],
     )
 
@@ -643,7 +658,7 @@ async def staff_detail(
         # payment that failed after the screenshot has to be payable again —
         # the console puts it behind a warning rather than taking it away.
         upiUri=await _upi_uri(db, row) if state in ("to_pay", "awaiting") else None,
-        proofUrl=signed_url(row.proof_blob_name) if row.proof_blob_name else None,
+        proofUrl=_proof_url(row),
         events=[_event_out(e) for e in events],
         technicianId=row.technician_id,
         technicianName=name or row.payee_name,
@@ -682,8 +697,7 @@ async def claim(
     assert principal.company_id is not None
     row = await _load_for_staff(db, principal, redemption_id)
 
-    prefix = f"{_PROOF_PREFIX}/{principal.company_id}/"
-    if not body.proof.blobName.startswith(prefix):
+    if not _proof_ok(principal.company_id, body.proof.blobName):
         raise AppError(
             422,
             "BAD_PROOF",

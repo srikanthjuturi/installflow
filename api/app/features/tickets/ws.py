@@ -164,6 +164,8 @@ class _Visibility:
                 return False
             if audience == "payers":
                 return self.payer
+            if audience == "billing":
+                return self.role in (ADMIN, NATIONAL_HEAD)
             if audience != self.role:
                 return False
             return self.all_india or pincode is None or pincode in self.pincodes
