@@ -32,18 +32,27 @@ workflow file can do (see "Manual setup required" below).
 Its container starts by running a `server.mjs` that Azure's Oryx build system
 generates when it builds a recognised frontend framework project and serves
 the output as static content — that generation only happens on an actual
-Oryx build. The first version of this workflow deployed adminWeb's
-pre-built `dist/` folder directly (no `package.json`), so Oryx had nothing to
-build, no `server.mjs` was ever generated, and the container crash-looped on
-every start (`Cannot find module '/home/site/wwwroot/server.mjs'`) — every
-request 503'd despite the deploy step itself reporting success, because
-`azure/webapps-deploy` only confirms the upload, not that the app comes back
-up afterward. Fixed by deploying the whole adminWeb source tree instead and
-letting Oryx build it remotely, same as the api already does via its own
-remote-build setting. `adminWeb/public/web.config` (IIS SPA-fallback rewrite
-rules) is a leftover from before this was diagnosed — harmless on this Linux
-target since nothing reads it, only relevant if adminWeb ever moves to a
-Windows/IIS App Service.
+Oryx build. Getting this working took two fixes, not one:
+
+1. The first version of this workflow deployed adminWeb's pre-built `dist/`
+   folder directly (no `package.json`). Oryx had nothing to build, no
+   `server.mjs` was ever generated, and the container crash-looped on every
+   start (`Cannot find module '/home/site/wwwroot/server.mjs'`). Fixed by
+   deploying the whole adminWeb source tree instead of `dist/`.
+2. That alone still wasn't enough — **a zip deploy does not trigger an Oryx
+   build on its own.** `SCM_DO_BUILD_DURING_DEPLOYMENT` / `ENABLE_ORYX_BUILD`
+   are off by default; without them Kudu just extracts the source into
+   `wwwroot` unbuilt, same missing-`server.mjs` crash, same 503, even though
+   the deploy step itself reports success both times — `azure/webapps-deploy`
+   only confirms the upload landed, never that the app came back up
+   afterward. `api/scripts/publish.py` already knew this and has always
+   flipped both settings on via the Kudu API before every api deploy;
+   `web-prod-deploy.yml` now does the identical call before its own deploy
+   step.
+
+`adminWeb/public/web.config` (IIS SPA-fallback rewrite rules) is a leftover
+from before this was diagnosed — harmless on this Linux target since nothing
+reads it, only relevant if adminWeb ever moves to a Windows/IIS App Service.
 
 **mobileapp is not built or published by any of these** — no dev API URL is
 wired into `eas.json` yet.
