@@ -1,0 +1,66 @@
+name: Deploy API — dev
+
+# Push to `dev` → zip-deploy the API to installflowapi-dev. Migrations are NOT
+# run here — the App Service's own startup command runs
+# `python -m alembic upgrade head` before starting gunicorn, on every restart,
+# from inside Azure's network. That is what lets this run on an ordinary
+# GitHub-hosted runner: nothing here needs to reach the Postgres firewall.
+# See .github/DEPLOYMENT.md.
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'api/**'
+      - '.github/workflows/dev-deploy.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (dev)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Write dev deployed configuration
+        # ENV_FILE_DEV is the FULL content of a dotenv file — POSTGRES_DB=RelianceDB,
+        # ENVIRONMENT=development, a real JWT_SECRET_KEY, etc.
+        #
+        # Routed through env:, not interpolated straight into the shell
+        # command — ${{ }} substitutes RAW TEXT into the script before the
+        # shell parses it, and this file (and the XML below) is full of
+        # double quotes that would otherwise break the shell's own quoting
+        # mid-command and silently write a mangled file. env: hands the
+        # value to the shell as an already-set variable instead, so its
+        # content is never re-parsed.
+        env:
+          CONTENT: ${{ secrets.ENV_FILE_DEV }}
+        run: printf '%s' "$CONTENT" > .env.dev-deploy
+
+      - name: Write dev publish profile
+        env:
+          CONTENT: ${{ secrets.AZURE_PUBLISH_PROFILE_DEV }}
+        run: printf '%s' "$CONTENT" > installflowapi-dev.PublishSettings
+
+      - name: Publish
+        # Validates the config (right DB name, right ENVIRONMENT, strong JWT
+        # secret), builds the zip, deploys via Kudu, then verifies with live
+        # health/login probes — all in one call. See api/scripts/publish.py.
+        run: python scripts/publish.py --target dev
+
+      - name: Clean up secrets from the runner's disk
+        if: always()
+        run: rm -f .env.dev-deploy installflowapi-dev.PublishSettings

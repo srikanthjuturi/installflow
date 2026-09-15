@@ -5,20 +5,33 @@ description: Deploy the FastAPI backend to Azure App Service (installflowapi) by
 
 # Publishing the API to Azure
 
-The API runs at
+Two sites now: production at
 `https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net`
-on Azure App Service (Linux, Python 3.14).
+and dev at
+`https://installflowapi-dev-c2fqf7f4bjdbg8bz.centralindia-01.azurewebsites.net`,
+both Azure App Service (Linux, Python 3.14). `scripts/publish.py` takes a
+required `--target {dev,prod}` — there is no default, on purpose, so neither a
+person nor CI can deploy the wrong site by omitting a flag. GitHub Actions
+runs the exact same script for both `dev-deploy.yml` (push to `dev`) and
+`prod-deploy.yml` (manual only) — see `.github/DEPLOYMENT.md` for the CI
+side, secrets, and the self-hosted-runner requirement.
 
 ## Publish
 
 ```bash
 cd api
-./.venv/Scripts/python.exe scripts/publish.py          # deploy + verify
-./.venv/Scripts/python.exe scripts/publish.py --check  # verify only
+./.venv/Scripts/python.exe scripts/publish.py --target dev                    # deploy + verify, dev
+./.venv/Scripts/python.exe scripts/publish.py --target prod                   # deploy + verify, prod
+./.venv/Scripts/python.exe scripts/publish.py --target prod --check           # verify only
+./.venv/Scripts/python.exe scripts/publish.py --target dev --validate-config-only  # guard_config only, no network
 ```
 
 That script is the whole procedure. Prefer fixing it over deploying by hand —
-every guard in it exists because something went wrong once.
+every guard in it exists because something went wrong once. Dev's guards are
+deliberately lighter than prod's (`Target.strict = False` — see the script):
+it still hard-fails on the wrong database name, the wrong `ENVIRONMENT`, or a
+weak JWT secret, but does not require WhatsApp/ACS/VAPID config, matching
+"Testing onboarding without Meta credentials" in the root `AGENTS.md`.
 
 ## The constraint that shapes everything
 
@@ -74,16 +87,21 @@ ASGI callable.
 
 ## Configuration
 
-`.env.production` is the deployed configuration; `publish.py` copies it into the
-package as `.env`. **`.env` is the local development file and must never ship** —
-it points at localhost and has `OTP_DEV_ECHO` on.
+`.env.production` (prod) / `.env.dev-deploy` (dev) is the deployed
+configuration for each target; `publish.py` copies the right one into the
+package as `.env`. **`.env` with no suffix is the local development file and
+must never ship** — it points at localhost and has `OTP_DEV_ECHO` on. Both
+`.env.production` and `.env.dev-deploy` are gitignored (`.env.*` pattern) —
+neither is in the repo; each is built by hand from `.env.example` and, for CI,
+stored as a GitHub Secret (`ENV_FILE_PROD` / `ENV_FILE_DEV`).
 
-The script refuses to deploy unless `ENVIRONMENT=production`,
-`OTP_DEV_ECHO=false`, `OTP_PEPPER` is set, and `INVITE_LINK_BASE` points at this
-site. The first three are also enforced by the server at boot: it will not start
-with dev echo on or an empty pepper, because dev echo returns OTP codes in the
-response body and an unpeppered 6-digit hash is trivially reversible from a
-database dump.
+For the **prod** target, the script refuses to deploy unless
+`ENVIRONMENT=production`, `OTP_DEV_ECHO=false`, `OTP_PEPPER` is set, and
+`INVITE_LINK_BASE` points at the prod site — enforced in `guard_config`, and
+the first three are also enforced by the server itself at boot. The **dev**
+target's guard is lighter (see `Target.strict` in the script): it still
+fails on the wrong `POSTGRES_DB`/`ENVIRONMENT` or a weak JWT secret, but
+allows `OTP_DEV_ECHO=true` and unset WhatsApp/ACS/VAPID config.
 
 Secrets in the package is a workaround, not a design. They belong in App
 Settings once ARM access exists.

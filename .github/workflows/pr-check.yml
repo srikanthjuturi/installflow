@@ -1,0 +1,72 @@
+name: PR checks
+
+# A signal, not a deploy. Nothing here touches Azure or Postgres — it exists
+# so a dev→main PR (or any PR into either integration branch) has SOMETHING
+# to look at before a human merges it and then manually runs the prod deploy
+# workflow. See .github/DEPLOYMENT.md.
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  adminweb:
+    name: adminWeb — lint & typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adminWeb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: adminWeb/.nvmrc
+          cache: npm
+          cache-dependency-path: adminWeb/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  mobileapp:
+    name: mobileapp — lint & typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobileapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobileapp/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  api:
+    name: api — import/syntax check
+    # api has no ruff/mypy/pytest configured (checked: not in requirements.txt,
+    # no pyproject.toml/pytest.ini). This is deliberately the weakest of the
+    # three checks — a syntax/import smoke test, not real coverage. Replace it
+    # once real Python tooling exists; see .github/DEPLOYMENT.md decision #9.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Minimal config so Settings() can be instantiated
+        # Settings() requires every field present (POSTGRES_DB etc. have no
+        # default) but does not validate placeholder/empty values itself —
+        # that stricter check lives in scripts/publish.py's guard_config and
+        # only matters for an actual deploy. .env.example already satisfies
+        # this; nothing here talks to a real database.
+        run: cp .env.example .env
+      - name: Byte-compile every module (catches syntax errors)
+        run: python -m compileall -q app alembic scripts
+      - name: Import the app (catches broken imports)
+        run: python -c "import app.main"

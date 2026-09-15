@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import warnings
 from logging.config import fileConfig
@@ -20,6 +21,29 @@ from app.core.config import settings
 from app.db.base import Base  # imports Base with every model registered
 
 config = context.config
+
+# Dev and production are two databases on ONE Azure Postgres server, and
+# `$env:POSTGRES_DB='RelianceProdDB'` is all it takes to point a plain
+# `alembic upgrade head` at production — one env var, no other friction. That
+# used to be documented as a warning only (AGENTS.md, .env.example); it wasn't
+# enough, because a copy-pasted command or bad muscle memory reads exactly
+# like the safe one. This makes it structural: touching production locally
+# needs a second, unmistakable opt-in on top of naming the database.
+#
+# CI does not go through this at all — the dev and prod workflows each carry
+# their own DATABASE_URL from an environment-scoped GitHub secret and never
+# set POSTGRES_DB by hand, so nothing here should ever have to fire there.
+_PRODUCTION_DB = "RelianceProdDB"
+if settings.POSTGRES_DB == _PRODUCTION_DB and os.environ.get("CONFIRM_PROD") != "yes-i-mean-it":
+    print(
+        f"\nREFUSING: POSTGRES_DB={_PRODUCTION_DB} but CONFIRM_PROD is not set.\n"
+        "This would run a migration against PRODUCTION from a local terminal.\n"
+        "If that is really what you mean to do:\n\n"
+        "  $env:CONFIRM_PROD='yes-i-mean-it'; $env:POSTGRES_DB='RelianceProdDB'; "
+        "alembic upgrade head\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # NB: the DB URL is taken directly from app settings (below), NOT written into
 # the ConfigParser — the URL-encoded password contains '%', which ConfigParser
