@@ -89,6 +89,10 @@ const VendorNewTicketPage = lazy(
   () => import("@/pages/vendor/VendorNewTicketPage")
 );
 const VendorUsersPage = lazy(() => import("@/pages/vendor/VendorUsersPage"));
+const PrivacyPolicyPage = lazy(
+  () => import("@/pages/legal/PrivacyPolicyPage")
+);
+const TermsPage = lazy(() => import("@/pages/legal/TermsPage"));
 
 /**
  * The escalation queue's two action screens moved under `/tickets/:id/…` when
@@ -342,5 +346,11 @@ export const routes: RouteObject[] = [
       },
     ],
   },
+  // Ungated, like `*` below: the Play Store listing links here, and a
+  // reviewer or a technician reading it is never signed in. Neither belongs
+  // inside `RedirectIfSignedIn` — a signed-in visitor must still be able to
+  // read them, not get bounced to the dashboard.
+  { path: "/privacy", element: <PrivacyPolicyPage /> },
+  { path: "/terms", element: <TermsPage /> },
   { path: "*", element: <NotFoundPage /> },
 ];
