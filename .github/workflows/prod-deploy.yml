@@ -1,0 +1,85 @@
+name: Deploy API — production
+
+# Manual only. Never triggered by a push or by a dev→main merge — merging is a
+# separate, human action; running this afterwards is a second, deliberate one.
+#
+# Migrations are NOT run here, same as dev — the App Service's own startup
+# command runs `python -m alembic upgrade head` before gunicorn starts. A
+# failed migration takes the WHOLE backend down (uvicorn never starts, every
+# request 503s) until it's fixed — see .github/DEPLOYMENT.md.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to proceed'
+        required: true
+      allow_non_main_branch:
+        description: 'Allow running from a branch other than main (hotfix use only)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (production)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Confirm intent
+        # env:, not straight interpolation — see the comment on the secret
+        # writes below. Lower stakes here (you type this yourself) but the
+        # same class of bug: ${{ }} pastes raw text into the shell command
+        # before it's parsed, so anything with a quote or backtick in it
+        # breaks — or worse, executes.
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "deploy" ]; then
+            echo 'Input must be exactly "deploy" — refusing.' >&2
+            exit 1
+          fi
+
+      - name: Refuse to run off any ref but main, unless overridden
+        # workflow_dispatch lets whoever triggers it pick ANY branch from a
+        # dropdown, and the dialog remembers whatever was last selected — this
+        # is the only thing stopping a forgotten selection from quietly
+        # deploying a feature branch to production.
+        env:
+          ALLOW_NON_MAIN: ${{ github.event.inputs.allow_non_main_branch }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$ALLOW_NON_MAIN" != "true" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "This workflow only runs against main (got $REF) unless allow_non_main_branch is ticked." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Write production configuration
+        env:
+          CONTENT: ${{ secrets.ENV_FILE_PROD }}
+        run: printf '%s' "$CONTENT" > .env.production
+
+      - name: Write production publish profile
+        env:
+          CONTENT: ${{ secrets.AZURE_PUBLISH_PROFILE_PROD }}
+        run: printf '%s' "$CONTENT" > installflowapi.PublishSettings
+
+      - name: Publish
+        run: python scripts/publish.py --target prod
+
+      - name: Clean up secrets from the runner's disk
+        if: always()
+        run: rm -f .env.production installflowapi.PublishSettings
