@@ -122,9 +122,18 @@ async def lifespan(app: FastAPI):
 # the client would get a stack trace instead of the standard error envelope, and
 # the console would fail to parse it. The traceback is still logged server-side
 # by the handler in app.core.errors, which is where a developer should read it.
+#
+# The interactive docs and the raw schema are also production-gated: `/docs`,
+# `/redoc` and `/openapi.json` hand out every route, parameter shape and the
+# `HTTPBearer` scheme to anyone who asks. Useful while building against the
+# API; not something the public internet needs.
+_docs_enabled = settings.ENVIRONMENT != "production"
 app = FastAPI(
     title=settings.PROJECT_TITLE,
     lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 register_exception_handlers(app)
@@ -141,7 +150,10 @@ app.add_middleware(
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "environment": settings.ENVIRONMENT}
+    # `environment` deliberately left off the public response — it told an
+    # unauthenticated caller which of the two databases they were hitting for
+    # free. `publish.py`'s own deploy probe only reads `status`.
+    return {"status": "ok"}
 
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)

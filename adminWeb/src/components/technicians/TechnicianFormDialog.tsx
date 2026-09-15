@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { AvatarPicker } from "@/components/shared/AvatarPicker";
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
+import { UpiQrUpload } from "@/components/shared/UpiQrUpload";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -106,6 +107,7 @@ function TechnicianForm({
     control,
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<TechnicianFormValues>({
     resolver: zodResolver(technicianSchema),
@@ -349,7 +351,19 @@ function TechnicianForm({
                 than paired: a VPA is long, and there is nothing to read it
                 against. */}
             <Field data-invalid={err("upiId") ? true : undefined}>
-              <FieldLabel htmlFor="tech-upi">UPI ID</FieldLabel>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel htmlFor="tech-upi">UPI ID</FieldLabel>
+                <UpiQrUpload
+                  onScanned={({ vpa, name }) => {
+                    // Both fields from the QR — the name only when it carried
+                    // one, so a bare-address code does not wipe what was typed.
+                    setValue("upiId", vpa, { shouldValidate: true, shouldDirty: true });
+                    if (name) {
+                      setValue("upiName", name, { shouldValidate: true, shouldDirty: true });
+                    }
+                  }}
+                />
+              </div>
               <Input
                 id="tech-upi"
                 inputMode="email"

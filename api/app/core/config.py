@@ -80,7 +80,13 @@ class Settings(BaseSettings):
     # ─── JWT ───────────────────────────────────────────────────────────────
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Short on purpose: the token lives in browser-readable storage (Zustand),
+    # so this is the real bound on how long a stolen one is usable — logout
+    # and password changes only revoke the refresh token (see
+    # `core/sessions.py`), never this one. The reactive refresh in
+    # `adminWeb/src/services/http.ts` (401 -> refresh -> replay) hides the
+    # shorter life from every screen, so this is free to lower.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 5
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ─── Superadmin bootstrap (used by app.scripts.bootstrap) ──────────────

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { UpiQrUpload } from "@/components/shared/UpiQrUpload";
 import type { PlatformSettings } from "@/types/platform";
 import {
   platformRulesSchema,
@@ -33,6 +34,7 @@ export function PlatformRulesForm({
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isDirty },
   } = useForm<PlatformRulesValues>({
     resolver: zodResolver(platformRulesSchema),
@@ -82,7 +84,19 @@ export function PlatformRulesForm({
         <RulesCard title="Recharge payments">
           <FieldGroup className="gap-3">
             <Field data-invalid={errors.upiId ? true : undefined}>
-              <FieldLabel htmlFor="platform-upi-id">UPI ID</FieldLabel>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel htmlFor="platform-upi-id">UPI ID</FieldLabel>
+                <UpiQrUpload
+                  onScanned={({ vpa, name }) => {
+                    // Both fields from the QR — the name only when it carried
+                    // one, so a bare-address code does not wipe what was typed.
+                    setValue("upiId", vpa, { shouldValidate: true, shouldDirty: true });
+                    if (name) {
+                      setValue("upiName", name, { shouldValidate: true, shouldDirty: true });
+                    }
+                  }}
+                />
+              </div>
               <Input
                 id="platform-upi-id"
                 autoComplete="off"

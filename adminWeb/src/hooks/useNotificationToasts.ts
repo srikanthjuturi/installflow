@@ -168,12 +168,23 @@ export function useNotificationToasts(): void {
 
     /** The worker, handing over a push it chose not to show. */
     const onWorkerMessage = (event: MessageEvent) => {
+      // Only from the service worker actually controlling this page — not
+      // just anything shaped like a PushMessage. A bare `type` check would
+      // trust that shape from any source able to reach this listener.
+      if (event.source !== navigator.serviceWorker?.controller) return;
       const message = event.data as PushMessage | undefined;
       if (!message || message.type !== PAGE_MESSAGE) return;
       // Content arrives in the push itself, so this path needs no read at all.
       const id = message.data?.id;
       if (!id) return;
-      announce(id, message.title, message.body, message.data?.to);
+      // Same shape `sw.js`'s own `openTarget` requires: an in-app path only,
+      // never a scheme-relative or absolute URL a crafted push could carry.
+      const to = message.data?.to;
+      const safeTo =
+        typeof to === "string" && to.startsWith("/") && !to.startsWith("//")
+          ? to
+          : undefined;
+      announce(id, message.title, message.body, safeTo);
     };
 
     navigator.serviceWorker?.addEventListener("message", onWorkerMessage);

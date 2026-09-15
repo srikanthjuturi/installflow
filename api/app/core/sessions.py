@@ -7,7 +7,7 @@ when an account is suspended.
 
 An access token is NOT revoked here, and cannot be — it is a self-contained JWT
 that stays valid until it expires. `ACCESS_TOKEN_EXPIRE_MINUTES` is therefore
-the real window on any of these actions, and it is 30 minutes. What this closes
+the real window on any of these actions, and it is 5 minutes. What this closes
 is the seven-day one.
 """
 
