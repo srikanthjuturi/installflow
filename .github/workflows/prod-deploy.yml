@@ -1,0 +1,71 @@
+name: Deploy API — production
+
+# Manual only. Never triggered by a push or by a dev→main merge — merging is a
+# separate, human action; running this afterwards is a second, deliberate one.
+#
+# Migrations are NOT run here, same as dev — the App Service's own startup
+# command runs `python -m alembic upgrade head` before gunicorn starts. A
+# failed migration takes the WHOLE backend down (uvicorn never starts, every
+# request 503s) until it's fixed — see .github/DEPLOYMENT.md.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to proceed'
+        required: true
+      allow_non_main_branch:
+        description: 'Allow running from a branch other than main (hotfix use only)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (production)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - name: Confirm intent
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy" ]; then
+            echo 'Input must be exactly "deploy" — refusing.' >&2
+            exit 1
+          fi
+
+      - name: Refuse to run off any ref but main, unless overridden
+        # workflow_dispatch lets whoever triggers it pick ANY branch from a
+        # dropdown, and the dialog remembers whatever was last selected — this
+        # is the only thing stopping a forgotten selection from quietly
+        # deploying a feature branch to production.
+        run: |
+          if [ "${{ github.event.inputs.allow_non_main_branch }}" != "true" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "This workflow only runs against main (got ${{ github.ref }}) unless allow_non_main_branch is ticked." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Write production configuration
+        run: printf '%s' "${{ secrets.ENV_FILE_PROD }}" > .env.production
+
+      - name: Write production publish profile
+        run: printf '%s' "${{ secrets.AZURE_PUBLISH_PROFILE_PROD }}" > installflowapi.PublishSettings
+
+      - name: Publish
+        run: python scripts/publish.py --target prod
+
+      - name: Clean up secrets from the runner's disk
+        if: always()
+        run: rm -f .env.production installflowapi.PublishSettings

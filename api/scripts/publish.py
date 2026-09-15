@@ -1,15 +1,25 @@
-"""Publish the API to Azure App Service by zip deploy.
+"""Publish the API to Azure App Service by zip deploy — dev or production.
 
-    ./.venv/Scripts/python.exe scripts/publish.py            # deploy + verify
-    ./.venv/Scripts/python.exe scripts/publish.py --check    # verify only
+    ./.venv/Scripts/python.exe scripts/publish.py --target dev
+    ./.venv/Scripts/python.exe scripts/publish.py --target prod
+    ./.venv/Scripts/python.exe scripts/publish.py --target prod --check   # verify only
 
-Deployment is zip deploy through Kudu, authenticated with the publish profile —
-NOT `az`. The account available here has no ARM permission on the subscription
-that owns this app (`Microsoft.Web/sites/read` returns AuthorizationFailed), so
-anything ARM-only is out of reach: App Settings, the startup command, scaling.
-The publish profile is a site-level credential and works regardless.
+Deployment is zip deploy through Kudu, authenticated with the target's publish
+profile — NOT `az`. The account available here has no ARM permission on the
+subscription that owns either app (`Microsoft.Web/sites/read` returns
+AuthorizationFailed), so anything ARM-only is out of reach: App Settings, the
+startup command, scaling. The publish profile is a site-level credential and
+works regardless — for both `installflowapi` and `installflowapi-dev`.
 
-Everything below encodes a mistake that has already cost time once.
+`--target` is required, on purpose, with no default. Two Azure sites and two
+Postgres databases exist for exactly the reason `--target prod` should never
+be something a person or a workflow falls into by not typing an argument.
+
+Everything below encodes a mistake that has already cost time once — some of
+it prod-only, because a dev deploy is allowed to be looser than what ships to
+real customers (see `Target.strict` and TESTING ONBOARDING WITHOUT META
+CREDENTIALS in AGENTS.md, which documents leaving WhatsApp/email config empty
+in dev on purpose).
 """
 
 from __future__ import annotations
@@ -22,41 +32,81 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
 API_DIR = Path(__file__).resolve().parent.parent
-PROFILE = API_DIR / "installflowapi.PublishSettings"
-SITE = "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net"
 
-#: The CONSOLE, on Netlify — a DIFFERENT host from SITE. Every link guard below
-#: compares against SITE because the API mints and sends those links itself;
-#: this one points at the browser app instead, so copying the sibling pattern
-#: would demand a URL that is wrong.
+#: The CONSOLE, on Netlify — a DIFFERENT host from either API site. Every link
+#: guard below compares against the target's own site because the API mints
+#: and sends those links itself; this one points at the browser app instead.
+#: adminWeb has no dev-hosted deployment (Netlify tracks `main` only), so the
+#: CONSOLE_LINK_BASE guard only runs for the prod target.
 CONSOLE_SITE = "https://reliancegreentech.netlify.app"
 
-#: Shipped to the server. `alembic/` travels so migrations can be run there if
-#: the database is ever unreachable from a laptop.
+#: Shipped to the server. `alembic/` travels so a migration can be run there by
+#: hand if the database is ever unreachable from a laptop — CI never uses this
+#: copy to migrate; see `.github/workflows/*-deploy.yml`, which run
+#: `alembic upgrade head` as their own step, before this script is invoked.
 PAYLOAD_DIRS = ("app", "alembic")
 PAYLOAD_FILES = ("requirements.txt", "alembic.ini", "application.py")
 
-#: Configuration ships INSIDE the package as `.env`, because App Settings need
-#: ARM. `.env.production` is the source; `.env` is the local development one and
-#: must never be deployed — it points at localhost and has OTP_DEV_ECHO on.
-ENV_SOURCE = ".env.production"
-
-#: The production database, on the same Azure server as the development one
-#: (`RelianceDB`). Guarded below, because for a long time BOTH env files named
-#: the dev database and the deployed API served it without anything on screen
-#: to say so. A second copy of the name is cheap; that failure was not.
-PRODUCTION_DB = "RelianceProdDB"
-
 #: The development VAPID private key, from `.env`. Named here so shipping it to
-#: production is refused rather than merely discouraged: it sits in a file every
-#: developer has a copy of, and whoever holds it can push a notification to
-#: every browser that ever turned desktop alerts on.
+#: PRODUCTION is refused rather than merely discouraged: it sits in a file
+#: every developer has a copy of, and whoever holds it can push a notification
+#: to every browser that ever turned desktop alerts on. It is NOT a problem for
+#: the dev target — that VAPID pair being the same as the local one is exactly
+#: what "dev" means here — so this only ever runs for `strict` targets.
 _DEV_VAPID_PRIVATE_KEY = "lX6xivPgJRlEOrkCtIMfQj4HNwt9P8rXV5L4vWT7ygA"
+
+
+@dataclass(frozen=True)
+class Target:
+    name: str
+    site: str
+    #: Downloaded from the Azure Portal by hand and gitignored (`*.PublishSettings`).
+    #: CI never has this file checked in — the dev/prod workflows materialise
+    #: it from a GitHub Secret before calling this script, at this same path,
+    #: so this script does not need to know it is running in CI at all.
+    profile_file: Path
+    #: The deployed configuration for this site. `.env` (no suffix) is the
+    #: LOCAL development file — points at localhost, has OTP_DEV_ECHO on — and
+    #: must never be one of these. Also gitignored; CI writes it from a
+    #: GitHub Secret the same way it writes the publish profile.
+    env_source_file: Path
+    expected_db: str
+    expected_environment: str
+    #: True only for prod. Applies the full guard suite below — approved
+    #: WhatsApp templates, populated email config, allowlists empty, every
+    #: customer-facing link pointing at a real host. Dev is allowed to ship
+    #: with WhatsApp/ACS left empty and OTP_DEV_ECHO on, exactly as
+    #: `AGENTS.md` → "Testing onboarding without Meta credentials" describes —
+    #: that is what makes it usable for testing at all.
+    strict: bool
+
+
+TARGETS: dict[str, Target] = {
+    "dev": Target(
+        name="dev",
+        site="https://installflowapi-dev-c2fqf7f4bjdbg8bz.centralindia-01.azurewebsites.net",
+        profile_file=API_DIR / "installflowapi-dev.PublishSettings",
+        env_source_file=API_DIR / ".env.dev-deploy",
+        expected_db="RelianceDB",
+        expected_environment="development",
+        strict=False,
+    ),
+    "prod": Target(
+        name="prod",
+        site="https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net",
+        profile_file=API_DIR / "installflowapi.PublishSettings",
+        env_source_file=API_DIR / ".env.production",
+        expected_db="RelianceProdDB",
+        expected_environment="production",
+        strict=True,
+    ),
+}
 
 
 def fail(message: str) -> None:
@@ -64,30 +114,33 @@ def fail(message: str) -> None:
     sys.exit(1)
 
 
-def kudu_credentials() -> tuple[str, str, str]:
-    if not PROFILE.exists():
-        fail(f"{PROFILE.name} not found. Download it from the Azure Portal.")
-    for publish in ET.parse(PROFILE).getroot():
+def kudu_credentials(target: Target) -> tuple[str, str, str]:
+    if not target.profile_file.exists():
+        fail(
+            f"{target.profile_file.name} not found. Download the {target.name} "
+            "publish profile from the Azure Portal (or, in CI, check the "
+            "workflow step that writes it from a secret)."
+        )
+    for publish in ET.parse(target.profile_file).getroot():
         if publish.attrib.get("publishMethod") == "ZipDeploy":
             return (
                 publish.attrib["publishUrl"],
                 publish.attrib["userName"],
                 publish.attrib["userPWD"],
             )
-    fail("No ZipDeploy profile in the publish settings")
+    fail(f"No ZipDeploy profile in {target.profile_file.name}")
     raise AssertionError("unreachable")
 
 
-def build_package(destination: Path) -> Path:
+def build_package(destination: Path, target: Target) -> Path:
     """Assemble the zip. Paths are POSIX — this is not cosmetic.
 
     Windows' Compress-Archive writes entries with backslashes, which Linux
     extracts as files literally named `app\\main.py`: the deploy succeeds and
     the app then cannot import itself.
     """
-    env_source = API_DIR / ENV_SOURCE
-    if not env_source.exists():
-        fail(f"{ENV_SOURCE} not found — that is the deployed configuration")
+    if not target.env_source_file.exists():
+        fail(f"{target.env_source_file.name} not found — that is the deployed configuration")
 
     staging = destination / "payload"
     staging.mkdir(parents=True)
@@ -100,7 +153,7 @@ def build_package(destination: Path) -> Path:
         )
     for name in PAYLOAD_FILES:
         shutil.copy2(API_DIR / name, staging / name)
-    shutil.copy2(env_source, staging / ".env")
+    shutil.copy2(target.env_source_file, staging / ".env")
 
     # copytree takes .html along with the .py, but nothing else asserts that —
     # and an API shipped without its email templates 500s the first time
@@ -119,48 +172,68 @@ def build_package(destination: Path) -> Path:
     return zip_path
 
 
-def guard_production_config() -> None:
-    """Refuse to ship a configuration the server will reject or leak from."""
-    text = (API_DIR / ENV_SOURCE).read_text(encoding="utf-8")
+def guard_config(target: Target) -> None:
+    """Refuse to ship a configuration the server will reject or leak from.
+
+    Two tiers: a handful of checks that matter for EVERY target — because
+    dev and prod share one Postgres server and the database name is the only
+    thing keeping a deploy from serving the wrong one — and the full prod
+    guard suite, which only runs when `target.strict`.
+    """
+    text = target.env_source_file.read_text(encoding="utf-8")
     values = dict(
         line.split("=", 1)
         for line in text.splitlines()
         if "=" in line and not line.lstrip().startswith("#")
     )
     problems = []
-    if values.get("ENVIRONMENT", "").strip() != "production":
-        problems.append("ENVIRONMENT must be production")
+
+    # ── Checks that apply to every target ───────────────────────────────
+    if values.get("ENVIRONMENT", "").strip() != target.expected_environment:
+        problems.append(
+            f"ENVIRONMENT must be {target.expected_environment} for the "
+            f"{target.name} target, got {values.get('ENVIRONMENT', '').strip() or '<unset>'}"
+        )
     # The check that did not exist while it was most needed. Dev and prod are
     # two databases on ONE server, so the only thing separating them is this
-    # string — and a wrong one is invisible: the app boots, every screen works,
-    # and it is serving development data to production.
-    if values.get("POSTGRES_DB", "").strip() != PRODUCTION_DB:
+    # string — and a wrong one is invisible: the app boots, every screen
+    # works, and it is serving the other environment's data.
+    if values.get("POSTGRES_DB", "").strip() != target.expected_db:
         problems.append(
-            f"POSTGRES_DB must be {PRODUCTION_DB}, not "
-            f"{values.get('POSTGRES_DB', '').strip() or '<unset>'} — this would "
-            f"deploy an API that serves the development database"
+            f"POSTGRES_DB must be {target.expected_db} for the {target.name} "
+            f"target, not {values.get('POSTGRES_DB', '').strip() or '<unset>'} — "
+            "this would deploy an API that serves the wrong environment's database"
         )
-    # A signing key is the whole of the session's security, and the placeholder
-    # shipped in `.env.example` is public in the repository. It ran in
-    # production until the databases were split.
+    # A signing key is the whole of the session's security, and the
+    # placeholder shipped in `.env.example` is public in the repository. It
+    # ran in production until the databases were split. Matters for dev too —
+    # a technician's dev session is still a real bearer token.
     jwt_secret = values.get("JWT_SECRET_KEY", "").strip()
     if "CHANGE_ME" in jwt_secret or len(jwt_secret) < 32:
         problems.append(
             "JWT_SECRET_KEY is a placeholder or too short — generate one with "
             '`python -c "import secrets; print(secrets.token_urlsafe(64))"`'
         )
+
+    if not target.strict:
+        if problems:
+            fail("; ".join(problems))
+        print("  config guards passed (dev — light guard set)")
+        return
+
+    # ── Prod-only guards below ───────────────────────────────────────────
     if values.get("OTP_DEV_ECHO", "").strip().lower() not in ("false", "0", ""):
         problems.append("OTP_DEV_ECHO must be false — it returns codes in the response")
     if not values.get("OTP_PEPPER", "").strip():
         problems.append("OTP_PEPPER must be set — the server refuses to boot without it")
-    if SITE not in values.get("INVITE_LINK_BASE", ""):
+    if target.site not in values.get("INVITE_LINK_BASE", ""):
         problems.append("INVITE_LINK_BASE does not point at this site")
     # The same check, and it exists because the invite one did not cover it:
     # `SLOT_LINK_BASE` was simply absent from .env.production, so it fell back
     # to its `http://localhost:8000/slot` default and every customer got a link
     # WhatsApp would not even make tappable. An unset key has to fail here for
     # the same reason a wrong one does — the symptom is identical.
-    if SITE not in values.get("SLOT_LINK_BASE", ""):
+    if target.site not in values.get("SLOT_LINK_BASE", ""):
         problems.append(
             "SLOT_LINK_BASE does not point at this site — the customer's "
             "'pick a time' link must be a public https URL"
@@ -170,7 +243,7 @@ def guard_production_config() -> None:
     # WhatsApp to real customers asking them to confirm a job. Every link this
     # server MINTS and SENDS gets a guard here — the failure is silent
     # otherwise, because nothing is wrong until somebody taps it.
-    if SITE not in values.get("FEEDBACK_LINK_BASE", ""):
+    if target.site not in values.get("FEEDBACK_LINK_BASE", ""):
         problems.append(
             "FEEDBACK_LINK_BASE does not point at this site — the customer's "
             "'confirm the job' link must be a public https URL"
@@ -225,9 +298,9 @@ def guard_production_config() -> None:
             )
 
     # The console link is the fourth of the same kind, and the only one that
-    # points somewhere other than SITE — see CONSOLE_SITE. It ships inside every
-    # emailed temporary password, and a localhost value sends perfectly and
-    # arrives as a dead button.
+    # points somewhere other than the API site — see CONSOLE_SITE. It ships
+    # inside every emailed temporary password, and a localhost value sends
+    # perfectly and arrives as a dead button.
     if CONSOLE_SITE not in values.get("CONSOLE_LINK_BASE", ""):
         problems.append(
             "CONSOLE_LINK_BASE does not point at the console — the 'Sign in' "
@@ -351,18 +424,18 @@ def deploy(client: httpx.Client, host: str, auth: tuple[str, str], zip_path: Pat
     print(f"  deployed in {time.monotonic() - started:.0f}s")
 
 
-def verify(client: httpx.Client) -> None:
+def verify(client: httpx.Client, target: Target) -> None:
     """Exercise the API. Do NOT inspect /home/site/wwwroot to confirm a deploy.
 
     With the Oryx build on, the app runs from an archive extracted to /tmp; the
     loose files in wwwroot are leftovers from the first deploy and never change.
     Reading them shows stale configuration and invites the wrong conclusion.
     """
-    print("\nVerifying (the site restarts, so the first attempts may fail):")
+    print(f"\nVerifying {target.name} (the site restarts, so the first attempts may fail):")
     deadline = time.monotonic() + 300
     while True:
         try:
-            health = client.get(f"{SITE}/health", timeout=90)
+            health = client.get(f"{target.site}/health", timeout=90)
             if health.status_code == 200 and health.json().get("status") == "ok":
                 print(f"  /health      {health.json()}")
                 break
@@ -380,7 +453,7 @@ def verify(client: httpx.Client) -> None:
     # the deployment is fine. `.invalid` is reserved but email-validator
     # refuses it, so use a deliverable-looking address that cannot exist.
     login = client.post(
-        f"{SITE}/api/v1/auth/login",
+        f"{target.site}/api/v1/auth/login",
         json={"email": "deploy-probe@example.com", "password": "not-a-real-password"},
         timeout=90,
     )
@@ -405,7 +478,7 @@ def verify(client: httpx.Client) -> None:
     deadline = time.monotonic() + 120
     while True:
         google = client.post(
-            f"{SITE}/api/v1/auth/google",
+            f"{target.site}/api/v1/auth/google",
             json={"credential": "not-a-real-token"},
             timeout=90,
         )
@@ -421,7 +494,7 @@ def verify(client: httpx.Client) -> None:
     print("  google      configured (rejection probe returned 401)")
 
     for path in ("/docs", "/.well-known/assetlinks.json"):
-        response = client.get(f"{SITE}{path}", timeout=90)
+        response = client.get(f"{target.site}{path}", timeout=90)
         status = "ok" if response.status_code == 200 else f"HTTP {response.status_code}"
         print(f"  {path:<28} {status}")
         if response.status_code != 200:
@@ -430,21 +503,43 @@ def verify(client: httpx.Client) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--target",
+        required=True,
+        choices=sorted(TARGETS),
+        help="which site to publish — no default, on purpose",
+    )
     parser.add_argument("--check", action="store_true", help="verify only, do not deploy")
+    parser.add_argument(
+        "--validate-config-only",
+        action="store_true",
+        help=(
+            "run only guard_config against the target's env file and exit — no "
+            "network calls. Used by CI to confirm the right database name "
+            "BEFORE running migrations, not just before the code deploy that "
+            "happens after them."
+        ),
+    )
     args = parser.parse_args()
+    target = TARGETS[args.target]
+
+    if args.validate_config_only:
+        guard_config(target)
+        print(f"\n{target.name} config valid.")
+        return
 
     with httpx.Client(follow_redirects=True) as client:
         if not args.check:
-            print(f"Publishing to {SITE}")
-            guard_production_config()
-            host, user, password = kudu_credentials()
+            print(f"Publishing {target.name} to {target.site}")
+            guard_config(target)
+            host, user, password = kudu_credentials(target)
             auth = (user, password)
             ensure_remote_build(client, host, auth)
             with tempfile.TemporaryDirectory() as tmp:
-                deploy(client, host, auth, build_package(Path(tmp)))
-        verify(client)
+                deploy(client, host, auth, build_package(Path(tmp), target))
+        verify(client, target)
 
-    print("\nPublished.")
+    print(f"\nPublished {target.name}.")
 
 
 if __name__ == "__main__":
