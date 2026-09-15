@@ -9,6 +9,7 @@ import {
   requestRedemption,
   type RedemptionDetail,
 } from '@/features/redeem/api/redeem';
+import { trackRedemptionConfirmed, trackRedemptionRequested } from '@/lib/analytics/events';
 import { qk } from '@/lib/queryKeys';
 
 /**
@@ -60,9 +61,11 @@ export function useRequestRedemption() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: requestRedemption,
-    onSuccess: (detail) => {
+    onSuccess: (detail, amountPaise) => {
       queryClient.setQueryData<RedemptionDetail>(qk.redemption(detail.id), detail);
       void queryClient.invalidateQueries({ queryKey: qk.earnings() });
+
+      trackRedemptionRequested(amountPaise);
     },
     onError: (error) => {
       if (isRedeemRefused(error)) {
@@ -77,11 +80,15 @@ export function useConfirmRedemption(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (received: boolean) => confirmRedemption(id, received),
-    onSuccess: (detail) => {
+    onSuccess: (detail, received) => {
       queryClient.setQueryData<RedemptionDetail>(qk.redemption(id), detail);
       // The card and the history both describe this one.
       void queryClient.invalidateQueries({ queryKey: qk.redeemable() });
       void queryClient.invalidateQueries({ queryKey: qk.redemptions() });
+
+      // "Not yet" isn't a confirmation — only `received: true` is the one
+      // thing that makes a redemption paid (doc §"A technician cashes out").
+      if (received) trackRedemptionConfirmed(id);
     },
   });
 }

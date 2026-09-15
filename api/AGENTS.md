@@ -909,7 +909,7 @@ app/
                          INBOUND verification, where a bad token has exactly one
                          right outcome and there is no record to preserve.
   models/                one module per area; every model reachable from __init__
-  scripts/               bootstrap, audit_tenancy, create_database, copy_geography
+  scripts/               bootstrap, audit_tenancy, create_database, copy_geography, cleanup_db
 alembic/versions/        hand-written, with a prose docstring saying WHY
 ```
 
@@ -971,6 +971,133 @@ not contain), and a stale count is worse than none because somebody eventually d
 **Measure, do not do arithmetic:** `SELECT count(*) FROM features` and
 `SELECT count(*) FROM role_feature_defaults` on a freshly migrated database.
 
+## Database cleanup — deleting companies and everything under them
+
+> Decisions locked in a grilling session on 2026-09-15; built as `app/scripts/cleanup_db.py`
+> the same day, and exercised then with `--rollback` on `RelianceDB` (keep list empty, and keeping
+> one company) and `--dry-run` on `RelianceProdDB` — no guard fired, nothing committed on either.
+> Dev held no tickets at the time, so the ticket, proof and money tables have only ever been
+> planned against, never deleted from: that is what the rehearsal below is for.
+
+`python -m app.scripts.cleanup_db --keep <company-id> …` deletes **every company not on the keep
+list**, with all of its tenant rows, and every user left with no reason to exist. It is mainly for
+wiping `RelianceDB` between rounds of testing, and it runs against `RelianceProdDB` once, to clear
+the internal and third-party test companies without touching the client.
+
+Why a keep list and not a delete list, and why that is the dangerous half: on dev "delete
+everything but what I name" is exactly the job. On prod it means a real company that signed up
+since the list was written is deleted along with the test ones — which is what the plan printout,
+the two prompts and the name guard below exist to catch.
+
+Why it deletes **companies** and not just "user data": `users` is global and a person reaches a
+company only through `memberships`, so there is no user-shaped slice of the database that is not
+also a company-shaped one. A deleted company takes its rules, catalogue, serials, vendors, brands,
+tickets, money and people with it; the superadmin re-creates it, and it gets fresh free credits and
+default rules like any new company.
+
+### What survives
+
+| Kept | Why |
+|---|---|
+| Every company on `--keep`, and **every row it owns — untouched**, soft-deleted rows included | The client's own setup and history; nothing about them is test data |
+| The superadmin (`users.role = 'superadmin'`) | The only way back in after a full wipe |
+| Any user with a membership in a kept company | Otherwise the kept company survives with nobody able to sign in to it, and its history names authors who no longer exist — worse than deleting it, because nothing on screen says so |
+| `regions`, `states`, `districts`, `pincodes`, `pincode_districts` | Global master; ids are shared with the other database via `copy_geography` |
+| `platform_settings`, `features`, `role_feature_defaults`, `roles`, `alembic_version` | Platform configuration, not tenant data |
+
+A user with memberships in both a kept and a deleted company keeps the account and loses only the
+deleted membership. A user left with **no** membership is deleted, whatever their role — a vendor
+login with no vendor behind it can authenticate and do nothing, and it holds its email hostage
+(`users.email` is unique platform-wide, so re-creating that vendor would 409). There is no
+hand-maintained user keep list. `otp_codes` and `refresh_tokens` go with their user; unattached
+OTP rows go only if expired.
+
+⚠ **It hard-deletes users**, which breaks an assumption `ActorMixin` states outright: *"actors are
+never hard-deleted"*. `created_by` / `updated_by` are plain UUIDs with no FK, so a deleted user's
+id left in a kept company's rows fails nothing. Rule 2 above — keep anyone with a kept membership —
+is what stops that happening to the client; it does not cover a person who once acted in a kept
+company and has since lost that membership.
+
+### Locked decisions
+
+| # | Decision | Rejected alternative | Honest cost | Enforced by |
+|---|---|---|---|---|
+| 1 | **Keep list** of company **ids**; everything else is deleted. The script prints each id beside its name | A delete list; naming by slug or GSTIN (prod holds two Twincore rows with the same GSTIN and near-identical slugs) | A real company created after the list was written is deleted unless somebody reads the plan | The printed plan + decisions 3 and 4 — the list itself is convention |
+| 2 | Users survive **only** as superadmin or through a kept company's membership | Deleting everyone but named users (would lock the client out); keeping bare logins by hand | Someone who once worked in a kept company but no longer has a membership there is deleted, and their id dangles in `created_by` | Script |
+| 3 | **Backup first, made by the script:** `pg_dump -Fc` of that one database to `api/backups/<db>-<timestamp>.dump`. No dump file, or an empty one → no delete | Relying on Azure point-in-time restore (restores the whole SERVER, which holds both databases, into a new server — hours); taking the operator's word | Production customer names, phones and addresses sit on the operator's machine indefinitely; the script never deletes a dump. `pg_dump` must be findable (it is not on PATH on every machine — e.g. `C:\Program Files\PostgreSQL\18\bin`) | Script. `api/backups/` is git-ignored, and the script refuses to write there if `git check-ignore` says it is not |
+| 4 | **Two prompts before anything is deleted:** type the database name exactly, then type `YES`. Shown first: database and host, each company to be deleted (name, id, ticket / technician / user counts, last ticket date), each company kept | `y/N`; `YES` alone (the same word on dev and prod, so twenty dev runs train the hand that types it on prod) | A few more keystrokes on every dev run | Script |
+| 5 | **Database rows only.** Blob storage is not touched; the deleted company ids are printed and written beside the dump | Deleting `{prefix}/{company_id}/` from both containers | Deleted companies' proof photos and payment screenshots stay in the private container, pointed at by nothing | Script (by omission) |
+| 6 | An **empty keep list is refused on `RelianceProdDB`** (case-insensitive name match) and allowed on any other database | Allowing an empty keep list only on `RelianceDB` and refusing it everywhere else | A production copy under any other name — a restore, a rehearsal, a future staging database — can be emptied with only decision 4 in the way | Script |
+| 7 | **Every table must be classified** (keep / per-company / per-user) in the script, or it refuses to run. `--check` runs only this, with no database | A step in `pr-check.yml` that fails the PR adding the table | ⚠ **CONVENTION ONLY at the time it matters.** An unclassified table is found by whoever next runs a cleanup — possibly months later, possibly in a hurry — not by whoever added it. Run `python -m app.scripts.cleanup_db --check` after adding a table | Script, at run time only |
+| 8 | **Proven before prod on a restored prod dump**, then checked by hand, then run for real (procedure below) | Trusting a dev run; relying on the in-transaction checks alone | About an hour, and a second copy of production data on the server while it exists | Checks 1–5 by the script; the rehearsal itself and check 7 are convention |
+
+### Built-in checks — the script rolls back if any fails
+
+The whole run is **one REPEATABLE READ transaction**. The script measures, deletes, measures
+again, and rolls everything back if a number moved that should not have:
+
+1. **Kept rows unchanged, deleted rows gone** — for EVERY table, the rows expected to survive are
+   counted beforehand, and the table must hold exactly that many afterwards. One measurement
+   covers the kept companies, the deleted ones, users, tokens and OTP codes alike.
+2. **Money unchanged** — the kept companies' `SUM` over `ledger_entries.amount_paise`,
+   `credit_entries.credits`, `credit_recharges.amount_paise` and `redemptions.amount_paise`.
+3. **No orphan users** — every remaining non-superadmin holds a membership.
+4. **A superadmin remains.**
+5. **Platform data unchanged** — falls out of (1): a table this script never deletes from must
+   hold the same count afterwards.
+
+And three refusals before anything is deleted, which counts alone could not provide:
+
+- **An unknown `--keep` id stops the run.** A typo in the client's id would otherwise leave the
+  keep list naming nobody — and delete the client.
+- **A surviving row that references a deleted row stops the run** (every live FK is tested).
+  A `SET NULL` or `CASCADE` would change the kept row without changing any count. The one
+  exemption is `users.last_active_company_id`, the company switcher's memory.
+- **The plan is re-read inside the delete transaction.** If a company or user appeared or vanished
+  since it was printed, nothing is deleted — a company registered between the prompt and the
+  delete is never removed unseen.
+
+Kept rows whose un-keyed author columns (`created_by`, `decided_by`, `*_by_user_id`, …) name a
+deleted user are **listed, not refused** — that is decision 2's accepted cost.
+
+`--rollback` runs every delete and every check above, then rolls back: no prompts, no dump,
+nothing committed. It holds row locks for the length of the run, so prefer it on dev or a
+rehearsal copy over the live production database.
+
+Then, outside the script:
+
+6. `python -m app.scripts.audit_tenancy` exits 0.
+7. **Somebody signs in.** Point a local API at the database and sign in as the superadmin and as
+   the kept company's admin; open one of its tickets, its vendor list and Credits.
+
+### Running it against production — the procedure
+
+```powershell
+# 1. see what it would do — no dump, no prompts, no deletes
+$env:POSTGRES_DB='RelianceProdDB'; python -m app.scripts.cleanup_db --keep <client-company-id> --dry-run
+
+# 2. rehearse on a copy. No production dump exists until a real run makes one, so take it by hand
+#    (PGHOST/PGUSER/PGPASSWORD/PGSSLMODE from .env.production — in the environment, not the command)
+pg_dump --format=custom --dbname=RelianceProdDB --file=api/backups/RelianceProdDB-rehearsal-source.dump
+python -m app.scripts.create_database --name RelianceProdDB_rehearsal
+pg_restore --no-owner --dbname=RelianceProdDB_rehearsal api/backups/RelianceProdDB-rehearsal-source.dump
+$env:POSTGRES_DB='RelianceProdDB_rehearsal'; python -m app.scripts.cleanup_db --keep <client-company-id> --rollback
+$env:POSTGRES_DB='RelianceProdDB_rehearsal'; python -m app.scripts.cleanup_db --keep <client-company-id>
+$env:POSTGRES_DB='RelianceProdDB_rehearsal'; python -m app.scripts.audit_tenancy
+#    then check 7 by hand against the rehearsal database
+
+# 3. only then, for real — with the SAME keep list
+$env:POSTGRES_DB='RelianceProdDB'; python -m app.scripts.cleanup_db --keep <client-company-id>
+
+# 4. drop the rehearsal database; it is a full copy of production
+```
+
+⚠ **The keep list must be written from what production holds on the day, not from this page.** As
+of 2026-09-15 production held four companies — DECCANSOFT SOFTWARE SERVICES (internal testing),
+RELIANCEGREENTECH PRIVATE LIMITED (the client — **keep**), and TWINCORE TECHNOLOGIES PRIVATE LIMITED
+twice (one active, one inactive, same GSTIN). The app had just been published; anything registered
+since is exactly the case decision 1 warns about.
+
 ## Commands
 
 ```bash
@@ -980,6 +1107,8 @@ python -m app.scripts.bootstrap            # the platform superadmin
 python -m app.scripts.audit_tenancy        # after any schema change
 python -m app.scripts.create_database --name <db>      # a new database on the same server
 python -m app.scripts.copy_geography --to <db>         # the geography master, ids preserved
+python -m app.scripts.cleanup_db --check               # after adding a table — no database
+python -m app.scripts.cleanup_db --keep <id> --dry-run # see "Database cleanup" before anything else
 ```
 
 ### ⚠ Orphaned workers, and why "stale code" keeps happening on Windows

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import { completeJob, submitProof, uploadShot } from '@/features/proof/api/proof';
+import { trackProofSubmitted } from '@/lib/analytics/events';
 import { qk } from '@/lib/queryKeys';
 import { allShots, useCaptureStore, type CapturedShot } from '@/store/capture.store';
 import type { ProofKind } from '@/types/domain';
@@ -72,6 +73,8 @@ export function useSubmitProof(jobId: string) {
       queryClient.setQueryData(qk.job(jobId), job);
       void queryClient.invalidateQueries({ queryKey: ['jobs', 'mine'] });
       void queryClient.invalidateQueries({ queryKey: [...qk.myJobs('all'), 'today'] });
+
+      trackProofSubmitted(jobId);
     },
   });
 }

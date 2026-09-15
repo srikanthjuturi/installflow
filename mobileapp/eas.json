@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://installflowapi-dev-c2fqf7f4bjdbg8bz.centralindia-01.azurewebsites.net/api/v1"
       }
     },
     "preview": {
@@ -29,7 +29,12 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1",
+        "EXPO_PUBLIC_GA_MEASUREMENT_ID": "G-0GE7BFCKSN",
+        "EXPO_PUBLIC_GA_API_SECRET": "WnXbBxgRR7C3vynUxPzs-Q",
+        "EXPO_PUBLIC_POSTHOG_KEY": "phc_mieaNVuBz6ntSmp7ggDWH9udvPcFtup6KH55xF2jBGWM",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://eu.i.posthog.com",
+        "EXPO_PUBLIC_CLARITY_PROJECT_ID": "yimyj9o9el"
       }
     }
   },

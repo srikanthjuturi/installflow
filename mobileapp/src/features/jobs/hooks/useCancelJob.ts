@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { cancelJob, getCancellationPreview } from '@/features/jobs/api/cancel';
+import { trackJobCancelled } from '@/lib/analytics/events';
 import { qk } from '@/lib/queryKeys';
 import type { CancellationReason } from '@/types/domain';
 
@@ -35,12 +36,14 @@ export function useCancelJob(jobId: string) {
 
   return useMutation({
     mutationFn: (reason: CancellationReason) => cancelJob(jobId, reason),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       // The PREFIX, not one window. These named a single window before, which
       // meant a technician reading their month — or any span off the calendar —
       // cancelled a job and watched the penalty not appear.
       queryClient.invalidateQueries({ queryKey: qk.earnings() });
+
+      trackJobCancelled(jobId, result.penalty.label);
     },
   });
 }

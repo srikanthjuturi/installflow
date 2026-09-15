@@ -17,6 +17,7 @@ import {
   moveWebPushToActiveCompany,
 } from "@/services/notifications";
 import { useSession } from "@/store/session";
+import { trackSignIn } from "@/lib/analytics/events";
 
 /**
  * Sign-in and sign-out against the live backend.
@@ -49,7 +50,9 @@ export function useLogin() {
     onSuccess: (payload) => {
       queryClient.clear();
       signInBackend(payload);
+      trackSignIn("password", true);
     },
+    onError: () => trackSignIn("password", false),
     // The password is a mutation variable; drop the cache entry as soon as the
     // call settles so it is not retained in memory (or devtools).
     gcTime: 0,
@@ -78,7 +81,9 @@ export function useGoogleSignIn() {
     onSuccess: (payload) => {
       queryClient.clear();
       signInBackend(payload);
+      trackSignIn("google", true);
     },
+    onError: () => trackSignIn("google", false),
     gcTime: 0,
   });
 }

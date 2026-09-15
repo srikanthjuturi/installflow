@@ -9,7 +9,7 @@ import {
 } from '@expo-google-fonts/roboto';
 import { RobotoMono_400Regular, RobotoMono_700Bold } from '@expo-google-fonts/roboto-mono';
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -17,6 +17,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AnalyticsProvider } from '@/lib/analytics/AnalyticsProvider';
+import { trackScreenView } from '@/lib/analytics/events';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 
@@ -59,6 +61,20 @@ function createQueryClient() {
 }
 
 /**
+ * Every route change is a screen view, fanned out to GA4, PostHog and
+ * Clarity via `trackScreenView`. `usePathname` works here because Expo
+ * Router's own entry point already renders this file inside the router
+ * context — no extra provider needed for it.
+ */
+function useScreenViewTracking() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    trackScreenView(pathname);
+  }, [pathname]);
+}
+
+/**
  * Teach TanStack Query what "focused" means on a phone.
  *
  * React Native has no window, so `refetchOnWindowFocus` is inert until
@@ -90,6 +106,7 @@ export default function RootLayout() {
   const hydrated = useSession((s) => s.hydrated);
 
   useAppStateFocus();
+  useScreenViewTracking();
 
   const [fontsLoaded, fontError] = useFonts({
     Roboto_400Regular,
@@ -138,52 +155,54 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          {/* Default to DARK status-bar content: most screens are light pages,
-              and white-on-white hides the clock, wifi and battery entirely.
-              Dark-chrome screens override this with style="light". */}
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: color.surface },
-            }}
-          >
-            {/* ORDER IS LOAD-BEARING. The first declared screen becomes the
-                navigator's initial route, so `index` has to come first — with
-                the photo modals first the app opened the picker at launch,
-                before anyone had signed in. `unstable_settings` above pins it
-                too; both are here because either alone is easy to undo by
-                accident. */}
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(app)" />
-
-            {/* The photo modals live at the root, not under `(app)`, because a
-                technician registering from an invite link takes their profile
-                photo before they have a session. */}
-            <Stack.Screen
-              name="avatar-options"
-              options={{
-                presentation: 'transparentModal',
-                animation: 'fade',
-                // `screenOptions.contentStyle` above paints an OPAQUE surface on
-                // EVERY route. `transparentModal` only makes the native container
-                // transparent — that background is still drawn on top of it, so
-                // Profile vanished behind a flat slab and the sheet's scrim dimmed
-                // surface colour instead of the screen. Transparent here is what
-                // lets the scrim dim what is actually behind it.
-                contentStyle: { backgroundColor: 'transparent' },
+          <AnalyticsProvider>
+            {/* Default to DARK status-bar content: most screens are light pages,
+                and white-on-white hides the clock, wifi and battery entirely.
+                Dark-chrome screens override this with style="light". */}
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: color.surface },
               }}
-            />
-            <Stack.Screen
-              name="crop-photo"
-              options={{ presentation: 'fullScreenModal' }}
-            />
-            <Stack.Screen
-              name="view-photo"
-              options={{ presentation: 'fullScreenModal' }}
-            />
-          </Stack>
+            >
+              {/* ORDER IS LOAD-BEARING. The first declared screen becomes the
+                  navigator's initial route, so `index` has to come first — with
+                  the photo modals first the app opened the picker at launch,
+                  before anyone had signed in. `unstable_settings` above pins it
+                  too; both are here because either alone is easy to undo by
+                  accident. */}
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(auth)" />
+              <Stack.Screen name="(app)" />
+
+              {/* The photo modals live at the root, not under `(app)`, because a
+                  technician registering from an invite link takes their profile
+                  photo before they have a session. */}
+              <Stack.Screen
+                name="avatar-options"
+                options={{
+                  presentation: 'transparentModal',
+                  animation: 'fade',
+                  // `screenOptions.contentStyle` above paints an OPAQUE surface on
+                  // EVERY route. `transparentModal` only makes the native container
+                  // transparent — that background is still drawn on top of it, so
+                  // Profile vanished behind a flat slab and the sheet's scrim dimmed
+                  // surface colour instead of the screen. Transparent here is what
+                  // lets the scrim dim what is actually behind it.
+                  contentStyle: { backgroundColor: 'transparent' },
+                }}
+              />
+              <Stack.Screen
+                name="crop-photo"
+                options={{ presentation: 'fullScreenModal' }}
+              />
+              <Stack.Screen
+                name="view-photo"
+                options={{ presentation: 'fullScreenModal' }}
+              />
+            </Stack>
+          </AnalyticsProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

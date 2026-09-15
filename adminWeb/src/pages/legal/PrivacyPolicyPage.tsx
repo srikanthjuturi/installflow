@@ -141,6 +141,17 @@ const SECTIONS: LegalSectionData[] = [
           their own advertising.
         </p>
         <p>
+          The app, and the web console your company uses to manage jobs, also
+          use Google Analytics, Microsoft Clarity and PostHog to understand
+          how they are used and to find and fix errors. They receive the
+          screens you open, the actions you complete (such as accepting a job
+          or requesting a payout), and error reports, linked to your
+          technician ID; Clarity also receives recordings of how you move
+          through the app, with the text on screen hidden. They do not receive
+          your name, phone number, photos or UPI ID. These providers may
+          process this information outside India.
+        </p>
+        <p>
           We may disclose information if the law requires it, or to protect
           the safety of a technician, a customer, or the public.
         </p>

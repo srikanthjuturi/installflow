@@ -26,6 +26,7 @@ import { ledgerKeys } from "./useLedger";
 import { BACKSTOP_REFETCH_MS } from "./liveness";
 import { technicianKeys } from "./useTechnicians";
 import type { ListParams } from "@/types/api";
+import { trackForceClose } from "@/lib/analytics/events";
 
 /**
  * Query keys are tuples so a mutation can invalidate by prefix:
@@ -251,7 +252,8 @@ export function useForceCloseTicket() {
   return useMutation({
     meta: { errorTitle: "Couldn't force-close the ticket" },
     mutationFn: forceCloseTicket,
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      trackForceClose(variables.id);
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },

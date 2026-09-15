@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 
+import { trackApiError } from '@/lib/analytics/events';
 import { getAccessToken, getRefreshToken, useSession } from '@/store/session.store';
 
 /**
@@ -92,7 +93,9 @@ export async function apiRequest<T>(
   } catch {
     // A field technician loses signal constantly. This has to read as
     // "you are offline", not as a server fault.
-    throw new ApiError("Can't reach the server. Check your connection.", 0);
+    const offline = new ApiError("Can't reach the server. Check your connection.", 0);
+    trackApiError(offline, { status: offline.status, path });
+    throw offline;
   }
 
   let envelope: Envelope<T> | null = null;
@@ -103,12 +106,18 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok || !envelope?.success) {
-    throw new ApiError(
+    const failure = new ApiError(
       envelope?.message ?? `Request failed (${response.status})`,
       response.status,
       envelope?.errors ?? [],
       envelope?.code,
     );
+    // A 401 is usually just an expired access token that `authedRequest`
+    // refreshes silently; the one that really ends a session is tracked there.
+    if (failure.status !== 401) {
+      trackApiError(failure, { status: failure.status, path, code: failure.code });
+    }
+    throw failure;
   }
 
   return envelope.data as T;
@@ -174,12 +183,18 @@ export async function authedRequest<T>(
   try {
     return await apiRequest<T>(path, { ...options, token: getAccessToken() });
   } catch (error) {
+    // Not tracked again here: `apiRequest` tracked every non-401 at its
+    // origin, and a 401 is only a failure if the refresh below fails too.
     if (!(error instanceof ApiError) || error.status !== 401) throw error;
 
     const fresh = await refreshAccessToken();
     if (!fresh) {
       useSession.getState().signOut();
-      throw new ApiError('Your session has ended. Please sign in again.', 401);
+      // Manufactured here, not by `apiRequest`, so this is the one place that
+      // has to track it itself.
+      const sessionEnded = new ApiError('Your session has ended. Please sign in again.', 401);
+      trackApiError(sessionEnded, { status: sessionEnded.status, path });
+      throw sessionEnded;
     }
     return apiRequest<T>(path, { ...options, token: fresh });
   }

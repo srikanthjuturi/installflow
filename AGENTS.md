@@ -146,9 +146,15 @@ Expo SDK 54 · React Native 0.81 · React 19.1 · TypeScript (strict) · Expo Ro
 NativeWind 4 (Tailwind 3) · TanStack Query · Zustand · React Hook Form + Zod ·
 react-native-svg · expo-camera · Roboto via `@expo-google-fonts/roboto`
 
-Everything currently installed runs in **Expo Go**. Do not add third-party native modules
-(`react-native-mmkv`, `react-native-keyboard-controller`, Sentry) without flagging it — they
-break Expo Go and force a dev-client build.
+**Analytics (GA4, Clarity, PostHog) runs in PRODUCTION ONLY, in both clients.** The keys exist
+only in `eas.json`'s `production` profile and in Netlify's Production deploy context, and each
+side's `lib/analytics/config.ts` locks it a second time (`!__DEV__` / `import.meta.env.PROD`), so
+Expo Go, dev-client builds, `npm run dev`, the `preview` profile and Netlify deploy previews
+never send anything. Verifying it therefore means a production build.
+Clarity (`@microsoft/react-native-clarity`) is a native module Expo Go lacks, so `clarity.ts`
+loads it only when that module is present. GA4 is the Measurement Protocol over plain `fetch`
+(`ga4.ts`), deliberately not Firebase. Do not add any *other* third-party native module
+(`react-native-mmkv`, `react-native-keyboard-controller`, Sentry) without flagging it first.
 
 ## Hard rules
 
@@ -275,8 +281,9 @@ read that one file, so a colour is never declared twice. Types come from `tokens
 
 ```bash
 cd mobileapp
-npm start        # expo start — scan the QR with Expo Go
-npm run lint     # must pass before every commit
+npm start                 # expo start — scan the QR with Expo Go
+npm run start:dev-client  # expo start --dev-client — against a dev-client build
+npm run lint           # must pass before every commit
 npm run typecheck
 npm run doctor
 ```

@@ -18,6 +18,11 @@ venv/
 .env.*
 !.env.example
 
+# Database dumps from app.scripts.cleanup_db — full copies of a database,
+# customers' names, phones and addresses included. The script refuses to write
+# one unless `git check-ignore` confirms this rule still covers the folder.
+backups/
+
 # OS / editor
 .DS_Store
 .idea/

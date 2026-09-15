@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useConfirmRecharge, usePlatformRecharge } from "@/hooks/usePlatform";
+import { trackCreditRechargeConfirmed } from "@/lib/analytics/events";
 import { RECHARGE_STATE_LABELS } from "@/types/credits";
 import type { PlatformRechargeDetail } from "@/types/platform";
 import { formatCredits } from "@/utils/credits";
@@ -214,6 +215,7 @@ function Body({ recharge: r }: { recharge: PlatformRechargeDetail }) {
           confirm.mutate(r.id, {
             onSuccess: () => {
               toast.add({ title: `${formatCredits(r.credits)} credits added` });
+              trackCreditRechargeConfirmed(r.amountPaise);
               setConfirming(false);
             },
           })
