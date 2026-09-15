@@ -38,10 +38,22 @@ jobs:
       - name: Write dev deployed configuration
         # ENV_FILE_DEV is the FULL content of a dotenv file — POSTGRES_DB=RelianceDB,
         # ENVIRONMENT=development, a real JWT_SECRET_KEY, etc.
-        run: printf '%s' "${{ secrets.ENV_FILE_DEV }}" > .env.dev-deploy
+        #
+        # Routed through env:, not interpolated straight into the shell
+        # command — ${{ }} substitutes RAW TEXT into the script before the
+        # shell parses it, and this file (and the XML below) is full of
+        # double quotes that would otherwise break the shell's own quoting
+        # mid-command and silently write a mangled file. env: hands the
+        # value to the shell as an already-set variable instead, so its
+        # content is never re-parsed.
+        env:
+          CONTENT: ${{ secrets.ENV_FILE_DEV }}
+        run: printf '%s' "$CONTENT" > .env.dev-deploy
 
       - name: Write dev publish profile
-        run: printf '%s' "${{ secrets.AZURE_PUBLISH_PROFILE_DEV }}" > installflowapi-dev.PublishSettings
+        env:
+          CONTENT: ${{ secrets.AZURE_PUBLISH_PROFILE_DEV }}
+        run: printf '%s' "$CONTENT" > installflowapi-dev.PublishSettings
 
       - name: Publish
         # Validates the config (right DB name, right ENVIRONMENT, strong JWT

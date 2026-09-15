@@ -31,8 +31,15 @@ jobs:
         working-directory: api
     steps:
       - name: Confirm intent
+        # env:, not straight interpolation — see the comment on the secret
+        # writes below. Lower stakes here (you type this yourself) but the
+        # same class of bug: ${{ }} pastes raw text into the shell command
+        # before it's parsed, so anything with a quote or backtick in it
+        # breaks — or worse, executes.
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
         run: |
-          if [ "${{ github.event.inputs.confirm }}" != "deploy" ]; then
+          if [ "$CONFIRM" != "deploy" ]; then
             echo 'Input must be exactly "deploy" — refusing.' >&2
             exit 1
           fi
@@ -42,9 +49,12 @@ jobs:
         # dropdown, and the dialog remembers whatever was last selected — this
         # is the only thing stopping a forgotten selection from quietly
         # deploying a feature branch to production.
+        env:
+          ALLOW_NON_MAIN: ${{ github.event.inputs.allow_non_main_branch }}
+          REF: ${{ github.ref }}
         run: |
-          if [ "${{ github.event.inputs.allow_non_main_branch }}" != "true" ] && [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "This workflow only runs against main (got ${{ github.ref }}) unless allow_non_main_branch is ticked." >&2
+          if [ "$ALLOW_NON_MAIN" != "true" ] && [ "$REF" != "refs/heads/main" ]; then
+            echo "This workflow only runs against main (got $REF) unless allow_non_main_branch is ticked." >&2
             exit 1
           fi
 
@@ -58,10 +68,14 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
 
       - name: Write production configuration
-        run: printf '%s' "${{ secrets.ENV_FILE_PROD }}" > .env.production
+        env:
+          CONTENT: ${{ secrets.ENV_FILE_PROD }}
+        run: printf '%s' "$CONTENT" > .env.production
 
       - name: Write production publish profile
-        run: printf '%s' "${{ secrets.AZURE_PUBLISH_PROFILE_PROD }}" > installflowapi.PublishSettings
+        env:
+          CONTENT: ${{ secrets.AZURE_PUBLISH_PROFILE_PROD }}
+        run: printf '%s' "$CONTENT" > installflowapi.PublishSettings
 
       - name: Publish
         run: python scripts/publish.py --target prod
