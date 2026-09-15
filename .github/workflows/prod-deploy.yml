@@ -30,6 +30,14 @@ jobs:
       run:
         working-directory: api
     steps:
+      # Checkout runs FIRST, before anything else — the job's
+      # working-directory: api above applies to EVERY step, including ones
+      # that touch no repo files, and `api/` doesn't exist until checkout
+      # creates it. Putting a check before checkout fails with "No such file
+      # or directory" on the working directory itself, not on the check's own
+      # logic — that's what happened here originally.
+      - uses: actions/checkout@v4
+
       - name: Confirm intent
         # env:, not straight interpolation — see the comment on the secret
         # writes below. Lower stakes here (you type this yourself) but the
@@ -57,8 +65,6 @@ jobs:
             echo "This workflow only runs against main (got $REF) unless allow_non_main_branch is ticked." >&2
             exit 1
           fi
-
-      - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
