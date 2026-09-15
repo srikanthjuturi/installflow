@@ -1565,14 +1565,24 @@ it again. Three decisions in it:
 - **Its own template, not the invite's.** `technician_invite` says "complete your registration" and
   "this link is personal to you", both wrong for somebody a manager already registered.
 
-⚠ **The template is NOT approved.** Submitted 2026-09-10 as UTILITY / `en_US`, id
-`2131819437688748`, and rejected `INCORRECT_CATEGORY` — twice: once as "You have been added as a
-service technician with {{1}}. Install the technician app and sign in with this mobile number:
+⚠ **The template is NOT approved, three times over.** Submitted 2026-09-10 as UTILITY / `en_US`,
+id `2131819437688748`, and rejected `INCORRECT_CATEGORY` — twice: once as "You have been added as
+a service technician with {{1}}. Install the technician app and sign in with this mobile number:
 {{2}}…", and again after editing it into an account notice ("Your service technician account with
 {{1}} has been created. Sign in with this mobile number to see your jobs: {{2}}…"). Meta's
-classifier reads both as MARKETING. `WHATSAPP_APP_LINK_TEMPLATE_NAME` is therefore EMPTY in both
-`.env` files, and the send falls back to free-form text — accepted by Meta, and delivered only
-inside the 24-hour window. The ways forward are a review request in WhatsApp Manager, a MARKETING
-submission (dearer per message), or reusing `technician_invite` with its wrong words. Whichever
-body is finally approved, make `build_app_link_payload`'s fallback say the same thing, and add the
-name to `publish.py`'s must-be-set list only after it is APPROVED.
+classifier read both as MARKETING, so it was resubmitted as a fresh template
+(`technician_app_link_v2`, same body, category MARKETING) on 2026-09-15 — rejected
+`INCORRECT_CATEGORY` again. A third try (`technician_app_link_v3`, MARKETING, the OTP-mention
+sentence removed in case that was read as an AUTHENTICATION signal) was also rejected
+`INCORRECT_CATEGORY`. Three attempts, three categories effectively disagreed with by the same
+classifier — this is not a wording problem the API side can iterate its way out of; it needs a
+human review request in WhatsApp Manager, not another automated submission.
+
+**Standing in until then: `WHATSAPP_APP_LINK_TEMPLATE_NAME=technician_invite`**, in both `.env`
+files, as of 2026-09-15. Reusing the invite's own template means a direct-add technician now reads
+"You have been invited… Complete your registration…" — wrong on both counts, since they were
+already registered by a manager and never invited — but it delivers outside the 24-hour window,
+where the free-form fallback silently does not. Revert `WHATSAPP_APP_LINK_TEMPLATE_NAME` to empty
+the moment a correctly-worded template is approved, and make `build_app_link_payload`'s fallback
+say the same thing that template does. Only add the name to `publish.py`'s must-be-set list once
+that happens — a stand-in borrowed from another slot's template is not the real thing being live.

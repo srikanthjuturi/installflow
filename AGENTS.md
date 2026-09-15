@@ -619,8 +619,10 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   They are WhatsApped the app link as soon as they are added — the invite base with no token, which
   opens the app's sign-in or a page offering the download — and "Send app link" on their row sends
   it again. The outcome is reported in the console's toast, not stored. ⚠ Its template
-  (`technician_app_link`) was rejected by Meta, so until one is approved the message goes as
-  free-form text and only reaches a number inside the 24-hour window — see `api/AGENTS.md`.
+  (`technician_app_link`) has been rejected by Meta three times, so `technician_invite`'s own
+  template stands in for it until a correctly-worded one is approved — the wording is wrong for a
+  direct-add technician, but it delivers outside the 24-hour window that free-form text does not.
+  See `api/AGENTS.md`.
 - **Invite**: a manager supplies only a phone number; the technician self-registers their name,
   photo, subcategories and coverage from the deep link. Nothing is written until they prove the
   phone by OTP, and then it all commits in one transaction.
