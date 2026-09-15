@@ -15,7 +15,7 @@ one, see "Cleanup" at the bottom.)
 | `.github/workflows/pr-check.yml` | any PR into `main` or `dev` | lint+typecheck adminWeb and mobileapp; import/syntax-check api. No deploy. |
 | `.github/workflows/dev-deploy.yml` | push to `dev` (path-filtered to `api/**`), or manual | zip-deploys api to `installflowapi-dev`. Migrations happen on the app's own restart, not here. |
 | `.github/workflows/prod-deploy.yml` | **manual only** (`workflow_dispatch`) | zip-deploys api to `installflowapi` — requires typing `deploy` into a confirmation box, and refuses to run off anything but `main` unless you explicitly tick an override |
-| `.github/workflows/web-prod-deploy.yml` | **manual only** (`workflow_dispatch`) | builds adminWeb (`npm run build`) and deploys `adminWeb/dist` to the Azure App Service `installflowweb` — same confirm box and branch lock as the api's prod deploy |
+| `.github/workflows/web-prod-deploy.yml` | **manual only** (`workflow_dispatch`) | deploys adminWeb's full SOURCE tree (not a pre-built `dist/`) to the Azure App Service `installflowweb`, which builds it remotely via Oryx — same confirm box and branch lock as the api's prod deploy |
 
 All run on ordinary `ubuntu-latest` GitHub-hosted runners. None need network
 access to Postgres, because none run a migration — see below.
@@ -27,6 +27,23 @@ still auto-deploys via its own git integration, but its role changed: it is
 now the **dev** environment and its production-branch setting must point at
 `dev`, not `main` — that's a Netlify dashboard change, not something a
 workflow file can do (see "Manual setup required" below).
+
+**`installflowweb` is a Linux Node App Service, not a plain static host.**
+Its container starts by running a `server.mjs` that Azure's Oryx build system
+generates when it builds a recognised frontend framework project and serves
+the output as static content — that generation only happens on an actual
+Oryx build. The first version of this workflow deployed adminWeb's
+pre-built `dist/` folder directly (no `package.json`), so Oryx had nothing to
+build, no `server.mjs` was ever generated, and the container crash-looped on
+every start (`Cannot find module '/home/site/wwwroot/server.mjs'`) — every
+request 503'd despite the deploy step itself reporting success, because
+`azure/webapps-deploy` only confirms the upload, not that the app comes back
+up afterward. Fixed by deploying the whole adminWeb source tree instead and
+letting Oryx build it remotely, same as the api already does via its own
+remote-build setting. `adminWeb/public/web.config` (IIS SPA-fallback rewrite
+rules) is a leftover from before this was diagnosed — harmless on this Linux
+target since nothing reads it, only relevant if adminWeb ever moves to a
+Windows/IIS App Service.
 
 **mobileapp is not built or published by any of these** — no dev API URL is
 wired into `eas.json` yet.

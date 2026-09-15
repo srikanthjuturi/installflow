@@ -3,10 +3,24 @@ name: Deploy adminWeb — production
 # Manual only, same reasoning as the API's prod-deploy.yml: merging to main is
 # a separate human action from putting that build in front of live users.
 #
-# adminWeb is a static Vite build (npm run build -> dist/). VITE_* values are
-# baked into the bundle at BUILD time, not read at runtime, so the production
-# .env.production has to exist before `npm run build` runs, and any change to
-# it requires a rebuild+redeploy, not a config change on the App Service.
+# adminWeb is a Vite SPA — no server of its own. `installflowweb` is a Linux
+# Node App Service, and its container boots by trying to run a generated
+# `server.mjs` that Oryx (Azure's build system) creates when it builds a
+# recognised frontend framework project and serves the output as static
+# content. That only happens if Oryx gets a real project to build: deploying
+# the pre-built `dist/` folder alone (no package.json) leaves nothing for
+# Oryx to build, no server.mjs ever gets generated, and the container
+# crash-loops on startup looking for a file that was never going to exist —
+# every request 503s. So this deploys the whole adminWeb SOURCE tree and lets
+# Azure's own Oryx build run remotely, which is what the platform already
+# expects for this app.
+#
+# VITE_* values are baked into the bundle at BUILD time, not read at runtime
+# — .env.production has to exist in the uploaded source before Oryx's remote
+# `npm run build` runs, so it's written before packaging, same as before.
+# `npm run build` also runs once LOCALLY first, purely as a fast, readable
+# fail-fast check — a TypeScript error shows up here in seconds instead of
+# buried in Azure's Oryx build log; its output is discarded before packaging.
 #
 # Netlify (https://reliancegreentech.netlify.app) still auto-deploys from git
 # — it now tracks `dev` only, this workflow is what serves production. See
@@ -72,15 +86,22 @@ jobs:
           CONTENT: ${{ secrets.WEB_ENV_FILE_PROD }}
         run: printf '%s' "$CONTENT" > .env.production
 
-      - name: Build
+      - name: Build (fail-fast check only — not what gets deployed)
         run: npm run build
+
+      - name: Strip node_modules and the local build before packaging
+        # Oryx installs and builds again on the App Service itself — shipping
+        # node_modules here would just bloat the upload with a copy Azure
+        # throws away, and dist/ is regenerated remotely too. .env.production
+        # stays; Oryx's `vite build` needs it.
+        run: rm -rf node_modules dist
 
       - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: installflowweb
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PROD }}
-          package: adminWeb/dist
+          package: adminWeb
 
       - name: Clean up secrets from the runner's disk
         if: always()

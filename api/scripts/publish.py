@@ -493,7 +493,15 @@ def verify(client: httpx.Client, target: Target) -> None:
         )
     print("  google      configured (rejection probe returned 401)")
 
-    for path in ("/docs", "/.well-known/assetlinks.json"):
+    # /docs is only ever a 200 outside production — app/main.py sets
+    # docs_url=None (and redoc/openapi with it) once ENVIRONMENT == "production",
+    # deliberately, so Swagger UI isn't sitting on a public prod host. Checking
+    # it there isn't a stale-deploy probe, it's a guaranteed 404 on every
+    # correct prod deploy.
+    paths = ["/.well-known/assetlinks.json"]
+    if target.expected_environment != "production":
+        paths.insert(0, "/docs")
+    for path in paths:
         response = client.get(f"{target.site}{path}", timeout=90)
         status = "ok" if response.status_code == 200 else f"HTTP {response.status_code}"
         print(f"  {path:<28} {status}")
