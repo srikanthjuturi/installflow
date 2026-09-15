@@ -15,8 +15,8 @@ const STATS = [
  * build was aimed at.
  *
  * It can also simply EXPIRE. An internal-distribution build is kept for a
- * limited time — the one encoded today (9db099a2, Android, `preview`, the same
- * build `TECHNICIAN_APP_LINK` names) reports `expirationDate` 2026-09-25. Check
+ * limited time — the one encoded today (f7f1d1ec, Android, `preview`, the same
+ * build `TECHNICIAN_APP_LINK` names) reports `expirationDate` 2026-09-29. Check
  * with `eas build:view <id> --json`.
  */
 const TECHNICIAN_APP_QR = "/images/appqr.png";
