@@ -1,0 +1,9 @@
+# Live refresh tokens for seeded users — minted by
+# `python -m app.scripts.mint_load_sessions`. Never commit these.
+.sessions/
+
+# Locust CSV/HTML output and the CPU samples beside it.
+results/
+
+.venv/
+__pycache__/
