@@ -58,8 +58,20 @@ function toOption(dto: SlotOptionDto): SlotOption {
  * are full. The screen says so.
  */
 export async function getRescheduleSlots(id: string): Promise<SlotOption[]> {
-  const dtos = await authedRequest<SlotOptionDto[]>(`/jobs/${id}/reschedule/slots`);
-  return dtos.map(toOption);
+  try {
+    const dtos = await authedRequest<SlotOptionDto[]>(`/jobs/${id}/reschedule/slots`);
+    return dtos.map(toOption);
+  } catch (error) {
+    // Translated here too, not only on the two writes: the server runs the same
+    // status-and-slot check before listing anything, so a job that cannot move
+    // is refused at the very first request — and the screen must be able to
+    // tell that from a dropped connection, which Retry would actually fix.
+    if (error instanceof ApiError) {
+      const refusal = REFUSAL_CODES.find((c) => c === error.code);
+      if (refusal) throw new RescheduleRefusedError(refusal, error.message);
+    }
+    throw error;
+  }
 }
 
 /** Mirrors `OtpRequestResponse`. */

@@ -468,15 +468,24 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                         blue CTA above without competing with it, and clearly
                         apart from the red one below. Same `Assigned`-only gate
                         as cancelling, for the same reason: past it, proof is
-                        captured and the technician is on site. */}
-                    <View style={{ marginBottom: 10 }}>
-                      <Button
-                        label="Reschedule with the customer"
-                        variant="secondary"
-                        leadingIcon="calendar"
-                        onPress={() => router.push(`/job/${jobId}/reschedule`)}
-                      />
-                    </View>
+                        captured and the technician is on site.
+
+                        And only once there IS a time. A job accepted before the
+                        customer picked one has nothing to move, and the server
+                        refuses every reschedule call on it — so the button led
+                        straight to an error screen. Absent rather than disabled,
+                        for the cancel button's reason above; the header chip
+                        already says "Accepted" rather than "Committed". */}
+                    {job.hoursToSlot !== null ? (
+                      <View style={{ marginBottom: 10 }}>
+                        <Button
+                          label="Reschedule with the customer"
+                          variant="secondary"
+                          leadingIcon="calendar"
+                          onPress={() => router.push(`/job/${jobId}/reschedule`)}
+                        />
+                      </View>
+                    ) : null}
 
                     {/* Was plain `ghost`, so the destructive action rendered in
                         the same grey as body copy and read as disabled text

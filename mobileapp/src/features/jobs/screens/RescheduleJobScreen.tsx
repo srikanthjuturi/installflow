@@ -8,7 +8,7 @@ import { KeyboardFlow, ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
-import type { SlotOption } from '@/features/jobs/api/reschedule';
+import { isRescheduleRefused, type SlotOption } from '@/features/jobs/api/reschedule';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import {
   useRescheduleJob,
@@ -56,7 +56,17 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
   const router = useRouter();
 
   const { data: job } = useJob(jobId);
-  const { data: slots, isPending, isError, refetch } = useRescheduleSlots(jobId);
+  const {
+    data: slots,
+    isPending,
+    isError,
+    error: slotsError,
+    refetch,
+  } = useRescheduleSlots(jobId);
+  // The server's own refusal — no time agreed yet, or the job has moved past
+  // `Assigned`. Retrying cannot change either, so the screen shows the
+  // server's sentence and no Retry, rather than blaming the connection.
+  const refused = isRescheduleRefused(slotsError) ? slotsError : null;
 
   const [picked, setPicked] = useState<string>();
   const [code, setCode] = useState('');
@@ -185,7 +195,9 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
         }}
       >
         <View style={{ padding: 16, paddingBottom: 20 }}>
-          {isError ? (
+          {refused ? (
+            <ErrorState body={refused.message} />
+          ) : isError ? (
             <ErrorState onRetry={() => refetch()} />
           ) : (
             <>
