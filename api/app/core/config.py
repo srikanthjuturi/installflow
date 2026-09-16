@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # Vite auto-increments its port when one is taken, so allow the usual range.
     CORS_ORIGINS: list[str] = [
         "https://reliancegreentech.netlify.app",
+        # The console's own Azure static server, alongside Netlify — see
+        # .github/workflows/web-prod-deploy.yml.
+        "https://installflowweb-hhhga9gnbrc8etfx.centralindia-01.azurewebsites.net",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
