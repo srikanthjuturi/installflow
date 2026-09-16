@@ -77,6 +77,26 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str
     POSTGRES_SSLMODE: str = "require"
 
+    # Connection pool, PER PROCESS. Azure runs `gunicorn -w 2`, so every number
+    # here is doubled per site — and dev and prod are two sites on ONE Postgres
+    # server that other teams' databases share too.
+    #
+    # Set explicitly because SQLAlchemy's defaults (5 kept + 10 overflow) let
+    # the two sites ask for up to 60 connections on a server that has 40 usable
+    # (`max_connections` 50, 10 reserved for superusers). The dev load test of
+    # 2026-09-16 found exactly that: at ~90 users the server ran out of slots and
+    # requests failed with 500s — see loadtest/DECISIONS.md, finding F1.
+    #
+    # With these, one site holds at most 2 × (3 + 2) = 10, plus the realtime
+    # listener per worker. Past that a request WAITS for a connection, up to
+    # the timeout, instead of failing — slower under a burst rather than broken.
+    DB_POOL_SIZE: int = 3
+    DB_MAX_OVERFLOW: int = 2
+    DB_POOL_TIMEOUT: int = 10
+    # Below the server's `idle_session_timeout` (30 min), so the pool retires a
+    # connection before Postgres kills it from under us.
+    DB_POOL_RECYCLE: int = 1500
+
     # ─── JWT ───────────────────────────────────────────────────────────────
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
