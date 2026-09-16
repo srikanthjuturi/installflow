@@ -494,12 +494,29 @@ export function ManualEntryForm({
    *  vendor the number will survive intake. */
   const confirmed = match && modelId === match.modelId ? match : undefined;
 
+  /* ── will `_assert_serial_known` refuse this at submit? ───────────────────
+     Zero serials on the chosen model means UNCHECKED — anything is accepted,
+     and that has to stay true here too (the whole point of "unchecked" is a
+     company can load one model's serials without breaking every other
+     vendor's intake). Once the model HAS serials, though, silence is the
+     wrong answer: `confirmed` is the only shape the API will accept, so
+     `conflicting`, "several products" and no match at all are three ways of
+     saying the same thing — this exact number will not survive submit. */
+  const serialChecked = (model?.serialCount ?? 0) > 0;
+  /* Read against what the lookup actually finished searching for, not what is
+     in the box right now — a keystroke fired inside the 300ms debounce, or a
+     reply still in flight, must not read as "definitely no match". */
+  const serialLookupSettled =
+    !lookup.isPending && searchedFor.trim().toLowerCase() === typedSerial;
+  const serialWillBeRefused =
+    serialChecked && typedSerial.length > 0 && serialLookupSettled && !confirmed;
+
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
   function submit(values: TicketFormValues) {
     // The button is disabled in this state, but a form can still be submitted
     // by keyboard while a check is in flight.
-    if (addressBlocked || paused) return;
+    if (addressBlocked || paused || serialWillBeRefused) return;
     onSubmit({
       vendorId: values.vendorId,
       subcategoryId: values.subcategoryId,
@@ -692,6 +709,15 @@ export function ManualEntryForm({
               <FieldDescription className="text-warn">
                 {exactMatches.length} products carry this exact serial — pick
                 one from the list, or set the category and model below.
+              </FieldDescription>
+            ) : serialWillBeRefused ? (
+              // The chosen model DOES have serials loaded and none of them is
+              // this one — `_assert_serial_known` will refuse it, so say so
+              // now rather than after the rest of the form is filled in.
+              <FieldDescription className="text-danger">
+                {serialNumber?.trim()} is not a serial number on record for{" "}
+                {model?.name}. Check it against the invoice, or ask for it to
+                be added to the product master.
               </FieldDescription>
             ) : null}
             {/* Said once, here, because "which serial?" is the obvious question
@@ -1027,7 +1053,12 @@ export function ManualEntryForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting || addressBlocked || paused}>
+        <Button
+          type="submit"
+          disabled={
+            isSubmitting || addressBlocked || paused || serialWillBeRefused
+          }
+        >
           {isSubmitting && <Spinner data-icon="inline-start" />}
           {/* Follows the slot, like the banner above: with a time already
               agreed there is no request to send. */}

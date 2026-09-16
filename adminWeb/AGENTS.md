@@ -1186,23 +1186,35 @@ npm run typecheck
 npm run build
 ```
 
-## Deployment (Netlify)
+## Deployment (Netlify = dev, Azure `installflowweb` = production)
 
-The console is a static SPA: Netlify builds it and serves `dist/`. Only this half is on Netlify —
-the API stays on Azure App Service.
+The console is a static SPA, built two ways to two different origins — the API always stays on
+Azure App Service, on both sides. See `.github/DEPLOYMENT.md` for the full CI/CD picture; this
+section is the adminWeb-specific half of it.
 
-**Which database you are looking at is decided by `VITE_API_BASE_URL`,** because the two API
-deployments read different ones:
+- **Netlify** (`https://reliancegreentech.netlify.app`) auto-deploys on every push to **`dev`**
+  and is the **dev** environment.
+- **Azure App Service `installflowweb`** is **production**, deployed only by
+  `.github/workflows/web-prod-deploy.yml` (`workflow_dispatch`, typed `deploy` confirmation,
+  `main` only unless overridden). It is a Linux Node App Service that Oryx builds remotely from
+  the whole source tree, not a pre-built `dist/` — see that workflow's header comment for why a
+  bare `dist/` deploy crash-loops there.
+
+**Which database you are looking at is decided by `VITE_API_BASE_URL`,** because every build
+target reads a different one:
 
 | Where | `VITE_API_BASE_URL` | API | Database |
 |---|---|---|---|
 | `npm run dev` on a laptop | `.env.local` → `http://127.0.0.1:8000/api/v1` | the one you started | `RelianceDB` (development) |
-| the Netlify build | the Netlify UI variable → the Azure host | the deployed App Service | `RelianceProdDB` (production) |
+| Netlify build (tracks `dev`) | the Netlify UI variable → `installflowapi-dev-...` | `installflowapi-dev` | `RelianceDB` (development) |
+| `installflowweb` build (tracks `main`, manual) | `WEB_ENV_FILE_PROD` GitHub secret, written to `.env.production` before the build | `installflowapi` | `RelianceProdDB` (production) |
 
 Vite ranks `.env.local` above `.env`, so a local `npm run dev` or `npm run build` targets the
 **local** API even though `.env` names the Azure one — which is what you want, and worth knowing
 before wondering why a screen is empty. Delete or rename `.env.local` to point a local session at
-production. See `api/AGENTS.md` → Environments.
+a deployed API instead. See `api/AGENTS.md` → Environments.
+
+### Netlify (dev)
 
 | Netlify setting | Value | Why |
 |---|---|---|
@@ -1210,14 +1222,14 @@ production. See `api/AGENTS.md` → Environments.
 | Build command | `npm run build` | |
 | Publish directory | `dist` | resolved **relative to the base directory** — not `adminWeb/dist` |
 | Functions directory | *empty* | there are none |
-| Branch | `main` | |
+| Production branch | `dev` | changed from `main` when Netlify's role moved to dev — see `.github/DEPLOYMENT.md` |
 
 **The environment variables are mandatory, not optional.** `.env` is git-ignored, so the build
 clone starts with nothing; without them the bundle calls `undefined/companies` and every screen
-fails at once. Set both in the Netlify UI — never commit the values, which is the whole reason
-`.env` is ignored:
+fails at once. Set these in the Netlify UI, pointed at the **dev** API — never commit the values,
+which is the whole reason `.env` is ignored:
 
-- `VITE_API_BASE_URL` — the Azure API, ending in `/api/v1`
+- `VITE_API_BASE_URL` — `installflowapi-dev`, ending in `/api/v1`
 - `VITE_GOOGLE_MAPS_API_KEY` — the referrer-restricted browser key
 - `VITE_GOOGLE_CLIENT_ID` — the OAuth web client id behind "Continue with
   Google" and One Tap. Public by design, like every `VITE_*`; it must match
@@ -1229,17 +1241,21 @@ Node is pinned by `adminWeb/.nvmrc` (`24`), which Netlify reads out of the base 
 that file as the single source and skip a `NODE_VERSION` variable — a second declaration is one
 that can drift.
 
+### Both targets
+
 **`public/_redirects` is what makes client-side routing work at all.** It is one line,
-`/*  /index.html  200`. Without it Netlify resolves `/tickets` against the filesystem, finds
-nothing, and returns **its own** 404 — so a refresh, a bookmark or any pasted deep link dies
-before React starts, and `NotFoundPage` is never reached. `200` rather than `301` because the
-address has to stay put for the router to read it.
+`/*  /index.html  200`. Without it a refresh, a bookmark or any pasted deep link resolves against
+the filesystem, finds nothing, and 404s before React starts, so `NotFoundPage` is never reached.
+`200` rather than `301` because the address has to stay put for the router to read it. Netlify
+reads it directly; `adminWeb/public/web.config` is a leftover IIS rewrite file that only matters
+if a target ever moves to a Windows App Service — `installflowweb` is Linux and ignores it.
 
-Two prerequisites live outside this repo, and both fail silently — the build goes green and the
-app is broken:
+Prerequisites that live outside this repo, for **each** origin (Netlify's and `installflowweb`'s)
+— both fail silently, the build goes green and the app is broken:
 
-- **`CORS_ORIGINS` must name the deployed origin.** `api/app/core/config.py` ships localhost
-  only; add the Netlify origin to the Azure App Service settings and restart, or the browser
+- **`CORS_ORIGINS` must name the origin**, on the API it actually calls: the Netlify origin on
+  `installflowapi-dev`, the `installflowweb` origin on `installflowapi`. `api/app/core/config.py`
+  ships localhost only; add the origin to that App Service's settings and restart, or the browser
   blocks every request.
 - **The Maps key's HTTP-referrer allowlist must name it too.** A `VITE_*` value is inlined into
   the bundle, so that restriction is the only thing keeping a public key safe — and until the
