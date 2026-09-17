@@ -14,7 +14,8 @@ cleanup". The short version of what a real run does, in order:
 
 1. Refuses unless every table in the database is classified in this file.
 2. Refuses an unknown `--keep` id (a typo would otherwise delete the company it
-   was meant to protect), and an empty keep list on `RelianceProdDB`.
+   was meant to protect), and an empty keep list on `RelianceProdDB`. The
+   companies in `PROTECTED_COMPANY_SLUGS` are kept whatever the list says.
 3. Prints the plan, and refuses if any row that SURVIVES points at a row that is
    deleted — a `SET NULL` or `CASCADE` would change it silently, and no row count
    can see that.
@@ -49,6 +50,7 @@ from pathlib import Path
 
 import psycopg
 
+from app.core import play_review
 from app.core.config import settings
 from app.scripts.create_database import PRODUCTION_DB
 
@@ -143,6 +145,16 @@ ALLOWED_DANGLING_FKS: dict[tuple[str, str], str] = {
     ("users", "last_active_company_id"): (
         "the company switcher's memory - SET NULL just means the next sign-in "
         "opens their remaining company"
+    ),
+}
+
+#: Companies every run keeps, whatever `--keep` says — including a run that
+#: calls `run()` directly with an empty list. Found by slug, because the same
+#: company has a different id in each database. Each needs a reason.
+PROTECTED_COMPANY_SLUGS: dict[str, str] = {
+    play_review.COMPANY_SLUG: (
+        "Google Play's reviewers sign in to it; deleting it gets the app "
+        "rejected. Rebuild with `python -m app.scripts.seed_play_review`"
     ),
 }
 
@@ -293,6 +305,16 @@ def delete_order(fks, plan_tables: set[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # The plan
 # ---------------------------------------------------------------------------
+
+
+def protected_companies(cur: psycopg.Cursor) -> list[tuple[uuid.UUID, str, str]]:
+    """(id, name, reason) for every live company in `PROTECTED_COMPANY_SLUGS`."""
+    cur.execute(
+        "SELECT id, name, lower(slug) FROM companies "
+        "WHERE lower(slug) = ANY(%(slugs)s) AND deleted_at IS NULL ORDER BY name",
+        {"slugs": list(PROTECTED_COMPANY_SLUGS)},
+    )
+    return [(cid, name, PROTECTED_COMPANY_SLUGS[slug]) for cid, name, slug in cur.fetchall()]
 
 
 def resolve_sets(cur: psycopg.Cursor, keep: list[uuid.UUID]) -> tuple[list, list]:
@@ -647,6 +669,13 @@ def run(conn: psycopg.Connection, args: argparse.Namespace, keep: list[uuid.UUID
             for m in missing:
                 print(f"  - {m}")
             return 1
+
+        protected = protected_companies(cur)
+        if protected:
+            print("\nAlways kept, whatever --keep says:")
+            for _, name, reason in protected:
+                print(f"  {name} - {reason}")
+            keep = sorted(set(keep) | {cid for cid, _, _ in protected}, key=str)
 
         deleted, users = resolve_sets(cur, keep)
         params = {"deleted": deleted, "users": users}

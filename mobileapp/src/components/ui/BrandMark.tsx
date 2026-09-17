@@ -22,9 +22,11 @@ export interface BrandMarkProps {
  *
  * **What it says is no longer fixed.** It draws the signed-in technician's
  * company code, because this app is multi-tenant and the person holding the
- * phone works for one of those companies, not for the platform. `RG` survives
- * only as the fallback for the login screen, where a phone number has not yet
- * said which company it belongs to.
+ * phone works for one of those companies, not for the platform. The platform
+ * mark, `RGT`, survives only as the fallback for the login screen, where a
+ * phone number has not yet said which company it belongs to. It matches the
+ * launcher icon in assets/; the console and the API keep their own `RG`
+ * settings, so the server-rendered tiles below still say `RG`.
  *
  * The same tile is rendered server-side on the three public web pages
  * (onboarding/landing.py, tickets/slot_page.py, tickets/feedback_page.py) at

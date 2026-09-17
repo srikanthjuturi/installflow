@@ -909,7 +909,8 @@ app/
                          INBOUND verification, where a bad token has exactly one
                          right outcome and there is no record to preserve.
   models/                one module per area; every model reachable from __init__
-  scripts/               bootstrap, audit_tenancy, create_database, copy_geography, cleanup_db
+  scripts/               bootstrap, audit_tenancy, create_database, copy_geography, cleanup_db,
+                         seed_synthetic, seed_play_review
 alembic/versions/        hand-written, with a prose docstring saying WHY
 ```
 
@@ -1000,6 +1001,7 @@ default rules like any new company.
 | Kept | Why |
 |---|---|
 | Every company on `--keep`, and **every row it owns — untouched**, soft-deleted rows included | The client's own setup and history; nothing about them is test data |
+| Every live company in `PROTECTED_COMPANY_SLUGS` — today **`RGT Play Review`** — **whatever `--keep` says**, even an empty list and even a driver that calls `run()` directly | Google Play's reviewers sign in to it (see "Google Play review sign-in"); deleting it gets the next submission rejected. Matched by slug, because its id differs per database |
 | The superadmin (`users.role = 'superadmin'`) | The only way back in after a full wipe |
 | Any user with a membership in a kept company | Otherwise the kept company survives with nobody able to sign in to it, and its history names authors who no longer exist — worse than deleting it, because nothing on screen says so |
 | `regions`, `states`, `districts`, `pincodes`, `pincode_districts` | Global master; ids are shared with the other database via `copy_geography` |
@@ -1524,6 +1526,42 @@ in Google Cloud — both `localhost` and `127.0.0.1`, ports 5173-5175, plus the 
 missing origin fails **entirely client-side**: the button does nothing, and no request ever
 reaches this API, so the logs show nothing. Same class of silent, outside-the-repo prerequisite
 as `CORS_ORIGINS`.
+
+## Google Play review sign-in
+
+Play's "App access" declaration requires a reviewer to get past sign-in, and a technician signs in
+with a WhatsApp code sent to a registered phone the reviewer does not have. So **one number,
+`PLAY_REVIEW_PHONE`, accepts one fixed code, `PLAY_REVIEW_CODE`, and is never sent anything**
+(`app/core/play_review.py`, used by `otp_service.issue_code`). It covers every code issued to that
+number for its own account — sign-in and adding a UPI ID — and nothing else: an invite code has no
+account yet, and a reschedule code goes to a customer.
+
+What keeps it from being a back door:
+
+| Guard | Why |
+|---|---|
+| The number must be `+911…` | No Indian subscriber can hold one, so it is never a real person's account |
+| The technician must belong to the company with slug `rgt-play-review` | A number pointed at another tenant by mistake gets an ordinary send, not a fixed code |
+| Malformed or half-set = **off**, not a startup refusal | A typo here must not take the API down. `scripts/publish.py` refuses to deploy one instead, because "off" is silent until Google rejects the app |
+| Expiry, throttles, burn-on-use and the five-attempt cap are unchanged | The fixed code is guessed no faster than a random one |
+
+The company behind it — `RGT Play Review`, code `DEMO`, an admin, a vendor with **location check
+off** (the reviewer is nowhere near the customer's door), the catalogue, `Demo Technician` on the
+reviewer number, and jobs in every list — is built by:
+
+```powershell
+python -m app.scripts.seed_play_review                    # dev
+$env:POSTGRES_DB='RelianceProdDB'; python -m app.scripts.seed_play_review --production
+```
+
+It is safe to re-run and **must be re-run before every Play submission**: it creates only what is
+missing, force-closes the reviewer's held jobs whose slot has ended (paying nothing), and adds fresh
+pool and upcoming jobs, because a slotless pool job is offered for at most 48 hours. It prints the
+admin and vendor console passwords only when it creates those logins, or with `--reset-passwords`.
+`cleanup_db` never deletes the company (see "What survives").
+
+Both values live in `.env` and `.env.production` and are pasted into Play Console → App content →
+App access. The number is entered without `+91`.
 
 ## Testing onboarding without Meta credentials
 
