@@ -45,16 +45,20 @@ PURPOSE_RESCHEDULE = "reschedule"
 #: A technician adding their UPI ID proves it with a code to their OWN
 #: registered number — resolved from their account, never from the request.
 PURPOSE_PAYOUT_ACCOUNT = "payout_account"
+#: A technician deleting their own account proves it the same way, to the same
+#: number — see `features/technicians/service.py::send_deletion_code`.
+PURPOSE_SELF_DELETE = "self_delete"
 
-#: The one place the five are listed. The CHECK below and the wire schemas both
-#: read it, so adding a sixth cannot be done in one place and forgotten in the
-#: other.
+#: The one place the six are listed. The CHECK below and the wire schemas both
+#: read it, so adding a seventh cannot be done in one place and forgotten in
+#: the other.
 PURPOSES = (
     PURPOSE_LOGIN,
     PURPOSE_INVITE,
     PURPOSE_PASSWORD_RESET,
     PURPOSE_RESCHEDULE,
     PURPOSE_PAYOUT_ACCOUNT,
+    PURPOSE_SELF_DELETE,
 )
 
 

@@ -42,6 +42,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import play_review
 from app.core.config import settings
 from app.core.security import create_password_reset_token
 from app.emails import account as account_email
@@ -184,8 +185,12 @@ async def _mint(
     request_ip: str | None,
     ticket_id: uuid.UUID | None = None,
     slot_start: datetime | None = None,
+    fixed_code: str | None = None,
 ) -> tuple[OtpCode, str]:
     """Throttle, burn the live code, mint a new one. Does not send, does not commit.
+
+    `fixed_code` is the Play reviewer's code (`core.play_review`); every other
+    caller leaves it out and gets a random one.
 
     Split out so the two deliveries below share every rule that makes a code
     safe and differ only in how it travels. The row is added to the session but
@@ -213,7 +218,7 @@ async def _mint(
         .values(consumed_at=_now())
     )
 
-    code = _generate_code()
+    code = fixed_code or _generate_code()
     row = OtpCode(
         purpose=purpose,
         phone=phone,
@@ -276,7 +281,11 @@ async def issue_code(
     `ticket_id` is set only by a reschedule, whose recipient is a CUSTOMER with
     no account here at all — so `user_id` is null on exactly those rows and this
     is what says who the code was for.
+
+    The Play reviewer's number gets its fixed code and no message: the number
+    reaches nobody, and the reviewer was given the code in Play Console.
     """
+    fixed = await play_review.fixed_code_for(session, phone=phone, user_id=user_id)
     row, code = await _mint(
         session,
         phone=phone,
@@ -287,7 +296,13 @@ async def issue_code(
         request_ip=request_ip,
         ticket_id=ticket_id,
         slot_start=slot_start,
+        fixed_code=fixed,
     )
+
+    if fixed is not None:
+        row.sent_channel = play_review.CHANNEL
+        await session.commit()
+        return _issued(True, play_review.CHANNEL, code)
 
     channel = resolve_channel()
     result = await channel.send(phone, code)

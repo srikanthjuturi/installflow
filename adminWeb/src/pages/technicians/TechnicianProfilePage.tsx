@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, Pencil } from "lucide-react";
-import { useLocation, useParams } from "react-router";
+import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
+import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicianDialog";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { UpiChangePanel } from "@/components/technicians/UpiChangePanel";
@@ -26,7 +27,9 @@ import { useRecordRecentlySeen } from "@/store/recentlySeen";
 export default function TechnicianProfilePage() {
   const { id = "" } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isEditOpen, setEditOpen] = useState(false);
+  const [isDeleteOpen, setDeleteOpen] = useState(false);
   const canEdit = useFeatureAccess().has("technicians.edit");
 
   /* Three ways in — the roster, a ledger row, the topbar search — and only the
@@ -71,6 +74,13 @@ export default function TechnicianProfilePage() {
         />
       ) : null}
 
+      <DeleteTechnicianDialog
+        open={isDeleteOpen}
+        onOpenChange={setDeleteOpen}
+        technician={tech}
+        onDeleted={() => navigate(backHref, { state: origin?.backState })}
+      />
+
       <div className="mb-3.5 flex items-center justify-between gap-3">
         <LinkButton
           variant="ghost"
@@ -84,15 +94,27 @@ export default function TechnicianProfilePage() {
         </LinkButton>
 
         {tech && canEdit ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setEditOpen(true)}
-          >
-            <Pencil data-icon="inline-start" />
-            Edit details
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditOpen(true)}
+            >
+              <Pencil data-icon="inline-start" />
+              Edit details
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-danger"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 data-icon="inline-start" />
+              Remove
+            </Button>
+          </div>
         ) : null}
       </div>
 

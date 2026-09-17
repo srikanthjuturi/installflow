@@ -44,6 +44,8 @@ from app.core.scope import (
 from app.core.notifications import notify
 from app.core.presence import is_online
 from app.core.product_tree import CERTIFY_DEPTH
+from app.core.sessions import revoke_refresh_tokens
+from app.core.tickets import TERMINAL_STATUSES
 from app.core.visibility import technician_scope
 from app.core.realtime import publish_notification, publish_technician_changed
 from app.core.sequences import next_code as allocate_code
@@ -57,6 +59,7 @@ from app.features.technicians.schemas import (
     AppLinkOutcome,
     AvailabilityOut,
     AvailabilityRequest,
+    DeletionConfirmRequest,
     PayoutAccountCodeRequest,
     PayoutAccountOut,
     PayoutAccountRequest,
@@ -79,9 +82,10 @@ from app.features.technicians.schemas import (
 from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
-from app.models.otp import PURPOSE_PAYOUT_ACCOUNT
+from app.models.otp import PURPOSE_PAYOUT_ACCOUNT, PURPOSE_SELF_DELETE
 from app.models.product import ProductNode
 from app.models.role import AREA_MANAGER, ROLE_LABELS, TECHNICIAN
+from app.models.ticket import Ticket
 from app.models.upi_change import UpiChangeRequest
 from app.models.technician import (
     ACTIVE,
@@ -1867,24 +1871,141 @@ async def update_technician(
     return await get_technician(session, principal, technician_id)
 
 
-async def delete_technician(
-    session: AsyncSession, principal: Principal, technician_id: uuid.UUID
+async def _refuse_if_open_jobs(
+    session: AsyncSession, profile: TechnicianProfile
+) -> None:
+    """A technician mid-job cannot vanish out from under a customer.
+
+    Same shape as `vendors.delete_vendor`'s "still supplies N models" guard —
+    refuse with a count rather than deleting out from under live work.
+    """
+    open_count = await session.scalar(
+        select(func.count())
+        .select_from(Ticket)
+        .where(
+            Ticket.company_id == profile.company_id,
+            Ticket.technician_id == profile.id,
+            Ticket.status.not_in(TERMINAL_STATUSES),
+        )
+    )
+    if open_count:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "TECHNICIAN_HAS_OPEN_JOBS",
+            f"{profile.code} still has {open_count} open job"
+            f"{'' if open_count == 1 else 's'}. Finish or reassign them first.",
+        )
+
+
+async def _remove_technician(
+    session: AsyncSession,
+    *,
+    profile: TechnicianProfile,
+    membership: Membership,
+    user: User,
+    actor_user_id: uuid.UUID,
 ) -> None:
     """Soft-remove: the membership goes, the profile and its history stay.
 
     Coverage rows are hard-deleted so the technician stops being matched — the
-    profile is history, the coverage is a live routing table.
+    profile is history, the coverage is a live routing table. Shared by both
+    a manager removing a technician and a technician deleting their own
+    account — one soft-delete, whoever asked for it.
     """
-    profile, membership, _user = await _load(session, principal, technician_id)
+    await _refuse_if_open_jobs(session, profile)
     membership.deleted_at = _now()
     membership.is_active = False
-    membership.updated_by = principal.user_id
+    membership.updated_by = actor_user_id
     profile.status = "inactive"
-    profile.updated_by = principal.user_id
+    profile.updated_by = actor_user_id
     await session.execute(
         delete(TechnicianPincode).where(TechnicianPincode.technician_id == profile.id)
     )
+    # Sessions end with the account — a removed technician's tokens must not
+    # keep working, same as `delete_vendor` and `users.delete_user`.
+    await revoke_refresh_tokens(session, user.id)
     await session.commit()
+
+
+async def delete_technician(
+    session: AsyncSession, principal: Principal, technician_id: uuid.UUID
+) -> None:
+    """A manager removing a technician. Territory-scoped and Area-Manager-and-
+    above, per the route's own dependencies."""
+    profile, membership, user = await _load(session, principal, technician_id)
+    await _remove_technician(
+        session,
+        profile=profile,
+        membership=membership,
+        user=user,
+        actor_user_id=principal.user_id,
+    )
+
+
+# ── a technician deleting their own account ───────────────────────────────────
+#
+# The Play Store requires an in-app way to do this. Proved by a code to the
+# technician's OWN registered number, the same shape as adding a UPI ID — and
+# it takes effect immediately once verified, with no manager approval, because
+# unlike a UPI change this is not money moving, it is the account ending.
+
+
+async def send_deletion_code(
+    session: AsyncSession, principal: Principal, *, request_ip: str | None
+) -> OtpRequestResponse:
+    """Deleting your own account, step one: a code to your own WhatsApp."""
+    profile = await _own_profile(session, principal)
+    await _refuse_if_open_jobs(session, profile)
+    phone = principal.user.phone
+    if not phone:
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            "NO_PHONE",
+            "Your account has no mobile number to send a code to. Ask your manager.",
+        )
+    return await issue_code(
+        session,
+        phone=phone,
+        purpose=PURPOSE_SELF_DELETE,
+        user_id=principal.user_id,
+        request_ip=request_ip,
+    )
+
+
+async def confirm_deletion(
+    session: AsyncSession, principal: Principal, body: DeletionConfirmRequest
+) -> None:
+    """Deleting your own account, step two: the code, then the removal itself.
+
+    ⚠ The OTP machinery answers 401 for a bad code, which on an authenticated
+    route the app would read as an expired token and REPLAY, spending a second
+    attempt. Translated to 400 `BAD_CODE` here, as `verify_payout_account` does.
+    """
+    profile = await _own_profile(session, principal)
+    await _refuse_if_open_jobs(session, profile)
+    phone = principal.user.phone
+    if not phone:
+        raise AppError(status.HTTP_409_CONFLICT, "NO_PHONE", "No mobile number on file.")
+
+    try:
+        await consume_code(
+            session, phone=phone, code=body.code, purpose=PURPOSE_SELF_DELETE
+        )
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+            raise
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST, "BAD_CODE", str(exc.detail)
+        ) from exc
+
+    membership = await session.get(Membership, profile.membership_id)
+    await _remove_technician(
+        session,
+        profile=profile,
+        membership=membership,
+        user=principal.user,
+        actor_user_id=principal.user_id,
+    )
 
 
 # ── the app link ──────────────────────────────────────────────────────────────

@@ -80,7 +80,9 @@ export type IconName =
   | 'mapCheck'
   | 'rotate'
   // redemption — not in the prototype, traced in the same house style
-  | 'qr';
+  | 'qr'
+  // account deletion — not in the prototype either, same house style
+  | 'trash';
 
 export interface IconProps {
   name: IconName;
@@ -581,6 +583,16 @@ function renderPaths(name: IconName, stroke: string, p: StrokeProps) {
           <Rect x={14} y={4} width={6} height={6} rx={1.2} {...p} />
           <Rect x={4} y={14} width={6} height={6} rx={1.2} {...p} />
           <Path d="M14 14h2.5v2.5M20 14v.01M14 20h.01M17.5 17.5H20V20" {...p} />
+        </>
+      );
+
+    // A bin with a lid and two ribs — "delete account".
+    case 'trash':
+      return (
+        <>
+          <Path d="M4 7h16M9 7V4.5A1.5 1.5 0 0110.5 3h3A1.5 1.5 0 0115 4.5V7" {...p} />
+          <Path d="M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" {...p} />
+          <Path d="M10 11v6M14 11v6" {...p} />
         </>
       );
   }

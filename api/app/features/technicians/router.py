@@ -34,6 +34,7 @@ from app.features.technicians.schemas import (
     AppLinkOutcome,
     AvailabilityOut,
     AvailabilityRequest,
+    DeletionConfirmRequest,
     PayoutAccountCodeRequest,
     PayoutAccountOut,
     PayoutAccountRequest,
@@ -189,6 +190,47 @@ async def withdraw_my_upi_change(
     )
 
 
+# ── a technician deleting their own account ───────────────────────────────────
+#
+# The Play Store requires this. Proved by a code to the technician's OWN
+# registered number, same shape as adding a UPI ID; no feature guard, for the
+# reason `/me` has none, and only the caller's own row is ever touched.
+
+
+@router.post(
+    "/me/deletion-request/code", response_model=ApiEnvelope[OtpRequestResponse]
+)
+async def send_my_deletion_code(
+    request: Request, db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[OtpRequestResponse]:
+    """Step one of deleting your own account: a code to your own WhatsApp.
+
+    409 `TECHNICIAN_HAS_OPEN_JOBS` while a job is still open — finish or ask a
+    manager to reassign it first.
+    """
+    return envelope(
+        await service.send_deletion_code(
+            db,
+            principal,
+            request_ip=request.client.host if request.client else None,
+        ),
+        message="Code sent",
+    )
+
+
+@router.post("/me/deletion-request", response_model=ApiEnvelope[None])
+async def confirm_my_deletion(
+    db: Db, principal: CompanyPrincipal, body: DeletionConfirmRequest
+) -> ApiEnvelope[None]:
+    """Step two: the code, then the account is removed immediately.
+
+    400 `BAD_CODE` for a wrong or expired code — never 401, which the app
+    would read as an expired session and replay.
+    """
+    await service.confirm_deletion(db, principal, body)
+    return envelope(None, message="Account deleted")
+
+
 @router.post(
     "/invites", response_model=ApiEnvelope[TechnicianInviteOut], status_code=201
 )
@@ -339,10 +381,18 @@ async def update_technician(
     return envelope(data, message="Technician updated")
 
 
-@router.delete("/{technician_id}", response_model=ApiEnvelope[None])
+@router.delete(
+    "/{technician_id}",
+    response_model=ApiEnvelope[None],
+    dependencies=[Depends(require_min_rank(AREA_MANAGER))],
+)
 async def delete_technician(
     technician_id: uuid.UUID, db: Db, principal: CanEdit
 ) -> ApiEnvelope[None]:
+    """Removing a technician carries `technicians.edit` AND an Area-Manager
+    floor, same reasoning as the UPI-change decisions below: a Feature Access
+    override must not be able to hand this below the managers the business
+    named. 409 `TECHNICIAN_HAS_OPEN_JOBS` while a job is still open."""
     await service.delete_technician(db, principal, technician_id)
     return envelope(None, message="Technician removed")
 

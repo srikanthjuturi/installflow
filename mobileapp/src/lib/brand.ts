@@ -27,4 +27,4 @@ export const BRAND_NAME = extra?.brandName || 'Reliance GreenTech';
  * `code` — derived from the name once by the API and never recomputed — so the
  * app never derives one itself.
  */
-export const BRAND_MARK = extra?.brandMark || 'RG';
+export const BRAND_MARK = extra?.brandMark || 'RGT';

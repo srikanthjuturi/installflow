@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -330,6 +331,22 @@ def guard_config(target: Target) -> None:
                 f"{key} must be empty in production — anything else silently "
                 f"drops messages to everyone not named in it"
             )
+
+    # The Play reviewers' sign-in (app/core/play_review.py) switches itself OFF
+    # when a value is malformed. That keeps the server up, but it is silent, and
+    # the symptom is Google rejecting the app days later because its reviewer
+    # could not get in. Unset is fine; half-set or malformed is not.
+    review_phone = values.get("PLAY_REVIEW_PHONE", "").strip()
+    review_code = values.get("PLAY_REVIEW_CODE", "").strip()
+    if review_phone or review_code:
+        otp_length = int(values.get("OTP_LENGTH", "").strip() or 6)
+        if not re.fullmatch(r"\+911\d{9}", review_phone):
+            problems.append(
+                "PLAY_REVIEW_PHONE must be an unreachable +911XXXXXXXXX number — "
+                "anything else could be a real person's account"
+            )
+        if not (review_code.isdigit() and len(review_code) == otp_length):
+            problems.append(f"PLAY_REVIEW_CODE must be exactly {otp_length} digits")
 
     # Google Sign-In. Deliberately not "must be set": unset is the intended
     # arrangement, because it falls through to the default in app/core/config.py
