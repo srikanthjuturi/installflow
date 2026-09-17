@@ -6,7 +6,8 @@ const expoConfig = require('eslint-config-expo/flat');
  * with it, a stray `#1f6feb` fails CI.
  *
  * src/theme/** is exempt — that's where colours are supposed to live.
- * app.config.ts is exempt — it runs before Metro, so it can't import tokens.
+ * app.json is exempt — the Expo CLI reads it before Metro, so it can't import
+ * tokens (and ESLint does not lint JSON anyway).
  */
 module.exports = [
   ...expoConfig,
