@@ -364,6 +364,42 @@ export function ProfileScreen() {
                 </Text>
               </View>
             ))}
+
+            {/* A Play Store requirement, not a prototype row — every account a
+                technician creates themselves needs an in-app way to delete it. */}
+            <Pressable
+              onPress={() => router.push('/delete-account')}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+            >
+              {({ pressed }) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 13,
+                    paddingVertical: 15,
+                    paddingHorizontal: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: palette.neutral[100],
+                    backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
+                  }}
+                >
+                  <Icon name="trash" size={21} color={color.textDanger} strokeWidth={1.7} />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 14.5,
+                      color: color.textDanger,
+                    }}
+                  >
+                    Delete account
+                  </Text>
+                  <Icon name="chevronRight" size={19} color={color.textMuted} />
+                </View>
+              )}
+            </Pressable>
           </View>
 
           <View style={{ marginTop: 16 }}>
