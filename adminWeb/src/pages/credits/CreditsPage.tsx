@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { ArrowRight, Plus } from "lucide-react";
 import { RechargeBadge } from "@/components/credits/RechargeBadge";
 import { RechargeDialog } from "@/components/credits/RechargeDialog";
@@ -25,19 +26,34 @@ import { moneyPaise } from "@/utils/money";
  * holds): the people who can recharge. The balance is summed live on the
  * server, never kept here, and credits arrive only when the superadmin confirms
  * a payment — there is nothing on this page that adds them.
+ *
+ * ## Two lists, one on screen at a time
+ *
+ * **Credit history** is every change to the balance — free credits, one line
+ * per ticket raised, and each recharge once it was credited — so it adds up to
+ * the figure above. **Payments** is every UPI request the company made,
+ * including the ones that never added a credit (still to pay, waiting,
+ * rejected, cancelled).
+ *
+ * They used to be stacked, and a credited recharge then showed twice on one
+ * screen under two names. They are not merged either: ticket lines outnumber
+ * payments by hundreds to one, so a single table would bury the only rows
+ * anybody opens. The history leads; a payment still to finish is already in
+ * the Recharge card, so Payments is the occasional look.
+ *
+ * The list on screen is `?view=` in the URL, as Approvals does it.
  */
 export default function CreditsPage() {
   const summary = useCredits();
-  const [rechargeParams, setRechargeParams] = useListParams({ limit: 5 });
-  const recharges = useRecharges(rechargeParams);
-  const [entryParams, setEntryParams] = useListParams();
-  const entries = useCreditEntries(entryParams);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: CreditsView =
+    searchParams.get("view") === "payments" ? "payments" : "history";
 
   return (
     <>
       <PageMeta
         title="Credits"
-        description="Your credit balance, statement and recharges"
+        description="Your credit balance, credit history and payments"
       />
       <h2 className="sr-only">Credits</h2>
 
@@ -57,38 +73,110 @@ export default function CreditsPage() {
         <Summary summary={summary.data} />
       )}
 
-      <section aria-labelledby="recharges-heading" className="mt-6">
-        <h3 id="recharges-heading" className="mb-2.5 text-sm font-semibold text-ink">
-          Recharges
-        </h3>
-        <RechargeTable
-          rows={recharges.data?.rows}
-          meta={recharges.data?.pagination}
-          params={rechargeParams}
-          onParams={setRechargeParams}
-          isLoading={recharges.isLoading}
-          isFetching={recharges.isFetching && !recharges.isLoading}
-          error={recharges.isError ? recharges.error : null}
-          onRetry={() => recharges.refetch()}
+      <section aria-label="Credit history and payments" className="mt-6">
+        <ViewSwitch
+          view={view}
+          // Replaces the whole query string, as Approvals does: each list keeps
+          // its own filters, and carrying one's `?state=` into the other would
+          // open it narrowed for a reason nobody chose.
+          onView={(next) =>
+            setSearchParams(next === "payments" ? { view: "payments" } : {})
+          }
         />
-      </section>
-
-      <section aria-labelledby="statement-heading" className="mt-6">
-        <h3 id="statement-heading" className="mb-2.5 text-sm font-semibold text-ink">
-          Statement
-        </h3>
-        <CreditEntriesTable
-          rows={entries.data?.rows}
-          meta={entries.data?.pagination}
-          params={entryParams}
-          onParams={setEntryParams}
-          isLoading={entries.isLoading}
-          isFetching={entries.isFetching && !entries.isLoading}
-          error={entries.isError ? entries.error : null}
-          onRetry={() => entries.refetch()}
-        />
+        {/* Keyed, so switching starts the other list from its own defaults
+            rather than inheriting a page number from this one. */}
+        {view === "payments" ? (
+          <PaymentsList key="payments" />
+        ) : (
+          <HistoryList key="history" />
+        )}
       </section>
     </>
+  );
+}
+
+type CreditsView = "history" | "payments";
+
+/**
+ * Two buttons, not tabs — the same control, and the same look, as the
+ * Products / Brands switch on Approvals: one list at a time, chosen in the URL.
+ */
+function ViewSwitch({
+  view,
+  onView,
+}: {
+  view: CreditsView;
+  onView: (view: CreditsView) => void;
+}) {
+  const options: { value: CreditsView; label: string }[] = [
+    { value: "history", label: "Credit history" },
+    { value: "payments", label: "Payments" },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="What to show"
+      className="mb-3.5 flex flex-wrap gap-2"
+    >
+      {options.map((o) => {
+        const active = view === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onView(o.value)}
+            className={cn(
+              "inline-flex h-10 items-center gap-2 rounded-lg border px-3.25 text-xs font-semibold whitespace-nowrap transition-colors",
+              active
+                ? "border-brand-500 bg-brand-500 text-white"
+                : "border-input bg-surface text-ink-2 hover:border-brand-400 hover:text-ink"
+            )}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Every change to the balance, newest first. */
+function HistoryList() {
+  const [params, setParams] = useListParams();
+  const entries = useCreditEntries(params);
+  return (
+    <CreditEntriesTable
+      rows={entries.data?.rows}
+      meta={entries.data?.pagination}
+      params={params}
+      onParams={setParams}
+      isLoading={entries.isLoading}
+      isFetching={entries.isFetching && !entries.isLoading}
+      error={entries.isError ? entries.error : null}
+      onRetry={() => entries.refetch()}
+    />
+  );
+}
+
+/**
+ * Every UPI request, newest first. A full page of them now — the five-row
+ * limit was for sitting above the statement, which it no longer does.
+ */
+function PaymentsList() {
+  const [params, setParams] = useListParams();
+  const recharges = useRecharges(params);
+  return (
+    <RechargeTable
+      rows={recharges.data?.rows}
+      meta={recharges.data?.pagination}
+      params={params}
+      onParams={setParams}
+      isLoading={recharges.isLoading}
+      isFetching={recharges.isFetching && !recharges.isLoading}
+      error={recharges.isError ? recharges.error : null}
+      onRetry={() => recharges.refetch()}
+    />
   );
 }
 
@@ -131,7 +219,8 @@ function Summary({ summary: s }: { summary: CreditSummary }) {
             {formatCredits(s.ticketCredits)}
           </div>
           <div className="mt-1.5 text-xs text-ink-3">
-            credits per ticket · can go down to −{formatCredits(s.minusCreditLimit)}
+            credits per ticket · can go down to −
+            {formatCredits(s.minusCreditLimit)}
           </div>
         </CardContent>
       </Card>
@@ -147,7 +236,9 @@ function Summary({ summary: s }: { summary: CreditSummary }) {
                 </span>
                 <RechargeBadge state={open.state} />
               </div>
-              <div className="mt-1.5 font-mono text-xs text-ink-3">{open.code}</div>
+              <div className="mt-1.5 font-mono text-xs text-ink-3">
+                {open.code}
+              </div>
               <LinkButton
                 to={`/credits/recharges/${open.id}`}
                 state={origin}

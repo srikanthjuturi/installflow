@@ -50,7 +50,10 @@ const STATIC: Record<string, Meta> = {
   },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
   /* Net-new — no prototype has credits. Awaiting sign-off. */
-  "/credits": { title: "Credits", subtitle: "Balance · statement · recharge" },
+  "/credits": {
+    title: "Credits",
+    subtitle: "Balance · credit history · payments",
+  },
   /* Net-new — the prototype has no account or notifications screen. */
   "/notifications": {
     title: "Notifications",
