@@ -93,6 +93,9 @@ const PrivacyPolicyPage = lazy(
   () => import("@/pages/legal/PrivacyPolicyPage")
 );
 const TermsPage = lazy(() => import("@/pages/legal/TermsPage"));
+const DeleteAccountPage = lazy(
+  () => import("@/pages/legal/DeleteAccountPage")
+);
 
 /**
  * The escalation queue's two action screens moved under `/tickets/:id/…` when
@@ -352,5 +355,6 @@ export const routes: RouteObject[] = [
   // read them, not get bounced to the dashboard.
   { path: "/privacy", element: <PrivacyPolicyPage /> },
   { path: "/terms", element: <TermsPage /> },
+  { path: "/delete-account", element: <DeleteAccountPage /> },
   { path: "*", element: <NotFoundPage /> },
 ];

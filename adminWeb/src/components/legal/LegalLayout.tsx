@@ -25,7 +25,7 @@ export interface LegalSectionData {
 }
 
 interface LegalLayoutProps {
-  current: "privacy" | "terms";
+  current: "privacy" | "terms" | "delete-account";
   title: string;
   description: string;
   heading: string;
@@ -96,6 +96,19 @@ export function LegalLayout({
               }
             >
               Terms of Service
+            </Link>
+            <span className="text-ink-3" aria-hidden>
+              &middot;
+            </span>
+            <Link
+              to="/delete-account"
+              className={
+                current === "delete-account"
+                  ? "font-semibold text-ink"
+                  : "text-ink-3 hover:text-ink-2"
+              }
+            >
+              Delete Account
             </Link>
           </nav>
 
