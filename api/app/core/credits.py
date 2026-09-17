@@ -6,6 +6,7 @@ intake is paused, `features.credits` shows and tops up the balance — so it liv
 in core rather than in any one of them (hard rule 4).
 """
 
+import asyncio
 import datetime
 import logging
 import uuid
@@ -165,6 +166,9 @@ async def _alert(
     )
 
 
+#: Strong references to fire-and-forget bells, so none is collected mid-flight.
+_background: set[asyncio.Task] = set()
+
 #: The paused bell's title — also its dedup key for a refusal (below).
 _PAUSED_TITLE = "New tickets are paused — recharge to continue"
 
@@ -237,7 +241,12 @@ async def charge_ticket(
     after = before - charge
     if after < -settings.minus_credit_limit:
         name = await db.scalar(select(Company.name).where(Company.id == company_id))
-        await _ring_refusal(company_id, before)
+        # A task, not an await: the bell needs a connection of its own, and this
+        # request is holding its worker's only one (`DB_MAX_OVERFLOW` 0) until
+        # the 409 below has rolled back. Awaited here, it waits for itself.
+        _task = asyncio.create_task(_ring_refusal(company_id, before))
+        _background.add(_task)
+        _task.add_done_callback(_background.discard)
         raise AppError(
             409,
             "OUT_OF_CREDITS",

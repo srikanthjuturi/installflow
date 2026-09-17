@@ -90,12 +90,18 @@ class Settings(BaseSettings):
     # 2026-09-16 found exactly that: at ~90 users the server ran out of slots and
     # requests failed with 500s — see loadtest/DECISIONS.md, finding F1.
     #
-    # With these, one site holds at most 2 × (3 + 2) = 10, plus the realtime
-    # listener per worker. Past that a request WAITS for a connection, up to
-    # the timeout, instead of failing — slower under a burst rather than broken.
-    DB_POOL_SIZE: int = 3
-    DB_MAX_OVERFLOW: int = 2
-    DB_POOL_TIMEOUT: int = 10
+    # 2026-09-17: cut to ONE pooled connection per worker, because the server
+    # was found full with nothing under test (loadtest/DECISIONS.md). A site now
+    # holds exactly 2 × (1 pooled + 1 realtime listener) = 4, idle or busy.
+    # Every request, sweep and websocket poll in a worker queues for that one
+    # connection, so the timeout is long: a wait is slower, a timeout is a 500.
+    #
+    # ⚠ With no overflow, code must never open a second session while its own
+    # is still checked out — it waits for itself until the timeout. See
+    # `credits._ring_refusal` for the one place that needed it.
+    DB_POOL_SIZE: int = 1
+    DB_MAX_OVERFLOW: int = 0
+    DB_POOL_TIMEOUT: int = 30
     # Below the server's `idle_session_timeout` (30 min), so the pool retires a
     # connection before Postgres kills it from under us.
     DB_POOL_RECYCLE: int = 1500
