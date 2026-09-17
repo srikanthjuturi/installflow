@@ -100,60 +100,77 @@ function Body({
 
   return (
     <div className="grid items-start gap-3.5 lg:grid-cols-2">
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex items-center gap-2.5">
-            <RedemptionBadge state={r.state} />
-            <span className="font-mono text-xs text-ink-3">{r.code}</span>
-          </div>
-          <CardTitle className="mt-2 text-3xl font-bold tabular-nums">
-            {moneyPaise(r.amountPaise)}
-          </CardTitle>
-          <CardDescription className="text-sm text-ink-2">
-            <Link
-              to={`/technicians/${r.technicianId}`}
-              state={toTechnician}
-              className="font-medium text-ink hover:underline"
-            >
-              {r.technicianName}
-            </Link>{" "}
-            <span className="font-mono text-xs text-ink-3">
-              {r.technicianCode}
-            </span>
-            {r.technicianPhone ? (
-              <span className="text-ink-3"> · {r.technicianPhone}</span>
+      <div className="flex flex-col gap-3.5">
+        <Card>
+          <CardHeader className="border-b">
+            <div className="flex items-center gap-2.5">
+              <RedemptionBadge state={r.state} />
+              <span className="font-mono text-xs text-ink-3">{r.code}</span>
+            </div>
+            <CardTitle className="mt-2 text-3xl font-bold tabular-nums">
+              {moneyPaise(r.amountPaise)}
+            </CardTitle>
+            <CardDescription className="text-sm text-ink-2">
+              <Link
+                to={`/technicians/${r.technicianId}`}
+                state={toTechnician}
+                className="font-medium text-ink hover:underline"
+              >
+                {r.technicianName}
+              </Link>{" "}
+              <span className="font-mono text-xs text-ink-3">
+                {r.technicianCode}
+              </span>
+              {r.technicianPhone ? (
+                <span className="text-ink-3"> · {r.technicianPhone}</span>
+              ) : null}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="flex flex-col items-center gap-4 py-2">
+            {r.state === "to_pay" && r.upiUri ? (
+              <>
+                <UpiQr
+                  value={r.upiUri}
+                  label={`UPI QR code to pay ${moneyPaise(r.amountPaise)} to ${r.payeeName}, ${r.upiId}`}
+                />
+                <p className="max-w-sm text-center text-[13px] leading-relaxed text-ink-2">
+                  Scan with any UPI app. Check the name it shows is{" "}
+                  {/* The name ON THE UPI ACCOUNT, frozen on the redemption — it is
+                      what the payer's app will show, which the technician's own
+                      name may not be. */}
+                  <span className="font-semibold text-ink">{r.payeeName}</span>{" "}
+                  before you pay.
+                </p>
+              </>
             ) : null}
-          </CardDescription>
-        </CardHeader>
 
-        <CardContent className="flex flex-col items-center gap-4 py-2">
-          {r.state === "to_pay" && r.upiUri ? (
-            <>
-              <UpiQr
-                value={r.upiUri}
-                label={`UPI QR code to pay ${moneyPaise(r.amountPaise)} to ${r.payeeName}, ${r.upiId}`}
-              />
-              <p className="max-w-sm text-center text-[13px] leading-relaxed text-ink-2">
-                Scan with any UPI app. Check the name it shows is{" "}
-                {/* The name ON THE UPI ACCOUNT, frozen on the redemption — it is
-                    what the payer's app will show, which the technician's own
-                    name may not be. */}
-                <span className="font-semibold text-ink">{r.payeeName}</span>{" "}
-                before you pay.
-              </p>
-            </>
-          ) : null}
+            <dl className="grid w-full grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
+              <dt className="text-ink-3">UPI ID</dt>
+              <dd className="font-mono break-all select-all">{r.upiId}</dd>
+              <dt className="text-ink-3">Reference</dt>
+              <dd className="font-mono">{r.code}</dd>
+              <dt className="text-ink-3">Requested</dt>
+              <dd>{formatDateTime(r.requestedAt)}</dd>
+            </dl>
+          </CardContent>
+        </Card>
 
-          <dl className="grid w-full grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
-            <dt className="text-ink-3">UPI ID</dt>
-            <dd className="font-mono break-all select-all">{r.upiId}</dd>
-            <dt className="text-ink-3">Reference</dt>
-            <dd className="font-mono">{r.code}</dd>
-            <dt className="text-ink-3">Requested</dt>
-            <dd>{formatDateTime(r.requestedAt)}</dd>
-          </dl>
-        </CardContent>
-      </Card>
+        {r.events.length ? (
+          <Card>
+            <CardContent className="py-1">
+              <ol className="flex flex-col gap-2 text-[13px]">
+                {r.events.map((e) => (
+                  <li key={e.id} className="flex justify-between gap-4">
+                    <span>{eventLabel(e)}</span>
+                    <span className="shrink-0 text-ink-3">{formatDateTime(e.at)}</span>
+                  </li>
+                ))}
+              </ol>
+            </CardContent>
+          </Card>
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-3.5">
         {r.deniedAt ? (
@@ -232,21 +249,6 @@ function Body({
           >
             Decline
           </Button>
-        ) : null}
-
-        {r.events.length ? (
-          <Card>
-            <CardContent className="py-1">
-              <ol className="flex flex-col gap-2 text-[13px]">
-                {r.events.map((e) => (
-                  <li key={e.id} className="flex justify-between gap-4">
-                    <span>{eventLabel(e)}</span>
-                    <span className="shrink-0 text-ink-3">{formatDateTime(e.at)}</span>
-                  </li>
-                ))}
-              </ol>
-            </CardContent>
-          </Card>
         ) : null}
       </div>
 
