@@ -368,6 +368,12 @@ class UpiRejectRequest(AppModel):
     reason: str = Field(min_length=3, max_length=160)
 
 
+class DeletionConfirmRequest(AppModel):
+    """Deleting your own account, step two: the code from WhatsApp."""
+
+    code: str = Field(min_length=4, max_length=8)
+
+
 UpiChangeStatus = Literal["pending", "approved", "rejected", "cancelled"]
 
 
