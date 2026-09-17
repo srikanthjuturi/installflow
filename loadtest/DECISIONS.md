@@ -213,8 +213,117 @@ Action taken: the API's pool is now sized explicitly (`DB_POOL_SIZE` 3, `DB_MAX_
 `pg_terminate_backend`; the four LISTEN sessions were left alone, and both sites answered normally
 afterwards (`pool_pre_ping` replaces an ended connection on its next checkout).
 
-Not yet proven: WHY the bursts were periodic (~185 s). That needs the App Service logs, which need
+Not yet proven: WHY the bursts were periodic (~185 s).
+
+### Run 3 — same test, fix NOT deployed, different network (2026-09-16, user's call)
+
+Run deliberately on the unfixed dev API, knowing it may fill the shared server again. Two things
+differ from runs 1–2 and must travel with its numbers:
+
+- **The laptop was on another network** — public IP `157.35.92.54` instead of the office
+  `124.123.99.41`, apparently a mobile hotspot (NAT64 DNS answers). Client-side latency is not
+  comparable with runs 1–2, and the database firewall does not admit that address, so no
+  `pg_stat_activity` reading was possible during or after the run.
+- **The pool started almost empty** (0–2 jobs per technician); only tickets raised by the vendor
+  users during the run refilled it. Accept traffic is correspondingly thinner.
+
+**Result: invalid as a server measurement — the load generator's network failed.**
+
+- **Clean up to 91 users for eight minutes**: 0 failures, p95 160–500 ms (higher than runs 1–2,
+  as expected over the hotspot). Unlike run 2, no 500 bursts appeared at ~90 users.
+- At **17:00:37 UTC** throughput fell from 12 rps to 0.4 and requests took 9–22 s; from 17:00:53
+  they failed in ~3 ms. All 424 failures are **status 0 — no HTTP response at all**, never a 500 or
+  502 — including 104 token refreshes. A 3 ms failure never reached Azure.
+- **The laptop's public IP changed during the run** (`157.35.92.54` before, `152.57.175.228`
+  after), which drops every open connection. The dev API answered `/health` normally straight
+  afterwards. The guard then stopped the run at 109 users on sustained p95.
+
+So run 3 neither confirms nor clears F1. A load run needs a stable network — the office line, or
+anything whose public IP does not change mid-run.
+
+Cosmetic: users beyond the minted sessions stop themselves with `StopUser` in `on_start`, which
+Locust 2.46 logs at ERROR with a traceback. Not a failure and not counted as one.
+
+### Run 4 — pool fix deployed, office network (2026-09-17)
+
+Conditions finally right: `d09eac3` (pool sizing) was on dev — its API held exactly 6 idle pool
+connections, 2 workers × 3, where it held 10 the day before — the laptop was back on
+`124.123.99.41`, and the pool had been refilled with 300 slotless 48 h tickets
+(`loadtest/fill_pool.py`, 73 s through the real API).
+
+**Clean to 50 users** (947 requests, zero 500s or 502s). Then at **04:00:15 UTC** every request hung
+~20 s and 25 failed with **status 0**, and in the same second the connection-sampler
+(`loadtest/db_sampler.py`) lost ITS connection to Postgres. The Postgres server had not restarted
+(up since 2026-09-16 11:32 UTC) and both APIs answered normally afterwards. Two unrelated
+connections from this laptop to two different Azure services dropping together is the laptop's
+link, not either service. The guard stopped the run on sustained p95.
+
+Before the drop the sampler showed dev at 11 connections (with the listeners and one office
+developer's local API), prod 8, other teams 10, **11 usable slots left**.
+
+Two changes followed, because a load test that a 20-second network blip can end measures the
+network:
+
+- the guard now judges the **server's** failure ratio — status-0 failures are tallied apart and
+  logged to `results/<run>-network.txt` — and needs **six** consecutive breaches (a minute);
+- the sampler records a lost connection as a gap and reconnects, instead of exiting.
+
+### Run 5 — the first clean, complete run (2026-09-17, 04:04–04:19 UTC) — F1 resolved on dev
+
+Same conditions as run 4. **Ran the full ramp to its ceiling with no network drop.**
+
+| | Run 2 — no fix | Run 5 — pool sized |
+|---|---|---|
+| Peak users | 125 | 125 |
+| Requests | 10,847 | 10,954 |
+| Failures | 60 (0.55%) — 500s and 502s in bursts | **1 (0.009%)** — a single 502 |
+| p50 / p95 / p99 | 64 / 240 / 1,000 ms | **61 / 160 / 360 ms** |
+| Slowest request | 4,041 ms | **1,451 ms** |
+
+By load level (each held two minutes):
+
+| Users | req/s | p50 | p95 | p99 |
+|---|---|---|---|---|
+| 25 | 3.9 | 59 | 90 | 120 |
+| 50 | 7.2 | 100 | 200 | 230 |
+| 75 | 10.8 | 69 | 120 | 130 |
+| 91 | 13.6 | 66 | 110 | 150 |
+| 109 | 16.8 | 53 | 93 | 120 |
+| 125 | 18.8–19.2 | 51–53 | 73–75 | 100–120 |
+
+Latency FELL as load rose — the service was nowhere near a limit at 125 users.
+
+- **Database:** `RelianceDB` held **12–16 connections for the whole run** (that count includes the
+  two listeners, this sampler and an office developer's local API), and the server never had fewer
+  than **7 usable slots** free — against 0 in run 2. Almost never more than one query active at a
+  sample: the database is not the bottleneck.
+- **Laptop:** CPU averaged 23–32%, peak 70%. The load generator was not the limit either.
+- **The one 502** was at 04:08:40 UTC, at 75 users, on `GET /jobs/pool`, and did not recur.
+- **125 is a ceiling of the TEST, not the system.** 150 users in the 10:4:1 mix wants 40 vendor
+  and 10 console sessions; 20 and 5 were minted, and the rest stop themselves. Going higher needs
+  `mint_load_sessions --per-technician 10 --vendor-sessions 60 --console-sessions 20`.
+
+**The report's headline, as of run 5:** *With the connection pool sized for the shared server, the
+dev API served 125 concurrent simulated users (~19 req/s) for eight minutes at p95 75 ms, with one
+failed request in 10,954. Its breaking point was not reached.* That needs the App Service logs, which need
 the dev publish profile, which is not on the test laptop.
+
+### Final runs — 2026-09-17 (report: `results/load-report.html`)
+
+- **dev-final**: 25 → 150 users, 14 min, 11,689 requests, **0 failures**, p50 72 / p95 270 / p99
+  570 ms. 8 web devices (`devices.mjs`) alongside: 9,197 calls, 0 server errors. Laptop CPU mean 45%.
+  Fewest free database slots: 6.
+- **prod-final** (company `Seed Appliances PRODLT2` `0c252295-1965-40db-aed9-fe6e2205434c`): capped at
+  50 because the shared server had 3–4 free slots at rest. **The guard stopped it at 25 users after
+  111 s**: 412 requests, 17 failures (15 × 500, 1 × 502, 1 refresh 500). Prod does not have `d09eac3`.
+  Emulator (real APK, real WhatsApp OTP for TCH-0001) + 7 web devices; laptop CPU mean 96%, so
+  client latencies are inflated and the web devices' 183 status-0 calls are not attributed.
+- A second emulator could not run: SwiftShader rendering on 2 cores hung Android's system UI.
+- Production had no platform UPI ID; the seed and the mint set `loadtest@placeholder` for their
+  recharges and cleared it straight after. A first seed attempt left `Seed Appliances PRODLT`
+  (`82127444-e4b4-4437-8f58-39bff7c0911b`) with no tickets — delete it with PRODLT2.
+- The server refused connections with nothing of ours running (05:15–05:31 UTC): cdealDev 8, dev API
+  8, prod API 6, an office machine's local API 6, cdeal 5.
 
 ## Order of work
 
@@ -232,10 +341,12 @@ the dev publish profile, which is not on the test laptop.
 
 Owner: Harika. Date: **not yet set.**
 
-- [ ] Delete the synthetic company from production:
+- [ ] Delete BOTH synthetic companies from production (PRODLT2 `0c252295…`, PRODLT `82127444…`):
       `$env:POSTGRES_DB='RelianceProdDB'; python -m app.scripts.cleanup_db --keep <every real company id>`
       (it takes a `pg_dump` first, and refuses an empty keep list on production).
 - [ ] Confirm `WHATSAPP_ALLOWLIST` and `ACS_EMAIL_ALLOWLIST` are still EMPTY in `.env.production`
       (decision 6 means they were never set; `publish.py` refuses a deploy if they are).
+- [ ] Set the real platform UPI ID on Super Admin → Rules (production has none).
+- [ ] Deploy `d09eac3` (pool sizing) to production and re-run prod-final to 150.
 - [ ] Nothing to remove from blob storage: the seed uploads no files (decision 5).
 - [ ] Re-read this file's opening warning before ever repeating a production test.

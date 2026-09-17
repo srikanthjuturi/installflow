@@ -54,11 +54,19 @@ STOP_FAIL_RATIO = float(os.environ.get("LOAD_STOP_FAIL_RATIO", "0.01"))
 #: Ignore the first stretch: a cold App Service answers its first requests
 #: slowly, and stopping on that would measure a warm-up, not a limit.
 GUARD_WARMUP_S = float(os.environ.get("LOAD_GUARD_WARMUP_S", "60"))
-#: How many consecutive 10 s checks must breach before the run stops. One was
-#: not enough: the first dev rehearsal stopped at 50 users on a single window —
-#: p95 2.4 s in the very second 25 new users arrived, with ZERO failures and a
-#: p95 of 100–140 ms either side. A limit worth reporting is one that persists.
-GUARD_SUSTAIN = int(os.environ.get("LOAD_GUARD_SUSTAIN", "3"))
+#: How many consecutive 10 s checks must breach before the run stops — a full
+#: minute by default. One was not enough: the first dev rehearsal stopped at 50
+#: users on a single window, p95 2.4 s in the very second 25 new users arrived,
+#: with ZERO failures and a p95 of 100–140 ms either side. Three was not enough
+#: either: rehearsal 4 stopped on a ~20 s outage of the office link to Azure,
+#: during which every request hung and the server never answered at all.
+GUARD_SUSTAIN = int(os.environ.get("LOAD_GUARD_SUSTAIN", "6"))
+
+#: Requests that got NO HTTP response — Locust's status 0. A 500 is the server
+#: failing; status 0 is the path between this laptop and Azure failing, and
+#: rehearsals 3 and 4 were both ended by exactly that. Counted apart so the
+#: guard judges the server on what the server actually said.
+_no_response = 0
 
 RESULTS = HERE / "results"
 RUN_ID = os.environ.get("LOAD_RUN_ID") or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -91,6 +99,20 @@ def _take(role: str) -> dict:
         return _pools[role].popleft()
 
 
+def _fail(response, message: str) -> None:
+    """Mark a failure, labelling the ones the server never answered.
+
+    Still a failure — the user saw an error — but tallied in `_no_response` so
+    the guard can tell a network drop from a server that said no.
+    """
+    global _no_response
+    if response.status_code == 0:
+        _no_response += 1
+        response.failure(f"no response (network, not the server): {message}")
+    else:
+        response.failure(message)
+
+
 class Authed(HttpUser):
     """A signed-in user who refreshes its own token and retries once on 401."""
 
@@ -121,7 +143,10 @@ class Authed(HttpUser):
             catch_response=True,
         ) as response:
             if response.status_code != 200:
-                response.failure(f"refresh failed: {response.status_code}")
+                # ⚠ A refresh that got no response may still have been applied
+                # on the server, which rotated the token — this session is then
+                # signed out for good, and every later call of this user fails.
+                _fail(response, f"refresh failed: {response.status_code}")
                 return False
             data = response.json()["data"]
             self.session["accessToken"] = data["accessToken"]
@@ -155,9 +180,7 @@ class Authed(HttpUser):
                 if response.status_code in ok:
                     response.success()
                 else:
-                    response.failure(
-                        f"{response.status_code}: {response.text[:160]}"
-                    )
+                    _fail(response, f"{response.status_code}: {response.text[:160]}")
                 return response
         return None
 
@@ -376,20 +399,48 @@ def _guard(environment) -> None:
     """
     started = time.monotonic()
     breaches: list[str] = []
+    seen_no_response = 0
     while _running(environment):
         gevent.sleep(10)
-        if time.monotonic() - started < GUARD_WARMUP_S:
+        users = environment.runner.user_count
+        elapsed = time.monotonic() - started
+
+        # Network drops are written down whenever they happen, warm-up or not,
+        # so a run's numbers always travel with the moments they are unreliable.
+        if _no_response > seen_no_response:
+            with (RESULTS / f"{RUN_ID}-network.txt").open("a", encoding="utf-8") as log:
+                log.write(
+                    f"{elapsed:6.0f} s  {users} users: "
+                    f"{_no_response - seen_no_response} requests got no response\n"
+                )
+            seen_no_response = _no_response
+
+        # The shared Postgres server running out of slots stops the run at once,
+        # warm-up or not: past that point other teams' apps are the ones failing.
+        db_stop = RESULTS / f"{RUN_ID}-dbstop.txt"
+        if db_stop.exists():
+            (RESULTS / f"{RUN_ID}-stop.txt").write_text(
+                f"stopped at {users} users after {elapsed:.0f} s by the connection "
+                f"floor: {db_stop.read_text(encoding='utf-8')}",
+                encoding="utf-8",
+            )
+            environment.runner.quit()
+            return
+
+        if elapsed < GUARD_WARMUP_S:
             continue
         total = environment.stats.total
         p95 = total.get_current_response_time_percentile(0.95) or 0
-        ratio = total.fail_ratio
+        # The SERVER's failure ratio: what it answered with an error, not what
+        # never reached it.
+        server_failures = max(0, total.num_failures - _no_response)
+        ratio = server_failures / total.num_requests if total.num_requests else 0.0
         reason = None
         if p95 > STOP_P95_MS:
             reason = f"p95 {p95:.0f} ms > {STOP_P95_MS:.0f} ms"
         elif total.num_requests > 200 and ratio > STOP_FAIL_RATIO:
-            reason = f"failure ratio {ratio:.2%} > {STOP_FAIL_RATIO:.2%}"
+            reason = f"server failure ratio {ratio:.2%} > {STOP_FAIL_RATIO:.2%}"
 
-        users = environment.runner.user_count
         if reason is None:
             breaches.clear()
             continue
@@ -397,11 +448,11 @@ def _guard(environment) -> None:
         # Every breach is written down, sustained or not — a transient spike at
         # a step change is itself a finding, just not a reason to stop.
         with (RESULTS / f"{RUN_ID}-breaches.txt").open("a", encoding="utf-8") as log:
-            log.write(f"{time.monotonic() - started:6.0f} s  {breaches[-1]}\n")
+            log.write(f"{elapsed:6.0f} s  {breaches[-1]}\n")
         if len(breaches) < GUARD_SUSTAIN:
             continue
         (RESULTS / f"{RUN_ID}-stop.txt").write_text(
-            f"stopped at {users} users after {time.monotonic() - started:.0f} s, "
+            f"stopped at {users} users after {elapsed:.0f} s, "
             f"{GUARD_SUSTAIN} consecutive breaches:\n  " + "\n  ".join(breaches) + "\n",
             encoding="utf-8",
         )
