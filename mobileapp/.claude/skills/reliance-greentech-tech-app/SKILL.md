@@ -311,7 +311,17 @@ is no technician cancel — only the payer declines, before paying.
 ### 16 — Profile
 Avatar initials · name · `Technician` · `ID TCH-4021` · stats `Rating` / `Jobs done` /
 `On-time` · `Service coverage` (Categories, Pincodes) · link `Availability & bandwidth` ·
-rows `Push notifications` / `Language` / `Payout account` · `Log out`.
+rows `Push notifications` / `Language` / `Payout account` / `Delete account` · `Log out`.
+
+`Delete account` is net-new, added 2026-09-17 for the Google Play account-deletion requirement —
+not in the prototype, same as Payout account. Opens a dedicated screen
+(`features/profile/screens/DeleteAccountScreen.tsx`, routed at `app/(app)/delete-account.tsx`):
+explains what's removed and what's kept, sends a one-time code to the technician's own registered
+WhatsApp number (reusing `OtpInput` + `useResendTimer`), then a native confirm before the final
+`Delete my account` button. Verifying deletes the account IMMEDIATELY — no manager approval — and
+is refused (before a code is even sent) while the technician has an open job. On success it tears
+down the session exactly like `Log out` does: `signOut()` → `queryClient.clear()` → `clearAvatar()`
+→ redirect to `/(auth)/login`.
 
 ---
 

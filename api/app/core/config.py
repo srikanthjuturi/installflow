@@ -435,6 +435,12 @@ class Settings(BaseSettings):
     # Returns the code in the response body so the flow can be walked without
     # Meta credentials. Startup refuses to run with it on in production.
     OTP_DEV_ECHO: bool = True
+    # Google Play's reviewers sign in with this number and this fixed code, and
+    # nothing is ever sent — see app/core/play_review.py. Both empty means off.
+    # The number must be an unreachable `+911…` one and the code OTP_LENGTH
+    # digits, or the feature stays off rather than failing startup.
+    PLAY_REVIEW_PHONE: str = ""
+    PLAY_REVIEW_CODE: str = ""
     # How long the post-OTP registration token lives.
     REGISTRATION_TOKEN_MINUTES: int = 15
     # How long the post-OTP password-reset token lives — the ticket between

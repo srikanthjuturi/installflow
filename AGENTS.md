@@ -586,6 +586,11 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   and no "forgot password". Console users sign in with email + password **or with Google**
   (`POST /auth/google`, which never creates an account — it matches an existing verified email);
   `users.email` and `users.password_hash` are nullable precisely because a technician has neither.
+- **One exception, for Google Play's reviewers:** `PLAY_REVIEW_PHONE` accepts the fixed
+  `PLAY_REVIEW_CODE` and is sent nothing. It must be an unreachable `+911…` number on a technician
+  of the `RGT Play Review` company, which `python -m app.scripts.seed_play_review` builds and
+  tops up (re-run it before every Play submission) and `cleanup_db` never deletes. Detail:
+  `api/AGENTS.md` → Google Play review sign-in.
 - **A forgotten console password is a one-time code emailed to the address**, not a link:
   `/auth/password-reset/request` → `verify` → `confirm`, which answers with a session because
   the address was just proved. It shares `otp_codes` with the technician flow — the table takes

@@ -82,7 +82,7 @@ export interface KeyboardFlowProps {
  *
  * Edge-to-edge ends that. The app draws behind the system bars and the IME, so
  * the window no longer resizes and `softwareKeyboardLayoutMode: 'resize'` in
- * app.config.ts is inert; Expo's own note on the change is "like on iOS, you'll
+ * app.json is inert; Expo's own note on the change is "like on iOS, you'll
  * need to use KeyboardAvoidingView". Leaving `behavior` unset therefore meant
  * nothing on Android moved for the keyboard on any screen — the field being
  * typed into stayed covered and the CTA stayed buried.

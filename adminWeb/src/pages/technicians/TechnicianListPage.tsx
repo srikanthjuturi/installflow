@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Send } from "lucide-react";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
+import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicianDialog";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { TechnicianInviteDialog } from "@/components/technicians/TechnicianInviteDialog";
 import { TechTable } from "@/components/technicians/TechTable";
@@ -29,6 +30,7 @@ export default function TechnicianListPage() {
   const [editing, setEditing] = useState<Technician | undefined>(undefined);
   const [isInviteOpen, setInviteOpen] = useState(false);
   const [cancelling, setCancelling] = useState<TechnicianRow | null>(null);
+  const [deleting, setDeleting] = useState<Technician | undefined>(undefined);
 
   const invite = useInviteTechnician();
   const resend = useResendInvite();
@@ -70,6 +72,12 @@ export default function TechnicianListPage() {
         open={isFormOpen}
         onOpenChange={setFormOpen}
         technician={editing}
+      />
+
+      <DeleteTechnicianDialog
+        open={deleting !== undefined}
+        onOpenChange={(open) => !open && setDeleting(undefined)}
+        technician={deleting}
       />
 
       <TechnicianInviteDialog
@@ -122,6 +130,7 @@ export default function TechnicianListPage() {
           setFormOpen(true);
         }}
         canSendAppLink={canCreate}
+        onDeleteTechnician={(technician) => setDeleting(technician)}
         busyTechnicianId={sendAppLink.isPending ? sendAppLink.variables : null}
         onSendAppLink={(technician) =>
           sendAppLink.mutate(technician.id, {

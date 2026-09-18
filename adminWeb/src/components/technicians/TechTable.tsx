@@ -75,6 +75,8 @@ interface TechTableProps {
   /** `technicians.create` — WhatsApp a registered technician the app link. */
   canSendAppLink: boolean;
   onSendAppLink: (technician: Technician) => void;
+  /** `technicians.edit` + an Area-Manager floor, enforced server-side. */
+  onDeleteTechnician: (technician: Technician) => void;
   /** The technician whose app link is on its way, so its button waits. */
   busyTechnicianId?: string | null;
   onResend: (row: TechnicianRow) => void;
@@ -99,6 +101,7 @@ export function TechTable({
   onEditTechnician,
   canSendAppLink,
   onSendAppLink,
+  onDeleteTechnician,
   busyTechnicianId,
   onResend,
   onCancel,
@@ -321,6 +324,18 @@ export function TechTable({
                   onClick={() => onEditTechnician(t)}
                 >
                   Edit
+                  <span className="sr-only"> {t.name}</span>
+                </Button>
+              ) : null}
+              {canEditTechnician ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs font-semibold text-danger"
+                  onClick={() => onDeleteTechnician(t)}
+                >
+                  Remove
                   <span className="sr-only"> {t.name}</span>
                 </Button>
               ) : null}

@@ -15,10 +15,12 @@ const STATS = [
  * build was aimed at.
  *
  * It can also simply EXPIRE. An internal-distribution build is kept for a
- * limited time — the one encoded today (fccdf340, Android, `preview`, commit
- * cb0aba6, the same build `TECHNICIAN_APP_LINK` names — confirmed prod-wired by
- * extracting and grepping the built JS bundle) reports `expirationDate`
- * 2026-10-01. Check with `eas build:view <id> --json`.
+ * limited time — the one encoded today (89ccb5c2, Android, `preview`, commit
+ * fc8f163, the same build `TECHNICIAN_APP_LINK` names — confirmed by
+ * extracting the launcher icon and the manifest from the built APK: the RGT
+ * mark, no RECORD_AUDIO/SYSTEM_ALERT_WINDOW, and the invite intent filter all
+ * present) reports `expirationDate` 2026-10-01. Check with
+ * `eas build:view <id> --json`.
  */
 const TECHNICIAN_APP_QR = "/images/appqr.png";
 

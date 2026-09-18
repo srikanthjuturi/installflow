@@ -1,0 +1,28 @@
+# EAS Build treats the git repository ROOT as the project root in this
+# monorepo, and (unlike a git-based checkout) copies the raw working
+# directory rather than respecting .gitignore. Without this file it tries to
+# package api/.venv (a 114MB Python virtualenv whose C-extension headers
+# broke the upload with an ENOENT on a Windows-only file quirk) and every
+# other app's node_modules, none of which the mobile build needs.
+#
+# Every pattern is ROOT-ANCHORED (leading slash). A bare `api/` matches a
+# folder named `api` at ANY depth — including mobileapp/src/features/*/api/,
+# where every feature's own API calls live — and silently dropped all of them
+# from the upload, which failed a build with "Unable to resolve module
+# @/features/earnings/api/earnings". Caught 2026-09-17; keep the slash.
+#
+# mobileapp/android is a LEFTOVER locally-generated native folder — .gitignore
+# already excludes /android and /ios because this is a managed Expo project,
+# but a raw-copy upload doesn't consult .gitignore. Left in, EAS finds it and
+# builds from that STALE manifest instead of generating a fresh one from
+# app.json — confirmed 2026-09-17: a build with this present shipped RECORD_
+# AUDIO/SYSTEM_ALERT_WINDOW still granted and no invite Android App Link
+# intent filter, both of which app.json's config plugins should have fixed.
+# Excluding it forces every remote build through a clean `expo prebuild`.
+#
+# The rest of mobileapp/ is NOT listed here — everything else ships.
+/api/
+/adminWeb/
+/RequirementDocs/
+/mobileapp/android/
+/mobileapp/ios/

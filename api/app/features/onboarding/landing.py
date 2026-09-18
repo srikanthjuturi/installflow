@@ -47,7 +47,7 @@ router = APIRouter(tags=["onboarding"])
 #:
 #: It is a SETTING because it has to name the scheme of the build people are
 #: actually carrying, which lags a rename — see APP_SCHEME in app/core/config.py.
-#: Nothing verifies it against `scheme` in mobileapp/app.config.ts at runtime,
+#: Nothing verifies it against `scheme` in mobileapp/app.json at runtime,
 #: so a wrong value fails the only way deep links ever fail: the button does
 #: nothing at all.
 
