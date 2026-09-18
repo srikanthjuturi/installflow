@@ -111,7 +111,7 @@ class CompanyRules(Base, IdMixin, AuditMixin):
         Integer, nullable=False, server_default=text("6")
     )
     escalate_hours_before_slot: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("4")
+        Integer, nullable=False, server_default=text("1")
     )
     force_close_hours: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("48")

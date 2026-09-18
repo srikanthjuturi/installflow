@@ -254,7 +254,7 @@ export default function EscalationQueuePage() {
     <>
       <PageMeta
         title="Escalation queue"
-        description="Tickets unassigned within 4 hours of their confirmed slot."
+        description="Tickets unassigned within 1 hour of their confirmed slot."
       />
 
       {/* Above the error and empty states, not inside the success branch: a
@@ -300,7 +300,7 @@ export default function EscalationQueuePage() {
           <EmptyState
             icon={CheckCircle2}
             title="Nothing escalated"
-            description="Every confirmed slot within the next 4 hours has a technician."
+            description="Every confirmed slot within the next 1 hour has a technician."
           />
         )
       ) : (
@@ -314,7 +314,7 @@ export default function EscalationQueuePage() {
                     {count}
                     {liveComplete ? "" : "+"} ticket{count === 1 ? "" : "s"}
                   </b>{" "}
-                  {count === 1 ? "is" : "are"} unassigned within 4 hours of their
+                  {count === 1 ? "is" : "are"} unassigned within 1 hour of their
                   confirmed slot. Add a bonus and re-notify, or assign manually.
                 </span>
               </p>
