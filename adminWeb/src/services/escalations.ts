@@ -2,7 +2,7 @@
  * Escalation transport — live FastAPI, not the mock client.
  *
  * A ticket lands here when its confirmed slot came within
- * `ESCALATE_HOURS_BEFORE_SLOT` (4h) and nobody had accepted it (§7). The sweep
+ * `ESCALATE_HOURS_BEFORE_SLOT` (1h) and nobody had accepted it (§7). The sweep
  * moves it to `Escalated`, which takes it OUT of the job pool: no technician
  * can take it while a manager owns it, and there are exactly two ways back —
  * fund a bonus and re-publish, or assign somebody outright.

@@ -64,6 +64,8 @@ class Settings(BaseSettings):
         # The console's own Azure static server, alongside Netlify — see
         # .github/workflows/web-prod-deploy.yml.
         "https://installflowweb-hhhga9gnbrc8etfx.centralindia-01.azurewebsites.net",
+        # Dev console on Azure.
+        "https://installflowweb-dev-eeakh9hpfsh4e5a7.centralindia-01.azurewebsites.net",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",

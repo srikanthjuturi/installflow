@@ -136,15 +136,29 @@ export function ModelSerialsPanel({
             <Plus data-icon="inline-start" />
             Add manually
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setImporting(true)}
-          >
-            <FileSpreadsheet data-icon="inline-start" />
-            Import spreadsheet
-          </Button>
+          <div className="flex flex-col items-start gap-0.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setImporting(true)}
+            >
+              <FileSpreadsheet data-icon="inline-start" />
+              Import spreadsheet
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                void downloadSerialTemplate().catch(() =>
+                  toast.add({ title: "Couldn't download the template" })
+                );
+              }}
+              className="inline-flex items-center gap-1 text-[11px] text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+            >
+              <Download className="size-3" aria-hidden />
+              Download template
+            </button>
+          </div>
         </div>
       </div>
 
@@ -333,18 +347,6 @@ export function ModelSerialsPanel({
         </>
       )}
 
-      <button
-        type="button"
-        onClick={() => {
-          void downloadSerialTemplate().catch(() =>
-            toast.add({ title: "Couldn't download the template" })
-          );
-        }}
-        className="inline-flex w-fit items-center gap-1.5 text-[12px] text-ink-3 underline-offset-2 hover:text-ink hover:underline"
-      >
-        <Download className="size-3.5" aria-hidden />
-        Download the spreadsheet template
-      </button>
 
       <SerialImportDialog
         open={importing}
@@ -405,6 +407,8 @@ function AddSerialsForm({
   onDone: () => void;
 }) {
   const [value, setValue] = React.useState("");
+  const [lastResult, setLastResult] =
+    React.useState<{ added: number; duplicates: number } | null>(null);
   const addSerials = useAddSerials(modelId, portal);
 
   // Split on newlines AND commas: both are how a pasted column arrives,
@@ -424,17 +428,37 @@ function AddSerialsForm({
   );
   const tooMany = parsed.length > MAX_SERIALS_PER_REQUEST;
 
+  // Clear the duplicate notice as soon as the user edits the box.
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setValue(e.target.value);
+    if (lastResult) setLastResult(null);
+  }
+
   return (
     <div className="grid gap-2 rounded-lg border border-line bg-surface-2 p-3">
       <Textarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={handleChange}
         rows={4}
         autoFocus
         placeholder={"One per line, or paste a column\nSN-000001\nSN-000002"}
         aria-label="Serial numbers to add"
         className="font-mono text-[13px]"
       />
+
+      {/* Inline duplicate notice — stays visible until the user edits the
+          box, so the message is seen rather than a toast that auto-hides. */}
+      {lastResult && lastResult.duplicates > 0 && (
+        <p
+          className={`text-[12px] ${lastResult.added === 0 ? "text-danger" : "text-warn"}`}
+          role="alert"
+        >
+          {lastResult.added === 0
+            ? `${lastResult.duplicates === 1 ? "That serial number is" : `All ${lastResult.duplicates} serial numbers are`} already on this model — nothing was added.`
+            : `${lastResult.duplicates} serial number${lastResult.duplicates === 1 ? " was" : "s were"} already on this model and skipped.`}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p
           className={`text-[12px] ${tooMany ? "text-danger" : "text-ink-3"}`}
@@ -455,16 +479,19 @@ function AddSerialsForm({
             onClick={() =>
               addSerials.mutate(parsed, {
                 onSuccess: (result) => {
-                  toast.add({
-                    title: result.added
-                      ? `${result.added} serial number${result.added === 1 ? "" : "s"} added`
-                      : "Nothing to add",
-                    description: result.duplicates
-                      ? `${result.duplicates} already on this model.`
-                      : undefined,
-                  });
-                  setValue("");
-                  onDone();
+                  setLastResult(result);
+                  if (result.added > 0) {
+                    toast.add({
+                      title: `${result.added} serial number${result.added === 1 ? "" : "s"} added`,
+                      description: result.duplicates
+                        ? `${result.duplicates} already on this model.`
+                        : undefined,
+                    });
+                    setValue("");
+                    onDone();
+                  }
+                  // If nothing was added (all dupes), stay open — the inline
+                  // message above is more noticeable than a toast.
                 },
               })
             }
