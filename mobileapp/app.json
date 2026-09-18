@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Reliance GreenTech Technician",
-    "slug": "videocon-technician",
-    "owner": "srikanth24",
+    "slug": "reliance-greentech-technician",
+    "owner": "srikanthjuturi",
     "scheme": "reliancegreentech",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -81,7 +81,7 @@
       "brandName": "Reliance GreenTech",
       "brandMark": "RGT",
       "eas": {
-        "projectId": "413ef3a0-47cc-4a8c-a90a-30da687d6924"
+        "projectId": "d73e35b9-f565-48bc-8074-5de1800f6df6"
       }
     }
   }
