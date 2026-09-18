@@ -33,8 +33,8 @@ export const POSTHOG_HOST =
   DEFAULT_POSTHOG_HOST;
 
 // Production builds only. `npm run dev` never tracks, even with keys in `.env`;
-// Netlify scopes the keys to its production context, which keeps deploy
-// previews out too.
+// the ids are also simply left unset in every deployed build but prod's, which
+// keeps the dev App Service out too.
 const IS_PROD = import.meta.env.PROD;
 
 export const GA_ENABLED = IS_PROD && Boolean(GA_MEASUREMENT_ID);

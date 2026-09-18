@@ -15,6 +15,7 @@ one, see "Cleanup" at the bottom.)
 | `.github/workflows/pr-check.yml` | any PR into `main` or `dev` | lint+typecheck adminWeb and mobileapp; import/syntax-check api. No deploy. |
 | `.github/workflows/dev-deploy.yml` | push to `dev` (path-filtered to `api/**`), or manual | zip-deploys api to `installflowapi-dev`. Migrations happen on the app's own restart, not here. |
 | `.github/workflows/prod-deploy.yml` | **manual only** (`workflow_dispatch`) | zip-deploys api to `installflowapi` — requires typing `deploy` into a confirmation box, and refuses to run off anything but `main` unless you explicitly tick an override |
+| `.github/workflows/web-dev-deploy.yml` | push to `dev` (path-filtered to `adminWeb/**`), or manual | deploys adminWeb's full SOURCE tree (not a pre-built `dist/`) to the Azure App Service `installflowweb-dev-eeakh9hpfsh4e5a7`, which builds it remotely via Oryx — same mechanics as the prod web deploy, no confirm box (pushing to `dev` IS the intent) |
 | `.github/workflows/web-prod-deploy.yml` | **manual only** (`workflow_dispatch`) | deploys adminWeb's full SOURCE tree (not a pre-built `dist/`) to the Azure App Service `installflowweb`, which builds it remotely via Oryx — same confirm box and branch lock as the api's prod deploy |
 
 All run on ordinary `ubuntu-latest` GitHub-hosted runners. None need network
@@ -22,11 +23,18 @@ access to Postgres, because none run a migration — see below.
 
 **adminWeb production is `web-prod-deploy.yml` → `installflowweb`
 (https://installflowweb-hhhga9gnbrc8etfx.centralindia-01.azurewebsites.net),
-manual only, same as the api.** Netlify (https://reliancegreentech.netlify.app)
-still auto-deploys via its own git integration, but its role changed: it is
-now the **dev** environment and its production-branch setting must point at
-`dev`, not `main` — that's a Netlify dashboard change, not something a
-workflow file can do (see "Manual setup required" below).
+manual only, same as the api.** adminWeb dev is
+`web-dev-deploy.yml` → `installflowweb-dev-eeakh9hpfsh4e5a7`
+(https://installflowweb-dev-eeakh9hpfsh4e5a7.centralindia-01.azurewebsites.net),
+automatic on every push to `dev` that touches `adminWeb/**`. Both web
+workflows are identical in mechanics — source tree, Oryx remote build, one
+env-file secret each — and differ only in trigger and which secrets they read.
+**Netlify is decommissioned** — it used to serve dev via its git integration
+(https://reliancegreentech.netlify.app); disconnect the repo in the Netlify
+dashboard before deleting the site, so nothing keeps pushing stale builds to a
+URL nobody serves (dashboard-only change, not something a workflow file can
+do). The in-repo Netlify configuration (`adminWeb/public/_redirects`,
+`_headers`, and every doc reference) has been removed.
 
 **`installflowweb` is a Linux Node App Service, not a plain static host.**
 Its container starts by running a `server.mjs` that Azure's Oryx build system
@@ -109,8 +117,10 @@ documents.)
 | `ENV_FILE_DEV` | Full content of `api/.env.dev-deploy` (already generated — see below) |
 | `AZURE_PUBLISH_PROFILE_PROD` | The **Zip Deploy** publish profile XML for `installflowapi` |
 | `ENV_FILE_PROD` | Full content of your local `api/.env.production` |
+| `AZURE_WEBAPP_PUBLISH_PROFILE_DEV` | The publish profile XML for `installflowweb-dev-eeakh9hpfsh4e5a7` (Azure Portal → that app → **Get publish profile**) |
+| `WEB_ENV_FILE_DEV` | Full content of a `.env.production` for the **dev** adminWeb build — at minimum `VITE_API_BASE_URL=https://installflowapi-dev-c2fqf7f4bjdbg8bz.centralindia-01.azurewebsites.net/api/v1`. The analytics ids stay unset: a `vite build` is a production build (`import.meta.env.PROD`), so any value here starts tracking, and analytics is prod-only. Google/Maps keys are optional here exactly as they are in prod. |
 | `AZURE_WEBAPP_PUBLISH_PROFILE_PROD` | The publish profile XML for `installflowweb` (Azure Portal → `installflowweb` → **Get publish profile**) |
-| `WEB_ENV_FILE_PROD` | Full content of a `.env.production` for adminWeb — at minimum `VITE_API_BASE_URL=https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1`. `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_MAPS_API_KEY` and the analytics ids are deliberately **not** set yet — the Azure build currently ships without Google Sign-In, Maps autocomplete or analytics. Add them here (same values already in Netlify's build UI) whenever that's needed; each key is independently optional, see `adminWeb/.env.example`. |
+| `WEB_ENV_FILE_PROD` | Full content of a `.env.production` for adminWeb — at minimum `VITE_API_BASE_URL=https://installflowapi-bqh6d9e2hhaedye0.centralindia-01.azurewebsites.net/api/v1`. `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_MAPS_API_KEY` and the analytics ids are deliberately **not** set yet — the Azure build currently ships without Google Sign-In, Maps autocomplete or analytics. Add them here whenever that's needed; each key is independently optional, see `adminWeb/.env.example`. |
 
 Plain repository secrets, visible to every workflow in the repo — there is no
 GitHub Environment gating which job can read which. The separation between
@@ -123,6 +133,11 @@ approval to trigger `prod-deploy.yml` or `web-prod-deploy.yml` — the
 this up. Treat it as exposed — same locked decision as the api's profiles
 below, but if that exposure is unwanted, rotate it (Azure Portal →
 `installflowweb` → **Reset publish profile**) and update the secret.
+
+⚠ Same for the `installflowweb-dev` profile — it was also pasted into a chat
+session (when the dev web deploy was added). Rotate
+(`installflowweb-dev-eeakh9hpfsh4e5a7` → **Reset publish profile**) and update
+`AZURE_WEBAPP_PUBLISH_PROFILE_DEV` if that exposure is unwanted.
 
 *(If you already created the `dev`/`production` GitHub Environments and added
 secrets to them from the earlier setup attempt, those are now orphaned —
@@ -140,19 +155,20 @@ value.
 
 Portal-only, ARM-gated — cannot be done from a workflow or from this session.
 
-### 4. Point Netlify's production branch at `dev`, not `main`
+### 4. Disconnect Netlify (one-time decommission)
 
-**Netlify dashboard → reliancegreentech site → Site configuration → Build &
-deploy → Continuous deployment → Branches and deploy contexts → Production
-branch:** change it from `main` to `dev`.
+Netlify used to be the dev web environment via its own git integration. That
+role is now `web-dev-deploy.yml` → `installflowweb-dev`, so:
 
-Nothing in this repo can make that change — it's Netlify's own setting, not a
-file it reads. Until it's changed, Netlify keeps deploying `main` to
-https://reliancegreentech.netlify.app on every merge, in parallel with
-`web-prod-deploy.yml` deploying the same commits to `installflowweb` — two
-"production" targets serving different builds is the thing this change
-avoids. `public/_redirects` needs no change; Netlify reads it on any branch
-it builds.
+1. **Netlify dashboard → reliancegreentech → Site configuration → Build &
+   deploy → Continuous deployment → Link repository → remove the link** (or
+   stop the builds), then delete the site once nothing needs the old URL.
+2. Anything that still points at `https://reliancegreentech.netlify.app` —
+   bookmarks, Google Cloud referrer allowlists, OAuth origins — should move
+   to `https://installflowweb-dev-eeakh9hpfsh4e5a7.centralindia-01.azurewebsites.net`.
+
+Nothing in this repo references Netlify any more; only the dashboard itself
+held a setting this repo could not change.
 
 ### 5. Confirm the Postgres firewall admits both App Services' outbound traffic
 
@@ -184,9 +200,11 @@ Not required for anything above to work, but tidy:
   record from that session. The `installflowweb` profile added later carries
   the same decision — see the warning in step 1 above.
 - **adminWeb production moved from Netlify to Azure** (`web-prod-deploy.yml`
-  → `installflowweb`); Netlify becomes the dev environment, tracking `dev`
-  once step 4 above is done by hand. **mobileapp stays out of scope** for
-  this pipeline — unchanged.
+  → `installflowweb`), and **dev followed it on 2026-09-18** —
+  `web-dev-deploy.yml` → `installflowweb-dev-eeakh9hpfsh4e5a7` replaced
+  Netlify's git integration, which is now decommissioned. The in-repo
+  Netlify config (`_redirects`, `_headers`, doc references) was removed with
+  it. **mobileapp stays out of scope** for this pipeline — unchanged.
 - **Deploy logic goes through `api/scripts/publish.py --target {dev,prod}`**
   — unchanged; CI and a human run the identical guarded path (right DB name,
   right `ENVIRONMENT`, strong JWT secret, and — prod only — approved WhatsApp

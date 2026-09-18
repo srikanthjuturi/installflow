@@ -29,9 +29,8 @@ name: Deploy adminWeb — production
 # than assume it, or Kudu just extracts the source into wwwroot unbuilt —
 # same missing-server.mjs crash as deploying dist/ alone.
 #
-# Netlify (https://reliancegreentech.netlify.app) still auto-deploys from git
-# — it now tracks `dev` only, this workflow is what serves production. See
-# .github/DEPLOYMENT.md.
+# Dev deploys run from web-dev-deploy.yml, the identical workflow minus the
+# confirm box — see it and .github/DEPLOYMENT.md.
 on:
   workflow_dispatch:
     inputs:

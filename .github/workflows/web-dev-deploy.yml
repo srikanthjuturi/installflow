@@ -1,0 +1,151 @@
+name: Deploy adminWeb — dev
+
+# Push to `dev` → deploy adminWeb to the Azure App Service
+# installflowweb-dev-eeakh9hpfsh4e5a7. This replaced the Netlify git
+# integration, which was the dev environment until it was decommissioned.
+#
+# Same shape as web-prod-deploy.yml, and for the same reasons — read its
+# header comment for the full story. In short:
+#
+# - `installflowweb-dev` is a Linux Node App Service whose container boots by
+#   running a `server.mjs` that Oryx (Azure's build system) generates when it
+#   builds a recognised frontend framework project. A pre-built `dist/` alone
+#   gives Oryx nothing to build, no server.mjs, and the container
+#   crash-loops — so this deploys the whole adminWeb SOURCE tree.
+# - A zip deploy does NOT trigger an Oryx build on its own
+#   (SCM_DO_BUILD_DURING_DEPLOYMENT / ENABLE_ORYX_BUILD are off by default),
+#   so the Kudu settings call below flips both on before every deploy, the
+#   same call api/scripts/publish.py and web-prod-deploy.yml make.
+# - VITE_* values are baked in at BUILD time, so the dev env file has to
+#   exist in the uploaded source before Oryx's remote `npm run build` runs —
+#   it is written from WEB_ENV_FILE_DEV before packaging. Its minimum is
+#   VITE_API_BASE_URL pointing at installflowapi-dev. The analytics ids stay
+#   UNSET here on purpose: a `vite build` is a production build
+#   (import.meta.env.PROD), so a value set for dev would start tracking —
+#   analytics is prod-deploy only.
+# - `npm run build` runs locally first as a fast, readable fail-fast check;
+#   its output is discarded before packaging.
+#
+# Dev deploys deliberately have NO confirm box and NO branch lock — pushing
+# to `dev` IS the intent, the same stance dev-deploy.yml (the api) takes.
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'adminWeb/**'
+      - '.github/workflows/web-dev-deploy.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-web-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy (dev)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: adminWeb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: adminWeb/.nvmrc
+          cache: npm
+          cache-dependency-path: adminWeb/package-lock.json
+
+      - run: npm ci
+
+      - name: Write dev configuration
+        # Same env: routing as every other workflow here — ${{ }} pastes raw
+        # text into the shell command before parsing; env: hands it over as
+        # an already-set variable so quotes/newlines in the secret can't
+        # break the write.
+        env:
+          CONTENT: ${{ secrets.WEB_ENV_FILE_DEV }}
+        run: printf '%s' "$CONTENT" > .env.production
+
+      - name: Build (fail-fast check only — not what gets deployed)
+        run: npm run build
+
+      - name: Strip node_modules and the local build before packaging
+        # Oryx installs and builds again on the App Service itself — shipping
+        # node_modules here would just bloat the upload with a copy Azure
+        # throws away, and dist/ is regenerated remotely too. .env.production
+        # stays; Oryx's `vite build` needs it.
+        run: rm -rf node_modules dist
+
+      - name: Enable the Oryx remote build and read the site identity
+        # Same call api/scripts/publish.py makes before every api deploy.
+        # Credentials come straight out of the publish profile secret (its
+        # username/password are Kudu's own Basic Auth), routed through env:
+        # for the same quoting reasons as everywhere else in this file.
+        #
+        # app-name and slot-name for the deploy step are derived from the
+        # profile's own userName, because that is exactly what
+        # azure/webapps-deploy validates them against: it strips the leading
+        # `$` and splits on `__`, so a userName of $installflowweb__dev
+        # means app `installflowweb`, slot `dev` — and an app-name that
+        # carries the `__dev` itself (as msdeploySite does) fails the check
+        # with "Publish profile is invalid for app-name and slot-name
+        # provided". Deriving both from the same file the credentials come
+        # from makes that mismatch impossible whatever profile is in the
+        # secret.
+        id: profile
+        env:
+          PROFILE_XML: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
+        run: |
+          KUDU_USER=$(grep -o 'userName="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/userName="//;s/"$//')
+          KUDU_PASS=$(grep -o 'userPWD="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/userPWD="//;s/"$//')
+          # A missing/empty secret and a genuinely rejected password both end
+          # as Kudu's HTTP 401 — catch the first case with its own message
+          # before the curl can blur the two together.
+          if [ -z "$KUDU_USER" ] || [ -z "$KUDU_PASS" ]; then
+            echo "No userName/userPWD found in AZURE_WEBAPP_PUBLISH_PROFILE_DEV." >&2
+            echo "The secret is unset, empty, or not a full publish profile XML — add the whole <publishData>…</publishData> block." >&2
+            exit 1
+          fi
+          # The action's own parse: strip the leading $, split on __.
+          STRIPPED=${KUDU_USER#\$}
+          APP_NAME=${STRIPPED%%__*}
+          if [ -z "$APP_NAME" ]; then
+            echo "Could not derive an app name from the publish profile's userName ($KUDU_USER)." >&2
+            exit 1
+          fi
+          echo "app-name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          if [[ "$STRIPPED" == *"__"* ]]; then
+            SLOT_NAME=${STRIPPED#*__}
+            echo "slot-name=$SLOT_NAME" >> "$GITHUB_OUTPUT"
+          fi
+          status=$(curl -s -o /tmp/kudu-settings.out -w '%{http_code}' \
+            -u "$KUDU_USER:$KUDU_PASS" \
+            -X POST -H "Content-Type: application/json" \
+            -d '{"SCM_DO_BUILD_DURING_DEPLOYMENT": "true", "ENABLE_ORYX_BUILD": "true"}' \
+            "https://installflowweb-dev-eeakh9hpfsh4e5a7.scm.centralindia-01.azurewebsites.net/api/settings")
+          cat /tmp/kudu-settings.out
+          if [ "$status" != "200" ] && [ "$status" != "204" ]; then
+            echo "Could not enable the remote build (HTTP $status)" >&2
+            exit 1
+          fi
+
+      - name: Deploy to Azure App Service
+        # app-name (and slot-name, when the profile's userName carries one)
+        # come from the profile itself, extracted one step above — the
+        # action validates them against that same userName and fails with
+        # "Publish profile is invalid for app-name and slot-name provided"
+        # if they disagree.
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.profile.outputs.app-name }}
+          # An EMPTY slot-name would itself fail the action's validation, so
+          # fall back to the sentinel it reads as "no slot" when the
+          # userName carries no __slot segment.
+          slot-name: ${{ steps.profile.outputs.slot-name || 'production' }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
+          package: adminWeb
+
+      - name: Clean up secrets from the runner's disk
+        if: always()
+        run: rm -f .env.production

@@ -351,7 +351,6 @@ colour table.
 ```
 adminWeb/
   public/
-    _redirects          Netlify SPA fallback — see Deployment
     images/placeholders/
   src/
     components/
@@ -1186,19 +1185,23 @@ npm run typecheck
 npm run build
 ```
 
-## Deployment (Netlify = dev, Azure `installflowweb` = production)
+## Deployment (Azure `installflowweb-dev` = dev, Azure `installflowweb` = production)
 
 The console is a static SPA, built two ways to two different origins — the API always stays on
 Azure App Service, on both sides. See `.github/DEPLOYMENT.md` for the full CI/CD picture; this
-section is the adminWeb-specific half of it.
+section is the adminWeb-specific half of it. **Netlify, which used to serve dev via its git
+integration, is decommissioned** — `adminWeb/public/_redirects` and `_headers` went with it
+(the SPA fallback and sw.js cache rules they carried are the Oryx static server's own concern
+on Azure, the same as production).
 
-- **Netlify** (`https://reliancegreentech.netlify.app`) auto-deploys on every push to **`dev`**
-  and is the **dev** environment.
+- **Azure App Service `installflowweb-dev-eeakh9hpfsh4e5a7`** is **dev**, deployed automatically
+  on every push to **`dev`** that touches `adminWeb/**` by `.github/workflows/web-dev-deploy.yml`.
 - **Azure App Service `installflowweb`** is **production**, deployed only by
   `.github/workflows/web-prod-deploy.yml` (`workflow_dispatch`, typed `deploy` confirmation,
   `main` only unless overridden). It is a Linux Node App Service that Oryx builds remotely from
   the whole source tree, not a pre-built `dist/` — see that workflow's header comment for why a
-  bare `dist/` deploy crash-loops there.
+  bare `dist/` deploy crash-loops there. The dev app is the same kind of service, and the two
+  workflows are identical except for the trigger and the secrets they read.
 
 **Which database you are looking at is decided by `VITE_API_BASE_URL`,** because every build
 target reads a different one:
@@ -1206,7 +1209,7 @@ target reads a different one:
 | Where | `VITE_API_BASE_URL` | API | Database |
 |---|---|---|---|
 | `npm run dev` on a laptop | `.env.local` → `http://127.0.0.1:8000/api/v1` | the one you started | `RelianceDB` (development) |
-| Netlify build (tracks `dev`) | the Netlify UI variable → `installflowapi-dev-...` | `installflowapi-dev` | `RelianceDB` (development) |
+| `installflowweb-dev` build (tracks `dev`) | `WEB_ENV_FILE_DEV` GitHub secret, written to `.env.production` before the build | `installflowapi-dev` | `RelianceDB` (development) |
 | `installflowweb` build (tracks `main`, manual) | `WEB_ENV_FILE_PROD` GitHub secret, written to `.env.production` before the build | `installflowapi` | `RelianceProdDB` (production) |
 
 Vite ranks `.env.local` above `.env`, so a local `npm run dev` or `npm run build` targets the
@@ -1214,49 +1217,47 @@ Vite ranks `.env.local` above `.env`, so a local `npm run dev` or `npm run build
 before wondering why a screen is empty. Delete or rename `.env.local` to point a local session at
 a deployed API instead. See `api/AGENTS.md` → Environments.
 
-### Netlify (dev)
+### Deployed env values (dev)
 
-| Netlify setting | Value | Why |
-|---|---|---|
-| Base directory | `adminWeb` | the repo root also holds `api/` and `mobileapp/` and has **no** `package.json`; a build from the root fails on the first command |
-| Build command | `npm run build` | |
-| Publish directory | `dist` | resolved **relative to the base directory** — not `adminWeb/dist` |
-| Functions directory | *empty* | there are none |
-| Production branch | `dev` | changed from `main` when Netlify's role moved to dev — see `.github/DEPLOYMENT.md` |
-
-**The environment variables are mandatory, not optional.** `.env` is git-ignored, so the build
-clone starts with nothing; without them the bundle calls `undefined/companies` and every screen
-fails at once. Set these in the Netlify UI, pointed at the **dev** API — never commit the values,
-which is the whole reason `.env` is ignored:
+**The `WEB_ENV_FILE_DEV` secret is mandatory, not optional.** The build clone starts with
+nothing; without it the bundle calls `undefined/companies` and every screen fails at once.
+Its minimum is `VITE_API_BASE_URL` pointed at the **dev** API, ending in `/api/v1` — never
+commit the values, which is the whole reason `.env` is ignored:
 
 - `VITE_API_BASE_URL` — `installflowapi-dev`, ending in `/api/v1`
-- `VITE_GOOGLE_MAPS_API_KEY` — the referrer-restricted browser key
+- `VITE_GOOGLE_MAPS_API_KEY` — the referrer-restricted browser key. Its referrer allowlist
+  must now include the dev app's Azure origin, not the retired Netlify one.
 - `VITE_GOOGLE_CLIENT_ID` — the OAuth web client id behind "Continue with
   Google" and One Tap. Public by design, like every `VITE_*`; it must match
   `GOOGLE_CLIENT_ID` on the API, which keeps it as a default in `config.py`.
   Unset is survivable — the login page renders without the button and password
-  sign-in is unaffected — which is exactly what makes forgetting it easy
+  sign-in is unaffected — which is exactly what makes forgetting it easy.
+  Its Authorized-JavaScript-origins list needs the dev app's Azure origin too.
+- The analytics ids (`VITE_GA_MEASUREMENT_ID`, `VITE_CLARITY_PROJECT_ID`,
+  `VITE_POSTHOG_*`) stay **unset here on purpose**: a `vite build` is a
+  production build (`import.meta.env.PROD`), so a value set for dev starts
+  tracking. Analytics is prod-deploy only.
 
-Node is pinned by `adminWeb/.nvmrc` (`24`), which Netlify reads out of the base directory. Keep
-that file as the single source and skip a `NODE_VERSION` variable — a second declaration is one
-that can drift.
+Node is pinned by `adminWeb/.nvmrc` (`24`), which both web workflows' `setup-node` reads
+(`node-version-file: adminWeb/.nvmrc`). Keep that file as the single source and skip a
+`NODE_VERSION` setting on the App Services — a second declaration is one that can drift.
 
-### Both targets
+### SPA fallback
 
-**`public/_redirects` is what makes client-side routing work at all.** It is one line,
-`/*  /index.html  200`. Without it a refresh, a bookmark or any pasted deep link resolves against
-the filesystem, finds nothing, and 404s before React starts, so `NotFoundPage` is never reached.
-`200` rather than `301` because the address has to stay put for the router to read it. Netlify
-reads it directly; `adminWeb/public/web.config` is a leftover IIS rewrite file that only matters
-if a target ever moves to a Windows App Service — `installflowweb` is Linux and ignores it.
+The Oryx-generated static server on both App Services serves `index.html` for any path that is
+not a file, which is what makes client-side routing survive a refresh, a bookmark or a pasted
+deep link — without it those resolve against the filesystem, find nothing, and 404 before React
+starts, so `NotFoundPage` is never reached. The old Netlify `_redirects` line and the leftover
+IIS `web.config` said the same thing for their platforms and are gone; `installflowweb` is
+Linux and ignores the rewrite file.
 
-Prerequisites that live outside this repo, for **each** origin (Netlify's and `installflowweb`'s)
+Prerequisites that live outside this repo, for **each** origin (the dev and prod App Services')
 — both fail silently, the build goes green and the app is broken:
 
-- **`CORS_ORIGINS` must name the origin**, on the API it actually calls: the Netlify origin on
-  `installflowapi-dev`, the `installflowweb` origin on `installflowapi`. `api/app/core/config.py`
-  ships localhost only; add the origin to that App Service's settings and restart, or the browser
-  blocks every request.
+- **`CORS_ORIGINS` must name the origin**, on the API it actually calls: the `installflowweb-dev`
+  origin on `installflowapi-dev`, the `installflowweb` origin on `installflowapi`.
+  `api/app/core/config.py` ships localhost only; add the origin to that App Service's settings
+  and restart, or the browser blocks every request.
 - **The Maps key's HTTP-referrer allowlist must name it too.** A `VITE_*` value is inlined into
   the bundle, so that restriction is the only thing keeping a public key safe — and until the
   origin is on the list, address autocomplete fails everywhere it is used.

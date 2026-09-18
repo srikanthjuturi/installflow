@@ -20,9 +20,9 @@ const CLIENT_ID = (
 )?.trim();
 
 /**
- * Whether the login page offers Google at all. Unset — which is what a Netlify
- * deploy that forgot the variable looks like — renders no button and no
- * divider, and password sign-in is unaffected.
+ * Whether the login page offers Google at all. Unset — which is what a
+ * deployed build whose env secret forgot the variable looks like — renders no
+ * button and no divider, and password sign-in is unaffected.
  */
 export const GOOGLE_SIGN_IN_ENABLED = Boolean(CLIENT_ID);
 

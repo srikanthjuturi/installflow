@@ -72,8 +72,8 @@ export default function LoginPage() {
       <PageMeta title="Sign in" description={`${BRAND_NAME} console sign-in.`} />
       <AuthLayout>
         {/* Without a client id there is no provider, no button and no
-            divider — password sign-in is untouched. That is what a Netlify
-            deploy missing VITE_GOOGLE_CLIENT_ID looks like, and it must not
+            divider — password sign-in is untouched. That is what a deployed
+            build missing VITE_GOOGLE_CLIENT_ID looks like, and it must not
             take the login page down with it. */}
         {GOOGLE_SIGN_IN_ENABLED ? (
           <GoogleOAuthProvider
