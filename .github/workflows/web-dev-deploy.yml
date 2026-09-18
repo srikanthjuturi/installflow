@@ -77,11 +77,19 @@ jobs:
         # stays; Oryx's `vite build` needs it.
         run: rm -rf node_modules dist
 
-      - name: Enable the Oryx remote build
+      - name: Enable the Oryx remote build and read the site name
         # Same call api/scripts/publish.py makes before every api deploy.
         # Credentials come straight out of the publish profile secret (its
         # username/password are Kudu's own Basic Auth), routed through env:
         # for the same quoting reasons as everywhere else in this file.
+        #
+        # The profile's msdeploySite is also extracted and handed to the
+        # deploy step: the site name does not resemble the app's public
+        # hostname (it reads as a slot name), so hardcoding app-name risks
+        # drifting from whatever profile is in the secret — and the deploy
+        # action refuses to run when the two disagree. Deriving it from the
+        # same file the credentials come from makes that drift impossible.
+        id: profile
         env:
           PROFILE_XML: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
         run: |
@@ -95,6 +103,12 @@ jobs:
             echo "The secret is unset, empty, or not a full publish profile XML — add the whole <publishData>…</publishData> block." >&2
             exit 1
           fi
+          APP_NAME=$(grep -o 'msdeploySite="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/msdeploySite="//;s/"$//')
+          if [ -z "$APP_NAME" ]; then
+            echo "No msdeploySite found in AZURE_WEBAPP_PUBLISH_PROFILE_DEV — not a valid publish profile XML." >&2
+            exit 1
+          fi
+          echo "app-name=$APP_NAME" >> "$GITHUB_OUTPUT"
           status=$(curl -s -o /tmp/kudu-settings.out -w '%{http_code}' \
             -u "$KUDU_USER:$KUDU_PASS" \
             -X POST -H "Content-Type: application/json" \
@@ -107,13 +121,13 @@ jobs:
           fi
 
       - name: Deploy to Azure App Service
-        # app-name is the profile's own msdeploySite — the profile's site
-        # name does not resemble its public hostname, and this keeps the two
-        # from ever disagreeing. web-prod-deploy.yml names its app because
-        # there the two happen to agree.
+        # app-name comes from the profile's own msdeploySite (extracted one
+        # step above) — the action validates the publish profile against it
+        # and fails with "Publish profile is invalid for app-name and
+        # slot-name provided" if the two ever disagree.
         uses: azure/webapps-deploy@v3
         with:
-          app-name: installflowweb__dev
+          app-name: ${{ steps.profile.outputs.app-name }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
           package: adminWeb
 
