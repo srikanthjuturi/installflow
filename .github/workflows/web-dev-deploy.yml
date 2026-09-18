@@ -87,6 +87,14 @@ jobs:
         run: |
           KUDU_USER=$(grep -o 'userName="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/userName="//;s/"$//')
           KUDU_PASS=$(grep -o 'userPWD="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/userPWD="//;s/"$//')
+          # A missing/empty secret and a genuinely rejected password both end
+          # as Kudu's HTTP 401 — catch the first case with its own message
+          # before the curl can blur the two together.
+          if [ -z "$KUDU_USER" ] || [ -z "$KUDU_PASS" ]; then
+            echo "No userName/userPWD found in AZURE_WEBAPP_PUBLISH_PROFILE_DEV." >&2
+            echo "The secret is unset, empty, or not a full publish profile XML — add the whole <publishData>…</publishData> block." >&2
+            exit 1
+          fi
           status=$(curl -s -o /tmp/kudu-settings.out -w '%{http_code}' \
             -u "$KUDU_USER:$KUDU_PASS" \
             -X POST -H "Content-Type: application/json" \
@@ -99,13 +107,13 @@ jobs:
           fi
 
       - name: Deploy to Azure App Service
-        # No app-name: the profile alone is authoritative here — its
-        # msdeploySite (installflowweb__dev) does not match the app's public
-        # hostname, and webapps-deploy uses the profile's own site when one
-        # is supplied. web-prod-deploy.yml names its app because there the
-        # two agree.
+        # app-name is the profile's own msdeploySite — the profile's site
+        # name does not resemble its public hostname, and this keeps the two
+        # from ever disagreeing. web-prod-deploy.yml names its app because
+        # there the two happen to agree.
         uses: azure/webapps-deploy@v3
         with:
+          app-name: installflowweb__dev
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
           package: adminWeb
 
