@@ -77,18 +77,22 @@ jobs:
         # stays; Oryx's `vite build` needs it.
         run: rm -rf node_modules dist
 
-      - name: Enable the Oryx remote build and read the site name
+      - name: Enable the Oryx remote build and read the site identity
         # Same call api/scripts/publish.py makes before every api deploy.
         # Credentials come straight out of the publish profile secret (its
         # username/password are Kudu's own Basic Auth), routed through env:
         # for the same quoting reasons as everywhere else in this file.
         #
-        # The profile's msdeploySite is also extracted and handed to the
-        # deploy step: the site name does not resemble the app's public
-        # hostname (it reads as a slot name), so hardcoding app-name risks
-        # drifting from whatever profile is in the secret — and the deploy
-        # action refuses to run when the two disagree. Deriving it from the
-        # same file the credentials come from makes that drift impossible.
+        # app-name and slot-name for the deploy step are derived from the
+        # profile's own userName, because that is exactly what
+        # azure/webapps-deploy validates them against: it strips the leading
+        # `$` and splits on `__`, so a userName of $installflowweb__dev
+        # means app `installflowweb`, slot `dev` — and an app-name that
+        # carries the `__dev` itself (as msdeploySite does) fails the check
+        # with "Publish profile is invalid for app-name and slot-name
+        # provided". Deriving both from the same file the credentials come
+        # from makes that mismatch impossible whatever profile is in the
+        # secret.
         id: profile
         env:
           PROFILE_XML: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
@@ -103,12 +107,18 @@ jobs:
             echo "The secret is unset, empty, or not a full publish profile XML — add the whole <publishData>…</publishData> block." >&2
             exit 1
           fi
-          APP_NAME=$(grep -o 'msdeploySite="[^"]*"' <<< "$PROFILE_XML" | head -1 | sed 's/msdeploySite="//;s/"$//')
+          # The action's own parse: strip the leading $, split on __.
+          STRIPPED=${KUDU_USER#\$}
+          APP_NAME=${STRIPPED%%__*}
           if [ -z "$APP_NAME" ]; then
-            echo "No msdeploySite found in AZURE_WEBAPP_PUBLISH_PROFILE_DEV — not a valid publish profile XML." >&2
+            echo "Could not derive an app name from the publish profile's userName ($KUDU_USER)." >&2
             exit 1
           fi
           echo "app-name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          if [[ "$STRIPPED" == *"__"* ]]; then
+            SLOT_NAME=${STRIPPED#*__}
+            echo "slot-name=$SLOT_NAME" >> "$GITHUB_OUTPUT"
+          fi
           status=$(curl -s -o /tmp/kudu-settings.out -w '%{http_code}' \
             -u "$KUDU_USER:$KUDU_PASS" \
             -X POST -H "Content-Type: application/json" \
@@ -121,13 +131,18 @@ jobs:
           fi
 
       - name: Deploy to Azure App Service
-        # app-name comes from the profile's own msdeploySite (extracted one
-        # step above) — the action validates the publish profile against it
-        # and fails with "Publish profile is invalid for app-name and
-        # slot-name provided" if the two ever disagree.
+        # app-name (and slot-name, when the profile's userName carries one)
+        # come from the profile itself, extracted one step above — the
+        # action validates them against that same userName and fails with
+        # "Publish profile is invalid for app-name and slot-name provided"
+        # if they disagree.
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ steps.profile.outputs.app-name }}
+          # An EMPTY slot-name would itself fail the action's validation, so
+          # fall back to the sentinel it reads as "no slot" when the
+          # userName carries no __slot segment.
+          slot-name: ${{ steps.profile.outputs.slot-name || 'production' }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DEV }}
           package: adminWeb
 
