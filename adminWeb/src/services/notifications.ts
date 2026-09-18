@@ -162,8 +162,8 @@ export function markAllNotificationsRead(): Promise<UnreadCount> {
  * The VAPID public key this deployment signs pushes with.
  *
  * Read from the API rather than baked in as a `VITE_` variable so there is one
- * source of truth, Netlify deploy previews need no build configuration of their
- * own, and rotating the pair does not need a frontend release.
+ * source of truth, a dev build needs no build configuration of its own, and
+ * rotating the pair does not need a frontend release.
  *
  * An empty string is a real answer: this deployment has no key, so desktop
  * alerts are unavailable rather than broken.

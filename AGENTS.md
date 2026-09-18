@@ -147,10 +147,10 @@ NativeWind 4 (Tailwind 3) · TanStack Query · Zustand · React Hook Form + Zod 
 react-native-svg · expo-camera · Roboto via `@expo-google-fonts/roboto`
 
 **Analytics (GA4, Clarity, PostHog) runs in PRODUCTION ONLY, in both clients.** The keys exist
-only in `eas.json`'s `production` profile and in Netlify's Production deploy context, and each
-side's `lib/analytics/config.ts` locks it a second time (`!__DEV__` / `import.meta.env.PROD`), so
-Expo Go, dev-client builds, `npm run dev`, the `preview` profile and Netlify deploy previews
-never send anything. Verifying it therefore means a production build.
+only in `eas.json`'s `production` profile and in the adminWeb production deploy's
+`WEB_ENV_FILE_PROD` secret — and each side's `lib/analytics/config.ts` locks it a second time
+(`!__DEV__` / `import.meta.env.PROD`), so Expo Go, dev-client builds, `npm run dev`, the
+`preview` profile, the dev App Service build and deploy previews never send anything. Verifying it therefore means a production build.
 Clarity (`@microsoft/react-native-clarity`) is a native module Expo Go lacks, so `clarity.ts`
 loads it only when that module is present. GA4 is the Measurement Protocol over plain `fetch`
 (`ga4.ts`), deliberately not Firebase. Do not add any *other* third-party native module
