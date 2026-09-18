@@ -363,12 +363,27 @@ function ModelForm({
   if (justCreated) {
     return (
       <div className="grid gap-4">
+        {/* Step indicator — makes the two-step flow obvious so users
+            don't think they've been dropped into Edit Product. */}
+        <div aria-label="Step 2 of 2" className="grid gap-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+              Step 2 of 2
+            </p>
+            <p className="text-[11px] text-ink-3">Serial numbers</p>
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-line">
+            <div className="h-full w-full rounded-full bg-primary-500" />
+          </div>
+        </div>
+
         <DialogHeader>
-          <DialogTitle>{justCreated.name} added</DialogTitle>
+          <DialogTitle>Add serial numbers</DialogTitle>
           <DialogDescription>
-            Add the serial numbers this model covers. Ticket intake checks a
-            vendor's serial against them — until at least one is loaded, this
-            model is not checked at all.
+            <span className="font-medium text-ink">{justCreated.name}</span>{" "}
+            was saved. Load the serial numbers this model covers — ticket
+            intake checks a vendor's serial against them. You can skip this
+            and add them later from the product's edit screen.
           </DialogDescription>
         </DialogHeader>
 
@@ -378,6 +393,9 @@ function ModelForm({
         />
 
         <DialogFooter>
+          <Button type="button" variant="outline" onClick={onDone}>
+            Skip for now
+          </Button>
           <Button type="button" onClick={onDone}>
             Done
           </Button>
@@ -388,6 +406,23 @@ function ModelForm({
 
   return (
     <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
+      {/* Step 1 of 2 indicator — only shown when ADDING via the ops console
+          (withPricing = true). Vendor submissions go for approval and have
+          no serial step; edits are already past step 1. */}
+      {!isEdit && withPricing ? (
+        <div aria-label="Step 1 of 2" className="grid gap-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+              Step 1 of 2
+            </p>
+            <p className="text-[11px] text-ink-3">Product details</p>
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-line">
+            <div className="h-full w-1/2 rounded-full bg-primary-500" />
+          </div>
+        </div>
+      ) : null}
+
       <DialogHeader>
         <DialogTitle>
           {submitter

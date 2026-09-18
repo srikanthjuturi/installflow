@@ -197,37 +197,91 @@ function ImportForm({
 }
 
 function Preview({ report }: { report: SerialImportReport }) {
-  const tiles: { label: string; value: string; hint?: string }[] = [
+  // Tiles are shown in reading order so the numbers tell a story:
+  // "We read N rows → X are new → Y already on the model → Z duplicated in
+  // the file → model ends up with T". Each category is its own tile so
+  // a reader never has to decode a sub-note to understand why To add = 0.
+  const tiles: {
+    label: string;
+    value: string;
+    hint?: string;
+    dim?: boolean;
+  }[] = [
     { label: "Rows read", value: report.rowsRead.toLocaleString() },
     {
-      label: "To add",
+      label: "New — to add",
       value: report.added.toLocaleString(),
       hint: report.added === 0 ? "nothing new in this file" : undefined,
     },
     {
-      label: "Already there",
+      label: "Already on this model",
       value: report.alreadyPresent.toLocaleString(),
-      hint: report.duplicatesInFile
-        ? `${report.duplicatesInFile.toLocaleString()} repeated in the file`
-        : undefined,
+      hint:
+        report.alreadyPresent > 0
+          ? "already loaded — will be skipped"
+          : undefined,
+      dim: report.alreadyPresent === 0,
     },
+    ...(report.duplicatesInFile > 0
+      ? [
+          {
+            label: "Repeated in this file",
+            value: report.duplicatesInFile.toLocaleString(),
+            hint: "same serial listed more than once — counted once",
+          },
+        ]
+      : []),
     {
       label: "Model will hold",
       value: report.total.toLocaleString(),
     },
   ];
 
+  // Build a plain-English summary of why nothing will be added, so the user
+  // doesn't have to read four tiles and work it out themselves.
+  function zeroAddReason(): string {
+    const parts: string[] = [];
+    if (report.alreadyPresent > 0) {
+      parts.push(
+        `${report.alreadyPresent} ${report.alreadyPresent === 1 ? "serial is" : "serials are"} already on this model`
+      );
+    }
+    if (report.duplicatesInFile > 0) {
+      parts.push(
+        `${report.duplicatesInFile} ${report.duplicatesInFile === 1 ? "is" : "are"} repeated within the file and counted once`
+      );
+    }
+    if (report.rejected > 0) {
+      parts.push(
+        `${report.rejected} ${report.rejected === 1 ? "row was" : "rows were"} rejected`
+      );
+    }
+    return parts.length > 0
+      ? parts.join(", ") + "."
+      : "Nothing would change.";
+  }
+
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div
+        className={`grid gap-3 ${
+          report.duplicatesInFile > 0
+            ? "grid-cols-2 sm:grid-cols-5"
+            : "grid-cols-2 sm:grid-cols-4"
+        }`}
+      >
         {tiles.map((t) => (
           <div
             key={t.label}
-            className="rounded-lg border border-line bg-surface-2 px-3 py-2.5"
+            className={`rounded-lg border border-line px-3 py-2.5 ${
+              t.dim ? "bg-surface-1 opacity-50" : "bg-surface-2"
+            }`}
           >
             <p className="text-[11px] font-medium text-ink-3">{t.label}</p>
             <p className="text-lg font-semibold text-ink">{t.value}</p>
-            {t.hint ? <p className="text-[11px] text-ink-3">{t.hint}</p> : null}
+            {t.hint ? (
+              <p className="text-[11px] text-ink-3">{t.hint}</p>
+            ) : null}
           </div>
         ))}
       </div>
@@ -236,10 +290,14 @@ function Preview({ report }: { report: SerialImportReport }) {
         <Notice
           tone="warn"
           icon={AlertTriangle}
-          title="Every serial in this file is already loaded"
+          title="Nothing will be added"
         >
-          Nothing would change. That is the expected result of re-uploading a
+          {zeroAddReason()} That is the expected result of re-uploading a
           sheet that has already been imported.
+        </Notice>
+      ) : report.added === 0 && report.rejected > 0 ? (
+        <Notice tone="warn" icon={AlertTriangle} title="Nothing will be added">
+          {zeroAddReason()} Fix the rejected rows and re-upload to import them.
         </Notice>
       ) : null}
 
