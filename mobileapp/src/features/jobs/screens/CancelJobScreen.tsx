@@ -133,7 +133,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
                       color: color.dangerTextStrong,
                     }}
                   >
-                    Under 4 hours to the slot — this escalates straight to the Area Service
+                    Under 1 hour to the slot — this escalates straight to the Area Service
                     Manager for urgent reassignment.
                   </Text>
                 </View>

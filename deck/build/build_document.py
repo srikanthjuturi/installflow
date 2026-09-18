@@ -498,7 +498,7 @@ def build(shots) -> Document:
             ["Cancellation penalties", "₹300 / ₹500 / ₹800 / ₹1,200", "What each band costs"],
             ["Monthly penalty cap", "₹5,000", "The most one technician can be charged in a month"],
             ["Bonus amounts", "₹200 – ₹800", "The incentives a manager can attach"],
-            ["Escalation trigger", "4 hours", "How close to the slot an unaccepted job escalates"],
+            ["Escalation trigger", "1 hour", "How close to the slot an unaccepted job escalates"],
             ["Slot confirmation timeout", "6 hours", "How long a customer has before you chase"],
             ["Technician reminder", "60 minutes", "How long before the slot they are pushed"],
             ["Customer notice", "60 minutes", "How long before the slot they are messaged"],

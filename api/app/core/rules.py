@@ -186,9 +186,8 @@ DEFAULTS: dict[str, object] = {
     # ticket cannot enter the pool until a slot exists.
     "slot_silence_hours": 6,
     # A job still unassigned this close to its slot reaches the Area Service
-    # Manager. Matches the cancellation band: under four hours is when a
-    # CANCELLED job escalates, so it is when an EMPTY one should too.
-    "escalate_hours_before_slot": 4,
+    # Manager.
+    "escalate_hours_before_slot": 1,
     # A completed visit the customer never confirmed. Nothing is auto-closed —
     # a manager force-closes it with supporting documents.
     #
