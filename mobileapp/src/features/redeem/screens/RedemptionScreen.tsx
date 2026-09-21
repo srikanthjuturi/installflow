@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
@@ -12,6 +12,7 @@ import {
   useRedemption,
 } from '@/features/redeem/hooks/useRedeem';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { formatPaise } from '@/utils/money';
 
@@ -58,22 +59,31 @@ export function RedemptionScreen({ id }: { id: string }) {
       ) : redemption.isError ? (
         <ErrorState onRetry={() => redemption.refetch()} />
       ) : (
-        <Body data={redemption.data} />
+        <Body data={redemption.data} refresh={redemption.refetch} />
       )}
     </View>
   );
 }
 
-function Body({ data }: { data: RedemptionDetail }) {
+function Body({
+  data,
+  refresh,
+}: {
+  data: RedemptionDetail;
+  refresh: () => Promise<unknown>;
+}) {
   const payer = useRedeemable().data?.payerLabel;
   const confirm = useConfirmRedemption(data.id);
   const pill = STATE_PILL[data.state];
   const awaiting = data.state === 'awaiting';
   // "I received it" is the last thing here — it must clear the ◁ ○ □ bar.
   const navInset = useButtonNavInset();
+  // The screen a technician watches for the payer's "I paid".
+  const pull = usePullToRefresh(refresh);
 
   return (
     <ScrollView
+      refreshControl={<RefreshControl {...pull} />}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >

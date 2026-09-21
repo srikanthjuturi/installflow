@@ -1,5 +1,13 @@
 import { useRouter } from 'expo-router';
-import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  Linking,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
@@ -8,6 +16,7 @@ import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCompleteJob } from '@/features/proof/hooks/useProof';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import type { Job } from '@/types/domain';
 import { formatPaise } from '@/utils/money';
@@ -29,6 +38,10 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
   const { data: job, isPending, isError, refetch } = useJob(jobId);
 
   const complete = useCompleteJob(jobId);
+  // This is the screen a technician WAITS on — for the customer to pick a
+  // time, or to confirm the work. The socket refreshes it when it can; a pull
+  // is the answer when they are not sure it has.
+  const pull = usePullToRefresh(refetch);
 
   // Three CTA states, from the server's own word rather than the app's coarser
   // five-value one — `In Progress` and `Awaiting Customer` both map to
@@ -166,6 +179,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pull} />}
       >
         {isError ? (
           <ErrorState onRetry={() => refetch()} />

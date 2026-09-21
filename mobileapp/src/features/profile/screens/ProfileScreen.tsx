@@ -9,6 +9,7 @@ import { ScreenStatusBar } from '@/components/layout';
 import { Avatar, Button, Switch } from '@/components/ui';
 import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
@@ -50,7 +51,11 @@ export function ProfileScreen() {
   const queryClient = useQueryClient();
 
   // Server state, seeded from the session so this paints on the first frame.
-  const { data: me, isError, error, isFetching, refetch } = useMe();
+  const { data: me, isError, error, refetch } = useMe();
+  // Spinner for the pull only. On `isFetching` it also ran whenever a push
+  // invalidated `me` — a manager approving a UPI change spun it with nobody
+  // touching the screen.
+  const pull = usePullToRefresh(refetch);
 
   const signOut = useSession((s) => s.signOut);
   const avatarUri = useProfileStore((s) => s.avatarUri);
@@ -86,13 +91,7 @@ export function ProfileScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isFetching}
-            onRefresh={refetch}
-            tintColor={color.textMuted}
-          />
-        }
+        refreshControl={<RefreshControl {...pull} />}
       >
         <View
           style={{

@@ -14,6 +14,7 @@ import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { useGreeting } from '@/features/jobs/hooks/useGreeting';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { useMe } from '@/features/profile/hooks/useMe';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -40,8 +41,13 @@ export function HomeScreen() {
   const online = useAcceptingWork();
   const { mutate: setOnline, isPending: savingOnline } = useSetAcceptingWork();
 
-  const { data: pool, isRefetching: poolRefetching, refetch: refetchPool } = usePool();
+  const { data: pool, refetch: refetchPool } = usePool();
   const { data: today, isPending, isError, refetch } = useTodayJobs();
+  // Refreshes BOTH lists, because the screen shows both: the pool banner and
+  // today's committed jobs. Pulling one and not the other would leave half the
+  // screen stale under a gesture that says it refreshed everything — and the
+  // spinner waits for both, where it used to stop with the pool alone.
+  const pull = usePullToRefresh(() => Promise.all([refetchPool(), refetch()]));
 
   const poolCount = pool?.length ?? 0;
   const todayCount = today?.length ?? 0;
@@ -53,21 +59,7 @@ export function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}
-        /* Refreshes BOTH lists, because the screen shows both: the pool
-           banner and today's committed jobs. Pulling one and not the other
-           would leave half the screen stale under a gesture that says it
-           refreshed everything. */
-        refreshControl={
-          <RefreshControl
-            refreshing={poolRefetching && !isPending}
-            onRefresh={() => {
-              void refetchPool();
-              void refetch();
-            }}
-            tintColor={palette.primary[500]}
-            colors={[palette.primary[500]]}
-          />
-        }
+        refreshControl={<RefreshControl {...pull} />}
       >
         <View
           style={{

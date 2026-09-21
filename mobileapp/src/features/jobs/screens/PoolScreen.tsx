@@ -7,8 +7,8 @@ import { useAcceptingWork } from '@/features/availability/hooks/useAvailability'
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
-import { palette } from '@/theme/tokens';
 
 /**
  * Screen 4 — Open job pool.
@@ -28,9 +28,14 @@ import { palette } from '@/theme/tokens';
 export function PoolScreen() {
   const router = useRouter();
   const online = useAcceptingWork();
-  const { data, isPending, isError, isRefetching, refetch } = usePool();
+  const { data, isPending, isError, refetch } = usePool();
   // Room for the ◁ ○ □ bar, so the last card clears it — see the hook.
   const navInset = useButtonNavInset();
+  // The list polls itself, but a technician who has just been told about a job
+  // on the phone will pull anyway — and being unable to is what makes an app
+  // feel stuck. The spinner follows the pull only: tied to `isRefetching` it
+  // also lit up on every poll, with nobody touching the screen.
+  const pull = usePullToRefresh(refetch);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -44,18 +49,7 @@ export function PoolScreen() {
           paddingBottom: 24 + navInset,
         }}
         showsVerticalScrollIndicator={false}
-        // The list polls itself, but a technician who has just been told about
-        // a job on the phone will pull anyway — and being unable to is what
-        // makes an app feel stuck. `isPending` is excluded so the skeleton and
-        // the spinner never both run.
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching && !isPending}
-            onRefresh={() => void refetch()}
-            tintColor={palette.primary[500]}
-            colors={[palette.primary[500]]}
-          />
-        }
+        refreshControl={<RefreshControl {...pull} />}
       >
         <Text
           style={{

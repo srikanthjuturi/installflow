@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
@@ -9,6 +9,7 @@ import type { Redemption } from '@/features/redeem/api/redeem';
 import { STATE_PILL, dayLabel } from '@/features/redeem/format';
 import { useRedemptions } from '@/features/redeem/hooks/useRedeem';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import { formatPaise } from '@/utils/money';
@@ -26,6 +27,8 @@ export function RedemptionsScreen() {
   const list = useRedemptions();
   // Room for the ◁ ○ □ bar, so the last row clears it — see the hook.
   const navInset = useButtonNavInset();
+  // Waiting on somebody else — the payer marking a request paid.
+  const pull = usePullToRefresh(list.refetch);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -47,6 +50,7 @@ export function RedemptionsScreen() {
           data={list.data}
           keyExtractor={(r) => r.id}
           contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset, gap: 10 }}
+          refreshControl={<RefreshControl {...pull} />}
           renderItem={({ item }) => (
             <Row item={item} onOpen={() => router.push(`/redeem/${item.id}`)} />
           )}

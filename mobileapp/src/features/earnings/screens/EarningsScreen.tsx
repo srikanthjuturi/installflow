@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
@@ -12,6 +12,7 @@ import {
   windowQuery,
 } from '@/features/earnings/api/earnings';
 import { RedeemCard } from '@/features/redeem/components/RedeemCard';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useEarningsWindow } from '@/store/earnings.store';
@@ -144,11 +145,24 @@ export function EarningsScreen() {
     refetchOnWindowFocus: true,
   });
 
+  // The whole `earnings` prefix, not the two queries above: the Redeem card's
+  // balance lives under it too, and a pull that updated the totals but left
+  // "Redeem ₹…" showing the old figure would be refreshing half the screen.
+  // `active` only — every other window cached here is re-asked when opened.
+  const queryClient = useQueryClient();
+  const pull = usePullToRefresh(() =>
+    queryClient.refetchQueries({ queryKey: qk.earnings(), type: 'active' }),
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="light" />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={<RefreshControl {...pull} />}
+      >
         <View
           style={{
             backgroundColor: color.chrome,

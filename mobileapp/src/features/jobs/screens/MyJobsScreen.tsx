@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
@@ -8,6 +8,7 @@ import { ScreenStatusBar, TabHeader } from '@/components/layout';
 import { SegmentedControl } from '@/components/ui';
 import { MyJobCard } from '@/features/jobs/components/MyJobCard';
 import { useMyJobs } from '@/features/jobs/hooks/useJobs';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import type { JobStatus } from '@/types/domain';
 
@@ -26,6 +27,9 @@ export function MyJobsScreen() {
 
   const { data, isPending, isError, refetch } = useMyJobs(filter);
   const active = FILTERS.find((f) => f.value === filter);
+  // The tab a technician checks after a customer confirms or a manager moves a
+  // job. The socket usually beats them to it; this is for when it has not.
+  const pull = usePullToRefresh(refetch);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -40,6 +44,7 @@ export function MyJobsScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pull} />}
       >
         {isPending ? (
           <>
