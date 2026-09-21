@@ -1,8 +1,9 @@
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Pill, Text } from '@/components/ui';
-import { jobSla, jobSlot } from '@/features/jobs/format';
+import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -24,6 +25,8 @@ export interface PoolJobCardProps {
  * facts being weighed against each other.
  */
 export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Pressable onPress={onPress} accessibilityRole="button">
       {({ pressed }) => (
@@ -51,7 +54,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
         >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pill label={job.category} tone="primary" />
-              <Pill label={`SLA ${jobSla(job)}`} tone="secondary" />
+              <Pill label={jobSlaPill(job)} tone="secondary" />
             </View>
 
             <Text
@@ -144,7 +147,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
                     marginBottom: 1,
                   }}
                 >
-                  +{formatPaise(job.bonusPaise)} bonus
+                  {t('jobs.bonus', { amount: formatPaise(job.bonusPaise) })}
                 </Text>
               )}
               <Text

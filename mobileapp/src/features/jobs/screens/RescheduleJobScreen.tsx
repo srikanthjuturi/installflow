@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
@@ -16,6 +17,7 @@ import {
   useRescheduleSlots,
   useSendRescheduleCode,
 } from '@/features/jobs/hooks/useReschedule';
+import { errorText } from '@/i18n/errorText';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import { dayHeading, istDay, timeRangeLabel } from '@/utils/date';
@@ -56,6 +58,7 @@ export interface RescheduleJobScreenProps {
  */
 export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
   const router = useRouter();
+  const { t } = useTranslation();
 
   const { data: job } = useJob(jobId);
   const {
@@ -134,15 +137,15 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
             }}
           >
             {failure instanceof Error
-              ? failure.message
-              : 'Could not update the time. Check your connection and try again.'}
+              ? errorText(failure, t('jobs.reschedule.failed'))
+              : t('jobs.reschedule.failed')}
           </Text>
         </View>
       ) : null}
 
       {sent ? (
         <Button
-          label="Confirm new time"
+          label={t('jobs.reschedule.confirm')}
           disabled={!picked || code.length < 6}
           loading={reschedule.isPending}
           onPress={() => {
@@ -162,10 +165,10 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
         <Button
           label={
             !picked
-              ? 'Pick a time'
+              ? t('jobs.reschedule.pickTime')
               : cooling
-                ? `Send code in ${timer.label}`
-                : 'Send code to the customer'
+                ? t('jobs.reschedule.sendCodeIn', { time: timer.label })
+                : t('jobs.reschedule.sendCode')
           }
           disabled={!picked || cooling}
           loading={sendCode.isPending}
@@ -186,7 +189,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Reschedule visit" />
+      <TitleBar title={t('jobs.reschedule.title')} />
 
       <KeyboardFlow
         footer={actionBar}
@@ -200,7 +203,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
       >
         <View style={{ padding: 16, paddingBottom: 20 }}>
           {refused ? (
-            <ErrorState body={refused.message} />
+            <ErrorState body={errorText(refused, refused.message)} />
           ) : isError ? (
             <ErrorState onRetry={() => refetch()} />
           ) : (
@@ -223,7 +226,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                     color: color.textLabel,
                   }}
                 >
-                  Currently booked
+                  {t('jobs.reschedule.current')}
                 </Text>
                 <Text
                   style={{
@@ -246,7 +249,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                   marginBottom: 10,
                 }}
               >
-                Pick a new time with the customer
+                {t('jobs.reschedule.pickWithCustomer')}
               </Text>
 
               {isPending ? (
@@ -260,8 +263,8 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                 // honest remedy is a manager's, not this screen's.
                 <EmptyState
                   icon="calendar"
-                  title="No times available"
-                  body="Your next two days are fully booked. Call your Area Service Manager — they can move this job to another technician."
+                  title={t('jobs.reschedule.noTimesTitle')}
+                  body={t('jobs.reschedule.noTimesBody')}
                 />
               ) : (
                 days.map((group) => (
@@ -379,7 +382,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                       marginBottom: 6,
                     }}
                   >
-                    Ask the customer for their code
+                    {t('jobs.reschedule.askForCode')}
                   </Text>
                   <Text
                     style={{
@@ -391,8 +394,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                       marginBottom: 14,
                     }}
                   >
-                    We have sent a 6-digit code to the customer on WhatsApp. Ask
-                    them to read it out — it confirms they agreed to the new time.
+                    {t('jobs.reschedule.codeSent')}
                   </Text>
 
                   <OtpInput value={code} onChange={setCode} />
@@ -419,8 +421,8 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                       }}
                     >
                       {timer.canResend
-                        ? 'Send a new code'
-                        : `Send a new code in ${timer.label}`}
+                        ? t('common.sendNewCode')
+                        : t('common.sendNewCodeIn', { time: timer.label })}
                     </Text>
                   </Pressable>
 
@@ -434,7 +436,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                       marginHorizontal: 2,
                     }}
                   >
-                    Sending a new code cancels the previous one.
+                    {t('jobs.reschedule.newCodeCancels')}
                   </Text>
 
                   {devCode ? (
@@ -460,7 +462,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                           color: color.textMuted,
                         }}
                       >
-                        DEVELOPMENT ONLY
+                        {t('common.devOnly')}
                       </Text>
                       <Text
                         style={{
@@ -480,7 +482,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                           marginTop: 2,
                         }}
                       >
-                        Tap to fill. Not shown once WhatsApp delivery is live.
+                        {t('common.devCodeHint')}
                       </Text>
                     </Pressable>
                   ) : null}

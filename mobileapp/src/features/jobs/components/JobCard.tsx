@@ -2,7 +2,7 @@ import { View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Card, StatusBadge, Text } from '@/components/ui';
-import { jobSla, jobSlot } from '@/features/jobs/format';
+import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 import type { Job } from '@/types/domain';
@@ -50,7 +50,7 @@ export function JobCard({ job, onPress, variant = 'mine' }: JobCardProps) {
               <Text
                 style={{ fontFamily: 'Roboto_500Medium', fontSize: 10, color: color.textSecondary }}
               >
-                SLA {jobSla(job)}
+                {jobSlaPill(job)}
               </Text>
             </View>
           </View>

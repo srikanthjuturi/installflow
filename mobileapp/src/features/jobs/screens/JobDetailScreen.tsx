@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Linking, Platform, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,6 +11,8 @@ import { jobSla, jobSlot } from '@/features/jobs/format';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCompleteJob } from '@/features/proof/hooks/useProof';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { errorText } from '@/i18n/errorText';
+import { serviceTypeLabel } from '@/i18n/serverLabels';
 import { color } from '@/theme/semantic';
 import type { Job } from '@/types/domain';
 import { momentLabel } from '@/utils/date';
@@ -29,6 +32,7 @@ export interface JobDetailScreenProps {
 export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { data: job, isPending, isError, refetch } = useJob(jobId);
 
   const complete = useCompleteJob(jobId);
@@ -87,7 +91,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
           <Pressable
             onPress={() => router.back()}
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('common.goBack')}
           >
             {({ pressed }) => (
               <View
@@ -106,7 +110,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
           </Pressable>
 
           <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 17, color: color.textInverse }}>
-            Job details
+            {t('jobs.detail.title')}
           </Text>
 
           {/* `code`, never `id`. This is the screen a technician is looking at
@@ -163,8 +167,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                   that has none — the technician is committed to the JOB and is
                   waiting on the customer. Second string not yet approved. */}
               {job.hoursToSlot === null
-                ? `Accepted · ${jobSlot(job)}`
-                : `Committed · ${jobSlot(job)}`}
+                ? t('jobs.detail.accepted', { slot: jobSlot(job) })
+                : t('jobs.detail.committed', { slot: jobSlot(job) })}
             </Text>
           </View>
         ) : null}
@@ -185,7 +189,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
         ) : (
           <>
             <Card>
-              <CardLabel>Customer</CardLabel>
+              <CardLabel>{t('jobs.detail.customer')}</CardLabel>
 
               <Text
                 style={{ fontFamily: 'Roboto_900Black', fontSize: 19, color: color.textPrimary }}
@@ -225,11 +229,16 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
 
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Button label="Call" variant="outline" leadingIcon="phone" onPress={call} />
+                  <Button
+                    label={t('jobs.detail.call')}
+                    variant="outline"
+                    leadingIcon="phone"
+                    onPress={call}
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Button
-                    label="Navigate"
+                    label={t('jobs.detail.navigate')}
                     variant="outline"
                     leadingIcon="navigation"
                     onPress={navigate}
@@ -239,7 +248,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
             </Card>
 
             <Card>
-              <CardLabel spaced>Product to install</CardLabel>
+              <CardLabel spaced>{t('jobs.detail.product')}</CardLabel>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                 <View
@@ -282,7 +291,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     {/* The real service type, not a hardcoded one. "Tech Visit"
                         and "Service" are equally valid and read very
                         differently to a technician deciding what to bring. */}
-                    {job.category} · {job.serviceType}
+                    {job.category} · {serviceTypeLabel(job.serviceType)}
                   </Text>
                 </View>
               </View>
@@ -343,8 +352,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
             </Card>
 
             <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-              <StatTile label="SLA type" value={jobSla(job)} />
-              <StatTile label="Payout" value={formatPaise(job.payoutPaise)} />
+              <StatTile label={t('jobs.detail.slaType')} value={jobSla(job)} />
+              <StatTile label={t('jobs.detail.payout')} value={formatPaise(job.payoutPaise)} />
             </View>
 
             <CustomerVerdict job={job} />
@@ -373,8 +382,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     color: color.debit,
                   }}
                 >
-                  This job has gone to your Area Service Manager. They will be in
-                  touch — there is nothing to do here.
+                  {t('jobs.detail.escalated')}
                 </Text>
               </View>
             ) : waiting ? (
@@ -410,15 +418,23 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     color: linkFailed ? color.debit : color.credit,
                   }}
                 >
+                  {/* Named and unnamed are two whole sentences, never a name
+                      spliced into one: "the customer" changes form with its
+                      place in the sentence, in English and in every other
+                      language. */}
                   {linkFailed
-                    ? `Work submitted, but we could not message ${job.customer ?? 'the customer'}. Ask them to confirm before you leave, or tell your manager.`
-                    : `Work submitted. ${job.customer ?? 'The customer'} has been sent a link to confirm it — the job closes when they do.`}
+                    ? job.customer
+                      ? t('jobs.detail.linkFailedNamed', { name: job.customer })
+                      : t('jobs.detail.linkFailed')
+                    : job.customer
+                      ? t('jobs.detail.linkSentNamed', { name: job.customer })
+                      : t('jobs.detail.linkSent')}
                 </Text>
               </View>
             ) : working ? (
               <>
                 <Button
-                  label="Complete the job"
+                  label={t('jobs.detail.complete')}
                   leadingIcon="check"
                   loading={complete.isPending}
                   onPress={() =>
@@ -438,8 +454,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     }}
                   >
                     {complete.error instanceof Error
-                      ? complete.error.message
-                      : "Couldn't complete this job"}
+                      ? errorText(complete.error, t('jobs.detail.completeFailed'))
+                      : t('jobs.detail.completeFailed')}
                   </Text>
                 ) : null}
               </>
@@ -482,12 +498,14 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                         color: color.statusUpcoming.fg,
                       }}
                     >
-                      {`Waiting for ${job.customer ?? 'the customer'} to pick a time. You can start the job once they do, or once your manager sets one.`}
+                      {job.customer
+                        ? t('jobs.detail.waitingNamed', { name: job.customer })
+                        : t('jobs.detail.waiting')}
                     </Text>
                   </View>
                 ) : (
                   <Button
-                    label="Start job & capture proof"
+                    label={t('jobs.detail.start')}
                     leadingIcon="play"
                     onPress={() => router.push(`/job/${jobId}/proof/capture`)}
                   />
@@ -530,7 +548,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     {job.hoursToSlot !== null ? (
                       <View style={{ marginBottom: 10 }}>
                         <Button
-                          label="Reschedule with the customer"
+                          label={t('jobs.detail.reschedule')}
                           variant="secondary"
                           leadingIcon="calendar"
                           onPress={() => router.push(`/job/${jobId}/reschedule`)}
@@ -552,7 +570,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                         costs this technician ₹300–₹800, and it must not
                         out-shout the blue CTA above it. */}
                     <Button
-                      label="Cancel this job"
+                      label={t('jobs.detail.cancel')}
                       variant="dangerOutline"
                       onPress={() => router.push(`/job/${jobId}/cancel`)}
                     />
@@ -641,8 +659,13 @@ function StatTile({ label, value }: { label: string; value: string }) {
  * uses the same glyph, so the two surfaces show one thing one way.
  */
 function Stars({ rating }: { rating: number }) {
+  const { t } = useTranslation();
+
   return (
-    <View style={{ flexDirection: 'row', gap: 2 }} accessibilityLabel={`${rating} out of 5`}>
+    <View
+      style={{ flexDirection: 'row', gap: 2 }}
+      accessibilityLabel={t('jobs.detail.rating', { rating })}
+    >
       {[1, 2, 3, 4, 5].map((n) => (
         <Text
           key={n}
@@ -678,6 +701,7 @@ function Stars({ rating }: { rating: number }) {
  * the same thing.
  */
 function CustomerVerdict({ job }: { job: Job }) {
+  const { t } = useTranslation();
   if (!job.customerConfirmedAt) return null;
 
   const refused = job.customerRefused === true;
@@ -722,7 +746,7 @@ function CustomerVerdict({ job }: { job: Job }) {
             color: refused ? color.debit : color.textFootnote,
           }}
         >
-          {refused ? 'Not finished, they say' : 'Customer feedback'}
+          {refused ? t('jobs.detail.notFinished') : t('jobs.detail.feedback')}
         </Text>
         <Text
           style={{ fontFamily: 'Roboto_400Regular', fontSize: 11, color: color.textMuted }}
@@ -747,7 +771,7 @@ function CustomerVerdict({ job }: { job: Job }) {
           >
             {/* Null is "confirmed without rating" — a real answer, and not the
                 same claim as zero, which reads as the worst score there is. */}
-            {rating === null ? 'Not rated' : `${rating}.0`}
+            {rating === null ? t('jobs.detail.notRated') : `${rating}.0`}
           </Text>
         </View>
       ) : null}
@@ -785,7 +809,7 @@ function CustomerVerdict({ job }: { job: Job }) {
             color: color.debit,
           }}
         >
-          They gave no reason.
+          {t('jobs.detail.noReason')}
         </Text>
       ) : null}
 
@@ -810,7 +834,7 @@ function CustomerVerdict({ job }: { job: Job }) {
             marginTop: 12,
           }}
         >
-          A manager will review this. Do not return to site until they call.
+          {t('jobs.detail.managerReview')}
         </Text>
       ) : null}
     </View>

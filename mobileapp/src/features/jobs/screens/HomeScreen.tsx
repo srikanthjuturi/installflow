@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,11 +19,11 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
-const GREETING: Record<DayPeriod, string> = {
-  morning: 'Good morning',
-  afternoon: 'Good afternoon',
-  evening: 'Good evening',
-};
+const GREETING = {
+  morning: 'jobs.home.greeting.morning',
+  afternoon: 'jobs.home.greeting.afternoon',
+  evening: 'jobs.home.greeting.evening',
+} as const satisfies Record<DayPeriod, string>;
 
 /**
  * Screen 2 — Home.
@@ -36,13 +37,14 @@ const GREETING: Record<DayPeriod, string> = {
 export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   // The signed-in technician. Shares the `me` query with the Profile tab, so
   // this is one request, not two — and it replaces a `technician` record
   // imported straight from the mock database, which greeted every user by the
   // same seeded name after they had just proved who they were with an OTP.
   const { data: me } = useMe();
-  const greeting = GREETING[useGreeting()];
+  const greeting = t(GREETING[useGreeting()]);
 
   const online = useAcceptingWork();
   const { mutate: setOnline, isPending: savingOnline } = useSetAcceptingWork();
@@ -89,7 +91,7 @@ export function HomeScreen() {
             <Pressable
               onPress={() => router.push('/(app)/(tabs)/profile')}
               accessibilityRole="button"
-              accessibilityLabel="Your profile"
+              accessibilityLabel={t('jobs.home.yourProfile')}
               style={{ flex: 1 }}
             >
               {({ pressed }) => (
@@ -131,7 +133,7 @@ export function HomeScreen() {
             <Pressable
               onPress={() => router.push('/pool')}
               accessibilityRole="button"
-              accessibilityLabel={`${poolCount} new jobs in your area`}
+              accessibilityLabel={t('jobs.home.newJobs', { count: poolCount })}
             >
               {({ pressed }) => (
                 <View
@@ -174,7 +176,7 @@ export function HomeScreen() {
             disabled={savingOnline}
             accessibilityRole="switch"
             accessibilityState={{ checked: online, disabled: savingOnline }}
-            accessibilityLabel="Receive job offers"
+            accessibilityLabel={t('jobs.home.receiveOffers')}
           >
             <View
               style={{
@@ -216,7 +218,7 @@ export function HomeScreen() {
                 <Text
                   style={{ fontFamily: 'Roboto_700Bold', fontSize: 14, color: color.textInverse }}
                 >
-                  {online ? "You're online" : "You're offline"}
+                  {online ? t('jobs.home.online') : t('jobs.home.offline')}
                 </Text>
                 <Text
                   style={{
@@ -225,7 +227,7 @@ export function HomeScreen() {
                     color: color.textOnChrome,
                   }}
                 >
-                  {online ? 'Receiving job offers' : 'Not receiving offers'}
+                  {online ? t('jobs.home.receiving') : t('jobs.home.notReceiving')}
                 </Text>
               </View>
             </View>
@@ -237,7 +239,7 @@ export function HomeScreen() {
             <Pressable
               onPress={() => router.push('/pool')}
               accessibilityRole="button"
-              accessibilityLabel={`${poolCount} new jobs in your area`}
+              accessibilityLabel={t('jobs.home.newJobs', { count: poolCount })}
             >
               {({ pressed }) => (
                 <View
@@ -274,7 +276,7 @@ export function HomeScreen() {
                         color: color.textPrimary,
                       }}
                     >
-                      {poolCount} new {poolCount === 1 ? 'job' : 'jobs'} in your area
+                      {t('jobs.home.newJobs', { count: poolCount })}
                     </Text>
                     <Text
                       style={{
@@ -283,7 +285,7 @@ export function HomeScreen() {
                         color: color.textSecondary,
                       }}
                     >
-                      Confirmed slots · tap to view the pool
+                      {t('jobs.home.poolHint')}
                     </Text>
                   </View>
 
@@ -306,7 +308,7 @@ export function HomeScreen() {
             <Text
               style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: color.textPrimary }}
             >
-              Today&apos;s jobs
+              {t('jobs.home.todayTitle')}
             </Text>
             {!isPending && !isError ? (
               <Text
@@ -316,7 +318,7 @@ export function HomeScreen() {
                   color: color.textSecondary,
                 }}
               >
-                {todayCount} {todayCount === 1 ? 'job' : 'jobs'}
+                {t('jobs.home.jobCount', { count: todayCount })}
               </Text>
             ) : null}
           </View>
@@ -344,7 +346,7 @@ export function HomeScreen() {
               <Text
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
               >
-                Nothing scheduled today
+                {t('jobs.home.emptyTitle')}
               </Text>
               <Text
                 style={{
@@ -354,7 +356,7 @@ export function HomeScreen() {
                   marginTop: 4,
                 }}
               >
-                Accept a job from the pool to fill your day.
+                {t('jobs.home.emptyBody')}
               </Text>
             </View>
           ) : (

@@ -10,6 +10,8 @@
     "notNow": "Not now",
     "resendCode": "Resend code",
     "resendCodeIn": "Resend code in {{time}}",
+    "sendNewCode": "Send a new code",
+    "sendNewCodeIn": "Send a new code in {{time}}",
     "tryAgain": "Try again"
   },
   "tabs": {
@@ -125,6 +127,145 @@
       "inProgress": "In progress",
       "completed": "Completed",
       "cancelled": "Cancelled"
+    },
+    "slot": {
+      "notSet": "Time not set yet",
+      "notSetShort": "No time yet"
+    },
+    "sla": {
+      "value": "{{hours}}h",
+      "pill": "SLA {{hours}}h"
+    },
+    "bonus": "+{{amount}} bonus",
+    "home": {
+      "greeting": {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening"
+      },
+      "yourProfile": "Your profile",
+      "newJobs_one": "{{count}} new job in your area",
+      "newJobs_other": "{{count}} new jobs in your area",
+      "receiveOffers": "Receive job offers",
+      "online": "You're online",
+      "offline": "You're offline",
+      "receiving": "Receiving job offers",
+      "notReceiving": "Not receiving offers",
+      "poolHint": "Confirmed slots · tap to view the pool",
+      "todayTitle": "Today's jobs",
+      "jobCount_one": "{{count}} job",
+      "jobCount_other": "{{count}} jobs",
+      "emptyTitle": "Nothing scheduled today",
+      "emptyBody": "Accept a job from the pool to fill your day."
+    },
+    "myJobs": {
+      "title": "My jobs",
+      "empty": {
+        "upcoming": "No upcoming jobs",
+        "inprogress": "Nothing in progress",
+        "completed": "No completed jobs yet",
+        "none": "Nothing here"
+      }
+    },
+    "pool": {
+      "title": "Open job pool",
+      "intro": "Jobs matching your category & pincodes. First to accept wins — customer details stay masked until you accept.",
+      "all": "All",
+      "offlineTitle": "You're offline",
+      "offlineBody": "Turn availability on from Home to start receiving offers.",
+      "emptyTitle": "Pool is empty",
+      "emptyBody": "You've taken every open job nearby.",
+      "noneInCategory": "No {{category}} jobs right now",
+      "tapAll": "Tap {{all}} to see every open job."
+    },
+    "offer": {
+      "back": "Back to pool",
+      "title": "Job offer",
+      "slot": "Slot",
+      "confirmedSlot": "Confirmed slot",
+      "payout": "Payout",
+      "detailsLocked": "Details unlock after you accept",
+      "customer": "Customer",
+      "phone": "Phone",
+      "area": "Area",
+      "distance": "Distance",
+      "accept": "Accept job",
+      "pass": "Pass"
+    },
+    "accept": {
+      "takenTitle": "Someone got there first",
+      "failedTitle": "Couldn't accept",
+      "takenBody": "Another technician accepted this job while you were deciding. It happens — the pool refreshes automatically.",
+      "failedBody": "Something went wrong accepting this job. Check your connection and try again.",
+      "backToPool": "Back to pool",
+      "takeTitle": "Take this job?",
+      "commitTitle": "Commit to this slot?",
+      "noTimeBody": "The customer has not picked a time yet — they have the link. Accepting takes the job now; you will be told the time as soon as they choose it, and <bold>cancelling after that carries a penalty</bold>.",
+      "confirmedBody": "The customer already confirmed <bold>{{slot}}</bold>. Accepting locks you to that time — cancelling later carries a penalty.",
+      "thisSlot": "this slot",
+      "job": "Job",
+      "area": "Area",
+      "acceptUnlock": "Accept & unlock details"
+    },
+    "detail": {
+      "title": "Job details",
+      "accepted": "Accepted · {{slot}}",
+      "committed": "Committed · {{slot}}",
+      "customer": "Customer",
+      "call": "Call",
+      "navigate": "Navigate",
+      "product": "Product to install",
+      "slaType": "SLA type",
+      "payout": "Payout",
+      "escalated": "This job has gone to your Area Service Manager. They will be in touch — there is nothing to do here.",
+      "linkFailedNamed": "Work submitted, but we could not message {{name}}. Ask them to confirm before you leave, or tell your manager.",
+      "linkFailed": "Work submitted, but we could not message the customer. Ask them to confirm before you leave, or tell your manager.",
+      "linkSentNamed": "Work submitted. {{name}} has been sent a link to confirm it — the job closes when they do.",
+      "linkSent": "Work submitted. The customer has been sent a link to confirm it — the job closes when they do.",
+      "complete": "Complete the job",
+      "completeFailed": "Couldn't complete this job",
+      "waitingNamed": "Waiting for {{name}} to pick a time. You can start the job once they do, or once your manager sets one.",
+      "waiting": "Waiting for the customer to pick a time. You can start the job once they do, or once your manager sets one.",
+      "start": "Start job & capture proof",
+      "reschedule": "Reschedule with the customer",
+      "cancel": "Cancel this job",
+      "rating": "{{rating}} out of 5",
+      "notFinished": "Not finished, they say",
+      "feedback": "Customer feedback",
+      "notRated": "Not rated",
+      "noReason": "They gave no reason.",
+      "managerReview": "A manager will review this. Do not return to site until they call."
+    },
+    "cancel": {
+      "title": "Cancel job",
+      "deducted": "Penalty deducted from earnings",
+      "escalates": "Under 1 hour to the slot — this escalates straight to the Area Service Manager for urgent reassignment.",
+      "why": "Why are you cancelling?",
+      "reasons": {
+        "customerNotReachable": "Customer not reachable",
+        "wrongAddress": "Wrong / incomplete address",
+        "personalEmergency": "Personal emergency",
+        "vehicleBreakdown": "Vehicle breakdown",
+        "other": "Other"
+      },
+      "failed": "Could not cancel this job. Check your connection and try again.",
+      "confirm": "Cancel & accept −{{amount}} penalty",
+      "selectReason": "Select a reason"
+    },
+    "reschedule": {
+      "title": "Reschedule visit",
+      "failed": "Could not update the time. Check your connection and try again.",
+      "confirm": "Confirm new time",
+      "pickTime": "Pick a time",
+      "sendCode": "Send code to the customer",
+      "sendCodeIn": "Send code in {{time}}",
+      "current": "Currently booked",
+      "pickWithCustomer": "Pick a new time with the customer",
+      "noTimesTitle": "No times available",
+      "noTimesBody": "Your next two days are fully booked. Call your Area Service Manager — they can move this job to another technician.",
+      "askForCode": "Ask the customer for their code",
+      "codeSent": "We have sent a 6-digit code to the customer on WhatsApp. Ask them to read it out — it confirms they agreed to the new time.",
+      "newCodeCancels": "Sending a new code cancels the previous one."
     }
   },
   "dates": {

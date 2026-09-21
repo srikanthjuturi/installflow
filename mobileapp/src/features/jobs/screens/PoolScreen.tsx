@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
@@ -39,6 +40,7 @@ const ALL = 'all';
  */
 export function PoolScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const online = useAcceptingWork();
   const { data, isPending, isError, refetch } = usePool();
   const { data: me } = useMe();
@@ -62,7 +64,7 @@ export function PoolScreen() {
     if (data.some((job) => !job.nodePathIds)) return [];
 
     return [
-      { value: ALL, label: 'All', count: data.length },
+      { value: ALL, label: t('jobs.pool.all'), count: data.length },
       ...subcategories.map((s) => ({
         value: s.id,
         label: shortCategory(s.name),
@@ -71,7 +73,7 @@ export function PoolScreen() {
         count: data.filter((job) => job.nodePathIds?.includes(s.id)).length,
       })),
     ];
-  }, [data, subcategories]);
+  }, [data, subcategories, t]);
 
   // A chip that has gone — a manager removed that category, and `me` refreshed
   // — falls back to All rather than leaving the list filtered by a choice
@@ -86,7 +88,7 @@ export function PoolScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Open job pool" onBack={() => router.replace('/(app)/(tabs)')} />
+      <TitleBar title={t('jobs.pool.title')} onBack={() => router.replace('/(app)/(tabs)')} />
 
       <ScrollView
         contentContainerStyle={{
@@ -117,8 +119,7 @@ export function PoolScreen() {
               Pending sign-off. The two clauses that ARE approved — first to
               accept wins, details masked until you accept — are kept verbatim,
               because neither changed. */}
-          Jobs matching your category &amp; pincodes. First to accept wins — customer details
-          stay masked until you accept.
+          {t('jobs.pool.intro')}
         </Text>
 
         {!online ? (
@@ -127,8 +128,8 @@ export function PoolScreen() {
              technician sat in front of three loading skeletons forever, with
              nothing saying why or how to fix it. */
           <Notice
-            title="You're offline"
-            body="Turn availability on from Home to start receiving offers."
+            title={t('jobs.pool.offlineTitle')}
+            body={t('jobs.pool.offlineBody')}
           />
         ) : isPending ? (
           <>
@@ -139,7 +140,7 @@ export function PoolScreen() {
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : data.length === 0 ? (
-          <Notice title="Pool is empty" body="You've taken every open job nearby." />
+          <Notice title={t('jobs.pool.emptyTitle')} body={t('jobs.pool.emptyBody')} />
         ) : (
           <>
             {chips.length > 0 ? (
@@ -151,8 +152,8 @@ export function PoolScreen() {
               // Not "Pool is empty": there IS work, just not in this category,
               // and the chips stay above so the way back is one tap.
               <Notice
-                title={`No ${active.label} jobs right now`}
-                body="Tap All to see every open job."
+                title={t('jobs.pool.noneInCategory', { category: active.label })}
+                body={t('jobs.pool.tapAll', { all: t('jobs.pool.all') })}
               />
             ) : (
               visible.map((job) => (
