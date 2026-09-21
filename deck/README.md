@@ -1,13 +1,17 @@
 # Client deliverables
 
-Three files, all assembled from the same set of real screenshots of the running
-product:
+Five files. Four are assembled from the same set of real screenshots of the
+running product; the fifth deliberately uses none, so it can be presented before
+anybody has seen a screen and does not depend on the capture pipeline at all:
 
 | File | What it is |
 |---|---|
+| `dist/Reliance GreenTech - End to End.pptx` | The explainer deck. Eight slides of drawn shapes and plain sentences — the parties, the ticket's real statuses from intake to payout, what each branch costs, and the two money rails. **No screenshots**, so `npm run capture` is not a prerequisite. Built by `build/build_demo_deck.py`. |
 | `dist/Reliance GreenTech - Product Overview.pptx` | The pitch deck. One slide per step of the flow, a 3–6 word headline, and the screen doing the talking. |
 | `dist/Reliance GreenTech - Screen Catalogue.pptx` | The slide-by-slide leave-behind. Every screen, grouped by who uses it. |
 | `dist/Reliance GreenTech - How It Works.docx` / `.pdf` | The explanatory document — for a client to read alone and come away understanding the whole product. |
+| `dist/Reliance GreenTech - Product Experience Map.png` / `.pdf` | The one-page map. Every journey, screenshot-led, with a colour rail that changes where a job passes between parties. Built by `npm run map` from `experience-map/`, and the same file is what gets published as a hosted page. |
+| `dist/Reliance GreenTech - Product Experience Map.docx` | The same map, paginated. The poster above is nearly sixteen feet tall — right on a screen, useless on paper — so this is the version somebody can print, email or mark up. Built by `build/build_map_document.py` from the journey structure the map itself emits, so the two can never disagree about what step four is. |
 
 The decks and the document are deliberately opposite in register. A deck is
 low-text because somebody is talking over it; the document has to do the talking
@@ -23,15 +27,37 @@ This is a **tool, not shipped code**. It is wired into neither `adminWeb/` nor
 ```bash
 cd deck
 npm install                                                    # Playwright
-.venv/Scripts/python.exe -m pip install -r requirements.txt    # python-pptx
+npx playwright install chromium                                # ← the BROWSER
+.venv/Scripts/python.exe -m pip install -r requirements.txt    # python-pptx, python-docx
 
 node seed/seed_dev.mjs --reset          # build the demo tenant on DEVELOPMENT
 npm run capture                         # all four surfaces → out/png
 
 .venv/Scripts/python.exe build/build_deck.py       # → the two .pptx decks
+.venv/Scripts/python.exe build/build_demo_deck.py  # → the explainer deck (no screenshots)
 .venv/Scripts/python.exe build/build_document.py   # → the .docx document
 powershell -File build/export_pdf.ps1 -Docx "dist\Reliance GreenTech - How It Works.docx"
+npm run map                                        # → the experience map .png/.pdf
+.venv/Scripts/python.exe build/build_map_document.py  # → the map as a .docx
 ```
+
+⚠ `build_map_document.py` reads `out/experience-map/journeys.json`, which
+`npm run map` writes — so it runs after it, not instead of it.
+
+**Every build step exits non-zero when a screenshot it named was missing.** The
+files are still written — a partial deck beats no deck — but the status is what
+stops the next step, or the person running it, taking a thinner document for a
+finished one. That was previously a warning in the middle of a hundred lines of
+output and an exit code of 0.
+
+`npm install` fetches the Playwright *package*; `npx playwright install` fetches the
+*browser*. Skipping the second line fails in the quietest possible way — every
+target throws at `chromium.launch()`, `out/shots.json` is left untouched, and the
+build steps below then happily rebuild `dist/` from the **previous** run's
+screenshots with today's date stamped on them.
+
+The PDF step needs **Microsoft Word** (`export_pdf.ps1` drives it over COM), and
+`build/render_preview.ps1` needs **PowerPoint**. There is no fallback for either.
 
 Three servers must be up first:
 
@@ -134,6 +160,18 @@ broken for everyone:
   `capture/*.mjs`.
 - **Colours, type, geometry** — `build/theme.py`, taken from the product's own
   palette so the deck matches the screenshots on it.
+- **The explainer deck** — `build/build_demo_deck.py`. Every slide is drawn from
+  `theme.py` tokens in native PowerPoint shapes, so it carries no pictures and
+  never goes stale with the capture. The five party colours match the experience
+  map's, which is what lets somebody who saw one recognise a party in the other.
+- **The experience map's journeys** — `experience-map/journeys.mjs`. Like
+  `storyboard.py`, it names shot ids and nothing else: every screen caption is
+  read from `out/shots.json` and every act and step heading is taken verbatim
+  from `build_document.py`, so the map cannot drift from the document.
+  `experience-map/build.mjs` turns the two into a page; `render.mjs` photographs
+  it. ⚠ The CSS in `build.mjs` lives inside a template literal — a backtick or a
+  bare `${` in it is a syntax error, and the failure is silent if you redirect
+  stderr.
 - **Slide shapes** — `build/layouts.py`. Six layouts, and the rule that a
   screenshot slide carries a headline and at most one supporting line. No
   bullets. A `phone-raw` shot gets a device shell drawn on the slide, so live-app
