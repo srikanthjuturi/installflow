@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
   assignTechnician,
+  checkTicketSerial,
   correctTicketSerial,
   createTicket,
   getIntakeStatus,
@@ -58,6 +59,10 @@ export const ticketKeys = {
    *  everything else here, so any mutation — or the socket's `ticket.changed` —
    *  already clears a list that has gone stale. */
   rescheduleSlots: (id: string) => ["tickets", "rescheduleSlots", id] as const,
+  /** Under the prefix too: loading a product's serials invalidates nothing
+   *  here, but a ticket change does, and an answer that old is worth re-asking. */
+  serialCheck: (id: string, serial: string) =>
+    ["tickets", "serialCheck", id, serial] as const,
 };
 
 /**
@@ -197,6 +202,29 @@ export function useTicketAttachments(id: string, enabled = true) {
  * Correct the expected serial. Whoever can see the ticket can fix it — and the
  * vendor most of all, since the invoice is theirs.
  */
+/**
+ * Would correcting the order serial to `serial` be accepted?
+ *
+ * Pass the DEBOUNCED value — this is asked while the number is typed. Silent on
+ * failure: it is advice ahead of Save, and Save still runs the real check, so
+ * a failed ask (or an API that predates the endpoint) just means no advice
+ * rather than an error toast over somebody's typing.
+ */
+export function useTicketSerialCheck(
+  id: string,
+  serial: string,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: ticketKeys.serialCheck(id, serial),
+    queryFn: () => checkTicketSerial(id, serial),
+    enabled: enabled && !!id && serial !== "",
+    staleTime: 30_000,
+    retry: false,
+    meta: { suppressErrorToast: true },
+  });
+}
+
 export function useCorrectTicketSerial() {
   const queryClient = useQueryClient();
   return useMutation({

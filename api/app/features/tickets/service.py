@@ -101,6 +101,7 @@ from app.features.tickets.schemas import (
     FunnelOut,
     PenaltyReviewerOut,
     RenotifyOut,
+    SerialCheckOut,
     SlaBreakdownOut,
     SlotOptionOut,
     TicketAttachmentOut,
@@ -461,7 +462,23 @@ async def _resolve_product(
 async def _assert_serial_known(
     db: AsyncSession, model: ProductModel, serial: str
 ) -> None:
-    """The serial must be one this model actually covers — IF any are loaded.
+    """Refuse a serial the model's list does not carry. See `_serial_refusal`."""
+    refusal = await _serial_refusal(db, model, serial)
+    if refusal is not None:
+        raise _bad_request(refusal)
+
+
+async def _serial_refusal(
+    db: AsyncSession, model: ProductModel, serial: str
+) -> str | None:
+    """Why this serial would be refused for this model, or None if it would not.
+
+    The rule behind `_assert_serial_known`, returning its sentence instead of
+    raising it, so `check_serial` can ask the SAME question before a Save and
+    show the same words. Two copies of this rule would disagree the first time
+    one of them changed.
+
+    The serial must be one this model actually covers — IF any are loaded.
 
     `tickets.serial_number` is the number off the vendor's invoice, and until
     `product_model_serials` existed nothing could say whether it was plausible
@@ -493,7 +510,7 @@ async def _assert_serial_known(
     """
     needle = (serial or "").strip().lower()
     if not needle:
-        return
+        return None
 
     hit = await db.scalar(
         select(ProductModelSerial.id).where(
@@ -503,7 +520,7 @@ async def _assert_serial_known(
         )
     )
     if hit is not None:
-        return
+        return None
 
     loaded = await db.scalar(
         select(ProductModelSerial.id)
@@ -514,9 +531,9 @@ async def _assert_serial_known(
         .limit(1)
     )
     if loaded is None:
-        return
+        return None
 
-    raise _bad_request(
+    return (
         f"{serial.strip()} is not a serial number on record for {model.name}. "
         "Check it against the invoice, or ask for it to be added to the "
         "product master."
@@ -2020,15 +2037,7 @@ async def correct_serial(
         # whose value is that every row means something.
         return await get_ticket(db, principal, ticket_id)
 
-    # The ticket's own model, not one from the request — a correction cannot
-    # move a ticket to a different product, so there is nothing here to scope
-    # beyond the ticket `_load` has already proved the caller may see.
-    model = await db.scalar(
-        select(ProductModel).where(
-            ProductModel.id == row.model_id,
-            ProductModel.company_id == row.company_id,
-        )
-    )
+    model = await _ticket_model(db, row)
     if model is not None:
         await _assert_serial_known(db, model, now)
 
@@ -2049,6 +2058,43 @@ async def correct_serial(
     await publish_ticket_changed(db, row)
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
+
+
+async def check_serial(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID, serial: str
+) -> SerialCheckOut:
+    """Would `correct_serial` accept this number? Asked while it is typed.
+
+    Exists because the refusal used to arrive only AFTER Save, in a toast
+    outside the dialog — and the dialog's own one-click suggestion, the number
+    the technician read, is exactly the number most likely to be refused, since
+    nobody loaded it. The same `_serial_refusal`, so the answer here and the
+    answer on Save cannot differ.
+
+    Not an oracle worth worrying about: `_load` limits it to a ticket the
+    caller can already see, it tests ONE model — the ticket's own — and it is
+    exact-match, not the prefix search `masters.lookup_serial` guards. A vendor
+    asking about its own product's serials is asking about a list it manages.
+    """
+    row = await _load(db, principal, ticket_id)
+    model = await _ticket_model(db, row)
+    refusal = None if model is None else await _serial_refusal(db, model, serial)
+    return SerialCheckOut(accepted=refusal is None, message=refusal)
+
+
+async def _ticket_model(db: AsyncSession, row: Ticket) -> ProductModel | None:
+    """The ticket's own model, not one from the request.
+
+    A correction cannot move a ticket to a different product, so there is
+    nothing here to scope beyond the ticket `_load` has already proved the
+    caller may see.
+    """
+    return await db.scalar(
+        select(ProductModel).where(
+            ProductModel.id == row.model_id,
+            ProductModel.company_id == row.company_id,
+        )
+    )
 
 
 # ── escalation: nobody accepted, so a manager owns it ────────────────────────

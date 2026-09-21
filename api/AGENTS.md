@@ -749,6 +749,13 @@ Three things about it are load-bearing:
 - **`correct_serial` runs the same guard**, and without it the whole thing is bypassable: raise the
   ticket quoting a serial the model covers, then `PATCH /tickets/{id}/serial` to anything. That
   endpoint is open to the vendor by design, which is exactly who the intake check is for.
+- **`GET /tickets/{id}/serial-check?serial=` asks the same question without writing**, so the
+  console's correction dialog can say a number will be refused while it is typed rather than in a
+  toast after Save. Both go through `_serial_refusal`, which returns the sentence
+  `_assert_serial_known` raises — never restate the rule in a second place. It mattered because the
+  dialog's one-click suggestion is the number the technician read, which is exactly the number
+  nobody loaded. Exact match on the ticket's own model only, so it is not the prefix oracle
+  `lookup_serial` has to guard.
 
 Staff load them (`masters.edit` + `IsStaff`), by hand or from a spreadsheet. The importer is
 deliberately the same shape as `features/geo`'s — template, dry run, per-row rejects that never

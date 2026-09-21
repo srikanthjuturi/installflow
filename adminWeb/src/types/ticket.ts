@@ -366,6 +366,14 @@ export interface CorrectSerialInput {
   reason?: string | null;
 }
 
+/** `GET /tickets/:id/serial-check` — would that correction be accepted? */
+export interface SerialCheck {
+  /** Also true when the product has no serial list: that is unchecked. */
+  accepted: boolean;
+  /** The sentence Save would refuse with, word for word. */
+  message: string | null;
+}
+
 export interface CreateTicketInput {
   vendorId: string;
   subcategoryId: string;

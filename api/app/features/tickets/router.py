@@ -54,6 +54,7 @@ from app.features.tickets.schemas import (
     PenaltyReverseRequest,
     RenotifyOut,
     RescheduleRequest,
+    SerialCheckOut,
     SerialCorrectionRequest,
     SlotOptionOut,
     TicketAttachmentOut,
@@ -576,6 +577,22 @@ async def correct_ticket_serial(
         ),
         message="Serial updated",
     )
+
+
+@router.get("/{ticket_id}/serial-check", response_model=ApiEnvelope[SerialCheckOut])
+async def check_ticket_serial(
+    ticket_id: uuid.UUID,
+    db: Db,
+    principal: CanView,
+    serial: Annotated[str, Query(min_length=1, max_length=64)],
+) -> ApiEnvelope[SerialCheckOut]:
+    """Would `PATCH /{ticket_id}/serial` accept this number?
+
+    Read-only, and the same rule the PATCH runs, so the correction dialog can
+    say a number will be refused while it is being typed rather than after
+    Save. Same guard as the PATCH: whoever can see the ticket.
+    """
+    return envelope(await service.check_serial(db, principal, ticket_id, serial))
 
 
 @router.get(
