@@ -45,6 +45,18 @@ class JobOfferOut(AppModel):
     #: the UUID is only ever a route param.
     code: str
     subcategoryName: str
+    #: The ticket's catalogue path, root first — `tickets.node_path_ids` as
+    #: stamped at intake. It is what the pool's category chips filter on.
+    #:
+    #: Not `subcategoryName` matched against the technician's own list: that
+    #: names the node the product hangs off (*Android TV*), while they are
+    #: certified one level up (*Television*), so a name match would drop every
+    #: job below it. With the path the phone runs the same test `pool_query`
+    #: does — certified id anywhere on the path — and cannot disagree with it.
+    #:
+    #: A narrowing only. Eligibility is still decided in SQL; hiding a chip hides
+    #: nothing the server was not already limiting.
+    nodePathIds: list[uuid.UUID]
     modelName: str
     serviceType: str
     #: Area and pincode are enough to judge the trip. The street line is not

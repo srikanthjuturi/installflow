@@ -23,6 +23,14 @@ interface JobOfferDto {
   id: string;
   code: string;
   subcategoryName: string;
+  /**
+   * The ticket's catalogue path, root first. What the pool's category chips
+   * filter on — see `Job.nodePathIds`.
+   *
+   * Optional because an API published before it existed sends nothing, and the
+   * pool then simply draws no chips.
+   */
+  nodePathIds?: string[];
   modelName: string;
   serviceType: string;
   city: string;
@@ -272,6 +280,7 @@ function toJob(dto: JobOfferDto): Job {
     id: dto.id,
     code: dto.code,
     category: dto.subcategoryName,
+    nodePathIds: dto.nodePathIds,
     model: dto.modelName,
     // Empty from a POOL offer, which carries no specs on purpose — the offer is
     // a decision about a trip and a fee. `toFullJob` fills them in once the job

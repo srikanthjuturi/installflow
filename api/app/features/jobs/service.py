@@ -391,6 +391,8 @@ def _offer_out(
         id=t.id,
         code=t.code,
         subcategoryName=sub_names.get(t.node_id, "—"),
+        # Already on the row — the pool's hottest path pays no extra read.
+        nodePathIds=list(t.node_path_ids),
         modelName=models.get(t.model_id, ("—", [], None))[0],
         serviceType=t.service_type,
         city=t.city,

@@ -139,6 +139,19 @@ export interface Job {
    * slice bound: the catalogue is company-scoped data, not a fixed six.
    */
   category: string;
+  /**
+   * Every catalogue node above this job and the node itself, root first — the
+   * ticket's `node_path_ids`.
+   *
+   * Exists for the pool's category chips. `category` cannot do that job: it
+   * names the node the product hangs off (*Android TV*), and a technician is
+   * certified one level up (*Television*), so matching names would drop every
+   * job below it. A certified id anywhere on this path is the same test the
+   * server uses to put the job in the pool at all.
+   *
+   * Undefined from an API that predates it, and on mock jobs.
+   */
+  nodePathIds?: string[];
   model: string;
   /**
    * The product's specs, as ops recorded them — panel type, capacity, whatever

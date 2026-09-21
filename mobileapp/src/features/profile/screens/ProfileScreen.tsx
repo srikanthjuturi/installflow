@@ -10,6 +10,7 @@ import { Avatar, Button, Switch } from '@/components/ui';
 import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { shortCategory } from '@/lib/shortCategory';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
@@ -30,19 +31,6 @@ const SETTINGS: { label: string; value: string; icon: IconName }[] = [
   // Availability & bandwidth rather than a static one showing a dash.
   { label: 'Language', value: 'English', icon: 'globe' },
 ];
-
-/**
- * The coverage row abbreviates, matching the prototype — the full names wrap.
- *
- * Keyed by name rather than by id: the catalogue is per-company and editable,
- * so an id here would be a value from one tenant's database baked into the app.
- * A name with no entry falls through unabbreviated.
- */
-const SHORT_CATEGORY: Record<string, string> = {
-  Television: 'TV',
-  'Air Conditioner': 'AC',
-  'Water Purifier': 'Purifier',
-};
 
 /** Screen 16 — Profile & settings. */
 export function ProfileScreen() {
@@ -65,8 +53,8 @@ export function ProfileScreen() {
   // to a technician who had switched it off.
   const { enabled: pushEnabled, toggle: togglePush } = usePushToggle();
 
-  const categories =
-    me?.subcategories.map((c) => SHORT_CATEGORY[c.name] ?? c.name).join(' · ') ?? '—';
+  // The coverage row abbreviates, matching the prototype — the full names wrap.
+  const categories = me?.subcategories.map((c) => shortCategory(c.name)).join(' · ') ?? '—';
 
   // Only when there is nothing at all to show. With a session seed the screen
   // stays usable offline and a failed refetch is silent — a technician out of

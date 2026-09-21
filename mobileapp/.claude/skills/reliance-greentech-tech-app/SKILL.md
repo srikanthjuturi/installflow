@@ -203,6 +203,13 @@ customer details stay masked until you accept.`
 Card: category · `SLA {24h|48h}` · job id · model · area · pincode · distance · slot · payout.
 Empty: `Pool is empty` / `You've taken every open job nearby.`
 
+**Category chips: added after the prototype, NOT in it (copy agreed with the product owner).**
+A sideways-scrolling row of `FilterChips` under the intro: `All {n}`, then one chip per certified
+category, labelled with the short name Profile uses (`TV` / `AC` / `Purifier`, from
+`lib/shortCategory`), each with its count. Only drawn with ≥2 categories and a non-empty pool.
+Matched by id on the job's `nodePathIds`, never by name. Empty for a chip:
+`No {TV} jobs right now` / `Tap All to see every open job.`
+
 ### 5 — Job offer (masked)
 `Job offer` · id · category · SLA · model · `Confirmed slot` · `Payout` ·
 `Details unlock after you accept` — Customer `R•••• M••••`, Phone `+91 ••••• •••••`,
