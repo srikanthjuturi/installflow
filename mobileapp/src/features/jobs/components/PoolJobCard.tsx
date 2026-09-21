@@ -111,8 +111,16 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
         >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
               <Icon name="clock" size={16} color={palette.secondary[500]} />
+              {/* `flexShrink` on the Text too, not only its row: Yoga sizes a
+                  Text in a row to its full width unless it may shrink, and then
+                  `numberOfLines` has nothing to cut and the payout is pushed. */}
               <Text
-                style={{ fontFamily: 'Roboto_700Bold', fontSize: 13.5, color: color.slotFg }}
+                style={{
+                  flexShrink: 1,
+                  fontFamily: 'Roboto_700Bold',
+                  fontSize: 13.5,
+                  color: color.slotFg,
+                }}
                 numberOfLines={1}
               >
                 {job.slot}

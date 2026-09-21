@@ -130,7 +130,13 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
               >
                 <Icon name="clock" size={20} color={palette.secondary[500]} />
 
-                <View>
+                {/* `flex: 1` so the slot takes what the payout leaves and WRAPS
+                    into it. Without it this column sized to its text, and a
+                    long window — "Tue, 8 Sept · 11:00 AM–1:00 PM", or any
+                    slot at a large system font — pushed the payout out past the
+                    block's edge. Wrapped, not truncated: the technician is
+                    deciding on this time, so all of it has to be readable. */}
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
                       fontFamily: 'Roboto_700Bold',
@@ -153,7 +159,9 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                   </Text>
                 </View>
 
-                <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+                {/* Never shrinks: the money is the one thing here that must
+                    never be cut or pushed off the card. */}
+                <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
                   <Text
                     style={{
                       fontFamily: 'Roboto_400Regular',

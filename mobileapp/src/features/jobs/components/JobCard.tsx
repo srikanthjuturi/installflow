@@ -97,8 +97,15 @@ export function JobCard({ job, onPress, variant = 'mine' }: JobCardProps) {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
           <Icon name="geo" size={15} color={color.slotFg} />
+          {/* May shrink, so `numberOfLines` truncates the slot instead of it
+              pushing the payout — see `PoolJobCard`. */}
           <Text
-            style={{ fontFamily: 'Roboto_500Medium', fontSize: 12.5, color: color.slotFg }}
+            style={{
+              flexShrink: 1,
+              fontFamily: 'Roboto_500Medium',
+              fontSize: 12.5,
+              color: color.slotFg,
+            }}
             numberOfLines={1}
           >
             {job.slot}
