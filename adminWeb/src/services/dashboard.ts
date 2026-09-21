@@ -14,13 +14,18 @@
  * would disagree the first time one moved. The approved strings are the
  * console's, so they stay in the console.
  *
- * ## Two figures the server sends so the CARDS can be true
+ * ## Three figures the server sends so the CARDS can be true
  *
- * `forceCloseHours` and `slotSilenceHours` are `company_rules` columns, not
- * constants. The prototype's "No customer response 48h" and "Customer silent >
- * 6h" are this company's defaults — a company that moved the window to 24 would
- * have had a card quoting 48 over a count taken at 24. The sweeps already quote
- * the threshold they selected on, for exactly this reason.
+ * `forceCloseHours`, `slotSilenceHours` and `escalationHours` are `company_rules`
+ * columns, not constants. The prototype's "No customer response 48h", "Customer
+ * silent > 6h" and "Unassigned within 4h" are this company's defaults — a company
+ * that moved the window to 24 would have had a card quoting 48 over a count taken
+ * at 24. The sweeps already quote the threshold they selected on, for exactly
+ * this reason.
+ *
+ * `escalationHours` is the one that had been left hard-coded, and it is the one
+ * that proved the point: the default moved 4 → 1 and both the escalation tile
+ * and the attention card went on reading "4h" over a count taken at 1.
  */
 
 import type { DashboardSummary, Ticket } from "@/types";
@@ -63,6 +68,7 @@ interface SummaryWire {
     slotNotConfirmed: number;
     forceCloseHours: number;
     slotSilenceHours: number;
+    escalationHours: number;
   };
 }
 
@@ -135,7 +141,7 @@ export async function getDashboard(
         key: "escalation",
         label: "In escalation",
         value: String(s.escalated),
-        sub: "within 4h of slot",
+        sub: `within ${a.escalationHours}h of slot`,
         // The queue, on `half=live` — the same reason the Escalations card
         // below carries it: this counts the savable half, and the unfiltered
         // queue also holds the missed pile.
@@ -201,7 +207,7 @@ export async function getDashboard(
         // card that said two.
         key: "escalations",
         title: "Escalations",
-        sub: "Unassigned within 4h",
+        sub: `Unassigned within ${a.escalationHours}h`,
         count: String(a.escalations),
         to: linkTo("/escalations", { half: "live" }),
         tone: "danger",

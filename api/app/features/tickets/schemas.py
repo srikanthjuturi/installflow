@@ -605,14 +605,20 @@ class AttentionOut(AppModel):
     #: `sweeps.sweep_silent_slots`, on the same terms.
     slotNotConfirmed: int
 
-    #: The two windows the counts above were measured with, sent so the card can
-    #: SAY them. Both are `company_rules` columns, so the approved copy's "48h"
-    #: and "6h" are this company's defaults rather than facts — and a card
-    #: reading "No customer response 48h" over a query run at 24 would be the
-    #: screen quietly lying about its own number. Same reasoning, and the same
-    #: fix, as the sweeps quoting the threshold they selected on.
+    #: The three windows the counts above were measured with, sent so the card
+    #: can SAY them. All are `company_rules` columns, so the approved copy's
+    #: "48h", "6h" and "4h" are this company's defaults rather than facts — and a
+    #: card reading "No customer response 48h" over a query run at 24 would be
+    #: the screen quietly lying about its own number. Same reasoning, and the
+    #: same fix, as the sweeps quoting the threshold they selected on.
+    #:
+    #: `escalationHours` was the one this argument was not applied to, and it is
+    #: what the argument was written for: the default moved 4 → 1 and the console
+    #: went on printing "Unassigned within 4h" over a count taken at 1, on both
+    #: the escalation tile and the attention card.
     forceCloseHours: int
     slotSilenceHours: int
+    escalationHours: int
 
 
 class IntakeStatusOut(AppModel):

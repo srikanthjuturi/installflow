@@ -1016,10 +1016,10 @@ async def dashboard_summary(
     node may have overridden, so the count reads `rules_snapshot` per row — the
     same interval arithmetic the sweeps do, on the same column.
 
-    The `forceCloseHours` / `slotSilenceHours` the response carries are a
-    different thing: the console prints them as "we wait N hours" beside the
-    tile. Per node there is no single N, so those stay the COMPANY's numbers and
-    are labelled as its default.
+    The `forceCloseHours` / `slotSilenceHours` / `escalationHours` the response
+    carries are a different thing: the console prints them as "we wait N hours"
+    beside the tile. Per node there is no single N, so those stay the COMPANY's
+    numbers and are labelled as its default.
     """
     now = _now()
     rules = await load_rules(db, principal.company_id)
@@ -1178,6 +1178,7 @@ async def dashboard_summary(
             slotNotConfirmed=await db.scalar(silent) or 0,
             forceCloseHours=rules.force_close_hours,
             slotSilenceHours=rules.slot_silence_hours,
+            escalationHours=rules.escalate_hours_before_slot,
         ),
     )
 
