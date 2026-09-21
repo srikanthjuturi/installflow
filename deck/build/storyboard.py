@@ -94,6 +94,13 @@ STORY = [
         "title": "A manager can step in",
         "sub": "Assign by hand, or fund a bonus that re-publishes it",
     },
+    # The third option, and the only one that ever empties the queue's missed
+    # half. It had no slide at all while the deck said a manager had two.
+    {
+        "kind": "console", "shot": "console-reschedule",
+        "title": "Or move it, with the customer",
+        "sub": "Nothing is charged — that is the whole difference from cancelling",
+    },
     {
         "kind": "console", "shot": "console-force-close",
         "title": "Silence is not approval",
@@ -103,6 +110,13 @@ STORY = [
         "kind": "phone", "shot": "app-earnings",
         "title": "The technician gets paid",
         "sub": "Payouts, bonuses and penalties in one ledger",
+    },
+    # Step 8. The deck stopped at "credited" and the document's chapter 9 was
+    # still telling clients the platform did not move money at all.
+    {
+        "kind": "split", "console": "console-redemption", "phone": "app-redeem",
+        "title": "And takes the money out",
+        "sub": "The payer scans a UPI code; only the technician confirms it arrived",
     },
     {
         "kind": "section",
@@ -118,6 +132,24 @@ STORY = [
         "kind": "console", "shot": "console-dashboard",
         "title": "Counted, never estimated",
         "sub": "Scoped to the territory the manager actually covers",
+    },
+    # Act 3 promised three things and evidenced none of them: "configurable" is
+    # not multi-tenant, and role scoping is not one company being unreachable
+    # from another. These are the screens that actually show the claim.
+    {
+        "kind": "console", "shot": "super-companies",
+        "title": "Many companies, kept apart",
+        "sub": "A guessed id from another company answers not found, never forbidden",
+    },
+    {
+        "kind": "console", "shot": "super-geography",
+        "title": "One geography, shared",
+        "sub": "India is the same for every company — the territory above is drawn from it",
+    },
+    {
+        "kind": "console", "shot": "console-ticket-detail",
+        "title": "Every step leaves a record",
+        "sub": "The timeline is the audit trail, not the status column",
     },
 ]
 
@@ -141,6 +173,9 @@ SECTION_ORDER = [
     "Technician app",
     "Technician app — design reference",
     "Customer touchpoints",
+    # Last on purpose: it belongs to the platform rather than to the company
+    # reading the catalogue, so it is context rather than something they use.
+    "Platform console",
 ]
 
 SECTION_EYEBROWS = {
@@ -150,4 +185,5 @@ SECTION_EYEBROWS = {
     "Technician app": "For the technician",
     "Technician app — design reference": "For the technician",
     "Customer touchpoints": "For the customer",
+    "Platform console": "For the platform",
 }
