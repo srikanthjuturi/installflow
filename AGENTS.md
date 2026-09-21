@@ -441,8 +441,11 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   switch**: turning a vendor off never erases what they already spent, so a non-zero count beside
   an Off vendor is correct. And it is a **floor, not an audit** — reporting is fire-and-forget, so
   a dropped request is one search nobody ever counts.
-- The **customer confirms the slot before any technician sees the job**. A technician accepts a
-  fixed time — they never propose one.
+- **A technician may TAKE a job before the customer has picked a time, but may not START it.**
+  The pool offers `Slot Pending` jobs so they are not hidden while the SLA runs; `submit_proof`
+  refuses with 409 `NO_TIME_AGREED` until the customer picks from their link or a manager sets one
+  with "Change the time", and the app shows a note in place of "Start job". Enforced on the server
+  because installed builds predate the note. A technician never proposes a time themselves.
 - Assignment is **first-accept-wins**. Losing the race is a normal outcome, not an error.
 - **Customer name, phone and address stay masked until the technician accepts.**
 - **Shortly before the slot, both sides are warned — separately.** The technician gets a push

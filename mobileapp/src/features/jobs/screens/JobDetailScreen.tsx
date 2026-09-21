@@ -34,7 +34,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
   // five-value one — `In Progress` and `Awaiting Customer` both map to
   // `inprogress`, and they need completely different buttons.
   //
-  //   Assigned           → start, which opens proof capture straight away
+  //   Assigned           → start, which opens proof capture straight away —
+  //                        or, with no time agreed yet, a note saying so
   //   In Progress        → complete, which asks the customer to confirm
   //   Awaiting Customer  → nothing to do; it is their move
   const stage = job?.serverStatus;
@@ -436,11 +437,53 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
               </>
             ) : !done ? (
               <>
-                <Button
-                  label="Start job & capture proof"
-                  leadingIcon="play"
-                  onPress={() => router.push(`/job/${jobId}/proof/capture`)}
-                />
+                {/* No time agreed, no start. The job can be TAKEN before the
+                    customer picks a time, but not begun — the server refuses
+                    proof on it (`NO_TIME_AGREED`), and a button that led to
+                    four photos and then a refusal would be worse than none.
+                    The customer's link, or a manager, lifts it — both go
+                    through `move_slot`, whose `job.changed` frame refreshes
+                    this screen while the app is open.
+
+                    Net-new copy — the prototype has no slotless job. Approved
+                    2026-09-21, together with the server's matching sentence. */}
+                {stage === 'Assigned' && job.hoursToSlot === null ? (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      backgroundColor: color.statusUpcoming.bg,
+                      borderRadius: 14,
+                      paddingVertical: 14,
+                      paddingHorizontal: 15,
+                    }}
+                  >
+                    <Icon
+                      name="clock"
+                      size={20}
+                      color={color.statusUpcoming.fg}
+                      strokeWidth={1.8}
+                    />
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontFamily: 'Roboto_500Medium',
+                        fontSize: 13,
+                        lineHeight: 19,
+                        color: color.statusUpcoming.fg,
+                      }}
+                    >
+                      {`Waiting for ${job.customer ?? 'the customer'} to pick a time. You can start the job once they do, or once your manager sets one.`}
+                    </Text>
+                  </View>
+                ) : (
+                  <Button
+                    label="Start job & capture proof"
+                    leadingIcon="play"
+                    onPress={() => router.push(`/job/${jobId}/proof/capture`)}
+                  />
+                )}
                 {/* Back, and reachable at last. It was deliberately ABSENT
                     rather than hidden while `getCancellationPreview` computed
                     the band on the device — a control that took a technician

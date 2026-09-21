@@ -1354,8 +1354,9 @@ it is vocabulary the system is built from. Two removals make the line concrete:
 
 ## Domain facts that are easy to get wrong
 
-- The **customer confirms the slot before any technician sees the job.** Technicians accept a
-  fixed time; they never propose one.
+- **A technician may take a job before the customer picks a time, but cannot start it until one
+  is agreed** — by the customer's link, or by a manager's "Change the time" here. They never
+  propose one. See the root `AGENTS.md`.
 - Assignment is **first-accept-wins**.
 - **Customer name, phone and address stay masked until a technician accepts.** The admin sees them
   throughout — the masking rule is the technician app's, not this one's.
