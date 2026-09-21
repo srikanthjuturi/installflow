@@ -49,6 +49,31 @@ export const isTerminalTicketStatus = (status: TicketStatus): boolean =>
   TERMINAL_TICKET_STATUSES.includes(status);
 
 /**
+ * Whether a time can still be set for this ticket — by the customer from their
+ * link, or by a manager rescheduling. Mirrors `time_is_choosable` in
+ * `api/app/core/slots.py`; the server treats those as one question and so
+ * does this.
+ *
+ * Past `Assigned` the technician is on site, so a job started without a time
+ * is NOT waiting on the customer. `Escalated` counts only with nobody holding
+ * it: with a technician it means the customer refused the closure, and a new
+ * time would turn a complaint into an appointment.
+ */
+const TIME_CHOOSABLE_STATUSES: readonly TicketStatus[] = [
+  "Slot Pending",
+  "New",
+  "Assigned",
+  "Escalated",
+];
+
+export const isTimeChoosable = (ticket: {
+  status: TicketStatus;
+  technicianId: string | null;
+}): boolean =>
+  TIME_CHOOSABLE_STATUSES.includes(ticket.status) &&
+  !(ticket.status === "Escalated" && ticket.technicianId !== null);
+
+/**
  * SLA state. `done` means the window closed with the job complete — it is a
  * terminal state, not a healthy one, so it never sorts with `ok`.
  *

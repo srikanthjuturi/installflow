@@ -35,7 +35,7 @@ import {
   useTicket,
 } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
-import { isTerminalTicketStatus } from "@/types";
+import { isTerminalTicketStatus, isTimeChoosable } from "@/types";
 import type { TicketPenalty } from "@/types/ticket";
 
 /**
@@ -157,18 +157,15 @@ export default function TicketDetailPage({
      the app — `company_role_features` overrides are per role, so a company that
      wants managers to reschedule but not technicians turns off one row.
 
-     The status gate mirrors the server's `RESCHEDULABLE_STATUSES`, and the
+     The status gate mirrors the server's `RESCHEDULABLE_STATUSES` through
+     `isTimeChoosable` — the same question the customer's link asks — and its
      second half is the interesting one: `Escalated` means two different things
      depending on whether a technician is still on it. With one, the CUSTOMER
      said the job was not done, and giving that a new time would launder a
      complaint into an appointment. The server refuses it; this stops the button
      appearing at all. */
   const canReschedule =
-    canAct &&
-    has("jobs.reschedule") &&
-    !!ticket &&
-    ["New", "Slot Pending", "Assigned", "Escalated"].includes(ticket.status) &&
-    !(ticket.status === "Escalated" && ticket.technicianId);
+    canAct && has("jobs.reschedule") && !!ticket && isTimeChoosable(ticket);
 
   /* Giving a penalty back. `isOps`, not `canAct`: a ticket closed since the
      charge is still one whose charge can be unfair. The key is its own —
