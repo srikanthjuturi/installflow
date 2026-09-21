@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ export interface SheetProps {
  * Prototype values: 26px top corners, 10/22/26 padding, a 40×5 grabber.
  */
 export function Sheet({ children, onDismiss }: SheetProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   return (
@@ -28,7 +30,7 @@ export function Sheet({ children, onDismiss }: SheetProps) {
         <Pressable
           onPress={onDismiss}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss"
+          accessibilityLabel={t('common.dismiss')}
           style={{ flex: 1, backgroundColor: color.overlay }}
         />
       </Animated.View>

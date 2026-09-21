@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
 import { useKeyboardReveal } from '@/components/layout/keyboardReveal';
@@ -40,6 +41,7 @@ export function Input({
   editable = true,
   autoFocus = false,
 }: InputProps) {
+  const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
   // Inside a KeyboardFlow, keeps this field in sight above the keyboard —
   // including when focus moves here from another field with the keyboard up.
@@ -93,7 +95,7 @@ export function Input({
           // box, so the name — and the fact that it is required — has to be
           // said here or a screen reader announces neither.
           accessibilityLabel={
-            label ? (required ? `${label}, required` : label) : undefined
+            label ? (required ? t('components.input.required', { label }) : label) : undefined
           }
           value={value}
           onChangeText={onChangeText}

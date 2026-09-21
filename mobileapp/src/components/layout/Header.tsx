@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,6 +31,7 @@ export function Header({
   right,
   tone = 'light',
 }: HeaderProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -57,7 +59,7 @@ export function Header({
             onPress={handleBack}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('common.goBack')}
             style={{ marginLeft: -6, marginRight: 6 }}
           >
             {({ pressed }) => (

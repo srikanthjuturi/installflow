@@ -1,4 +1,46 @@
 {
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "dismiss": "Dismiss",
+    "goBack": "Go back",
+    "notNow": "Not now",
+    "tryAgain": "Try again"
+  },
+  "tabs": {
+    "home": "Home",
+    "jobs": "Jobs",
+    "earnings": "Earnings",
+    "profile": "Profile"
+  },
+  "notFound": {
+    "title": "Not found",
+    "heading": "Screen not found",
+    "body": "That link doesn't point anywhere in the app.",
+    "link": "Go to start"
+  },
+  "components": {
+    "errorState": {
+      "title": "Something went wrong",
+      "body": "We couldn't load this. Check your connection and try again."
+    },
+    "avatar": {
+      "change": "Change profile picture"
+    },
+    "input": {
+      "required": "{{label}}, required"
+    }
+  },
+  "jobs": {
+    "status": {
+      "upcoming": "Upcoming",
+      "startingSoon": "Starting soon",
+      "awaitingTime": "Awaiting time",
+      "inProgress": "In progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    }
+  },
   "dates": {
     "today": "Today",
     "yesterday": "Yesterday",

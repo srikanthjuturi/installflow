@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
@@ -17,6 +18,7 @@ export default function TabsLayout() {
   // the room for Android's ◁ ○ □ bar has to be added back by hand. Only that
   // bar's: gesture phones and iPhones keep the 64 / 8 they were designed at.
   const navInset = useButtonNavInset();
+  const { t } = useTranslation();
 
   return (
     <Tabs
@@ -37,10 +39,10 @@ export default function TabsLayout() {
         ),
       })}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="jobs" options={{ title: 'Jobs' }} />
-      <Tabs.Screen name="earnings" options={{ title: 'Earnings' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="index" options={{ title: t('tabs.home') }} />
+      <Tabs.Screen name="jobs" options={{ title: t('tabs.jobs') }} />
+      <Tabs.Screen name="earnings" options={{ title: t('tabs.earnings') }} />
+      <Tabs.Screen name="profile" options={{ title: t('tabs.profile') }} />
     </Tabs>
   );
 }
