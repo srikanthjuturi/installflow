@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,6 +41,7 @@ function prettyPhone(e164: string): string {
 export function RegisterProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const draft = useRegistration((s) => s.draft);
   const setProfile = useRegistration((s) => s.setProfile);
@@ -76,7 +78,7 @@ export function RegisterProfileScreen() {
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('common.goBack')}
         >
           {({ pressed }) => (
             <View
@@ -116,7 +118,7 @@ export function RegisterProfileScreen() {
             {/* Blocked, the hint IS the label — one control, always saying what
                 it needs. Same pattern as the coverage screen. */}
             <Button
-              label={ready ? 'Continue' : 'Enter your full name'}
+              label={ready ? t('common.continue') : t('onboarding.profile.enterName')}
               onPress={() => {
                 setProfile(trimmed, avatarUri);
                 router.push('/coverage');
@@ -136,7 +138,7 @@ export function RegisterProfileScreen() {
               color: color.textPrimary,
             }}
           >
-            Tell us who you are
+            {t('onboarding.profile.title')}
           </Text>
           <Text
             style={{
@@ -147,14 +149,14 @@ export function RegisterProfileScreen() {
               marginTop: 8,
             }}
           >
-            Your name and photo are what the customer sees when you arrive for a job.
+            {t('onboarding.profile.body')}
           </Text>
 
           <View style={{ alignItems: 'center', marginTop: 26 }}>
             <Pressable
               onPress={() => router.push('/avatar-options')}
               accessibilityRole="button"
-              accessibilityLabel="Add a profile photo"
+              accessibilityLabel={t('onboarding.profile.addPhoto')}
             >
               <Avatar
                 name={trimmed || '?'}
@@ -174,17 +176,17 @@ export function RegisterProfileScreen() {
                 marginTop: 10,
               }}
             >
-              Tap to add a clear face photo. You can change it later.
+              {t('onboarding.profile.photoHint')}
             </Text>
           </View>
 
           <View style={{ marginTop: 26 }}>
             <Input
-              label="Full name"
+              label={t('onboarding.profile.fullName')}
               required
               value={name}
               onChangeText={setName}
-              placeholder="As it appears on your ID"
+              placeholder={t('onboarding.profile.fullNamePlaceholder')}
             />
           </View>
 
@@ -193,7 +195,7 @@ export function RegisterProfileScreen() {
                 against the number the manager invited, so letting them change
                 it here would just fail server-side. */}
             <Input
-              label="Mobile"
+              label={t('onboarding.profile.mobile')}
               value={prettyPhone(draft.invite.phone)}
               onChangeText={() => {}}
               editable={false}
@@ -207,7 +209,7 @@ export function RegisterProfileScreen() {
                 marginTop: 6,
               }}
             >
-              From your invite. Contact your ASM to change it.
+              {t('onboarding.profile.mobileHint')}
             </Text>
           </View>
         </View>

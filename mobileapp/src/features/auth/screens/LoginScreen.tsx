@@ -380,7 +380,7 @@ function OtpStep({
           marginTop: 16,
         }}
       >
-        {canResend ? t('auth.login.resend') : t('auth.login.resendIn', { time: label })}
+        {canResend ? t('common.resendCode') : t('common.resendCodeIn', { time: label })}
       </Text>
 
       {error ? <FormError message={error} /> : null}

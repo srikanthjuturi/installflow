@@ -2,9 +2,14 @@
   "common": {
     "cancel": "Cancel",
     "close": "Close",
+    "continue": "Continue",
+    "devCodeHint": "Tap to fill. Not shown once WhatsApp delivery is live.",
+    "devOnly": "DEVELOPMENT ONLY",
     "dismiss": "Dismiss",
     "goBack": "Go back",
     "notNow": "Not now",
+    "resendCode": "Resend code",
+    "resendCodeIn": "Resend code in {{time}}",
     "tryAgain": "Try again"
   },
   "tabs": {
@@ -30,8 +35,6 @@
       "sendOtp": "Send OTP",
       "terms": "By continuing you agree to the partner terms.",
       "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>. <change>Change</change>",
-      "resend": "Resend code",
-      "resendIn": "Resend code in {{time}}",
       "verify": "Verify & continue",
       "errors": {
         "sendFailed": "Could not send a code. Try again.",
@@ -41,6 +44,65 @@
         "disabled": "This account is disabled.",
         "wrongCode": "That code didn't match. Request a new one."
       }
+    }
+  },
+  "onboarding": {
+    "invite": {
+      "eyebrow": "SECURE INVITE LINK",
+      "title": "Welcome —\nset up your account",
+      "body": "Your onboarding partner set these up for you. Confirm they're correct — you add the rest next.",
+      "fields": {
+        "mobile": "Mobile",
+        "onboardedBy": "Onboarded by",
+        "region": "Region"
+      },
+      "locked": "Your mobile number is locked to this invite. Contact your ASM to change it.",
+      "confirm": "Confirm & continue",
+      "errors": {
+        "offlineTitle": "Can't reach the server",
+        "title": "This invite couldn't be opened",
+        "askForNewLink": "Ask your manager to send a new link.",
+        "unusable": "This invite link can't be used. If you have already registered, sign in instead — otherwise ask your manager for a new link."
+      }
+    },
+    "profile": {
+      "title": "Tell us who you are",
+      "body": "Your name and photo are what the customer sees when you arrive for a job.",
+      "addPhoto": "Add a profile photo",
+      "photoHint": "Tap to add a clear face photo. You can change it later.",
+      "fullName": "Full name",
+      "fullNamePlaceholder": "As it appears on your ID",
+      "mobile": "Mobile",
+      "mobileHint": "From your invite. Contact your ASM to change it.",
+      "enterName": "Enter your full name"
+    },
+    "coverage": {
+      "title": "What do you install?",
+      "body": "Pick every category you're trained for. You'll only be offered jobs that match — pick more to get more work.",
+      "selectCategory": "Select at least one category",
+      "categories_one": "{{count}} category",
+      "categories_other": "{{count}} categories",
+      "areas_one": "{{count}} area",
+      "areas_other": "{{count}} areas",
+      "continueWith": "Continue · {{summary}}",
+      "areasTitle": "Your service areas",
+      "setBy": "Set by {{name}}. You'll be offered jobs from any of these.",
+      "setByManager": "Set by your manager. You'll be offered jobs from any of these.",
+      "noAreas": "No areas assigned yet — ask your manager before you finish."
+    },
+    "verify": {
+      "title": "Confirm your number",
+      "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>. This is the last step.",
+      "create": "Create my account",
+      "errors": {
+        "sendFailed": "We could not send your code. Tap resend to try again.",
+        "resendFailed": "We could not send your code. Try again in a moment.",
+        "incomplete": "Registration did not complete. Ask your ASM for a new invite.",
+        "submitFailed": "We could not finish your registration. Try again."
+      }
+    },
+    "pincodeChip": {
+      "remove": "Remove pincode {{code}}"
     }
   },
   "components": {

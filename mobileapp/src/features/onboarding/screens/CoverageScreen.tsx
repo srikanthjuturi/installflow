@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,6 +39,7 @@ import { color } from '@/theme/semantic';
 export function CoverageScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const draft = useRegistration((s) => s.draft);
   const setCoverage = useRegistration((s) => s.setCoverage);
@@ -51,13 +53,13 @@ export function CoverageScreen() {
 
   const ready = selected.size > 0;
 
-  const hint = 'Select at least one category';
+  const hint = t('onboarding.coverage.selectCategory');
 
   const summary = useMemo(() => {
-    const c = `${selected.size} ${selected.size === 1 ? 'category' : 'categories'}`;
-    const p = `${pincodes.length} ${pincodes.length === 1 ? 'area' : 'areas'}`;
+    const c = t('onboarding.coverage.categories', { count: selected.size });
+    const p = t('onboarding.coverage.areas', { count: pincodes.length });
     return `${c} · ${p}`;
-  }, [selected.size, pincodes.length]);
+  }, [selected.size, pincodes.length, t]);
 
   // Reachable only mid-registration. Any other way in means the draft was
   // cleared underneath us.
@@ -92,7 +94,7 @@ export function CoverageScreen() {
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('common.goBack')}
         >
           {({ pressed }) => (
             <View
@@ -134,7 +136,7 @@ export function CoverageScreen() {
             {/* When blocked, the hint IS the button label rather than a line
                 beneath it — one control, always saying what it needs. */}
             <Button
-              label={ready ? `Continue · ${summary}` : hint}
+              label={ready ? t('onboarding.coverage.continueWith', { summary }) : hint}
               onPress={() => {
                 setCoverage([...selected], pincodes);
                 router.push('/register/verify');
@@ -154,7 +156,7 @@ export function CoverageScreen() {
               color: color.textPrimary,
             }}
           >
-            What do you install?
+            {t('onboarding.coverage.title')}
           </Text>
           <Text
             style={{
@@ -165,8 +167,7 @@ export function CoverageScreen() {
               marginTop: 8,
             }}
           >
-            Pick every category you&apos;re trained for. You&apos;ll only be offered jobs that
-            match — pick more to get more work.
+            {t('onboarding.coverage.body')}
           </Text>
 
           {draft.invite.categories.map((category) => (
@@ -211,7 +212,7 @@ export function CoverageScreen() {
             <Text
               style={{ fontFamily: 'Roboto_900Black', fontSize: 16, color: color.textPrimary }}
             >
-              Your service areas
+              {t('onboarding.coverage.areasTitle')}
             </Text>
             <Text
               style={{
@@ -223,8 +224,8 @@ export function CoverageScreen() {
               }}
             >
               {draft.invite.invitedByName
-                ? `Set by ${draft.invite.invitedByName}. You'll be offered jobs from any of these.`
-                : "Set by your manager. You'll be offered jobs from any of these."}
+                ? t('onboarding.coverage.setBy', { name: draft.invite.invitedByName })
+                : t('onboarding.coverage.setByManager')}
             </Text>
 
             {/* Read-only: coverage is the manager's decision, so this reports
@@ -273,7 +274,7 @@ export function CoverageScreen() {
                   marginTop: 12,
                 }}
               >
-                No areas assigned yet — ask your manager before you finish.
+                {t('onboarding.coverage.noAreas')}
               </Text>
             )}
           </View>
