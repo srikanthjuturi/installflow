@@ -1556,7 +1556,7 @@ $env:POSTGRES_DB='RelianceProdDB'; python -m app.scripts.seed_play_review --prod
 
 It is safe to re-run and **must be re-run before every Play submission**: it creates only what is
 missing, force-closes the reviewer's held jobs whose slot has ended (paying nothing), and adds fresh
-pool and upcoming jobs, because a slotless pool job is offered for at most 48 hours. It prints the
+pool, upcoming and in-progress jobs, because a slotless pool job is offered for at most 48 hours. It prints the
 admin and vendor console passwords only when it creates those logins, or with `--reset-passwords`.
 `cleanup_db` never deletes the company (see "What survives").
 

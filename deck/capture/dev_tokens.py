@@ -95,6 +95,44 @@ def main() -> int:
         print(json.dumps({"database": database, "freed": freed}))
         return 0
 
+    # `--free-emails a@b c@d` RENAMES leftover user rows holding those
+    # addresses, so the addresses themselves become available again.
+    #
+    # The same leftover as the phones above: deleting a company removes its
+    # memberships but leaves the user rows, so the next run dies on the company
+    # admin with "the identity exists from an earlier run".
+    #
+    # ⚠ Soft-deleting them does NOT work here, and makes it worse. The guard in
+    # `companies.service.create_company` looks a user up by email with NO
+    # `deleted_at` filter and then refuses outright if it finds a deleted one —
+    # so a live admin would have been REUSED, while a soft-deleted one is a hard
+    # 409. Renaming is what actually frees the address, and it keeps every
+    # foreign key pointing at that user intact, which a hard delete would not.
+    #
+    # Only ever called by `--reset`, only with the addresses in `fixtures.mjs`,
+    # and only after this function has refused to touch a production database.
+    # A superadmin is never touched.
+    if "--free-emails" in sys.argv:
+        emails = [e.lower() for e in sys.argv[sys.argv.index("--free-emails") + 1:]]
+        if not emails:
+            print(json.dumps({"error": "no email addresses given"}))
+            return 1
+        with psycopg.connect(url) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users
+                   SET email = LOWER(email) || '.replaced.' || LEFT(id::text, 8),
+                       deleted_at = COALESCE(deleted_at, NOW())
+                 WHERE role <> 'superadmin'
+                   AND LOWER(email) = ANY(%s)
+                """,
+                (emails,),
+            )
+            freed = cur.rowcount
+            conn.commit()
+        print(json.dumps({"database": database, "freed": freed}))
+        return 0
+
     # `--all` returns every live token keyed by ticket code. The seeder needs it
     # because `feedback_token` is deliberately not exposed by the API — nothing
     # in the console has any use for it — while `slotLink` is.

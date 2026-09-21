@@ -8,7 +8,10 @@ Produces:
 
 A slide whose screenshot is missing is skipped with a warning rather than
 crashing the build, so a partial capture still yields a usable deck. The summary
-at the end names every skip, so a missing screen can never pass unnoticed.
+at the end names every skip, so a missing screen can never pass unnoticed — and
+the exit code is **non-zero** when anything was skipped. Both decks are written
+either way; the status is there so the next step in a build, and the person
+running it, do not take a thinner deck for a finished one.
 """
 
 from __future__ import annotations
@@ -195,6 +198,13 @@ def main() -> int:
         print(f"\n{len(skipped)} slide(s) skipped for want of a screenshot:")
         for item in dict.fromkeys(skipped):
             print(f"  - {item}")
+        # Non-zero, because the decks were still WRITTEN. Returning 0 here meant
+        # a partial capture produced a thinner deck over the top of a complete
+        # one, printed a warning nobody was watching for in a hundred lines of
+        # build output, and reported success. The files are on disk either way;
+        # this is what stops a script — or a person — moving on to the PDF step
+        # believing `dist/` is good.
+        return 1
 
     return 0
 

@@ -16,16 +16,59 @@ import { REPO_ROOT } from '../capture/lib/shot.mjs';
 export const BASE = process.env.DECK_DEV_API ?? 'http://127.0.0.1:8000/api/v1';
 export const ORIGIN = BASE.replace(/\/api\/v1$/, '');
 
+/** True when the seeder is talking to an API on this machine. */
+export const IS_LOCAL_API = /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/)/.test(BASE);
+
 /**
- * Refuse to run against anything but a local API on a development database.
+ * Hosts that serve `RelianceProdDB`. Refused outright, whatever else is set.
  *
- * Two independent checks, because either alone is easy to defeat: the address
- * has to be loopback, and `api/.env` — which is what an un-overridden local API
- * actually reads — must not name a production database.
+ * A denylist is worthless on its own — it can only ever name the production
+ * addresses somebody thought of. It is here as a second floor under the opt-in
+ * below, not as the guard itself.
+ */
+const PRODUCTION_HOSTS = [/^installflowapi-bqh6d9e2hhaedye0\./i];
+
+/**
+ * Refuse to run against anything but a development database.
+ *
+ * The seeder creates and, with `--reset`, DELETES a whole company. Originally
+ * that was guarded by requiring a loopback address, on the reasoning that a
+ * remote hostname cannot be verified as development from outside — which is
+ * still true, and is why the remote door is an explicit opt-in rather than a
+ * relaxation.
+ *
+ * Local: unchanged. The address has to be loopback AND `api/.env` — what an
+ * un-overridden local API actually reads — must not name a production database.
+ *
+ * Remote: `DECK_ALLOW_REMOTE_SEED` has to name the EXACT hostname being
+ * seeded. Nothing is inferred and no wildcard is accepted, so this cannot
+ * happen because a URL was left in a shell an hour ago; somebody has to type
+ * the host they mean, twice, in two different variables. The known production
+ * hosts are refused even then.
  */
 export function assertDevelopment() {
-  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/)/.test(BASE)) {
-    throw new Error(`refusing to seed ${BASE} — the seeder is for a LOCAL development API only`);
+  const host = new URL(BASE).hostname;
+
+  if (PRODUCTION_HOSTS.some((pattern) => pattern.test(host))) {
+    throw new Error(
+      `${host} serves production. The seeder writes and deletes whole companies ` +
+        `and will not run against it under any setting.`,
+    );
+  }
+
+  if (!IS_LOCAL_API) {
+    const allowed = process.env.DECK_ALLOW_REMOTE_SEED;
+    if (allowed !== host) {
+      throw new Error(
+        `refusing to seed ${BASE}.\n` +
+          `     The seeder is for a LOCAL development API. To aim it at a remote\n` +
+          `     DEVELOPMENT api anyway, set DECK_ALLOW_REMOTE_SEED to exactly:\n` +
+          `       ${host}\n` +
+          `     Be certain that host reads a development database — nothing here\n` +
+          `     can check it for you.`,
+      );
+    }
+    return host;
   }
 
   const envPath = path.join(REPO_ROOT, 'api', '.env');

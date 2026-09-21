@@ -47,11 +47,23 @@ class Doc:
         self.shots = shots
 
     def path(self, shot_id: str) -> Path:
+        """Where `shot_id`'s PNG is, recording the two ways it can be absent.
+
+        Both are recorded, and only one used to be. A shot id the manifest has
+        never heard of was reported; a shot the manifest DOES list whose PNG is
+        gone from `out/png` was not — `figure()` simply saw a path that did not
+        exist and drew nothing, so the figure vanished from the document and the
+        summary at the end still said everything was present. That is the exact
+        shape of a rebuild that looks like it worked.
+        """
         shot = self.shots.get(shot_id)
         if shot is None:
-            missing.append(shot_id)
+            missing.append(f"{shot_id} — not in shots.json")
             return Path("/nonexistent")
-        return DECK_ROOT / shot["file"]
+        path = DECK_ROOT / shot["file"]
+        if not path.exists():
+            missing.append(f"{shot_id} — PNG missing at {shot['file']}")
+        return path
 
     # Passthroughs
     def h1(self, text, **kw): K.h1(self.document, text, **kw)
@@ -69,8 +81,27 @@ class Doc:
             K.figure(self.document, path, caption, **kw)
 
     def figure_row(self, shot_ids, captions, **kw):
-        paths = [self.path(sid) for sid in shot_ids]
-        K.figure_row(self.document, paths, captions, **kw)
+        """A row of figures, dropping any whose PNG is absent.
+
+        `self.path` alone was not enough here: this handed `Path("/nonexistent")`
+        to `docx_kit.figure_row` without checking, which is how a missing shot
+        reached python-docx rather than being skipped. Dropping the pair rather
+        than the path alone is what keeps each caption under its own picture —
+        filtering one list and not the other would silently relabel the rest.
+        """
+        pairs = [
+            (self.path(sid), caption)
+            for sid, caption in zip(shot_ids, captions, strict=True)
+        ]
+        live = [(path, caption) for path, caption in pairs if path.exists()]
+        if not live:
+            return
+        K.figure_row(
+            self.document,
+            [path for path, _ in live],
+            [caption for _, caption in live],
+            **kw,
+        )
 
 
 def build(shots) -> Document:
@@ -154,7 +185,7 @@ def build(shots) -> Document:
     d.p(
         "The worked example below is a real job on the demonstration system: a **1.5-tonne "
         "5-star inverter air conditioner** for a customer in Bengaluru. Follow it through "
-        "seven steps."
+        "eight steps."
     )
     d.table(
         ["Step", "Who acts", "The job becomes"],
@@ -165,7 +196,8 @@ def build(shots) -> Document:
             ["4  Accepted", "Technician", "Assigned"],
             ["5  Proof captured", "Technician", "In Progress"],
             ["6  Work confirmed", "Customer", "Closed"],
-            ["7  Payout recorded", "System", "Closed, and paid"],
+            ["7  Payout recorded", "System", "Closed, and earned"],
+            ["8  Money taken out", "Technician", "Paid"],
         ],
         widths=[4.6, 3.4, 8.0],
     )
@@ -188,14 +220,22 @@ def build(shots) -> Document:
     d.p(
         "It is also the fastest way to fill the form in. Typing the first few characters "
         "searches your catalogue and offers matching units in a dropdown; picking one fills "
-        "in the category, the model and the service type by itself. A serial you have not "
-        "loaded yet is still accepted — the boxes below are simply chosen by hand."
+        "in the category, the model and the service type by itself. Once you have loaded a "
+        "model's serial numbers, a serial that is not one of them is **refused** — so a "
+        "television's number cannot be raised against an air conditioner. Until you load any, "
+        "the field is accepted as typed and the boxes below are chosen by hand."
     )
     d.p(
-        "**The address is searched, not typed.** Picking a result off the map stores the "
-        "actual coordinates of the customer's door. That single fact upgrades the proof check "
-        "later from *\"was the photo taken in roughly the right postal area?\"* to *\"was the "
-        "photo taken within 1 km of the door?\"* — a postal code can span kilometres."
+        "**The address is searched rather than typed**, for most vendors. Picking a result off "
+        "the map stores the actual coordinates of the customer's door, and that single fact "
+        "upgrades the proof check later from *\"was the photo taken in roughly the right postal "
+        "area?\"* to *\"was the photo taken within 1 km of the door?\"* — a postal code can span "
+        "kilometres."
+    )
+    d.p(
+        "It is a per-vendor switch, and it is a decision about **proof**, not about cost. "
+        "Switching a vendor off means their jobs fall back to comparing postal codes, which is "
+        "a weaker check — never no check.", colour=K.MUTED,
     )
     d.callout(
         "**The job is priced the moment it is raised.** Two amounts are stamped onto the "
@@ -203,6 +243,16 @@ def build(shots) -> Document:
         "frozen at this point, so re-pricing your catalogue next month can never change what "
         "an already-accepted job was worth. **Neither party ever sees the other's figure** — "
         "that is enforced on the server, not hidden in the interface."
+    )
+    d.p(
+        "The rules that will govern this job — every penalty band, every window — are stamped "
+        "at the same moment and for the same reason. Changing a rule tomorrow cannot restate "
+        "what somebody has already accepted."
+    )
+    d.p(
+        "Raising the ticket also **costs credits**, charged here and not refunded if the job "
+        "is later cancelled. If your balance has run past its floor the vendor is told that "
+        "intake is paused before they fill the form in — see *What you pay us* in chapter 5."
     )
 
     # 3.2
@@ -341,7 +391,7 @@ def build(shots) -> Document:
     )
 
     # 3.7
-    d.h2("Step 7 — The technician is paid")
+    d.h2("Step 7 — The technician is credited")
     d.p(
         "The customer's confirmation is what releases the money. At that instant the "
         "technician's payout — the figure stamped on the ticket back in step 1 — is written "
@@ -349,15 +399,28 @@ def build(shots) -> Document:
     )
     d.figure("app-earnings", "The technician's own ledger: payouts, bonuses and penalties.")
     d.p(
-        "Their earnings screen shows all three kinds of entry, and a net figure that is "
+        "Their earnings screen shows every kind of entry, and a net figure that is "
         "**earned + bonuses − penalties**. It can be negative, and it is shown honestly if it "
         "is."
+    )
+
+    # 3.8
+    d.h2("Step 8 — The technician takes the money out")
+    d.p(
+        "Step 7 credited a balance; it did not move any money. The technician decides when to "
+        "take it out, and asks for the whole balance at once. Your national head scans the UPI "
+        "code that appears, pays from their own phone, and says so — and the **technician** "
+        "confirms it arrived, which is the only thing that closes it."
+    )
+    d.p(
+        "Chapter 5 sets out why it is built that way, and what stops somebody redirecting "
+        "another person's money.", colour=K.MUTED,
     )
 
     # ── 4. When it doesn't go to plan ────────────────────────────────────────
     d.h1("4. When it does not go to plan")
     d.p(
-        "The seven steps above are the happy path. Most of the value of the system is in what "
+        "The eight steps above are the happy path. Most of the value of the system is in what "
         "it does the rest of the time — and in every case the answer is designed so that no "
         "job can quietly disappear."
     )
@@ -365,9 +428,9 @@ def build(shots) -> Document:
     d.h2("Nobody accepts the job")
     d.p(
         "If a job sits in the pool and the slot is approaching, it is **escalated** — pulled "
-        "out of the pool and put in front of a manager, who has two options: assign a "
-        "technician by hand, or attach a bonus which re-publishes it to the pool as a more "
-        "attractive job."
+        "out of the pool and put in front of a manager, who has three options: assign a "
+        "technician by hand, attach a bonus which re-publishes it to the pool as a more "
+        "attractive job, or ring the customer and agree a different time."
     )
     d.figure("console-escalations", "The escalation queue. The badge on the rail counts the live half.")
     d.p(
@@ -411,6 +474,12 @@ def build(shots) -> Document:
         "up is worth. A no-show is also never charged automatically: a dead phone and a "
         "deliberate no-show look identical to software, so a manager confirms it."
     )
+    d.p(
+        "And a penalty is not final. The area manager responsible for that ticket can **give "
+        "it back in full**, with a written reason, from the job's own page — which is where "
+        "somebody looking into what happened already is. The money returns; the cancellation "
+        "stays on the technician's record. Chapter 5 has the detail."
+    )
 
     d.h2("The time no longer suits the customer")
     d.p(
@@ -431,6 +500,24 @@ def build(shots) -> Document:
         "the customer agreed. All three other parties are told — the customer gets a WhatsApp "
         "naming the old time and the new, the technician gets a push if a manager moved their "
         "day, and the vendor is notified, because they asked for the visit."
+    )
+    d.p(
+        "There is **no limit** on how often a job may be moved. The customer's agreement is "
+        "the guard, and every move is recorded with both the old window and the new. Moving a "
+        "job is also the only thing that clears it out of the missed half of the escalation "
+        "queue."
+    )
+    d.p(
+        "Two limits worth knowing. A job that was escalated because the **customer** said the "
+        "work was not done cannot be moved — it needs re-assigning or force-closing, not "
+        "rescheduling. And the replacement windows offered run 48 hours ahead rather than up "
+        "to the original deadline, because that deadline has usually already passed.",
+        colour=K.MUTED,
+    )
+    d.callout(
+        "**A moved job still counts as late**, and that is deliberate. The deadline promised "
+        "when the ticket was raised is not quietly rewritten to match the new appointment — "
+        "the promise was missed, and the record says so."
     )
 
     d.h2("The customer never replies")
@@ -461,37 +548,134 @@ def build(shots) -> Document:
     # ── 5. Money ─────────────────────────────────────────────────────────────
     d.h1("5. The money")
     d.p(
-        "Three kinds of money move through the system, and they are deliberately kept apart."
+        "Money moves on two separate rails, and it is worth getting the distinction straight "
+        "before the detail. One runs **inside your company**: what a technician earns, is "
+        "charged, and eventually takes home. The other runs **between your company and this "
+        "platform**: what you pay to raise tickets at all. They never touch."
     )
+
+    d.h2("What a technician earns")
+    d.p("Four kinds of entry go into a technician's ledger.")
     d.table(
         ["Kind", "Direction", "Where it comes from"],
         [
             ["**Payout**", "You pay the technician", "The company, for work done"],
             ["**Penalty**", "The technician pays in", "Cancellations and no-shows"],
             ["**Bonus**", "Paid out to attract a technician", "The penalty pool"],
+            ["**Reversal**", "A penalty handed back", "A manager's decision"],
         ],
         widths=[3.4, 6.0, 6.6],
     )
     d.p(
-        "**The penalty pool is a closed circuit.** Penalties fund it; bonuses spend it. Its "
-        "balance is simply penalties minus bonuses. A payout is not part of that circuit at "
-        "all — it is the company paying for work, from outside the pool."
+        "**The penalty pool is a closed circuit.** Penalties fund it; bonuses spend it; a "
+        "reversal takes one back out. A payout is not part of that circuit at all — it is the "
+        "company paying for work, from outside the pool."
     )
     d.figure("console-ledger", "The penalty and bonus pool. Every entry names its job and its reason.")
     d.p(
-        "In the demonstration data above there is one penalty: **₹500 charged to Nikhil Rao** "
-        "for cancelling job MA-INST-0013 between two and four hours before the slot. It names "
-        "the technician, the job and the band — so the technician can see exactly why, and so "
-        "can you, months later."
+        "Every entry names the technician, the job and the reason — so the technician can see "
+        "exactly why, and so can you, months later."
+    )
+
+    d.h2("Giving a penalty back")
+    d.p(
+        "A penalty can be wrong. The traffic was genuinely impossible, the customer had already "
+        "cancelled by phone, the technician was in hospital. So it can be **given back in full, "
+        "with a written reason**, by the area manager responsible for that ticket — or by "
+        "anyone senior to them."
+    )
+    d.p(
+        "It is handed back rather than erased. The ledger gains a separate **reversal** entry "
+        "and the original penalty is never edited, so the record still shows what was charged "
+        "and what was returned. From then on the technician's monthly total, the pool balance "
+        "and their own earnings screen all read as though it had never been charged."
+    )
+    d.callout(
+        "**The cancellation still counts.** Only the money comes back. A technician who "
+        "cancels repeatedly and is forgiven the charge every time still has every one of those "
+        "cancellations on their record — which is the thing you would want to see."
+    )
+
+    d.h2("How a technician is actually paid")
+    d.p(
+        "Everything above is a balance, not a bank transfer. Money leaves when the technician "
+        "asks for it."
+    )
+    d.p(
+        "They **redeem** — one request for the whole balance, capped at ₹1,00,000 because that "
+        "is UPI's limit on a single transaction. The system builds the UPI request and shows it "
+        "as a QR code. Your **national head — or your admin, if you have no national head — "
+        "scans it on their own phone** and pays from whichever account they normally use."
+    )
+    d.figure_row(
+        ["app-redeem", "console-redemption"],
+        ["The technician asks", "The payer scans and pays"],
+        height_cm=9.0,
+    )
+    d.callout(
+        "**Nothing in this system can see your bank.** So it does not pretend to. Two people's "
+        "word is recorded, and they are never confused: the payer **says they paid**, with a "
+        "screenshot; then the **technician confirms it arrived**. Only that second confirmation "
+        "marks a redemption paid, and no one else can give it — not an admin, not you, not us."
+    )
+    d.p(
+        "The payer can **decline** before they pay. The technician cannot cancel, because from "
+        "the moment the QR is on screen the money may already have left the payer's phone."
+    )
+
+    d.h3("Where the money lands, and why that is guarded")
+    d.p(
+        "A technician adds their UPI ID **once**, and proves it with a one-time code sent to "
+        "the number already on their record. They can scan the QR their own bank or UPI app "
+        "gave them — which fills in both the UPI ID and the name on the account — or type the "
+        "two by hand."
+    )
+    d.figure("app-payout-account", "Adding a payout account. The code goes to the registered number, not to the one typing.")
+    d.p(
+        "After that they cannot simply change it. They can only **request** a change, which "
+        "goes to their area manager — or, failing that, up the chain to a regional head, a "
+        "national head, or an admin — who approves it. There is no code that second time; the "
+        "manager is the check."
+    )
+    d.callout(
+        "**This is the one place where a borrowed phone would do real damage.** Everything else "
+        "an impostor could reach is a job. This is where the money lands, so redirecting it is "
+        "exactly what they would try — and it is the one change a technician cannot make alone."
+    )
+
+    d.h2("What you pay us")
+    d.p(
+        "The second rail. Your company holds **credits**, and one credit is worth one rupee. "
+        "Raising a ticket costs credits — the charge happens the moment the ticket is raised, "
+        "and it is not refunded if the job is later cancelled, because the work of offering it "
+        "has already been done."
+    )
+    d.figure("console-credits", "Credits: the balance, what each ticket cost, and every recharge.")
+    d.p(
+        "A new company is given a free allowance to start with. The balance is allowed to go "
+        "**below zero**, down to a floor — so a busy week does not stop you working while "
+        "somebody arranges payment. Past that floor a new ticket is refused, and your vendors "
+        "are told that intake is paused **before** they fill the form in rather than after."
+    )
+    d.callout(
+        "**Your vendors never see your balance.** They are told whether they can raise a ticket "
+        "right now, and nothing else. What you pay for the platform is not their business."
+    )
+    d.p(
+        "Recharging is the same shape as paying a technician, in the other direction. Your "
+        "admin or national head enters an amount, scans a UPI QR, and submits the transaction "
+        "reference with a screenshot. **Only we can confirm it**, and that confirmation is the "
+        "one thing that adds credits — for the same reason a technician is the only one who can "
+        "confirm their own payment arrived."
     )
 
     # ── 6. What you control ──────────────────────────────────────────────────
     d.h1("6. What you control")
     d.p(
-        "Almost every number in this document is a setting, not a constant. They live on one "
-        "screen."
+        "Almost every number in this document is a setting, not a constant. The defaults below "
+        "are what a company starts with, not what it is stuck with."
     )
-    d.figure("console-rules", "Rules configuration. Every figure quoted in this document is set here.")
+    d.figure("console-rules", "Rules configuration. Every figure in the table below is set here.")
     d.table(
         ["Setting", "Default", "What it decides"],
         [
@@ -510,17 +694,63 @@ def build(shots) -> Document:
     d.callout(
         "**A rule can also belong to a product category.** A penalty that is right for a 32-inch "
         "television is wrong for a rooftop solar installation. Any category can override any of "
-        "these, and a job remembers the rules that applied on the day it was raised — so "
-        "changing a rule tomorrow never restates what somebody already accepted."
+        "these except the monthly cap, and a job remembers the rules that applied on the day it "
+        "was raised — so changing a rule tomorrow never restates what somebody already accepted."
+    )
+    d.p(
+        "The monthly cap is the exception because it is the one figure that is not about a job. "
+        "It limits what a single technician can be charged across **everything** they worked on "
+        "that month, so there is no one category it could belong to.", colour=K.MUTED,
+    )
+    d.p(
+        "Two things in this document are deliberately **not** settings. Where one cancellation "
+        "band ends and the next begins — four hours, two hours — is a fact about the clock "
+        "rather than a policy, so the amounts move and the boundaries do not. And the "
+        "₹1,00,000 ceiling on a single payout is UPI's own limit, not ours."
     )
 
     d.h2("Your catalogue")
     d.p(
         "Products live in a tree of your own making — for example *Electronics → Television → "
-        "Android TV* — and only the last level holds actual models. Each model carries its two "
-        "prices and up to five photographs."
+        "Android TV* — up to five levels deep. A level holds products because somebody ticked "
+        "**“this is the last sub-category”**, not because it happens to be the "
+        "deepest one: an empty category is otherwise ambiguous, and the screen has to know "
+        "which button to offer before anything has been added. Each model carries its two "
+        "prices, up to five photographs, and any specifications you want to record."
     )
     d.figure("console-categories", "The product master. Only the last sub-category holds products.")
+
+    d.h3("Brands, and who may add one")
+    d.p(
+        "A vendor is a company; a brand is what is printed on the unit. *Crestline "
+        "Distributors* may sell you *Meridian* and *Sunview*, and every product carries exactly "
+        "one of them — which is what your staff, your technicians and your customers actually "
+        "see named."
+    )
+    d.figure("portal-brands", "A vendor's own brands. Anything they add waits for your approval.")
+    d.p(
+        "Brands your own staff add are live immediately. Brands a **vendor** adds from their "
+        "portal wait for a national head or an admin to approve them, and only an approved "
+        "brand can go on a product."
+    )
+
+    d.h3("Serial numbers you have loaded")
+    d.p(
+        "A model can carry the list of serial numbers it covers, loaded by hand or from a "
+        "spreadsheet. Once a model has any, a ticket quoting a serial that is not on its list "
+        "is refused — so a television's number can no longer be raised against an air "
+        "conditioner."
+    )
+    d.figure("console-model-serials", "Serials loaded against one model. Zero is a state, not an empty list.")
+    d.callout(
+        "**An empty list means unchecked, not “nothing matches”.** That is deliberate, "
+        "and it is what lets you start using this without a flag day: load your models one at a "
+        "time, and every model you have not got to yet carries on exactly as before."
+    )
+    d.p(
+        "A vendor manages the serials for their own products — they hold the invoice, so they "
+        "are the only party who can read the numbers off it.", colour=K.MUTED,
+    )
     d.p(
         "A technician is certified on a **main sub-category** — they are a *television* person, "
         "not a *32-inch OLED* person — and that certification covers everything beneath it, "
@@ -545,9 +775,17 @@ def build(shots) -> Document:
             ["**Regional Head**", "Chosen regions", "Supervise and assign in those regions"],
             ["**Area Manager**", "Chosen states", "Assign, escalate, force-close, confirm no-shows"],
             ["**Technician**", "Their own pincodes", "Their own jobs, in the app"],
-            ["**Vendor**", "Their own tickets", "Raise and watch, nothing else"],
+            ["**Vendor**", "Every ticket their people raised",
+             "Raise and watch; manage their own brands, products and serials"],
+            ["**Vendor's staff**", "Only the tickets they raised themselves",
+             "Raise and watch"],
         ],
         widths=[3.6, 4.6, 7.8],
+    )
+    d.p(
+        "A vendor writes to your catalogue, but only ever as a **proposal**: they can submit a "
+        "product and they cannot price it. It waits, unusable, until one of your people sets "
+        "both figures and approves it.", colour=K.MUTED,
     )
     d.p(
         "The console narrows itself accordingly. An area manager signing in does not see a "
@@ -567,6 +805,11 @@ def build(shots) -> Document:
         "Technicians have no password at all — their **phone is the credential**, and they "
         "sign in with a one-time code. There is nothing for them to forget."
     )
+    d.p(
+        "A forgotten console password is a one-time code emailed to the address — not a reset "
+        "link — and a manager can always issue a fresh password instead, which is what you "
+        "reach for when the mailbox itself is the thing that has gone wrong."
+    )
     d.figure_row(
         ["console-users", "console-technicians"],
         ["Console users and roles", "The technician master"],
@@ -579,8 +822,14 @@ def build(shots) -> Document:
     d.p(
         "Every surface that knows which company it is acting for shows **that company's** name "
         "and mark: the console, the technician app after sign-in, the customer's booking and "
-        "confirmation pages, and every email and WhatsApp message. There is no product name "
-        "written into any screen."
+        "confirmation pages, and every email and WhatsApp message. No product name of ours is "
+        "written into any of them."
+    )
+    d.p(
+        "The exception proves the rule. A sign-in screen is shown a phone number or an email "
+        "address and cannot know which company it belongs to until the sign-in succeeds — so "
+        "that one screen, and the app's own icon on the phone, carry the platform's name. "
+        "Everything from the moment somebody is signed in carries yours.", colour=K.MUTED,
     )
     d.figure("customer-slot", "The customer's page carries the company's own name and mark.")
 
@@ -611,8 +860,8 @@ def build(shots) -> Document:
     # ── 9. Honest gaps ───────────────────────────────────────────────────────
     d.h1("9. What is not built yet")
     d.p(
-        "Two things are designed and visible in the product's architecture but not switched on, "
-        "and it is better to say so plainly than to let them be discovered later."
+        "One thing is designed and visible in the product's architecture but not switched on, "
+        "and it is better to say so plainly than to let it be discovered later."
     )
     d.h3("Automated photo verification")
     d.p(
@@ -631,12 +880,6 @@ def build(shots) -> Document:
         "Until it is switched on, proof is captured and stored exactly as described in step 5 "
         "— the serial mismatch is still visible to your staff, it is simply a person who "
         "notices it rather than a model.", colour=K.MUTED,
-    )
-    d.h3("Technician cash-out")
-    d.p(
-        "Earnings are calculated and shown correctly, and a technician can save a UPI ID, but "
-        "the platform does not yet move the money — settlement happens through your existing "
-        "process."
     )
 
     # ── 10. Appendix ─────────────────────────────────────────────────────────
@@ -657,6 +900,9 @@ def build(shots) -> Document:
          "The approved designs for the remaining technician screens. These are the "
          "signed-off reference, not the running app, so the product names and job "
          "numbers in them are placeholders."),
+        ("Platform console",
+         "Ours, not yours — shown so you can see where your company sits and what "
+         "the geography master behind your territory actually is."),
     ]
 
     by_section: dict[str, list] = {}
@@ -698,9 +944,14 @@ def main() -> int:
     print(f"  {path.name}: {paragraphs} paragraphs, {len(document.inline_shapes)} images")
 
     if missing:
-        print(f"\n{len(set(missing))} screenshot(s) referenced but not captured:")
+        print(f"\n{len(set(missing))} screenshot(s) referenced but not drawn:")
         for item in sorted(set(missing)):
             print(f"  - {item}")
+        # Non-zero for the same reason as `build_deck.py`: the .docx is written
+        # either way, and the very next step converts it to the PDF a client
+        # reads. A figure that quietly did not render is exactly what nobody
+        # notices in a forty-page document.
+        return 1
 
     return 0
 

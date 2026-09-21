@@ -7,8 +7,20 @@ interface Meta {
    * substitutes it from `useBrand`.
    */
   title: string | null;
+  /**
+   * May contain `{escalationHours}`, which `AppShell` substitutes from the
+   * company's rules for the same reason `title: null` is substituted from
+   * `useBrand`: this module is a pure path→copy map with no session, and the
+   * window is a `company_rules` column rather than a constant.
+   *
+   * It was a literal "4h" until the default moved 4 → 1 and this line went on
+   * saying four over a queue selected at one.
+   */
   subtitle: string;
 }
+
+/** The placeholder above. Exported so `AppShell` and this file cannot drift. */
+export const ESCALATION_HOURS_TOKEN = "{escalationHours}";
 
 /** Exact copy from the approved prototype's page header. */
 const STATIC: Record<string, Meta> = {
@@ -16,7 +28,7 @@ const STATIC: Record<string, Meta> = {
   "/tickets": { title: "Tickets", subtitle: "All installation & demo tickets" },
   "/escalations": {
     title: "Escalation queue",
-    subtitle: "Unassigned within 4h of slot",
+    subtitle: `Unassigned within ${ESCALATION_HOURS_TOKEN}h of slot`,
   },
   "/approvals": {
     title: "Approvals",

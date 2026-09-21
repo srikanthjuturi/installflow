@@ -138,7 +138,16 @@ const SCREENS = [
   ['app-pool', '/pool', 'Only jobs they can actually do', 'Matched on skill, pincode and remaining capacity'],
   ['app-earnings', '/earnings', 'Every rupee, itemised', 'Payouts, bonuses and penalties in one ledger'],
   ['app-availability', '/availability', 'The technician sets their own cap', 'Jobs per day, counted by slot date'],
-  ['app-profile', '/profile', '', ''],
+  // `/profile` is NOT captured. It is the one screen in this table that has no
+  // approved caption — its title was the literal string "/profile", which is
+  // what `title || route` falls back to — and the rule here is to ask rather
+  // than write filler. The prototype's own `Profile & settings` covers the
+  // screen in the design-reference section, so nothing is lost by leaving the
+  // live one out until somebody signs a line off.
+  // Net-new since the first capture. Both are the technician's half of the
+  // money story, which the deck could previously only tell from the console.
+  ['app-redeem', '/redeem', 'Taking the balance out', 'One request for the whole balance, paid by UPI'],
+  ['app-payout-account', '/payout-account', 'Where the money lands', 'Added once, proved by a code to the registered number'],
 ];
 
 export async function captureMobile({ browser, recorder }) {

@@ -5,9 +5,11 @@ import { cn } from "@/lib/utils";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PageSkeleton } from "./PageSkeleton";
-import { PAGE_META } from "./routeMeta";
+import { ESCALATION_HOURS_TOKEN, PAGE_META } from "./routeMeta";
 import { useBrand } from "@/hooks/useBrand";
 import { useNotificationToasts } from "@/hooks/useNotificationToasts";
+import { useRulesConfig } from "@/hooks/useSettings";
+import { ESCALATION_TRIGGER_HOURS } from "@/services/rulesDefaults";
 import { useTicketStream } from "@/hooks/useTicketStream";
 import { useSession } from "@/store/session";
 
@@ -16,6 +18,21 @@ export function AppShell() {
   const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useSession();
   const meta = PAGE_META(pathname);
   const brand = useBrand();
+
+  /* The escalation window is a `company_rules` column, so the one page header
+     that quotes it has to read it rather than hard-code it. `enabled` is gated
+     on the token actually being present — that keeps the request to the single
+     route that needs it, and, because that route is staff-only, keeps it off
+     the vendor portal, whose users hold neither `settings.view` nor
+     `jobs.assign` and would only ever be refused. */
+  const needsEscalationHours = meta.subtitle.includes(ESCALATION_HOURS_TOKEN);
+  const { data: rules } = useRulesConfig({ enabled: needsEscalationHours });
+  const subtitle = needsEscalationHours
+    ? meta.subtitle.replace(
+        ESCALATION_HOURS_TOKEN,
+        String(rules?.escalationTriggerHours ?? ESCALATION_TRIGGER_HOURS)
+      )
+    : meta.subtitle;
 
   // One live ticket socket for the whole signed-in session. Here rather than on
   // the tickets page, because a status change also moves dashboard counts — and
@@ -82,7 +99,7 @@ export function AppShell() {
           sidebarCollapsed ? "md:ml-sidebar-collapsed" : "md:ml-sidebar"
         )}
       >
-        <Topbar title={meta.title ?? brand.name} subtitle={meta.subtitle} />
+        <Topbar title={meta.title ?? brand.name} subtitle={subtitle} />
         {/* Fluid — the console is a work surface, so a wide monitor should
             buy more table, not more margin. */}
         <main className="p-4 md:p-5.5">

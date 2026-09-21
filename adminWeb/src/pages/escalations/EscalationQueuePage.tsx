@@ -15,10 +15,21 @@ import { relativeTime } from "@/lib/relativeTime";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useEscalations } from "@/hooks/useEscalations";
 import { useRescheduleTicket } from "@/hooks/useTickets";
+import { useRulesConfig } from "@/hooks/useSettings";
+import { ESCALATION_TRIGGER_HOURS } from "@/services/rulesDefaults";
 import { formatSlot } from "@/utils/datetime";
 import type { Ticket } from "@/types/ticket";
 
 const ALL = "All";
+
+/**
+ * "1 hour" / "4 hours" — the window, said the way the approved copy says it.
+ *
+ * The three sentences on this screen spell the number out in words rather than
+ * using the "4h" shorthand the dashboard cards use, so they need the plural
+ * agreeing. Same inline style as the `ticket${count === 1 ? "" : "s"}` below.
+ */
+const hoursPhrase = (h: number) => `${h} hour${h === 1 ? "" : "s"}`;
 
 /**
  * ONE filter, and it is the one that maps onto the two different sittings this
@@ -90,6 +101,14 @@ const FROM_DASHBOARD = ["regionId", "stateId", "dateFrom", "dateTo"] as const;
 
 export default function EscalationQueuePage() {
   const listId = useId();
+  /* The window this queue is selected on is a `company_rules` column, so the
+     three sentences below read it rather than state it. They were literals, and
+     when the default moved 4 → 1 they were edited by hand — which is how the
+     page header and two dashboard cards were left behind saying four. */
+  const { data: rules } = useRulesConfig();
+  const escalationWindow = hoursPhrase(
+    rules?.escalationTriggerHours ?? ESCALATION_TRIGGER_HOURS
+  );
   const [query, setQuery] = useState("");
   /* ONE dialog for the whole queue, holding whichever row asked for it. The
      cards are rendered per row of an infinite list, so a dialog and a mutation
@@ -254,7 +273,7 @@ export default function EscalationQueuePage() {
     <>
       <PageMeta
         title="Escalation queue"
-        description="Tickets unassigned within 1 hour of their confirmed slot."
+        description={`Tickets unassigned within ${escalationWindow} of their confirmed slot.`}
       />
 
       {/* Above the error and empty states, not inside the success branch: a
@@ -300,7 +319,7 @@ export default function EscalationQueuePage() {
           <EmptyState
             icon={CheckCircle2}
             title="Nothing escalated"
-            description="Every confirmed slot within the next 1 hour has a technician."
+            description={`Every confirmed slot within the next ${escalationWindow} has a technician.`}
           />
         )
       ) : (
@@ -314,8 +333,9 @@ export default function EscalationQueuePage() {
                     {count}
                     {liveComplete ? "" : "+"} ticket{count === 1 ? "" : "s"}
                   </b>{" "}
-                  {count === 1 ? "is" : "are"} unassigned within 1 hour of their
-                  confirmed slot. Add a bonus and re-notify, or assign manually.
+                  {count === 1 ? "is" : "are"} unassigned within{" "}
+                  {escalationWindow} of their confirmed slot. Add a bonus and
+                  re-notify, or assign manually.
                 </span>
               </p>
 

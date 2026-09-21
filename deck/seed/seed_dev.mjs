@@ -25,9 +25,12 @@ import { chromium } from 'playwright';
 import { DECK_ROOT, REPO_ROOT } from '../capture/lib/shot.mjs';
 import {
   assertDevelopment, call, login, adoptPassword, technicianLogin, upload, ORIGIN,
+  IS_LOCAL_API,
 } from './api.mjs';
 import {
   COMPANY, DEMO_PASSWORD, STAFF, VENDOR, TECHNICIANS, CATALOGUE, CUSTOMERS, TICKET_PLAN,
+  VENDOR_SUBUSER, VENDOR_PENDING_BRAND, VENDOR_SUBMITTED_MODEL,
+  ticketSerial, spareSerial, SPARE_SERIALS_PER_MODEL,
 } from './fixtures.mjs';
 
 const log = (message) => process.stdout.write(`${message}\n`);
@@ -110,8 +113,27 @@ async function resetCompany(superadmin, company) {
   // Belt and braces. Any technician user the steps above did not reach still
   // holds its phone number, and the next run would 409 on it. Scoped to the
   // numbers in fixtures.mjs and to a database already proved to be development.
-  const freed = freeTechnicianPhones(TECHNICIANS.map((t) => t.phone));
-  if (freed) log(`    freed ${freed} technician phone number(s)`);
+}
+
+/**
+ * Hand back every identity this seed claims, so the next run can claim it again.
+ *
+ * A technician's identity is their PHONE; everybody else's is their EMAIL. Both
+ * outlive the company — deleting it removes the memberships and leaves the user
+ * rows — so both have to be released explicitly, and both are scoped to the
+ * values in `fixtures.mjs` on a database already proved to be development.
+ */
+function releaseSeedIdentities() {
+  const phones = freeTechnicianPhones(TECHNICIANS.map((t) => t.phone));
+  if (phones) log(`    freed ${phones} technician phone number(s)`);
+
+  const released = freeSeedEmails([
+    COMPANY.email,
+    ...STAFF.map((person) => person.email),
+    VENDOR.loginEmail,
+    VENDOR_SUBUSER.email,
+  ]);
+  if (released) log(`    freed ${released} staff address(es)`);
 }
 
 // ── Geography ────────────────────────────────────────────────────────────────
@@ -157,9 +179,27 @@ function findModel(tree, name) {
   return null;
 }
 
+/**
+ * The vendor's approved brands, by name.
+ *
+ * `GET /vendors/options` is the intended way to resolve a brand id without
+ * reading the vendor record — it returns APPROVED brands only, which is exactly
+ * the set a product may carry.
+ */
+async function brandIdsFor(token, vendorId) {
+  const options = await call('/vendors/options', { token });
+  const rows = options.items ?? options;
+  const vendor = rows.find((row) => row.id === vendorId);
+  if (!vendor) throw new Error(`vendor ${vendorId} is not in /vendors/options`);
+  return new Map((vendor.brands ?? []).map((brand) => [brand.name, brand.id]));
+}
+
 async function createCatalogue(token, vendorId) {
   const certifyIds = [];
   const leaves = [];
+  /* Required from the moment the vendor has more than one brand: the API only
+     guesses when there is exactly one approved brand to guess. */
+  const brandIds = await brandIdsFor(token, vendorId);
 
   const walk = async (spec, parentId) => {
     const root = await call('/masters/nodes', {
@@ -180,19 +220,34 @@ async function createCatalogue(token, vendorId) {
     if (spec.certify) certifyIds.push(node.id);
 
     for (const model of spec.models ?? []) {
+      const { brand, serialPrefix, ...fields } = model;
+      const brandId = brandIds.get(brand);
+      if (!brandId) {
+        throw new Error(
+          `model "${model.name}" wants brand "${brand}", which is not an approved ` +
+            `brand of this vendor. Known: ${[...brandIds.keys()].join(', ') || '(none)'}`,
+        );
+      }
       const updated = await call(`/masters/nodes/${node.id}/models`, {
         token,
         method: 'POST',
         body: {
-          ...model,
+          ...fields,
           vendorId,
+          brandId,
           serviceTypes: ['Installation + Demo', 'Tech Visit', 'Service'],
         },
       });
       const created = findModel(updated, model.name);
       if (!created) throw new Error(`created model "${model.name}" but could not find it in the returned tree`);
-      leaves.push({ subcategoryId: node.id, modelId: created.id, name: model.name });
-      log(`    model ${model.name}  ₹${(model.technicianPayoutPaise / 100).toFixed(0)} payout`);
+      leaves.push({
+        subcategoryId: node.id,
+        modelId: created.id,
+        name: model.name,
+        brand,
+        serialPrefix,
+      });
+      log(`    model ${model.name}  ${brand}  ₹${(model.technicianPayoutPaise / 100).toFixed(0)} payout`);
     }
 
     for (const child of spec.children ?? []) await walk(child, node.id);
@@ -201,6 +256,94 @@ async function createCatalogue(token, vendorId) {
   for (const root of CATALOGUE) await walk(root, null);
   return { certifyIds, leaves };
 }
+
+/**
+ * Load each model's serial numbers — and this MUST run before any ticket.
+ *
+ * `product_model_serials` is the master data behind the serial-first intake
+ * form. An EMPTY list means unchecked, which is how this could ship against a
+ * live catalogue with no backfill; the flip side is that the moment a model
+ * holds one serial, `POST /tickets` refuses anything not on its list. So every
+ * serial the ticket loop is about to quote has to be a member here, or all
+ * thirteen tickets 400.
+ *
+ * `serialsFor` is the single source for both: the loop below and the ticket
+ * loop call it with the same `(leaf, index)`.
+ */
+async function loadSerials(token, leaves) {
+  for (const [modelIndex, leaf] of leaves.entries()) {
+    const used = TICKET_PLAN
+      .map((_, index) => index)
+      .filter((index) => index % leaves.length === modelIndex)
+      .map((index) => ticketSerial(leaf.serialPrefix, index));
+
+    const spare = Array.from({ length: SPARE_SERIALS_PER_MODEL }, (_, n) =>
+      spareSerial(leaf.serialPrefix, modelIndex * SPARE_SERIALS_PER_MODEL + n),
+    );
+
+    const result = await call(`/masters/models/${leaf.modelId}/serials`, {
+      token,
+      method: 'POST',
+      body: { serials: [...used, ...spare] },
+    });
+    log(`    ${leaf.name}  ${result.total ?? used.length + spare.length} serials`);
+  }
+}
+
+/** Which model a ticket lands on, and therefore which serial it may quote. */
+const leafFor = (leaves, index) => leaves[index % leaves.length];
+
+/**
+ * `PUT /settings/rules` is a whole-body replace, and the two shapes differ:
+ * `RulesOut.penalty` is `[{band, amount}]` while the request takes bare rupee
+ * amounts. Everything not being changed is sent back exactly as it was read.
+ */
+function rulesBody(rules, overrides = {}) {
+  return {
+    penalty: rules.penalty.map((band) => band.amount),
+    penaltyCap: rules.penaltyCap,
+    bonusAmounts: rules.bonusAmounts,
+    aiThreshold: rules.aiThreshold,
+    slaWarnAtPct: rules.slaWarnAtPct,
+    slotConfirmTimeoutHours: rules.slotConfirmTimeoutHours,
+    escalationTriggerHours: rules.escalationTriggerHours,
+    customerWaitHours: rules.customerWaitHours,
+    renotifyGraceMinutes: rules.renotifyGraceMinutes,
+    slotReminderMinutes: rules.slotReminderMinutes,
+    customerNoticeMinutes: rules.customerNoticeMinutes,
+    geoRadiusM: rules.geoRadiusM,
+    ...overrides,
+  };
+}
+
+/**
+ * Why one ticket is raised under a wider escalation window.
+ *
+ * A confirmed slot can never be nearer than `SLOT_LEAD_MINUTES` — 90 minutes —
+ * because that is the earliest window `bookable_slots` will offer. The default
+ * escalation trigger is now ONE hour. So a technician releasing a job can never
+ * be inside the window at the moment they release it, `escalates` is always
+ * false, and the queue this seed exists to photograph comes back empty.
+ *
+ * The rule is therefore raised for exactly one `POST /tickets` and put straight
+ * back. `create_ticket` STAMPS the resolved rules onto `tickets.rules_snapshot`
+ * and nothing ever rewrites it, so that one ticket keeps the wide window and
+ * every other ticket — already stamped at 1 — is untouched. Raising it for the
+ * whole run instead would hand every pooled job a 24-hour window and let the
+ * five-minute sweep escalate the entire pool.
+ *
+ * `slotConfirmTimeoutHours` moves with it because the trigger must be strictly
+ * nearer the slot than the confirmation timeout — validated in the schema, in
+ * `validate_resolved`, and by a CHECK constraint.
+ *
+ * ⚠ Known cosmetic seam: the queue's header reads the COMPANY's current rule,
+ * not the ticket's, so after the restore the page says one hour above a row
+ * that escalated on a wider one. The alternative is leaving the demo company on
+ * 24h, which would put 24/48 on the Rules screenshot where the document's table
+ * says the defaults are 1 and 6 — a worse contradiction, on a page a reader
+ * compares against that table.
+ */
+const ESCALATION_SEED_WINDOW = { escalationTriggerHours: 24, slotConfirmTimeoutHours: 48 };
 
 // ── Proof images ─────────────────────────────────────────────────────────────
 
@@ -252,13 +395,29 @@ function devHelper(...args) {
   return JSON.parse(execFileSync(python, [script, ...args], { encoding: 'utf8' }));
 }
 
+/**
+ * Both helpers below need a DIRECT database connection, which a remote run does
+ * not have — `dev_tokens.py` opens psycopg against `api/.env`.
+ *
+ * They degrade rather than throw, because everything else in the seed works
+ * perfectly well over HTTP. What is lost is named at the call site so it shows
+ * up in the run's output instead of as a puzzling empty screen later.
+ */
 function devTicketTokens() {
+  if (!IS_LOCAL_API) return {};
   return devHelper('--all').tickets ?? {};
 }
 
 /** Release seed phone numbers still held by technician users of a deleted company. */
 function freeTechnicianPhones(phones) {
+  if (!IS_LOCAL_API) return 0;
   return devHelper('--free-technician-phones', ...phones).freed ?? 0;
+}
+
+/** Release the seed's staff addresses, still held by users of a deleted company. */
+function freeSeedEmails(emails) {
+  if (!IS_LOCAL_API) return 0;
+  return devHelper('--free-emails', ...emails).freed ?? 0;
 }
 
 /** The windows the slot page offers are rendered as radio values; read them back. */
@@ -339,6 +498,13 @@ async function main() {
     await resetCompany(superadmin, already);
   }
 
+  /* Whether or not a previous company was found. The identities outlive the
+     company — that is the whole point of releasing them — so a run that finds
+     nothing to delete still has to clear what the LAST run left behind, which
+     is exactly the case that fails with "Email already belongs to another
+     user" before a single row has been written. */
+  if (process.argv.includes('--reset')) releaseSeedIdentities();
+
   const created = await call('/companies', { token: superadmin, method: 'POST', body: COMPANY });
   const admin = await accessFor(COMPANY.email, created, 'the company admin');
   credentials.accounts.admin = { email: COMPANY.email, role: 'admin' };
@@ -371,9 +537,55 @@ async function main() {
   credentials.accounts.vendor = { email: VENDOR.loginEmail, role: 'vendor' };
   log(`    ${VENDOR.name}  ${VENDOR.loginEmail}`);
 
-  // 5 — the catalogue. Models need the vendor, so this follows it.
+  // 4b — a second person at the vendor, so "a sub-user sees only the tickets
+  //      they raised themselves" is a sentence the portal can demonstrate.
+  const subUser = await call('/vendor/users', {
+    token: vendor,
+    method: 'POST',
+    body: VENDOR_SUBUSER,
+  });
+  await accessFor(VENDOR_SUBUSER.email, subUser, VENDOR_SUBUSER.fullName);
+  credentials.accounts.vendor_user = { email: VENDOR_SUBUSER.email, role: 'vendor_user' };
+  log(`    sub-user  ${VENDOR_SUBUSER.fullName}  ${VENDOR_SUBUSER.email}`);
+
+  // 4c — a brand the VENDOR submitted. Staff-added brands are approved on the
+  //      spot, so this is the only way Approvals → Brands has a row in it.
+  await call('/vendors/me/brands', {
+    token: vendor,
+    method: 'POST',
+    body: { name: VENDOR_PENDING_BRAND },
+  });
+  log(`    brand     ${VENDOR_PENDING_BRAND}  (awaiting approval)`);
+
+  // 5 — the catalogue. Models need the vendor AND its approved brands, so this
+  //     follows both.
   step('Catalogue');
   const { certifyIds, leaves } = await createCatalogue(admin, vendorId);
+
+  // 5b — the serial master, BEFORE any ticket quotes a serial. An empty list
+  //      means unchecked; a loaded one refuses anything not on it.
+  step('Serials');
+  await loadSerials(admin, leaves);
+
+  // 5c — a product the vendor submitted and nobody has priced, so `/approvals`
+  //      is not an empty screen.
+  step('Vendor submission');
+  const submissionNode = leaves.find((leaf) => leaf.name.startsWith('Sunview'))
+    ?? leaves[0];
+  const vendorBrands = await brandIdsFor(admin, vendorId);
+  await call(`/masters/portal/nodes/${submissionNode.subcategoryId}/models`, {
+    token: vendor,
+    method: 'POST',
+    body: {
+      name: VENDOR_SUBMITTED_MODEL.name,
+      brandId: vendorBrands.get(VENDOR_SUBMITTED_MODEL.brand),
+      serviceTypes: ['Installation + Demo'],
+      capacity: VENDOR_SUBMITTED_MODEL.capacity,
+      warrantyMonths: VENDOR_SUBMITTED_MODEL.warrantyMonths,
+      notes: VENDOR_SUBMITTED_MODEL.notes,
+    },
+  });
+  log(`    ${VENDOR_SUBMITTED_MODEL.name}  (awaiting a price)`);
 
   // 6 — technicians. `dailyJobCap` is left null: no limit, which is what every
   //     new technician has, and what stops the cap blocking a seeded accept.
@@ -421,11 +633,28 @@ async function main() {
   /** Jobs whose work is done, waiting for the customer to close them. */
   const toClose = [];
 
+  const baseRules = await call('/settings/rules', { token: admin });
+  let widened = false;
+
   for (const [index, plan] of TICKET_PLAN.entries()) {
+    // Widen for the one ticket that has to end up in the escalation queue, and
+    // only for its intake — the snapshot is taken there and never revisited.
+    if (plan.stage === 'released' && !widened) {
+      await call('/settings/rules', {
+        token: admin,
+        method: 'PUT',
+        body: rulesBody(baseRules, ESCALATION_SEED_WINDOW),
+      });
+      widened = true;
+      log(`    escalation window widened to ${ESCALATION_SEED_WINDOW.escalationTriggerHours}h for this ticket`);
+    }
+
     const customer = CUSTOMERS[index % CUSTOMERS.length];
-    const leaf = leaves[index % leaves.length];
+    const leaf = leafFor(leaves, index);
     const pincode = territory.pincodes[index % territory.pincodes.length];
-    const serial = `MRD${String(240000 + index * 137).padStart(8, '0')}`;
+    // The SAME expression `loadSerials` used, so the number quoted here is one
+    // this model actually carries. Intake refuses it otherwise.
+    const serial = ticketSerial(leaf.serialPrefix, index);
     const expected = new Date(Date.now() + (2 + (index % 4)) * 86400000)
       .toISOString().slice(0, 10);
     const point = pointFor(index);
@@ -484,11 +713,22 @@ async function main() {
       // Given back after accepting. Inside the escalation window this both
       // charges the band and puts the ticket in the escalation queue — the two
       // screens that are otherwise hardest to populate.
-      await call(`/jobs/${ticket.id}/cancel`, {
+      const released = await call(`/jobs/${ticket.id}/cancel`, {
         token: techToken,
         method: 'POST',
         body: { reason: 'Vehicle breakdown on the way to site' },
       });
+      // Assert rather than hope. When the trigger moved 4h → 1h this stopped
+      // escalating and nothing said so: the ticket went quietly back to the
+      // pool, and the only symptom was an empty queue in a finished deck.
+      if (released.escalates === false) {
+        throw new Error(
+          `${detail.code} was released but did not escalate — the escalation ` +
+            `queue will photograph empty. The stamped window was ` +
+            `${ESCALATION_SEED_WINDOW.escalationTriggerHours}h; check that the ` +
+            `widen step above ran before this ticket was raised.`,
+        );
+      }
       record('released');
       log(`    ${detail.code}  released → penalty + escalation`);
       continue;
@@ -513,29 +753,149 @@ async function main() {
     // The job is done and waiting on the customer. Closing it needs the feedback
     // token, which the API deliberately does not expose — nothing in the console
     // has any use for it — so those are collected and closed in one pass below.
-    toClose.push({ code: detail.code, rating: plan.rating ?? 5 });
+    // `id` and the payout are carried so a remote run can force-close instead;
+    // the ceiling is the ticket's own stamped payout, enforced server-side.
+    toClose.push({
+      code: detail.code,
+      id: ticket.id,
+      rating: plan.rating ?? 5,
+      payoutPaise: detail.technicianPayoutPaise ?? null,
+    });
     log(`    ${detail.code}  work done, waiting to be closed`);
+  }
+
+  // Back to the company's real rules. The escalated ticket keeps the window it
+  // was stamped with; every screen from here on reads the defaults.
+  if (widened) {
+    await call('/settings/rules', { token: admin, method: 'PUT', body: rulesBody(baseRules) });
+    log(`    escalation window restored to ${baseRules.escalationTriggerHours}h`);
   }
 
   // 7b — the customer closes them. Same unauthenticated POST their own phone
   //      makes; it is the only thing that writes a payout into the ledger.
+  //
+  // ⚠ `feedback_token` is deliberately not exposed by any endpoint — nothing in
+  // the console needs it — so a REMOTE run cannot reach it and cannot close a
+  // job as the customer. Rather than leave the ledger empty (which would take
+  // the earnings figures, the redemption and the pool balance with it), those
+  // tickets are FORCE-CLOSED by a manager instead. That is a real, supported
+  // ending, and it is honest about which one it is: a force-closed job reads as
+  // force-closed everywhere, and the customer-feedback page stays uncaptured.
   if (toClose.length) {
     const tokens = devTicketTokens();
-    for (const { code, rating } of toClose) {
+    let forced = 0;
+    for (const { code, rating, id, payoutPaise } of toClose) {
       const token = tokens[code]?.feedback;
-      if (!token) {
+      if (token) {
+        await call(`${ORIGIN}/feedback/${token}`, {
+          method: 'POST',
+          form: { answer: 'yes', rating: String(rating), comment: 'Neat work, on time.' },
+          raw: true,
+        });
+        record('closed');
+        log(`    ${code}  closed by the customer`);
+        continue;
+      }
+
+      if (!id) {
         record('awaiting');
         log(`    ${code}  no feedback token — left awaiting the customer`);
         continue;
       }
-      await call(`${ORIGIN}/feedback/${token}`, {
+
+      await call(`/tickets/${id}/force-close`, {
+        token: admin,
         method: 'POST',
-        form: { answer: 'yes', rating: String(rating), comment: 'Neat work, on time.' },
-        raw: true,
+        body: {
+          reason: 'Customer did not respond to the confirmation request',
+          notes:
+            'Work completed and proof captured on site. The customer was called ' +
+            'twice and sent the confirmation link again; no response within the ' +
+            'window. Closing on the technician’s evidence.',
+          attachments: [{ blobName: uploaded.photos, fileName: 'installed-unit.png' }],
+          technicianPayoutPaise: payoutPaise ?? undefined,
+        },
       });
-      record('closed');
-      log(`    ${code}  closed by the customer`);
+      forced += 1;
+      record('forceClosed');
+      log(`    ${code}  force-closed (no feedback token on a remote run)`);
     }
+    if (forced) {
+      log(
+        `\n    ⚠ ${forced} job(s) were force-closed rather than confirmed by the ` +
+          `customer.\n      feedback_token is not exposed by the API, so a remote ` +
+          `seed cannot reach it.\n      The customer-feedback page cannot be ` +
+          `captured from this run.`,
+      );
+    }
+  }
+
+  // 7c — credits. A recharge is the only way the Credits screen has a payment
+  //      to show, and the superadmin's confirmation is the only thing that adds
+  //      credits — so both halves of that handshake are seeded.
+  step('Credits');
+  const platform = await call('/platform/settings', { token: superadmin });
+  if (!platform.upiId) {
+    // A recharge is refused with 409 RECHARGE_UNAVAILABLE until the platform
+    // has somewhere to be paid. It belongs to no company, so it survives a
+    // --reset and is only set when missing.
+    await call('/platform/settings', {
+      token: superadmin,
+      method: 'PUT',
+      body: {
+        freeCredits: platform.freeCredits,
+        ticketCredits: platform.ticketCredits,
+        minusCreditLimit: platform.minusCreditLimit,
+        minRechargeRupees: platform.minRechargeRupees,
+        upiId: 'reliancegreentech@okhdfcbank',
+        upiName: 'Reliance GreenTech Platform',
+      },
+    });
+    log('    platform payee set');
+  }
+
+  const recharge = await call('/credits/recharges', {
+    token: admin,
+    method: 'POST',
+    body: { amountRupees: 5000 },
+  });
+  const rechargeProof = await upload(admin, proofImages.barcode, 'upi-receipt.png', 'image/png', 'attachment');
+  await call(`/credits/recharges/${recharge.id}/claim`, {
+    token: admin,
+    method: 'POST',
+    body: {
+      utr: '412783996201',
+      proof: {
+        blobName: rechargeProof.blobName ?? rechargeProof.name ?? rechargeProof.url,
+        fileName: 'upi-receipt.png',
+      },
+    },
+  });
+  // Confirmed, so the balance moves and the statement has a recharge row in it.
+  await call(`/platform/recharges/${recharge.id}/confirm`, {
+    token: superadmin,
+    method: 'POST',
+  });
+  const credits = await call('/credits', { token: admin });
+  log(`    ${recharge.code ?? 'recharge'}  ₹5,000 confirmed · balance ${credits.balance}`);
+
+  // 7d — a redemption, left UNPAID on purpose. `to_pay` is the state that draws
+  //      the UPI QR on both sides; claiming it would replace the one screen
+  //      worth photographing with a receipt.
+  step('Redemption');
+  const redeemer = await tokenFor(0);
+  const redeemable = await call('/redemptions/me', { token: redeemer });
+  if (redeemable.redeemablePaise > 0) {
+    // The server recomputes the figure and 409s BALANCE_CHANGED on any
+    // disagreement — the client never names its own price.
+    const redemption = await call('/redemptions/me', {
+      token: redeemer,
+      method: 'POST',
+      body: { amountPaise: redeemable.redeemablePaise },
+    });
+    log(`    ${redemption.code ?? 'redemption'}  ₹${(redeemable.redeemablePaise / 100).toFixed(0)} awaiting ${redeemable.payerLabel}`);
+  } else {
+    log('    nothing to redeem — no payout landed in the ledger');
   }
 
   // 8 — write down what was made.
@@ -559,6 +919,13 @@ async function main() {
     `DECK_DEV_VENDOR_EMAIL=${VENDOR.loginEmail}`,
     `DECK_DEV_VENDOR_PASSWORD=${DEMO_PASSWORD}`,
     `DECK_TECHNICIAN_PHONE=${TECHNICIANS[0].phone}`,
+    `DECK_VENDOR_USER_EMAIL=${VENDOR_SUBUSER.email}`,
+    `DECK_VENDOR_USER_PASSWORD=${DEMO_PASSWORD}`,
+    // The platform console (Companies, Geography) is a surface of its own, and
+    // the capture had no way to reach it: `credentials('superadmin')` resolves
+    // these names, but nothing ever wrote them.
+    `DECK_SUPERADMIN_EMAIL=${SUPERADMIN.email}`,
+    `DECK_SUPERADMIN_PASSWORD=${SUPERADMIN.password}`,
     '',
   ].join('\n');
   writeFileSync(envPath, existingEnv.replace(/\n# ─── Written by seed[\s\S]*$/, '') + block, 'utf8');

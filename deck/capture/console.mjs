@@ -1,15 +1,19 @@
 /**
- * The ops console and the vendor portal, captured from the LIVE site at
- * `reliancegreentech.netlify.app`.
+ * The ops console and the vendor portal.
  *
- * That site already points at the deployed Azure API, which reads
- * `RelianceProdDB` — so these are production screens with production volumes,
- * and no local config is touched to get them. `adminWeb/.env.local` stays
- * exactly where it is.
+ * `DECK_CONSOLE_URL` decides which one, and the default is the LOCAL console on
+ * :5173 reading the local API and the tenant `seed/seed_dev.mjs` built on the
+ * development database. Point it at the deployed site instead and these become
+ * production screens with production volumes, at which point masking switches
+ * itself back on — see `IS_LOCAL` below.
+ *
+ * ⚠ The deployed console is on Azure, not Netlify. The old
+ * `reliancegreentech.netlify.app` address named here until the move on
+ * 2026-09-18 no longer serves the app.
  *
  * Every context here carries the interceptor from `lib/guard.mjs`: customer PII
  * is pseudonymised in the response body, and any write the shot list did not
- * mean to make is aborted before it reaches production.
+ * mean to make is aborted before it reaches the database.
  */
 
 import { createInterceptor } from './lib/guard.mjs';
@@ -127,6 +131,10 @@ const ADMIN_SCREENS = [
   ['console-rules', '/settings/rules', 'Every penalty is a setting', 'Per company, and overridable per category'],
   ['console-users', '/settings/users', 'Roles and access', ''],
   ['console-notifications', '/notifications', 'What needs a person', ''],
+  // Shipped after the first capture and never photographed: the two screens
+  // where money crosses the company's boundary.
+  ['console-credits', '/credits', 'Tickets are paid for in credits', 'Charged when a ticket is raised, and never refunded'],
+  ['console-redemptions', '/redemptions', 'Technicians cashing out', 'Paid by UPI, from the payer’s own phone'],
 ];
 
 async function captureAdmin({ browser, recorder }) {
@@ -171,6 +179,23 @@ async function captureAdmin({ browser, recorder }) {
     });
     // The screen that carries customer data — prove the mask fired on it.
     interceptor.assertMasked('/tickets/');
+
+    // "Change the time" opens a dialog, not a route. Rescheduling is the third
+    // thing a manager can do with a stuck job and the only one that clears the
+    // queue's missed half, and it had no screenshot anywhere in the deck.
+    const opened = await openDialog(page, /change the time/i);
+    if (opened) {
+      await recorder.record({
+        id: 'console-reschedule',
+        section: 'Ops console',
+        title: 'A slot can move',
+        sub: 'With the customer’s agreement, a written reason, and nothing charged',
+        kind: 'console',
+        target: page,
+      });
+      await page.keyboard.press('Escape').catch(() => {});
+      await settle(page);
+    }
   }
 
   await page.goto(`${SITE}/technicians`, { waitUntil: 'domcontentloaded' });
@@ -189,9 +214,121 @@ async function captureAdmin({ browser, recorder }) {
     });
   }
 
+  // One redemption, opened from the queue. The UPI QR only exists while nobody
+  // has paid yet, which is why the seed leaves it unclaimed.
+  await page.goto(`${SITE}/redemptions`, { waitUntil: 'domcontentloaded' });
+  await settle(page);
+  // Not `firstLinked`: the table navigates with `onRowClick` rather than an
+  // anchor, so there is no href on the page to read. Clicking the row is the
+  // only way in, and it is a read either way.
+  const opened = await openFirstRow(page, /\/redemptions\/[0-9a-f-]{8,}/);
+  if (opened) {
+    await recorder.record({
+      id: 'console-redemption',
+      section: 'Ops console',
+      title: 'Scan, pay, and say so',
+      sub: 'Only the technician can confirm it arrived',
+      kind: 'console',
+      target: page,
+    });
+  }
+
+  // The serial list lives in a dialog on a model, not on a route of its own —
+  // so it has to be clicked open, the same way the accept sheet is on mobile.
+  await page.goto(`${SITE}/categories`, { waitUntil: 'domcontentloaded' });
+  await settle(page);
+  const serialPanel = await openModelSerials(page);
+  if (serialPanel) {
+    await recorder.record({
+      id: 'console-model-serials',
+      section: 'Ops console',
+      title: 'The serials a model covers',
+      sub: 'An empty list means unchecked, not “nothing matches”',
+      kind: 'console',
+      target: page,
+    });
+  } else {
+    process.stdout.write('  ! could not open the serials panel — skipped\n');
+  }
+
   interceptor.assertNoWrites();
   await context.close();
   return ticketHref;
+}
+
+/**
+ * Click a control open and wait for its dialog, tolerantly.
+ *
+ * Returns false rather than throwing: a button that moved or a ticket in the
+ * wrong status must cost the deck one screenshot, not the other twenty. Opening
+ * a dialog is a read — nothing is submitted, and the write guard would abort it
+ * if a future edit tried.
+ */
+async function openDialog(page, label) {
+  try {
+    const control = page.getByRole('button', { name: label }).first();
+    if (!(await control.count())) return false;
+    await control.click();
+    await page.waitForSelector('[role="dialog"]', { timeout: 8000 });
+    await settle(page);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Click the first row of a table that navigates by `onRowClick`.
+ *
+ * ⚠ `waitForURL` matches the WHOLE url, origin included. A pattern anchored
+ * with `^/redemptions/` therefore never matches `http://localhost:5173/...`
+ * and the shot is silently skipped — which is exactly what happened.
+ */
+async function openFirstRow(page, urlPattern) {
+  try {
+    const row = page.locator('tbody tr').first();
+    if (!(await row.count())) return false;
+    await row.click();
+    await page.waitForURL(urlPattern, { timeout: 10000 });
+    await settle(page);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open a product model for EDIT, which is where the serials panel lives.
+ *
+ * It is not on ADD — a serial needs a model id that does not exist until the
+ * product is saved — so the only way to photograph it is to edit a real one.
+ *
+ * Deliberately tolerant: it returns false rather than throwing, because one
+ * dialog that moved must not cost the deck its other twenty console screens.
+ * Every step is a read; opening a dialog submits nothing, and the write guard
+ * would abort it if a future edit tried.
+ */
+async function openModelSerials(page) {
+  try {
+    // The tree arrives expanded, and each product is a BUTTON that opens a
+    // menu — not the dialog. "Edit product" on that menu is what opens it.
+    const model = page.getByRole('button', { name: /Meridian 43/ }).first();
+    if (!(await model.count())) return false;
+    await model.scrollIntoViewIfNeeded().catch(() => {});
+    await model.click();
+
+    const edit = page.getByRole('menuitem', { name: /edit product/i }).first();
+    if (await edit.count()) await edit.click();
+    else await page.getByText(/edit product/i).first().click();
+
+    await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+    // The panel is what we came for; a dialog without it is the wrong one.
+    await page.getByText(/serial numbers/i).first().waitFor({ timeout: 8000 });
+    await settle(page);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── The same console, as an area manager ──────────────────────────────────────
@@ -260,6 +397,7 @@ async function captureVendor({ browser, recorder }) {
     ['portal-tickets', '/portal/tickets', 'The vendor sees their own work', 'A sub-user sees only what they raised themselves'],
     ['portal-new-ticket', '/portal/tickets/new', 'Only a vendor raises a ticket', 'Company staff work tickets; they no longer create them'],
     ['portal-products', '/portal/products', 'The catalogue they can raise against', ''],
+    ['portal-brands', '/portal/brands', 'A vendor sells several brands', 'A product carries exactly one, and it waits for your approval'],
     ['portal-users', '/portal/users', 'Their own people', ''],
   ]) {
     await page.goto(`${SITE}${route}`, { waitUntil: 'domcontentloaded' });
