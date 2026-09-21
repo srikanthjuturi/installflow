@@ -97,11 +97,14 @@ FIRST_RUN: tuple[tuple[str, int], ...] = (
     ("in_progress", 1),   # proof taken, "Complete the job" waiting
     ("closed", 4),        # history, and the payouts on the Earnings screen
 )
-#: What a later run adds: only what goes stale.
+#: What a later run adds: only what goes stale. The in-progress job is here too,
+#: because `_clear_stale` force-closes it once its slot ends and nothing else
+#: would ever put one back — the reviewer's In progress tab stayed empty.
 TOP_UP: tuple[tuple[str, int], ...] = (
     ("pool_no_slot", 4),
     ("pool_slot", 3),
     ("assigned", 2),
+    ("in_progress", 1),
 )
 #: How far back the history is moved.
 HISTORY_DAYS = 20
