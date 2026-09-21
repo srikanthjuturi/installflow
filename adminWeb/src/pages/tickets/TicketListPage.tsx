@@ -11,6 +11,12 @@ const SLA_WORDS: Record<string, string> = {
   breach: "breaching SLA",
 };
 
+/** The dashboard's attention cards, named by their own titles. */
+const ATTENTION_WORDS: Record<string, string> = {
+  "force-close": "awaiting force-close",
+  "slot-unconfirmed": "slot not confirmed",
+};
+
 export default function TicketListPage() {
   // The whole request — search, status, page, rows-per-page and sort — lives
   // in the query string, so the exact view someone is looking at is a URL they
@@ -29,6 +35,7 @@ export default function TicketListPage() {
   const statuses = (f.status ?? "").includes(",") ? f.status.split(",") : null;
   const parts = [
     ...(f.open ? ["not yet closed"] : []),
+    ...(ATTENTION_WORDS[f.attention] ? [ATTENTION_WORDS[f.attention]] : []),
     // Named because the chips cannot show a set — one of them would look
     // selected and the other would not exist.
     ...(statuses ? [statuses.join(" or ")] : []),

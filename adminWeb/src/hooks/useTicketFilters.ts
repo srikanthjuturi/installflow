@@ -43,6 +43,8 @@ const DEFAULT_SORT_DIR = "asc";
  *   slaState          one bucket of `_sla_order_case`, the SLA bar's own rank
  *   open              "not yet closed", the Open tickets tile's own expression
  *   closedWithinDays  the rolling window "Closed this week" was measured over
+ *   attention         an attention card's own population — `force-close` or
+ *                     `slot-unconfirmed`, neither of which is one status
  */
 const PASSTHROUGH = [
   "regionId",
@@ -52,18 +54,19 @@ const PASSTHROUGH = [
   "slaState",
   "open",
   "closedWithinDays",
+  "attention",
 ] as const;
 
 /**
- * The two passthrough keys a status the reader picks HAS to clear.
+ * The passthrough keys a status the reader picks HAS to clear.
  *
- * Both are status-shaped: arriving on "Closed this week" and then clicking the
+ * All are status-shaped: arriving on "Closed this week" and then clicking the
  * Slot Pending chip would otherwise ask for slot-pending tickets closed in the
  * last seven days and read empty, with the chip on screen insisting otherwise.
  * `slaState` is not in the list — it is a different axis, and "breaching AND
  * assigned" is a refinement somebody may legitimately want.
  */
-const STATUS_SHAPED = ["open", "closedWithinDays"] as const;
+const STATUS_SHAPED = ["open", "closedWithinDays", "attention"] as const;
 
 /** One query-string key, its serialised value, and whether it is the default. */
 interface Field {

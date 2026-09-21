@@ -820,6 +820,73 @@ def closed_in(cutoff: datetime.datetime | None):
     return or_(confirmed, forced)
 
 
+#: The dashboard's "Needs your attention" cards that no status can name, as the
+#: values `GET /tickets?attention=` takes. Each is the one expression its card
+#: counts with — see the two functions below.
+ATTENTION_FILTERS = ("force-close", "slot-unconfirmed")
+
+
+def awaiting_force_close(now: datetime.datetime):
+    """Tickets only a manager can end now — the "Awaiting force-close" card.
+
+    TWO populations, and the card counts both because `sweeps.sweep_force_close`
+    raises a `force_close` bell for both. A card whose number disagrees with the
+    queue it opens is the single thing that makes a count not worth having.
+
+    Counted by `dashboard_summary` and filtered on by `list_tickets`, so the card
+    and the list it opens hold the same rows. The link used to be
+    `status=Awaiting Customer`, which missed the second population outright and
+    let in every `Awaiting Customer` ticket still inside its window.
+    """
+    return or_(
+        # The work is done and the customer never confirmed it.
+        and_(
+            Ticket.status == "Awaiting Customer",
+            Ticket.customer_confirmed_at.is_(None),
+            _last_event_at("feedback_requested").is_not(None),
+            # Per ticket, out of its own stamped rules — the same shape the
+            # sweep uses, so this matches exactly the rows the sweep will act on
+            # rather than an approximation of them.
+            _last_event_at("feedback_requested")
+            <= now - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
+        ),
+        # The customer never picked a time and the window has shut, so they can
+        # no longer pick one. Nothing they or a technician does moves this ticket
+        # now. Only where a time was still theirs to pick —
+        # `sweeps._sweep_expired_without_slot`'s own predicate.
+        and_(
+            time_is_choosable_clause(),
+            Ticket.slot_start.is_(None),
+            Ticket.sla_due_at < now,
+        ),
+    )
+
+
+def slot_unconfirmed(now: datetime.datetime):
+    """Asked for a time and silent past the window — the "Slot not confirmed" card.
+
+    Keyed on the SLOT, not on `Slot Pending`, and it must match
+    `sweeps.sweep_silent_slots` exactly — the card is supposed to count the rows
+    that sweep will act on. The link used to be `status=Slot Pending`, which is
+    how a full card could open a list the funnel beside it said held nothing.
+
+    The status test used to be the same question. It stopped being one when a
+    job could be accepted before the customer answered: that ticket is
+    `Assigned` with no time, still needs chasing, and would have vanished from
+    the card at the moment it gained a technician waiting to be told where to go.
+
+    But not "anything live" either: a job already STARTED with no time is not
+    waiting on the customer — see `core.slots`.
+    """
+    return and_(
+        time_is_choosable_clause(),
+        Ticket.slot_start.is_(None),
+        _last_event_at("slot_requested").is_not(None),
+        _last_event_at("slot_requested")
+        <= now - _hours(snapshot_int(Ticket.rules_snapshot, "slot_silence_hours")),
+    )
+
+
 async def list_tickets(
     db: AsyncSession,
     principal: Principal,
@@ -835,6 +902,7 @@ async def list_tickets(
     date_to: datetime.date | None = None,
     open_only: bool = False,
     closed_within_days: int | None = None,
+    attention: str | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -875,6 +943,16 @@ async def list_tickets(
         stmt = stmt.where(
             closed_in(_now() - datetime.timedelta(days=closed_within_days))
         )
+
+    # The attention cards' two populations. Neither is a status, which is why
+    # the links that filtered on one opened lists that disagreed with the count.
+    wanted = _canonical(attention, ATTENTION_FILTERS)
+    if wanted is False:
+        return [], 0
+    if wanted == "force-close":
+        stmt = stmt.where(awaiting_force_close(_now()))
+    elif wanted == "slot-unconfirmed":
+        stmt = stmt.where(slot_unconfirmed(_now()))
 
     wanted = _canonical(service_type, SERVICE_TYPES)
     if wanted is False:
@@ -1097,65 +1175,16 @@ async def dashboard_summary(
     counts = await scoped(db, counts, principal)
     row = (await db.execute(counts)).one()
 
-    # TWO populations need a manager to end them by hand, and this tile counts
-    # both because `sweeps.sweep_force_close` raises a `force_close` bell for
-    # both. A card whose number disagrees with the queue it opens is the single
-    # thing that makes a count not worth having.
+    # The two attention cards a status cannot name. Each is the SAME expression
+    # `list_tickets(attention=...)` filters on, so the card and the list it opens
+    # hold the same rows — see the two functions for what each one counts.
     awaiting = mine(
-        select(func.count())
-        .select_from(Ticket)
-        .where(
-            or_(
-                # The work is done and the customer never confirmed it.
-                and_(
-                    Ticket.status == "Awaiting Customer",
-                    Ticket.customer_confirmed_at.is_(None),
-                    _last_event_at("feedback_requested").is_not(None),
-                    # Per ticket, out of its own stamped rules — the same shape
-                    # the sweep uses, so the tile counts exactly the rows the
-                    # sweep will act on rather than an approximation of them.
-                    _last_event_at("feedback_requested")
-                    <= now
-                    - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
-                ),
-                # The customer never picked a time and the window has shut, so
-                # they can no longer pick one. Nothing they or a technician does
-                # moves this ticket now. Only where a time was still theirs to
-                # pick — `sweeps._sweep_expired_without_slot`'s own predicate.
-                and_(
-                    time_is_choosable_clause(),
-                    Ticket.slot_start.is_(None),
-                    Ticket.sla_due_at < now,
-                ),
-            )
-        )
+        select(func.count()).select_from(Ticket).where(awaiting_force_close(now))
     )
     awaiting = await scoped(db, awaiting, principal)
 
     silent = mine(
-        select(func.count())
-        .select_from(Ticket)
-        .where(
-            # Keyed on the SLOT, not on `Slot Pending`, and it must match
-            # `sweeps.sweep_silent_slots` exactly — this tile is supposed to
-            # count the rows that sweep will act on, and the two drifting apart
-            # is a number nobody can reconcile with the queue it opens.
-            #
-            # The status test used to be the same question. It stopped being one
-            # when a job could be accepted before the customer answered: that
-            # ticket is `Assigned` with no time, still needs chasing, and would
-            # have vanished from this tile at the moment it gained a technician
-            # waiting to be told where to go.
-            #
-            # But not "anything live" either: a job already STARTED with no
-            # time is not waiting on the customer — see `core.slots`.
-            time_is_choosable_clause(),
-            Ticket.slot_start.is_(None),
-            _last_event_at("slot_requested").is_not(None),
-            _last_event_at("slot_requested")
-            <= now
-            - _hours(snapshot_int(Ticket.rules_snapshot, "slot_silence_hours")),
-        )
+        select(func.count()).select_from(Ticket).where(slot_unconfirmed(now))
     )
     silent = await scoped(db, silent, principal)
 

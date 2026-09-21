@@ -135,6 +135,7 @@ async def list_tickets(
     dateTo: Annotated[datetime.date | None, Query()] = None,
     open_: Annotated[bool, Query(alias="open")] = False,
     closedWithinDays: Annotated[int | None, Query(ge=1, le=365)] = None,
+    attention: Annotated[str | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """One page of tickets, most urgent first.
 
@@ -148,10 +149,10 @@ async def list_tickets(
     outside the reader's own area — narrows to nothing and returns an empty
     page. It cannot be used to discover that a technician exists.
 
-    ## Three filters exist so the DASHBOARD's tiles can link honestly
+    ## Four filters exist so the DASHBOARD's tiles can link honestly
 
     Every figure on that screen has to open a list holding exactly what it
-    counted, and three of them are populations a single status cannot name:
+    counted, and several of them are populations a single status cannot name:
 
       * `status` takes a comma-separated SET — `Assigned,In Progress` is the
         funnel's middle tile, `Closed,Force-Closed` its last. One value behaves
@@ -161,8 +162,13 @@ async def list_tickets(
       * `closedWithinDays=7` is "closed in the last N days", from
         `service.closed_in()` — the same expression the "Closed this week" tile
         counts, with the window it reports in `funnel.closedWithinDays`.
+      * `attention=force-close` / `attention=slot-unconfirmed` are the two
+        "Needs your attention" cards, from `service.awaiting_force_close()` and
+        `service.slot_unconfirmed()` — the expressions those counts run. They
+        linked to `status=Awaiting Customer` / `status=Slot Pending` before,
+        which opened lists that disagreed with the number on the card.
 
-    None of the three widens anything: they narrow a list that `scoped()` has
+    None of them widens anything: they narrow a list that `scoped()` has
     already cut to the caller's own territory.
     """
     rows, total = await service.list_tickets(
@@ -179,6 +185,7 @@ async def list_tickets(
         date_to=dateTo,
         open_only=open_,
         closed_within_days=closedWithinDays,
+        attention=attention,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
