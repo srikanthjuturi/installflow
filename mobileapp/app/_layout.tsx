@@ -1,4 +1,6 @@
 import '../global.css';
+// Before anything that renders text: i18next initialises on import.
+import '@/i18n';
 
 import {
   Roboto_400Regular,
@@ -19,6 +21,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AnalyticsProvider } from '@/lib/analytics/AnalyticsProvider';
 import { trackScreenView } from '@/lib/analytics/events';
+import { useLanguage } from '@/store/language.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 
@@ -104,6 +107,7 @@ function useAppStateFocus() {
 export default function RootLayout() {
   const [queryClient] = useState(createQueryClient);
   const hydrated = useSession((s) => s.hydrated);
+  const languageReady = useLanguage((s) => s.hydrated);
 
   useAppStateFocus();
   useScreenViewTracking();
@@ -119,7 +123,7 @@ export default function RootLayout() {
     RobotoMono_700Bold,
   });
 
-  const ready = (fontsLoaded || fontError) && hydrated;
+  const ready = (fontsLoaded || fontError) && hydrated && languageReady;
 
   useEffect(() => {
     // Hide the splash on font error too, otherwise a font CDN failure leaves
@@ -130,21 +134,23 @@ export default function RootLayout() {
   }, [ready]);
 
   /**
-   * The splash covers session rehydration as well as fonts.
+   * The splash covers session and language rehydration as well as fonts.
    *
    * SecureStore is async, so on the first frame the token is null whatever the
    * truth is. Rendering the router before it resolves would send a signed-in
    * technician to the login screen and then snap them back — holding the splash
-   * instead is why there is no loading screen in the boot path.
+   * instead is why there is no loading screen in the boot path. The language
+   * waits for the same reason: drawing before it is read would flash English at
+   * somebody who chose Telugu.
    *
    * Traced because a stall here is invisible: the app just sits on the splash
-   * with nothing in the console. `session.store` has a 3s failsafe so this can
-   * never hang forever, but the trace says WHICH half was slow.
+   * with nothing in the console. Both stores have a 3s failsafe so this can
+   * never hang forever, but the trace says WHICH part was slow.
    */
   if (!ready) {
     if (__DEV__) {
       console.log(
-        `[boot] waiting — fonts=${fontsLoaded || !!fontError} session=${hydrated}`,
+        `[boot] waiting — fonts=${fontsLoaded || !!fontError} session=${hydrated} language=${languageReady}`,
       );
     }
     return null;

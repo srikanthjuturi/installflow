@@ -1,0 +1,63 @@
+{
+  "errors": {
+    "tooMany": "Too many attempts. Wait a little and try again.",
+    "code": {
+      "OFFLINE": "Can't reach the server. Check your connection.",
+      "SESSION_ENDED": "Your session has ended. Please sign in again.",
+      "BAD_RESPONSE": "Something went wrong. Try again.",
+      "JOB_ALREADY_TAKEN": "Another technician accepted this job first.",
+      "JOB_ESCALATED": "This job has gone to your Area Service Manager.",
+      "NOT_ACCEPTING_WORK": "You're not accepting work right now — turn availability back on to take jobs.",
+      "NO_WINDOW_LEFT": "You have no free window left inside this job's service level. Finish or free up a day and it will come back.",
+      "DAILY_CAP_REACHED": "You already have your daily limit of jobs on that day. Raise it under Availability & bandwidth.",
+      "NO_TIME_AGREED": "The customer hasn't picked a time yet. You can start this job once they do, or once your manager sets one.",
+      "JOB_NOT_CANCELLABLE": "This job can no longer be cancelled.",
+      "JOB_NOT_RESCHEDULABLE": "This job can't be rescheduled right now. Refresh to see where it is.",
+      "SLOT_NO_LONGER_AVAILABLE": "That time is no longer free — pick another.",
+      "BAD_CODE": "That code didn't match. Request a new one.",
+      "BALANCE_CHANGED": "Your balance has changed. Check the new amount and try again.",
+      "NO_UPI_ID": "Add your UPI ID first.",
+      "NOTHING_TO_REDEEM": "There is nothing to redeem yet.",
+      "REDEMPTION_OPEN": "You already have a redemption open. It has to be paid and confirmed, or declined, before you can ask for another.",
+      "NOT_CLAIMED": "Nobody has marked this as paid yet, so there is nothing to confirm.",
+      "ALREADY_CONFIRMED": "You have already confirmed you received this.",
+      "UPI_ALREADY_SET": "You already have a UPI ID. To change it, send a change request.",
+      "SAME_UPI_ID": "That is already your UPI ID.",
+      "CHANGE_PENDING": "You already have a change waiting. Withdraw it to ask for a different one.",
+      "NO_PENDING_CHANGE": "There is no change waiting — it may already have been decided or withdrawn.",
+      "NO_PHONE": "Your account has no mobile number to send a code to. Ask your manager.",
+      "TECHNICIAN_HAS_OPEN_JOBS": "You still have open jobs. Finish them, or ask your manager to reassign them, first.",
+      "RANGE_TOO_LONG": "Pick a shorter range of dates.",
+      "UPDATE_APP": "Update the app to add or change your UPI ID."
+    }
+  },
+  "server": {
+    "penaltyBand": {
+      "over4h": "> 4h before slot",
+      "from2to4h": "2–4h before slot",
+      "under2h": "< 2h before slot",
+      "noShow": "No-show"
+    },
+    "serviceType": {
+      "installDemo": "Installation + Demo",
+      "techVisit": "Tech Visit",
+      "service": "Service"
+    },
+    "payoutPrefix": {
+      "install": "Install",
+      "techVisit": "Tech Visit",
+      "service": "Service"
+    },
+    "role": {
+      "admin": "Admin",
+      "nationalHead": "National Head",
+      "regionalHead": "Regional Head",
+      "areaManager": "Area Manager"
+    },
+    "ledgerTitle": {
+      "reassignmentBonus": "Reassignment bonus",
+      "noShowPenalty": "No-show penalty",
+      "lateCancellationPenalty": "Late cancellation penalty"
+    }
+  }
+}
