@@ -19,6 +19,30 @@
     "body": "That link doesn't point anywhere in the app.",
     "link": "Go to start"
   },
+  "auth": {
+    "otpInput": {
+      "label": "One-time code"
+    },
+    "login": {
+      "title": "Technician sign-in",
+      "subtitle": "Installation & Demo field partner app.",
+      "mobileNumber": "Mobile number",
+      "sendOtp": "Send OTP",
+      "terms": "By continuing you agree to the partner terms.",
+      "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>. <change>Change</change>",
+      "resend": "Resend code",
+      "resendIn": "Resend code in {{time}}",
+      "verify": "Verify & continue",
+      "errors": {
+        "sendFailed": "Could not send a code. Try again.",
+        "verifyFailed": "That did not work. Try again.",
+        "notTechnician": "This number is not set up as a technician yet.",
+        "noAccount": "No technician account for this number — ask your manager for an invite.",
+        "disabled": "This account is disabled.",
+        "wrongCode": "That code didn't match. Request a new one."
+      }
+    }
+  },
   "components": {
     "errorState": {
       "title": "Something went wrong",

@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { BackHandler, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,6 +9,7 @@ import { BrandMark, Button, Text } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import { requestOtp, verifyOtp } from '@/features/auth/api/session';
+import { errorText } from '@/i18n/errorText';
 import { ApiError } from '@/lib/api';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
@@ -16,6 +18,21 @@ const OTP_LENGTH = 6;
 const PHONE_LENGTH = 10;
 
 type Step = 'phone' | 'otp';
+
+/**
+ * What failed, kept as the failure itself rather than its sentence: `errorText`
+ * words it at render, so switching language here rewords an error that is
+ * already showing — which is exactly when somebody who cannot read the English
+ * one reaches for the language button.
+ */
+interface Failure {
+  error: unknown;
+  /** What to say when the failure names nothing more specific. */
+  fallback:
+    | 'auth.login.errors.sendFailed'
+    | 'auth.login.errors.verifyFailed'
+    | 'auth.login.errors.notTechnician';
+}
 
 /**
  * Screen 1 — sign-in.
@@ -30,6 +47,7 @@ type Step = 'phone' | 'otp';
 export function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const signIn = useSession((s) => s.signIn);
 
@@ -37,17 +55,17 @@ export function LoginScreen() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
 
   const send = async () => {
     setBusy(true);
-    setError(null);
+    setFailure(null);
     try {
       await requestOtp('+91' + phone);
       setCode('');
       setStep('otp');
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not send a code. Try again.');
+      setFailure({ error: e, fallback: 'auth.login.errors.sendFailed' });
     } finally {
       setBusy(false);
     }
@@ -66,7 +84,7 @@ export function LoginScreen() {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (step === 'otp') {
         setStep('phone');
-        setError(null);
+        setFailure(null);
         return true;
       }
       BackHandler.exitApp();
@@ -77,14 +95,14 @@ export function LoginScreen() {
 
   const verify = async () => {
     setBusy(true);
-    setError(null);
+    setFailure(null);
     try {
       const result = await verifyOtp('+91' + phone, code);
       if (!result.technicianProfile) {
         // A real account, but not a technician one — or one whose onboarding
         // never completed. Signing them in would land them on a Home screen
         // with nothing behind it.
-        setError('This number is not set up as a technician yet.');
+        setFailure({ error: null, fallback: 'auth.login.errors.notTechnician' });
         return;
       }
       signIn({
@@ -94,11 +112,24 @@ export function LoginScreen() {
       });
       router.replace('/(app)/(tabs)');
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'That did not work. Try again.');
+      setFailure({ error: e, fallback: 'auth.login.errors.verifyFailed' });
     } finally {
       setBusy(false);
     }
   };
+
+  // Sign-in's errors carry no code, but here each status means one thing: a
+  // 401 is a wrong or used-up code, a 403 a disabled account, a 404 a number
+  // with no technician behind it. A 429 is `errorText`'s own "too many".
+  const error = !failure
+    ? null
+    : failure.error instanceof ApiError
+      ? errorText(failure.error, t(failure.fallback), {
+          401: t('auth.login.errors.wrongCode'),
+          403: t('auth.login.errors.disabled'),
+          404: t('auth.login.errors.noAccount'),
+        })
+      : t(failure.fallback);
 
   return (
     <View
@@ -124,7 +155,7 @@ export function LoginScreen() {
             marginTop: 22,
           }}
         >
-          Technician sign-in
+          {t('auth.login.title')}
         </Text>
         <Text
           style={{
@@ -135,7 +166,7 @@ export function LoginScreen() {
             marginTop: 7,
           }}
         >
-          Installation &amp; Demo field partner app.
+          {t('auth.login.subtitle')}
         </Text>
 
         {step === 'phone' ? (
@@ -143,7 +174,7 @@ export function LoginScreen() {
             phone={phone}
             setPhone={(v) => {
               setPhone(v);
-              setError(null);
+              setFailure(null);
             }}
             onNext={send}
             busy={busy}
@@ -155,11 +186,11 @@ export function LoginScreen() {
             code={code}
             setCode={(v) => {
               setCode(v);
-              setError(null);
+              setFailure(null);
             }}
             onBack={() => {
               setStep('phone');
-              setError(null);
+              setFailure(null);
             }}
             onVerify={verify}
             onResend={send}
@@ -181,6 +212,7 @@ interface PhoneStepProps {
 }
 
 function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
+  const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
   // A bare TextInput rather than `Input`, so it reports focus to the flow
   // itself — see KeyboardFlow.
@@ -197,7 +229,7 @@ function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
           marginTop: 34,
         }}
       >
-        Mobile number
+        {t('auth.login.mobileNumber')}
       </Text>
 
       <View
@@ -250,7 +282,12 @@ function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
 
       <View style={{ flex: 1 }} />
 
-      <Button label="Send OTP" onPress={onNext} disabled={!valid || busy} loading={busy} />
+      <Button
+        label={t('auth.login.sendOtp')}
+        onPress={onNext}
+        disabled={!valid || busy}
+        loading={busy}
+      />
 
       <Text
         style={{
@@ -261,7 +298,7 @@ function PhoneStep({ phone, setPhone, onNext, busy, error }: PhoneStepProps) {
           marginTop: 12,
         }}
       >
-        By continuing you agree to the partner terms.
+        {t('auth.login.terms')}
       </Text>
     </>
   );
@@ -288,6 +325,7 @@ function OtpStep({
   busy,
   error,
 }: OtpStepProps) {
+  const { t } = useTranslation();
   // Hook lives here rather than in LoginScreen so the countdown starts when the
   // OTP step mounts, not when the screen first renders. 30s matches the
   // server's resend throttle — a shorter timer would only earn a 429.
@@ -307,14 +345,19 @@ function OtpStep({
           marginTop: 34,
         }}
       >
-        Enter the 6-digit code sent to{' '}
-        <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>{pretty}</Text>.{' '}
-        <Text
-          onPress={onBack}
-          style={{ fontFamily: 'Roboto_700Bold', color: color.textLink }}
-        >
-          Change
-        </Text>
+        <Trans
+          i18nKey="auth.login.codeSentTo"
+          values={{ phone: pretty }}
+          components={{
+            bold: <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }} />,
+            change: (
+              <Text
+                onPress={onBack}
+                style={{ fontFamily: 'Roboto_700Bold', color: color.textLink }}
+              />
+            ),
+          }}
+        />
       </Text>
 
       <View style={{ marginTop: 20 }}>
@@ -337,7 +380,7 @@ function OtpStep({
           marginTop: 16,
         }}
       >
-        {canResend ? 'Resend code' : `Resend code in ${label}`}
+        {canResend ? t('auth.login.resend') : t('auth.login.resendIn', { time: label })}
       </Text>
 
       {error ? <FormError message={error} /> : null}
@@ -345,7 +388,7 @@ function OtpStep({
       <View style={{ flex: 1 }} />
 
       <Button
-        label="Verify & continue"
+        label={t('auth.login.verify')}
         onPress={onVerify}
         disabled={!valid || busy}
         loading={busy}
