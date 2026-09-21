@@ -3,3 +3,9 @@
 # dependency. This installs into deck/.venv instead.
 python-pptx==1.0.2
 Pillow==11.3.0
+# `build/build_document.py` does `from docx import Document`. It was missing
+# here, and the failure was quiet in the worst way: on a clean checkout
+# `build_deck.py` succeeds and rebuilds both .pptx files, then the document dies
+# on the import — so `dist/` ends up holding two fresh decks beside a .docx and
+# .pdf from whenever the last machine that happened to have it ran the build.
+python-docx==1.2.0

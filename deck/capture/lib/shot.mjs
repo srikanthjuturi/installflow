@@ -65,14 +65,33 @@ export async function createRecorder() {
     },
 
     /**
-     * Merge into the existing manifest rather than replace it.
+     * Merge into the existing manifest rather than replace it — but only where
+     * this run has nothing to say.
      *
      * `--only=console` must not throw away the prototype's shots, and the file
      * order is what gives each catalogue section its within-section running
      * order — so entries keep their place and are updated where they were,
      * with anything new appended.
+     *
+     * ## Why `authoritative` exists
+     *
+     * A pure merge is how a rebuild quietly produces a WORSE deck than the one
+     * it replaces. Nothing was ever removed, so a shot that a target stopped
+     * taking — renamed, dropped, or lost to a crash halfway through — kept its
+     * September entry and its September PNG, and `build_deck.py` went on
+     * placing it beside today's. A deck mixing two capture runs looks entirely
+     * fine and is wrong in the one way nobody checks.
+     *
+     * So a target that ran to completion is AUTHORITATIVE for its own id
+     * prefixes: whatever it did not re-shoot this time is removed, manifest
+     * entry and PNG together. A target that FAILED claims nothing — its old
+     * shots survive untouched, which is what keeps one broken surface from
+     * emptying three-quarters of the deck.
+     *
+     * @param {{authoritative?: string[]}} [opts] id prefixes owned by targets
+     *        that completed without throwing.
      */
-    async write() {
+    async write({ authoritative = [] } = {}) {
       let previous = [];
       try {
         previous = JSON.parse(await readFile(SHOTS_JSON, 'utf8'));
@@ -81,17 +100,47 @@ export async function createRecorder() {
       }
 
       const fresh = new Map(shots.map((shot) => [shot.id, shot]));
-      const merged = previous.map((old) => fresh.get(old.id) ?? old);
+      const owned = (id) => authoritative.some((prefix) => id.startsWith(prefix));
+
+      const dropped = previous.filter((old) => !fresh.has(old.id) && owned(old.id));
+      const surviving = previous.filter((old) => fresh.has(old.id) || !owned(old.id));
+
+      const merged = surviving.map((old) => fresh.get(old.id) ?? old);
       const kept = new Set(merged.map((shot) => shot.id));
       for (const shot of shots) if (!kept.has(shot.id)) merged.push(shot);
 
+      // The PNG goes with the entry. Leaving it behind is how `out/png` grows a
+      // tail of files nothing references and everything still looks tidy.
+      for (const shot of dropped) {
+        await rm(path.join(DECK_ROOT, shot.file), { force: true });
+      }
+
       await writeFile(SHOTS_JSON, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
-      return { total: merged.length, written: shots.length };
+      return {
+        total: merged.length,
+        written: shots.length,
+        dropped: dropped.map((shot) => shot.id),
+      };
     },
   };
 }
 
-/** Wipe previous output for a target so a removed shot cannot linger in the deck. */
-export async function clearTarget(prefix) {
-  await rm(path.join(PNG_DIR, prefix), { recursive: true, force: true });
-}
+/**
+ * Which id prefixes each capture target owns.
+ *
+ * `recorder.write()` uses this to prune: a target that completed is
+ * authoritative for its prefixes. It lives here rather than in `run.mjs`
+ * because it is a fact about the ids `record()` writes, and the two would
+ * drift if they sat in different files.
+ *
+ * Note `console` owns two. The vendor portal is captured in `console.mjs` —
+ * same browser context, same sign-in machinery — so it is not a target of its
+ * own, but its shots are `portal-*`.
+ */
+export const TARGET_PREFIXES = {
+  prototype: ['proto-'],
+  console: ['console-', 'portal-'],
+  mobile: ['app-'],
+  customer: ['customer-'],
+  superadmin: ['super-'],
+};

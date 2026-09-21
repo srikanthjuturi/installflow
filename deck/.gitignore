@@ -10,6 +10,7 @@ seed/credentials.json
 # pipeline to regenerate them; a 100 MB folder of PNGs in git helps nobody.
 out/
 dist/
+dist-backup-*/
 
 node_modules/
 .venv/
