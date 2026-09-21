@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Pill } from '@/components/ui';
+import { Pill, Text } from '@/components/ui';
 import type { Redemption } from '@/features/redeem/api/redeem';
 import { STATE_PILL, dayLabel } from '@/features/redeem/format';
 import { useRedemptions } from '@/features/redeem/hooks/useRedeem';

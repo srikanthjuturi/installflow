@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Button, Sheet } from '@/components/ui';
+import { Button, Sheet, Text } from '@/components/ui';
 import { useAvatarPicker } from '@/features/profile/hooks/useAvatarPicker';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';

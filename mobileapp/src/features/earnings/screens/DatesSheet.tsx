@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
-import { Button, Sheet } from '@/components/ui';
+import { Button, Sheet, Text } from '@/components/ui';
 import {
   RangeCalendar,
   type Selection,

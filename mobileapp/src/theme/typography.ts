@@ -35,3 +35,12 @@ export const text = {
 } as const;
 
 export type TextStyleName = keyof typeof text;
+
+/**
+ * The smallest line height, as a multiple of font size, that Hindi, Telugu,
+ * Kannada and Tamil text gets — see `components/ui/Text`. Their vowel signs
+ * sit above and below the letter, and the Latin ratios above (19/13, 21/15)
+ * clip them. A starting value: tune it on a real phone, Telugu and Kannada
+ * first, because they stack the tallest.
+ */
+export const INDIC_MIN_LINE_HEIGHT = 1.5;

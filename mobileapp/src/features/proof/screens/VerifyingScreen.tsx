@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,6 +11,7 @@ import Animated, {
 
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
+import { Text } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useSubmitProof, useVerification } from '@/features/proof/hooks/useVerification';
 import { color } from '@/theme/semantic';

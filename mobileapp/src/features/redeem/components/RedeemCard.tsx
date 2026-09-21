@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import type { Redeemable } from '@/features/redeem/api/redeem';
 import { useRedeemable } from '@/features/redeem/hooks/useRedeem';
 import { color } from '@/theme/semantic';

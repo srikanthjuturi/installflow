@@ -1,8 +1,9 @@
 import { Image } from 'expo-image';
 import { useState, type ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui/Text';
 import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 

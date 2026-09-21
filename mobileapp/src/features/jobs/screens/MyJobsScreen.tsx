@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TabHeader } from '@/components/layout';
-import { SegmentedControl } from '@/components/ui';
+import { SegmentedControl, Text } from '@/components/ui';
 import { MyJobCard } from '@/features/jobs/components/MyJobCard';
 import { useMyJobs } from '@/features/jobs/hooks/useJobs';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';

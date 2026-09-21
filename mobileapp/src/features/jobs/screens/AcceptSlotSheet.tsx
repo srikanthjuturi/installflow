@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Button, Sheet } from '@/components/ui';
+import { Button, Sheet, Text } from '@/components/ui';
 import { isJobRefused, isJobTaken } from '@/features/jobs/api/accept';
 import { useAcceptJob } from '@/features/jobs/hooks/useAcceptJob';
 import { useOffer } from '@/features/jobs/hooks/useJobs';

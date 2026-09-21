@@ -1,5 +1,6 @@
-import { Pressable, ScrollView, Text } from 'react-native';
+import { Pressable, ScrollView } from 'react-native';
 
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 import { palette } from '@/theme/tokens';

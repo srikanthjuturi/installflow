@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { FilterChips, type FilterChipOption } from '@/components/ui';
+import { FilterChips, type FilterChipOption, Text } from '@/components/ui';
 import { useAcceptingWork } from '@/features/availability/hooks/useAvailability';
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';

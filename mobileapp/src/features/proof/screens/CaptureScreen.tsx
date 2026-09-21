@@ -7,7 +7,7 @@ import {
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, Linking, Pressable, Text, TextInput, View } from 'react-native';
+import { Keyboard, Linking, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Image } from 'expo-image';
@@ -15,7 +15,7 @@ import { Image } from 'expo-image';
 import { Icon } from '@/components/icons/Icon';
 import { isTooFar, metresBetween, metresLabel } from '@/lib/coordinates';
 import { ScreenStatusBar, useKeyboardHeight } from '@/components/layout';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { CaptureOverlay } from '@/features/proof/components/CaptureOverlay';
 import { ShotPreview } from '@/features/proof/components/ShotPreview';

@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
-import { Avatar, Button, Input, StepDots } from '@/components/ui';
+import { Avatar, Button, Input, StepDots, Text } from '@/components/ui';
 import {
   REGISTRATION_STEP_COUNT,
   stepNumber,

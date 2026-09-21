@@ -6,11 +6,11 @@ import {
 } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import { parseUpiQr, type ScannedUpi } from '@/features/payout/lib/parseUpiQr';
 import { color } from '@/theme/semantic';
 

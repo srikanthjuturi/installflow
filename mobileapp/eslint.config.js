@@ -32,6 +32,27 @@ module.exports = [
             'No raw colour functions outside src/theme. Import `color` from @/theme/semantic.',
         },
       ],
+      // Every screen draws text through ui/Text, which gives Hindi, Telugu,
+      // Kannada and Tamil the line height they need. React Native's own Text
+      // would skip that, and nothing on an English screen would show it.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react-native',
+              importNames: ['Text'],
+              message:
+                'Import Text from @/components/ui — it adjusts Indian scripts. See src/components/ui/Text.tsx.',
+            },
+          ],
+        },
+      ],
     },
+  },
+  {
+    // The one place that wraps React Native's Text.
+    files: ['src/components/ui/Text.tsx'],
+    rules: { 'no-restricted-imports': 'off' },
   },
 ];

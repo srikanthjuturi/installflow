@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, View, useWindowDimensions } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { MAX_RANGE_DAYS } from '@/types/domain';
 import {

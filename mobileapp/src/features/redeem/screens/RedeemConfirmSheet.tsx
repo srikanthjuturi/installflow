@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { Button, Sheet } from '@/components/ui';
+import { Button, Sheet, Text } from '@/components/ui';
 import { isRedeemRefused } from '@/features/redeem/api/redeem';
 import { useRedeemable, useRequestRedemption } from '@/features/redeem/hooks/useRedeem';
 import { color } from '@/theme/semantic';

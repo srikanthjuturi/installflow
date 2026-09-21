@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Switch } from '@/components/ui';
+import { Switch, Text } from '@/components/ui';
 import {
   useDailyJobCap,
   useJobsToday,

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
+import { TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
 import { useKeyboardReveal } from '@/components/layout/keyboardReveal';
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 

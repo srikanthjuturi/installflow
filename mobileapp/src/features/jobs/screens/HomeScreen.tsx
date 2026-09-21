@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
-import { Avatar } from '@/components/ui';
+import { Avatar, Text } from '@/components/ui';
 import {
   useAcceptingWork,
   useSetAcceptingWork,

@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
-import { Button, StepDots } from '@/components/ui';
+import { Button, StepDots, Text } from '@/components/ui';
 import { CategoryTile } from '@/features/onboarding/components/CategoryTile';
 import {
   REGISTRATION_STEP_COUNT,

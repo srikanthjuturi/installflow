@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
-import { Button, Pill } from '@/components/ui';
+import { Button, Pill, Text } from '@/components/ui';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';

@@ -1,7 +1,8 @@
 import { useRef } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 
 import { useKeyboardReveal } from '@/components/layout';
+import { Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 

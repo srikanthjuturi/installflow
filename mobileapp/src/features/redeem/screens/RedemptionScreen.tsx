@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Button, DetailRow, Pill, QrCode } from '@/components/ui';
+import { Button, DetailRow, Pill, QrCode, Text } from '@/components/ui';
 import type { RedemptionDetail, RedemptionEvent } from '@/features/redeem/api/redeem';
 import { STATE_PILL, momentLabel } from '@/features/redeem/format';
 import {

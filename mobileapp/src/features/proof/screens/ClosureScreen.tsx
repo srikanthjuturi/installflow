@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCaptureStore } from '@/store/capture.store';
 import { color } from '@/theme/semantic';

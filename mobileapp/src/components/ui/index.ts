@@ -17,3 +17,4 @@ export { Sheet, type SheetProps } from './Sheet';
 export { StatusBadge, type StatusBadgeProps } from './StatusBadge';
 export { StepDots, type StepDotsProps } from './StepDots';
 export { Switch, type SwitchProps } from './Switch';
+export { Text, type TextProps } from './Text';

@@ -1,5 +1,6 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 import type { JobStatus } from '@/types/domain';

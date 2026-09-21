@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import {
@@ -8,7 +8,7 @@ import {
   TitleBar,
   useKeyboardVisible,
 } from '@/components/layout';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, Text } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import type { PayoutAccount } from '@/features/payout/api/payout';

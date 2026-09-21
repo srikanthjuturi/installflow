@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
-import { BrandMark, Button, StepDots } from '@/components/ui';
+import { BrandMark, Button, StepDots, Text } from '@/components/ui';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';

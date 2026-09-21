@@ -1,7 +1,7 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { Card, StatusBadge } from '@/components/ui';
+import { Card, StatusBadge, Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 import type { Job } from '@/types/domain';

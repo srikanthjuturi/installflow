@@ -3,13 +3,14 @@ import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
+import { Text } from '@/components/ui';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { getAccessToken } from '@/store/session.store';
 import type { ImageSource } from '@/lib/images';
