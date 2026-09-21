@@ -1,7 +1,10 @@
+import { Link, useNavigate } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { useFeatureAccess } from "@/hooks/useAuth";
+import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import type { Technician } from "@/types/technician";
 
 interface CandidateTechTableProps {
@@ -15,6 +18,9 @@ interface CandidateTechTableProps {
   isAssigning?: boolean;
   /** Already on the ticket — offered as a re-assignment target would be odd. */
   currentTechnicianId?: string | null;
+  /** How the assign page was itself reached, forwarded so a profile opened
+   *  from here comes back to it and it still knows its own way back. */
+  backState?: NavOrigin;
 }
 
 /** Enough to recognise the coverage without a cell that wraps to five lines. */
@@ -42,7 +48,15 @@ export function CandidateTechTable({
   assigningId,
   isAssigning = false,
   currentTechnicianId,
+  backState,
 }: CandidateTechTableProps) {
+  const navigate = useNavigate();
+  const origin = useNavOrigin("Back to assignment", backState);
+  // The profile route is behind `technicians.view`, and assigning is not. Every
+  // default role holding one holds the other, but a company can take it away —
+  // and a row that opens onto a refusal is worse than a row that opens nothing.
+  const canOpenProfile = useFeatureAccess().has("technicians.view");
+
   const columns: Column<Technician>[] = [
     {
       id: "name",
@@ -56,7 +70,20 @@ export function CandidateTechTable({
             className="size-8 text-xs"
           />
           <span>
-            <span className="block font-medium">{t.name}</span>
+            {/* A real link so the profile is keyboard reachable and opens in
+                a new tab — the row click is a convenience on top. */}
+            {canOpenProfile ? (
+              <Link
+                to={`/technicians/${t.id}`}
+                state={origin}
+                onClick={(e) => e.stopPropagation()}
+                className="block font-medium hover:text-brand-400"
+              >
+                {t.name}
+              </Link>
+            ) : (
+              <span className="block font-medium">{t.name}</span>
+            )}
             <span className="block text-xs text-ink-3">{t.phone}</span>
           </span>
         </div>
@@ -128,15 +155,22 @@ export function CandidateTechTable({
         t.id === currentTechnicianId ? (
           <span className="text-xs text-ink-3">Currently assigned</span>
         ) : (
-          <Button
-            size="sm"
-            aria-label={`Assign ${t.name}`}
-            disabled={isAssigning}
-            onClick={() => onAssign(t)}
-          >
-            {assigningId === t.id ? <Spinner data-icon="inline-start" /> : null}
-            Assign
-          </Button>
+          /* The row opens the profile, so the button's click stops here —
+             including one on a DISABLED button while another assignment is
+             in flight, which would otherwise fall through to the row. */
+          <div onClick={(e) => e.stopPropagation()}>
+            <Button
+              size="sm"
+              aria-label={`Assign ${t.name}`}
+              disabled={isAssigning}
+              onClick={() => onAssign(t)}
+            >
+              {assigningId === t.id ? (
+                <Spinner data-icon="inline-start" />
+              ) : null}
+              Assign
+            </Button>
+          </div>
         ),
     },
   ];
@@ -151,6 +185,11 @@ export function CandidateTechTable({
       isLoading={isLoading}
       error={error}
       onRetry={onRetry}
+      onRowClick={
+        canOpenProfile
+          ? (t) => navigate(`/technicians/${t.id}`, { state: origin })
+          : undefined
+      }
       search={{
         placeholder: "Search by name or pincode…",
         fn: (t, q) =>

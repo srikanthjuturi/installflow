@@ -158,6 +158,10 @@ export default function AssignTechnicianPage() {
                 assigningId={pending}
                 isAssigning={assign.isPending}
                 currentTechnicianId={ticket?.technicianId}
+                // Forwarded so queue → ticket → assign → profile walks back
+                // the same way: the profile returns here, and this page still
+                // returns to wherever it was opened from.
+                backState={origin}
               />
             </div>
           </CardContent>
