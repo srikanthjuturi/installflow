@@ -1,4 +1,35 @@
 {
+  "dates": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "am": "AM",
+    "pm": "PM",
+    "time": "{{hour}}:{{minute}} {{period}}",
+    "hour": "{{hour}} {{period}}",
+    "hourRange": "{{from}}–{{to}} {{period}}",
+    "dayMonth": "{{day}} {{month}}",
+    "dayMonthYear": "{{day}} {{month}} {{year}}",
+    "weekdayDayMonth": "{{weekday}}, {{day}} {{month}}",
+    "monthYear": "{{month}} {{year}}",
+    "monthsShort": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "monthsLong": [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ],
+    "weekdaysShort": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "weekdaysLong": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    "weekdayInitials": ["M", "T", "W", "T", "F", "S", "S"]
+  },
   "errors": {
     "tooMany": "Too many attempts. Wait a little and try again.",
     "code": {

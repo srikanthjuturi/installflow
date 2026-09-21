@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { Button, Sheet, Text } from '@/components/ui';
 import { isJobRefused, isJobTaken } from '@/features/jobs/api/accept';
+import { jobSlot } from '@/features/jobs/format';
 import { useAcceptJob } from '@/features/jobs/hooks/useAcceptJob';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
@@ -137,7 +138,7 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
           <>
             The customer already confirmed{' '}
             <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
-              {job?.slot ?? 'this slot'}
+              {job ? jobSlot(job) : 'this slot'}
             </Text>
             . Accepting locks you to that time — cancelling later carries a penalty.
           </>

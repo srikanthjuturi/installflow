@@ -27,7 +27,14 @@ import {
   type Transaction,
   type TransactionKind,
 } from '@/types/domain';
-import { formatRange, spanDays } from '@/utils/date';
+import {
+  formatRange,
+  longDayLabel,
+  monthYearLabel,
+  relativeDayLabel,
+  spanDays,
+  weekSpanLabel,
+} from '@/utils/date';
 import { formatPaise, formatSignedPaise } from '@/utils/money';
 
 /** What each span is called on the control, and under the title. */
@@ -85,22 +92,9 @@ function windowCaption(
   // bounds here to compare would be the duplicated calendar logic this whole
   // file exists to avoid.
   const period = shown.period;
-  if (period === 'day') {
-    return `${PERIOD_LABEL[period]} · ${now.toLocaleDateString('en-IN', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'short',
-      timeZone: 'Asia/Kolkata',
-    })}`;
-  }
-  if (period === 'month') {
-    return `${PERIOD_LABEL[period]} · ${now.toLocaleDateString('en-IN', {
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'Asia/Kolkata',
-    })}`;
-  }
-  return `${PERIOD_LABEL[period]} · Mon–Sun`;
+  if (period === 'day') return `${PERIOD_LABEL[period]} · ${longDayLabel(now.toISOString())}`;
+  if (period === 'month') return `${PERIOD_LABEL[period]} · ${monthYearLabel(now.toISOString())}`;
+  return `${PERIOD_LABEL[period]} · ${weekSpanLabel()}`;
 }
 
 /** Each ledger kind gets its own icon and tint — a penalty must never skim as a payout. */
@@ -404,6 +398,9 @@ function LedgerRow({
   onOpen?: () => void;
 }) {
   const style = KIND_STYLE[txn.kind];
+  // "Today · RGT-INST-0012", the way the server words it, but in the app's
+  // language: the day is built here rather than taken from its English.
+  const subtitle = `${relativeDayLabel(txn.at)} · ${txn.ticketCode}`;
 
   const body = (pressed: boolean) => (
     <View
@@ -449,7 +446,7 @@ function LedgerRow({
             color: color.textMuted,
           }}
         >
-          {txn.subtitle}
+          {subtitle}
         </Text>
       </View>
 
@@ -474,7 +471,7 @@ function LedgerRow({
       // The amount is read out too. A screen reader user pressing a row is
       // choosing between amounts as much as between job codes, and the visible
       // line already says all three.
-      accessibilityLabel={`${txn.title}. ${txn.subtitle}. ${formatSignedPaise(
+      accessibilityLabel={`${txn.title}. ${subtitle}. ${formatSignedPaise(
         txn.amountPaise,
       )}`}
       accessibilityHint="Opens this job"

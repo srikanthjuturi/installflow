@@ -4,11 +4,18 @@ import { useEffect, useState } from 'react';
 const AFTERNOON_FROM = 12;
 const EVENING_FROM = 17;
 
-export function greetingFor(now: Date): string {
+/**
+ * Which part of the day it is. A period, not the greeting's words: the screen
+ * words it at render, so a change of language rewords it without waiting for
+ * the next boundary.
+ */
+export type DayPeriod = 'morning' | 'afternoon' | 'evening';
+
+export function dayPeriodAt(now: Date): DayPeriod {
   const hour = now.getHours();
-  if (hour < AFTERNOON_FROM) return 'Good morning';
-  if (hour < EVENING_FROM) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < AFTERNOON_FROM) return 'morning';
+  if (hour < EVENING_FROM) return 'afternoon';
+  return 'evening';
 }
 
 /** Milliseconds until the greeting would next change. */
@@ -26,7 +33,8 @@ function msUntilNextChange(now: Date): number {
 }
 
 /**
- * The greeting, correct for the time of day and kept that way.
+ * The part of the day, correct for the time and kept that way — what the Home
+ * greeting is chosen by.
  *
  * The screen used to say "Good morning" at every hour. A technician doing an
  * evening install reads that as an app that is not paying attention — small,
@@ -36,18 +44,18 @@ function msUntilNextChange(now: Date): number {
  * because this app is left open all day in the field: a one-minute timer would
  * wake the JS thread ~600 times a shift to change a string three times.
  */
-export function useGreeting(): string {
-  const [greeting, setGreeting] = useState(() => greetingFor(new Date()));
+export function useGreeting(): DayPeriod {
+  const [period, setPeriod] = useState(() => dayPeriodAt(new Date()));
 
   useEffect(() => {
     const timer = setTimeout(
-      () => setGreeting(greetingFor(new Date())),
+      () => setPeriod(dayPeriodAt(new Date())),
       // A second past the boundary, so the clock has definitely ticked over.
       msUntilNextChange(new Date()) + 1_000,
     );
     return () => clearTimeout(timer);
     // Re-runs after each change, which schedules the following boundary.
-  }, [greeting]);
+  }, [period]);
 
-  return greeting;
+  return period;
 }

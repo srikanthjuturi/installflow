@@ -6,11 +6,13 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
 import { Button, Text } from '@/components/ui';
+import { jobSla, jobSlot } from '@/features/jobs/format';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCompleteJob } from '@/features/proof/hooks/useProof';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import type { Job } from '@/types/domain';
+import { momentLabel } from '@/utils/date';
 import { formatPaise } from '@/utils/money';
 
 export interface JobDetailScreenProps {
@@ -161,8 +163,8 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                   that has none — the technician is committed to the JOB and is
                   waiting on the customer. Second string not yet approved. */}
               {job.hoursToSlot === null
-                ? `Accepted · ${job.slot}`
-                : `Committed · ${job.slot}`}
+                ? `Accepted · ${jobSlot(job)}`
+                : `Committed · ${jobSlot(job)}`}
             </Text>
           </View>
         ) : null}
@@ -341,7 +343,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
             </Card>
 
             <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
-              <StatTile label="SLA type" value={job.sla} />
+              <StatTile label="SLA type" value={jobSla(job)} />
               <StatTile label="Payout" value={formatPaise(job.payoutPaise)} />
             </View>
 
@@ -632,27 +634,6 @@ function StatTile({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * "27 Aug, 10:41 AM" — short, because the job's own slot is the date that
- * matters here; this is only how long they took to answer.
- *
- * Pinned to IST like every other time in the app. The device's own zone would
- * be right for a technician standing in India and wrong for anybody testing
- * from anywhere else, which is the worst combination: it looks correct.
- */
-function answeredAt(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Kolkata',
-  });
-}
-
-/**
  * Five stars filled to the rating.
  *
  * Characters, not icons: this app's icon set is stroked at 1.8 and a rating
@@ -702,7 +683,10 @@ function CustomerVerdict({ job }: { job: Job }) {
   const refused = job.customerRefused === true;
   const rating = job.customerRating;
   const words = job.customerFeedback?.trim();
-  const when = answeredAt(job.customerConfirmedAt);
+  // "27 Aug, 10:41 AM" — short, because the job's own slot is the date that
+  // matters here; this is only how long they took to answer. In IST, like
+  // every other time in the app.
+  const when = momentLabel(job.customerConfirmedAt);
   const who = job.customer ?? job.maskedCustomer;
 
   return (

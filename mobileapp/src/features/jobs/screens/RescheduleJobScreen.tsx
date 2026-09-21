@@ -9,6 +9,7 @@ import { Button, Text } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import { isRescheduleRefused, type SlotOption } from '@/features/jobs/api/reschedule';
+import { jobSlot } from '@/features/jobs/format';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import {
   useRescheduleJob,
@@ -17,6 +18,7 @@ import {
 } from '@/features/jobs/hooks/useReschedule';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
+import { dayHeading, istDay, timeRangeLabel } from '@/utils/date';
 
 export interface RescheduleJobScreenProps {
   jobId: string;
@@ -89,14 +91,16 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
   const [everSent, setEverSent] = useState(false);
   const cooling = everSent && !timer.canResend;
 
-  // Grouped by day, in the order the server sent them — soonest first, which is
-  // already the order somebody reads a day plan in.
+  // Grouped by IST day, in the order the server sent them — soonest first,
+  // which is already the order somebody reads a day plan in. The heading is
+  // worded at render from the group's first window, never stored here.
   const days = useMemo(() => {
-    const out: { day: string; options: SlotOption[] }[] = [];
+    const out: { day: string; firstIso: string; options: SlotOption[] }[] = [];
     for (const option of slots ?? []) {
+      const day = istDay(option.startIso);
       const last = out[out.length - 1];
-      if (last && last.day === option.day) last.options.push(option);
-      else out.push({ day: option.day, options: [option] });
+      if (last && last.day === day) last.options.push(option);
+      else out.push({ day, firstIso: option.startIso, options: [option] });
     }
     return out;
   }, [slots]);
@@ -229,7 +233,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                     marginTop: 3,
                   }}
                 >
-                  {job?.slot ?? '—'}
+                  {job ? jobSlot(job) : '—'}
                 </Text>
               </View>
 
@@ -272,7 +276,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                         marginTop: 4,
                       }}
                     >
-                      {group.day.toUpperCase()}
+                      {dayHeading(group.firstIso).toUpperCase()}
                     </Text>
 
                     {group.options.map((option) => {
@@ -347,7 +351,7 @@ export function RescheduleJobScreen({ jobId }: RescheduleJobScreenProps) {
                                 color: color.textPrimary,
                               }}
                             >
-                              {option.time}
+                              {timeRangeLabel(option.startIso, option.endIso)}
                             </Text>
                           </View>
                         </Pressable>

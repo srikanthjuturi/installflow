@@ -1,4 +1,3 @@
-import { dayHeading, timeLabel } from '@/features/jobs/api/jobs';
 import { toAcceptedJob, type JobDto } from '@/features/jobs/api/jobs';
 import { ApiError, authedRequest } from '@/lib/api';
 import type { Job } from '@/types/domain';
@@ -32,21 +31,18 @@ interface SlotOptionDto {
   slotEnd: string;
 }
 
+/**
+ * A window, as instants. The words for it (`Today`, `2:00 PM–4:00 PM`) are
+ * made by the screen while it renders, so a language switch rewords them.
+ */
 export interface SlotOption {
   /** The ISO instant to post back. The server re-derives it either way. */
   startIso: string;
-  /** `Today` or `Wed 9 Sep` — what the list groups under. */
-  day: string;
-  /** `2:00 PM–4:00 PM`. */
-  time: string;
+  endIso: string;
 }
 
 function toOption(dto: SlotOptionDto): SlotOption {
-  return {
-    startIso: dto.slotStart,
-    day: dayHeading(dto.slotStart),
-    time: `${timeLabel(dto.slotStart)}–${timeLabel(dto.slotEnd)}`,
-  };
+  return { startIso: dto.slotStart, endIso: dto.slotEnd };
 }
 
 /**

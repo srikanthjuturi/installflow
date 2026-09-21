@@ -2,6 +2,7 @@ import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Text } from '@/components/ui';
+import { jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -124,7 +125,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 13, color: color.slotFg }}
                 numberOfLines={1}
               >
-                {job.slot}
+                {jobSlot(job)}
               </Text>
             </View>
 

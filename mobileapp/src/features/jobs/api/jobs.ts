@@ -1,5 +1,5 @@
 import { authedRequest } from '@/lib/api';
-import type { Job, JobStatus, SlaType } from '@/types/domain';
+import type { Job, JobStatus } from '@/types/domain';
 
 /**
  * Job reads — all real.
@@ -182,80 +182,6 @@ function toJobStatus(status: string): JobStatus {
  */
 const POOL_LIMIT = 100;
 
-const IST = 'en-IN';
-const TZ = 'Asia/Kolkata';
-
-/** `2:00 PM`, in IST. Exported for the reschedule picker, which renders a list
- *  of bare windows rather than whole slots. */
-export function timeLabel(iso: string): string {
-  return new Date(iso)
-    .toLocaleTimeString(IST, {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: TZ,
-    })
-    .toUpperCase();
-}
-
-/**
- * What a job with no agreed time says where a slot would go.
- *
- * Not "—" and not blank. The technician is deciding whether to take this, and
- * the honest fact is that a time is coming but has not been chosen yet — an
- * em-dash reads as missing data, which is a reason to distrust the card rather
- * than a reason to accept it.
- *
- * NOT approved copy: the prototype has no slotless job, so there is no approved
- * string for this state. See the note at the head of the pool screen.
- */
-export const NO_SLOT_YET = 'Time not set yet';
-export const NO_SLOT_SHORT = 'No time yet';
-
-/** `Today · 2:00 PM–4:00 PM`, in IST — the zone the slot was agreed in. */
-function slotLabel(startIso: string | null, endIso: string | null): string {
-  if (!startIso || !endIso) return NO_SLOT_YET;
-  const start = new Date(startIso);
-  const today = new Date();
-  const sameDay =
-    start.toLocaleDateString(IST, { timeZone: TZ }) ===
-    today.toLocaleDateString(IST, { timeZone: TZ });
-  const day = sameDay
-    ? 'Today'
-    : start.toLocaleDateString(IST, { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
-  return `${day} · ${timeLabel(startIso)}–${timeLabel(endIso)}`;
-}
-
-/**
- * `Today` / `Wed 9 Sep`, in IST — the heading the reschedule picker groups by.
- *
- * The same "Today" substitution `slotLabel` makes, split out because that one
- * always carries a time with it and a group heading must not.
- */
-export function dayHeading(iso: string): string {
-  const start = new Date(iso);
-  const sameDay =
-    start.toLocaleDateString(IST, { timeZone: TZ }) ===
-    new Date().toLocaleDateString(IST, { timeZone: TZ });
-  return sameDay
-    ? 'Today'
-    : start.toLocaleDateString(IST, {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        timeZone: TZ,
-      });
-}
-
-/** `2–4 PM` for dense rows. */
-function slotShortLabel(startIso: string | null, endIso: string | null): string {
-  if (!startIso || !endIso) return NO_SLOT_SHORT;
-  const hour = (iso: string) =>
-    new Date(iso).toLocaleTimeString(IST, { hour: 'numeric', hour12: true, timeZone: TZ });
-  const [end, suffix] = hour(endIso).split(' ');
-  return `${hour(startIso).split(' ')[0]}–${end} ${suffix ?? ''}`.trim();
-}
-
 /**
  * Derived here rather than sent, and recomputed on every read.
  *
@@ -290,9 +216,12 @@ function toJob(dto: JobOfferDto): Job {
     serviceType: dto.serviceType,
     area: dto.city,
     pincode: dto.pincode,
-    slot: slotLabel(dto.slotStart, dto.slotEnd),
-    slotShort: slotShortLabel(dto.slotStart, dto.slotEnd),
-    sla: `${dto.serviceLevelHours}h` as SlaType,
+    // Kept as instants, never as the words for them: this object lives in the
+    // query cache, and a label written here would stay in the language it was
+    // fetched in. `features/jobs/format` words them at render.
+    slotStart: dto.slotStart,
+    slotEnd: dto.slotEnd,
+    slaHours: dto.serviceLevelHours,
     // No distanceLabel: nothing stores the customer's coordinates, so there is
     // nothing to measure. The card omits the segment rather than guessing.
     payoutPaise: dto.payoutPaise,

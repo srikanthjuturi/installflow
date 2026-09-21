@@ -105,7 +105,8 @@ export async function listTransactions(
     id: t.id,
     kind: t.kind,
     title: t.title,
-    subtitle: t.subtitle,
+    at: t.at,
+    ticketCode: t.ticketCode,
     // The SIGN is applied here, once, and this is the technician's own screen:
     // a penalty is money out of their pocket. The server stores a magnitude
     // because the same row is money IN to the company's pool — see the API's

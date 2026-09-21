@@ -2,6 +2,7 @@ import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Pill, Text } from '@/components/ui';
+import { jobSla, jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -50,7 +51,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
         >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pill label={job.category} tone="primary" />
-              <Pill label={`SLA ${job.sla}`} tone="secondary" />
+              <Pill label={`SLA ${jobSla(job)}`} tone="secondary" />
             </View>
 
             <Text
@@ -123,7 +124,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
                 }}
                 numberOfLines={1}
               >
-                {job.slot}
+                {jobSlot(job)}
               </Text>
             </View>
 

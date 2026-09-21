@@ -2,6 +2,7 @@ import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Text } from '@/components/ui';
+import { jobSlotShort } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -82,7 +83,7 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
                 maxFontSizeMultiplier={1.4}
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 12.5, color: color.slotFg }}
               >
-                {job.slotShort}
+                {jobSlotShort(job)}
               </Text>
             </View>
           </View>

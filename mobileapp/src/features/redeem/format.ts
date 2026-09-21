@@ -1,27 +1,8 @@
 import type { PillTone } from '@/components/ui';
 import type { RedemptionState } from '@/features/redeem/api/redeem';
 
-const LOCALE = 'en-IN';
-const TZ = 'Asia/Kolkata';
-
-/** `12 Sep, 2:05 PM`, in IST — the moment somebody said something. */
-export function momentLabel(iso: string): string {
-  const at = new Date(iso);
-  const day = at.toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', timeZone: TZ });
-  const time = at
-    .toLocaleTimeString(LOCALE, { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ })
-    .toUpperCase();
-  return `${day}, ${time}`;
-}
-
-/** `12 Sep` — a list row's date. */
-export function dayLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString(LOCALE, {
-    day: 'numeric',
-    month: 'short',
-    timeZone: TZ,
-  });
-}
+// Dates ("12 Sep, 2:05 PM") live in `utils/date` with every other date, so
+// they are worded in the app's language: `momentLabel`, `dayMonthLabel`.
 
 /**
  * The pill for each state. Approved with the plan on 2026-09-11 — the

@@ -11,12 +11,18 @@ import {
   useSetAcceptingWork,
 } from '@/features/availability/hooks/useAvailability';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
-import { useGreeting } from '@/features/jobs/hooks/useGreeting';
+import { type DayPeriod, useGreeting } from '@/features/jobs/hooks/useGreeting';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
+
+const GREETING: Record<DayPeriod, string> = {
+  morning: 'Good morning',
+  afternoon: 'Good afternoon',
+  evening: 'Good evening',
+};
 
 /**
  * Screen 2 — Home.
@@ -36,7 +42,7 @@ export function HomeScreen() {
   // imported straight from the mock database, which greeted every user by the
   // same seeded name after they had just proved who they were with an OTP.
   const { data: me } = useMe();
-  const greeting = useGreeting();
+  const greeting = GREETING[useGreeting()];
 
   const online = useAcceptingWork();
   const { mutate: setOnline, isPending: savingOnline } = useSetAcceptingWork();

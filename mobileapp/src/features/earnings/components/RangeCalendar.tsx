@@ -6,13 +6,13 @@ import { Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { MAX_RANGE_DAYS } from '@/types/domain';
 import {
-  WEEKDAY_INITIALS,
   addMonths,
   formatDay,
   monthMatrix,
   monthTitle,
   spanDays,
   startOfMonth,
+  weekdayInitials,
 } from '@/utils/date';
 
 /**
@@ -149,7 +149,7 @@ export function RangeCalendar({ value, onChange, latest }: RangeCalendarProps) {
       </View>
 
       <View style={{ flexDirection: 'row' }}>
-        {WEEKDAY_INITIALS.map((initial, i) => (
+        {weekdayInitials().map((initial, i) => (
           <Text
             key={i}
             maxFontSizeMultiplier={1.2}

@@ -5,7 +5,7 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button, DetailRow, Pill, QrCode, Text } from '@/components/ui';
 import type { RedemptionDetail, RedemptionEvent } from '@/features/redeem/api/redeem';
-import { STATE_PILL, momentLabel } from '@/features/redeem/format';
+import { STATE_PILL } from '@/features/redeem/format';
 import {
   useConfirmRedemption,
   useRedeemable,
@@ -14,6 +14,7 @@ import {
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
+import { momentLabel } from '@/utils/date';
 import { formatPaise } from '@/utils/money';
 
 const CARD = {

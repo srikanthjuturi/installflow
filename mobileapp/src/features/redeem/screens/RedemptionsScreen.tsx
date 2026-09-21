@@ -6,12 +6,13 @@ import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Pill, Text } from '@/components/ui';
 import type { Redemption } from '@/features/redeem/api/redeem';
-import { STATE_PILL, dayLabel } from '@/features/redeem/format';
+import { STATE_PILL } from '@/features/redeem/format';
 import { useRedemptions } from '@/features/redeem/hooks/useRedeem';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
+import { dayMonthLabel } from '@/utils/date';
 import { formatPaise } from '@/utils/money';
 
 /**
@@ -98,7 +99,7 @@ function Row({ item, onOpen }: { item: Redemption; onOpen: () => void }) {
                 marginTop: 2,
               }}
             >
-              {item.code} · {dayLabel(item.requestedAt)}
+              {item.code} · {dayMonthLabel(item.requestedAt)}
             </Text>
           </View>
           <Pill label={pill.label} tone={pill.tone} />

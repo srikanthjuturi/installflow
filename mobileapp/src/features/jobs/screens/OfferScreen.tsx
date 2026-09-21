@@ -6,6 +6,7 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
 import { Button, Pill, Text } from '@/components/ui';
+import { jobSla, jobSlot } from '@/features/jobs/format';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -77,7 +78,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
         {job ? (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
             <Pill label={job.category} tone="chromePrimary" />
-            <Pill label={`SLA ${job.sla}`} tone="chromeSecondary" />
+            <Pill label={`SLA ${jobSla(job)}`} tone="chromeSecondary" />
           </View>
         ) : null}
       </View>
@@ -155,7 +156,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                   <Text
                     style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.slotFg }}
                   >
-                    {job.slot}
+                    {jobSlot(job)}
                   </Text>
                 </View>
 
