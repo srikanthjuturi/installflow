@@ -6,6 +6,7 @@ import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { useAcceptingWork } from '@/features/availability/hooks/useAvailability';
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -28,6 +29,8 @@ export function PoolScreen() {
   const router = useRouter();
   const online = useAcceptingWork();
   const { data, isPending, isError, isRefetching, refetch } = usePool();
+  // Room for the ◁ ○ □ bar, so the last card clears it — see the hook.
+  const navInset = useButtonNavInset();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -35,7 +38,11 @@ export function PoolScreen() {
       <TitleBar title="Open job pool" onBack={() => router.replace('/(app)/(tabs)')} />
 
       <ScrollView
-        contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 24 }}
+        contentContainerStyle={{
+          paddingTop: 14,
+          paddingHorizontal: 16,
+          paddingBottom: 24 + navInset,
+        }}
         showsVerticalScrollIndicator={false}
         // The list polls itself, but a technician who has just been told about
         // a job on the phone will pull anyway — and being unable to is what

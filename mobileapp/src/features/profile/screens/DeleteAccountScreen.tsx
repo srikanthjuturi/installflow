@@ -3,12 +3,18 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 
-import { KeyboardFlow, ScreenStatusBar, TitleBar } from '@/components/layout';
+import {
+  KeyboardFlow,
+  ScreenStatusBar,
+  TitleBar,
+  useKeyboardVisible,
+} from '@/components/layout';
 import { Button } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { useConfirmDeletion, useSendDeletionCode } from '@/features/profile/hooks/useDeletion';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
@@ -68,6 +74,11 @@ export function DeleteAccountScreen() {
   const devCode = sendCode.data?.devCode ?? null;
   const error = confirm.error ?? sendCode.error;
 
+  // "Delete my account" is the last thing here — it must clear the ◁ ○ □ bar.
+  // Not while typing: the keyboard is drawn over that bar (see `keyboard.ts`).
+  const navInset = useButtonNavInset();
+  const keyboardUp = useKeyboardVisible();
+
   const send = () => {
     setCode('');
     sendCode.mutate(undefined, { onSuccess: () => timer.restart() });
@@ -104,7 +115,7 @@ export function DeleteAccountScreen() {
       <TitleBar title="Delete account" paddingBottom={14} />
 
       <KeyboardFlow>
-        <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
+        <View style={{ padding: 16, paddingBottom: 40 + (keyboardUp ? 0 : navInset), gap: 14 }}>
           <View style={CARD}>
             <Text style={BODY}>
               Deleting your account signs you out immediately and removes you

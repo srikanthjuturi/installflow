@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 
 /** Home · Jobs · Earnings · Profile — the four tabs from the prototype. */
@@ -12,6 +13,11 @@ const TAB_ICON: Record<string, IconName> = {
 };
 
 export default function TabsLayout() {
+  // A fixed height here REPLACES the library's own `insets.bottom` padding, so
+  // the room for Android's ◁ ○ □ bar has to be added back by hand. Only that
+  // bar's: gesture phones and iPhones keep the 64 / 8 they were designed at.
+  const navInset = useButtonNavInset();
+
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -21,9 +27,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: color.surfaceRaised,
           borderTopColor: color.border,
-          height: 64,
+          height: 64 + navInset,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: 8 + navInset,
         },
         tabBarLabelStyle: { fontFamily: 'Roboto_500Medium', fontSize: 11 },
         tabBarIcon: ({ color: tint }) => (

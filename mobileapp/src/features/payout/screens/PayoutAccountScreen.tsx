@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
-import { KeyboardFlow, ScreenStatusBar, TitleBar } from '@/components/layout';
+import {
+  KeyboardFlow,
+  ScreenStatusBar,
+  TitleBar,
+  useKeyboardVisible,
+} from '@/components/layout';
 import { Button, Input } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
@@ -16,6 +21,7 @@ import {
   useWithdrawUpiChange,
 } from '@/features/payout/hooks/usePayoutAccount';
 import { useMe } from '@/features/profile/hooks/useMe';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 
 /**
@@ -101,6 +107,7 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   const sent = sendCode.isSuccess;
   const devCode = sendCode.data?.devCode ?? null;
   const error = verify.error ?? sendCode.error;
+  const bottomRoom = useBottomRoom();
 
   const send = () => {
     if (!draft.valid) return;
@@ -116,7 +123,7 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
     // keyboard — for the code, that is the boxes with "Verify & save" under
     // them, the last things on the screen.
     <KeyboardFlow>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
+      <View style={{ padding: 16, paddingBottom: bottomRoom, gap: 14 }}>
         <View style={CARD}>
           <Text style={BODY}>
             Add the UPI ID your earnings are paid to. Scan the QR from your UPI app,
@@ -175,6 +182,17 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   );
 }
 
+/**
+ * The space under this screen's last button — "Verify & save" or "Request a
+ * change". Enough to clear Android's ◁ ○ □ bar when the phone has one, but not
+ * while typing: the keyboard is drawn over that bar (see `keyboard.ts`).
+ */
+function useBottomRoom(): number {
+  const navInset = useButtonNavInset();
+  const keyboardUp = useKeyboardVisible();
+  return 40 + (keyboardUp ? 0 : navInset);
+}
+
 // ── one on file ───────────────────────────────────────────────────────────────
 
 function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string }) {
@@ -182,10 +200,11 @@ function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string 
   const change = account.change;
   const pending = change?.status === 'pending' ? change : null;
   const rejected = change?.status === 'rejected' ? change : null;
+  const bottomRoom = useBottomRoom();
 
   return (
     <KeyboardFlow>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
+      <View style={{ padding: 16, paddingBottom: bottomRoom, gap: 14 }}>
         <View style={CARD}>
           <Text style={BODY}>
             Your earnings are paid to this UPI ID. To change it, your manager

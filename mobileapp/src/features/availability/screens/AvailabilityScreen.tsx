@@ -8,6 +8,7 @@ import {
   useJobsToday,
   useSetDailyJobCap,
 } from '@/features/availability/hooks/useAvailability';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 
 /** Where the stepper starts when somebody switches a limit on. */
@@ -95,6 +96,8 @@ export function AvailabilityScreen() {
   const loading = cap === undefined && draft === undefined;
   const bandwidthPerDay = draft !== undefined ? draft : (cap ?? null);
   const limited = !loading && bandwidthPerDay !== null;
+  // Room for the ◁ ○ □ bar, so the stepper clears it — see the hook.
+  const navInset = useButtonNavInset();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -102,7 +105,7 @@ export function AvailabilityScreen() {
       <TitleBar title="Availability & bandwidth" paddingBottom={14} />
 
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset }}
         showsVerticalScrollIndicator={false}
       >
         <SectionLabel>Daily job bandwidth</SectionLabel>

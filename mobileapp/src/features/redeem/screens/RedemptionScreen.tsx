@@ -11,6 +11,7 @@ import {
   useRedeemable,
   useRedemption,
 } from '@/features/redeem/hooks/useRedeem';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 import { formatPaise } from '@/utils/money';
 
@@ -68,10 +69,12 @@ function Body({ data }: { data: RedemptionDetail }) {
   const confirm = useConfirmRedemption(data.id);
   const pill = STATE_PILL[data.state];
   const awaiting = data.state === 'awaiting';
+  // "I received it" is the last thing here — it must clear the ◁ ○ □ bar.
+  const navInset = useButtonNavInset();
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
       <View style={CARD}>

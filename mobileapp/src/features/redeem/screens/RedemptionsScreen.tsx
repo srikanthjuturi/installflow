@@ -8,6 +8,7 @@ import { Pill } from '@/components/ui';
 import type { Redemption } from '@/features/redeem/api/redeem';
 import { STATE_PILL, dayLabel } from '@/features/redeem/format';
 import { useRedemptions } from '@/features/redeem/hooks/useRedeem';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import { formatPaise } from '@/utils/money';
@@ -23,6 +24,8 @@ import { formatPaise } from '@/utils/money';
 export function RedemptionsScreen() {
   const router = useRouter();
   const list = useRedemptions();
+  // Room for the ◁ ○ □ bar, so the last row clears it — see the hook.
+  const navInset = useButtonNavInset();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -43,7 +46,7 @@ export function RedemptionsScreen() {
         <FlatList
           data={list.data}
           keyExtractor={(r) => r.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 10 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset, gap: 10 }}
           renderItem={({ item }) => (
             <Row item={item} onOpen={() => router.push(`/redeem/${item.id}`)} />
           )}
