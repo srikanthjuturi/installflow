@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import type { Redeemable } from '@/features/redeem/api/redeem';
 import { useRedeemable } from '@/features/redeem/hooks/useRedeem';
 import { color } from '@/theme/semantic';
@@ -22,6 +23,7 @@ import { formatPaise } from '@/utils/money';
  */
 export function RedeemCard() {
   const router = useRouter();
+  const { t } = useTranslation();
   const redeemable = useRedeemable();
 
   return (
@@ -44,7 +46,7 @@ export function RedeemCard() {
             color: color.textLabel,
           }}
         >
-          Available to redeem
+          {t('redeem.card.available')}
         </Text>
         <Pressable
           onPress={() => router.push('/redeem')}
@@ -62,7 +64,7 @@ export function RedeemCard() {
                   opacity: pressed ? 0.6 : 1,
                 }}
               >
-                Redemptions
+                {t('redeem.card.history')}
               </Text>
               <Icon name="chevronRight" size={14} color={color.textLink} />
             </>
@@ -88,7 +90,7 @@ export function RedeemCard() {
               color: color.textSecondary,
             }}
           >
-            We couldn&apos;t load this. Check your connection and try again.
+            {t('components.errorState.body')}
           </Text>
           <Pressable
             onPress={() => redeemable.refetch()}
@@ -105,7 +107,7 @@ export function RedeemCard() {
                   opacity: pressed ? 0.6 : 1,
                 }}
               >
-                Try again
+                {t('common.tryAgain')}
               </Text>
             )}
           </Pressable>
@@ -119,6 +121,7 @@ export function RedeemCard() {
 
 function Body({ data }: { data: Redeemable }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const open = data.open;
 
   // One open at a time, so while there is one the card is ABOUT it — a second
@@ -139,11 +142,14 @@ function Body({ data }: { data: Redeemable }) {
           }}
         >
           {awaiting
-            ? `${formatPaise(open.amountPaise)} paid by ${open.claimedBy ?? '—'} · Confirm you received it`
-            : `${formatPaise(open.amountPaise)} requested · Waiting for payment`}
+            ? t('redeem.card.paidBy', {
+                amount: formatPaise(open.amountPaise),
+                name: open.claimedBy ?? '—',
+              })
+            : t('redeem.card.requested', { amount: formatPaise(open.amountPaise) })}
         </Text>
         <Button
-          label={awaiting ? 'Confirm' : 'View'}
+          label={awaiting ? t('redeem.card.confirm') : t('redeem.card.view')}
           variant={awaiting ? 'primary' : 'secondary'}
           onPress={() => router.push(`/redeem/${open.id}`)}
         />
@@ -168,10 +174,10 @@ function Body({ data }: { data: Redeemable }) {
             marginBottom: 14,
           }}
         >
-          Add a UPI ID to redeem
+          {t('redeem.card.addUpiPrompt')}
         </Text>
         <Button
-          label="Add UPI ID"
+          label={t('redeem.card.addUpi')}
           variant="secondary"
           onPress={() => router.push('/payout-account')}
         />
@@ -192,12 +198,12 @@ function Body({ data }: { data: Redeemable }) {
           marginBottom: 14,
         }}
       >
-        To {data.upiId}
+        {t('redeem.card.to', { upiId: data.upiId })}
       </Text>
       <Button
-        label="Redeem"
+        label={t('redeem.card.redeem')}
         disabled={data.redeemablePaise <= 0}
-        disabledHint="Nothing to redeem yet"
+        disabledHint={t('redeem.card.nothing')}
         onPress={() => router.push('/redeem-confirm')}
       />
     </>

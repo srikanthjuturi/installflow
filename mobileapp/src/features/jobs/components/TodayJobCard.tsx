@@ -1,6 +1,9 @@
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui';
+import { jobSlotShort } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -11,13 +14,13 @@ export interface TodayJobCardProps {
 }
 
 function badge(job: Job) {
-  if (job.status === 'completed') return { label: 'Completed', ...color.statusCompleted };
-  if (job.status === 'inprogress') return { label: 'In progress', ...color.statusInProgress };
+  if (job.status === 'completed') return { label: 'completed', ...color.statusCompleted } as const;
+  if (job.status === 'inprogress') return { label: 'inProgress', ...color.statusInProgress } as const;
   // Ahead of the =4h test: `null <= 4` is TRUE in JavaScript, so a job with no
   // agreed time would otherwise announce itself as "Starting soon".
-  if (job.hoursToSlot === null) return { label: 'Awaiting time', ...color.statusUpcoming };
-  if (job.hoursToSlot <= 4) return { label: 'Starting soon', ...color.statusStartingSoon };
-  return { label: 'Upcoming', ...color.statusUpcoming };
+  if (job.hoursToSlot === null) return { label: 'awaitingTime', ...color.statusUpcoming } as const;
+  if (job.hoursToSlot <= 4) return { label: 'startingSoon', ...color.statusStartingSoon } as const;
+  return { label: 'upcoming', ...color.statusUpcoming } as const;
 }
 
 /**
@@ -29,6 +32,7 @@ function badge(job: Job) {
  * and the customer is still masked.
  */
 export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
+  const { t } = useTranslation();
   const status = badge(job);
 
   return (
@@ -70,7 +74,7 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
                 maxFontSizeMultiplier={1.4}
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: status.fg }}
               >
-                {status.label}
+                {t(`jobs.status.${status.label}`)}
               </Text>
             </View>
 
@@ -81,7 +85,7 @@ export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
                 maxFontSizeMultiplier={1.4}
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 12.5, color: color.slotFg }}
               >
-                {job.slotShort}
+                {jobSlotShort(job)}
               </Text>
             </View>
           </View>

@@ -1,7 +1,8 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { Card, StatusBadge } from '@/components/ui';
+import { Card, StatusBadge, Text } from '@/components/ui';
+import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 import type { Job } from '@/types/domain';
@@ -49,7 +50,7 @@ export function JobCard({ job, onPress, variant = 'mine' }: JobCardProps) {
               <Text
                 style={{ fontFamily: 'Roboto_500Medium', fontSize: 10, color: color.textSecondary }}
               >
-                SLA {job.sla}
+                {jobSlaPill(job)}
               </Text>
             </View>
           </View>
@@ -97,11 +98,18 @@ export function JobCard({ job, onPress, variant = 'mine' }: JobCardProps) {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
           <Icon name="geo" size={15} color={color.slotFg} />
+          {/* May shrink, so `numberOfLines` truncates the slot instead of it
+              pushing the payout — see `PoolJobCard`. */}
           <Text
-            style={{ fontFamily: 'Roboto_500Medium', fontSize: 12.5, color: color.slotFg }}
+            style={{
+              flexShrink: 1,
+              fontFamily: 'Roboto_500Medium',
+              fontSize: 12.5,
+              color: color.slotFg,
+            }}
             numberOfLines={1}
           >
-            {job.slot}
+            {jobSlot(job)}
           </Text>
         </View>
 

@@ -1,9 +1,15 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
-import { KeyboardFlow, ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Button, Input } from '@/components/ui';
+import {
+  KeyboardFlow,
+  ScreenStatusBar,
+  TitleBar,
+  useKeyboardVisible,
+} from '@/components/layout';
+import { Button, Input, Text } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import type { PayoutAccount } from '@/features/payout/api/payout';
@@ -16,6 +22,9 @@ import {
   useWithdrawUpiChange,
 } from '@/features/payout/hooks/usePayoutAccount';
 import { useMe } from '@/features/profile/hooks/useMe';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { errorText } from '@/i18n/errorText';
+import { roleLabel } from '@/i18n/serverLabels';
 import { color } from '@/theme/semantic';
 
 /**
@@ -65,13 +74,14 @@ const CARD = {
  * `••4432`.
  */
 export function PayoutAccountScreen() {
+  const { t } = useTranslation();
   const me = useMe();
   const account = usePayoutAccount();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Payout account" paddingBottom={14} />
+      <TitleBar title={t('payout.title')} paddingBottom={14} />
 
       {account.isPending ? (
         <View style={{ padding: 16, gap: 12 }}>
@@ -92,6 +102,7 @@ export function PayoutAccountScreen() {
 // ── adding one ────────────────────────────────────────────────────────────────
 
 function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string }) {
+  const { t } = useTranslation();
   const draft = useUpiDraft(ownName);
   const sendCode = useSendPayoutCode();
   const verify = useVerifyPayoutAccount();
@@ -101,6 +112,7 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   const sent = sendCode.isSuccess;
   const devCode = sendCode.data?.devCode ?? null;
   const error = verify.error ?? sendCode.error;
+  const bottomRoom = useBottomRoom();
 
   const send = () => {
     if (!draft.valid) return;
@@ -116,11 +128,10 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
     // keyboard — for the code, that is the boxes with "Verify & save" under
     // them, the last things on the screen.
     <KeyboardFlow>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
+      <View style={{ padding: 16, paddingBottom: bottomRoom, gap: 14 }}>
         <View style={CARD}>
           <Text style={BODY}>
-            Add the UPI ID your earnings are paid to. Scan the QR from your UPI app,
-            or type it in.
+            {t('payout.add.intro')}
           </Text>
           <UpiFields draft={draft} disabled={verify.isPending || sendCode.isPending} />
         </View>
@@ -130,8 +141,7 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
         {sent ? (
           <View style={CARD}>
             <Text style={BODY}>
-              We sent a 6-digit code to your WhatsApp, {prettyPhone(phone)}. Enter it
-              to save this UPI ID.
+              {t('payout.add.codeSent', { phone: prettyPhone(phone) })}
             </Text>
             <OtpInput value={code} onChange={setCode} />
             <Pressable
@@ -146,7 +156,9 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
                   color: timer.canResend ? color.actionBg : color.textMuted,
                 }}
               >
-                {timer.canResend ? 'Send a new code' : `Send a new code in ${timer.label}`}
+                {timer.canResend
+                  ? t('common.sendNewCode')
+                  : t('common.sendNewCodeIn', { time: timer.label })}
               </Text>
             </Pressable>
             {devCode ? <DevCode code={devCode} onUse={() => setCode(devCode)} /> : null}
@@ -157,14 +169,14 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
 
         {sent ? (
           <Button
-            label="Verify & save"
+            label={t('payout.add.verify')}
             loading={verify.isPending}
             disabled={code.length < 6 || !draft.valid}
             onPress={() => verify.mutate({ upiId: draft.vpa, upiName: draft.name, code })}
           />
         ) : (
           <Button
-            label="Send code on WhatsApp"
+            label={t('payout.add.sendCode')}
             loading={sendCode.isPending}
             disabled={!draft.valid}
             onPress={send}
@@ -175,21 +187,33 @@ function AddUpi({ phone, ownName }: { phone: string | undefined; ownName: string
   );
 }
 
+/**
+ * The space under this screen's last button — "Verify & save" or "Request a
+ * change". Enough to clear Android's ◁ ○ □ bar when the phone has one, but not
+ * while typing: the keyboard is drawn over that bar (see `keyboard.ts`).
+ */
+function useBottomRoom(): number {
+  const navInset = useButtonNavInset();
+  const keyboardUp = useKeyboardVisible();
+  return 40 + (keyboardUp ? 0 : navInset);
+}
+
 // ── one on file ───────────────────────────────────────────────────────────────
 
 function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string }) {
+  const { t } = useTranslation();
   const [changing, setChanging] = useState(false);
   const change = account.change;
   const pending = change?.status === 'pending' ? change : null;
   const rejected = change?.status === 'rejected' ? change : null;
+  const bottomRoom = useBottomRoom();
 
   return (
     <KeyboardFlow>
-      <View style={{ padding: 16, paddingBottom: 40, gap: 14 }}>
+      <View style={{ padding: 16, paddingBottom: bottomRoom, gap: 14 }}>
         <View style={CARD}>
           <Text style={BODY}>
-            Your earnings are paid to this UPI ID. To change it, your manager
-            approves the new one.
+            {t('payout.onFile.intro')}
           </Text>
           <PayeeCard
             name={account.upiName || ownName || '—'}
@@ -202,7 +226,7 @@ function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string 
           <PendingChange
             name={pending.newUpiName}
             vpa={pending.newUpiId}
-            reviewer={pending.reviewerLabel}
+            reviewer={roleLabel(pending.reviewerLabel)}
           />
         ) : changing ? (
           <ChangeForm ownName={ownName} onDone={() => setChanging(false)} />
@@ -223,12 +247,18 @@ function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string 
                     color: color.dangerTextStrong,
                   }}
                 >
-                  Your change to {rejected.newUpiId} was not approved:{' '}
-                  {rejected.rejectReason ?? '—'}
+                  {t('payout.onFile.rejected', {
+                    upiId: rejected.newUpiId,
+                    reason: rejected.rejectReason ?? '—',
+                  })}
                 </Text>
               </View>
             ) : null}
-            <Button label="Request a change" variant="outline" onPress={() => setChanging(true)} />
+            <Button
+              label={t('payout.onFile.requestChange')}
+              variant="outline"
+              onPress={() => setChanging(true)}
+            />
           </>
         )}
       </View>
@@ -237,16 +267,17 @@ function OnFile({ account, ownName }: { account: PayoutAccount; ownName: string 
 }
 
 function PendingChange({ name, vpa, reviewer }: { name: string; vpa: string; reviewer: string }) {
+  const { t } = useTranslation();
   const withdraw = useWithdrawUpiChange();
   return (
     <View style={CARD}>
-      <Text style={LABEL}>Change requested</Text>
+      <Text style={LABEL}>{t('payout.pending.title')}</Text>
       <PayeeCard name={name} vpa={vpa} bare />
       <Text style={[BODY, { marginTop: 12, marginBottom: 14 }]}>
-        Waiting for your {reviewer} to approve.
+        {t('payout.pending.waiting', { reviewer })}
       </Text>
       <Button
-        label="Withdraw request"
+        label={t('payout.pending.withdraw')}
         variant="dangerOutline"
         loading={withdraw.isPending}
         onPress={() => withdraw.mutate()}
@@ -257,13 +288,14 @@ function PendingChange({ name, vpa, reviewer }: { name: string; vpa: string; rev
 }
 
 function ChangeForm({ ownName, onDone }: { ownName: string; onDone: () => void }) {
+  const { t } = useTranslation();
   const draft = useUpiDraft(ownName);
   const request = useRequestUpiChange();
 
   return (
     <>
       <View style={CARD}>
-        <Text style={LABEL}>New UPI ID</Text>
+        <Text style={LABEL}>{t('payout.change.title')}</Text>
         <UpiFields draft={draft} disabled={request.isPending} />
       </View>
       {draft.valid ? <PayeeCard name={draft.name} vpa={draft.vpa} /> : null}
@@ -275,7 +307,7 @@ function ChangeForm({ ownName, onDone }: { ownName: string; onDone: () => void }
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Button
-            label="Cancel"
+            label={t('common.cancel')}
             variant="secondary"
             onPress={onDone}
             disabled={request.isPending}
@@ -283,7 +315,7 @@ function ChangeForm({ ownName, onDone }: { ownName: string; onDone: () => void }
         </View>
         <View style={{ flex: 2 }}>
           <Button
-            label="Send request"
+            label={t('payout.change.send')}
             loading={request.isPending}
             disabled={!draft.valid}
             onPress={() =>
@@ -342,35 +374,37 @@ function useUpiDraft(ownName: string): UpiDraft {
 }
 
 function UpiFields({ draft, disabled }: { draft: UpiDraft; disabled: boolean }) {
+  const { t } = useTranslation();
+
   return (
     <View style={{ gap: 14, marginTop: 14 }}>
       <Button
-        label="Scan my UPI QR"
+        label={t('payout.fields.scan')}
         variant="outline"
         leadingIcon="qr"
         disabled={disabled}
         onPress={() => draft.setScanning(true)}
       />
       <Input
-        label="UPI ID"
+        label={t('payout.fields.upiId')}
         value={draft.rawVpa}
         onChangeText={draft.setVpa}
-        placeholder="e.g. 9822066301@ybl"
+        placeholder={t('payout.fields.upiIdPlaceholder')}
         editable={!disabled}
         keyboardType="email-address"
         maxLength={256}
-        error={draft.vpaInvalid ? 'Enter a UPI ID like name@bank' : undefined}
+        error={draft.vpaInvalid ? t('payout.fields.upiIdInvalid') : undefined}
       />
       <Input
-        label="Name on the UPI account"
+        label={t('payout.fields.name')}
         value={draft.rawName}
         onChangeText={draft.setName}
-        placeholder="As your UPI app shows it"
+        placeholder={t('payout.fields.namePlaceholder')}
         editable={!disabled}
         maxLength={NAME_MAX}
         error={
           draft.rawName.trim() !== '' && draft.nameInvalid
-            ? 'Enter the name on the UPI account'
+            ? t('payout.fields.nameInvalid')
             : undefined
         }
       />
@@ -443,6 +477,8 @@ function PayeeCard({ name, vpa, bare }: { name: string; vpa: string; bare?: bool
 }
 
 function ErrorLine({ error }: { error: unknown }) {
+  const { t } = useTranslation();
+
   return (
     <Text
       style={{
@@ -455,7 +491,9 @@ function ErrorLine({ error }: { error: unknown }) {
       }}
     >
       {/* The server's own words — it knows why it refused. */}
-      {error instanceof Error ? error.message : "Couldn't save. Try again."}
+      {error instanceof Error
+        ? errorText(error, t('payout.saveFailed'))
+        : t('payout.saveFailed')}
     </Text>
   );
 }
@@ -465,6 +503,8 @@ function ErrorLine({ error }: { error: unknown }) {
  * same panel the reschedule and joining screens show, for the same reason.
  */
 function DevCode({ code, onUse }: { code: string; onUse: () => void }) {
+  const { t } = useTranslation();
+
   return (
     <Pressable
       onPress={onUse}
@@ -478,7 +518,7 @@ function DevCode({ code, onUse }: { code: string; onUse: () => void }) {
       }}
     >
       <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 10.5, color: color.textMuted }}>
-        DEVELOPMENT ONLY
+        {t('common.devOnly')}
       </Text>
       <Text
         style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary, marginTop: 2 }}

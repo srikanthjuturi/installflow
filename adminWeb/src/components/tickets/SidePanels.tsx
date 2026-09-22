@@ -17,6 +17,7 @@ import { describeError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/utils/clipboard";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
+import { isTerminalTicketStatus, isTimeChoosable } from "@/types/ticket";
 import type { TicketDetail, TicketProof } from "@/types/ticket";
 
 /**
@@ -93,13 +94,22 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
 /**
  * The state of the "pick a time" message, and a way to act when it failed.
  *
- * Silent on the two states nobody needs to act on — ops set the slot
- * themselves, or the customer has already picked. It appears exactly when
- * somebody might have to do something about it.
+ * Silent on the states nobody needs to act on — ops set the slot themselves,
+ * the customer has already picked, or a time can no longer be picked at all.
+ * It appears exactly when somebody might have to do something about it.
+ *
+ * That last one is what `isTimeChoosable` is for. A technician can take a job
+ * from the pool before the customer picks a time and then do it, and this
+ * strip went on saying "Waiting for the customer to pick a time" on a job the
+ * customer had already signed off.
  */
 function SlotRequest({ ticket }: { ticket: TicketDetail }) {
   const [copied, setCopied] = useState(false);
-  if (ticket.slotConfirmedAt || ticket.slotRequestStatus === "not_needed") {
+  if (
+    ticket.slotConfirmedAt ||
+    ticket.slotRequestStatus === "not_needed" ||
+    !isTimeChoosable(ticket)
+  ) {
     return null;
   }
 
@@ -212,8 +222,14 @@ export function TechnicianPanel({
                 can now take a job BEFORE the customer picks one, and the two
                 states need different answers from whoever is reading this
                 panel: one is settled, the other is still waiting on a customer
-                and is what the slot-request strip below is about. */}
-            {ticket.slotStart === null ? (
+                and is what the slot-request strip below is about.
+
+                "Awaiting time" only while a time can still be picked — a job
+                started without one is under way, not waiting. And nothing at
+                all once the ticket is over: the status beside the code already
+                says how it ended, and "On job" on a closed ticket was false. */}
+            {isTerminalTicketStatus(ticket.status) ? null : ticket.slotStart ===
+                null && isTimeChoosable(ticket) ? (
               <span className="rounded-full bg-info-bg px-2.25 py-0.75 text-xs font-semibold text-info">
                 Awaiting time
               </span>

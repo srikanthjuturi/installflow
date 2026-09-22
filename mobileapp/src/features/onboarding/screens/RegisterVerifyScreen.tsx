@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KeyboardFlow, ScreenStatusBar } from '@/components/layout';
-import { BrandMark, Button, StepDots } from '@/components/ui';
+import { BrandMark, Button, StepDots, Text } from '@/components/ui';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
@@ -13,6 +14,7 @@ import {
   submitRegistration,
   verifyInviteOtp,
 } from '@/features/onboarding/api/invite';
+import { errorText } from '@/i18n/errorText';
 import { ApiError } from '@/lib/api';
 import { uploadImage } from '@/lib/uploads';
 import { useProfileStore } from '@/store/profile.store';
@@ -25,6 +27,21 @@ import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 
 const OTP_LENGTH = 6;
+
+/**
+ * What failed, kept as the failure itself and worded at render — the same
+ * reason as on the sign-in screen: a stored sentence would stay in the old
+ * language after a switch.
+ */
+interface Failure {
+  error: unknown;
+  /** What to say when the failure names nothing more specific. */
+  fallback:
+    | 'onboarding.verify.errors.sendFailed'
+    | 'onboarding.verify.errors.resendFailed'
+    | 'onboarding.verify.errors.incomplete'
+    | 'onboarding.verify.errors.submitFailed';
+}
 
 /** "+919876543210" → "+91 98765 43210". */
 function prettyPhone(e164: string): string {
@@ -48,6 +65,7 @@ function prettyPhone(e164: string): string {
 export function RegisterVerifyScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const draft = useRegistration((s) => s.draft);
   const clear = useRegistration((s) => s.clear);
@@ -55,7 +73,7 @@ export function RegisterVerifyScreen() {
 
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   // Development only — see the note on LoginScreen's DevCode.
   const [devCode, setDevCode] = useState<string | null>(null);
   const { label, canResend, restart } = useResendTimer(30);
@@ -69,7 +87,7 @@ export function RegisterVerifyScreen() {
     requestInviteOtp(draft.token)
       .then((r) => setDevCode(r.devCode ?? null))
       .catch(() => {
-        setError('We could not send your code. Tap resend to try again.');
+        setFailure({ error: null, fallback: 'onboarding.verify.errors.sendFailed' });
       });
   }, [draft]);
 
@@ -80,7 +98,7 @@ export function RegisterVerifyScreen() {
 
   const submit = async () => {
     setBusy(true);
-    setError(null);
+    setFailure(null);
     try {
       const { registrationToken } = await verifyInviteOtp(draft.token, code);
       const result = await submitRegistration(draft.token, registrationToken, {
@@ -96,7 +114,7 @@ export function RegisterVerifyScreen() {
       });
 
       if (!result.technicianProfile) {
-        setError('Registration did not complete. Ask your ASM for a new invite.');
+        setFailure({ error: null, fallback: 'onboarding.verify.errors.incomplete' });
         return;
       }
 
@@ -125,11 +143,7 @@ export function RegisterVerifyScreen() {
       clear();
       router.replace('/(app)/(tabs)');
     } catch (e) {
-      setError(
-        e instanceof ApiError
-          ? e.message
-          : 'We could not finish your registration. Try again.',
-      );
+      setFailure({ error: e, fallback: 'onboarding.verify.errors.submitFailed' });
     } finally {
       setBusy(false);
     }
@@ -138,13 +152,22 @@ export function RegisterVerifyScreen() {
   const resend = () => {
     restart();
     setCode('');
-    setError(null);
+    setFailure(null);
     requestInviteOtp(draft.token)
       .then((r) => setDevCode(r.devCode ?? null))
       .catch(() => {
-        setError('We could not send your code. Try again in a moment.');
+        setFailure({ error: null, fallback: 'onboarding.verify.errors.resendFailed' });
       });
   };
+
+  // A wrong or used-up code is this screen's one 401, and it carries no code.
+  const error = !failure
+    ? null
+    : failure.error instanceof ApiError
+      ? errorText(failure.error, t(failure.fallback), {
+          401: t('auth.login.errors.wrongCode'),
+        })
+      : t(failure.fallback);
 
   return (
     <View
@@ -176,7 +199,7 @@ export function RegisterVerifyScreen() {
             marginTop: 22,
           }}
         >
-          Confirm your number
+          {t('onboarding.verify.title')}
         </Text>
 
         <Text
@@ -188,11 +211,13 @@ export function RegisterVerifyScreen() {
             marginTop: 10,
           }}
         >
-          Enter the 6-digit code sent to{' '}
-          <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
-            {prettyPhone(draft.invite.phone)}
-          </Text>
-          . This is the last step.
+          <Trans
+            i18nKey="onboarding.verify.codeSentTo"
+            values={{ phone: prettyPhone(draft.invite.phone) }}
+            components={{
+              bold: <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }} />,
+            }}
+          />
         </Text>
 
         <View style={{ marginTop: 20 }}>
@@ -200,7 +225,7 @@ export function RegisterVerifyScreen() {
             value={code}
             onChange={(v) => {
               setCode(v);
-              setError(null);
+              setFailure(null);
             }}
             length={OTP_LENGTH}
           />
@@ -215,7 +240,7 @@ export function RegisterVerifyScreen() {
             marginTop: 16,
           }}
         >
-          {canResend ? 'Resend code' : `Resend code in ${label}`}
+          {canResend ? t('common.resendCode') : t('common.resendCodeIn', { time: label })}
         </Text>
 
         {error ? (
@@ -254,7 +279,7 @@ export function RegisterVerifyScreen() {
                   color: color.textMuted,
                 }}
               >
-                DEVELOPMENT ONLY
+                {t('common.devOnly')}
               </Text>
               <Text
                 style={{
@@ -275,7 +300,7 @@ export function RegisterVerifyScreen() {
                   marginTop: 2,
                 }}
               >
-                Tap to fill. Not shown once WhatsApp delivery is live.
+                {t('common.devCodeHint')}
               </Text>
             </View>
           </Pressable>
@@ -284,7 +309,7 @@ export function RegisterVerifyScreen() {
         <View style={{ flex: 1 }} />
 
         <Button
-          label="Create my account"
+          label={t('onboarding.verify.create')}
           onPress={submit}
           disabled={code.length !== OTP_LENGTH || busy}
           loading={busy}

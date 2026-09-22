@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 
 /** Home · Jobs · Earnings · Profile — the four tabs from the prototype. */
@@ -12,6 +14,12 @@ const TAB_ICON: Record<string, IconName> = {
 };
 
 export default function TabsLayout() {
+  // A fixed height here REPLACES the library's own `insets.bottom` padding, so
+  // the room for Android's ◁ ○ □ bar has to be added back by hand. Only that
+  // bar's: gesture phones and iPhones keep the 64 / 8 they were designed at.
+  const navInset = useButtonNavInset();
+  const { t } = useTranslation();
+
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -21,9 +29,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: color.surfaceRaised,
           borderTopColor: color.border,
-          height: 64,
+          height: 64 + navInset,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: 8 + navInset,
         },
         tabBarLabelStyle: { fontFamily: 'Roboto_500Medium', fontSize: 11 },
         tabBarIcon: ({ color: tint }) => (
@@ -31,10 +39,10 @@ export default function TabsLayout() {
         ),
       })}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="jobs" options={{ title: 'Jobs' }} />
-      <Tabs.Screen name="earnings" options={{ title: 'Earnings' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="index" options={{ title: t('tabs.home') }} />
+      <Tabs.Screen name="jobs" options={{ title: t('tabs.jobs') }} />
+      <Tabs.Screen name="earnings" options={{ title: t('tabs.earnings') }} />
+      <Tabs.Screen name="profile" options={{ title: t('tabs.profile') }} />
     </Tabs>
   );
 }

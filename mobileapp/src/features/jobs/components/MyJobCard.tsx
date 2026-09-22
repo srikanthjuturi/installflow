@@ -1,6 +1,9 @@
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui';
+import { jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -11,14 +14,14 @@ export interface MyJobCardProps {
 }
 
 function badge(job: Job) {
-  if (job.status === 'completed') return { label: 'Completed', ...color.statusCompleted };
-  if (job.status === 'cancelled') return { label: 'Cancelled', ...color.statusCancelled };
-  if (job.status === 'inprogress') return { label: 'In progress', ...color.statusInProgress };
+  if (job.status === 'completed') return { label: 'completed', ...color.statusCompleted } as const;
+  if (job.status === 'cancelled') return { label: 'cancelled', ...color.statusCancelled } as const;
+  if (job.status === 'inprogress') return { label: 'inProgress', ...color.statusInProgress } as const;
   // Ahead of the =4h test: `null <= 4` is TRUE in JavaScript, so a job with no
   // agreed time would otherwise announce itself as "Starting soon".
-  if (job.hoursToSlot === null) return { label: 'Awaiting time', ...color.statusUpcoming };
-  if (job.hoursToSlot <= 4) return { label: 'Starting soon', ...color.statusStartingSoon };
-  return { label: 'Upcoming', ...color.statusUpcoming };
+  if (job.hoursToSlot === null) return { label: 'awaitingTime', ...color.statusUpcoming } as const;
+  if (job.hoursToSlot <= 4) return { label: 'startingSoon', ...color.statusStartingSoon } as const;
+  return { label: 'upcoming', ...color.statusUpcoming } as const;
 }
 
 /**
@@ -34,6 +37,7 @@ function badge(job: Job) {
  * state and attributes never blur together when scanning.
  */
 export function MyJobCard({ job, onPress }: MyJobCardProps) {
+  const { t } = useTranslation();
   const status = badge(job);
 
   return (
@@ -75,7 +79,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
                 maxFontSizeMultiplier={1.4}
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 11, color: status.fg }}
               >
-                {status.label}
+                {t(`jobs.status.${status.label}`)}
               </Text>
             </View>
 
@@ -123,7 +127,7 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 13, color: color.slotFg }}
                 numberOfLines={1}
               >
-                {job.slot}
+                {jobSlot(job)}
               </Text>
             </View>
 

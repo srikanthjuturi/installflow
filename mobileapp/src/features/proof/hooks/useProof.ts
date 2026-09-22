@@ -28,10 +28,9 @@ export function useUploadShot() {
       uploadShot(shot.uri)
         .then((blobName) => markUpload(shot.uri, { upload: 'done', blobName }))
         .catch((error: unknown) =>
-          markUpload(shot.uri, {
-            upload: 'failed',
-            error: error instanceof Error ? error.message : 'Upload failed',
-          }),
+          // The failure itself, worded by the preview when it is shown — a
+          // sentence stored now would stay in this moment's language.
+          markUpload(shot.uri, { upload: 'failed', error }),
         );
     },
     [markUpload],

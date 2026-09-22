@@ -1,6 +1,7 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 
 export interface CheckboxProps {

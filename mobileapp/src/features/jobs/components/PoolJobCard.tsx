@@ -1,7 +1,9 @@
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { Pill } from '@/components/ui';
+import { Pill, Text } from '@/components/ui';
+import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -23,6 +25,8 @@ export interface PoolJobCardProps {
  * facts being weighed against each other.
  */
 export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Pressable onPress={onPress} accessibilityRole="button">
       {({ pressed }) => (
@@ -50,7 +54,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
         >
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pill label={job.category} tone="primary" />
-              <Pill label={`SLA ${job.sla}`} tone="secondary" />
+              <Pill label={jobSlaPill(job)} tone="secondary" />
             </View>
 
             <Text
@@ -111,11 +115,19 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
         >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 }}>
               <Icon name="clock" size={16} color={palette.secondary[500]} />
+              {/* `flexShrink` on the Text too, not only its row: Yoga sizes a
+                  Text in a row to its full width unless it may shrink, and then
+                  `numberOfLines` has nothing to cut and the payout is pushed. */}
               <Text
-                style={{ fontFamily: 'Roboto_700Bold', fontSize: 13.5, color: color.slotFg }}
+                style={{
+                  flexShrink: 1,
+                  fontFamily: 'Roboto_700Bold',
+                  fontSize: 13.5,
+                  color: color.slotFg,
+                }}
                 numberOfLines={1}
               >
-                {job.slot}
+                {jobSlot(job)}
               </Text>
             </View>
 
@@ -135,7 +147,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
                     marginBottom: 1,
                   }}
                 >
-                  +{formatPaise(job.bonusPaise)} bonus
+                  {t('jobs.bonus', { amount: formatPaise(job.bonusPaise) })}
                 </Text>
               )}
               <Text

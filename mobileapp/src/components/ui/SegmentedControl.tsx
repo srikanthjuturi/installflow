@@ -1,5 +1,6 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 

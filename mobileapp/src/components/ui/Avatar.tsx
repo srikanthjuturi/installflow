@@ -1,8 +1,10 @@
 import { Image } from 'expo-image';
 import { useState, type ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui/Text';
 import { useProfileStore } from '@/store/profile.store';
 import { color } from '@/theme/semantic';
 
@@ -138,6 +140,7 @@ export function Avatar({
  * do not swallow touches meant for whatever wraps them.
  */
 function BadgeHost({ onPress, children }: { onPress?: () => void; children: ReactNode }) {
+  const { t } = useTranslation();
   const pin = { position: 'absolute', right: -4, bottom: -4 } as const;
 
   if (!onPress) return <View style={pin}>{children}</View>;
@@ -148,7 +151,7 @@ function BadgeHost({ onPress, children }: { onPress?: () => void; children: Reac
       hitSlop={10}
       style={pin}
       accessibilityRole="button"
-      accessibilityLabel="Change profile picture"
+      accessibilityLabel={t('components.avatar.change')}
     >
       {({ pressed }) => <View style={{ opacity: pressed ? 0.7 : 1 }}>{children}</View>}
     </Pressable>

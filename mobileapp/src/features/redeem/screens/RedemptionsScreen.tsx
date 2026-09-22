@@ -1,15 +1,19 @@
 import { useRouter } from 'expo-router';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Pill } from '@/components/ui';
+import { Pill, Text } from '@/components/ui';
 import type { Redemption } from '@/features/redeem/api/redeem';
-import { STATE_PILL, dayLabel } from '@/features/redeem/format';
+import { STATE_PILL } from '@/features/redeem/format';
 import { useRedemptions } from '@/features/redeem/hooks/useRedeem';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
+import { dayMonthLabel } from '@/utils/date';
 import { formatPaise } from '@/utils/money';
 
 /**
@@ -22,12 +26,17 @@ import { formatPaise } from '@/utils/money';
  */
 export function RedemptionsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const list = useRedemptions();
+  // Room for the ◁ ○ □ bar, so the last row clears it — see the hook.
+  const navInset = useButtonNavInset();
+  // Waiting on somebody else — the payer marking a request paid.
+  const pull = usePullToRefresh(list.refetch);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Redemptions" paddingBottom={14} />
+      <TitleBar title={t('redeem.history.title')} paddingBottom={14} />
 
       {list.isPending ? (
         <View style={{ padding: 16, gap: 10 }}>
@@ -38,12 +47,17 @@ export function RedemptionsScreen() {
       ) : list.isError ? (
         <ErrorState onRetry={() => list.refetch()} />
       ) : list.data.length === 0 ? (
-        <EmptyState icon="wallet" title="No redemptions yet" body="Requests you send appear here." />
+        <EmptyState
+          icon="wallet"
+          title={t('redeem.history.emptyTitle')}
+          body={t('redeem.history.emptyBody')}
+        />
       ) : (
         <FlatList
           data={list.data}
           keyExtractor={(r) => r.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 10 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset, gap: 10 }}
+          refreshControl={<RefreshControl {...pull} />}
           renderItem={({ item }) => (
             <Row item={item} onOpen={() => router.push(`/redeem/${item.id}`)} />
           )}
@@ -54,13 +68,14 @@ export function RedemptionsScreen() {
 }
 
 function Row({ item, onOpen }: { item: Redemption; onOpen: () => void }) {
+  const { t } = useTranslation();
   const pill = STATE_PILL[item.state];
 
   return (
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${formatPaise(item.amountPaise)}, ${pill.label}, ${item.code}`}
+      accessibilityLabel={`${formatPaise(item.amountPaise)}, ${t(pill.label)}, ${item.code}`}
     >
       {({ pressed }) => (
         <View
@@ -91,10 +106,10 @@ function Row({ item, onOpen }: { item: Redemption; onOpen: () => void }) {
                 marginTop: 2,
               }}
             >
-              {item.code} · {dayLabel(item.requestedAt)}
+              {item.code} · {dayMonthLabel(item.requestedAt)}
             </Text>
           </View>
-          <Pill label={pill.label} tone={pill.tone} />
+          <Pill label={t(pill.label)} tone={pill.tone} />
           <Icon name="chevronRight" size={16} color={palette.neutral[400]} />
         </View>
       )}

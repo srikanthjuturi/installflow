@@ -10,6 +10,7 @@ import type { ListParams, Page } from "@/types/api";
 import type {
   CorrectSerialInput,
   CreateTicketInput,
+  SerialCheck,
   Ticket,
   TicketDetail,
   TicketProof,
@@ -101,6 +102,20 @@ export function correctTicketSerial({
   ...body
 }: CorrectSerialInput): Promise<TicketDetail> {
   return apiPatch<TicketDetail>(`/tickets/${id}/serial`, body);
+}
+
+/**
+ * Would that correction be accepted? The same rule the PATCH runs — the
+ * product's serial list, when it has one — asked while the number is typed, so
+ * the dialog can say so before Save instead of after it.
+ */
+export function checkTicketSerial(
+  id: string,
+  serial: string
+): Promise<SerialCheck> {
+  return apiGet<SerialCheck>(
+    `/tickets/${id}/serial-check?serial=${encodeURIComponent(serial)}`
+  );
 }
 
 /**

@@ -1,9 +1,11 @@
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -32,6 +34,7 @@ export function TitleBar({
   right,
   paddingBottom = 12,
 }: TitleBarProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
@@ -55,7 +58,11 @@ export function TitleBar({
       }}
     >
       {showBack ? (
-        <Pressable onPress={handleBack} accessibilityRole="button" accessibilityLabel="Go back">
+        <Pressable
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.goBack')}
+        >
           {({ pressed }) => (
             <View
               style={{

@@ -1,56 +1,39 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
-import { Icon, type IconName } from '@/components/icons/Icon';
+import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
-import { Avatar, Button, Switch } from '@/components/ui';
+import { Avatar, Button, Switch, Text } from '@/components/ui';
 import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { AVAILABLE_LANGUAGES } from '@/i18n';
+import { errorText } from '@/i18n/errorText';
+import { LANGUAGES } from '@/i18n/languages';
+import { useLanguage } from '@/store/language.store';
+import { shortCategory } from '@/lib/shortCategory';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
-/**
- * Push notifications is a switch rather than an "On" label: it's the one
- * setting here a technician actually flips, and it decides whether they hear
- * about new jobs at all. Language and payout account open their own flows, so
- * they stay as values.
- */
-const SETTINGS: { label: string; value: string; icon: IconName }[] = [
-  // English is a fact about this build — there is no i18n and no language
-  // setting to read, so this row stays a value rather than becoming a link.
-  //
-  // Payout account left this list when `technician_profiles.upi_id` landed:
-  // it is now a real, editable field, so it is a navigable row beside
-  // Availability & bandwidth rather than a static one showing a dash.
-  { label: 'Language', value: 'English', icon: 'globe' },
-];
-
-/**
- * The coverage row abbreviates, matching the prototype — the full names wrap.
- *
- * Keyed by name rather than by id: the catalogue is per-company and editable,
- * so an id here would be a value from one tenant's database baked into the app.
- * A name with no entry falls through unabbreviated.
- */
-const SHORT_CATEGORY: Record<string, string> = {
-  Television: 'TV',
-  'Air Conditioner': 'AC',
-  'Water Purifier': 'Purifier',
-};
-
 /** Screen 16 — Profile & settings. */
 export function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   // Server state, seeded from the session so this paints on the first frame.
-  const { data: me, isError, error, isFetching, refetch } = useMe();
+  const { data: me, isError, error, refetch } = useMe();
+  // Spinner for the pull only. On `isFetching` it also ran whenever a push
+  // invalidated `me` — a manager approving a UPI change spun it with nobody
+  // touching the screen.
+  const pull = usePullToRefresh(refetch);
 
   const signOut = useSession((s) => s.signOut);
   const avatarUri = useProfileStore((s) => s.avatarUri);
@@ -59,9 +42,12 @@ export function ProfileScreen() {
   // state: this was `useState(true)`, which reset on every launch and pushed
   // to a technician who had switched it off.
   const { enabled: pushEnabled, toggle: togglePush } = usePushToggle();
+  const activeLanguage = useLanguage((s) => s.active);
+  const languageName =
+    LANGUAGES.find((l) => l.code === activeLanguage)?.nativeName ?? activeLanguage;
 
-  const categories =
-    me?.subcategories.map((c) => SHORT_CATEGORY[c.name] ?? c.name).join(' · ') ?? '—';
+  // The coverage row abbreviates, matching the prototype — the full names wrap.
+  const categories = me?.subcategories.map((c) => shortCategory(c.name)).join(' · ') ?? '—';
 
   // Only when there is nothing at all to show. With a session seed the screen
   // stays usable offline and a failed refetch is silent — a technician out of
@@ -71,8 +57,12 @@ export function ProfileScreen() {
       <View style={{ flex: 1, backgroundColor: color.surface, justifyContent: 'center' }}>
         <ScreenStatusBar style="dark" />
         <ErrorState
-          title="Couldn't load your profile"
-          body={error instanceof Error ? error.message : undefined}
+          title={t('profile.loadFailed')}
+          body={
+            error instanceof Error
+              ? errorText(error, t('components.errorState.body'))
+              : undefined
+          }
           onRetry={() => refetch()}
         />
       </View>
@@ -86,13 +76,7 @@ export function ProfileScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isFetching}
-            onRefresh={refetch}
-            tintColor={color.textMuted}
-          />
-        }
+        refreshControl={<RefreshControl {...pull} />}
       >
         <View
           style={{
@@ -118,7 +102,7 @@ export function ProfileScreen() {
               <Pressable
                 onPress={() => router.push(avatarUri ? '/view-photo' : '/avatar-options')}
                 accessibilityRole="button"
-                accessibilityLabel={avatarUri ? 'View profile picture' : 'Add profile picture'}
+                accessibilityLabel={avatarUri ? t('profile.viewPhoto') : t('profile.addPhoto')}
               >
                 {({ pressed }) => (
                   <View style={{ opacity: pressed ? 0.8 : 1 }}>
@@ -151,7 +135,7 @@ export function ProfileScreen() {
                   marginTop: 2,
                 }}
               >
-                Technician · ID {me.code}
+                {t('profile.idLine', { code: me.code })}
               </Text>
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, alignSelf: 'stretch' }}>
@@ -160,17 +144,17 @@ export function ProfileScreen() {
                     is. */}
                 <ChromeStat
                   value={me.rating === null ? '—' : me.rating.toFixed(1)}
-                  label="Rating"
+                  label={t('profile.stats.rating')}
                 />
                 {/* Null until the first closure is counted — `String(null)`
                     used to print the word "null" here. */}
                 <ChromeStat
                   value={me.jobsCompleted === null ? '—' : String(me.jobsCompleted)}
-                  label="Jobs done"
+                  label={t('profile.stats.jobsDone')}
                 />
                 <ChromeStat
                   value={me.onTimePct === null ? '—' : `${me.onTimePct}%`}
-                  label="On-time"
+                  label={t('profile.stats.onTime')}
                 />
               </View>
             </>
@@ -198,11 +182,14 @@ export function ProfileScreen() {
                 marginBottom: 12,
               }}
             >
-              Service coverage
+              {t('profile.coverage.title')}
             </Text>
 
-            <CoverageRow label="Categories" value={categories} first />
-            <CoverageRow label="Pincodes" value={me?.pincodes.join(', ') ?? '—'} />
+            <CoverageRow label={t('profile.coverage.categories')} value={categories} first />
+            <CoverageRow
+              label={t('profile.coverage.pincodes')}
+              value={me?.pincodes.join(', ') ?? '—'}
+            />
           </View>
 
           <View
@@ -217,7 +204,7 @@ export function ProfileScreen() {
             <Pressable
               onPress={() => router.push('/availability')}
               accessibilityRole="button"
-              accessibilityLabel="Availability and bandwidth"
+              accessibilityLabel={t('profile.rows.availabilityA11y')}
             >
               {({ pressed }) => (
                 <View
@@ -239,7 +226,7 @@ export function ProfileScreen() {
                       color: color.textPrimary,
                     }}
                   >
-                    Availability &amp; bandwidth
+                    {t('availability.title')}
                   </Text>
                   <Icon name="chevronRight" size={19} color={color.textMuted} />
                 </View>
@@ -254,7 +241,7 @@ export function ProfileScreen() {
             <Pressable
               onPress={() => router.push('/payout-account')}
               accessibilityRole="button"
-              accessibilityLabel="Payout account"
+              accessibilityLabel={t('payout.title')}
             >
               {({ pressed }) => (
                 <View
@@ -277,7 +264,7 @@ export function ProfileScreen() {
                       color: color.textPrimary,
                     }}
                   >
-                    Payout account
+                    {t('payout.title')}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -300,7 +287,7 @@ export function ProfileScreen() {
               onPress={togglePush}
               accessibilityRole="switch"
               accessibilityState={{ checked: pushEnabled }}
-              accessibilityLabel="Push notifications"
+              accessibilityLabel={t('profile.rows.push')}
             >
               <View
                 style={{
@@ -322,55 +309,72 @@ export function ProfileScreen() {
                     color: color.textPrimary,
                   }}
                 >
-                  Push notifications
+                  {t('profile.rows.push')}
                 </Text>
                 {/* Row is the tap target, so the switch is presentational. */}
                 <Switch value={pushEnabled} onValueChange={togglePush} static />
               </View>
             </Pressable>
 
-            {SETTINGS.map((row) => (
-              <View
-                key={row.label}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 13,
-                  paddingVertical: 15,
-                  paddingHorizontal: 16,
-                  borderTopWidth: 1,
-                  borderTopColor: palette.neutral[100],
-                }}
-              >
-                <Icon name={row.icon} size={21} color={color.textLabel} strokeWidth={1.7} />
-                <Text
+            {/* The prototype's `Language · English` row, and now a way in: it
+                opens the language list and shows the one in use, in its own
+                script. A link like Payout account, chevron and all — and a
+                plain value while the app speaks only one language, because
+                a list of one is not a choice. */}
+            <Pressable
+              onPress={() => router.push('/language')}
+              disabled={AVAILABLE_LANGUAGES.length < 2}
+              accessibilityRole="button"
+              accessibilityLabel={`${t('language.title')}: ${languageName}`}
+            >
+              {({ pressed }) => (
+                <View
                   style={{
-                    flex: 1,
-                    fontFamily: 'Roboto_500Medium',
-                    fontSize: 14.5,
-                    color: color.textPrimary,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 13,
+                    paddingVertical: 15,
+                    paddingHorizontal: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: palette.neutral[100],
+                    backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
                   }}
                 >
-                  {row.label}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_400Regular',
-                    fontSize: 13,
-                    color: color.textMuted,
-                  }}
-                >
-                  {row.value}
-                </Text>
-              </View>
-            ))}
+                  <Icon name="globe" size={21} color={color.textLabel} strokeWidth={1.7} />
+                  <Text
+                    style={{
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 14.5,
+                      color: color.textPrimary,
+                    }}
+                  >
+                    {t('language.title')}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      textAlign: 'right',
+                      fontFamily: 'Roboto_400Regular',
+                      fontSize: 13,
+                      color: color.textMuted,
+                    }}
+                  >
+                    {languageName}
+                  </Text>
+                  {AVAILABLE_LANGUAGES.length > 1 ? (
+                    <Icon name="chevronRight" size={19} color={color.textMuted} />
+                  ) : null}
+                </View>
+              )}
+            </Pressable>
 
             {/* A Play Store requirement, not a prototype row — every account a
                 technician creates themselves needs an in-app way to delete it. */}
             <Pressable
               onPress={() => router.push('/delete-account')}
               accessibilityRole="button"
-              accessibilityLabel="Delete account"
+              accessibilityLabel={t('profile.delete.title')}
             >
               {({ pressed }) => (
                 <View
@@ -394,7 +398,7 @@ export function ProfileScreen() {
                       color: color.textDanger,
                     }}
                   >
-                    Delete account
+                    {t('profile.delete.title')}
                   </Text>
                   <Icon name="chevronRight" size={19} color={color.textMuted} />
                 </View>
@@ -404,7 +408,7 @@ export function ProfileScreen() {
 
           <View style={{ marginTop: 16 }}>
             <Button
-              label="Log out"
+              label={t('profile.logOut')}
               variant="dangerOutline"
               onPress={() => {
                 // Clear the session first: the `(app)` guard redirects on its

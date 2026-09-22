@@ -1,6 +1,8 @@
-import { Pressable, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
+import { Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -16,6 +18,7 @@ export interface PincodeChipProps {
  * than it needs to be.
  */
 export function PincodeChip({ code, onRemove }: PincodeChipProps) {
+  const { t } = useTranslation();
   return (
     <View
       style={{
@@ -47,7 +50,7 @@ export function PincodeChip({ code, onRemove }: PincodeChipProps) {
         onPress={onRemove}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={`Remove pincode ${code}`}
+        accessibilityLabel={t('onboarding.pincodeChip.remove', { code })}
       >
         {({ pressed }) => (
           <View

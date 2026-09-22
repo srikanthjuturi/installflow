@@ -679,3 +679,15 @@ class SerialCorrectionRequest(AppModel):
     #: Optional, and worth asking for: "invoice says 88417" explains a
     #: correction that a bare value never will.
     reason: str | None = Field(default=None, max_length=255)
+
+
+class SerialCheckOut(AppModel):
+    """Whether a correction to this serial would be accepted — asked before Save.
+
+    `accepted` is also true when the product has no serial list at all: an empty
+    list means unchecked, not "nothing matches" (`tickets.service._serial_refusal`).
+    """
+
+    accepted: bool
+    #: The sentence Save would refuse with, word for word. None when accepted.
+    message: str | None = None

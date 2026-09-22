@@ -6,8 +6,6 @@
  */
 
 export type JobStatus = 'pool' | 'upcoming' | 'inprogress' | 'completed' | 'cancelled';
-/** The four service levels the API offers. The prototype only ever drew two. */
-export type SlaType = '12h' | '24h' | '36h' | '48h';
 export type ProofKind = 'barcode' | 'serial' | 'photos' | 'live';
 export type VerificationOutcome = 'match' | 'mismatch' | 'unreadable';
 
@@ -139,6 +137,19 @@ export interface Job {
    * slice bound: the catalogue is company-scoped data, not a fixed six.
    */
   category: string;
+  /**
+   * Every catalogue node above this job and the node itself, root first — the
+   * ticket's `node_path_ids`.
+   *
+   * Exists for the pool's category chips. `category` cannot do that job: it
+   * names the node the product hangs off (*Android TV*), and a technician is
+   * certified one level up (*Television*), so matching names would drop every
+   * job below it. A certified id anywhere on this path is the same test the
+   * server uses to put the job in the pool at all.
+   *
+   * Undefined from an API that predates it, and on mock jobs.
+   */
+  nodePathIds?: string[];
   model: string;
   /**
    * The product's specs, as ops recorded them — panel type, capacity, whatever
@@ -161,16 +172,21 @@ export interface Job {
   serviceType: string;
   area: string;
   pincode: string;
-  /** Human label for the customer-confirmed slot, e.g. 'Today · 2:00–4:00 PM'. */
-  slot: string;
-  /** Compact form for dense list rows, e.g. '2–4 PM'. */
-  slotShort: string;
   /**
-   * `12h` / `24h` / `36h` / `48h`. Widened from the two the prototype drew:
-   * the server offers four service levels and rendering a 36-hour ticket as
-   * one of the other two would be wrong on screen.
+   * The agreed window, as ISO instants — null together while the customer has
+   * not picked a time. Words for it ("Today · 2:00 PM–4:00 PM", "2–4 PM") are
+   * made at render by `features/jobs/format`, never stored: a job lives in the
+   * query cache, and a stored label would stay in the language it was fetched
+   * in after a switch.
    */
-  sla: SlaType;
+  slotStart: string | null;
+  slotEnd: string | null;
+  /**
+   * The service level in hours — 12, 24, 36 or 48. Four rather than the two
+   * the prototype drew: rendering a 36-hour ticket as one of the others would
+   * be wrong on screen.
+   */
+  slaHours: number;
   /**
    * How far the job is. **Optional, and still absent on every real job** —
    * and it stays that way even though `latitude` below now exists.
@@ -326,7 +342,14 @@ export interface Transaction {
   id: string;
   kind: TransactionKind;
   title: string;
-  subtitle: string;
+  /**
+   * When the money moved, and the job it was for — the two halves of the
+   * row's second line ("Today · RGT-INST-0012"). Kept apart rather than as the
+   * server's ready-made `subtitle` so the day can be worded in the app's
+   * language; `utils/date.relativeDayLabel` words it the way the server did.
+   */
+  at: string;
+  ticketCode: string;
   /** Signed integer paise: credits positive, penalties negative. */
   amountPaise: number;
   /**

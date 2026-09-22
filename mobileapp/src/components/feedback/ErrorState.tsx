@@ -1,7 +1,9 @@
-import { Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Button } from '@/components/ui/Button';
+import { Text } from '@/components/ui/Text';
 import { color } from '@/theme/semantic';
 import { radius } from '@/theme/spacing';
 
@@ -11,11 +13,9 @@ export interface ErrorStateProps {
   onRetry?: () => void;
 }
 
-export function ErrorState({
-  title = 'Something went wrong',
-  body = "We couldn't load this. Check your connection and try again.",
-  onRetry,
-}: ErrorStateProps) {
+export function ErrorState({ title, body, onRetry }: ErrorStateProps) {
+  const { t } = useTranslation();
+
   return (
     <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
       <View
@@ -33,7 +33,7 @@ export function ErrorState({
       </View>
 
       <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.textPrimary }}>
-        {title}
+        {title ?? t('components.errorState.title')}
       </Text>
       <Text
         style={{
@@ -45,12 +45,12 @@ export function ErrorState({
           marginTop: 6,
         }}
       >
-        {body}
+        {body ?? t('components.errorState.body')}
       </Text>
 
       {onRetry ? (
         <View style={{ marginTop: 20, alignSelf: 'stretch' }}>
-          <Button label="Try again" variant="secondary" onPress={onRetry} />
+          <Button label={t('common.tryAgain')} variant="secondary" onPress={onRetry} />
         </View>
       ) : null}
     </View>

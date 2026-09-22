@@ -44,6 +44,10 @@ export class ApiError extends Error {
      *
      * Undefined on every error that has only one meaning, which is most of
      * them. Never render it: the `message` is what a person reads.
+     *
+     * Three are the app's own, on the errors it manufactures — `OFFLINE`,
+     * `BAD_RESPONSE`, `SESSION_ENDED` — so `i18n/errorText` can translate them
+     * like any server code while the message stays English for analytics.
      */
     readonly code?: string,
   ) {
@@ -93,7 +97,12 @@ export async function apiRequest<T>(
   } catch {
     // A field technician loses signal constantly. This has to read as
     // "you are offline", not as a server fault.
-    const offline = new ApiError("Can't reach the server. Check your connection.", 0);
+    const offline = new ApiError(
+      "Can't reach the server. Check your connection.",
+      0,
+      [],
+      'OFFLINE',
+    );
     trackApiError(offline, { status: offline.status, path });
     throw offline;
   }
@@ -110,7 +119,9 @@ export async function apiRequest<T>(
       envelope?.message ?? `Request failed (${response.status})`,
       response.status,
       envelope?.errors ?? [],
-      envelope?.code,
+      // No envelope at all (a proxy's HTML error page, a truncated body) is
+      // the app's own finding, so it gets the app's own code.
+      envelope ? envelope.code : 'BAD_RESPONSE',
     );
     // A 401 is usually just an expired access token that `authedRequest`
     // refreshes silently; the one that really ends a session is tracked there.
@@ -192,7 +203,12 @@ export async function authedRequest<T>(
       useSession.getState().signOut();
       // Manufactured here, not by `apiRequest`, so this is the one place that
       // has to track it itself.
-      const sessionEnded = new ApiError('Your session has ended. Please sign in again.', 401);
+      const sessionEnded = new ApiError(
+        'Your session has ended. Please sign in again.',
+        401,
+        [],
+        'SESSION_ENDED',
+      );
       trackApiError(sessionEnded, { status: sessionEnded.status, path });
       throw sessionEnded;
     }

@@ -1,21 +1,30 @@
 import { useRouter } from 'expo-router';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
-import { Avatar } from '@/components/ui';
+import { Avatar, Text } from '@/components/ui';
 import {
   useAcceptingWork,
   useSetAcceptingWork,
 } from '@/features/availability/hooks/useAvailability';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
-import { useGreeting } from '@/features/jobs/hooks/useGreeting';
+import { type DayPeriod, useGreeting } from '@/features/jobs/hooks/useGreeting';
+import { useLanguagePrompt } from '@/features/language/hooks/useLanguagePrompt';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { useMe } from '@/features/profile/hooks/useMe';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
+
+const GREETING = {
+  morning: 'jobs.home.greeting.morning',
+  afternoon: 'jobs.home.greeting.afternoon',
+  evening: 'jobs.home.greeting.evening',
+} as const satisfies Record<DayPeriod, string>;
 
 /**
  * Screen 2 — Home.
@@ -29,19 +38,28 @@ import { palette } from '@/theme/tokens';
 export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  // A technician already signed in when this version arrives never sees
+  // sign-in again, so Home offers the language list once instead.
+  useLanguagePrompt();
 
   // The signed-in technician. Shares the `me` query with the Profile tab, so
   // this is one request, not two — and it replaces a `technician` record
   // imported straight from the mock database, which greeted every user by the
   // same seeded name after they had just proved who they were with an OTP.
   const { data: me } = useMe();
-  const greeting = useGreeting();
+  const greeting = t(GREETING[useGreeting()]);
 
   const online = useAcceptingWork();
   const { mutate: setOnline, isPending: savingOnline } = useSetAcceptingWork();
 
-  const { data: pool, isRefetching: poolRefetching, refetch: refetchPool } = usePool();
+  const { data: pool, refetch: refetchPool } = usePool();
   const { data: today, isPending, isError, refetch } = useTodayJobs();
+  // Refreshes BOTH lists, because the screen shows both: the pool banner and
+  // today's committed jobs. Pulling one and not the other would leave half the
+  // screen stale under a gesture that says it refreshed everything — and the
+  // spinner waits for both, where it used to stop with the pool alone.
+  const pull = usePullToRefresh(() => Promise.all([refetchPool(), refetch()]));
 
   const poolCount = pool?.length ?? 0;
   const todayCount = today?.length ?? 0;
@@ -53,21 +71,7 @@ export function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}
-        /* Refreshes BOTH lists, because the screen shows both: the pool
-           banner and today's committed jobs. Pulling one and not the other
-           would leave half the screen stale under a gesture that says it
-           refreshed everything. */
-        refreshControl={
-          <RefreshControl
-            refreshing={poolRefetching && !isPending}
-            onRefresh={() => {
-              void refetchPool();
-              void refetch();
-            }}
-            tintColor={palette.primary[500]}
-            colors={[palette.primary[500]]}
-          />
-        }
+        refreshControl={<RefreshControl {...pull} />}
       >
         <View
           style={{
@@ -91,7 +95,7 @@ export function HomeScreen() {
             <Pressable
               onPress={() => router.push('/(app)/(tabs)/profile')}
               accessibilityRole="button"
-              accessibilityLabel="Your profile"
+              accessibilityLabel={t('jobs.home.yourProfile')}
               style={{ flex: 1 }}
             >
               {({ pressed }) => (
@@ -133,7 +137,7 @@ export function HomeScreen() {
             <Pressable
               onPress={() => router.push('/pool')}
               accessibilityRole="button"
-              accessibilityLabel={`${poolCount} new jobs in your area`}
+              accessibilityLabel={t('jobs.home.newJobs', { count: poolCount })}
             >
               {({ pressed }) => (
                 <View
@@ -176,7 +180,7 @@ export function HomeScreen() {
             disabled={savingOnline}
             accessibilityRole="switch"
             accessibilityState={{ checked: online, disabled: savingOnline }}
-            accessibilityLabel="Receive job offers"
+            accessibilityLabel={t('jobs.home.receiveOffers')}
           >
             <View
               style={{
@@ -218,7 +222,7 @@ export function HomeScreen() {
                 <Text
                   style={{ fontFamily: 'Roboto_700Bold', fontSize: 14, color: color.textInverse }}
                 >
-                  {online ? "You're online" : "You're offline"}
+                  {online ? t('jobs.home.online') : t('jobs.home.offline')}
                 </Text>
                 <Text
                   style={{
@@ -227,7 +231,7 @@ export function HomeScreen() {
                     color: color.textOnChrome,
                   }}
                 >
-                  {online ? 'Receiving job offers' : 'Not receiving offers'}
+                  {online ? t('jobs.home.receiving') : t('jobs.home.notReceiving')}
                 </Text>
               </View>
             </View>
@@ -239,7 +243,7 @@ export function HomeScreen() {
             <Pressable
               onPress={() => router.push('/pool')}
               accessibilityRole="button"
-              accessibilityLabel={`${poolCount} new jobs in your area`}
+              accessibilityLabel={t('jobs.home.newJobs', { count: poolCount })}
             >
               {({ pressed }) => (
                 <View
@@ -276,7 +280,7 @@ export function HomeScreen() {
                         color: color.textPrimary,
                       }}
                     >
-                      {poolCount} new {poolCount === 1 ? 'job' : 'jobs'} in your area
+                      {t('jobs.home.newJobs', { count: poolCount })}
                     </Text>
                     <Text
                       style={{
@@ -285,7 +289,7 @@ export function HomeScreen() {
                         color: color.textSecondary,
                       }}
                     >
-                      Confirmed slots · tap to view the pool
+                      {t('jobs.home.poolHint')}
                     </Text>
                   </View>
 
@@ -308,7 +312,7 @@ export function HomeScreen() {
             <Text
               style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: color.textPrimary }}
             >
-              Today&apos;s jobs
+              {t('jobs.home.todayTitle')}
             </Text>
             {!isPending && !isError ? (
               <Text
@@ -318,7 +322,7 @@ export function HomeScreen() {
                   color: color.textSecondary,
                 }}
               >
-                {todayCount} {todayCount === 1 ? 'job' : 'jobs'}
+                {t('jobs.home.jobCount', { count: todayCount })}
               </Text>
             ) : null}
           </View>
@@ -346,7 +350,7 @@ export function HomeScreen() {
               <Text
                 style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
               >
-                Nothing scheduled today
+                {t('jobs.home.emptyTitle')}
               </Text>
               <Text
                 style={{
@@ -356,7 +360,7 @@ export function HomeScreen() {
                   marginTop: 4,
                 }}
               >
-                Accept a job from the pool to fill your day.
+                {t('jobs.home.emptyBody')}
               </Text>
             </View>
           ) : (

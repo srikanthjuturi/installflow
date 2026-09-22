@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
+import { View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,6 +12,7 @@ import Animated, {
 
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
+import { Text } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useSubmitProof, useVerification } from '@/features/proof/hooks/useVerification';
 import { color } from '@/theme/semantic';
@@ -40,6 +42,7 @@ export interface VerifyingScreenProps {
  */
 export function VerifyingScreen({ jobId }: VerifyingScreenProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { data: job } = useJob(jobId);
 
   const submit = useSubmitProof(jobId);
@@ -80,7 +83,7 @@ export function VerifyingScreen({ jobId }: VerifyingScreenProps) {
       <Text
         style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textInverse }}
       >
-        Verifying with AI
+        {t('proof.verifying.title')}
       </Text>
 
       <Text
@@ -94,11 +97,13 @@ export function VerifyingScreen({ jobId }: VerifyingScreenProps) {
           maxWidth: 250,
         }}
       >
-        Matching serial and product images against{' '}
-        <Text style={{ fontFamily: 'Roboto_700Bold', color: color.verifyStrongText }}>
-          {job?.model ?? 'the order'}
-        </Text>
-        .
+        <Trans
+          i18nKey="proof.verifying.body"
+          values={{ model: job?.model ?? t('proof.verifying.theOrder') }}
+          components={{
+            bold: <Text style={{ fontFamily: 'Roboto_700Bold', color: color.verifyStrongText }} />,
+          }}
+        />
       </Text>
     </View>
   );

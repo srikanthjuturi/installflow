@@ -391,6 +391,8 @@ def _offer_out(
         id=t.id,
         code=t.code,
         subcategoryName=sub_names.get(t.node_id, "—"),
+        # Already on the row — the pool's hottest path pays no extra read.
+        nodePathIds=list(t.node_path_ids),
         modelName=models.get(t.model_id, ("—", [], None))[0],
         serviceType=t.service_type,
         city=t.city,
@@ -1093,6 +1095,26 @@ async def submit_proof(
     if row is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    # No work before a time is agreed. A technician may TAKE a job before the
+    # customer picks a time — the pool offers `Slot Pending` so the job is not
+    # hidden while the SLA runs — but starting one was never meant to follow:
+    # it put a technician at a door nobody had agreed to open, and a ticket
+    # went from link-sent to customer-confirmed without a time ever existing.
+    # The customer picking from their link, or a manager's "Change the time",
+    # is what lifts this; neither needs anything from the technician.
+    #
+    # Only from `Assigned`, so a duplicate tap on a job that started before
+    # this rule existed still gets the "already started" answer below.
+    #
+    # Here and not only in the app, because installed builds predate the app
+    # hiding the button — they reach this with four photos already taken.
+    if row.status == "Assigned" and row.slot_start is None:
+        raise JobRefused(
+            "NO_TIME_AGREED",
+            "The customer hasn't picked a time yet. You can start this job once "
+            "they do, or once your manager sets one.",
         )
 
     # Hoisted out of the check so that check stays a plain predicate over the

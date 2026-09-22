@@ -1,7 +1,9 @@
 import { useRef } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, TextInput, View } from 'react-native';
 
 import { useKeyboardReveal } from '@/components/layout';
+import { Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -24,6 +26,7 @@ export interface OtpInputProps {
  * 9px gutter, 22px/700 digits, filled cells tinted primary-50.
  */
 export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpInputProps) {
+  const { t } = useTranslation();
   const inputRef = useRef<TextInput>(null);
   // Inside a KeyboardFlow, keeps the boxes — and the button under them when
   // there is room — in sight above the number pad.
@@ -31,7 +34,7 @@ export function OtpInput({ value, onChange, length = 6, autoFocus = true }: OtpI
   const cells = Array.from({ length }, (_, i) => value[i] ?? '');
 
   return (
-    <Pressable onPress={() => inputRef.current?.focus()} accessibilityLabel="One-time code">
+    <Pressable onPress={() => inputRef.current?.focus()} accessibilityLabel={t('auth.otpInput.label')}>
       <View style={{ flexDirection: 'row', gap: 9 }}>
         {cells.map((digit, i) => {
           const filled = digit !== '';

@@ -3,13 +3,15 @@ import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { ActivityIndicator, Alert, Pressable, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
+import { Text } from '@/components/ui';
 import { saveMyProfilePhoto } from '@/features/auth/api/session';
 import { getAccessToken } from '@/store/session.store';
 import type { ImageSource } from '@/lib/images';
@@ -55,6 +57,7 @@ function edge(value: number): number {
 export function CropScreen({ uri, width, height }: CropScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: screenW } = useWindowDimensions();
   const setAvatar = useProfileStore((s) => s.setAvatar);
   const clearAvatar = useProfileStore((s) => s.clearAvatar);
@@ -145,7 +148,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
       setSource({ uri: saved.uri, width: saved.width, height: saved.height });
       reset();
     } catch {
-      Alert.alert("Couldn't rotate that photo", 'Try again, or choose a different picture.');
+      Alert.alert(t('profile.crop.rotateFailed'), t('profile.photo.tryDifferent'));
     } finally {
       setBusy(false);
     }
@@ -198,7 +201,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
       // silent in development and fatal in a release build, which is a crash
       // report nobody can act on for a photo they can simply pick again.
       setBusy(false);
-      Alert.alert("Couldn't crop that photo", 'Try again, or choose a different picture.');
+      Alert.alert(t('profile.crop.cropFailed'), t('profile.photo.tryDifferent'));
       return;
     }
 
@@ -222,7 +225,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
         // Roll the optimistic preview back rather than leave a face on
         // screen that no other device will ever show.
         clearAvatar();
-        Alert.alert("Couldn't save your photo", 'Check your connection and try again.');
+        Alert.alert(t('profile.crop.saveFailed'), t('profile.photo.checkConnection'));
       }
     }
     // `back()`, not `dismissAll()`: the picker sheet `replace`s itself with
@@ -261,7 +264,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
                 opacity: pressed ? 0.6 : 1,
               }}
             >
-              Cancel
+              {t('common.cancel')}
             </Text>
           )}
         </Pressable>
@@ -275,7 +278,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
             color: color.textInverse,
           }}
         >
-          Crop photo
+          {t('profile.crop.title')}
         </Text>
 
         <Pressable
@@ -283,7 +286,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
           hitSlop={10}
           disabled={busy}
           accessibilityRole="button"
-          accessibilityLabel="Done"
+          accessibilityLabel={t('profile.crop.done')}
         >
           {({ pressed }) => (
             <Text
@@ -294,7 +297,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
                 opacity: pressed ? 0.6 : 1,
               }}
             >
-              Done
+              {t('profile.crop.done')}
             </Text>
           )}
         </Pressable>
@@ -340,7 +343,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
             marginTop: 20,
           }}
         >
-          Drag to reposition · pinch to zoom
+          {t('profile.crop.hint')}
         </Text>
       </View>
 
@@ -358,7 +361,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
           onPress={busy ? undefined : rotate}
           disabled={busy}
           accessibilityRole="button"
-          accessibilityLabel="Rotate 90 degrees"
+          accessibilityLabel={t('profile.crop.rotateA11y')}
         >
           {({ pressed }) => (
             <View
@@ -381,7 +384,7 @@ export function CropScreen({ uri, width, height }: CropScreenProps) {
                   color: color.textInverse,
                 }}
               >
-                Rotate
+                {t('profile.crop.rotate')}
               </Text>
             </View>
           )}

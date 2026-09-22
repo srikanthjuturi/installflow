@@ -1,17 +1,24 @@
 import { Image } from 'expo-image';
-import { ScrollView, Text, View } from 'react-native';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Button, DetailRow, Pill, QrCode } from '@/components/ui';
+import { Button, DetailRow, Pill, QrCode, Text } from '@/components/ui';
 import type { RedemptionDetail, RedemptionEvent } from '@/features/redeem/api/redeem';
-import { STATE_PILL, momentLabel } from '@/features/redeem/format';
+import { STATE_PILL } from '@/features/redeem/format';
 import {
   useConfirmRedemption,
   useRedeemable,
   useRedemption,
 } from '@/features/redeem/hooks/useRedeem';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { errorText } from '@/i18n/errorText';
+import { roleLabel } from '@/i18n/serverLabels';
 import { color } from '@/theme/semantic';
+import { momentLabel } from '@/utils/date';
 import { formatPaise } from '@/utils/money';
 
 const CARD = {
@@ -42,12 +49,13 @@ const CARD = {
  * 2026-09-11.
  */
 export function RedemptionScreen({ id }: { id: string }) {
+  const { t } = useTranslation();
   const redemption = useRedemption(id);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Redemption" paddingBottom={14} />
+      <TitleBar title={t('redeem.detail.title')} paddingBottom={14} />
 
       {redemption.isPending ? (
         <View style={{ padding: 16, gap: 14 }}>
@@ -57,26 +65,40 @@ export function RedemptionScreen({ id }: { id: string }) {
       ) : redemption.isError ? (
         <ErrorState onRetry={() => redemption.refetch()} />
       ) : (
-        <Body data={redemption.data} />
+        <Body data={redemption.data} refresh={redemption.refetch} />
       )}
     </View>
   );
 }
 
-function Body({ data }: { data: RedemptionDetail }) {
-  const payer = useRedeemable().data?.payerLabel;
+function Body({
+  data,
+  refresh,
+}: {
+  data: RedemptionDetail;
+  refresh: () => Promise<unknown>;
+}) {
+  const { t } = useTranslation();
+  // The server's English role name ("National Head"), in the app's language.
+  const payerLabel = useRedeemable().data?.payerLabel;
+  const payer = payerLabel ? roleLabel(payerLabel) : undefined;
   const confirm = useConfirmRedemption(data.id);
   const pill = STATE_PILL[data.state];
   const awaiting = data.state === 'awaiting';
+  // "I received it" is the last thing here — it must clear the ◁ ○ □ bar.
+  const navInset = useButtonNavInset();
+  // The screen a technician watches for the payer's "I paid".
+  const pull = usePullToRefresh(refresh);
 
   return (
     <ScrollView
-      contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 14 }}
+      refreshControl={<RefreshControl {...pull} />}
+      contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset, gap: 14 }}
       showsVerticalScrollIndicator={false}
     >
       <View style={CARD}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Pill label={pill.label} tone={pill.tone} />
+          <Pill label={t(pill.label)} tone={pill.tone} />
           <Text
             style={{ fontFamily: 'Roboto_500Medium', fontSize: 12, color: color.textMuted }}
           >
@@ -111,7 +133,10 @@ function Body({ data }: { data: RedemptionDetail }) {
             <QrCode
               value={data.upiUri}
               size={220}
-              accessibilityLabel={`UPI QR code for ${formatPaise(data.amountPaise)} to ${data.upiId}`}
+              accessibilityLabel={t('redeem.detail.qr', {
+                amount: formatPaise(data.amountPaise),
+                upiId: data.upiId,
+              })}
             />
           </View>
           {payer ? (
@@ -125,16 +150,16 @@ function Body({ data }: { data: RedemptionDetail }) {
                 marginTop: 12,
               }}
             >
-              Your {payer} can scan this to pay you
+              {t('redeem.detail.scanToPay', { payer })}
             </Text>
           ) : null}
         </View>
       ) : null}
 
       <View style={[CARD, { paddingVertical: 4 }]}>
-        <DetailRow label="UPI ID" value={data.upiId} first />
-        <DetailRow label="Reference" value={data.code} />
-        <DetailRow label="Requested" value={momentLabel(data.requestedAt)} />
+        <DetailRow label={t('redeem.detail.upiId')} value={data.upiId} first />
+        <DetailRow label={t('redeem.detail.reference')} value={data.code} />
+        <DetailRow label={t('redeem.detail.requested')} value={momentLabel(data.requestedAt)} />
       </View>
 
       {data.state === 'to_pay' && payer ? (
@@ -147,14 +172,17 @@ function Body({ data }: { data: RedemptionDetail }) {
             marginHorizontal: 4,
           }}
         >
-          Wrong UPI ID? Ask your {payer} to decline this, then request again.
+          {t('redeem.detail.wrongUpi', { payer })}
         </Text>
       ) : null}
 
       {data.claimedAt ? (
         <View style={CARD}>
           <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 14, color: color.textPrimary }}>
-            Paid by {data.claimedBy ?? '—'} · {momentLabel(data.claimedAt)}
+            {t('redeem.detail.paidBy', {
+              name: data.claimedBy ?? '—',
+              when: momentLabel(data.claimedAt),
+            })}
           </Text>
           {data.utr ? (
             <Text
@@ -166,14 +194,14 @@ function Body({ data }: { data: RedemptionDetail }) {
                 marginTop: 4,
               }}
             >
-              UTR {data.utr}
+              {t('redeem.detail.utr', { utr: data.utr })}
             </Text>
           ) : null}
           {data.proofUrl ? (
             <Image
               source={{ uri: data.proofUrl }}
               contentFit="contain"
-              accessibilityLabel="Payment screenshot"
+              accessibilityLabel={t('redeem.detail.screenshot')}
               style={{
                 width: '100%',
                 height: 340,
@@ -196,11 +224,11 @@ function Body({ data }: { data: RedemptionDetail }) {
                     marginBottom: 4,
                   }}
                 >
-                  We told {data.claimedBy ?? '—'} it hasn&apos;t arrived.
+                  {t('redeem.detail.toldNotArrived', { name: data.claimedBy ?? '—' })}
                 </Text>
               ) : null}
               <Button
-                label="I received it"
+                label={t('redeem.detail.received')}
                 loading={confirm.isPending && confirm.variables === true}
                 disabled={confirm.isPending}
                 onPress={() => confirm.mutate(true)}
@@ -210,7 +238,7 @@ function Body({ data }: { data: RedemptionDetail }) {
                   button that visibly does nothing is worse than none. */}
               {data.deniedAt ? null : (
                 <Button
-                  label="Not yet"
+                  label={t('redeem.detail.notYet')}
                   variant="outline"
                   loading={confirm.isPending && confirm.variables === false}
                   disabled={confirm.isPending}
@@ -226,7 +254,7 @@ function Body({ data }: { data: RedemptionDetail }) {
                     textAlign: 'center',
                   }}
                 >
-                  {confirm.error instanceof Error ? confirm.error.message : ''}
+                  {confirm.error instanceof Error ? errorText(confirm.error, '') : ''}
                 </Text>
               ) : null}
             </View>
@@ -244,7 +272,10 @@ function Body({ data }: { data: RedemptionDetail }) {
               color: color.dangerTextStrong,
             }}
           >
-            Declined by {data.declinedBy ?? '—'}: {data.declineReason ?? '—'}
+            {t('redeem.detail.declinedBy', {
+              name: data.declinedBy ?? '—',
+              reason: data.declineReason ?? '—',
+            })}
           </Text>
         </View>
       ) : null}
@@ -254,7 +285,7 @@ function Body({ data }: { data: RedemptionDetail }) {
           {data.events.map((event, i) => (
             <DetailRow
               key={event.id}
-              label={eventLabel(event)}
+              label={eventLabel(event, t)}
               value={momentLabel(event.at)}
               first={i === 0}
             />
@@ -266,17 +297,17 @@ function Body({ data }: { data: RedemptionDetail }) {
 }
 
 /** Each line of the trail, in the words the rest of the screen already uses. */
-function eventLabel(event: RedemptionEvent): string {
+function eventLabel(event: RedemptionEvent, t: TFunction): string {
   switch (event.kind) {
     case 'requested':
-      return 'Requested';
+      return t('redeem.detail.events.requested');
     case 'claimed':
-      return `Paid by ${event.actorLabel ?? '—'}`;
+      return t('redeem.detail.events.claimed', { name: event.actorLabel ?? '—' });
     case 'denied':
-      return 'Not yet';
+      return t('redeem.detail.events.denied');
     case 'confirmed':
-      return 'Received';
+      return t('redeem.detail.events.confirmed');
     case 'declined':
-      return `Declined by ${event.actorLabel ?? '—'}`;
+      return t('redeem.detail.events.declined', { name: event.actorLabel ?? '—' });
   }
 }

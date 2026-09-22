@@ -1,7 +1,8 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { productIcon } from '@/components/icons/productIcons';
+import { Text } from '@/components/ui';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 

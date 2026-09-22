@@ -101,6 +101,7 @@ from app.features.tickets.schemas import (
     FunnelOut,
     PenaltyReviewerOut,
     RenotifyOut,
+    SerialCheckOut,
     SlaBreakdownOut,
     SlotOptionOut,
     TicketAttachmentOut,
@@ -461,7 +462,23 @@ async def _resolve_product(
 async def _assert_serial_known(
     db: AsyncSession, model: ProductModel, serial: str
 ) -> None:
-    """The serial must be one this model actually covers — IF any are loaded.
+    """Refuse a serial the model's list does not carry. See `_serial_refusal`."""
+    refusal = await _serial_refusal(db, model, serial)
+    if refusal is not None:
+        raise _bad_request(refusal)
+
+
+async def _serial_refusal(
+    db: AsyncSession, model: ProductModel, serial: str
+) -> str | None:
+    """Why this serial would be refused for this model, or None if it would not.
+
+    The rule behind `_assert_serial_known`, returning its sentence instead of
+    raising it, so `check_serial` can ask the SAME question before a Save and
+    show the same words. Two copies of this rule would disagree the first time
+    one of them changed.
+
+    The serial must be one this model actually covers — IF any are loaded.
 
     `tickets.serial_number` is the number off the vendor's invoice, and until
     `product_model_serials` existed nothing could say whether it was plausible
@@ -493,7 +510,7 @@ async def _assert_serial_known(
     """
     needle = (serial or "").strip().lower()
     if not needle:
-        return
+        return None
 
     hit = await db.scalar(
         select(ProductModelSerial.id).where(
@@ -503,7 +520,7 @@ async def _assert_serial_known(
         )
     )
     if hit is not None:
-        return
+        return None
 
     loaded = await db.scalar(
         select(ProductModelSerial.id)
@@ -514,9 +531,9 @@ async def _assert_serial_known(
         .limit(1)
     )
     if loaded is None:
-        return
+        return None
 
-    raise _bad_request(
+    return (
         f"{serial.strip()} is not a serial number on record for {model.name}. "
         "Check it against the invoice, or ask for it to be added to the "
         "product master."
@@ -820,6 +837,73 @@ def closed_in(cutoff: datetime.datetime | None):
     return or_(confirmed, forced)
 
 
+#: The dashboard's "Needs your attention" cards that no status can name, as the
+#: values `GET /tickets?attention=` takes. Each is the one expression its card
+#: counts with — see the two functions below.
+ATTENTION_FILTERS = ("force-close", "slot-unconfirmed")
+
+
+def awaiting_force_close(now: datetime.datetime):
+    """Tickets only a manager can end now — the "Awaiting force-close" card.
+
+    TWO populations, and the card counts both because `sweeps.sweep_force_close`
+    raises a `force_close` bell for both. A card whose number disagrees with the
+    queue it opens is the single thing that makes a count not worth having.
+
+    Counted by `dashboard_summary` and filtered on by `list_tickets`, so the card
+    and the list it opens hold the same rows. The link used to be
+    `status=Awaiting Customer`, which missed the second population outright and
+    let in every `Awaiting Customer` ticket still inside its window.
+    """
+    return or_(
+        # The work is done and the customer never confirmed it.
+        and_(
+            Ticket.status == "Awaiting Customer",
+            Ticket.customer_confirmed_at.is_(None),
+            _last_event_at("feedback_requested").is_not(None),
+            # Per ticket, out of its own stamped rules — the same shape the
+            # sweep uses, so this matches exactly the rows the sweep will act on
+            # rather than an approximation of them.
+            _last_event_at("feedback_requested")
+            <= now - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
+        ),
+        # The customer never picked a time and the window has shut, so they can
+        # no longer pick one. Nothing they or a technician does moves this ticket
+        # now. Only where a time was still theirs to pick —
+        # `sweeps._sweep_expired_without_slot`'s own predicate.
+        and_(
+            time_is_choosable_clause(),
+            Ticket.slot_start.is_(None),
+            Ticket.sla_due_at < now,
+        ),
+    )
+
+
+def slot_unconfirmed(now: datetime.datetime):
+    """Asked for a time and silent past the window — the "Slot not confirmed" card.
+
+    Keyed on the SLOT, not on `Slot Pending`, and it must match
+    `sweeps.sweep_silent_slots` exactly — the card is supposed to count the rows
+    that sweep will act on. The link used to be `status=Slot Pending`, which is
+    how a full card could open a list the funnel beside it said held nothing.
+
+    The status test used to be the same question. It stopped being one when a
+    job could be accepted before the customer answered: that ticket is
+    `Assigned` with no time, still needs chasing, and would have vanished from
+    the card at the moment it gained a technician waiting to be told where to go.
+
+    But not "anything live" either: a job already STARTED with no time is not
+    waiting on the customer — see `core.slots`.
+    """
+    return and_(
+        time_is_choosable_clause(),
+        Ticket.slot_start.is_(None),
+        _last_event_at("slot_requested").is_not(None),
+        _last_event_at("slot_requested")
+        <= now - _hours(snapshot_int(Ticket.rules_snapshot, "slot_silence_hours")),
+    )
+
+
 async def list_tickets(
     db: AsyncSession,
     principal: Principal,
@@ -835,6 +919,7 @@ async def list_tickets(
     date_to: datetime.date | None = None,
     open_only: bool = False,
     closed_within_days: int | None = None,
+    attention: str | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -875,6 +960,16 @@ async def list_tickets(
         stmt = stmt.where(
             closed_in(_now() - datetime.timedelta(days=closed_within_days))
         )
+
+    # The attention cards' two populations. Neither is a status, which is why
+    # the links that filtered on one opened lists that disagreed with the count.
+    wanted = _canonical(attention, ATTENTION_FILTERS)
+    if wanted is False:
+        return [], 0
+    if wanted == "force-close":
+        stmt = stmt.where(awaiting_force_close(_now()))
+    elif wanted == "slot-unconfirmed":
+        stmt = stmt.where(slot_unconfirmed(_now()))
 
     wanted = _canonical(service_type, SERVICE_TYPES)
     if wanted is False:
@@ -1097,65 +1192,16 @@ async def dashboard_summary(
     counts = await scoped(db, counts, principal)
     row = (await db.execute(counts)).one()
 
-    # TWO populations need a manager to end them by hand, and this tile counts
-    # both because `sweeps.sweep_force_close` raises a `force_close` bell for
-    # both. A card whose number disagrees with the queue it opens is the single
-    # thing that makes a count not worth having.
+    # The two attention cards a status cannot name. Each is the SAME expression
+    # `list_tickets(attention=...)` filters on, so the card and the list it opens
+    # hold the same rows — see the two functions for what each one counts.
     awaiting = mine(
-        select(func.count())
-        .select_from(Ticket)
-        .where(
-            or_(
-                # The work is done and the customer never confirmed it.
-                and_(
-                    Ticket.status == "Awaiting Customer",
-                    Ticket.customer_confirmed_at.is_(None),
-                    _last_event_at("feedback_requested").is_not(None),
-                    # Per ticket, out of its own stamped rules — the same shape
-                    # the sweep uses, so the tile counts exactly the rows the
-                    # sweep will act on rather than an approximation of them.
-                    _last_event_at("feedback_requested")
-                    <= now
-                    - _hours(snapshot_int(Ticket.rules_snapshot, "force_close_hours")),
-                ),
-                # The customer never picked a time and the window has shut, so
-                # they can no longer pick one. Nothing they or a technician does
-                # moves this ticket now. Only where a time was still theirs to
-                # pick — `sweeps._sweep_expired_without_slot`'s own predicate.
-                and_(
-                    time_is_choosable_clause(),
-                    Ticket.slot_start.is_(None),
-                    Ticket.sla_due_at < now,
-                ),
-            )
-        )
+        select(func.count()).select_from(Ticket).where(awaiting_force_close(now))
     )
     awaiting = await scoped(db, awaiting, principal)
 
     silent = mine(
-        select(func.count())
-        .select_from(Ticket)
-        .where(
-            # Keyed on the SLOT, not on `Slot Pending`, and it must match
-            # `sweeps.sweep_silent_slots` exactly — this tile is supposed to
-            # count the rows that sweep will act on, and the two drifting apart
-            # is a number nobody can reconcile with the queue it opens.
-            #
-            # The status test used to be the same question. It stopped being one
-            # when a job could be accepted before the customer answered: that
-            # ticket is `Assigned` with no time, still needs chasing, and would
-            # have vanished from this tile at the moment it gained a technician
-            # waiting to be told where to go.
-            #
-            # But not "anything live" either: a job already STARTED with no
-            # time is not waiting on the customer — see `core.slots`.
-            time_is_choosable_clause(),
-            Ticket.slot_start.is_(None),
-            _last_event_at("slot_requested").is_not(None),
-            _last_event_at("slot_requested")
-            <= now
-            - _hours(snapshot_int(Ticket.rules_snapshot, "slot_silence_hours")),
-        )
+        select(func.count()).select_from(Ticket).where(slot_unconfirmed(now))
     )
     silent = await scoped(db, silent, principal)
 
@@ -1991,15 +2037,7 @@ async def correct_serial(
         # whose value is that every row means something.
         return await get_ticket(db, principal, ticket_id)
 
-    # The ticket's own model, not one from the request — a correction cannot
-    # move a ticket to a different product, so there is nothing here to scope
-    # beyond the ticket `_load` has already proved the caller may see.
-    model = await db.scalar(
-        select(ProductModel).where(
-            ProductModel.id == row.model_id,
-            ProductModel.company_id == row.company_id,
-        )
-    )
+    model = await _ticket_model(db, row)
     if model is not None:
         await _assert_serial_known(db, model, now)
 
@@ -2020,6 +2058,43 @@ async def correct_serial(
     await publish_ticket_changed(db, row)
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
+
+
+async def check_serial(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID, serial: str
+) -> SerialCheckOut:
+    """Would `correct_serial` accept this number? Asked while it is typed.
+
+    Exists because the refusal used to arrive only AFTER Save, in a toast
+    outside the dialog — and the dialog's own one-click suggestion, the number
+    the technician read, is exactly the number most likely to be refused, since
+    nobody loaded it. The same `_serial_refusal`, so the answer here and the
+    answer on Save cannot differ.
+
+    Not an oracle worth worrying about: `_load` limits it to a ticket the
+    caller can already see, it tests ONE model — the ticket's own — and it is
+    exact-match, not the prefix search `masters.lookup_serial` guards. A vendor
+    asking about its own product's serials is asking about a list it manages.
+    """
+    row = await _load(db, principal, ticket_id)
+    model = await _ticket_model(db, row)
+    refusal = None if model is None else await _serial_refusal(db, model, serial)
+    return SerialCheckOut(accepted=refusal is None, message=refusal)
+
+
+async def _ticket_model(db: AsyncSession, row: Ticket) -> ProductModel | None:
+    """The ticket's own model, not one from the request.
+
+    A correction cannot move a ticket to a different product, so there is
+    nothing here to scope beyond the ticket `_load` has already proved the
+    caller may see.
+    """
+    return await db.scalar(
+        select(ProductModel).where(
+            ProductModel.id == row.model_id,
+            ProductModel.company_id == row.company_id,
+        )
+    )
 
 
 # ── escalation: nobody accepted, so a manager owns it ────────────────────────

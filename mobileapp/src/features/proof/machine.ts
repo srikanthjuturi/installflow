@@ -1,3 +1,5 @@
+import { t } from 'i18next';
+
 import type { ProofKind } from '@/types/domain';
 
 /**
@@ -23,6 +25,7 @@ export function stepsFor(scanned: boolean): ProofKind[] {
 export const MAX_PHOTOS = 4;
 export const MIN_PHOTOS = 1;
 
+/** Keys into the locale files, worded where they are shown — `t(config.title)`. */
 export interface StepConfig {
   title: string;
   hint: string;
@@ -30,39 +33,39 @@ export interface StepConfig {
   reviewLabel: string;
 }
 
-export const STEP_CONFIG: Record<ProofKind, StepConfig> = {
+export const STEP_CONFIG = {
   barcode: {
-    title: 'Scan barcode',
-    hint: 'Align the product barcode within the frame',
-    reviewLabel: 'Barcode image',
+    title: 'proof.steps.barcode.title',
+    hint: 'proof.steps.barcode.hint',
+    reviewLabel: 'proof.steps.barcode.reviewLabel',
   },
   serial: {
-    title: 'Serial number',
+    title: 'proof.steps.serial.title',
     // Reached only when the barcode would not scan, so the hint says what to
     // do about that rather than repeating the step's own title.
-    hint: 'Photograph the serial label, then type the number below',
-    reviewLabel: 'Serial number',
+    hint: 'proof.steps.serial.hint',
+    reviewLabel: 'proof.steps.serial.reviewLabel',
   },
   photos: {
-    title: 'Product photos',
-    hint: 'Capture the installed unit from 2–3 angles',
-    reviewLabel: 'Product photos',
+    title: 'proof.steps.photos.title',
+    hint: 'proof.steps.photos.hint',
+    reviewLabel: 'proof.steps.photos.reviewLabel',
   },
   live: {
     // Doc §8: gallery uploads are never accepted. Saying so on the capture
     // screen is cheaper than rejecting the submission afterwards.
-    title: 'Live site photo',
-    hint: 'On-site live capture · gallery uploads not accepted',
-    reviewLabel: 'Geo-tagged live photos',
+    title: 'proof.steps.live.title',
+    hint: 'proof.steps.live.hint',
+    reviewLabel: 'proof.steps.live.reviewLabel',
   },
-};
+} as const satisfies Record<ProofKind, StepConfig>;
 
 export function stepNumber(step: ProofKind, steps: ProofKind[] = PROOF_STEPS): number {
   return steps.indexOf(step) + 1;
 }
 
 export function stepLabel(step: ProofKind, steps: ProofKind[] = PROOF_STEPS): string {
-  return `Step ${stepNumber(step, steps)} of ${steps.length}`;
+  return t('proof.stepOf', { n: stepNumber(step, steps), total: steps.length });
 }
 
 export function nextStep(

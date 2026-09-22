@@ -1,13 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import type { Verification } from '@/features/proof/api/verification';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCaptureStore } from '@/store/capture.store';
@@ -50,6 +51,7 @@ export interface ResultScreenProps {
 export function ResultScreen({ jobId, status, verificationId }: ResultScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { data: job } = useJob(jobId);
   const { setStep, clearStep } = useCaptureStore();
 
@@ -75,8 +77,8 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
         gradient={color.dangerHero}
         icon="warn"
         iconSize={46}
-        title="Mismatch flagged"
-        body="Serial doesn't match the order. Routed to the Area Service Manager."
+        title={t('proof.result.mismatchTitle')}
+        body={t('proof.result.mismatchBody')}
         bodyColor={color.dangerHeroText}
         insets={insets}
       >
@@ -99,7 +101,7 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
               marginBottom: 8,
             }}
           >
-            What happens now
+            {t('proof.result.whatNow')}
           </Text>
           <Text
             style={{
@@ -109,14 +111,13 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
               color: color.textLabel,
             }}
           >
-            The ASM reviews your captures and the mismatch. You&apos;ll be notified once they
-            approve or ask you to recapture.
+            {t('proof.result.whatNowBody')}
           </Text>
         </View>
 
         <View style={{ marginTop: 16 }}>
           <Button
-            label="Back to jobs"
+            label={t('proof.result.backToJobs')}
             variant="secondary"
             onPress={() => router.replace('/(app)/(tabs)/jobs')}
           />
@@ -131,8 +132,8 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
         gradient={color.warnHero}
         icon="cameraOff"
         iconSize={46}
-        title="Image unreadable"
-        body="The serial photo is blurry. Retake before you leave the site."
+        title={t('proof.result.unreadableTitle')}
+        body={t('proof.result.unreadableBody')}
         bodyColor={color.warnHeroText}
         insets={insets}
       >
@@ -153,13 +154,16 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
               color: color.slotFg,
             }}
           >
-            Steady the camera, avoid glare on the sticker, and fill the frame with the serial
-            label.
+            {t('proof.result.unreadableTip')}
           </Text>
         </View>
 
         <View style={{ marginTop: 16 }}>
-          <Button label="Retake serial photo" leadingIcon="camera" onPress={retakeSerial} />
+          <Button
+            label={t('proof.result.retakeSerial')}
+            leadingIcon="camera"
+            onPress={retakeSerial}
+          />
         </View>
       </Shell>
     );
@@ -170,8 +174,8 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
       gradient={color.successHero}
       icon="check"
       iconSize={48}
-      title="Verification passed"
-      body="Serial and product match the order."
+      title={t('proof.result.passedTitle')}
+      body={t('proof.result.passedBody')}
       bodyColor={color.successHeroText}
       insets={insets}
     >
@@ -184,14 +188,21 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
           overflow: 'hidden',
         }}
       >
-        <ResultRow label="Model matched" value={verification?.modelMatched ?? job?.model ?? '—'} />
-        <ResultRow label="Serial read" value={verification?.serialRead ?? '—'} mono />
         <ResultRow
-          label="Confidence"
+          label={t('proof.result.modelMatched')}
+          value={verification?.modelMatched ?? job?.model ?? '—'}
+        />
+        <ResultRow
+          label={t('proof.result.serialRead')}
+          value={verification?.serialRead ?? '—'}
+          mono
+        />
+        <ResultRow
+          label={t('proof.result.confidence')}
           value={
             verification?.confidence === undefined
               ? '—'
-              : `${verification.confidence}% · Auto-pass`
+              : t('proof.result.autoPass', { confidence: verification.confidence })
           }
           tint={color.credit}
           last
@@ -200,7 +211,7 @@ export function ResultScreen({ jobId, status, verificationId }: ResultScreenProp
 
       <View style={{ marginTop: 16 }}>
         <Button
-          label="Send feedback link to customer"
+          label={t('proof.result.sendLink')}
           onPress={() => router.replace(`/job/${jobId}/proof/closure`)}
         />
       </View>

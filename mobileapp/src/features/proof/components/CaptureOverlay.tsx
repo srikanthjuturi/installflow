@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
+import { View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -8,6 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Circle, Path } from "react-native-svg";
 
+import { Text } from "@/components/ui";
 import { color } from "@/theme/semantic";
 import type { ProofKind } from "@/types/domain";
 
@@ -194,6 +196,8 @@ function ScanLine() {
  * and we are in no position to say how many characters it runs to.
  */
 function SerialFrame() {
+  const { t } = useTranslation();
+
   return (
     <View
       style={{
@@ -226,7 +230,7 @@ function SerialFrame() {
             color: color.textOnChrome,
           }}
         >
-          SERIAL NO.
+          {t('proof.overlay.serialNo')}
         </Text>
       </View>
     </View>
@@ -328,6 +332,7 @@ function GeoLock({
   elsewhere: boolean;
   distanceLabel: string | null;
 }) {
+  const { t } = useTranslation();
   // The technician is somewhere the job is not — the SCREEN's verdict, so the
   // badge and the shutter can never disagree about it. Only shown once there
   // is a fix to have a verdict about.
@@ -335,23 +340,27 @@ function GeoLock({
 
   const label =
     geo === 'acquiring'
-      ? 'Finding your location…'
+      ? t('proof.overlay.finding')
       : geo === 'unavailable'
-        ? 'Location unavailable'
+        ? t('proof.overlay.unavailable')
         : elsewhere
           ? // Distance when the job has a point to measure to; the two pincodes
             // when it does not. Same fork the shutter's banner makes.
             distanceLabel
-            ? `${distanceLabel} from the job`
-            : `You are at ${devicePincode} · job is ${jobPincode}`
+            ? t('proof.overlay.distanceFromJob', { distance: distanceLabel })
+            : t('proof.overlay.pincodeMismatch', { here: devicePincode ?? '—', job: jobPincode })
           : distanceLabel
-            ? `Location locked · ${distanceLabel} from the job`
+            ? t('proof.overlay.lockedDistance', { distance: distanceLabel })
             : devicePincode
-              ? `Location locked · ${devicePincode}` +
-                (accuracyM ? ` (±${Math.round(accuracyM)}m)` : '')
+              ? accuracyM
+                ? t('proof.overlay.lockedPincodeAccuracy', {
+                    pincode: devicePincode,
+                    accuracy: Math.round(accuracyM),
+                  })
+                : t('proof.overlay.lockedPincode', { pincode: devicePincode })
               : coords
-                ? `Location locked · ${coords}`
-                : 'Location locked';
+                ? t('proof.overlay.lockedCoords', { coords })
+                : t('proof.overlay.locked');
   return (
     <>
       <View

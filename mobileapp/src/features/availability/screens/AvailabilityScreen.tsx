@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Switch } from '@/components/ui';
+import { Switch, Text } from '@/components/ui';
 import {
   useDailyJobCap,
   useJobsToday,
   useSetDailyJobCap,
 } from '@/features/availability/hooks/useAvailability';
+import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { color } from '@/theme/semantic';
 
 /** Where the stepper starts when somebody switches a limit on. */
@@ -48,6 +50,7 @@ const SAVE_DEBOUNCE_MS = 700;
  * changes does NOT reach the server" — is what the change deletes.
  */
 export function AvailabilityScreen() {
+  const { t } = useTranslation();
   // `undefined` while the profile loads; `null` means NO LIMIT.
   const cap = useDailyJobCap();
   const jobsToday = useJobsToday();
@@ -95,17 +98,19 @@ export function AvailabilityScreen() {
   const loading = cap === undefined && draft === undefined;
   const bandwidthPerDay = draft !== undefined ? draft : (cap ?? null);
   const limited = !loading && bandwidthPerDay !== null;
+  // Room for the ◁ ○ □ bar, so the stepper clears it — see the hook.
+  const navInset = useButtonNavInset();
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Availability & bandwidth" paddingBottom={14} />
+      <TitleBar title={t('availability.title')} paddingBottom={14} />
 
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset }}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel>Daily job bandwidth</SectionLabel>
+        <SectionLabel>{t('availability.section')}</SectionLabel>
 
         <View
           style={{
@@ -127,10 +132,10 @@ export function AvailabilityScreen() {
             }}
           >
             {loading
-              ? 'Loading your current limit…'
+              ? t('availability.loading')
               : limited
-                ? "Maximum installs you'll take per day. New offers stop once you hit this cap."
-                : "You'll be offered as many installs a day as come up. Set a cap if you'd rather not."}
+                ? t('availability.limitedBody')
+                : t('availability.unlimitedBody')}
           </Text>
 
           <Pressable
@@ -138,7 +143,7 @@ export function AvailabilityScreen() {
             disabled={loading}
             accessibilityRole="switch"
             accessibilityState={{ checked: limited, disabled: loading }}
-            accessibilityLabel="Limit jobs per day"
+            accessibilityLabel={t('availability.limitToggle')}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -153,7 +158,7 @@ export function AvailabilityScreen() {
                 color: color.textPrimary,
               }}
             >
-              Limit jobs per day
+              {t('availability.limitToggle')}
             </Text>
             <Switch
               value={limited}
@@ -174,7 +179,7 @@ export function AvailabilityScreen() {
               glyph="−"
               onPress={() => bandwidthPerDay && save(bandwidthPerDay - 1)}
               disabled={bandwidthPerDay === null || bandwidthPerDay <= BANDWIDTH_MIN}
-              label="Decrease bandwidth"
+              label={t('availability.decrease')}
             />
 
             <View style={{ alignItems: 'center', minWidth: 56 }}>
@@ -196,7 +201,7 @@ export function AvailabilityScreen() {
                   marginTop: 2,
                 }}
               >
-                jobs / day
+                {t('availability.unit')}
               </Text>
             </View>
 
@@ -205,7 +210,7 @@ export function AvailabilityScreen() {
               glyph="+"
               onPress={() => bandwidthPerDay && save(bandwidthPerDay + 1)}
               disabled={bandwidthPerDay === null}
-              label="Increase bandwidth"
+              label={t('availability.increase')}
             />
           </View>
           ) : null}
@@ -226,7 +231,7 @@ export function AvailabilityScreen() {
                 marginTop: 14,
               }}
             >
-              {jobsToday} of {bandwidthPerDay} used today
+              {t('availability.usedToday', { used: jobsToday, cap: bandwidthPerDay })}
             </Text>
           ) : null}
         </View>

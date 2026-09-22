@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import { useJob } from '@/features/jobs/hooks/useJobs';
 import { useCaptureStore } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
@@ -25,15 +26,15 @@ export interface ClosureScreenProps {
  * send, so a technician can see that the customer was NOT reached and tell them
  * in person before leaving.
  */
-function steps(delivered: boolean): { label: string; done: boolean }[] {
+function steps(delivered: boolean) {
   return [
-    { label: 'Proof captured & uploaded', done: true },
+    { label: 'proof.closure.steps.captured', done: true },
     {
-      label: delivered ? 'Confirmation link delivered' : 'Confirmation link not delivered',
+      label: delivered ? 'proof.closure.steps.delivered' : 'proof.closure.steps.notDelivered',
       done: delivered,
     },
-    { label: 'Awaiting customer confirmation', done: false },
-  ];
+    { label: 'proof.closure.steps.awaiting', done: false },
+  ] as const;
 }
 
 /**
@@ -47,6 +48,7 @@ function steps(delivered: boolean): { label: string; done: boolean }[] {
 export function ClosureScreen({ jobId }: ClosureScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { data: job } = useJob(jobId);
   const reset = useCaptureStore((s) => s.reset);
 
@@ -96,7 +98,7 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
           <Text
             style={{ fontFamily: 'Roboto_900Black', fontSize: 22, color: color.textInverse }}
           >
-            Feedback link sent
+            {t('proof.closure.title')}
           </Text>
           <Text
             style={{
@@ -108,8 +110,9 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
               marginTop: 8,
             }}
           >
-            {job?.customer ?? 'The customer'} received a WhatsApp link to confirm &amp; rate the
-            install.
+            {job?.customer
+              ? t('proof.closure.sentNamed', { name: job.customer })
+              : t('proof.closure.sent')}
           </Text>
         </View>
 
@@ -168,7 +171,7 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
                     color: step.done ? color.textPrimary : color.textSecondary,
                   }}
                 >
-                  {step.label}
+                  {t(step.label)}
                 </Text>
               </View>
             ))}
@@ -184,12 +187,11 @@ export function ClosureScreen({ jobId }: ClosureScreenProps) {
               marginHorizontal: 4,
             }}
           >
-            If the customer doesn&apos;t respond in the set window, the ASM can force-close with
-            supporting documents. Every closure records who, when and why.
+            {t('proof.closure.note')}
           </Text>
 
           <View style={{ marginTop: 22 }}>
-            <Button label="Done · back to jobs" onPress={done} />
+            <Button label={t('proof.closure.done')} onPress={done} />
           </View>
         </View>
       </ScrollView>

@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import { t } from 'i18next';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
@@ -106,7 +107,10 @@ export function usePushRegistration(): void {
           // BEFORE the token is requested, because the first notification can
           // arrive before this effect would otherwise get here.
           await Notifications.setNotificationChannelAsync('default', {
-            name: 'Job offers',
+            // Named in the app's language at registration, which runs on
+            // every launch — so a switch renames it in Android's settings on
+            // the next one. The id stays 'default'; only the label moves.
+            name: t('notifications.channel'),
             importance: Notifications.AndroidImportance.HIGH,
             vibrationPattern: [0, 250, 250, 250],
           });

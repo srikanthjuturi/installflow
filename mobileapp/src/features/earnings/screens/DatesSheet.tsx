@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { View } from 'react-native';
 
-import { Button, Sheet } from '@/components/ui';
+import { Button, Sheet, Text } from '@/components/ui';
 import {
   RangeCalendar,
   type Selection,
@@ -31,6 +33,7 @@ import { formatRange, spanDays, today } from '@/utils/date';
  */
 export function DatesSheet() {
   const router = useRouter();
+  const { t } = useTranslation();
   const window = useEarningsWindow((s) => s.window);
   const setWindow = useEarningsWindow((s) => s.setWindow);
 
@@ -57,7 +60,7 @@ export function DatesSheet() {
   return (
     <Sheet onDismiss={() => router.back()}>
       <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary }}>
-        Pick dates
+        {t('earnings.pickDates')}
       </Text>
       <Text
         style={{
@@ -70,31 +73,30 @@ export function DatesSheet() {
         }}
       >
         {range
-          ? describe(range)
+          ? describe(range, t)
           : selection
-            ? 'Now tap the last day.'
-            : 'Tap the first day, then the last.'}
+            ? t('earnings.dates.tapLast')
+            : t('earnings.dates.tapFirst')}
       </Text>
 
       <RangeCalendar value={selection} onChange={setSelection} latest={latest} />
 
       <View style={{ marginTop: 18 }}>
         <Button
-          label="Show earnings"
+          label={t('earnings.dates.show')}
           disabled={!range}
           // Blocked, the hint says what is missing rather than leaving a dead
           // control — the same pattern as the coverage and profile steps.
-          disabledHint={selection ? 'Tap the last day' : 'Tap two dates'}
+          disabledHint={selection ? t('earnings.dates.hintLast') : t('earnings.dates.hintTwo')}
           onPress={apply}
         />
       </View>
-      <Button label="Cancel" variant="ghost" onPress={() => router.back()} />
+      <Button label={t('common.cancel')} variant="ghost" onPress={() => router.back()} />
     </Sheet>
   );
 }
 
 /** "12 Aug – 2 Sep · 22 days". The count is what a span of dates does not say. */
-function describe({ from, to }: DateRange): string {
-  const days = spanDays(from, to);
-  return `${formatRange(from, to)} · ${days === 1 ? '1 day' : `${days} days`}`;
+function describe({ from, to }: DateRange, t: TFunction): string {
+  return `${formatRange(from, to)} · ${t('earnings.days', { count: spanDays(from, to) })}`;
 }

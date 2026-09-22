@@ -1,11 +1,14 @@
 import { useRouter } from 'expo-router';
-import { Text, View } from 'react-native';
+import { Trans, useTranslation } from 'react-i18next';
+import { View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
-import { Button, Sheet } from '@/components/ui';
+import { Button, Sheet, Text } from '@/components/ui';
 import { isJobRefused, isJobTaken } from '@/features/jobs/api/accept';
+import { jobSlot } from '@/features/jobs/format';
 import { useAcceptJob } from '@/features/jobs/hooks/useAcceptJob';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
+import { errorText } from '@/i18n/errorText';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 
@@ -23,6 +26,7 @@ export interface AcceptSlotSheetProps {
  */
 export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { data: job } = useOffer(jobId);
   const accept = useAcceptJob(jobId);
 
@@ -48,7 +52,7 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
         />
 
         <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary }}>
-          {taken ? 'Someone got there first' : "Couldn't accept"}
+          {taken ? t('jobs.accept.takenTitle') : t('jobs.accept.failedTitle')}
         </Text>
 
         <Text
@@ -62,21 +66,22 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
           }}
         >
           {taken
-            ? 'Another technician accepted this job while you were deciding. It happens — the pool refreshes automatically.'
-            : (refused?.message ??
-              'Something went wrong accepting this job. Check your connection and try again.')}
+            ? t('jobs.accept.takenBody')
+            : refused
+              ? errorText(refused, t('jobs.accept.failedBody'))
+              : t('jobs.accept.failedBody')}
         </Text>
 
         {/* "Try again" only where trying again could work. A refusal reproduces
             itself on every tap, and a button that does nothing twice is worse
             than one that is not there. */}
         {soft ? (
-          <Button label="Back to pool" onPress={() => router.replace('/pool')} />
+          <Button label={t('jobs.accept.backToPool')} onPress={() => router.replace('/pool')} />
         ) : (
-          <Button label="Try again" onPress={() => accept.mutate()} />
+          <Button label={t('common.tryAgain')} onPress={() => accept.mutate()} />
         )}
         <View style={{ marginTop: 6 }}>
-          <Button label="Close" variant="ghost" onPress={dismiss} />
+          <Button label={t('common.close')} variant="ghost" onPress={dismiss} />
         </View>
       </Sheet>
     );
@@ -101,7 +106,7 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
               agreeing to the job and the hour lands later. Asking "commit to
               this slot?" over a job that has none is a question about something
               that is not on the screen. Second string not yet approved. */}
-          {job?.hoursToSlot === null ? 'Take this job?' : 'Commit to this slot?'}
+          {job?.hoursToSlot === null ? t('jobs.accept.takeTitle') : t('jobs.accept.commitTitle')}
         </Text>
       </View>
 
@@ -125,22 +130,20 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
              the moment they tap, and a time is coming that they will be held
              to. Understating the second would be the worse error — they can
              still be charged for cancelling once it arrives. */
-          <>
-            The customer has not picked a time yet — they have the link. Accepting takes the
-            job now; you will be told the time as soon as they choose it, and{' '}
-            <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
-              cancelling after that carries a penalty
-            </Text>
-            .
-          </>
+          <Trans
+            i18nKey="jobs.accept.noTimeBody"
+            components={{
+              bold: <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }} />,
+            }}
+          />
         ) : (
-          <>
-            The customer already confirmed{' '}
-            <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
-              {job?.slot ?? 'this slot'}
-            </Text>
-            . Accepting locks you to that time — cancelling later carries a penalty.
-          </>
+          <Trans
+            i18nKey="jobs.accept.confirmedBody"
+            values={{ slot: job ? jobSlot(job) : t('jobs.accept.thisSlot') }}
+            components={{
+              bold: <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }} />,
+            }}
+          />
         )}
       </Text>
 
@@ -153,12 +156,15 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
           marginBottom: 20,
         }}
       >
-        <SummaryRow label="Job" value={job?.model ?? '—'} spaced />
-        <SummaryRow label="Area" value={job ? `${job.area} · ${job.pincode}` : '—'} />
+        <SummaryRow label={t('jobs.accept.job')} value={job?.model ?? '—'} spaced />
+        <SummaryRow
+          label={t('jobs.accept.area')}
+          value={job ? `${job.area} · ${job.pincode}` : '—'}
+        />
       </View>
 
       <Button
-        label="Accept & unlock details"
+        label={t('jobs.accept.acceptUnlock')}
         loading={accept.isPending}
         onPress={() =>
           accept.mutate(undefined, {
@@ -175,7 +181,12 @@ export function AcceptSlotSheet({ jobId }: AcceptSlotSheetProps) {
         }
       />
       <View style={{ marginTop: 6 }}>
-        <Button label="Not now" variant="ghost" onPress={dismiss} disabled={accept.isPending} />
+        <Button
+          label={t('common.notNow')}
+          variant="ghost"
+          onPress={dismiss}
+          disabled={accept.isPending}
+        />
       </View>
     </Sheet>
   );

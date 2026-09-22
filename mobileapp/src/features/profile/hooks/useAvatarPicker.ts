@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Linking } from 'react-native';
 
 import { toWorkingCopy } from '@/lib/images';
@@ -15,15 +16,20 @@ import { toWorkingCopy } from '@/lib/images';
  */
 export function useAvatarPicker() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
 
-  const denied = (what: string) => {
+  // Whole sentences per case. It used to splice "Camera" or "Photos" into one
+  // template and lower-case it, which only works in English.
+  const denied = (what: 'camera' | 'photos') => {
     Alert.alert(
-      `${what} access needed`,
-      `Enable ${what.toLowerCase()} access in Settings to set a profile picture.`,
+      what === 'camera' ? t('common.cameraAccessNeeded') : t('profile.avatar.photosDeniedTitle'),
+      what === 'camera'
+        ? t('profile.avatar.cameraDeniedBody')
+        : t('profile.avatar.photosDeniedBody'),
       [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Open settings', onPress: () => Linking.openSettings() },
+        { text: t('common.notNow'), style: 'cancel' },
+        { text: t('profile.avatar.openSettings'), onPress: () => Linking.openSettings() },
       ],
     );
   };
@@ -45,7 +51,7 @@ export function useAvatarPicker() {
     try {
       source = await toWorkingCopy(asset.uri, asset.width, asset.height);
     } catch {
-      Alert.alert("Couldn't open that photo", 'Try again, or choose a different picture.');
+      Alert.alert(t('profile.photo.openFailed'), t('profile.photo.tryDifferent'));
       return;
     }
 
@@ -67,7 +73,7 @@ export function useAvatarPicker() {
 
   const fromCamera = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) return denied('Camera');
+    if (!permission.granted) return denied('camera');
 
     setBusy(true);
     try {
@@ -79,7 +85,7 @@ export function useAvatarPicker() {
 
   const fromLibrary = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return denied('Photos');
+    if (!permission.granted) return denied('photos');
 
     setBusy(true);
     try {

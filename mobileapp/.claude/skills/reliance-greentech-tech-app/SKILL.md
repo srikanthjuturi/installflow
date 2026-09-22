@@ -130,6 +130,11 @@ signed-in technician to login and back.
 
 Exact strings. Do not paraphrase.
 
+> **Where they live now:** every string below is a key in `src/i18n/locales/en.json`
+> (`area.screen.meaning` — `auth.login.title`, `jobs.cancel.confirm`), rendered with `t()`.
+> Never write copy into a component; lint refuses it. Hindi, Telugu, Kannada and Tamil
+> translate that file — wording guide and glossary in `src/i18n/README.md`.
+
 ### R1 — Invite link
 > **Changed when onboarding became real.** A manager can now invite with nothing but a phone
 > number, so the panel has no name or technician ID to show. It renders the rows that HAVE a
@@ -202,6 +207,13 @@ cap.` · stepper 1–12, unit `jobs / day` · `Mark time off` with
 customer details stay masked until you accept.`
 Card: category · `SLA {24h|48h}` · job id · model · area · pincode · distance · slot · payout.
 Empty: `Pool is empty` / `You've taken every open job nearby.`
+
+**Category chips: added after the prototype, NOT in it (copy agreed with the product owner).**
+A sideways-scrolling row of `FilterChips` under the intro: `All {n}`, then one chip per certified
+category, labelled with the short name Profile uses (`TV` / `AC` / `Purifier`, from
+`lib/shortCategory`), each with its count. Only drawn with ≥2 categories and a non-empty pool.
+Matched by id on the job's `nodePathIds`, never by name. Empty for a chip:
+`No {TV} jobs right now` / `Tap All to see every open job.`
 
 ### 5 — Job offer (masked)
 `Job offer` · id · category · SLA · model · `Confirmed slot` · `Payout` ·
@@ -331,7 +343,6 @@ down the session exactly like `Log out` does: `signOut()` → `queryClient.clear
 type JobStatus = 'pool' | 'upcoming' | 'inprogress' | 'completed' | 'cancelled';
 type ProofKind = 'barcode' | 'serial' | 'photos' | 'live';
 type VerificationOutcome = 'match' | 'mismatch' | 'unreadable';
-type SlaType = '24h' | '48h';
 
 interface Job {
   id: string;              // 'INST-4821'
@@ -339,9 +350,9 @@ interface Job {
   model: string;           // 'Reliance GreenTech 43" Smart LED'
   area: string;            // 'Kandivali West'
   pincode: string;         // '400067'
-  slot: string;            // 'Today · 2:00–4:00 PM'
-  slotShort: string;       // '2–4 PM'
-  sla: SlaType;
+  slotStart: string | null; // ISO; null until the customer picks a time
+  slotEnd: string | null;   // worded at render: jobSlot(job) → 'Today · 2:00 PM–4:00 PM'
+  slaHours: number;         // 12 | 24 | 36 | 48 — jobSla(job) → '24h'
   distanceLabel: string;   // '3.2 km'
   payoutPaise: number;     // integer paise — never a float
   customer: string;        // full name, post-accept only

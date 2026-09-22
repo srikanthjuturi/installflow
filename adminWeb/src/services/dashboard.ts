@@ -225,29 +225,29 @@ export async function getDashboard(
       //   tone: "ai",
       // },
       {
-        // The queue, not one ticket. This pointed at `/tickets/INST-240970` —
-        // a ticket CODE, from when the list was mock and keyed by them.
-        //
-        // The count is the sweep's own predicate (`Awaiting Customer`, silent
-        // past the window); the link can only filter on the STATUS, so it lands
-        // a superset. Honest, and the rows the manager wants are inside it —
-        // unlike a link that only errored.
+        // `attention`, not a status. The count is two populations — done work
+        // the customer never confirmed, and tickets whose window shut with no
+        // time picked — and the second is in no single status at all. This
+        // linked to `status=Awaiting Customer`, which missed that half and let
+        // in every awaiting ticket still inside its window. The API filters on
+        // the expression the count ran (`service.awaiting_force_close`).
         key: "force-close",
         title: "Awaiting force-close",
         sub: `No customer response ${a.forceCloseHours}h`,
         count: String(a.awaitingForceClose),
-        to: linkTo("/tickets", { status: "Awaiting Customer" }),
+        to: linkTo("/tickets", { attention: "force-close" }),
         tone: "warn",
       },
       {
-        // Was a bare `/tickets`, which dropped the reader on the whole board
-        // with nothing selected. Same superset caveat as the card above: the
-        // count is "silent past the window", the filter is the status.
+        // Same fix. The count is "no time yet, asked past the window", in any
+        // status a time can still be picked in — so it linked to
+        // `status=Slot Pending` and could open an empty list under a full card
+        // — the funnel's "Slot pending" beside it reading 0 said as much.
         key: "slot",
         title: "Slot not confirmed",
         sub: `Customer silent > ${a.slotSilenceHours}h`,
         count: String(a.slotNotConfirmed),
-        to: linkTo("/tickets", { status: "Slot Pending" }),
+        to: linkTo("/tickets", { attention: "slot-unconfirmed" }),
         tone: "info",
       },
     ],

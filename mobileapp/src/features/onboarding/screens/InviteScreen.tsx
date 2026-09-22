@@ -1,14 +1,17 @@
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
-import { BrandMark, Button } from '@/components/ui';
+import { BrandMark, Button, Text } from '@/components/ui';
+import { useLanguagePrompt } from '@/features/language/hooks/useLanguagePrompt';
 import { resolveInvite } from '@/features/onboarding/api/invite';
+import { errorText } from '@/i18n/errorText';
 import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useRegistration } from '@/store/registration.store';
@@ -44,6 +47,10 @@ function prettyPhone(e164: string): string {
 export function InviteScreen({ token }: InviteScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
+  // An invite link opens here without ever passing sign-in, so this is where
+  // an invited technician's first launch offers the language list.
+  useLanguagePrompt();
   const start = useRegistration((s) => s.start);
 
   const {
@@ -63,9 +70,17 @@ export function InviteScreen({ token }: InviteScreenProps) {
 
   const fields = data
     ? [
-        { label: 'Mobile', value: prettyPhone(data.phone) },
-        { label: 'Onboarded by', value: data.invitedByName ?? data.companyName },
-        { label: 'Region', value: data.regionName },
+        {
+          id: 'mobile',
+          label: t('onboarding.invite.fields.mobile'),
+          value: prettyPhone(data.phone),
+        },
+        {
+          id: 'onboardedBy',
+          label: t('onboarding.invite.fields.onboardedBy'),
+          value: data.invitedByName ?? data.companyName,
+        },
+        { id: 'region', label: t('onboarding.invite.fields.region'), value: data.regionName },
       ]
     : [];
 
@@ -87,7 +102,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
       >
         <Icon name="link" size={16} color={color.actionBg} />
         <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 12, color: color.actionBg }}>
-          SECURE INVITE LINK
+          {t('onboarding.invite.eyebrow')}
         </Text>
       </Animated.View>
 
@@ -109,8 +124,8 @@ export function InviteScreen({ token }: InviteScreenProps) {
         <ErrorState
           title={
             error instanceof ApiError && error.status === 0
-              ? "Can't reach the server"
-              : "This invite couldn't be opened"
+              ? t('onboarding.invite.errors.offlineTitle')
+              : t('onboarding.invite.errors.title')
           }
           /*
            * The SERVER's message, not a guess.
@@ -121,43 +136,52 @@ export function InviteScreen({ token }: InviteScreenProps) {
            * reissued a perfectly good link. The API already distinguishes
            * cancelled, expired and already-registered, and each has a different
            * remedy.
+           *
+           * In other languages those arrive as statuses with no code — 404 not
+           * valid, 409 used or cancelled, 410 expired — so they share one
+           * translated sentence that covers every remedy. See `errorText`.
            */
           body={
             error instanceof ApiError && error.message
-              ? error.message
-              : 'Ask your manager to send a new link.'
+              ? errorText(error, t('onboarding.invite.errors.askForNewLink'), {
+                  404: t('onboarding.invite.errors.unusable'),
+                  409: t('onboarding.invite.errors.unusable'),
+                  410: t('onboarding.invite.errors.unusable'),
+                })
+              : t('onboarding.invite.errors.askForNewLink')
           }
           onRetry={() => refetch()}
         />
       ) : (
         <>
-          <Animated.Text
-            entering={FadeInDown.delay(120).duration(340)}
-            style={{
-              fontFamily: 'Roboto_900Black',
-              fontSize: 25,
-              lineHeight: 29,
-              letterSpacing: -0.5,
-              color: color.textPrimary,
-              marginTop: 18,
-            }}
-          >
-            Welcome —{'\n'}set up your account
-          </Animated.Text>
+          {/* The animation sits on a View so the words stay in `ui/Text`,
+              which Indian scripts need — an Animated.Text would bypass it. */}
+          <Animated.View entering={FadeInDown.delay(120).duration(340)} style={{ marginTop: 18 }}>
+            <Text
+              style={{
+                fontFamily: 'Roboto_900Black',
+                fontSize: 25,
+                lineHeight: 29,
+                letterSpacing: -0.5,
+                color: color.textPrimary,
+              }}
+            >
+              {t('onboarding.invite.title')}
+            </Text>
+          </Animated.View>
 
-          <Animated.Text
-            entering={FadeInDown.delay(170).duration(340)}
-            style={{
-              fontFamily: 'Roboto_400Regular',
-              fontSize: 13.5,
-              lineHeight: 20,
-              color: color.textSecondary,
-              marginTop: 8,
-            }}
-          >
-            Your onboarding partner set these up for you. Confirm they&apos;re correct — you
-            add the rest next.
-          </Animated.Text>
+          <Animated.View entering={FadeInDown.delay(170).duration(340)} style={{ marginTop: 8 }}>
+            <Text
+              style={{
+                fontFamily: 'Roboto_400Regular',
+                fontSize: 13.5,
+                lineHeight: 20,
+                color: color.textSecondary,
+              }}
+            >
+              {t('onboarding.invite.body')}
+            </Text>
+          </Animated.View>
 
           <Animated.View
             entering={FadeInDown.delay(220).duration(340)}
@@ -190,7 +214,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
                 ))
               : fields.map((field, i) => (
                   <View
-                    key={field.label}
+                    key={field.id}
                     style={{
                       flexDirection: 'row',
                       justifyContent: 'space-between',
@@ -241,7 +265,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
                 color: color.textFootnote,
               }}
             >
-              Your mobile number is locked to this invite. Contact your ASM to change it.
+              {t('onboarding.invite.locked')}
             </Text>
           </Animated.View>
 
@@ -250,7 +274,7 @@ export function InviteScreen({ token }: InviteScreenProps) {
             style={{ marginTop: 26 }}
           >
             <Button
-              label="Confirm & continue"
+              label={t('onboarding.invite.confirm')}
               trailingIcon="arrowRight"
               onPress={() => {
                 if (!data) return;

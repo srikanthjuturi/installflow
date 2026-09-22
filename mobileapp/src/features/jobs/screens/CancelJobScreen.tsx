@@ -1,13 +1,16 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
-import { Button } from '@/components/ui';
+import { Button, Text } from '@/components/ui';
 import { useCancelJob, useCancellationPreview } from '@/features/jobs/hooks/useCancelJob';
+import { errorText } from '@/i18n/errorText';
+import { penaltyBandLabel } from '@/i18n/serverLabels';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import { CANCELLATION_REASONS, type CancellationReason } from '@/types/domain';
@@ -16,6 +19,19 @@ import { formatPaise } from '@/utils/money';
 export interface CancelJobScreenProps {
   jobId: string;
 }
+
+/**
+ * What each reason is called on screen. What is POSTED is still the English
+ * value from `CANCELLATION_REASONS`: it lands in the ticket's trail, which the
+ * console reads in English and ops search by those words.
+ */
+const REASON_LABEL = {
+  'Customer not reachable': 'jobs.cancel.reasons.customerNotReachable',
+  'Wrong / incomplete address': 'jobs.cancel.reasons.wrongAddress',
+  'Personal emergency': 'jobs.cancel.reasons.personalEmergency',
+  'Vehicle breakdown': 'jobs.cancel.reasons.vehicleBreakdown',
+  Other: 'jobs.cancel.reasons.other',
+} as const satisfies Record<CancellationReason, string>;
 
 /**
  * Screen 8 — Cancel with penalty.
@@ -34,6 +50,7 @@ export interface CancelJobScreenProps {
 export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [reason, setReason] = useState<CancellationReason>();
 
   const { data: band, isPending, isError, refetch } = useCancellationPreview(jobId);
@@ -44,7 +61,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Cancel job" />
+      <TitleBar title={t('jobs.cancel.title')} />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
@@ -87,7 +104,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
                         color: color.dangerTextStrong,
                       }}
                     >
-                      {band.label}
+                      {penaltyBandLabel(band.label)}
                     </Text>
                     <Text
                       style={{
@@ -97,7 +114,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
                         marginTop: 2,
                       }}
                     >
-                      Penalty deducted from earnings
+                      {t('jobs.cancel.deducted')}
                     </Text>
                   </View>
                 )}
@@ -133,8 +150,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
                       color: color.dangerTextStrong,
                     }}
                   >
-                    Under 1 hour to the slot — this escalates straight to the Area Service
-                    Manager for urgent reassignment.
+                    {t('jobs.cancel.escalates')}
                   </Text>
                 </View>
               ) : null}
@@ -149,7 +165,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
                 marginBottom: 10,
               }}
             >
-              Why are you cancelling?
+              {t('jobs.cancel.why')}
             </Text>
 
             {CANCELLATION_REASONS.map((option) => {
@@ -204,7 +220,7 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
                         color: color.textPrimary,
                       }}
                     >
-                      {option}
+                      {t(REASON_LABEL[option])}
                     </Text>
                   </View>
                 </Pressable>
@@ -240,15 +256,15 @@ export function CancelJobScreen({ jobId }: CancelJobScreenProps) {
             }}
           >
             {cancel.error instanceof Error
-              ? cancel.error.message
-              : 'Could not cancel this job. Check your connection and try again.'}
+              ? errorText(cancel.error, t('jobs.cancel.failed'))
+              : t('jobs.cancel.failed')}
           </Text>
         ) : null}
 
         {/* Blocked state carries the requirement as its label, same as the
             coverage screen — one control, always saying what it needs. */}
         <Button
-          label={reason ? `Cancel & accept −${amount} penalty` : 'Select a reason'}
+          label={reason ? t('jobs.cancel.confirm', { amount }) : t('jobs.cancel.selectReason')}
           variant="destructive"
           disabled={!reason || !band}
           loading={cancel.isPending}

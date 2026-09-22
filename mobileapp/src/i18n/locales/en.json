@@ -1,0 +1,746 @@
+{
+  "common": {
+    "allowCamera": "Allow camera",
+    "cameraAccessNeeded": "Camera access needed",
+    "cancel": "Cancel",
+    "close": "Close",
+    "continue": "Continue",
+    "devCodeHint": "Tap to fill. Not shown once WhatsApp delivery is live.",
+    "devOnly": "DEVELOPMENT ONLY",
+    "dismiss": "Dismiss",
+    "goBack": "Go back",
+    "notNow": "Not now",
+    "resendCode": "Resend code",
+    "resendCodeIn": "Resend code in {{time}}",
+    "sendNewCode": "Send a new code",
+    "sendNewCodeIn": "Send a new code in {{time}}",
+    "tryAgain": "Try again"
+  },
+  "tabs": {
+    "home": "Home",
+    "jobs": "Jobs",
+    "earnings": "Earnings",
+    "profile": "Profile"
+  },
+  "notFound": {
+    "title": "Not found",
+    "heading": "Screen not found",
+    "body": "That link doesn't point anywhere in the app.",
+    "link": "Go to start"
+  },
+  "auth": {
+    "otpInput": {
+      "label": "One-time code"
+    },
+    "login": {
+      "title": "Technician sign-in",
+      "subtitle": "Installation & Demo field partner app.",
+      "mobileNumber": "Mobile number",
+      "sendOtp": "Send OTP",
+      "terms": "By continuing you agree to the partner terms.",
+      "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>. <change>Change</change>",
+      "verify": "Verify & continue",
+      "errors": {
+        "sendFailed": "Could not send a code. Try again.",
+        "verifyFailed": "That did not work. Try again.",
+        "notTechnician": "This number is not set up as a technician yet.",
+        "noAccount": "No technician account for this number — ask your manager for an invite.",
+        "disabled": "This account is disabled.",
+        "wrongCode": "That code didn't match. Request a new one."
+      }
+    }
+  },
+  "onboarding": {
+    "invite": {
+      "eyebrow": "SECURE INVITE LINK",
+      "title": "Welcome —\nset up your account",
+      "body": "Your onboarding partner set these up for you. Confirm they're correct — you add the rest next.",
+      "fields": {
+        "mobile": "Mobile",
+        "onboardedBy": "Onboarded by",
+        "region": "Region"
+      },
+      "locked": "Your mobile number is locked to this invite. Contact your ASM to change it.",
+      "confirm": "Confirm & continue",
+      "errors": {
+        "offlineTitle": "Can't reach the server",
+        "title": "This invite couldn't be opened",
+        "askForNewLink": "Ask your manager to send a new link.",
+        "unusable": "This invite link can't be used. If you have already registered, sign in instead — otherwise ask your manager for a new link."
+      }
+    },
+    "profile": {
+      "title": "Tell us who you are",
+      "body": "Your name and photo are what the customer sees when you arrive for a job.",
+      "addPhoto": "Add a profile photo",
+      "photoHint": "Tap to add a clear face photo. You can change it later.",
+      "fullName": "Full name",
+      "fullNamePlaceholder": "As it appears on your ID",
+      "mobile": "Mobile",
+      "mobileHint": "From your invite. Contact your ASM to change it.",
+      "enterName": "Enter your full name"
+    },
+    "coverage": {
+      "title": "What do you install?",
+      "body": "Pick every category you're trained for. You'll only be offered jobs that match — pick more to get more work.",
+      "selectCategory": "Select at least one category",
+      "categories_one": "{{count}} category",
+      "categories_other": "{{count}} categories",
+      "areas_one": "{{count}} area",
+      "areas_other": "{{count}} areas",
+      "continueWith": "Continue · {{summary}}",
+      "areasTitle": "Your service areas",
+      "setBy": "Set by {{name}}. You'll be offered jobs from any of these.",
+      "setByManager": "Set by your manager. You'll be offered jobs from any of these.",
+      "noAreas": "No areas assigned yet — ask your manager before you finish."
+    },
+    "verify": {
+      "title": "Confirm your number",
+      "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>. This is the last step.",
+      "create": "Create my account",
+      "errors": {
+        "sendFailed": "We could not send your code. Tap resend to try again.",
+        "resendFailed": "We could not send your code. Try again in a moment.",
+        "incomplete": "Registration did not complete. Ask your ASM for a new invite.",
+        "submitFailed": "We could not finish your registration. Try again."
+      }
+    },
+    "pincodeChip": {
+      "remove": "Remove pincode {{code}}"
+    }
+  },
+  "proof": {
+    "steps": {
+      "barcode": {
+        "title": "Scan barcode",
+        "hint": "Align the product barcode within the frame",
+        "reviewLabel": "Barcode image"
+      },
+      "serial": {
+        "title": "Serial number",
+        "hint": "Photograph the serial label, then type the number below",
+        "reviewLabel": "Serial number"
+      },
+      "photos": {
+        "title": "Product photos",
+        "hint": "Capture the installed unit from 2–3 angles",
+        "reviewLabel": "Product photos"
+      },
+      "live": {
+        "title": "Live site photo",
+        "hint": "On-site live capture · gallery uploads not accepted",
+        "reviewLabel": "Geo-tagged live photos"
+      }
+    },
+    "stepOf": "Step {{n}} of {{total}}",
+    "retakeThis": "Retake this",
+    "captureStep": "Capture {{step}}",
+    "capture": {
+      "cameraBody": "Proof of installation must be captured live on site. Gallery uploads aren't accepted, so the job can't be completed without the camera.",
+      "backToJob": "Back to job",
+      "backTo": "Back to {{step}}",
+      "serialFromBarcode": "Serial read from the barcode",
+      "tooFar": "You are {{distance}} from this job. The live photo must be taken at the customer's address.",
+      "wrongPincode": "You are at {{here}} — this job is at {{job}}. The live photo must be taken at the customer's address.",
+      "finding": "Finding your location before the live photo…",
+      "permissionSettings": "Location is turned off for this app. Open Settings and allow location, then try again.",
+      "servicesOff": "Location services are off on this phone. Switch them on, then try again.",
+      "noFix": "No location fix yet. Step outside or nearer a window and try again.",
+      "allowLocation": "Allow location to take the live photo — it proves you attended.",
+      "openSettings": "Open Settings",
+      "retryLocation": "Retry location",
+      "viewLast": "View the {{step}} you just captured",
+      "captureBlocked": "Capture unavailable until your location matches the job",
+      "continueTo": "Continue to {{step}}",
+      "reviewCaptures": "Review captures",
+      "next": "Next",
+      "review": "Review",
+      "serialLabel": "SERIAL NUMBER",
+      "serialPlaceholder": "e.g. 4021884170099",
+      "clearSerial": "Clear the serial number",
+      "helper": {
+        "typeNow": "Label photographed — now type the serial",
+        "exact": "Serial number, exactly as printed",
+        "photographNow": "Now photograph the label"
+      }
+    },
+    "overlay": {
+      "serialNo": "SERIAL NO.",
+      "finding": "Finding your location…",
+      "unavailable": "Location unavailable",
+      "distanceFromJob": "{{distance}} from the job",
+      "pincodeMismatch": "You are at {{here}} · job is {{job}}",
+      "lockedDistance": "Location locked · {{distance}} from the job",
+      "lockedPincode": "Location locked · {{pincode}}",
+      "lockedPincodeAccuracy": "Location locked · {{pincode}} (±{{accuracy}}m)",
+      "lockedCoords": "Location locked · {{coords}}",
+      "locked": "Location locked"
+    },
+    "preview": {
+      "notUploaded": "This one didn't upload.",
+      "looksGood": "Looks good"
+    },
+    "review": {
+      "title": "Review & submit",
+      "intro": "Tap any capture to see it full screen. Retake anything that isn't clear — after you submit, a blurry serial costs a second visit.",
+      "removePhoto": "Remove this photo",
+      "barcodeRead": "Read · {{serial}}",
+      "barcodeNotScanned": "Captured · did not scan",
+      "serialEntered": "Entered · {{serial}}",
+      "serialMissing": "Serial not entered",
+      "noPhotos": "No product photos yet",
+      "photosCount": "{{n}} of {{max}} · tap one to see it",
+      "liveTagged": "Geo-tagged · {{place}}",
+      "liveNoLocation": "Live photo · no location recorded",
+      "view": "View {{step}}",
+      "add": "Add",
+      "retake": "Retake",
+      "viewPhoto": "View product photo {{n}} of {{total}}",
+      "liveAt": "Live photo taken at {{where}}",
+      "noLocation": "No location was recorded with the live photo.",
+      "retryUploads": "Retry failed uploads",
+      "submit": "Submit & start job",
+      "waitingUploads": "Waiting for photos to upload…",
+      "captureAll": "Capture all four before submitting",
+      "submitFailed": "Couldn't submit"
+    },
+    "closure": {
+      "steps": {
+        "captured": "Proof captured & uploaded",
+        "delivered": "Confirmation link delivered",
+        "notDelivered": "Confirmation link not delivered",
+        "awaiting": "Awaiting customer confirmation"
+      },
+      "title": "Feedback link sent",
+      "sentNamed": "{{name}} received a WhatsApp link to confirm & rate the install.",
+      "sent": "The customer received a WhatsApp link to confirm & rate the install.",
+      "note": "If the customer doesn't respond in the set window, the ASM can force-close with supporting documents. Every closure records who, when and why.",
+      "done": "Done · back to jobs"
+    },
+    "verifying": {
+      "title": "Verifying with AI",
+      "body": "Matching serial and product images against <bold>{{model}}</bold>.",
+      "theOrder": "the order"
+    },
+    "result": {
+      "mismatchTitle": "Mismatch flagged",
+      "mismatchBody": "Serial doesn't match the order. Routed to the Area Service Manager.",
+      "whatNow": "What happens now",
+      "whatNowBody": "The ASM reviews your captures and the mismatch. You'll be notified once they approve or ask you to recapture.",
+      "backToJobs": "Back to jobs",
+      "unreadableTitle": "Image unreadable",
+      "unreadableBody": "The serial photo is blurry. Retake before you leave the site.",
+      "unreadableTip": "Steady the camera, avoid glare on the sticker, and fill the frame with the serial label.",
+      "retakeSerial": "Retake serial photo",
+      "passedTitle": "Verification passed",
+      "passedBody": "Serial and product match the order.",
+      "modelMatched": "Model matched",
+      "serialRead": "Serial read",
+      "confidence": "Confidence",
+      "autoPass": "{{confidence}}% · Auto-pass",
+      "sendLink": "Send feedback link to customer"
+    }
+  },
+  "earnings": {
+    "title": "Earnings",
+    "period": {
+      "day": "Today",
+      "week": "This week",
+      "month": "This month"
+    },
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "loadFailed": "We couldn't load these earnings. Check your connection and try again.",
+    "netCaption": "Net payout after penalties",
+    "earned": "Earned",
+    "bonuses": "Bonuses",
+    "penalties": "Penalties",
+    "transactions": "Transactions",
+    "emptyRangeTitle": "No transactions in these dates",
+    "emptyRangeBody": "Nothing was credited or charged over this span.",
+    "emptyTitle": "No transactions yet",
+    "emptyBody": "Completed jobs will appear here.",
+    "opensJob": "Opens this job",
+    "pickDates": "Pick dates",
+    "dates": {
+      "tapLast": "Now tap the last day.",
+      "tapFirst": "Tap the first day, then the last.",
+      "show": "Show earnings",
+      "hintLast": "Tap the last day",
+      "hintTwo": "Tap two dates"
+    },
+    "calendar": {
+      "thisMonth": "Go to this month",
+      "previous": "Previous month",
+      "next": "Next month"
+    }
+  },
+  "redeem": {
+    "state": {
+      "to_pay": "Waiting for payment",
+      "awaiting": "Paid — confirm",
+      "settled": "Received",
+      "declined": "Declined"
+    },
+    "card": {
+      "available": "Available to redeem",
+      "history": "Redemptions",
+      "paidBy": "{{amount}} paid by {{name}} · Confirm you received it",
+      "requested": "{{amount}} requested · Waiting for payment",
+      "confirm": "Confirm",
+      "view": "View",
+      "addUpiPrompt": "Add a UPI ID to redeem",
+      "addUpi": "Add UPI ID",
+      "to": "To {{upiId}}",
+      "redeem": "Redeem",
+      "nothing": "Nothing to redeem yet"
+    },
+    "confirm": {
+      "title": "Redeem {{amount}}?",
+      "body": "It will be paid to <bold>{{upiId}}</bold>. Your {{payer}} will be asked to pay it.",
+      "send": "Send request"
+    },
+    "detail": {
+      "title": "Redemption",
+      "qr": "UPI QR code for {{amount}} to {{upiId}}",
+      "scanToPay": "Your {{payer}} can scan this to pay you",
+      "upiId": "UPI ID",
+      "reference": "Reference",
+      "requested": "Requested",
+      "wrongUpi": "Wrong UPI ID? Ask your {{payer}} to decline this, then request again.",
+      "paidBy": "Paid by {{name}} · {{when}}",
+      "utr": "UTR {{utr}}",
+      "screenshot": "Payment screenshot",
+      "toldNotArrived": "We told {{name}} it hasn't arrived.",
+      "received": "I received it",
+      "notYet": "Not yet",
+      "declinedBy": "Declined by {{name}}: {{reason}}",
+      "events": {
+        "requested": "Requested",
+        "claimed": "Paid by {{name}}",
+        "denied": "Not yet",
+        "confirmed": "Received",
+        "declined": "Declined by {{name}}"
+      }
+    },
+    "history": {
+      "title": "Redemptions",
+      "emptyTitle": "No redemptions yet",
+      "emptyBody": "Requests you send appear here."
+    }
+  },
+  "payout": {
+    "title": "Payout account",
+    "saveFailed": "Couldn't save. Try again.",
+    "add": {
+      "intro": "Add the UPI ID your earnings are paid to. Scan the QR from your UPI app, or type it in.",
+      "codeSent": "We sent a 6-digit code to your WhatsApp, {{phone}}. Enter it to save this UPI ID.",
+      "verify": "Verify & save",
+      "sendCode": "Send code on WhatsApp"
+    },
+    "onFile": {
+      "intro": "Your earnings are paid to this UPI ID. To change it, your manager approves the new one.",
+      "rejected": "Your change to {{upiId}} was not approved: {{reason}}",
+      "requestChange": "Request a change"
+    },
+    "pending": {
+      "title": "Change requested",
+      "waiting": "Waiting for your {{reviewer}} to approve.",
+      "withdraw": "Withdraw request"
+    },
+    "change": {
+      "title": "New UPI ID",
+      "send": "Send request"
+    },
+    "fields": {
+      "scan": "Scan my UPI QR",
+      "upiId": "UPI ID",
+      "upiIdPlaceholder": "e.g. 9822066301@ybl",
+      "upiIdInvalid": "Enter a UPI ID like name@bank",
+      "name": "Name on the UPI account",
+      "namePlaceholder": "As your UPI app shows it",
+      "nameInvalid": "Enter the name on the UPI account"
+    },
+    "scanner": {
+      "notUpi": "That's not a UPI payment QR. Try another.",
+      "fromScreenshot": "From a screenshot"
+    }
+  },
+  "profile": {
+    "loadFailed": "Couldn't load your profile",
+    "viewPhoto": "View profile picture",
+    "addPhoto": "Add profile picture",
+    "idLine": "Technician · ID {{code}}",
+    "stats": {
+      "rating": "Rating",
+      "jobsDone": "Jobs done",
+      "onTime": "On-time"
+    },
+    "coverage": {
+      "title": "Service coverage",
+      "categories": "Categories",
+      "pincodes": "Pincodes"
+    },
+    "rows": {
+      "availabilityA11y": "Availability and bandwidth",
+      "push": "Push notifications"
+    },
+    "logOut": "Log out",
+    "avatar": {
+      "title": "Profile picture",
+      "cropHint": "You'll be able to crop it to a square before it's saved.",
+      "takePhoto": "Take a photo",
+      "fromGallery": "Choose from gallery",
+      "photosDeniedTitle": "Photos access needed",
+      "cameraDeniedBody": "Enable camera access in Settings to set a profile picture.",
+      "photosDeniedBody": "Enable photos access in Settings to set a profile picture.",
+      "openSettings": "Open settings"
+    },
+    "photo": {
+      "openFailed": "Couldn't open that photo",
+      "tryDifferent": "Try again, or choose a different picture.",
+      "checkConnection": "Check your connection and try again."
+    },
+    "crop": {
+      "title": "Crop photo",
+      "done": "Done",
+      "hint": "Drag to reposition · pinch to zoom",
+      "rotate": "Rotate",
+      "rotateA11y": "Rotate 90 degrees",
+      "rotateFailed": "Couldn't rotate that photo",
+      "cropFailed": "Couldn't crop that photo",
+      "saveFailed": "Couldn't save your photo"
+    },
+    "viewer": {
+      "hint": "Pinch to zoom · double-tap to fit",
+      "removePhoto": "Remove photo",
+      "removeTitle": "Remove photo?",
+      "removeBody": "Your profile picture will be removed.",
+      "remove": "Remove",
+      "removeFailed": "Couldn't remove your photo"
+    },
+    "delete": {
+      "title": "Delete account",
+      "intro": "Deleting your account signs you out immediately and removes you from the technician roster — you stop receiving new job offers. Your past job history and proof stay on record for warranty and dispute purposes, the same as while your account was active.",
+      "codeSent": "We sent a 6-digit code to your WhatsApp, {{phone}}. Enter it to delete your account.",
+      "deleteMine": "Delete my account",
+      "confirmTitle": "Delete your account?",
+      "confirmBody": "This signs you out right away and removes you from the technician roster. Your past job history and proof stay on record. This cannot be undone.",
+      "delete": "Delete",
+      "failed": "Couldn't delete your account. Try again."
+    }
+  },
+  "availability": {
+    "title": "Availability & bandwidth",
+    "section": "Daily job bandwidth",
+    "loading": "Loading your current limit…",
+    "limitedBody": "Maximum installs you'll take per day. New offers stop once you hit this cap.",
+    "unlimitedBody": "You'll be offered as many installs a day as come up. Set a cap if you'd rather not.",
+    "limitToggle": "Limit jobs per day",
+    "decrease": "Decrease bandwidth",
+    "increase": "Increase bandwidth",
+    "unit": "jobs / day",
+    "usedToday": "{{used}} of {{cap}} used today"
+  },
+  "language": {
+    "title": "Language"
+  },
+  "notifications": {
+    "channel": "Job offers"
+  },
+  "units": {
+    "km": "{{value}} km",
+    "m": "{{value}} m",
+    "accuracy": "±{{value}}m"
+  },
+  "components": {
+    "errorState": {
+      "title": "Something went wrong",
+      "body": "We couldn't load this. Check your connection and try again."
+    },
+    "avatar": {
+      "change": "Change profile picture"
+    },
+    "input": {
+      "required": "{{label}}, required"
+    }
+  },
+  "jobs": {
+    "status": {
+      "upcoming": "Upcoming",
+      "startingSoon": "Starting soon",
+      "awaitingTime": "Awaiting time",
+      "inProgress": "In progress",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "slot": {
+      "notSet": "Time not set yet",
+      "notSetShort": "No time yet"
+    },
+    "sla": {
+      "value": "{{hours}}h",
+      "pill": "SLA {{hours}}h"
+    },
+    "bonus": "+{{amount}} bonus",
+    "home": {
+      "greeting": {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening"
+      },
+      "yourProfile": "Your profile",
+      "newJobs_one": "{{count}} new job in your area",
+      "newJobs_other": "{{count}} new jobs in your area",
+      "receiveOffers": "Receive job offers",
+      "online": "You're online",
+      "offline": "You're offline",
+      "receiving": "Receiving job offers",
+      "notReceiving": "Not receiving offers",
+      "poolHint": "Confirmed slots · tap to view the pool",
+      "todayTitle": "Today's jobs",
+      "jobCount_one": "{{count}} job",
+      "jobCount_other": "{{count}} jobs",
+      "emptyTitle": "Nothing scheduled today",
+      "emptyBody": "Accept a job from the pool to fill your day."
+    },
+    "myJobs": {
+      "title": "My jobs",
+      "empty": {
+        "upcoming": "No upcoming jobs",
+        "inprogress": "Nothing in progress",
+        "completed": "No completed jobs yet",
+        "none": "Nothing here"
+      }
+    },
+    "pool": {
+      "title": "Open job pool",
+      "intro": "Jobs matching your category & pincodes. First to accept wins — customer details stay masked until you accept.",
+      "all": "All",
+      "offlineTitle": "You're offline",
+      "offlineBody": "Turn availability on from Home to start receiving offers.",
+      "emptyTitle": "Pool is empty",
+      "emptyBody": "You've taken every open job nearby.",
+      "noneInCategory": "No {{category}} jobs right now",
+      "tapAll": "Tap {{all}} to see every open job."
+    },
+    "offer": {
+      "back": "Back to pool",
+      "title": "Job offer",
+      "slot": "Slot",
+      "confirmedSlot": "Confirmed slot",
+      "payout": "Payout",
+      "detailsLocked": "Details unlock after you accept",
+      "customer": "Customer",
+      "phone": "Phone",
+      "area": "Area",
+      "distance": "Distance",
+      "accept": "Accept job",
+      "pass": "Pass"
+    },
+    "accept": {
+      "takenTitle": "Someone got there first",
+      "failedTitle": "Couldn't accept",
+      "takenBody": "Another technician accepted this job while you were deciding. It happens — the pool refreshes automatically.",
+      "failedBody": "Something went wrong accepting this job. Check your connection and try again.",
+      "backToPool": "Back to pool",
+      "takeTitle": "Take this job?",
+      "commitTitle": "Commit to this slot?",
+      "noTimeBody": "The customer has not picked a time yet — they have the link. Accepting takes the job now; you will be told the time as soon as they choose it, and <bold>cancelling after that carries a penalty</bold>.",
+      "confirmedBody": "The customer already confirmed <bold>{{slot}}</bold>. Accepting locks you to that time — cancelling later carries a penalty.",
+      "thisSlot": "this slot",
+      "job": "Job",
+      "area": "Area",
+      "acceptUnlock": "Accept & unlock details"
+    },
+    "detail": {
+      "title": "Job details",
+      "accepted": "Accepted · {{slot}}",
+      "committed": "Committed · {{slot}}",
+      "customer": "Customer",
+      "call": "Call",
+      "navigate": "Navigate",
+      "product": "Product to install",
+      "slaType": "SLA type",
+      "payout": "Payout",
+      "escalated": "This job has gone to your Area Service Manager. They will be in touch — there is nothing to do here.",
+      "linkFailedNamed": "Work submitted, but we could not message {{name}}. Ask them to confirm before you leave, or tell your manager.",
+      "linkFailed": "Work submitted, but we could not message the customer. Ask them to confirm before you leave, or tell your manager.",
+      "linkSentNamed": "Work submitted. {{name}} has been sent a link to confirm it — the job closes when they do.",
+      "linkSent": "Work submitted. The customer has been sent a link to confirm it — the job closes when they do.",
+      "complete": "Complete the job",
+      "completeFailed": "Couldn't complete this job",
+      "waitingNamed": "Waiting for {{name}} to pick a time. You can start the job once they do, or once your manager sets one.",
+      "waiting": "Waiting for the customer to pick a time. You can start the job once they do, or once your manager sets one.",
+      "start": "Start job & capture proof",
+      "reschedule": "Reschedule with the customer",
+      "cancel": "Cancel this job",
+      "rating": "{{rating}} out of 5",
+      "notFinished": "Not finished, they say",
+      "feedback": "Customer feedback",
+      "notRated": "Not rated",
+      "noReason": "They gave no reason.",
+      "managerReview": "A manager will review this. Do not return to site until they call."
+    },
+    "cancel": {
+      "title": "Cancel job",
+      "deducted": "Penalty deducted from earnings",
+      "escalates": "Under 1 hour to the slot — this escalates straight to the Area Service Manager for urgent reassignment.",
+      "why": "Why are you cancelling?",
+      "reasons": {
+        "customerNotReachable": "Customer not reachable",
+        "wrongAddress": "Wrong / incomplete address",
+        "personalEmergency": "Personal emergency",
+        "vehicleBreakdown": "Vehicle breakdown",
+        "other": "Other"
+      },
+      "failed": "Could not cancel this job. Check your connection and try again.",
+      "confirm": "Cancel & accept −{{amount}} penalty",
+      "selectReason": "Select a reason"
+    },
+    "reschedule": {
+      "title": "Reschedule visit",
+      "failed": "Could not update the time. Check your connection and try again.",
+      "confirm": "Confirm new time",
+      "pickTime": "Pick a time",
+      "sendCode": "Send code to the customer",
+      "sendCodeIn": "Send code in {{time}}",
+      "current": "Currently booked",
+      "pickWithCustomer": "Pick a new time with the customer",
+      "noTimesTitle": "No times available",
+      "noTimesBody": "Your next two days are fully booked. Call your Area Service Manager — they can move this job to another technician.",
+      "askForCode": "Ask the customer for their code",
+      "codeSent": "We have sent a 6-digit code to the customer on WhatsApp. Ask them to read it out — it confirms they agreed to the new time.",
+      "newCodeCancels": "Sending a new code cancels the previous one."
+    }
+  },
+  "dates": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "am": "AM",
+    "pm": "PM",
+    "time": "{{hour}}:{{minute}} {{period}}",
+    "hour": "{{hour}} {{period}}",
+    "hourRange": "{{from}}–{{to}} {{period}}",
+    "dayMonth": "{{day}} {{month}}",
+    "dayMonthYear": "{{day}} {{month}} {{year}}",
+    "weekdayDayMonth": "{{weekday}}, {{day}} {{month}}",
+    "monthYear": "{{month}} {{year}}",
+    "monthsShort": [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ],
+    "monthsLong": [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ],
+    "weekdaysShort": [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
+    "weekdaysLong": [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ],
+    "weekdayInitials": [
+      "M",
+      "T",
+      "W",
+      "T",
+      "F",
+      "S",
+      "S"
+    ]
+  },
+  "errors": {
+    "tooMany": "Too many attempts. Wait a little and try again.",
+    "code": {
+      "OFFLINE": "Can't reach the server. Check your connection.",
+      "SESSION_ENDED": "Your session has ended. Please sign in again.",
+      "BAD_RESPONSE": "Something went wrong. Try again.",
+      "JOB_ALREADY_TAKEN": "Another technician accepted this job first.",
+      "JOB_ESCALATED": "This job has gone to your Area Service Manager.",
+      "NOT_ACCEPTING_WORK": "You're not accepting work right now — turn availability back on to take jobs.",
+      "NO_WINDOW_LEFT": "You have no free window left inside this job's service level. Finish or free up a day and it will come back.",
+      "DAILY_CAP_REACHED": "You already have your daily limit of jobs on that day. Raise it under Availability & bandwidth.",
+      "NO_TIME_AGREED": "The customer hasn't picked a time yet. You can start this job once they do, or once your manager sets one.",
+      "JOB_NOT_CANCELLABLE": "This job can no longer be cancelled.",
+      "JOB_NOT_RESCHEDULABLE": "This job can't be rescheduled right now. Refresh to see where it is.",
+      "SLOT_NO_LONGER_AVAILABLE": "That time is no longer free — pick another.",
+      "BAD_CODE": "That code didn't match. Request a new one.",
+      "BALANCE_CHANGED": "Your balance has changed. Check the new amount and try again.",
+      "NO_UPI_ID": "Add your UPI ID first.",
+      "NOTHING_TO_REDEEM": "There is nothing to redeem yet.",
+      "REDEMPTION_OPEN": "You already have a redemption open. It has to be paid and confirmed, or declined, before you can ask for another.",
+      "NOT_CLAIMED": "Nobody has marked this as paid yet, so there is nothing to confirm.",
+      "ALREADY_CONFIRMED": "You have already confirmed you received this.",
+      "UPI_ALREADY_SET": "You already have a UPI ID. To change it, send a change request.",
+      "SAME_UPI_ID": "That is already your UPI ID.",
+      "CHANGE_PENDING": "You already have a change waiting. Withdraw it to ask for a different one.",
+      "NO_PENDING_CHANGE": "There is no change waiting — it may already have been decided or withdrawn.",
+      "NO_PHONE": "Your account has no mobile number to send a code to. Ask your manager.",
+      "TECHNICIAN_HAS_OPEN_JOBS": "You still have open jobs. Finish them, or ask your manager to reassign them, first.",
+      "RANGE_TOO_LONG": "Pick a shorter range of dates.",
+      "UPDATE_APP": "Update the app to add or change your UPI ID."
+    }
+  },
+  "server": {
+    "penaltyBand": {
+      "over4h": "> 4h before slot",
+      "from2to4h": "2–4h before slot",
+      "under2h": "< 2h before slot",
+      "noShow": "No-show"
+    },
+    "serviceType": {
+      "installDemo": "Installation + Demo",
+      "techVisit": "Tech Visit",
+      "service": "Service"
+    },
+    "payoutPrefix": {
+      "install": "Install",
+      "techVisit": "Tech Visit",
+      "service": "Service"
+    },
+    "role": {
+      "admin": "Admin",
+      "nationalHead": "National Head",
+      "regionalHead": "Regional Head",
+      "areaManager": "Area Manager"
+    },
+    "ledgerTitle": {
+      "reassignmentBonus": "Reassignment bonus",
+      "noShowPenalty": "No-show penalty",
+      "lateCancellationPenalty": "Late cancellation penalty"
+    }
+  }
+}

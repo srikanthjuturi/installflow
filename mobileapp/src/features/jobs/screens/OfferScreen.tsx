@@ -1,11 +1,13 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
-import { Button, Pill } from '@/components/ui';
+import { Button, Pill, Text } from '@/components/ui';
+import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -26,6 +28,7 @@ export interface OfferScreenProps {
 export function OfferScreen({ jobId }: OfferScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { data: job, isError, refetch } = useOffer(jobId);
 
   return (
@@ -44,7 +47,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
           <Pressable
             onPress={() => router.back()}
             accessibilityRole="button"
-            accessibilityLabel="Back to pool"
+            accessibilityLabel={t('jobs.offer.back')}
           >
             {({ pressed }) => (
               <View
@@ -70,14 +73,14 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
           <Text
             style={{ fontFamily: 'Roboto_700Bold', fontSize: 17, color: color.textInverse }}
           >
-            Job offer
+            {t('jobs.offer.title')}
           </Text>
         </View>
 
         {job ? (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
             <Pill label={job.category} tone="chromePrimary" />
-            <Pill label={`SLA ${job.sla}`} tone="chromeSecondary" />
+            <Pill label={jobSlaPill(job)} tone="chromeSecondary" />
           </View>
         ) : null}
       </View>
@@ -130,7 +133,13 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
               >
                 <Icon name="clock" size={20} color={palette.secondary[500]} />
 
-                <View>
+                {/* `flex: 1` so the slot takes what the payout leaves and WRAPS
+                    into it. Without it this column sized to its text, and a
+                    long window — "Tue, 8 Sept · 11:00 AM–1:00 PM", or any
+                    slot at a large system font — pushed the payout out past the
+                    block's edge. Wrapped, not truncated: the technician is
+                    deciding on this time, so all of it has to be readable. */}
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
                       fontFamily: 'Roboto_700Bold',
@@ -144,16 +153,18 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                         slot" over "Time not set yet" reads as a contradiction,
                         and the technician is deciding from this block. Second
                         string not yet approved. */}
-                    {job.hoursToSlot === null ? 'Slot' : 'Confirmed slot'}
+                    {job.hoursToSlot === null ? t('jobs.offer.slot') : t('jobs.offer.confirmedSlot')}
                   </Text>
                   <Text
                     style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.slotFg }}
                   >
-                    {job.slot}
+                    {jobSlot(job)}
                   </Text>
                 </View>
 
-                <View style={{ marginLeft: 'auto', alignItems: 'flex-end' }}>
+                {/* Never shrinks: the money is the one thing here that must
+                    never be cut or pushed off the card. */}
+                <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
                   <Text
                     style={{
                       fontFamily: 'Roboto_400Regular',
@@ -161,7 +172,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                       color: color.slotBlockLabel,
                     }}
                   >
-                    Payout
+                    {t('jobs.offer.payout')}
                   </Text>
                   <Text
                     style={{ fontFamily: 'Roboto_900Black', fontSize: 17, color: color.slotFg }}
@@ -181,7 +192,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                         marginTop: 1,
                       }}
                     >
-                      +{formatPaise(job.bonusPaise)} bonus
+                      {t('jobs.bonus', { amount: formatPaise(job.bonusPaise) })}
                     </Text>
                   )}
                 </View>
@@ -216,19 +227,19 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                     color: color.textFootnote,
                   }}
                 >
-                  Details unlock after you accept
+                  {t('jobs.offer.detailsLocked')}
                 </Text>
               </View>
 
-              <MaskedRow label="Customer" value={job.maskedCustomer} masked first />
-              <MaskedRow label="Phone" value="+91 •••••  •••••" masked />
-              <MaskedRow label="Area" value={`${job.area} · ${job.pincode}`} />
+              <MaskedRow label={t('jobs.offer.customer')} value={job.maskedCustomer} masked first />
+              <MaskedRow label={t('jobs.offer.phone')} value="+91 •••••  •••••" masked />
+              <MaskedRow label={t('jobs.offer.area')} value={`${job.area} · ${job.pincode}`} />
               {/* Dropped entirely when there is nothing to measure — nothing
                   stores the customer's coordinates, so a real job has no
                   distance. An empty row reads as a missing value; no row reads
                   as a fact we do not carry. */}
               {job.distanceLabel ? (
-                <MaskedRow label="Distance" value={job.distanceLabel} />
+                <MaskedRow label={t('jobs.offer.distance')} value={job.distanceLabel} />
               ) : null}
             </View>
           </>
@@ -253,13 +264,13 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
         }}
       >
         <Button
-          label="Accept job"
+          label={t('jobs.offer.accept')}
           trailingIcon="arrowRight"
           onPress={() => router.push(`/accept-slot?jobId=${jobId}`)}
           disabled={!job}
         />
         <View style={{ marginTop: 4 }}>
-          <Button label="Pass" variant="ghost" onPress={() => router.back()} />
+          <Button label={t('jobs.offer.pass')} variant="ghost" onPress={() => router.back()} />
         </View>
       </View>
     </View>

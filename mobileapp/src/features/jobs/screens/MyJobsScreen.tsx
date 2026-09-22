@@ -1,45 +1,56 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TabHeader } from '@/components/layout';
-import { SegmentedControl } from '@/components/ui';
+import { SegmentedControl, Text } from '@/components/ui';
 import { MyJobCard } from '@/features/jobs/components/MyJobCard';
 import { useMyJobs } from '@/features/jobs/hooks/useJobs';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
 import type { JobStatus } from '@/types/domain';
 
 type Filter = Extract<JobStatus, 'upcoming' | 'inprogress' | 'completed'>;
 
-const FILTERS: { value: Filter; label: string; empty: string }[] = [
-  { value: 'upcoming', label: 'Upcoming', empty: 'No upcoming jobs' },
-  { value: 'inprogress', label: 'In progress', empty: 'Nothing in progress' },
-  { value: 'completed', label: 'Completed', empty: 'No completed jobs yet' },
-];
+const FILTERS = [
+  { value: 'upcoming', label: 'jobs.status.upcoming', empty: 'jobs.myJobs.empty.upcoming' },
+  { value: 'inprogress', label: 'jobs.status.inProgress', empty: 'jobs.myJobs.empty.inprogress' },
+  { value: 'completed', label: 'jobs.status.completed', empty: 'jobs.myJobs.empty.completed' },
+] as const satisfies readonly { value: Filter; label: string; empty: string }[];
 
 /** Screen 6 — everything this technician has accepted, by stage. */
 export function MyJobsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>('upcoming');
 
   const { data, isPending, isError, refetch } = useMyJobs(filter);
   const active = FILTERS.find((f) => f.value === filter);
+  // The tab a technician checks after a customer confirms or a manager moves a
+  // job. The socket usually beats them to it; this is for when it has not.
+  const pull = usePullToRefresh(refetch);
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
 
-      <TabHeader title="My jobs">
+      <TabHeader title={t('jobs.myJobs.title')}>
         <View style={{ marginBottom: 12 }}>
-          <SegmentedControl options={FILTERS} value={filter} onChange={setFilter} />
+          <SegmentedControl
+            options={FILTERS.map((f) => ({ value: f.value, label: t(f.label) }))}
+            value={filter}
+            onChange={setFilter}
+          />
         </View>
       </TabHeader>
 
       <ScrollView
         contentContainerStyle={{ paddingTop: 14, paddingHorizontal: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl {...pull} />}
       >
         {isPending ? (
           <>
@@ -68,7 +79,7 @@ export function MyJobsScreen() {
             <Text
               style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
             >
-              {active?.empty ?? 'Nothing here'}
+              {t(active?.empty ?? 'jobs.myJobs.empty.none')}
             </Text>
           </View>
         ) : (
