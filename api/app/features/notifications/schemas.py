@@ -89,6 +89,11 @@ class DeviceRegistration(AppModel):
     #: "Pixel 7a". Optional, and only ever used to answer "which of this
     #: person's phones stopped receiving anything".
     deviceName: str | None = Field(default=None, max_length=120)
+    #: The language the app is showing — `en`, `hi`, `te`, `kn` or `ta` — so
+    #: pushes to this phone are written in it. Any other value, or none (a
+    #: build from before languages), is English rather than a 422: refusing a
+    #: newer app's language would stop every push to that phone.
+    language: str | None = Field(default=None, max_length=16)
 
 
 class WebPushKeyOut(AppModel):

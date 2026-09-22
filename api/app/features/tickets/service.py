@@ -47,6 +47,7 @@ from app.core.ledger import (
     payout_reason,
 )
 from app.core.push import announce_pool_job, send_to_technician
+from app.core.push_text import PushText, Slot
 from app.core.realtime import (
     publish_job_changed,
     publish_pool_changed,
@@ -2590,18 +2591,18 @@ async def assign_technician(
     # "a ticket at this point always has a slot", every one was true when it
     # was written, and all four broke together the day a job could be handed
     # out before the customer had picked a time. The push still has to say
-    # something useful in the space where the time goes.
-    when = (
-        when_label(row.slot_start, row.slot_end)
-        if row.slot_start and row.slot_end
-        else "time to be confirmed"
-    )
+    # something useful in the space where the time goes — `Slot` with no
+    # window renders as "time to be confirmed" in the phone's language.
     await send_to_technician(
         db,
         company_id=row.company_id,
         technician_id=profile.id,
-        title=f"{row.code} assigned to you",
-        body=f"{row.city} {row.pincode} · {when}",
+        message=PushText(
+            "job.assigned",
+            code=row.code,
+            place=f"{row.city} {row.pincode}",
+            when=Slot(row.slot_start, row.slot_end),
+        ),
         data={"type": "job", "ticketId": str(row.id), "code": row.code},
     )
     return await get_ticket(db, principal, ticket_id)
@@ -3035,8 +3036,7 @@ async def reverse_penalty(
         db,
         company_id=principal.company_id,
         technician_id=penalty.technician_id,
-        title=f"{row.code}: penalty reversed",
-        body=f"The ₹{amount // 100:,} penalty for {row.code} has been reversed.",
+        message=PushText("penalty.reversed", code=row.code, amount=f"₹{amount // 100:,}"),
         data={"type": "job"},
     )
     return await get_ticket(db, principal, ticket_id)
@@ -3222,8 +3222,12 @@ async def reschedule(
             db,
             company_id=principal.company_id,
             technician_id=held_by,
-            title=f"{row.code} moved to {when_label(row.slot_start, row.slot_end)}",
-            body=f"{row.city} {row.pincode} · rescheduled by your manager",
+            message=PushText(
+                "job.rescheduled",
+                code=row.code,
+                place=f"{row.city} {row.pincode}",
+                when=Slot(row.slot_start, row.slot_end),
+            ),
             data={"type": "job", "ticketId": str(row.id), "code": row.code},
         )
 
@@ -3420,11 +3424,7 @@ async def force_close_ticket(
             db,
             company_id=principal.company_id,
             technician_id=technician_id,
-            title=f"{row.code} closed by the office",
-            body=(
-                "The customer never responded, so a manager closed this job. "
-                "It counts as completed."
-            ),
+            message=PushText("job.forceClosed", code=row.code),
             data={"type": "job", "ticketId": str(row.id), "code": row.code},
         )
         await refresh_technician_stats(

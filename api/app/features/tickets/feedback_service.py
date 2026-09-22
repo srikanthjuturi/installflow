@@ -19,6 +19,7 @@ from sqlalchemy.orm import aliased
 from app.core.ledger import entry as ledger_entry, payout_reason
 from app.core.notifications import notify
 from app.core.push import send_to_technician
+from app.core.push_text import PushText
 from app.core.realtime import (
     publish_job_changed,
     publish_notification,
@@ -256,15 +257,10 @@ async def record_feedback(
             db,
             company_id=row.company_id,
             technician_id=row.technician_id,
-            title=(
-                f"{row.code} closed"
+            message=(
+                _closed_message(row.code, rating)
                 if confirmed
-                else f"{row.code}: the customer says it is not finished"
-            ),
-            body=(
-                _closed_body(rating)
-                if confirmed
-                else "A manager will be in touch. Do not return to site until they call."
+                else PushText("job.refused", code=row.code)
             ),
             data={"type": "job", "ticketId": str(row.id), "code": row.code},
         )
@@ -490,7 +486,7 @@ def on_time_percent(on_time: int, measured: int) -> int | None:
     return min(99, max(1, math.floor(100 * on_time / measured + 0.5)))
 
 
-def _closed_body(rating: int | None) -> str:
+def _closed_message(code: str, rating: int | None) -> PushText:
     """What a technician reads when the customer accepted the work.
 
     The rating is only mentioned when there is one. "Rated 0 stars" for a
@@ -499,5 +495,5 @@ def _closed_body(rating: int | None) -> str:
     nothing rather than as a bad one.
     """
     if rating is None:
-        return "The customer confirmed the installation. Nice work."
-    return f"The customer confirmed it and rated you {rating}/5."
+        return PushText("job.closed", code=code)
+    return PushText("job.closedRated", code=code, rating=rating)

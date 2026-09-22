@@ -1456,6 +1456,30 @@ The GSTIN also encodes two things we can check for free — `gstin[:2]` is the s
 `gstin[2:12]` is the PAN, which is what the backfill in `d3f27a8c1904` relied on. A mismatch is
 logged, never enforced: the registry is the authority on its own payload.
 
+## Push notifications are written in the phone's language
+
+The technician app speaks English, Hindi, Telugu, Kannada and Tamil, and a closed app cannot
+translate a push: Android draws the title and body exactly as this server sent them. So every
+technician push is worded HERE, per phone.
+
+- **The language is per device**, like the app's own setting: `push_tokens.language`, sent with
+  every `POST /notifications/devices` and again whenever the technician switches. Absent or
+  unknown is `en` — `core.push_text.normalize_language` — never a 422, because refusing a newer
+  app's language would stop every push to that phone.
+- **Callers pass a `PushText`, not a sentence:** `PushText("job.assigned", code=…, place=…,
+  when=Slot(start, end))`. `send_to_technicians` renders it once per language among the
+  recipients' phones. `Slot`, `Clock` and `TimeToSlot` are worded per language at render; codes,
+  places, rupee amounts, catalogue names, UPI IDs and anything a person typed are shown as given.
+- **Every message lives in `app/core/push_text.py`, in all five languages.** Adding a push means
+  adding its key there with all five, following the app's glossary (`mobileapp/src/i18n/README.md`).
+  The module checks itself at import — every language present, the same `{placeholders}` as
+  English — so CI's `import app.main` fails on drift instead of a sweep failing silently.
+- **English is unchanged** — each template is the sentence the call site used to build, and the
+  English day and clock still come from `slots.when_label` / `slots.clock`.
+- **WhatsApp is NOT localized.** Every technician message there is a Meta template, and a
+  language is a separate approval per template in WhatsApp Manager — see "A registered template's
+  wording is a deployment, not an edit". Until those exist, they stay `en` / `en_US`.
+
 ## Email — the temporary password
 
 A new console account (user, vendor, vendor user, company admin) gets a **server-generated**
