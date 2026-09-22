@@ -10,6 +10,7 @@ import { initReactI18next } from 'react-i18next';
 import { LANGUAGES, type Language } from './languages';
 import en from './locales/en.json';
 import hi from './locales/hi.json';
+import te from './locales/te.json';
 
 /**
  * Every language that has a translation file. A language reaches the picker by
@@ -18,6 +19,7 @@ import hi from './locales/hi.json';
 export const resources = {
   en: { translation: en },
   hi: { translation: hi },
+  te: { translation: te },
 } as const;
 
 export const AVAILABLE_LANGUAGES = LANGUAGES.filter((l) => l.code in resources);
