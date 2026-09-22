@@ -10,6 +10,7 @@ import { initReactI18next } from 'react-i18next';
 import { LANGUAGES, type Language } from './languages';
 import en from './locales/en.json';
 import hi from './locales/hi.json';
+import kn from './locales/kn.json';
 import te from './locales/te.json';
 
 /**
@@ -20,6 +21,7 @@ export const resources = {
   en: { translation: en },
   hi: { translation: hi },
   te: { translation: te },
+  kn: { translation: kn },
 } as const;
 
 export const AVAILABLE_LANGUAGES = LANGUAGES.filter((l) => l.code in resources);
