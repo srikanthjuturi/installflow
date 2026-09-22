@@ -7,6 +7,7 @@ import {
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Keyboard, Linking, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -108,6 +109,7 @@ async function describe(fix: Location.LocationObject): Promise<Coords> {
 export function CaptureScreen({ jobId }: CaptureScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const keyboardHeight = useKeyboardHeight();
   const cameraRef = useRef<CameraView>(null);
 
@@ -404,7 +406,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
             marginTop: 18,
           }}
         >
-          Camera access needed
+          {t('proof.capture.cameraTitle')}
         </Text>
         <Text
           style={{
@@ -416,13 +418,16 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
             marginBottom: 28,
           }}
         >
-          Proof of installation must be captured live on site. Gallery uploads aren&apos;t
-          accepted, so the job can&apos;t be completed without the camera.
+          {t('proof.capture.cameraBody')}
         </Text>
 
-        <Button label="Allow camera" onPress={requestPermission} />
+        <Button label={t('proof.capture.allowCamera')} onPress={requestPermission} />
         <View style={{ height: 10 }} />
-        <Button label="Back to job" variant="ghost" onPress={() => router.back()} />
+        <Button
+          label={t('proof.capture.backToJob')}
+          variant="ghost"
+          onPress={() => router.back()}
+        />
       </View>
     );
   }
@@ -477,8 +482,8 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           accessibilityRole="button"
           accessibilityLabel={
             prevStep(step, steps)
-              ? `Back to ${STEP_CONFIG[prevStep(step, steps)!].title}`
-              : 'Back to job'
+              ? t('proof.capture.backTo', { step: t(STEP_CONFIG[prevStep(step, steps)!].title) })
+              : t('proof.capture.backToJob')
           }
         >
           {({ pressed }) => (
@@ -502,7 +507,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           <Text
             style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.textInverse }}
           >
-            {config.title}
+            {t(config.title)}
           </Text>
           <Text
             style={{ fontFamily: 'Roboto_400Regular', fontSize: 11.5, color: color.textOnChrome }}
@@ -564,7 +569,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
                 textAlign: 'center',
               }}
             >
-              {config.hint}
+              {t(config.hint)}
             </Text>
 
             {/* A blocked shutter must say WHY and offer a way forward. A
@@ -601,7 +606,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
                     marginTop: 2,
                   }}
                 >
-                  Serial read from the barcode
+                  {t('proof.capture.serialFromBarcode')}
                 </Text>
               </View>
             ) : null}
@@ -631,17 +636,20 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
                 >
                   {elsewhere
                     ? distanceM !== null
-                      ? `You are ${metresLabel(distanceM)} from this job. The live photo must be taken at the customer's address.`
-                      : `You are at ${coords?.pincode} — this job is at ${jobPincode}. The live photo must be taken at the customer's address.`
+                      ? t('proof.capture.tooFar', { distance: metresLabel(distanceM) })
+                      : t('proof.capture.wrongPincode', {
+                          here: coords?.pincode ?? '—',
+                          job: jobPincode,
+                        })
                     : geo === 'acquiring'
-                      ? 'Finding your location before the live photo…'
+                      ? t('proof.capture.finding')
                       : blocker === 'permission-settings'
-                        ? 'Location is turned off for this app. Open Settings and allow location, then try again.'
+                        ? t('proof.capture.permissionSettings')
                         : blocker === 'services'
-                          ? 'Location services are off on this phone. Switch them on, then try again.'
+                          ? t('proof.capture.servicesOff')
                           : blocker === 'no-fix'
-                            ? 'No location fix yet. Step outside or nearer a window and try again.'
-                            : 'Allow location to take the live photo — it proves you attended.'}
+                            ? t('proof.capture.noFix')
+                            : t('proof.capture.allowLocation')}
                 </Text>
 
                 {geo !== 'acquiring' ? (
@@ -668,8 +676,8 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
                         }}
                       >
                         {blocker === 'permission-settings' || blocker === 'services'
-                          ? 'Open Settings'
-                          : 'Retry location'}
+                          ? t('proof.capture.openSettings')
+                          : t('proof.capture.retryLocation')}
                       </Text>
                     )}
                   </Pressable>
@@ -712,7 +720,9 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           <Pressable
             onPress={() => setPreview(lastShot)}
             accessibilityRole="button"
-            accessibilityLabel={`View the ${STEP_CONFIG[lastShot.kind].reviewLabel} you just captured`}
+            accessibilityLabel={t('proof.capture.viewLast', {
+              step: t(STEP_CONFIG[lastShot.kind].reviewLabel),
+            })}
           >
             {({ pressed }) => (
               <View style={{ opacity: pressed ? 0.7 : 1 }}>
@@ -743,8 +753,8 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           accessibilityState={{ disabled: geoBlocked }}
           accessibilityLabel={
             geoBlocked
-              ? 'Capture unavailable until your location matches the job'
-              : `Capture ${config.title}`
+              ? t('proof.capture.captureBlocked')
+              : t('proof.captureStep', { step: t(config.title) })
           }
         >
           {({ pressed }) => (
@@ -783,8 +793,10 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
             accessibilityRole="button"
             accessibilityLabel={
               nextStep(step, steps)
-                ? `Continue to ${STEP_CONFIG[nextStep(step, steps)!].title}`
-                : 'Review captures'
+                ? t('proof.capture.continueTo', {
+                    step: t(STEP_CONFIG[nextStep(step, steps)!].title),
+                  })
+                : t('proof.capture.reviewCaptures')
             }
             style={{ width: 56 }}
           >
@@ -798,7 +810,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
                     color: color.pillChromeFg,
                   }}
                 >
-                  {nextStep(step, steps) ? 'Next' : 'Review'}
+                  {nextStep(step, steps) ? t('proof.capture.next') : t('proof.capture.review')}
                 </Text>
                 {step === 'photos' ? (
                   <Text
@@ -822,11 +834,11 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
 
       <ShotPreview
         shot={preview?.shot ?? null}
-        title={preview ? STEP_CONFIG[preview.kind].reviewLabel : ''}
+        title={preview ? t(STEP_CONFIG[preview.kind].reviewLabel) : ''}
         action={
           preview
             ? {
-                label: 'Retake this',
+                label: t('proof.retakeThis'),
                 onPress: () => {
                   const kind = preview.kind;
                   setPreview(null);
@@ -864,6 +876,7 @@ function SerialField({
   /** Whether the label itself has been photographed yet. */
   hasPhoto: boolean;
 }) {
+  const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
 
   // The step owes two things and the Next control simply is not drawn until it
@@ -873,11 +886,11 @@ function SerialField({
   // field.
   const helper = !value.trim()
     ? hasPhoto
-      ? 'Label photographed — now type the serial'
-      : 'Serial number, exactly as printed'
+      ? t('proof.capture.helper.typeNow')
+      : t('proof.capture.helper.exact')
     : hasPhoto
-      ? 'Serial number, exactly as printed'
-      : 'Now photograph the label';
+      ? t('proof.capture.helper.exact')
+      : t('proof.capture.helper.photographNow');
 
   return (
     <View style={{ backgroundColor: color.cameraBg, paddingHorizontal: 20, paddingTop: 4 }}>
@@ -890,7 +903,7 @@ function SerialField({
           marginBottom: 6,
         }}
       >
-        SERIAL NUMBER
+        {t('proof.capture.serialLabel')}
       </Text>
 
       <View
@@ -912,7 +925,7 @@ function SerialField({
           onChangeText={onChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder="e.g. 4021884170099"
+          placeholder={t('proof.capture.serialPlaceholder')}
           placeholderTextColor={color.cameraDim}
           autoCapitalize="characters"
           autoCorrect={false}
@@ -941,7 +954,7 @@ function SerialField({
           <Pressable
             onPress={() => onChange('')}
             accessibilityRole="button"
-            accessibilityLabel="Clear the serial number"
+            accessibilityLabel={t('proof.capture.clearSerial')}
             hitSlop={8}
           >
             {({ pressed }) => (

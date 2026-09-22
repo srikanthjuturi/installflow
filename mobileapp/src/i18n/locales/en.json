@@ -107,6 +107,144 @@
       "remove": "Remove pincode {{code}}"
     }
   },
+  "proof": {
+    "steps": {
+      "barcode": {
+        "title": "Scan barcode",
+        "hint": "Align the product barcode within the frame",
+        "reviewLabel": "Barcode image"
+      },
+      "serial": {
+        "title": "Serial number",
+        "hint": "Photograph the serial label, then type the number below",
+        "reviewLabel": "Serial number"
+      },
+      "photos": {
+        "title": "Product photos",
+        "hint": "Capture the installed unit from 2–3 angles",
+        "reviewLabel": "Product photos"
+      },
+      "live": {
+        "title": "Live site photo",
+        "hint": "On-site live capture · gallery uploads not accepted",
+        "reviewLabel": "Geo-tagged live photos"
+      }
+    },
+    "stepOf": "Step {{n}} of {{total}}",
+    "retakeThis": "Retake this",
+    "captureStep": "Capture {{step}}",
+    "capture": {
+      "cameraTitle": "Camera access needed",
+      "cameraBody": "Proof of installation must be captured live on site. Gallery uploads aren't accepted, so the job can't be completed without the camera.",
+      "allowCamera": "Allow camera",
+      "backToJob": "Back to job",
+      "backTo": "Back to {{step}}",
+      "serialFromBarcode": "Serial read from the barcode",
+      "tooFar": "You are {{distance}} from this job. The live photo must be taken at the customer's address.",
+      "wrongPincode": "You are at {{here}} — this job is at {{job}}. The live photo must be taken at the customer's address.",
+      "finding": "Finding your location before the live photo…",
+      "permissionSettings": "Location is turned off for this app. Open Settings and allow location, then try again.",
+      "servicesOff": "Location services are off on this phone. Switch them on, then try again.",
+      "noFix": "No location fix yet. Step outside or nearer a window and try again.",
+      "allowLocation": "Allow location to take the live photo — it proves you attended.",
+      "openSettings": "Open Settings",
+      "retryLocation": "Retry location",
+      "viewLast": "View the {{step}} you just captured",
+      "captureBlocked": "Capture unavailable until your location matches the job",
+      "continueTo": "Continue to {{step}}",
+      "reviewCaptures": "Review captures",
+      "next": "Next",
+      "review": "Review",
+      "serialLabel": "SERIAL NUMBER",
+      "serialPlaceholder": "e.g. 4021884170099",
+      "clearSerial": "Clear the serial number",
+      "helper": {
+        "typeNow": "Label photographed — now type the serial",
+        "exact": "Serial number, exactly as printed",
+        "photographNow": "Now photograph the label"
+      }
+    },
+    "overlay": {
+      "serialNo": "SERIAL NO.",
+      "finding": "Finding your location…",
+      "unavailable": "Location unavailable",
+      "distanceFromJob": "{{distance}} from the job",
+      "pincodeMismatch": "You are at {{here}} · job is {{job}}",
+      "lockedDistance": "Location locked · {{distance}} from the job",
+      "lockedPincode": "Location locked · {{pincode}}",
+      "lockedPincodeAccuracy": "Location locked · {{pincode}} (±{{accuracy}}m)",
+      "lockedCoords": "Location locked · {{coords}}",
+      "locked": "Location locked"
+    },
+    "preview": {
+      "notUploaded": "This one didn't upload.",
+      "looksGood": "Looks good"
+    },
+    "review": {
+      "title": "Review & submit",
+      "intro": "Tap any capture to see it full screen. Retake anything that isn't clear — after you submit, a blurry serial costs a second visit.",
+      "removePhoto": "Remove this photo",
+      "barcodeRead": "Read · {{serial}}",
+      "barcodeNotScanned": "Captured · did not scan",
+      "serialEntered": "Entered · {{serial}}",
+      "serialMissing": "Serial not entered",
+      "noPhotos": "No product photos yet",
+      "photosCount": "{{n}} of {{max}} · tap one to see it",
+      "liveTagged": "Geo-tagged · {{place}}",
+      "liveNoLocation": "Live photo · no location recorded",
+      "view": "View {{step}}",
+      "add": "Add",
+      "retake": "Retake",
+      "viewPhoto": "View product photo {{n}} of {{total}}",
+      "liveAt": "Live photo taken at {{where}}",
+      "noLocation": "No location was recorded with the live photo.",
+      "retryUploads": "Retry failed uploads",
+      "submit": "Submit & start job",
+      "waitingUploads": "Waiting for photos to upload…",
+      "captureAll": "Capture all four before submitting",
+      "submitFailed": "Couldn't submit"
+    },
+    "closure": {
+      "steps": {
+        "captured": "Proof captured & uploaded",
+        "delivered": "Confirmation link delivered",
+        "notDelivered": "Confirmation link not delivered",
+        "awaiting": "Awaiting customer confirmation"
+      },
+      "title": "Feedback link sent",
+      "sentNamed": "{{name}} received a WhatsApp link to confirm & rate the install.",
+      "sent": "The customer received a WhatsApp link to confirm & rate the install.",
+      "note": "If the customer doesn't respond in the set window, the ASM can force-close with supporting documents. Every closure records who, when and why.",
+      "done": "Done · back to jobs"
+    },
+    "verifying": {
+      "title": "Verifying with AI",
+      "body": "Matching serial and product images against <bold>{{model}}</bold>.",
+      "theOrder": "the order"
+    },
+    "result": {
+      "mismatchTitle": "Mismatch flagged",
+      "mismatchBody": "Serial doesn't match the order. Routed to the Area Service Manager.",
+      "whatNow": "What happens now",
+      "whatNowBody": "The ASM reviews your captures and the mismatch. You'll be notified once they approve or ask you to recapture.",
+      "backToJobs": "Back to jobs",
+      "unreadableTitle": "Image unreadable",
+      "unreadableBody": "The serial photo is blurry. Retake before you leave the site.",
+      "unreadableTip": "Steady the camera, avoid glare on the sticker, and fill the frame with the serial label.",
+      "retakeSerial": "Retake serial photo",
+      "passedTitle": "Verification passed",
+      "passedBody": "Serial and product match the order.",
+      "modelMatched": "Model matched",
+      "serialRead": "Serial read",
+      "confidence": "Confidence",
+      "autoPass": "{{confidence}}% · Auto-pass",
+      "sendLink": "Send feedback link to customer"
+    }
+  },
+  "units": {
+    "km": "{{value}} km",
+    "m": "{{value}} m"
+  },
   "components": {
     "errorState": {
       "title": "Something went wrong",

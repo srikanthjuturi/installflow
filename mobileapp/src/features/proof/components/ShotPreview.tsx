@@ -1,9 +1,11 @@
 import { Image } from 'expo-image';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icons/Icon';
 import { Button, Text } from '@/components/ui';
+import { errorText } from '@/i18n/errorText';
 import type { CapturedShot } from '@/store/capture.store';
 import { color } from '@/theme/semantic';
 
@@ -28,6 +30,7 @@ export interface ShotPreviewProps {
  * it by accident.
  */
 export function ShotPreview({ shot, title, action, onClose }: ShotPreviewProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   return (
@@ -51,7 +54,11 @@ export function ShotPreview({ shot, title, action, onClose }: ShotPreviewProps) 
             paddingBottom: 10,
           }}
         >
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
+          >
             {({ pressed }) => (
               <View
                 style={{
@@ -105,14 +112,14 @@ export function ShotPreview({ shot, title, action, onClose }: ShotPreviewProps) 
                 textAlign: 'center',
               }}
             >
-              {shot.error ?? "This one didn't upload."}
+              {errorText(shot.error, t('proof.preview.notUploaded'))}
             </Text>
           ) : null}
 
           {action ? (
             <Button label={action.label} variant="dangerOutline" onPress={action.onPress} />
           ) : null}
-          <Button label="Looks good" variant="ghost" onPress={onClose} />
+          <Button label={t('proof.preview.looksGood')} variant="ghost" onPress={onClose} />
         </View>
       </View>
     </Modal>

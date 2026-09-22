@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,6 +12,7 @@ import { Button, Text } from '@/components/ui';
 import { useRetryFailedUploads, useSubmitProof } from '@/features/proof/hooks/useProof';
 import { ShotPreview } from '@/features/proof/components/ShotPreview';
 import { MAX_PHOTOS, STEP_CONFIG } from '@/features/proof/machine';
+import { errorText } from '@/i18n/errorText';
 import {
   allShots,
   isProofUploaded,
@@ -42,6 +44,7 @@ const TILE_ICON: Record<ProofKind, IconName> = {
 export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
 
   const {
     barcode,
@@ -94,11 +97,11 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const previewAction = () => {
     if (!preview) return null;
     if (preview.step !== 'photos') {
-      return { label: 'Retake this', onPress: () => retake(preview.step) };
+      return { label: t('proof.retakeThis'), onPress: () => retake(preview.step) };
     }
     if (photos.length > 1) {
       return {
-        label: 'Remove this photo',
+        label: t('proof.review.removePhoto'),
         onPress: () => {
           removePhoto(preview.shot.uri);
           setPreview(null);
@@ -106,7 +109,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
       };
     }
     // The last one. Removing it leaves nothing, so this is a retake.
-    return { label: 'Retake this', onPress: () => retake('photos') };
+    return { label: t('proof.retakeThis'), onPress: () => retake('photos') };
   };
 
   // Nothing has been read yet at this point — a CapturedShot is a file URI and
@@ -119,7 +122,9 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   const tiles: { step: ProofKind; meta: string; shot: CapturedShot | null }[] = [
     {
       step: 'barcode',
-      meta: scanned ? `Read · ${serialValue}` : 'Captured · did not scan',
+      meta: scanned
+        ? t('proof.review.barcodeRead', { serial: serialValue })
+        : t('proof.review.barcodeNotScanned'),
       shot: barcode,
     },
     // Present only when the barcode would not scan. With a successful read the
@@ -130,7 +135,9 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
       : [
           {
             step: 'serial' as ProofKind,
-            meta: serialValue ? `Entered · ${serialValue}` : 'Serial not entered',
+            meta: serialValue
+              ? t('proof.review.serialEntered', { serial: serialValue })
+              : t('proof.review.serialMissing'),
             shot: serial,
           },
         ]),
@@ -138,15 +145,19 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
       step: 'photos',
       meta:
         photos.length === 0
-          ? 'No product photos yet'
-          : `${photos.length} of ${MAX_PHOTOS} · tap one to see it`,
+          ? t('proof.review.noPhotos')
+          : t('proof.review.photosCount', { n: photos.length, max: MAX_PHOTOS }),
       shot: photos[0] ?? null,
     },
     {
       step: 'live',
       meta: live?.coords
-        ? `Geo-tagged · ${live.coords.pincode ?? `${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}`}`
-        : 'Live photo · no location recorded',
+        ? t('proof.review.liveTagged', {
+            place:
+              live.coords.pincode ??
+              `${live.coords.latitude.toFixed(4)}, ${live.coords.longitude.toFixed(4)}`,
+          })
+        : t('proof.review.liveNoLocation'),
       shot: live,
     },
   ];
@@ -154,7 +165,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Review & submit" onBack={() => router.replace(`/job/${jobId}`)} />
+      <TitleBar title={t('proof.review.title')} onBack={() => router.replace(`/job/${jobId}`)} />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
@@ -170,7 +181,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
             marginBottom: 14,
           }}
         >
-          Tap any capture to see it full screen. Retake anything that isn&apos;t clear — after you submit, a blurry serial costs a second visit.
+          {t('proof.review.intro')}
         </Text>
 
         {tiles.map(({ step, meta, shot }) => (
@@ -181,8 +192,8 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
             accessibilityRole="button"
             accessibilityLabel={
               shot
-                ? `View ${STEP_CONFIG[step].reviewLabel}`
-                : `Capture ${STEP_CONFIG[step].reviewLabel}`
+                ? t('proof.review.view', { step: t(STEP_CONFIG[step].reviewLabel) })
+                : t('proof.captureStep', { step: t(STEP_CONFIG[step].reviewLabel) })
             }
           >
             {({ pressed }) => (
@@ -230,7 +241,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                       color: color.textPrimary,
                     }}
                   >
-                    {STEP_CONFIG[step].reviewLabel}
+                    {t(STEP_CONFIG[step].reviewLabel)}
                   </Text>
                   <Text
                     style={{
@@ -297,8 +308,8 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                         }}
                       >
                         {step === 'photos' && photos.length > 0 && photos.length < MAX_PHOTOS
-                          ? 'Add'
-                          : 'Retake'}
+                          ? t('proof.review.add')
+                          : t('proof.review.retake')}
                       </Text>
                     )}
                   </Pressable>
@@ -327,7 +338,7 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                 key={shot.uri}
                 onPress={() => setPreview({ shot, step: 'photos' })}
                 accessibilityRole="button"
-                accessibilityLabel={`View product photo ${i + 1} of ${photos.length}`}
+                accessibilityLabel={t('proof.review.viewPhoto', { n: i + 1, total: photos.length })}
               >
                 {({ pressed }) => (
                   <View style={{ opacity: pressed ? 0.7 : 1 }}>
@@ -397,17 +408,20 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                 was. Coordinates are the record; the postal code is only a
                 readable name for them. */}
             {live?.coords
-              ? `Live photo taken at ${live.coords.latitude.toFixed(5)}, ${live.coords.longitude.toFixed(5)}` +
-                (live.coords.pincode ? ` — ${live.coords.pincode}` : '') +
-                (live.coords.accuracy ? ` (±${Math.round(live.coords.accuracy)}m)` : '')
-              : 'No location was recorded with the live photo.'}
+              ? t('proof.review.liveAt', {
+                  where:
+                    `${live.coords.latitude.toFixed(5)}, ${live.coords.longitude.toFixed(5)}` +
+                    (live.coords.pincode ? ` — ${live.coords.pincode}` : '') +
+                    (live.coords.accuracy ? ` (±${Math.round(live.coords.accuracy)}m)` : ''),
+                })
+              : t('proof.review.noLocation')}
           </Text>
         </View>
       </ScrollView>
 
       <ShotPreview
         shot={preview?.shot ?? null}
-        title={preview ? STEP_CONFIG[preview.step].reviewLabel : ''}
+        title={preview ? t(STEP_CONFIG[preview.step].reviewLabel) : ''}
         action={previewAction()}
         onClose={() => setPreview(null)}
       />
@@ -424,14 +438,14 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
       >
         {anyFailed ? (
           <Button
-            label="Retry failed uploads"
+            label={t('proof.review.retryUploads')}
             variant="secondary"
             leadingIcon="warn"
             onPress={retryFailed}
           />
         ) : (
           <Button
-            label="Submit & start job"
+            label={t('proof.review.submit')}
             trailingIcon="arrowRight"
             loading={submit.isPending}
             // Gated on UPLOADED, not captured. The call sends blob names, so a
@@ -440,8 +454,8 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
             disabled={!ready || uploading}
             disabledHint={
               uploading
-                ? 'Waiting for photos to upload…'
-                : 'Capture all four before submitting'
+                ? t('proof.review.waitingUploads')
+                : t('proof.review.captureAll')
             }
             onPress={() =>
               submit.mutate(undefined, {
@@ -461,7 +475,9 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
               marginTop: 8,
             }}
           >
-            {submit.error instanceof Error ? submit.error.message : "Couldn't submit"}
+            {submit.error instanceof Error
+              ? errorText(submit.error, t('proof.review.submitFailed'))
+              : t('proof.review.submitFailed')}
           </Text>
         ) : null}
       </View>

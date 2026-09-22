@@ -49,8 +49,11 @@ export interface CapturedShot {
    * without one cannot be submitted.
    */
   blobName: string | null;
-  /** Meta's own words when it refused, so a retry can show why. */
-  error?: string;
+  /**
+   * Why the upload failed, so a retry can show it. The failure itself rather
+   * than its sentence: `ShotPreview` words it through `errorText` when shown.
+   */
+  error?: unknown;
   /** Set on the `live` shot only. Null when location was denied or lost. */
   coords?: Coords | null;
 }

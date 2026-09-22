@@ -1,3 +1,5 @@
+import { t } from 'i18next';
+
 /**
  * Distance between two points, mirroring `api/app/core/coordinates.py`.
  *
@@ -34,7 +36,9 @@ export function metresBetween(
 
 /** `420 m` below a kilometre, `4.2 km` above it. Matches the server's wording. */
 export function metresLabel(metres: number): string {
-  return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;
+  return metres >= 1000
+    ? t('units.km', { value: (metres / 1000).toFixed(1) })
+    : t('units.m', { value: Math.round(metres) });
 }
 
 /**
