@@ -11,6 +11,7 @@ import { LANGUAGES, type Language } from './languages';
 import en from './locales/en.json';
 import hi from './locales/hi.json';
 import kn from './locales/kn.json';
+import ta from './locales/ta.json';
 import te from './locales/te.json';
 
 /**
@@ -22,6 +23,7 @@ export const resources = {
   hi: { translation: hi },
   te: { translation: te },
   kn: { translation: kn },
+  ta: { translation: ta },
 } as const;
 
 export const AVAILABLE_LANGUAGES = LANGUAGES.filter((l) => l.code in resources);
