@@ -13,6 +13,7 @@ import {
 } from '@/features/availability/hooks/useAvailability';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { type DayPeriod, useGreeting } from '@/features/jobs/hooks/useGreeting';
+import { useLanguagePrompt } from '@/features/language/hooks/useLanguagePrompt';
 import { usePool, useTodayJobs } from '@/features/jobs/hooks/useJobs';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
@@ -38,6 +39,9 @@ export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  // A technician already signed in when this version arrives never sees
+  // sign-in again, so Home offers the language list once instead.
+  useLanguagePrompt();
 
   // The signed-in technician. Shares the `me` query with the Profile tab, so
   // this is one request, not two — and it replaces a `technician` record

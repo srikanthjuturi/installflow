@@ -9,6 +9,7 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
 import { BrandMark, Button, Text } from '@/components/ui';
+import { useLanguagePrompt } from '@/features/language/hooks/useLanguagePrompt';
 import { resolveInvite } from '@/features/onboarding/api/invite';
 import { errorText } from '@/i18n/errorText';
 import { ApiError } from '@/lib/api';
@@ -47,6 +48,9 @@ export function InviteScreen({ token }: InviteScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  // An invite link opens here without ever passing sign-in, so this is where
+  // an invited technician's first launch offers the language list.
+  useLanguagePrompt();
   const start = useRegistration((s) => s.start);
 
   const {

@@ -199,6 +199,16 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: 'transparent' },
                 }}
               />
+              {/* The language list is at the root for the same reason: it opens
+                  on the sign-in screen, and on the very first launch. */}
+              <Stack.Screen
+                name="language"
+                options={{
+                  presentation: 'transparentModal',
+                  animation: 'fade',
+                  contentStyle: { backgroundColor: 'transparent' },
+                }}
+              />
               <Stack.Screen
                 name="crop-photo"
                 options={{ presentation: 'fullScreenModal' }}

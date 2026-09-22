@@ -383,8 +383,7 @@
     },
     "rows": {
       "availabilityA11y": "Availability and bandwidth",
-      "push": "Push notifications",
-      "language": "Language"
+      "push": "Push notifications"
     },
     "logOut": "Log out",
     "avatar": {
@@ -442,6 +441,9 @@
     "increase": "Increase bandwidth",
     "unit": "jobs / day",
     "usedToday": "{{used}} of {{cap}} used today"
+  },
+  "language": {
+    "title": "Language"
   },
   "notifications": {
     "channel": "Job offers"

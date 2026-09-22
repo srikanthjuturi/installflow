@@ -5,34 +5,21 @@ import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, Skeleton } from '@/components/feedback';
-import { Icon, type IconName } from '@/components/icons/Icon';
+import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
 import { Avatar, Button, Switch, Text } from '@/components/ui';
 import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { AVAILABLE_LANGUAGES } from '@/i18n';
 import { errorText } from '@/i18n/errorText';
+import { LANGUAGES } from '@/i18n/languages';
+import { useLanguage } from '@/store/language.store';
 import { shortCategory } from '@/lib/shortCategory';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
-
-/**
- * Push notifications is a switch rather than an "On" label: it's the one
- * setting here a technician actually flips, and it decides whether they hear
- * about new jobs at all. Language and payout account open their own flows, so
- * they stay as values.
- */
-const SETTINGS: { label: 'profile.rows.language'; value: string; icon: IconName }[] = [
-  // English is a fact about this build — there is no i18n and no language
-  // setting to read, so this row stays a value rather than becoming a link.
-  //
-  // Payout account left this list when `technician_profiles.upi_id` landed:
-  // it is now a real, editable field, so it is a navigable row beside
-  // Availability & bandwidth rather than a static one showing a dash.
-  { label: 'profile.rows.language', value: 'English', icon: 'globe' },
-];
 
 /** Screen 16 — Profile & settings. */
 export function ProfileScreen() {
@@ -55,6 +42,9 @@ export function ProfileScreen() {
   // state: this was `useState(true)`, which reset on every launch and pushed
   // to a technician who had switched it off.
   const { enabled: pushEnabled, toggle: togglePush } = usePushToggle();
+  const activeLanguage = useLanguage((s) => s.active);
+  const languageName =
+    LANGUAGES.find((l) => l.code === activeLanguage)?.nativeName ?? activeLanguage;
 
   // The coverage row abbreviates, matching the prototype — the full names wrap.
   const categories = me?.subcategories.map((c) => shortCategory(c.name)).join(' · ') ?? '—';
@@ -326,41 +316,58 @@ export function ProfileScreen() {
               </View>
             </Pressable>
 
-            {SETTINGS.map((row) => (
-              <View
-                key={row.label}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 13,
-                  paddingVertical: 15,
-                  paddingHorizontal: 16,
-                  borderTopWidth: 1,
-                  borderTopColor: palette.neutral[100],
-                }}
-              >
-                <Icon name={row.icon} size={21} color={color.textLabel} strokeWidth={1.7} />
-                <Text
+            {/* The prototype's `Language · English` row, and now a way in: it
+                opens the language list and shows the one in use, in its own
+                script. A link like Payout account, chevron and all — and a
+                plain value while the app speaks only one language, because
+                a list of one is not a choice. */}
+            <Pressable
+              onPress={() => router.push('/language')}
+              disabled={AVAILABLE_LANGUAGES.length < 2}
+              accessibilityRole="button"
+              accessibilityLabel={`${t('language.title')}: ${languageName}`}
+            >
+              {({ pressed }) => (
+                <View
                   style={{
-                    flex: 1,
-                    fontFamily: 'Roboto_500Medium',
-                    fontSize: 14.5,
-                    color: color.textPrimary,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 13,
+                    paddingVertical: 15,
+                    paddingHorizontal: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: palette.neutral[100],
+                    backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
                   }}
                 >
-                  {t(row.label)}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: 'Roboto_400Regular',
-                    fontSize: 13,
-                    color: color.textMuted,
-                  }}
-                >
-                  {row.value}
-                </Text>
-              </View>
-            ))}
+                  <Icon name="globe" size={21} color={color.textLabel} strokeWidth={1.7} />
+                  <Text
+                    style={{
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 14.5,
+                      color: color.textPrimary,
+                    }}
+                  >
+                    {t('language.title')}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      textAlign: 'right',
+                      fontFamily: 'Roboto_400Regular',
+                      fontSize: 13,
+                      color: color.textMuted,
+                    }}
+                  >
+                    {languageName}
+                  </Text>
+                  {AVAILABLE_LANGUAGES.length > 1 ? (
+                    <Icon name="chevronRight" size={19} color={color.textMuted} />
+                  ) : null}
+                </View>
+              )}
+            </Pressable>
 
             {/* A Play Store requirement, not a prototype row — every account a
                 technician creates themselves needs an in-app way to delete it. */}

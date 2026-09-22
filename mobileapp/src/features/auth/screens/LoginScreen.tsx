@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { BackHandler, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,8 @@ import { BrandMark, Button, Text } from '@/components/ui';
 import { OtpInput } from '@/features/auth/components/OtpInput';
 import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import { requestOtp, verifyOtp } from '@/features/auth/api/session';
+import { LanguagePill } from '@/features/language/components/LanguagePill';
+import { useLanguagePrompt } from '@/features/language/hooks/useLanguagePrompt';
 import { errorText } from '@/i18n/errorText';
 import { ApiError } from '@/lib/api';
 import { useSession } from '@/store/session.store';
@@ -48,6 +50,9 @@ export function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  // The first screen most people ever see, so the first place the language
+  // list may open by itself.
+  useLanguagePrompt();
 
   const signIn = useSession((s) => s.signIn);
 
@@ -79,19 +84,25 @@ export function LoginScreen() {
    * reads like a crash and is the loudest thing in the dev console. From the
    * OTP step back belongs to the flow (return to the number); from the phone
    * step it belongs to the OS (leave the app).
+   *
+   * Only while this screen is FOCUSED. React Native asks the newest listener
+   * first, and this one used to stay registered under the language sheet — so
+   * Back on the sheet left the app instead of closing the sheet.
    */
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (step === 'otp') {
-        setStep('phone');
-        setFailure(null);
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (step === 'otp') {
+          setStep('phone');
+          setFailure(null);
+          return true;
+        }
+        BackHandler.exitApp();
         return true;
-      }
-      BackHandler.exitApp();
-      return true;
-    });
-    return () => sub.remove();
-  }, [step]);
+      });
+      return () => sub.remove();
+    }, [step]),
+  );
 
   const verify = async () => {
     setBusy(true);
@@ -144,7 +155,18 @@ export function LoginScreen() {
       <ScreenStatusBar style="dark" />
 
       <KeyboardFlow>
-        <BrandMark />
+        {/* The language button shares the tile's row, top-aligned, so the
+            approved layout below it does not move. */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+          }}
+        >
+          <BrandMark />
+          <LanguagePill />
+        </View>
 
         <Text
           style={{
