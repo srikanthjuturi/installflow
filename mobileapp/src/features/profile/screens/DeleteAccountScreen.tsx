@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, View } from 'react-native';
 
 import {
@@ -15,6 +16,7 @@ import { useResendTimer } from '@/features/auth/hooks/useResendTimer';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { useConfirmDeletion, useSendDeletionCode } from '@/features/profile/hooks/useDeletion';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
+import { errorText } from '@/i18n/errorText';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
 import { color } from '@/theme/semantic';
@@ -59,6 +61,7 @@ const BODY = {
  */
 export function DeleteAccountScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const me = useMe();
 
@@ -86,12 +89,12 @@ export function DeleteAccountScreen() {
 
   const deleteNow = () => {
     Alert.alert(
-      'Delete your account?',
-      'This signs you out right away and removes you from the technician roster. Your past job history and proof stay on record. This cannot be undone.',
+      t('profile.delete.confirmTitle'),
+      t('profile.delete.confirmBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('profile.delete.delete'),
           style: 'destructive',
           onPress: () =>
             confirm.mutate(code, {
@@ -112,25 +115,20 @@ export function DeleteAccountScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Delete account" paddingBottom={14} />
+      <TitleBar title={t('profile.delete.title')} paddingBottom={14} />
 
       <KeyboardFlow>
         <View style={{ padding: 16, paddingBottom: 40 + (keyboardUp ? 0 : navInset), gap: 14 }}>
           <View style={CARD}>
             <Text style={BODY}>
-              Deleting your account signs you out immediately and removes you
-              from the technician roster — you stop receiving new job
-              offers. Your past job history and proof stay on record for
-              warranty and dispute purposes, the same as while your account
-              was active.
+              {t('profile.delete.intro')}
             </Text>
           </View>
 
           {sent ? (
             <View style={CARD}>
               <Text style={BODY}>
-                We sent a 6-digit code to your WhatsApp, {prettyPhone(me.data?.phone)}
-                . Enter it to delete your account.
+                {t('profile.delete.codeSent', { phone: prettyPhone(me.data?.phone) })}
               </Text>
               <OtpInput value={code} onChange={setCode} />
               <Pressable
@@ -145,7 +143,9 @@ export function DeleteAccountScreen() {
                     color: timer.canResend ? color.actionBg : color.textMuted,
                   }}
                 >
-                  {timer.canResend ? 'Send a new code' : `Send a new code in ${timer.label}`}
+                  {timer.canResend
+                    ? t('common.sendNewCode')
+                    : t('common.sendNewCodeIn', { time: timer.label })}
                 </Text>
               </Pressable>
               {devCode ? <DevCode code={devCode} onUse={() => setCode(devCode)} /> : null}
@@ -156,7 +156,7 @@ export function DeleteAccountScreen() {
 
           {sent ? (
             <Button
-              label="Delete my account"
+              label={t('profile.delete.deleteMine')}
               variant="destructive"
               loading={confirm.isPending}
               disabled={code.length < 6}
@@ -164,7 +164,7 @@ export function DeleteAccountScreen() {
             />
           ) : (
             <Button
-              label="Continue"
+              label={t('common.continue')}
               variant="dangerOutline"
               loading={sendCode.isPending}
               onPress={send}
@@ -177,6 +177,8 @@ export function DeleteAccountScreen() {
 }
 
 function ErrorLine({ error }: { error: unknown }) {
+  const { t } = useTranslation();
+
   return (
     <Text
       style={{
@@ -189,7 +191,9 @@ function ErrorLine({ error }: { error: unknown }) {
       }}
     >
       {/* The server's own words — it knows why it refused, e.g. an open job. */}
-      {error instanceof Error ? error.message : "Couldn't delete your account. Try again."}
+      {error instanceof Error
+        ? errorText(error, t('profile.delete.failed'))
+        : t('profile.delete.failed')}
     </Text>
   );
 }
@@ -199,6 +203,8 @@ function ErrorLine({ error }: { error: unknown }) {
  * the same panel Payout Account, reschedule and joining show.
  */
 function DevCode({ code, onUse }: { code: string; onUse: () => void }) {
+  const { t } = useTranslation();
+
   return (
     <Pressable
       onPress={onUse}
@@ -212,7 +218,7 @@ function DevCode({ code, onUse }: { code: string; onUse: () => void }) {
       }}
     >
       <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 10.5, color: color.textMuted }}>
-        DEVELOPMENT ONLY
+        {t('common.devOnly')}
       </Text>
       <Text
         style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary, marginTop: 2 }}

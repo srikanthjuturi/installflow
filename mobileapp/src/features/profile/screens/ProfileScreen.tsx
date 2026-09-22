@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,6 +11,7 @@ import { Avatar, Button, Switch, Text } from '@/components/ui';
 import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { errorText } from '@/i18n/errorText';
 import { shortCategory } from '@/lib/shortCategory';
 import { useProfileStore } from '@/store/profile.store';
 import { useSession } from '@/store/session.store';
@@ -22,20 +24,21 @@ import { palette } from '@/theme/tokens';
  * about new jobs at all. Language and payout account open their own flows, so
  * they stay as values.
  */
-const SETTINGS: { label: string; value: string; icon: IconName }[] = [
+const SETTINGS: { label: 'profile.rows.language'; value: string; icon: IconName }[] = [
   // English is a fact about this build — there is no i18n and no language
   // setting to read, so this row stays a value rather than becoming a link.
   //
   // Payout account left this list when `technician_profiles.upi_id` landed:
   // it is now a real, editable field, so it is a navigable row beside
   // Availability & bandwidth rather than a static one showing a dash.
-  { label: 'Language', value: 'English', icon: 'globe' },
+  { label: 'profile.rows.language', value: 'English', icon: 'globe' },
 ];
 
 /** Screen 16 — Profile & settings. */
 export function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   // Server state, seeded from the session so this paints on the first frame.
@@ -64,8 +67,12 @@ export function ProfileScreen() {
       <View style={{ flex: 1, backgroundColor: color.surface, justifyContent: 'center' }}>
         <ScreenStatusBar style="dark" />
         <ErrorState
-          title="Couldn't load your profile"
-          body={error instanceof Error ? error.message : undefined}
+          title={t('profile.loadFailed')}
+          body={
+            error instanceof Error
+              ? errorText(error, t('components.errorState.body'))
+              : undefined
+          }
           onRetry={() => refetch()}
         />
       </View>
@@ -105,7 +112,7 @@ export function ProfileScreen() {
               <Pressable
                 onPress={() => router.push(avatarUri ? '/view-photo' : '/avatar-options')}
                 accessibilityRole="button"
-                accessibilityLabel={avatarUri ? 'View profile picture' : 'Add profile picture'}
+                accessibilityLabel={avatarUri ? t('profile.viewPhoto') : t('profile.addPhoto')}
               >
                 {({ pressed }) => (
                   <View style={{ opacity: pressed ? 0.8 : 1 }}>
@@ -138,7 +145,7 @@ export function ProfileScreen() {
                   marginTop: 2,
                 }}
               >
-                Technician · ID {me.code}
+                {t('profile.idLine', { code: me.code })}
               </Text>
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, alignSelf: 'stretch' }}>
@@ -147,17 +154,17 @@ export function ProfileScreen() {
                     is. */}
                 <ChromeStat
                   value={me.rating === null ? '—' : me.rating.toFixed(1)}
-                  label="Rating"
+                  label={t('profile.stats.rating')}
                 />
                 {/* Null until the first closure is counted — `String(null)`
                     used to print the word "null" here. */}
                 <ChromeStat
                   value={me.jobsCompleted === null ? '—' : String(me.jobsCompleted)}
-                  label="Jobs done"
+                  label={t('profile.stats.jobsDone')}
                 />
                 <ChromeStat
                   value={me.onTimePct === null ? '—' : `${me.onTimePct}%`}
-                  label="On-time"
+                  label={t('profile.stats.onTime')}
                 />
               </View>
             </>
@@ -185,11 +192,14 @@ export function ProfileScreen() {
                 marginBottom: 12,
               }}
             >
-              Service coverage
+              {t('profile.coverage.title')}
             </Text>
 
-            <CoverageRow label="Categories" value={categories} first />
-            <CoverageRow label="Pincodes" value={me?.pincodes.join(', ') ?? '—'} />
+            <CoverageRow label={t('profile.coverage.categories')} value={categories} first />
+            <CoverageRow
+              label={t('profile.coverage.pincodes')}
+              value={me?.pincodes.join(', ') ?? '—'}
+            />
           </View>
 
           <View
@@ -204,7 +214,7 @@ export function ProfileScreen() {
             <Pressable
               onPress={() => router.push('/availability')}
               accessibilityRole="button"
-              accessibilityLabel="Availability and bandwidth"
+              accessibilityLabel={t('profile.rows.availabilityA11y')}
             >
               {({ pressed }) => (
                 <View
@@ -226,7 +236,7 @@ export function ProfileScreen() {
                       color: color.textPrimary,
                     }}
                   >
-                    Availability &amp; bandwidth
+                    {t('availability.title')}
                   </Text>
                   <Icon name="chevronRight" size={19} color={color.textMuted} />
                 </View>
@@ -241,7 +251,7 @@ export function ProfileScreen() {
             <Pressable
               onPress={() => router.push('/payout-account')}
               accessibilityRole="button"
-              accessibilityLabel="Payout account"
+              accessibilityLabel={t('payout.title')}
             >
               {({ pressed }) => (
                 <View
@@ -264,7 +274,7 @@ export function ProfileScreen() {
                       color: color.textPrimary,
                     }}
                   >
-                    Payout account
+                    {t('payout.title')}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -287,7 +297,7 @@ export function ProfileScreen() {
               onPress={togglePush}
               accessibilityRole="switch"
               accessibilityState={{ checked: pushEnabled }}
-              accessibilityLabel="Push notifications"
+              accessibilityLabel={t('profile.rows.push')}
             >
               <View
                 style={{
@@ -309,7 +319,7 @@ export function ProfileScreen() {
                     color: color.textPrimary,
                   }}
                 >
-                  Push notifications
+                  {t('profile.rows.push')}
                 </Text>
                 {/* Row is the tap target, so the switch is presentational. */}
                 <Switch value={pushEnabled} onValueChange={togglePush} static />
@@ -338,7 +348,7 @@ export function ProfileScreen() {
                     color: color.textPrimary,
                   }}
                 >
-                  {row.label}
+                  {t(row.label)}
                 </Text>
                 <Text
                   style={{
@@ -357,7 +367,7 @@ export function ProfileScreen() {
             <Pressable
               onPress={() => router.push('/delete-account')}
               accessibilityRole="button"
-              accessibilityLabel="Delete account"
+              accessibilityLabel={t('profile.delete.title')}
             >
               {({ pressed }) => (
                 <View
@@ -381,7 +391,7 @@ export function ProfileScreen() {
                       color: color.textDanger,
                     }}
                   >
-                    Delete account
+                    {t('profile.delete.title')}
                   </Text>
                   <Icon name="chevronRight" size={19} color={color.textMuted} />
                 </View>
@@ -391,7 +401,7 @@ export function ProfileScreen() {
 
           <View style={{ marginTop: 16 }}>
             <Button
-              label="Log out"
+              label={t('profile.logOut')}
               variant="dangerOutline"
               onPress={() => {
                 // Clear the session first: the `(app)` guard redirects on its

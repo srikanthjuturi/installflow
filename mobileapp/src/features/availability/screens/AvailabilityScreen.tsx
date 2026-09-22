@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
@@ -49,6 +50,7 @@ const SAVE_DEBOUNCE_MS = 700;
  * changes does NOT reach the server" — is what the change deletes.
  */
 export function AvailabilityScreen() {
+  const { t } = useTranslation();
   // `undefined` while the profile loads; `null` means NO LIMIT.
   const cap = useDailyJobCap();
   const jobsToday = useJobsToday();
@@ -102,13 +104,13 @@ export function AvailabilityScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Availability & bandwidth" paddingBottom={14} />
+      <TitleBar title={t('availability.title')} paddingBottom={14} />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 40 + navInset }}
         showsVerticalScrollIndicator={false}
       >
-        <SectionLabel>Daily job bandwidth</SectionLabel>
+        <SectionLabel>{t('availability.section')}</SectionLabel>
 
         <View
           style={{
@@ -130,10 +132,10 @@ export function AvailabilityScreen() {
             }}
           >
             {loading
-              ? 'Loading your current limit…'
+              ? t('availability.loading')
               : limited
-                ? "Maximum installs you'll take per day. New offers stop once you hit this cap."
-                : "You'll be offered as many installs a day as come up. Set a cap if you'd rather not."}
+                ? t('availability.limitedBody')
+                : t('availability.unlimitedBody')}
           </Text>
 
           <Pressable
@@ -141,7 +143,7 @@ export function AvailabilityScreen() {
             disabled={loading}
             accessibilityRole="switch"
             accessibilityState={{ checked: limited, disabled: loading }}
-            accessibilityLabel="Limit jobs per day"
+            accessibilityLabel={t('availability.limitToggle')}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -156,7 +158,7 @@ export function AvailabilityScreen() {
                 color: color.textPrimary,
               }}
             >
-              Limit jobs per day
+              {t('availability.limitToggle')}
             </Text>
             <Switch
               value={limited}
@@ -177,7 +179,7 @@ export function AvailabilityScreen() {
               glyph="−"
               onPress={() => bandwidthPerDay && save(bandwidthPerDay - 1)}
               disabled={bandwidthPerDay === null || bandwidthPerDay <= BANDWIDTH_MIN}
-              label="Decrease bandwidth"
+              label={t('availability.decrease')}
             />
 
             <View style={{ alignItems: 'center', minWidth: 56 }}>
@@ -199,7 +201,7 @@ export function AvailabilityScreen() {
                   marginTop: 2,
                 }}
               >
-                jobs / day
+                {t('availability.unit')}
               </Text>
             </View>
 
@@ -208,7 +210,7 @@ export function AvailabilityScreen() {
               glyph="+"
               onPress={() => bandwidthPerDay && save(bandwidthPerDay + 1)}
               disabled={bandwidthPerDay === null}
-              label="Increase bandwidth"
+              label={t('availability.increase')}
             />
           </View>
           ) : null}
@@ -229,7 +231,7 @@ export function AvailabilityScreen() {
                 marginTop: 14,
               }}
             >
-              {jobsToday} of {bandwidthPerDay} used today
+              {t('availability.usedToday', { used: jobsToday, cap: bandwidthPerDay })}
             </Text>
           ) : null}
         </View>

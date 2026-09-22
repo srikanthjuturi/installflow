@@ -366,6 +366,86 @@
       "fromScreenshot": "From a screenshot"
     }
   },
+  "profile": {
+    "loadFailed": "Couldn't load your profile",
+    "viewPhoto": "View profile picture",
+    "addPhoto": "Add profile picture",
+    "idLine": "Technician · ID {{code}}",
+    "stats": {
+      "rating": "Rating",
+      "jobsDone": "Jobs done",
+      "onTime": "On-time"
+    },
+    "coverage": {
+      "title": "Service coverage",
+      "categories": "Categories",
+      "pincodes": "Pincodes"
+    },
+    "rows": {
+      "availabilityA11y": "Availability and bandwidth",
+      "push": "Push notifications",
+      "language": "Language"
+    },
+    "logOut": "Log out",
+    "avatar": {
+      "title": "Profile picture",
+      "cropHint": "You'll be able to crop it to a square before it's saved.",
+      "takePhoto": "Take a photo",
+      "fromGallery": "Choose from gallery",
+      "photosDeniedTitle": "Photos access needed",
+      "cameraDeniedBody": "Enable camera access in Settings to set a profile picture.",
+      "photosDeniedBody": "Enable photos access in Settings to set a profile picture.",
+      "openSettings": "Open settings"
+    },
+    "photo": {
+      "openFailed": "Couldn't open that photo",
+      "tryDifferent": "Try again, or choose a different picture.",
+      "checkConnection": "Check your connection and try again."
+    },
+    "crop": {
+      "title": "Crop photo",
+      "done": "Done",
+      "hint": "Drag to reposition · pinch to zoom",
+      "rotate": "Rotate",
+      "rotateA11y": "Rotate 90 degrees",
+      "rotateFailed": "Couldn't rotate that photo",
+      "cropFailed": "Couldn't crop that photo",
+      "saveFailed": "Couldn't save your photo"
+    },
+    "viewer": {
+      "hint": "Pinch to zoom · double-tap to fit",
+      "removePhoto": "Remove photo",
+      "removeTitle": "Remove photo?",
+      "removeBody": "Your profile picture will be removed.",
+      "remove": "Remove",
+      "removeFailed": "Couldn't remove your photo"
+    },
+    "delete": {
+      "title": "Delete account",
+      "intro": "Deleting your account signs you out immediately and removes you from the technician roster — you stop receiving new job offers. Your past job history and proof stay on record for warranty and dispute purposes, the same as while your account was active.",
+      "codeSent": "We sent a 6-digit code to your WhatsApp, {{phone}}. Enter it to delete your account.",
+      "deleteMine": "Delete my account",
+      "confirmTitle": "Delete your account?",
+      "confirmBody": "This signs you out right away and removes you from the technician roster. Your past job history and proof stay on record. This cannot be undone.",
+      "delete": "Delete",
+      "failed": "Couldn't delete your account. Try again."
+    }
+  },
+  "availability": {
+    "title": "Availability & bandwidth",
+    "section": "Daily job bandwidth",
+    "loading": "Loading your current limit…",
+    "limitedBody": "Maximum installs you'll take per day. New offers stop once you hit this cap.",
+    "unlimitedBody": "You'll be offered as many installs a day as come up. Set a cap if you'd rather not.",
+    "limitToggle": "Limit jobs per day",
+    "decrease": "Decrease bandwidth",
+    "increase": "Increase bandwidth",
+    "unit": "jobs / day",
+    "usedToday": "{{used}} of {{cap}} used today"
+  },
+  "notifications": {
+    "channel": "Job offers"
+  },
   "units": {
     "km": "{{value}} km",
     "m": "{{value}} m"
@@ -543,7 +623,20 @@
     "dayMonthYear": "{{day}} {{month}} {{year}}",
     "weekdayDayMonth": "{{weekday}}, {{day}} {{month}}",
     "monthYear": "{{month}} {{year}}",
-    "monthsShort": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "monthsShort": [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ],
     "monthsLong": [
       "January",
       "February",
@@ -558,9 +651,33 @@
       "November",
       "December"
     ],
-    "weekdaysShort": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    "weekdaysLong": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-    "weekdayInitials": ["M", "T", "W", "T", "F", "S", "S"]
+    "weekdaysShort": [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat"
+    ],
+    "weekdaysLong": [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ],
+    "weekdayInitials": [
+      "M",
+      "T",
+      "W",
+      "T",
+      "F",
+      "S",
+      "S"
+    ]
   },
   "errors": {
     "tooMany": "Too many attempts. Wait a little and try again.",

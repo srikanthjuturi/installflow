@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -34,6 +35,7 @@ const TAP_SCALE = 2;
 export function PhotoViewerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const photo = useProfileStore((s) => s.avatarUri);
@@ -114,16 +116,16 @@ export function PhotoViewerScreen() {
       await queryClient.invalidateQueries({ queryKey: qk.me() });
       router.back();
     } catch {
-      Alert.alert("Couldn't remove your photo", 'Check your connection and try again.');
+      Alert.alert(t('profile.viewer.removeFailed'), t('profile.photo.checkConnection'));
     } finally {
       setBusy(false);
     }
   };
 
   const confirmRemove = () => {
-    Alert.alert('Remove photo?', 'Your profile picture will be removed.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: removePhoto },
+    Alert.alert(t('profile.viewer.removeTitle'), t('profile.viewer.removeBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('profile.viewer.remove'), style: 'destructive', onPress: removePhoto },
     ]);
   };
 
@@ -144,7 +146,7 @@ export function PhotoViewerScreen() {
           onPress={() => router.back()}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Close"
+          accessibilityLabel={t('common.close')}
         >
           {({ pressed }) => (
             <View style={{ opacity: pressed ? 0.6 : 1 }}>
@@ -162,7 +164,7 @@ export function PhotoViewerScreen() {
             color: color.textInverse,
           }}
         >
-          Profile picture
+          {t('profile.avatar.title')}
         </Text>
 
         {/* Balances the close button so the title stays optically centred. */}
@@ -198,11 +200,11 @@ export function PhotoViewerScreen() {
             marginBottom: 14,
           }}
         >
-          Pinch to zoom · double-tap to fit
+          {t('profile.viewer.hint')}
         </Text>
 
         <Button
-          label="Remove photo"
+          label={t('profile.viewer.removePhoto')}
           variant="dangerGhost"
           onPress={confirmRemove}
           disabled={busy}

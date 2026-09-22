@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
@@ -20,6 +21,7 @@ import { palette } from '@/theme/tokens';
  */
 export function AvatarOptionsSheet() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { fromCamera, fromLibrary, busy } = useAvatarPicker();
 
   const dismiss = () => router.back();
@@ -32,7 +34,7 @@ export function AvatarOptionsSheet() {
   return (
     <Sheet onDismiss={dismiss}>
       <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textPrimary }}>
-        Profile picture
+        {t('profile.avatar.title')}
       </Text>
       <Text
         style={{
@@ -44,7 +46,7 @@ export function AvatarOptionsSheet() {
           marginBottom: 18,
         }}
       >
-        You&apos;ll be able to crop it to a square before it&apos;s saved.
+        {t('profile.avatar.cropHint')}
       </Text>
 
       <View
@@ -57,20 +59,20 @@ export function AvatarOptionsSheet() {
       >
         <OptionRow
           icon="camera"
-          label="Take a photo"
+          label={t('profile.avatar.takePhoto')}
           onPress={() => pick('camera')}
           disabled={busy}
           first
         />
         <OptionRow
           icon="photos"
-          label="Choose from gallery"
+          label={t('profile.avatar.fromGallery')}
           onPress={() => pick('library')}
           disabled={busy}
         />
       </View>
 
-      <Button label="Cancel" variant="ghost" onPress={dismiss} disabled={busy} />
+      <Button label={t('common.cancel')} variant="ghost" onPress={dismiss} disabled={busy} />
     </Sheet>
   );
 }
