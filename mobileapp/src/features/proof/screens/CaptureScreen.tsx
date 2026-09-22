@@ -406,7 +406,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
             marginTop: 18,
           }}
         >
-          {t('proof.capture.cameraTitle')}
+          {t('common.cameraAccessNeeded')}
         </Text>
         <Text
           style={{
@@ -421,7 +421,7 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
           {t('proof.capture.cameraBody')}
         </Text>
 
-        <Button label={t('proof.capture.allowCamera')} onPress={requestPermission} />
+        <Button label={t('common.allowCamera')} onPress={requestPermission} />
         <View style={{ height: 10 }} />
         <Button
           label={t('proof.capture.backToJob')}

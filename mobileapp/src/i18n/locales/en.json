@@ -1,5 +1,7 @@
 {
   "common": {
+    "allowCamera": "Allow camera",
+    "cameraAccessNeeded": "Camera access needed",
     "cancel": "Cancel",
     "close": "Close",
     "continue": "Continue",
@@ -134,9 +136,7 @@
     "retakeThis": "Retake this",
     "captureStep": "Capture {{step}}",
     "capture": {
-      "cameraTitle": "Camera access needed",
       "cameraBody": "Proof of installation must be captured live on site. Gallery uploads aren't accepted, so the job can't be completed without the camera.",
-      "allowCamera": "Allow camera",
       "backToJob": "Back to job",
       "backTo": "Back to {{step}}",
       "serialFromBarcode": "Serial read from the barcode",
@@ -327,6 +327,43 @@
       "title": "Redemptions",
       "emptyTitle": "No redemptions yet",
       "emptyBody": "Requests you send appear here."
+    }
+  },
+  "payout": {
+    "title": "Payout account",
+    "saveFailed": "Couldn't save. Try again.",
+    "add": {
+      "intro": "Add the UPI ID your earnings are paid to. Scan the QR from your UPI app, or type it in.",
+      "codeSent": "We sent a 6-digit code to your WhatsApp, {{phone}}. Enter it to save this UPI ID.",
+      "verify": "Verify & save",
+      "sendCode": "Send code on WhatsApp"
+    },
+    "onFile": {
+      "intro": "Your earnings are paid to this UPI ID. To change it, your manager approves the new one.",
+      "rejected": "Your change to {{upiId}} was not approved: {{reason}}",
+      "requestChange": "Request a change"
+    },
+    "pending": {
+      "title": "Change requested",
+      "waiting": "Waiting for your {{reviewer}} to approve.",
+      "withdraw": "Withdraw request"
+    },
+    "change": {
+      "title": "New UPI ID",
+      "send": "Send request"
+    },
+    "fields": {
+      "scan": "Scan my UPI QR",
+      "upiId": "UPI ID",
+      "upiIdPlaceholder": "e.g. 9822066301@ybl",
+      "upiIdInvalid": "Enter a UPI ID like name@bank",
+      "name": "Name on the UPI account",
+      "namePlaceholder": "As your UPI app shows it",
+      "nameInvalid": "Enter the name on the UPI account"
+    },
+    "scanner": {
+      "notUpi": "That's not a UPI payment QR. Try another.",
+      "fromScreenshot": "From a screenshot"
     }
   },
   "units": {

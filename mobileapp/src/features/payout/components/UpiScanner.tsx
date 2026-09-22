@@ -6,6 +6,7 @@ import {
 } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,6 +40,7 @@ export interface UpiScannerProps {
  * carry it back through.
  */
 export function UpiScanner({ visible, onClose, onScanned }: UpiScannerProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [notUpi, setNotUpi] = useState(false);
@@ -124,7 +126,11 @@ export function UpiScanner({ visible, onClose, onScanned }: UpiScannerProps) {
             paddingBottom: 12,
           }}
         >
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.close')}
+          >
             {({ pressed }) => (
               <View
                 style={{
@@ -142,7 +148,7 @@ export function UpiScanner({ visible, onClose, onScanned }: UpiScannerProps) {
             )}
           </Pressable>
           <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.textInverse }}>
-            Scan my UPI QR
+            {t('payout.fields.scan')}
           </Text>
         </View>
 
@@ -182,10 +188,10 @@ export function UpiScanner({ visible, onClose, onScanned }: UpiScannerProps) {
                   marginBottom: 18,
                 }}
               >
-                Camera access needed
+                {t('common.cameraAccessNeeded')}
               </Text>
               <View style={{ alignSelf: 'stretch' }}>
-                <Button label="Allow camera" onPress={requestPermission} />
+                <Button label={t('common.allowCamera')} onPress={requestPermission} />
               </View>
             </View>
           ) : null}
@@ -202,11 +208,11 @@ export function UpiScanner({ visible, onClose, onScanned }: UpiScannerProps) {
                 textAlign: 'center',
               }}
             >
-              That&apos;s not a UPI payment QR. Try another.
+              {t('payout.scanner.notUpi')}
             </Text>
           ) : null}
           <Button
-            label="From a screenshot"
+            label={t('payout.scanner.fromScreenshot')}
             variant="secondary"
             leadingIcon="photos"
             loading={busy}
