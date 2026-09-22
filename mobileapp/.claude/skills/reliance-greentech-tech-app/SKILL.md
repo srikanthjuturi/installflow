@@ -130,6 +130,11 @@ signed-in technician to login and back.
 
 Exact strings. Do not paraphrase.
 
+> **Where they live now:** every string below is a key in `src/i18n/locales/en.json`
+> (`area.screen.meaning` — `auth.login.title`, `jobs.cancel.confirm`), rendered with `t()`.
+> Never write copy into a component; lint refuses it. Hindi, Telugu, Kannada and Tamil
+> translate that file — wording guide and glossary in `src/i18n/README.md`.
+
 ### R1 — Invite link
 > **Changed when onboarding became real.** A manager can now invite with nothing but a phone
 > number, so the panel has no name or technician ID to show. It renders the rows that HAVE a
@@ -338,7 +343,6 @@ down the session exactly like `Log out` does: `signOut()` → `queryClient.clear
 type JobStatus = 'pool' | 'upcoming' | 'inprogress' | 'completed' | 'cancelled';
 type ProofKind = 'barcode' | 'serial' | 'photos' | 'live';
 type VerificationOutcome = 'match' | 'mismatch' | 'unreadable';
-type SlaType = '24h' | '48h';
 
 interface Job {
   id: string;              // 'INST-4821'
@@ -346,9 +350,9 @@ interface Job {
   model: string;           // 'Reliance GreenTech 43" Smart LED'
   area: string;            // 'Kandivali West'
   pincode: string;         // '400067'
-  slot: string;            // 'Today · 2:00–4:00 PM'
-  slotShort: string;       // '2–4 PM'
-  sla: SlaType;
+  slotStart: string | null; // ISO; null until the customer picks a time
+  slotEnd: string | null;   // worded at render: jobSlot(job) → 'Today · 2:00 PM–4:00 PM'
+  slaHours: number;         // 12 | 24 | 36 | 48 — jobSla(job) → '24h'
   distanceLabel: string;   // '3.2 km'
   payoutPaise: number;     // integer paise — never a float
   customer: string;        // full name, post-accept only

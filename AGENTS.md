@@ -66,8 +66,8 @@ message, and the invite landing page — which never resolves its token, so givi
 would turn it into an oracle for whether a token is valid.
 
 Deliberately NOT rebranded, because renaming them breaks live things and no user reads them: the
-persisted storage keys (`reliancegreentech.session` and its siblings — renaming signs everyone
-out), the Postgres channel `reliancegreentech_events`, the Android package, iOS bundle,
+persisted storage keys (`reliancegreentech.session` and its siblings, `reliancegreentech.language`
+among them — renaming signs everyone out, or drops the language they chose), the Postgres channel `reliancegreentech_events`, the Android package, iOS bundle,
 `APP_SCHEME`, EAS slug and keystore, and the infrastructure names below.
 
 **A job is priced.** A product model carries two amounts — `technician_payout_paise` and
@@ -140,11 +140,24 @@ the same envelope: `{ success, statusCode, message, data, errors }`.
 **Do not fake a number that has a real source.** A null rating renders `—`, not `0.0`; job
 history renders empty rather than inventing rows; "34 technicians certified" is a `COUNT`.
 
+**The technician app speaks five languages — English, हिन्दी, తెలుగు, ಕನ್ನಡ, தமிழ்.** A
+technician picks one on first launch, or later from 🌐 on sign-in or Profile → Language, and it is
+kept per phone through sign-out. Every word a screen shows is a key in
+`mobileapp/src/i18n/locales/en.json`, rendered with `t()` — lint refuses English written into a
+component — and the four translations must carry exactly its keys, placeholders and tags or
+`npm run lint` fails. The server still writes English: its errors translate by their `code`
+(`i18n/errorText.ts`), its fixed labels through a table (`i18n/serverLabels.ts`), and push
+notifications and WhatsApp messages stay English for now. Dates are formatted when a screen
+renders, never when data is fetched, so a switch rewords what is already cached. The wording guide,
+the glossary and how to add a string: `mobileapp/src/i18n/README.md`.
+
 ## Stack
 
 Expo SDK 54 · React Native 0.81 · React 19.1 · TypeScript (strict) · Expo Router ·
 NativeWind 4 (Tailwind 3) · TanStack Query · Zustand · React Hook Form + Zod ·
-react-native-svg · expo-camera · Roboto via `@expo-google-fonts/roboto`
+react-native-svg · expo-camera · Roboto via `@expo-google-fonts/roboto` ·
+i18next + react-i18next, with `intl-pluralrules` (Hermes has no `Intl.PluralRules`) and
+`expo-localization` for the phone's default language
 
 **Analytics (GA4, Clarity, PostHog) runs in PRODUCTION ONLY, in both clients.** The keys exist
 only in `eas.json`'s `production` profile and in the adminWeb production deploy's
@@ -187,7 +200,10 @@ if isolation is broken, and it found a real gap the day it was written.
    `<JobDetailScreen />`. Real screens live in `src/features/*/screens/`.
 5. **Every list screen ships loading, empty and error states.** Not optional.
 6. **Never invent copy.** Pull exact strings from the prototype. If it isn't in the prototype,
-   ask rather than writing filler.
+   ask rather than writing filler. The approved English lives in `src/i18n/locales/en.json`,
+   never in a component — screens render it with `t()`. The other four languages translate that
+   file, following `src/i18n/README.md`; a native speaker should review a language before it
+   reaches a production build.
 7. **No dark mode.** v1 is one high-contrast light theme — these screens are used outdoors.
 8. **Tailwind class names must be static strings.** An interpolated `bg-${role}-500` is never
    generated and renders transparent.
@@ -267,6 +283,7 @@ app/                    routes only (Expo Router)
 src/
   features/<slice>/     screens/ components/ hooks/ types.ts
   theme/                tokens.js ← SINGLE SOURCE · semantic.ts · spacing.ts · typography.ts
+  i18n/                 locales/*.json ← every word on screen · index.ts · README.md
   components/           ui/ feedback/ layout/ icons/
   mocks/                seeded mock data
   store/                Zustand (client state only)
@@ -283,7 +300,8 @@ read that one file, so a colour is never declared twice. Types come from `tokens
 cd mobileapp
 npm start                 # expo start — scan the QR with Expo Go
 npm run start:dev-client  # expo start --dev-client — against a dev-client build
-npm run lint           # must pass before every commit
+npm run lint           # must pass before every commit (includes i18n:check)
+npm run i18n:check     # every translation has en.json's keys, placeholders and tags
 npm run typecheck
 npm run doctor
 ```
