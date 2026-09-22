@@ -450,7 +450,8 @@
   },
   "units": {
     "km": "{{value}} கி.மீ.",
-    "m": "{{value}} மீ."
+    "m": "{{value}} மீ.",
+    "accuracy": "±{{value}} மீ."
   },
   "components": {
     "errorState": {

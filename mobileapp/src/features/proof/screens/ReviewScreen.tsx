@@ -412,7 +412,9 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
                   where:
                     `${live.coords.latitude.toFixed(5)}, ${live.coords.longitude.toFixed(5)}` +
                     (live.coords.pincode ? ` — ${live.coords.pincode}` : '') +
-                    (live.coords.accuracy ? ` (±${Math.round(live.coords.accuracy)}m)` : ''),
+                    (live.coords.accuracy
+                      ? ` (${t('units.accuracy', { value: Math.round(live.coords.accuracy) })})`
+                      : ''),
                 })
               : t('proof.review.noLocation')}
           </Text>
