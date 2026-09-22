@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
@@ -82,6 +83,7 @@ function positionIn(day: string, value: Selection | null) {
  * segmented control that was already net-new.
  */
 export function RangeCalendar({ value, onChange, latest }: RangeCalendarProps) {
+  const { t } = useTranslation();
   const [cursor, setCursor] = useState(() => startOfMonth(value?.from ?? latest));
   const cell = useCellSize();
 
@@ -116,7 +118,7 @@ export function RangeCalendar({ value, onChange, latest }: RangeCalendarProps) {
             onPress={() => setCursor(thisMonth)}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel="Go to this month"
+            accessibilityLabel={t('earnings.calendar.thisMonth')}
           >
             {({ pressed }) => (
               <Text
@@ -129,7 +131,7 @@ export function RangeCalendar({ value, onChange, latest }: RangeCalendarProps) {
                   opacity: pressed ? 0.6 : 1,
                 }}
               >
-                Today
+                {t('dates.today')}
               </Text>
             )}
           </Pressable>
@@ -137,12 +139,12 @@ export function RangeCalendar({ value, onChange, latest }: RangeCalendarProps) {
 
         <MonthStep
           icon="chevronLeft"
-          label="Previous month"
+          label={t('earnings.calendar.previous')}
           onPress={() => setCursor(addMonths(cursor, -1))}
         />
         <MonthStep
           icon="chevronRight"
-          label="Next month"
+          label={t('earnings.calendar.next')}
           disabled={!canGoForward}
           onPress={() => setCursor(addMonths(cursor, 1))}
         />

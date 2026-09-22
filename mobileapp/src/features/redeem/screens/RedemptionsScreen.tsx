@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
@@ -25,6 +26,7 @@ import { formatPaise } from '@/utils/money';
  */
 export function RedemptionsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const list = useRedemptions();
   // Room for the ◁ ○ □ bar, so the last row clears it — see the hook.
   const navInset = useButtonNavInset();
@@ -34,7 +36,7 @@ export function RedemptionsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
       <ScreenStatusBar style="dark" />
-      <TitleBar title="Redemptions" paddingBottom={14} />
+      <TitleBar title={t('redeem.history.title')} paddingBottom={14} />
 
       {list.isPending ? (
         <View style={{ padding: 16, gap: 10 }}>
@@ -45,7 +47,11 @@ export function RedemptionsScreen() {
       ) : list.isError ? (
         <ErrorState onRetry={() => list.refetch()} />
       ) : list.data.length === 0 ? (
-        <EmptyState icon="wallet" title="No redemptions yet" body="Requests you send appear here." />
+        <EmptyState
+          icon="wallet"
+          title={t('redeem.history.emptyTitle')}
+          body={t('redeem.history.emptyBody')}
+        />
       ) : (
         <FlatList
           data={list.data}
@@ -62,13 +68,14 @@ export function RedemptionsScreen() {
 }
 
 function Row({ item, onOpen }: { item: Redemption; onOpen: () => void }) {
+  const { t } = useTranslation();
   const pill = STATE_PILL[item.state];
 
   return (
     <Pressable
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={`${formatPaise(item.amountPaise)}, ${pill.label}, ${item.code}`}
+      accessibilityLabel={`${formatPaise(item.amountPaise)}, ${t(pill.label)}, ${item.code}`}
     >
       {({ pressed }) => (
         <View
@@ -102,7 +109,7 @@ function Row({ item, onOpen }: { item: Redemption; onOpen: () => void }) {
               {item.code} · {dayMonthLabel(item.requestedAt)}
             </Text>
           </View>
-          <Pill label={pill.label} tone={pill.tone} />
+          <Pill label={t(pill.label)} tone={pill.tone} />
           <Icon name="chevronRight" size={16} color={palette.neutral[400]} />
         </View>
       )}

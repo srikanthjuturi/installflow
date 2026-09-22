@@ -1,10 +1,13 @@
 import { useRouter } from 'expo-router';
+import { Trans, useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Button, Sheet, Text } from '@/components/ui';
 import { isRedeemRefused } from '@/features/redeem/api/redeem';
 import { useRedeemable, useRequestRedemption } from '@/features/redeem/hooks/useRedeem';
+import { errorText } from '@/i18n/errorText';
+import { roleLabel } from '@/i18n/serverLabels';
 import { color } from '@/theme/semantic';
 import { formatPaise } from '@/utils/money';
 
@@ -24,6 +27,7 @@ import { formatPaise } from '@/utils/money';
  */
 export function RedeemConfirmSheet() {
   const router = useRouter();
+  const { t } = useTranslation();
   const redeemable = useRedeemable();
   const request = useRequestRedemption();
 
@@ -60,7 +64,7 @@ export function RedeemConfirmSheet() {
             color: color.textPrimary,
           }}
         >
-          Redeem {formatPaise(amount)}?
+          {t('redeem.confirm.title', { amount: formatPaise(amount) })}
         </Text>
       </View>
 
@@ -73,11 +77,16 @@ export function RedeemConfirmSheet() {
           marginBottom: 16,
         }}
       >
-        It will be paid to{' '}
-        <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }}>
-          {data?.upiId ?? '—'}
-        </Text>
-        . Your {data?.payerLabel ?? '—'} will be asked to pay it.
+        <Trans
+          i18nKey="redeem.confirm.body"
+          values={{
+            upiId: data?.upiId ?? '—',
+            payer: data?.payerLabel ? roleLabel(data.payerLabel) : '—',
+          }}
+          components={{
+            bold: <Text style={{ fontFamily: 'Roboto_700Bold', color: color.textPrimary }} />,
+          }}
+        />
       </Text>
 
       {request.isError ? (
@@ -93,19 +102,22 @@ export function RedeemConfirmSheet() {
           {/* The server's own sentence — for BALANCE_CHANGED it names the new
               figure ("Your balance changed to ₹4,100."), and for the rest it
               says exactly what is in the way. */}
-          {request.error instanceof Error ? request.error.message : ''}
+          {request.error instanceof Error ? errorText(request.error, '') : ''}
         </Text>
       ) : null}
 
       {final ? (
         refusal?.code === 'NO_UPI_ID' ? (
-          <Button label="Add UPI ID" onPress={() => router.replace('/payout-account')} />
+          <Button
+            label={t('redeem.card.addUpi')}
+            onPress={() => router.replace('/payout-account')}
+          />
         ) : (
-          <Button label="Close" onPress={dismiss} />
+          <Button label={t('common.close')} onPress={dismiss} />
         )
       ) : (
         <Button
-          label="Send request"
+          label={t('redeem.confirm.send')}
           loading={request.isPending}
           disabled={!data || amount <= 0 || redeemable.isFetching}
           onPress={() =>
@@ -119,7 +131,12 @@ export function RedeemConfirmSheet() {
       )}
       {final ? null : (
         <View style={{ marginTop: 6 }}>
-          <Button label="Cancel" variant="ghost" onPress={dismiss} disabled={request.isPending} />
+          <Button
+            label={t('common.cancel')}
+            variant="ghost"
+            onPress={dismiss}
+            disabled={request.isPending}
+          />
         </View>
       )}
     </Sheet>

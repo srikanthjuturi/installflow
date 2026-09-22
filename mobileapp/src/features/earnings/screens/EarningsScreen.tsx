@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,6 +16,8 @@ import {
 } from '@/features/earnings/api/earnings';
 import { RedeemCard } from '@/features/redeem/components/RedeemCard';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { errorText } from '@/i18n/errorText';
+import { ledgerTitle } from '@/i18n/serverLabels';
 import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useEarningsWindow } from '@/store/earnings.store';
@@ -38,11 +42,11 @@ import {
 import { formatPaise, formatSignedPaise } from '@/utils/money';
 
 /** What each span is called on the control, and under the title. */
-const PERIOD_LABEL: Record<EarningsPeriod, string> = {
-  day: 'Today',
-  week: 'This week',
-  month: 'This month',
-};
+const PERIOD_LABEL = {
+  day: 'earnings.period.day',
+  week: 'earnings.period.week',
+  month: 'earnings.period.month',
+} as const satisfies Record<EarningsPeriod, string>;
 
 /**
  * What went wrong, said usefully.
@@ -54,15 +58,20 @@ const PERIOD_LABEL: Record<EarningsPeriod, string> = {
  * Naming it is what keeps that drift loud instead of showing "check your
  * connection" to somebody whose connection is fine.
  */
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'RANGE_TOO_LONG') return error.message;
-  return "We couldn't load these earnings. Check your connection and try again.";
+function errorMessage(error: unknown, t: TFunction): string {
+  const fallback = t('earnings.loadFailed');
+  if (error instanceof ApiError && error.code === 'RANGE_TOO_LONG') {
+    return errorText(error, fallback);
+  }
+  return fallback;
 }
 
 /** "12 Aug – 2 Sep · 22 days", or just the day when a span is one. */
-function rangeCaption({ from, to }: DateRange): string {
+function rangeCaption({ from, to }: DateRange, t: TFunction): string {
   const days = spanDays(from, to);
-  return from === to ? formatRange(from, to) : `${formatRange(from, to)} · ${days} days`;
+  return from === to
+    ? formatRange(from, to)
+    : `${formatRange(from, to)} · ${t('earnings.days', { count: days })}`;
 }
 
 /**
@@ -84,17 +93,20 @@ function windowCaption(
   shown: EarningsWindow,
   covered: DateRange | null,
   now: Date,
+  t: TFunction,
 ): string {
-  if (shown.kind === 'range') return rangeCaption(covered ?? shown.range);
+  if (shown.kind === 'range') return rangeCaption(covered ?? shown.range, t);
 
   // Periods need no such check. A name is resolved BY the server, so whatever
   // it answered over is by definition what "this week" means — re-deriving the
   // bounds here to compare would be the duplicated calendar logic this whole
   // file exists to avoid.
   const period = shown.period;
-  if (period === 'day') return `${PERIOD_LABEL[period]} · ${longDayLabel(now.toISOString())}`;
-  if (period === 'month') return `${PERIOD_LABEL[period]} · ${monthYearLabel(now.toISOString())}`;
-  return `${PERIOD_LABEL[period]} · ${weekSpanLabel()}`;
+  if (period === 'day') return `${t(PERIOD_LABEL[period])} · ${longDayLabel(now.toISOString())}`;
+  if (period === 'month') {
+    return `${t(PERIOD_LABEL[period])} · ${monthYearLabel(now.toISOString())}`;
+  }
+  return `${t(PERIOD_LABEL[period])} · ${weekSpanLabel()}`;
 }
 
 /** Each ledger kind gets its own icon and tint — a penalty must never skim as a payout. */
@@ -115,6 +127,7 @@ const KIND_STYLE: Record<TransactionKind, { icon: IconName; fg: string; bg: stri
 export function EarningsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useTranslation();
   const showing = useEarningsWindow((s) => s.window);
   const setShowing = useEarningsWindow((s) => s.setWindow);
 
@@ -175,7 +188,7 @@ export function EarningsScreen() {
               <Text
                 style={{ fontFamily: 'Roboto_900Black', fontSize: 20, color: color.textInverse }}
               >
-                Earnings
+                {t('earnings.title')}
               </Text>
               <Text
                 numberOfLines={1}
@@ -186,7 +199,7 @@ export function EarningsScreen() {
                   marginTop: 2,
                 }}
               >
-                {windowCaption(showing, summary.data?.covered ?? null, new Date())}
+                {windowCaption(showing, summary.data?.covered ?? null, new Date(), t)}
               </Text>
             </View>
 
@@ -213,7 +226,7 @@ export function EarningsScreen() {
                   color: color.textOnChrome,
                 }}
               >
-                {errorMessage(summary.error)}
+                {errorMessage(summary.error, t)}
               </Text>
               <Pressable
                 onPress={() => summary.refetch()}
@@ -230,7 +243,7 @@ export function EarningsScreen() {
                       opacity: pressed ? 0.6 : 1,
                     }}
                   >
-                    Try again
+                    {t('common.tryAgain')}
                   </Text>
                 )}
               </Pressable>
@@ -255,22 +268,22 @@ export function EarningsScreen() {
                   color: color.textOnChrome,
                 }}
               >
-                Net payout after penalties
+                {t('earnings.netCaption')}
               </Text>
 
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <ChromeTile
-                  label="Earned"
+                  label={t('earnings.earned')}
                   value={formatPaise(summary.data.earnedPaise)}
                   tint={color.creditOnChrome}
                 />
                 <ChromeTile
-                  label="Bonuses"
+                  label={t('earnings.bonuses')}
                   value={formatPaise(summary.data.bonusesPaise)}
                   tint={color.bonusOnChrome}
                 />
                 <ChromeTile
-                  label="Penalties"
+                  label={t('earnings.penalties')}
                   value={formatPaise(summary.data.penaltiesPaise)}
                   tint={color.debitOnChrome}
                 />
@@ -301,7 +314,7 @@ export function EarningsScreen() {
               marginBottom: 10,
             }}
           >
-            Transactions
+            {t('earnings.transactions')}
           </Text>
 
           {ledger.isPending ? (
@@ -335,14 +348,14 @@ export function EarningsScreen() {
             showing.kind === 'range' ? (
               <EmptyState
                 icon="wallet"
-                title="No transactions in these dates"
-                body="Nothing was credited or charged over this span."
+                title={t('earnings.emptyRangeTitle')}
+                body={t('earnings.emptyRangeBody')}
               />
             ) : (
               <EmptyState
                 icon="wallet"
-                title="No transactions yet"
-                body="Completed jobs will appear here."
+                title={t('earnings.emptyTitle')}
+                body={t('earnings.emptyBody')}
               />
             )
           ) : (
@@ -397,7 +410,11 @@ function LedgerRow({
   first: boolean;
   onOpen?: () => void;
 }) {
+  const { t } = useTranslation();
   const style = KIND_STYLE[txn.kind];
+  // The server's English title, translated where it is one of its fixed
+  // ones ("Reassignment bonus", "Install · <model>") — see serverLabels.
+  const title = ledgerTitle(txn.title);
   // "Today · RGT-INST-0012", the way the server words it, but in the app's
   // language: the day is built here rather than taken from its English.
   const subtitle = `${relativeDayLabel(txn.at)} · ${txn.ticketCode}`;
@@ -437,7 +454,7 @@ function LedgerRow({
           }}
           numberOfLines={1}
         >
-          {txn.title}
+          {title}
         </Text>
         <Text
           style={{
@@ -471,10 +488,8 @@ function LedgerRow({
       // The amount is read out too. A screen reader user pressing a row is
       // choosing between amounts as much as between job codes, and the visible
       // line already says all three.
-      accessibilityLabel={`${txn.title}. ${subtitle}. ${formatSignedPaise(
-        txn.amountPaise,
-      )}`}
-      accessibilityHint="Opens this job"
+      accessibilityLabel={`${title}. ${subtitle}. ${formatSignedPaise(txn.amountPaise)}`}
+      accessibilityHint={t('earnings.opensJob')}
     >
       {({ pressed }) => body(pressed)}
     </Pressable>
@@ -494,12 +509,14 @@ function LedgerRow({
  * where the figures came from, so it has to carry that state visibly.
  */
 function DatesButton({ active, onPress }: { active: boolean; onPress: () => void }) {
+  const { t } = useTranslation();
+
   return (
     <Pressable
       onPress={onPress}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel="Pick dates"
+      accessibilityLabel={t('earnings.pickDates')}
       accessibilityState={{ selected: active }}
     >
       {({ pressed }) => (
@@ -552,6 +569,7 @@ function PeriodPicker({
   shown: EarningsWindow;
   onPeriod: (next: EarningsPeriod) => void;
 }) {
+  const { t } = useTranslation();
   const ranged = shown.kind === 'range';
 
   return (
@@ -593,7 +611,7 @@ function PeriodPicker({
                 color: selected ? color.textPrimary : color.textOnChrome,
               }}
             >
-              {PERIOD_LABEL[option]}
+              {t(PERIOD_LABEL[option])}
             </Text>
           </Pressable>
         );

@@ -241,6 +241,94 @@
       "sendLink": "Send feedback link to customer"
     }
   },
+  "earnings": {
+    "title": "Earnings",
+    "period": {
+      "day": "Today",
+      "week": "This week",
+      "month": "This month"
+    },
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "loadFailed": "We couldn't load these earnings. Check your connection and try again.",
+    "netCaption": "Net payout after penalties",
+    "earned": "Earned",
+    "bonuses": "Bonuses",
+    "penalties": "Penalties",
+    "transactions": "Transactions",
+    "emptyRangeTitle": "No transactions in these dates",
+    "emptyRangeBody": "Nothing was credited or charged over this span.",
+    "emptyTitle": "No transactions yet",
+    "emptyBody": "Completed jobs will appear here.",
+    "opensJob": "Opens this job",
+    "pickDates": "Pick dates",
+    "dates": {
+      "tapLast": "Now tap the last day.",
+      "tapFirst": "Tap the first day, then the last.",
+      "show": "Show earnings",
+      "hintLast": "Tap the last day",
+      "hintTwo": "Tap two dates"
+    },
+    "calendar": {
+      "thisMonth": "Go to this month",
+      "previous": "Previous month",
+      "next": "Next month"
+    }
+  },
+  "redeem": {
+    "state": {
+      "to_pay": "Waiting for payment",
+      "awaiting": "Paid — confirm",
+      "settled": "Received",
+      "declined": "Declined"
+    },
+    "card": {
+      "available": "Available to redeem",
+      "history": "Redemptions",
+      "paidBy": "{{amount}} paid by {{name}} · Confirm you received it",
+      "requested": "{{amount}} requested · Waiting for payment",
+      "confirm": "Confirm",
+      "view": "View",
+      "addUpiPrompt": "Add a UPI ID to redeem",
+      "addUpi": "Add UPI ID",
+      "to": "To {{upiId}}",
+      "redeem": "Redeem",
+      "nothing": "Nothing to redeem yet"
+    },
+    "confirm": {
+      "title": "Redeem {{amount}}?",
+      "body": "It will be paid to <bold>{{upiId}}</bold>. Your {{payer}} will be asked to pay it.",
+      "send": "Send request"
+    },
+    "detail": {
+      "title": "Redemption",
+      "qr": "UPI QR code for {{amount}} to {{upiId}}",
+      "scanToPay": "Your {{payer}} can scan this to pay you",
+      "upiId": "UPI ID",
+      "reference": "Reference",
+      "requested": "Requested",
+      "wrongUpi": "Wrong UPI ID? Ask your {{payer}} to decline this, then request again.",
+      "paidBy": "Paid by {{name}} · {{when}}",
+      "utr": "UTR {{utr}}",
+      "screenshot": "Payment screenshot",
+      "toldNotArrived": "We told {{name}} it hasn't arrived.",
+      "received": "I received it",
+      "notYet": "Not yet",
+      "declinedBy": "Declined by {{name}}: {{reason}}",
+      "events": {
+        "requested": "Requested",
+        "claimed": "Paid by {{name}}",
+        "denied": "Not yet",
+        "confirmed": "Received",
+        "declined": "Declined by {{name}}"
+      }
+    },
+    "history": {
+      "title": "Redemptions",
+      "emptyTitle": "No redemptions yet",
+      "emptyBody": "Requests you send appear here."
+    }
+  },
   "units": {
     "km": "{{value}} km",
     "m": "{{value}} m"
