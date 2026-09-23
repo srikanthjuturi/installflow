@@ -162,6 +162,13 @@
         "typeNow": "Label photographed — now type the serial",
         "exact": "Serial number, exactly as printed",
         "photographNow": "Now photograph the label"
+      },
+      "suggestedAngle": "Suggested: {{angle}}",
+      "angles": {
+        "front": "Front",
+        "back": "Back",
+        "leftSide": "Left side",
+        "rightSide": "Right side"
       }
     },
     "overlay": {

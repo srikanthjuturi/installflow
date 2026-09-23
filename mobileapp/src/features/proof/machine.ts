@@ -25,6 +25,26 @@ export function stepsFor(scanned: boolean): ProofKind[] {
 export const MAX_PHOTOS = 4;
 export const MIN_PHOTOS = 1;
 
+/**
+ * A suggestion, not a requirement — `photos` still accepts 1–4 shots in
+ * whatever order the technician takes them. One entry per slot in
+ * `MAX_PHOTOS`, so the key for the shot about to be taken is
+ * `PHOTO_ANGLE_KEYS[photos.length]`.
+ */
+export const PHOTO_ANGLE_KEYS = [
+  'proof.capture.angles.front',
+  'proof.capture.angles.back',
+  'proof.capture.angles.leftSide',
+  'proof.capture.angles.rightSide',
+] as const;
+
+export type PhotoAngleKey = (typeof PHOTO_ANGLE_KEYS)[number];
+
+/** Null once every suggested angle has been offered (`photosTaken >= MAX_PHOTOS`). */
+export function suggestedAngleKey(photosTaken: number): PhotoAngleKey | null {
+  return PHOTO_ANGLE_KEYS[photosTaken] ?? null;
+}
+
 /** Keys into the locale files, worded where they are shown — `t(config.title)`. */
 export interface StepConfig {
   title: string;
