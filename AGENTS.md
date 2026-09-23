@@ -146,8 +146,10 @@ kept per phone through sign-out. Every word a screen shows is a key in
 `mobileapp/src/i18n/locales/en.json`, rendered with `t()` — lint refuses English written into a
 component — and the four translations must carry exactly its keys, placeholders and tags or
 `npm run lint` fails. The server still writes English: its errors translate by their `code`
-(`i18n/errorText.ts`), its fixed labels through a table (`i18n/serverLabels.ts`), and push
-notifications and WhatsApp messages stay English for now. Dates are formatted when a screen
+(`i18n/errorText.ts`) and its fixed labels through a table (`i18n/serverLabels.ts`). Push
+notifications are the exception — the server writes them in each phone's language, which the app
+sends with its push token (`push_tokens.language`, `api/app/core/push_text.py`). WhatsApp
+messages stay English until each template is approved per language in Meta. Dates are formatted when a screen
 renders, never when data is fetched, so a switch rewords what is already cached. The wording guide,
 the glossary and how to add a string: `mobileapp/src/i18n/README.md`.
 

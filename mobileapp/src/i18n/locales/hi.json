@@ -162,6 +162,13 @@
         "typeNow": "लेबल की फ़ोटो ले ली — अब सीरियल लिखें",
         "exact": "सीरियल नंबर, ठीक वैसा ही जैसा छपा है",
         "photographNow": "अब लेबल की फ़ोटो लें"
+      },
+      "suggestedAngle": "सुझाव: {{angle}}",
+      "angles": {
+        "front": "सामने",
+        "back": "पीछे",
+        "leftSide": "बायीं ओर",
+        "rightSide": "दायीं ओर"
       }
     },
     "overlay": {

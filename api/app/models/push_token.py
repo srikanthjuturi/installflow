@@ -44,6 +44,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base_class import Base
 from app.db.mixins import AuditMixin, IdMixin
 
+#: The app's languages — `push_text.LANGUAGES`, repeated rather than imported
+#: because a model must not import `core`. Adding one is a migration of the
+#: CHECK below as well as a new column of translations in `push_text`.
+PUSH_LANGUAGES = ("en", "hi", "te", "kn", "ta")
+
 #: Only Android today — iOS needs a paid Apple account and APNs credentials
 #: nobody has bought yet. Stored anyway: knowing which platform a dead token
 #: came from is the first question when delivery goes wrong on one and not the
@@ -69,6 +74,14 @@ class PushToken(Base, IdMixin, AuditMixin):
     #: answerable when a technician says they stopped getting notifications.
     device_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
+    #: The language the app is showing on this phone, so a push reads the way
+    #: the screens do. Per DEVICE, like the app's own setting — it survives
+    #: sign-out and belongs to the handset, not the person. Rows from before
+    #: languages, and app builds that predate them, are English.
+    language: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default="en", default="en"
+    )
+
     #: Refreshed every time the app registers, which it does on each launch.
     #: A token that has not been seen for months is a phone that is gone.
     last_seen_at: Mapped[datetime.datetime] = mapped_column(
@@ -77,6 +90,9 @@ class PushToken(Base, IdMixin, AuditMixin):
 
     __table_args__ = (
         CheckConstraint("platform IN ('android', 'ios')", name="platform"),
+        CheckConstraint(
+            "language IN ('en', 'hi', 'te', 'kn', 'ta')", name="language"
+        ),
         # See the module note: one device, one row, whoever is signed in.
         UniqueConstraint("token", name="uq_push_tokens_token"),
         # "everything to send to for this technician" — the only read there is.

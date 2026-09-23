@@ -603,8 +603,11 @@ function PeriodPicker({
           >
             <Text
               // Capped: three fixed words in a row that cannot wrap without
-              // pushing each other off the hero.
+              // pushing each other off the hero. And shrunk to fit when even
+              // that is too wide — Tamil at a large text size is.
               maxFontSizeMultiplier={1.3}
+              numberOfLines={1}
+              adjustsFontSizeToFit
               style={{
                 fontFamily: selected ? 'Roboto_700Bold' : 'Roboto_500Medium',
                 fontSize: 13,
@@ -631,7 +634,11 @@ function ChromeTile({ label, value, tint }: { label: string; value: string; tint
         paddingHorizontal: 13,
       }}
     >
+      {/* One line, shrunk to fit: the label sits above the figure, so a label
+          that wrapped would push one tile's figure below the other two. */}
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
         style={{ fontFamily: 'Roboto_400Regular', fontSize: 11, color: color.textOnChrome }}
       >
         {label}

@@ -444,7 +444,16 @@ function ChromeStat({ value, label }: { value: string; label: string }) {
       <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 17, color: color.textInverse }}>
         {value}
       </Text>
-      <Text style={{ fontFamily: 'Roboto_400Regular', fontSize: 11, color: color.textOnChrome }}>
+      {/* Centred, so a label that wraps to a second line — Kannada and Tamil
+          "Jobs done" do — stays under its figure. */}
+      <Text
+        style={{
+          fontFamily: 'Roboto_400Regular',
+          fontSize: 11,
+          color: color.textOnChrome,
+          textAlign: 'center',
+        }}
+      >
         {label}
       </Text>
     </View>

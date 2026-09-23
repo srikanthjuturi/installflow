@@ -59,7 +59,11 @@ The API writes in English. What the app can translate, it does:
   names, people's names, anything somebody typed. And a cancellation reason is shown
   translated but POSTED in English — the ops trail and the console read it in English.
 
-Push notifications and WhatsApp messages are written by the server and are English for now.
+**Push notifications** are written by the server in the phone's language: the app sends the
+language on screen with its push token, on every launch and whenever it changes
+(`usePushRegistration`), and the API words each push per phone from `api/app/core/push_text.py`.
+A new push needs its wording there, in all five languages, following this guide.
+**WhatsApp messages** are Meta templates and stay English until each is approved per language.
 
 ## Writing a translation
 

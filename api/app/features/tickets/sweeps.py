@@ -93,6 +93,7 @@ from app.core.rules import (
 )
 from app.core.notifications import notify
 from app.core.push import send_to_technician
+from app.core.push_text import Clock, PushText, TimeToSlot
 from app.core.realtime import publish_notification, publish_ticket_changed
 from app.core.slots import clock, time_is_choosable_clause, when_label
 from app.core.tickets import (
@@ -656,8 +657,13 @@ async def sweep_slot_reminders(db: AsyncSession) -> int:
             db,
             company_id=row.company_id,
             technician_id=row.technician_id,
-            title=f"{row.code} starts at {_slot_clock(row)}",
-            body=f"{row.city} {row.pincode} · {hours_to(row.slot_start)}",
+            message=PushText(
+                "slot.reminder",
+                code=row.code,
+                time=Clock(row.slot_start),
+                place=f"{row.city} {row.pincode}",
+                to_slot=TimeToSlot(row.slot_start),
+            ),
             data={"type": "job", "ticketId": str(row.id), "code": row.code},
         )
     return len(rows)

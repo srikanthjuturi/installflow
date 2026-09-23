@@ -28,6 +28,7 @@ import {
   prevStep,
   stepLabel,
   stepsFor,
+  suggestedAngleKey,
 } from '@/features/proof/machine';
 import { useUploadShot } from '@/features/proof/hooks/useProof';
 import {
@@ -571,6 +572,25 @@ export function CaptureScreen({ jobId }: CaptureScreenProps) {
             >
               {t(config.hint)}
             </Text>
+
+            {/* A suggestion for the NEXT shot, not a requirement — `photos`
+                still takes 1–4 in any order. Null once all four have been
+                offered, which is also when the shutter stops adding more. */}
+            {step === 'photos' && suggestedAngleKey(photos.length) ? (
+              <Text
+                style={{
+                  fontFamily: 'Roboto_700Bold',
+                  fontSize: 12.5,
+                  color: color.textInverse,
+                  textAlign: 'center',
+                  marginTop: 4,
+                }}
+              >
+                {t('proof.capture.suggestedAngle', {
+                  angle: t(suggestedAngleKey(photos.length)!),
+                })}
+              </Text>
+            ) : null}
 
             {/* A blocked shutter must say WHY and offer a way forward. A
                 control that simply does nothing reads as a broken app, and a

@@ -31,6 +31,7 @@ from app.core.coverage import jobs_held_by_technician, upi_reviewer
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.push import send_to_technician
+from app.core.push_text import PushText
 from app.core.schemas import ListParams
 from app.core.scope import (
     ALL_INDIA_ROLES,
@@ -1375,11 +1376,12 @@ async def _decide(
         session,
         company_id=profile.company_id,
         technician_id=profile.id,
-        title="UPI ID changed" if approve else "UPI ID change not approved",
-        body=(
-            f"Your earnings now go to {pending.new_upi_id}."
+        message=(
+            PushText("upi.approved", upi_id=pending.new_upi_id)
             if approve
-            else (reason or "Your manager did not approve the change.")
+            else PushText("upi.rejected", reason=reason)
+            if reason
+            else PushText("upi.rejectedNoReason")
         ),
         data={"type": "upi_change"},
     )

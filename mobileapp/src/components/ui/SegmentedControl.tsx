@@ -61,7 +61,13 @@ export function SegmentedControl<T extends string>({
                 elevation: active ? 2 : 0,
               }}
             >
+              {/* One line that shrinks rather than wraps: three segments share a
+                  phone's width, and a single long word — Tamil's "in progress" is
+                  one — would otherwise break mid-word. English already fits, so
+                  it never shrinks. */}
               <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
                 style={{
                   fontFamily: 'Roboto_700Bold',
                   fontSize: 12.5,

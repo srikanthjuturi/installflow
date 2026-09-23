@@ -33,6 +33,7 @@ from app.core.errors import AppError
 from app.core.ledger import credited
 from app.core.notifications import notify
 from app.core.push import send_to_technician
+from app.core.push_text import PushText
 from app.core.realtime import publish_notification
 from app.core.schemas import ListParams
 from app.core.sequences import next_code
@@ -747,8 +748,7 @@ async def claim(
         db,
         company_id=principal.company_id,
         technician_id=row.technician_id,
-        title=f"{_rupees(row.amount_paise)} paid to your UPI",
-        body="Check your bank app and confirm you received it.",
+        message=PushText("redemption.paid", amount=_rupees(row.amount_paise)),
         data={"type": "redemption", "redemptionId": str(row.id)},
     )
     return await staff_detail(db, principal, row.id)
@@ -812,8 +812,7 @@ async def decline(
         db,
         company_id=principal.company_id,
         technician_id=row.technician_id,
-        title="Redemption declined",
-        body=reason,
+        message=PushText("redemption.declined", reason=reason),
         data={"type": "redemption", "redemptionId": str(row.id)},
     )
     return await staff_detail(db, principal, row.id)

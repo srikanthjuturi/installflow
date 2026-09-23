@@ -130,6 +130,7 @@ async def register_push_device(
         token=body.token,
         platform=body.platform,
         device_name=body.deviceName,
+        language=body.language,
     )
     await db.commit()
     return envelope(None, message="Device registered")

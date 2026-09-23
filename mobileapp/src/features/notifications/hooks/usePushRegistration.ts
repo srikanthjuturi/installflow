@@ -9,6 +9,7 @@ import { Platform } from 'react-native';
 
 import { authedRequest } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
+import { useLanguage } from '@/store/language.store';
 import { usePushPrefs } from '@/store/pushPrefs.store';
 import { useSessionStatus } from '@/store/session.store';
 
@@ -63,7 +64,11 @@ export function usePushRegistration(): void {
   const token = usePushPrefs((s) => s.token);
   const hydrated = usePushPrefs((s) => s.hydrated);
   const setToken = usePushPrefs((s) => s.setToken);
+  const language = useLanguage((s) => s.active);
   const registered = useRef(false);
+  // The language the server last heard for this device, so a switch is sent
+  // once and a launch is not sent twice. Null until the first registration.
+  const sentLanguage = useRef<string | null>(null);
 
   // ── the token ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -136,14 +141,19 @@ export function usePushRegistration(): void {
           projectId,
         });
 
+        // The language on screen goes with the token: the server writes this
+        // phone's pushes in it, because a closed app cannot translate them.
+        const showing = useLanguage.getState().active;
         await authedRequest('/notifications/devices', {
           method: 'POST',
           body: {
             token,
             platform: Platform.OS === 'ios' ? 'ios' : 'android',
             deviceName: Device.deviceName ?? undefined,
+            language: showing,
           },
         });
+        sentLanguage.current = showing;
         // Kept so the switch can name this device when it is turned off — by
         // then there is no reason to have asked Expo for a token again.
         setToken(token);
@@ -156,6 +166,32 @@ export function usePushRegistration(): void {
       }
     })();
   }, [status, enabled, token, hydrated, setToken]);
+
+  // ── the language, when it changes ────────────────────────────────────────
+  // Registration says which language this phone shows, but it runs once per
+  // launch. Without this, a technician who switched to Telugu would keep
+  // getting English pushes until they next reopened the app. Same endpoint,
+  // same token; the server only updates the row.
+  useEffect(() => {
+    if (!enabled || status !== 'authenticated' || !token) return;
+    if (sentLanguage.current === null || sentLanguage.current === language) return;
+    void authedRequest('/notifications/devices', {
+      method: 'POST',
+      body: {
+        token,
+        platform: Platform.OS === 'ios' ? 'ios' : 'android',
+        deviceName: Device.deviceName ?? undefined,
+        language,
+      },
+    })
+      .then(() => {
+        sentLanguage.current = language;
+      })
+      .catch(() => {
+        // Unreachable now. The next launch registers with the language on
+        // screen, so this corrects itself.
+      });
+  }, [language, enabled, status, token]);
 
   // ── one arriving while the app is open ───────────────────────────────────
   useEffect(() => {

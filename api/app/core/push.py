@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.coverage import technicians_covering
+from app.core.push_text import PushText, normalize_language
 from app.models.product import ProductNode
 from app.models.push_token import PushToken
 
@@ -64,6 +65,7 @@ async def register_device(
     token: str,
     platform: str,
     device_name: str | None,
+    language: str | None = None,
 ) -> None:
     """Remember where to reach this technician. Adds to the caller's transaction.
 
@@ -72,7 +74,13 @@ async def register_device(
     must move to them rather than exist twice. Otherwise the previous user's
     push keeps arriving on a phone somebody else is now holding — which across
     two companies is a tenant leak onto a lock screen.
+
+    `language` is the one the app is showing on this phone, re-sent on every
+    launch and whenever it changes, so pushes follow the phone's choice the
+    way the app's screens do. Absent — an app from before languages — is
+    English, which is all such a build can show.
     """
+    language = normalize_language(language)
     row = await db.scalar(select(PushToken).where(PushToken.token == token))
     if row is None:
         db.add(
@@ -82,6 +90,7 @@ async def register_device(
                 token=token,
                 platform=platform,
                 device_name=device_name,
+                language=language,
                 last_seen_at=_now(),
             )
         )
@@ -91,6 +100,7 @@ async def register_device(
     row.technician_id = technician_id
     row.platform = platform
     row.device_name = device_name
+    row.language = language
     row.last_seen_at = _now()
 
 
@@ -128,8 +138,7 @@ async def send_to_technician(
     *,
     company_id: uuid.UUID,
     technician_id: uuid.UUID,
-    title: str,
-    body: str,
+    message: PushText,
     data: dict | None = None,
 ) -> int:
     """Push to every device one technician has registered. Returns how many."""
@@ -137,8 +146,7 @@ async def send_to_technician(
         db,
         company_id=company_id,
         technician_ids=[technician_id],
-        title=title,
-        body=body,
+        message=message,
         data=data,
     )
 
@@ -148,8 +156,7 @@ async def send_to_technicians(
     *,
     company_id: uuid.UUID,
     technician_ids: list[uuid.UUID],
-    title: str,
-    body: str,
+    message: PushText,
     data: dict | None = None,
 ) -> int:
     """Push to every device these technicians have registered. Returns how many.
@@ -167,33 +174,42 @@ async def send_to_technicians(
     guessing one is not realistic, but this is the query that decides whose
     lock screen a customer's address appears on, and it costs nothing to make
     it impossible rather than unlikely.
+
+    Each phone gets `message` in the language it registered with. It is
+    worded once per language present, not once per phone: a pool announcement
+    can reach every technician in a city.
     """
     if not settings.PUSH_ENABLED or not technician_ids:
         return 0
 
-    tokens = list(
-        await db.scalars(
-            select(PushToken.token).where(
+    rows = (
+        await db.execute(
+            select(PushToken.token, PushToken.language).where(
                 PushToken.company_id == company_id,
                 PushToken.technician_id.in_(technician_ids),
             )
         )
-    )
-    if not tokens:
+    ).all()
+    if not rows:
         return 0
+
+    worded: dict[str, tuple[str, str]] = {}
+    for _, language in rows:
+        if language not in worded:
+            worded[language] = message.render(language)
 
     messages = [
         {
             "to": token,
-            "title": title,
-            "body": body,
+            "title": worded[language][0],
+            "body": worded[language][1],
             "data": data or {},
             # Android needs a channel or the notification is silent on 8+.
             "channelId": "default",
             "sound": "default",
             "priority": "high",
         }
-        for token in tokens
+        for token, language in rows
     ]
 
     dead: list[str] = []
@@ -329,9 +345,9 @@ async def announce_pool_job(
         db,
         company_id=company_id,
         technician_ids=technician_ids,
-        # Singular of the prototype's Home banner, "{n} new jobs in your area".
-        title="New job in your area",
-        body=" · ".join(parts),
+        # Titled as the singular of the prototype's Home banner, "{n} new jobs
+        # in your area" — in each phone's language (`push_text`).
+        message=PushText("pool.new", summary=" · ".join(parts)),
         # Routing only. The app re-reads the offer through the authenticated
         # API — a lock screen is not the place for a customer's details, and
         # until the technician accepts they are not entitled to them anyway.
