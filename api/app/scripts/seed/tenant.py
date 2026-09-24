@@ -134,6 +134,20 @@ def phone_block(tag: str) -> int:
     return (int(digest[:8], 16) % 9_000) * 100_000
 
 
+@dataclasses.dataclass(frozen=True)
+class Names:
+    """What a person reads on screen. The load test keeps the defaults; the
+    client demo (`seed_demo.py`) passes names a customer would recognise."""
+
+    company: str | None = None
+    admin: str = "Seed Admin"
+    national_head: str = "Seed National Head"
+    regional_head: str = "Seed Regional Head"
+    area_manager: str = "Seed Area Manager"
+    vendor: str | None = None
+    vendor_contact: str = "Seed Vendor Contact"
+
+
 @dataclasses.dataclass
 class Tenant:
     """Everything `lifecycle.py` needs to drive a ticket, gathered once."""
@@ -237,6 +251,8 @@ async def build(
     ticket_count: int,
     real_phones: tuple[str, ...] = REAL_TEAM_PHONES,
     rng: random.Random,
+    names: Names = Names(),
+    recharge: bool = True,
 ) -> Tenant:
     """Create the company and everything under it. Idempotent it is NOT.
 
@@ -258,14 +274,14 @@ async def build(
         db,
         superadmin,
         CompanyCreateRequest(
-            name=f"{SEED_COMPANY_PREFIX}{tag}",
+            name=names.company or f"{SEED_COMPANY_PREFIX}{tag}",
             # No `code`: a typed one is refused on collision, while a DERIVED
             # one gets a numeric suffix from `company_code.derive`. Letting the
             # product's own mechanism answer is what makes a second run work.
             code=None,
             email=synthetic_email(f"admin.{tag.lower()}"),
             phone=synthetic_phone(900_000_001),
-            adminName="Seed Admin",
+            adminName=names.admin,
             gstNumber=gst,
             pan=gst[2:12],
             gstCompanyStatus="Active",
@@ -296,7 +312,7 @@ async def build(
         admin,
         UserCreateRequest(
             email=synthetic_email(f"nh.{tag.lower()}"),
-            fullName="Seed National Head",
+            fullName=names.national_head,
             phone=synthetic_phone(900_000_002),
             role=NATIONAL_HEAD,
             regionIds=[],
@@ -308,7 +324,7 @@ async def build(
         admin,
         UserCreateRequest(
             email=synthetic_email(f"rh.{tag.lower()}"),
-            fullName="Seed Regional Head",
+            fullName=names.regional_head,
             phone=synthetic_phone(900_000_003),
             role=REGIONAL_HEAD,
             regionIds=[region_id],
@@ -325,7 +341,7 @@ async def build(
         admin,
         UserCreateRequest(
             email=synthetic_email(f"am.{tag.lower()}"),
-            fullName="Seed Area Manager",
+            fullName=names.area_manager,
             phone=synthetic_phone(900_000_004),
             role=AREA_MANAGER,
             regionIds=[],
@@ -338,10 +354,10 @@ async def build(
         db,
         admin,
         VendorCreateRequest(
-            name=f"Crestline Distributors {tag}",
+            name=names.vendor or f"Crestline Distributors {tag}",
             gstNumber=f"36SEEDY{digits}A1Z5",
             pan=f"SEEDY{digits}A",
-            contactPerson="Seed Vendor Contact",
+            contactPerson=names.vendor_contact,
             phone=synthetic_phone(900_000_005),
             address="Shed 4, Seed Distribution Park",
             city="Hyderabad",
@@ -421,7 +437,10 @@ async def build(
         # inventing a matching one per ticket for no gain.
 
     # ── credits ───────────────────────────────────────────────────────────
-    await _recharge(db, owner=owner, admin=admin, ticket_count=ticket_count)
+    # Skippable because it needs the platform's UPI ID, and a demo small enough
+    # for the free credits has no other reason to fail on its absence.
+    if recharge:
+        await _recharge(db, owner=owner, admin=admin, ticket_count=ticket_count)
 
     # ── technicians ───────────────────────────────────────────────────────
     node_ids = list(models_by_node)

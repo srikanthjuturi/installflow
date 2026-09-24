@@ -282,10 +282,11 @@ async def issue_code(
     no account here at all — so `user_id` is null on exactly those rows and this
     is what says who the code was for.
 
-    The Play reviewer's number gets its fixed code and no message: the number
-    reaches nobody, and the reviewer was given the code in Play Console.
+    The Play reviewer's number, and the client demo's, get their fixed code and
+    no message: the number reaches nobody, and the code was given out by hand.
     """
-    fixed = await play_review.fixed_code_for(session, phone=phone, user_id=user_id)
+    fixed_entry = await play_review.fixed_code_for(session, phone=phone, user_id=user_id)
+    fixed_code, fixed_channel = fixed_entry if fixed_entry else (None, None)
     row, code = await _mint(
         session,
         phone=phone,
@@ -296,13 +297,13 @@ async def issue_code(
         request_ip=request_ip,
         ticket_id=ticket_id,
         slot_start=slot_start,
-        fixed_code=fixed,
+        fixed_code=fixed_code,
     )
 
-    if fixed is not None:
-        row.sent_channel = play_review.CHANNEL
+    if fixed_channel is not None:
+        row.sent_channel = fixed_channel
         await session.commit()
-        return _issued(True, play_review.CHANNEL, code)
+        return _issued(True, fixed_channel, code)
 
     channel = resolve_channel()
     result = await channel.send(phone, code)

@@ -181,7 +181,7 @@ async def _raise_ticket(
             synthetic_phone(tenant.phone_block + 50_000 + index),
             what=f"customer for ticket {index}",
         ),
-        address=f"Flat {index % 400 + 1}, Seed Residency, Phase {index % 4 + 1}",
+        address=f"Flat {index % 400 + 1}, Green Park Residency, Phase {index % 4 + 1}",
         city="Hyderabad",
         state="Telangana",
         pincode=pincode,

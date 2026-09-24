@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ImagePlus, X } from "lucide-react";
@@ -132,7 +132,7 @@ export function ModelFormDialog({
           half-filled gallery look broken. Sized with the other two-column form
           dialogs (Add user, Add technician) so the paired fields line up the
           same way across the console. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-3xl">
         <ModelForm
           node={node}
           model={model}
@@ -141,6 +141,18 @@ export function ModelFormDialog({
         />
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Only the body scrolls. The popup itself does not, so the step strip above
+// this and the dialog's own close button stay where they are while the fields
+// move. The negative margins hand the popup's padding to the scroller, which
+// keeps DialogFooter's own -mx-4 -mb-4 bleed working inside it.
+function ScrollBody({ children }: { children: ReactNode }) {
+  return (
+    <div className="scroll-slim -mx-4 -mb-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-4">
+      {children}
+    </div>
   );
 }
 
@@ -362,292 +374,304 @@ function ModelForm({
   // the paste box try to save the product again.
   if (justCreated) {
     return (
-      <div className="grid gap-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
         {/* Step indicator — makes the two-step flow obvious so users
             don't think they've been dropped into Edit Product. */}
-        <div aria-label="Step 2 of 2" className="grid gap-1.5">
+        <div aria-label="Step 2 of 2" className="grid gap-1.5 pr-8">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
               Step 2 of 2
             </p>
             <p className="text-[11px] text-ink-3">Serial numbers</p>
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-line">
-            <div className="h-full w-full rounded-full bg-primary-500" />
+            <div className="bg-primary-500 h-full w-full rounded-full" />
           </div>
         </div>
 
-        <DialogHeader>
-          <DialogTitle>Add serial numbers</DialogTitle>
-          <DialogDescription>
-            <span className="font-medium text-ink">{justCreated.name}</span>{" "}
-            was saved. Load the serial numbers this model covers — ticket
-            intake checks a vendor's serial against them. You can skip this
-            and add them later from the product's edit screen.
-          </DialogDescription>
-        </DialogHeader>
+        <ScrollBody>
+          <DialogHeader>
+            <DialogTitle>Add serial numbers</DialogTitle>
+            <DialogDescription>
+              <span className="font-medium text-ink">{justCreated.name}</span>{" "}
+              was saved. Load the serial numbers this model covers — ticket
+              intake checks a vendor's serial against them. You can skip this
+              and add them later from the product's edit screen.
+            </DialogDescription>
+          </DialogHeader>
 
-        <ModelSerialsPanel
-          modelId={justCreated.id}
-          modelName={justCreated.name}
-        />
+          <ModelSerialsPanel
+            modelId={justCreated.id}
+            modelName={justCreated.name}
+          />
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onDone}>
-            Skip for now
-          </Button>
-          <Button type="button" onClick={onDone}>
-            Done
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onDone}>
+              Skip for now
+            </Button>
+            <Button type="button" onClick={onDone}>
+              Done
+            </Button>
+          </DialogFooter>
+        </ScrollBody>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
       {/* Step 1 of 2 indicator — only shown when ADDING via the ops console
           (withPricing = true). Vendor submissions go for approval and have
           no serial step; edits are already past step 1. */}
       {!isEdit && withPricing ? (
-        <div aria-label="Step 1 of 2" className="grid gap-1.5">
+        <div aria-label="Step 1 of 2" className="grid gap-1.5 pr-8">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
               Step 1 of 2
             </p>
             <p className="text-[11px] text-ink-3">Product details</p>
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-line">
-            <div className="h-full w-1/2 rounded-full bg-primary-500" />
+            <div className="bg-primary-500 h-full w-1/2 rounded-full" />
           </div>
         </div>
       ) : null}
 
-      <DialogHeader>
-        <DialogTitle>
-          {submitter
-            ? isEdit
-              ? "Edit product"
-              : "Add product"
-            : isEdit
-              ? "Edit product model"
-              : "Add product model"}
-        </DialogTitle>
-        <DialogDescription>
-          In {node.path.join(" › ")}.{" "}
-          {submitter
-            ? isEdit
-              ? vendorEditNote(model.approvalStatus)
-              : "We price it before you can raise tickets against it."
-            : "Ticket intake picks a model from this list."}
-        </DialogDescription>
-      </DialogHeader>
+      <ScrollBody>
+        <DialogHeader>
+          <DialogTitle>
+            {submitter
+              ? isEdit
+                ? "Edit product"
+                : "Add product"
+              : isEdit
+                ? "Edit product model"
+                : "Add product model"}
+          </DialogTitle>
+          <DialogDescription>
+            In {node.path.join(" › ")}.{" "}
+            {submitter
+              ? isEdit
+                ? vendorEditNote(model.approvalStatus)
+                : "We price it before you can raise tickets against it."
+              : "Ticket intake picks a model from this list."}
+          </DialogDescription>
+        </DialogHeader>
 
-      <FieldGroup className="gap-5">
-        {/* Name, vendor and brand together: they are the required fields and
+        <FieldGroup className="gap-5">
+          {/* Name, vendor and brand together: they are the required fields and
             what identifies the unit — "Sunview 43-inch" is one thought. Staff
             pick the vendor BEFORE the brand, because the brands on offer are
             that vendor's, so the name takes the whole first row and the
             dependent pair sits side by side under it. A vendor has no vendor
             to pick, so for them it is name and brand on one row. */}
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field
-            data-invalid={errors.name ? true : undefined}
-            className={submitter ? undefined : "sm:col-span-2"}
-          >
-            <FieldLabel htmlFor="model-name" required>
-              Model name
-            </FieldLabel>
-            <Input
-              id="model-name"
-              placeholder={'e.g. 43" 4K UHD'}
-              autoComplete="off"
-              aria-invalid={errors.name ? true : undefined}
-              aria-describedby={errors.name ? "model-name-error" : undefined}
-              {...register("name")}
-            />
-            {errors.name ? (
-              <FieldDescription
-                id="model-name-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.name.message}
-              </FieldDescription>
-            ) : null}
-          </Field>
-
-          {/* No Vendor box for a vendor: they have exactly one answer, and the
-              server reads it off the session in any case. */}
-          {submitter ? null : (
-            <Field data-invalid={errors.vendorId ? true : undefined}>
-              <FieldLabel htmlFor="model-vendor" required>
-                Vendor
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field
+              data-invalid={errors.name ? true : undefined}
+              className={submitter ? undefined : "sm:col-span-2"}
+            >
+              <FieldLabel htmlFor="model-name" required>
+                Model name
               </FieldLabel>
-              <Controller
-                name="vendorId"
-                control={control}
-                render={({ field }) => (
-                  <VendorSelect
-                    value={field.value}
-                    onChange={(next) => {
-                      // A brand belongs to ONE vendor, so a new vendor clears
-                      // it — the next vendor's only brand then fills itself.
-                      if (next !== field.value) {
-                        setValue("brandId", "", { shouldDirty: true });
-                      }
-                      field.onChange(next);
-                    }}
-                    invalid={errors.vendorId !== undefined}
-                    current={
-                      model
-                        ? { id: model.vendorId, name: model.vendorName }
-                        : undefined
-                    }
-                  />
-                )}
+              <Input
+                id="model-name"
+                placeholder={'e.g. 43" 4K UHD'}
+                autoComplete="off"
+                aria-invalid={errors.name ? true : undefined}
+                aria-describedby={errors.name ? "model-name-error" : undefined}
+                {...register("name")}
               />
-              {errors.vendorId ? (
+              {errors.name ? (
                 <FieldDescription
-                  id="model-vendor-error"
+                  id="model-name-error"
                   role="alert"
                   className="text-danger"
                 >
-                  {errors.vendorId.message}
+                  {errors.name.message}
+                </FieldDescription>
+              ) : null}
+            </Field>
+
+            {/* No Vendor box for a vendor: they have exactly one answer, and the
+              server reads it off the session in any case. */}
+            {submitter ? null : (
+              <Field data-invalid={errors.vendorId ? true : undefined}>
+                <FieldLabel htmlFor="model-vendor" required>
+                  Vendor
+                </FieldLabel>
+                <Controller
+                  name="vendorId"
+                  control={control}
+                  render={({ field }) => (
+                    <VendorSelect
+                      value={field.value}
+                      onChange={(next) => {
+                        // A brand belongs to ONE vendor, so a new vendor clears
+                        // it — the next vendor's only brand then fills itself.
+                        if (next !== field.value) {
+                          setValue("brandId", "", { shouldDirty: true });
+                        }
+                        field.onChange(next);
+                      }}
+                      invalid={errors.vendorId !== undefined}
+                      current={
+                        model
+                          ? { id: model.vendorId, name: model.vendorName }
+                          : undefined
+                      }
+                    />
+                  )}
+                />
+                {errors.vendorId ? (
+                  <FieldDescription
+                    id="model-vendor-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {errors.vendorId.message}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription id="model-vendor-hint">
+                    The company that supplies it.
+                  </FieldDescription>
+                )}
+              </Field>
+            )}
+
+            <Field data-invalid={errors.brandId ? true : undefined}>
+              <FieldLabel htmlFor="model-brand" required>
+                Brand
+              </FieldLabel>
+              <Controller
+                name="brandId"
+                control={control}
+                render={({ field }) =>
+                  submitter ? (
+                    <OwnBrandSelect
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={errors.brandId !== undefined}
+                    />
+                  ) : (
+                    <VendorBrandSelect
+                      vendorId={vendorId}
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={errors.brandId !== undefined}
+                      current={
+                        model && model.vendorId === vendorId
+                          ? { id: model.brandId, name: model.brandName }
+                          : undefined
+                      }
+                    />
+                  )
+                }
+              />
+              {errors.brandId ? (
+                <FieldDescription
+                  id="model-brand-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.brandId.message}
                 </FieldDescription>
               ) : (
-                <FieldDescription id="model-vendor-hint">
-                  The company that supplies it.
+                <FieldDescription id="model-brand-hint">
+                  {submitter
+                    ? "One of your approved brands. Ask for another on My brands."
+                    : "What is printed on the unit — one of this vendor's approved brands."}
                 </FieldDescription>
               )}
             </Field>
-          )}
+          </div>
 
-          <Field data-invalid={errors.brandId ? true : undefined}>
-            <FieldLabel htmlFor="model-brand" required>
-              Brand
-            </FieldLabel>
-            <Controller
-              name="brandId"
-              control={control}
-              render={({ field }) =>
-                submitter ? (
-                  <OwnBrandSelect
-                    value={field.value}
-                    onChange={field.onChange}
-                    invalid={errors.brandId !== undefined}
-                  />
-                ) : (
-                  <VendorBrandSelect
-                    vendorId={vendorId}
-                    value={field.value}
-                    onChange={field.onChange}
-                    invalid={errors.brandId !== undefined}
-                    current={
-                      model && model.vendorId === vendorId
-                        ? { id: model.brandId, name: model.brandName }
-                        : undefined
-                    }
-                  />
-                )
-              }
-            />
-            {errors.brandId ? (
-              <FieldDescription
-                id="model-brand-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.brandId.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="model-brand-hint">
-                {submitter
-                  ? "One of your approved brands. Ask for another on My brands."
-                  : "What is printed on the unit — one of this vendor's approved brands."}
-              </FieldDescription>
+          <FieldSeparator />
+
+          <Controller
+            name="serviceTypes"
+            control={control}
+            render={({ field }) => (
+              <ServiceTypeField
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.serviceTypes?.message}
+              />
             )}
-          </Field>
-        </div>
+          />
 
-        <FieldSeparator />
+          <FieldSeparator />
 
-        <Controller
-          name="serviceTypes"
-          control={control}
-          render={({ field }) => (
-            <ServiceTypeField
-              value={field.value}
-              onChange={field.onChange}
-              error={errors.serviceTypes?.message}
-            />
-          )}
-        />
-
-        <FieldSeparator />
-
-        {/* Both optional, and side by side because they are read together —
+          {/* Both optional, and side by side because they are read together —
             "43 inch, 24 months" is one thought about the unit. */}
-        <FieldGrid className="grid gap-5 sm:grid-cols-2">
-          <Field data-invalid={errors.capacity ? true : undefined}>
-            <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
-            <Input
-              id="model-capacity"
-              placeholder="e.g. 43 inch, 7 kg, 340 L"
-              aria-invalid={errors.capacity ? true : undefined}
-              aria-describedby={
-                errors.capacity ? "model-capacity-error" : "model-capacity-hint"
-              }
-              {...register("capacity")}
-            />
-            {errors.capacity ? (
-              <FieldDescription
-                id="model-capacity-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.capacity.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="model-capacity-hint">
-                Optional. Kept apart from the name so it can be read on its own.
-              </FieldDescription>
-            )}
-          </Field>
+          <FieldGrid className="grid gap-5 sm:grid-cols-2">
+            <Field data-invalid={errors.capacity ? true : undefined}>
+              <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
+              <Input
+                id="model-capacity"
+                placeholder="e.g. 43 inch, 7 kg, 340 L"
+                aria-invalid={errors.capacity ? true : undefined}
+                aria-describedby={
+                  errors.capacity
+                    ? "model-capacity-error"
+                    : "model-capacity-hint"
+                }
+                {...register("capacity")}
+              />
+              {errors.capacity ? (
+                <FieldDescription
+                  id="model-capacity-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.capacity.message}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="model-capacity-hint">
+                  Optional. Kept apart from the name so it can be read on its
+                  own.
+                </FieldDescription>
+              )}
+            </Field>
 
-          <Field data-invalid={errors.warrantyMonths ? true : undefined}>
-            <FieldLabel htmlFor="model-warranty">Warranty (months)</FieldLabel>
-            <Input
-              id="model-warranty"
-              inputMode="numeric"
-              placeholder="e.g. 24"
-              aria-invalid={errors.warrantyMonths ? true : undefined}
-              aria-describedby={
-                errors.warrantyMonths
-                  ? "model-warranty-error"
-                  : "model-warranty-hint"
-              }
-              {...register("warrantyMonths")}
-            />
-            {errors.warrantyMonths ? (
-              <FieldDescription
-                id="model-warranty-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.warrantyMonths.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="model-warranty-hint">
-                Optional. Months, not years.
-              </FieldDescription>
-            )}
-          </Field>
-        </FieldGrid>
+            <Field data-invalid={errors.warrantyMonths ? true : undefined}>
+              <FieldLabel htmlFor="model-warranty">
+                Warranty (months)
+              </FieldLabel>
+              <Input
+                id="model-warranty"
+                inputMode="numeric"
+                placeholder="e.g. 24"
+                aria-invalid={errors.warrantyMonths ? true : undefined}
+                aria-describedby={
+                  errors.warrantyMonths
+                    ? "model-warranty-error"
+                    : "model-warranty-hint"
+                }
+                {...register("warrantyMonths")}
+              />
+              {errors.warrantyMonths ? (
+                <FieldDescription
+                  id="model-warranty-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.warrantyMonths.message}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="model-warranty-hint">
+                  Optional. Months, not years.
+                </FieldDescription>
+              )}
+            </Field>
+          </FieldGrid>
 
-        <FieldSeparator />
+          <FieldSeparator />
 
-        {/* Side by side because they are the two halves of one decision — what
+          {/* Side by side because they are the two halves of one decision — what
             this job is worth — and the margin between them is only legible
             when both are on screen at once.
 
@@ -661,259 +685,266 @@ function ModelForm({
             you may not have", and the honest statement is that pricing is not
             part of what they are doing. A National Head sets both on the
             approvals screen, and the notice below says so. */}
-        {withPricing ? (
-        <FieldGrid className="grid gap-5 sm:grid-cols-2">
-          <Field data-invalid={errors.technicianPayoutPaise ? true : undefined}>
-            <FieldLabel htmlFor="model-payout">Paid to technician (₹)</FieldLabel>
-            <Input
-              id="model-payout"
-              inputMode="numeric"
-              placeholder="e.g. 450"
-              aria-invalid={errors.technicianPayoutPaise ? true : undefined}
-              aria-describedby={
-                errors.technicianPayoutPaise
-                  ? "model-payout-error"
-                  : "model-payout-hint"
-              }
-              {...register("technicianPayoutPaise")}
-            />
-            {errors.technicianPayoutPaise ? (
-              <FieldDescription
-                id="model-payout-error"
-                role="alert"
-                className="text-danger"
+          {withPricing ? (
+            <FieldGrid className="grid gap-5 sm:grid-cols-2">
+              <Field
+                data-invalid={errors.technicianPayoutPaise ? true : undefined}
               >
-                {errors.technicianPayoutPaise.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="model-payout-hint">
-                Required. What a technician earns for one job on this model.
-              </FieldDescription>
-            )}
-          </Field>
+                <FieldLabel htmlFor="model-payout">
+                  Paid to technician (₹)
+                </FieldLabel>
+                <Input
+                  id="model-payout"
+                  inputMode="numeric"
+                  placeholder="e.g. 450"
+                  aria-invalid={errors.technicianPayoutPaise ? true : undefined}
+                  aria-describedby={
+                    errors.technicianPayoutPaise
+                      ? "model-payout-error"
+                      : "model-payout-hint"
+                  }
+                  {...register("technicianPayoutPaise")}
+                />
+                {errors.technicianPayoutPaise ? (
+                  <FieldDescription
+                    id="model-payout-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {errors.technicianPayoutPaise.message}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription id="model-payout-hint">
+                    Required. What a technician earns for one job on this model.
+                  </FieldDescription>
+                )}
+              </Field>
 
-          <Field data-invalid={errors.vendorPricePaise ? true : undefined}>
-            <FieldLabel htmlFor="model-price">Charged to vendor (₹)</FieldLabel>
-            <Input
-              id="model-price"
-              inputMode="numeric"
-              placeholder="e.g. 1200"
-              aria-invalid={errors.vendorPricePaise ? true : undefined}
-              aria-describedby={
-                errors.vendorPricePaise
-                  ? "model-price-error"
-                  : "model-price-hint"
-              }
-              {...register("vendorPricePaise")}
-            />
-            {errors.vendorPricePaise ? (
-              <FieldDescription
-                id="model-price-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.vendorPricePaise.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="model-price-hint">
-                Required. What the vendor pays to raise one of these tickets.
-              </FieldDescription>
-            )}
-          </Field>
-        </FieldGrid>
-        ) : model?.approvalStatus === "approved" ? null : (
-          /* Not on an APPROVED product: it is priced and ticketable already,
+              <Field data-invalid={errors.vendorPricePaise ? true : undefined}>
+                <FieldLabel htmlFor="model-price">
+                  Charged to vendor (₹)
+                </FieldLabel>
+                <Input
+                  id="model-price"
+                  inputMode="numeric"
+                  placeholder="e.g. 1200"
+                  aria-invalid={errors.vendorPricePaise ? true : undefined}
+                  aria-describedby={
+                    errors.vendorPricePaise
+                      ? "model-price-error"
+                      : "model-price-hint"
+                  }
+                  {...register("vendorPricePaise")}
+                />
+                {errors.vendorPricePaise ? (
+                  <FieldDescription
+                    id="model-price-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {errors.vendorPricePaise.message}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription id="model-price-hint">
+                    Required. What the vendor pays to raise one of these
+                    tickets.
+                  </FieldDescription>
+                )}
+              </Field>
+            </FieldGrid>
+          ) : model?.approvalStatus === "approved" ? null : (
+            /* Not on an APPROVED product: it is priced and ticketable already,
              and a vendor's edit keeps it that way — the description says so
              above, and this sentence would contradict it. */
-          <p className="rounded-md bg-info-bg px-3 py-2.5 text-xs text-ink-2">
-            We price this before it can be ticketed. You will be told as soon as
-            it is approved.
-          </p>
-        )}
+            <p className="rounded-md bg-info-bg px-3 py-2.5 text-xs text-ink-2">
+              We price this before it can be ticketed. You will be told as soon
+              as it is approved.
+            </p>
+          )}
 
-        <FieldSeparator />
+          <FieldSeparator />
 
-        <Field data-invalid={errors.imageUrls ? true : undefined}>
-          <FieldLabel htmlFor="model-image">
-            Photos (optional) · {imageUrls.length}/{MAX_MODEL_IMAGES}
-          </FieldLabel>
+          <Field data-invalid={errors.imageUrls ? true : undefined}>
+            <FieldLabel htmlFor="model-image">
+              Photos (optional) · {imageUrls.length}/{MAX_MODEL_IMAGES}
+            </FieldLabel>
 
-          <input {...picker.inputProps} />
+            <input {...picker.inputProps} />
 
-          {/* The whole strip takes a drop, not just the Add tile — a dragged
+            {/* The whole strip takes a drop, not just the Add tile — a dragged
               photo is aimed at "the photos", and asking for a 64px target is
               asking to miss. */}
-          <div
-            {...picker.dropProps}
-            className={cn(
-              "flex flex-wrap items-start gap-2 rounded-md ring-offset-2 ring-offset-card transition-shadow",
-              picker.dragging && "ring-2 ring-brand-500"
-            )}
-          >
-            {imageUrls.map((url, index) => (
-              <span
-                key={url}
-                className="group relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-md border border-line-2 bg-surface-2 text-ink-3"
-              >
-                <img
-                  src={url}
-                  alt=""
-                  className="size-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-                {/* The first photo is the one every list draws, so it is worth
-                    saying which one that is rather than leaving order implicit. */}
-                {index === 0 ? (
-                  <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-medium text-white">
-                    Main
-                  </span>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon-xs"
-                  onClick={() =>
-                    setImages(imageUrls.filter((_, i) => i !== index))
-                  }
-                  aria-label={`Remove photo ${index + 1}`}
-                  className="absolute -top-1 -right-1 rounded-full ring-2 ring-card"
+            <div
+              {...picker.dropProps}
+              className={cn(
+                "flex flex-wrap items-start gap-2 rounded-md ring-offset-2 ring-offset-card transition-shadow",
+                picker.dragging && "ring-2 ring-brand-500"
+              )}
+            >
+              {imageUrls.map((url, index) => (
+                <span
+                  key={url}
+                  className="group relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-md border border-line-2 bg-surface-2 text-ink-3"
                 >
-                  <X />
-                </Button>
-              </span>
-            ))}
+                  <img
+                    src={url}
+                    alt=""
+                    className="size-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                  {/* The first photo is the one every list draws, so it is worth
+                    saying which one that is rather than leaving order implicit. */}
+                  {index === 0 ? (
+                    <span className="absolute inset-x-0 bottom-0 bg-ink/70 py-0.5 text-center text-[10px] font-medium text-white">
+                      Main
+                    </span>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon-xs"
+                    onClick={() =>
+                      setImages(imageUrls.filter((_, i) => i !== index))
+                    }
+                    aria-label={`Remove photo ${index + 1}`}
+                    className="absolute -top-1 -right-1 rounded-full ring-2 ring-card"
+                  >
+                    <X />
+                  </Button>
+                </span>
+              ))}
 
-            {/* Kept mounted when full, and disabled: the label points at it,
+              {/* Kept mounted when full, and disabled: the label points at it,
                 and a tile that greys out reads as "that is the limit" where a
                 vanished one reads as a bug. */}
-            <button
-              id="model-image"
-              type="button"
-              onClick={picker.open}
-              disabled={full}
-              title={full ? `Up to ${MAX_MODEL_IMAGES} photos` : undefined}
-              aria-describedby={
-                errors.imageUrls ? "model-image-error" : "model-image-hint"
-              }
-              className="grid size-16 shrink-0 place-items-center gap-0.5 rounded-md border border-dashed border-line bg-surface-2 text-ink-3 transition-colors hover:border-brand-400 hover:text-brand-400 disabled:pointer-events-none disabled:opacity-50"
-            >
-              <ImagePlus className="size-5" aria-hidden />
-              <span className="text-[10px] font-medium">
-                {imageUrls.length ? "Add" : "Upload"}
-              </span>
-            </button>
-          </div>
+              <button
+                id="model-image"
+                type="button"
+                onClick={picker.open}
+                disabled={full}
+                title={full ? `Up to ${MAX_MODEL_IMAGES} photos` : undefined}
+                aria-describedby={
+                  errors.imageUrls ? "model-image-error" : "model-image-hint"
+                }
+                className="grid size-16 shrink-0 place-items-center gap-0.5 rounded-md border border-dashed border-line bg-surface-2 text-ink-3 transition-colors hover:border-brand-400 hover:text-brand-400 disabled:pointer-events-none disabled:opacity-50"
+              >
+                <ImagePlus className="size-5" aria-hidden />
+                <span className="text-[10px] font-medium">
+                  {imageUrls.length ? "Add" : "Upload"}
+                </span>
+              </button>
+            </div>
 
-          {picker.error ? (
-            <FieldDescription role="alert" className="text-danger">
-              {picker.error}
-            </FieldDescription>
-          ) : errors.imageUrls ? (
-            <FieldDescription
-              id="model-image-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.imageUrls.message ??
-                errors.imageUrls.root?.message ??
-                `Up to ${MAX_MODEL_IMAGES} photos per model`}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="model-image-hint">
-              Drop images here or click to browse — several at once. PNG, JPG or
-              WebP, up to {MAX_MODEL_IMAGES}. Each is cropped to a square; the
-              first is the one ticket intake shows.
-            </FieldDescription>
-          )}
-        </Field>
+            {picker.error ? (
+              <FieldDescription role="alert" className="text-danger">
+                {picker.error}
+              </FieldDescription>
+            ) : errors.imageUrls ? (
+              <FieldDescription
+                id="model-image-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.imageUrls.message ??
+                  errors.imageUrls.root?.message ??
+                  `Up to ${MAX_MODEL_IMAGES} photos per model`}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-image-hint">
+                Drop images here or click to browse — several at once. PNG, JPG
+                or WebP, up to {MAX_MODEL_IMAGES}. Each is cropped to a square;
+                the first is the one ticket intake shows.
+              </FieldDescription>
+            )}
+          </Field>
 
-        <ImageCropDialog
-          images={queue}
-          onClose={() => {
-            setQueue([]);
-            picker.release();
-          }}
-          title="Product photo"
-          description="drag to reposition and zoom to frame the product."
-          saveLabel="Add photo"
-          onSave={handleCropped}
-        />
-
-        <FieldSeparator />
-
-        <ParameterFields
-          control={control}
-          register={register}
-          name="parameters"
-          errors={errors}
-          idPrefix="model"
-          requireValue
-          // Only when EDITING. A new product already opens from the whole
-          // template, so there is never anything to offer — and offering
-          // something the user has just deleted would be a nag.
-          templateNames={
-            model ? node.parameters.map((p) => p.name) : undefined
-          }
-          hint="Specs for this product — every field needs a value, because this is what the vendor and the technician will read."
-        />
-
-        <Field data-invalid={errors.notes ? true : undefined}>
-          <FieldLabel htmlFor="model-notes">Notes (optional)</FieldLabel>
-          <Textarea
-            id="model-notes"
-            rows={3}
-            placeholder="e.g. Check the wall bracket rating before drilling."
-            aria-invalid={errors.notes ? true : undefined}
-            aria-describedby={
-              errors.notes ? "model-notes-error" : "model-notes-hint"
-            }
-            {...register("notes")}
+          <ImageCropDialog
+            images={queue}
+            onClose={() => {
+              setQueue([]);
+              picker.release();
+            }}
+            title="Product photo"
+            description="drag to reposition and zoom to frame the product."
+            saveLabel="Add photo"
+            onSave={handleCropped}
           />
-          {errors.notes ? (
-            <FieldDescription
-              id="model-notes-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.notes.message}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="model-notes-hint">
-              Anything about this product that is not a spec — prose, so it has
-              no field name to inherit under.
-            </FieldDescription>
-          )}
-        </Field>
 
-        {/* Absent for a vendor, and not merely disabled: pausing is how OPS
+          <FieldSeparator />
+
+          <ParameterFields
+            control={control}
+            register={register}
+            name="parameters"
+            errors={errors}
+            idPrefix="model"
+            requireValue
+            // Only when EDITING. A new product already opens from the whole
+            // template, so there is never anything to offer — and offering
+            // something the user has just deleted would be a nag.
+            templateNames={
+              model ? node.parameters.map((p) => p.name) : undefined
+            }
+            hint="Specs for this product — every field needs a value, because this is what the vendor and the technician will read."
+          />
+
+          <Field data-invalid={errors.notes ? true : undefined}>
+            <FieldLabel htmlFor="model-notes">Notes (optional)</FieldLabel>
+            <Textarea
+              id="model-notes"
+              rows={3}
+              placeholder="e.g. Check the wall bracket rating before drilling."
+              aria-invalid={errors.notes ? true : undefined}
+              aria-describedby={
+                errors.notes ? "model-notes-error" : "model-notes-hint"
+              }
+              {...register("notes")}
+            />
+            {errors.notes ? (
+              <FieldDescription
+                id="model-notes-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.notes.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="model-notes-hint">
+                Anything about this product that is not a spec — prose, so it
+                has no field name to inherit under.
+              </FieldDescription>
+            )}
+          </Field>
+
+          {/* Absent for a vendor, and not merely disabled: pausing is how OPS
             withdraw a product from intake, and a second "not available" switch
             in the submitter's hands would be two answers to one question. The
             axis that belongs to them is approval, which they move by submitting
             — or, after a refusal, by saving again. */}
-        {withPricing ? (
-          <>
-            <FieldSeparator />
+          {withPricing ? (
+            <>
+              <FieldSeparator />
 
-            <Controller
-              name="status"
-              control={control}
-              render={({ field }) => (
-                <StatusField
-                  value={field.value}
-                  onChange={field.onChange}
-                  description="Paused models stay out of new ticket entry."
-                  error={errors.status?.message}
-                  errorId="model-status-error"
-                />
-              )}
-            />
-          </>
-        ) : null}
-      </FieldGroup>
+              <Controller
+                name="status"
+                control={control}
+                render={({ field }) => (
+                  <StatusField
+                    value={field.value}
+                    onChange={field.onChange}
+                    description="Paused models stay out of new ticket entry."
+                    error={errors.status?.message}
+                    errorId="model-status-error"
+                  />
+                )}
+              />
+            </>
+          ) : null}
+        </FieldGroup>
 
-      {/* Serial numbers, on any EDIT — ops or a vendor's own product.
+        {/* Serial numbers, on any EDIT — ops or a vendor's own product.
           - `portal={!withPricing}` is what separates them. A vendor writes
             through `/masters/portal/*`, which pins it to its own models, and
             gets no Delete: removing the last serial turns intake checking off
@@ -927,25 +958,26 @@ function ModelForm({
             model" still holds.
           Outside <FieldGroup> and visually separated: it writes to the server
           on its own, so it is not part of what Save sends. */}
-      {isEdit ? (
-        <div className="grid gap-3 rounded-lg border border-line p-3">
-          <ModelSerialsPanel
-            modelId={model.id}
-            modelName={model.name}
-            portal={!withPricing}
-          />
-        </div>
-      ) : null}
+        {isEdit ? (
+          <div className="grid gap-3 rounded-lg border border-line p-3">
+            <ModelSerialsPanel
+              modelId={model.id}
+              modelName={model.name}
+              portal={!withPricing}
+            />
+          </div>
+        ) : null}
 
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={pending}>
-          {pending ? <Spinner data-icon="inline-start" /> : null}
-          {isEdit ? "Save changes" : "Add model"}
-        </Button>
-      </DialogFooter>
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={pending}>
+            {pending ? <Spinner data-icon="inline-start" /> : null}
+            {isEdit ? "Save changes" : "Add model"}
+          </Button>
+        </DialogFooter>
+      </ScrollBody>
     </form>
   );
 }
@@ -1046,7 +1078,6 @@ function ServiceTypeField({
         </label>
       }
     >
-
       {/* Three across on a wide dialog: the options are alternatives to weigh
           against each other, and a row compares them at a glance where a stack
           reads as a checklist. Grid, not flex, so the cards match height
