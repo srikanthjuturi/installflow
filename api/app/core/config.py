@@ -445,6 +445,10 @@ class Settings(BaseSettings):
     # digits, or the feature stays off rather than failing startup.
     PLAY_REVIEW_PHONE: str = ""
     PLAY_REVIEW_CODE: str = ""
+    # The client demo's technician login, on the same footing as the Play
+    # reviewer's above — see app/core/play_review.py. Both empty means off.
+    DEMO_REVIEW_PHONE: str = ""
+    DEMO_REVIEW_CODE: str = ""
     # How long the post-OTP registration token lives.
     REGISTRATION_TOKEN_MINUTES: int = 15
     # How long the post-OTP password-reset token lives — the ticket between

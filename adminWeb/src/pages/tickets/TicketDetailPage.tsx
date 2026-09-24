@@ -218,7 +218,7 @@ export default function TicketDetailPage({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1.55fr_1fr]">
-          <div className="flex flex-col gap-3.5">
+          <div className="flex min-w-0 flex-col gap-3.5">
             <Card>
               <CardContent>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -308,7 +308,7 @@ export default function TicketDetailPage({
             />
           </div>
 
-          <div className="flex flex-col gap-3.5">
+          <div className="flex min-w-0 flex-col gap-3.5">
             {/* Above the customer's contact details: on an escalated ticket
                 this is the reason the manager opened the page, and it should
                 not be below the fold under an address they already know. */}

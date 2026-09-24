@@ -140,8 +140,8 @@ function SlotRequest({ ticket }: { ticket: TicketDetail }) {
               ? "Send this link another way, or read the times out over the phone."
               : "They can also be given this link directly."}
           </p>
-          <div className="mt-2 flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded bg-surface/60 px-2 py-1 font-mono text-[11px]">
+          <div className="mt-2 flex items-start gap-2">
+            <code className="min-w-0 flex-1 break-all rounded bg-surface/60 px-2 py-1 font-mono text-[11px]">
               {ticket.slotLink}
             </code>
             <Button
