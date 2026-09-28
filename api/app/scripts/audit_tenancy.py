@@ -24,6 +24,20 @@ Three things it looks for.
    not match its parent's. Should be impossible once (2) holds; checked anyway,
    because "impossible" is what everyone said before the first one appeared.
 
+4. Stored functions. The schema started carrying CODE when the bulk ticket
+   importer landed, and code in the database is somewhere tenancy can be broken
+   that the three checks above cannot see: they read columns, constraints and
+   rows, and none of them can read a plpgsql body. This check cannot read one
+   either. What it CAN do is two things worth having — refuse any
+   `SECURITY DEFINER` function in `public`, which would run with the owner's
+   rights regardless of who called it, and name any function that is not in
+   KNOWN_FUNCTIONS, so a new one has to be added here with a reason rather than
+   appearing quietly.
+
+⚠ What the audit still cannot prove is inside those bodies. For each one the
+invariant is stated in KNOWN_FUNCTIONS and the reasoning is in its migration;
+review them by reading, not by running this.
+
 Exit code is non-zero when anything is found, so this can gate CI.
 """
 
@@ -39,6 +53,22 @@ if sys.platform == "win32":
 from sqlalchemy import text  # noqa: E402
 
 from app.core.database import AsyncSessionLocal  # noqa: E402
+
+#: Functions this schema is allowed to carry, and the tenancy invariant each
+#: one's body rests on. A function not listed here fails the audit — the point
+#: is that adding code to the database has to be a decision somebody wrote down,
+#: not something that appears in a migration nobody re-read.
+KNOWN_FUNCTIONS: dict[str, str] = {
+    "resolve_category_chains": (
+        "Resolves or creates a whole category chain for the bulk ticket "
+        "importer (migration c9a41f7b0e83). Takes p_company_id as its FIRST "
+        "argument, always the principal's and never a request value, and every "
+        "statement in the body — the probe, the insert, the child count and the "
+        "leaf update — filters on it. It writes only product_nodes, whose "
+        "composite self FK fk_product_nodes_company_parent makes a node under "
+        "another company's parent impossible rather than merely unchecked."
+    ),
+}
 
 #: Tables that legitimately have no `company_id`, each with the reason.
 GLOBAL_TABLES: dict[str, str] = {
@@ -152,6 +182,22 @@ TENANT_LINKS = [
     # three-column, so it also pins the brand to the product's own vendor.
     ("vendor_brands", "vendor_id", "vendors"),
     ("product_models", "brand_id", "vendor_brands"),
+    # What a VENDOR owes its company, and how it settles. The mirror image of
+    # `credit_entries` above and wrong in the same three ways: a charge naming
+    # another company's vendor would bill a stranger for work they never asked
+    # for; one naming another company's ticket would bill the right vendor for
+    # somebody else's job; and a credit naming another company's payment would
+    # clear one tenant's debt with a second tenant's money.
+    ("vendor_credit_entries", "vendor_id", "vendors"),
+    ("vendor_credit_entries", "ticket_id", "tickets"),
+    ("vendor_credit_entries", "payment_id", "vendor_payments"),
+    # Money in, and the UPI ID it is paid to. A payment naming another
+    # company's vendor would show one tenant's vendor a second tenant's bank
+    # details — the same failure a redemption has, one party along.
+    ("vendor_payments", "vendor_id", "vendors"),
+    # How much a vendor may owe. A request naming another company's vendor
+    # would let one tenant's National Head raise a stranger's credit line.
+    ("vendor_credit_requests", "vendor_id", "vendors"),
 ]
 
 
@@ -256,6 +302,38 @@ async def audit() -> int:
                 problems.append(f"{child} has {mismatched} cross-company row(s)")
             else:
                 print(f"  ok      {child} -> {parent}")
+
+        print("\n-- stored functions --------------------------------------------")
+        rows = (
+            await s.execute(
+                text(
+                    """
+                    SELECT p.proname, p.prosecdef
+                      FROM pg_proc p
+                      JOIN pg_namespace n ON n.oid = p.pronamespace
+                     WHERE n.nspname = 'public'
+                     ORDER BY p.proname
+                    """
+                )
+            )
+        ).all()
+        if not rows:
+            print("  ok      none")
+        for name, security_definer in rows:
+            if security_definer:
+                # Runs with the OWNER's rights whoever calls it, so every
+                # tenancy filter inside it is the only thing standing between
+                # one company and another's rows.
+                print(f"  PROBLEM {name}: SECURITY DEFINER")
+                problems.append(f"{name} is SECURITY DEFINER")
+            elif name not in KNOWN_FUNCTIONS:
+                print(f"  PROBLEM {name}: not in KNOWN_FUNCTIONS")
+                problems.append(
+                    f"{name} is not listed in KNOWN_FUNCTIONS — add it with the "
+                    "invariant its body relies on"
+                )
+            else:
+                print(f"  ok      {name}")
 
     print()
     if problems:

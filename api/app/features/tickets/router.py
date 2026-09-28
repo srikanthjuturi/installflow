@@ -25,14 +25,26 @@ import datetime
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import (
     Principal,
+    require_any_feature,
     require_feature,
     require_min_rank,
+    require_staff_principal,
     require_vendor_principal,
 )
 from app.core.schemas import (
@@ -43,7 +55,7 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
-from app.features.tickets import service
+from app.features.tickets import import_service, service
 from app.features.tickets.schemas import (
     AssignRequest,
     BonusRequest,
@@ -60,10 +72,11 @@ from app.features.tickets.schemas import (
     TicketAttachmentOut,
     TicketCreateRequest,
     TicketDetailOut,
+    TicketImportReport,
     TicketOut,
     TicketProofOut,
 )
-from app.models.role import AREA_MANAGER
+from app.models.role import AREA_MANAGER, NATIONAL_HEAD
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -71,6 +84,27 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("jobs.view"))]
 CanCreate = Annotated[Principal, Depends(require_feature("jobs.create"))]
 IsVendor = Depends(require_vendor_principal)
+
+#: The bulk importer's own key, and it is NOT `jobs.create` — hard rule 2, "a
+#: key that already exists is not automatically the right key". `jobs.create`
+#: was deliberately revoked from all four staff roles by `d5f61c07ab29`, and
+#: the console reads it to decide whether to draw a Raise-a-ticket screen;
+#: re-granting it to let staff upload a file would hand single-ticket creation
+#: back with it. Seeded to admin and national_head.
+CanImportForVendor = Annotated[
+    Principal, Depends(require_feature("jobs.import"))
+]
+IsStaff = Depends(require_staff_principal)
+#: Paired with the feature because the act spends company money — 500 tickets
+#: is 500 credit charges — which is the same pairing `jobs.force_close` and
+#: `masters.approve` carry, and no per-company override can lift it.
+NationalHeadUp = Depends(require_min_rank(NATIONAL_HEAD))
+
+#: The template is a file of headings. Either side may fetch it, so either key
+#: opens it — see the route for why it is not gated harder than that.
+CanImport = Annotated[
+    Principal, Depends(require_any_feature("jobs.create", "jobs.import"))
+]
 
 #: The escalation surface: the queue and the two ways out of it.
 #:
@@ -204,6 +238,169 @@ async def intake_status(db: Db, principal: CanCreate) -> ApiEnvelope[IntakeStatu
     Declared above `/{ticket_id}`, like `/summary`.
     """
     return envelope(await service.intake_status(db, principal))
+
+
+# ── the bulk importer ────────────────────────────────────────────────────────
+#
+# All three are declared ABOVE `/{ticket_id}`, like `/summary` and
+# `/intake-status`: a static segment outranks a dynamic one wherever it is
+# declared, but keeping them together is what stops somebody adding a fourth
+# below the catch-all and spending an afternoon on a 422 about "import" not
+# being a UUID.
+#
+# TWO write routes, not one with a flag, and the split is the tenancy boundary.
+# The vendor's route has NO field a vendor id could arrive in — the same
+# structural pinning `TicketCreateRequest` uses, so no future branch can reopen
+# it by forgetting a check. The staff route must name a vendor, so it takes one
+# and resolves it through a company-scoped loader that 404s on anything else.
+
+
+@router.get("/import/template")
+async def ticket_template(principal: CanImport) -> StreamingResponse:
+    """The starter .xlsx: one sheet of columns, one of instructions.
+
+    On either import key, and NOT staff-only, for the reason
+    `GET /masters/serials/template` is not either: the file carries no data at
+    all — headers and two example rows, identical for every caller — and gating
+    it harder than the thing it accompanies would only mean somebody guessing at
+    the column names.
+    """
+    return StreamingResponse(
+        import_service.build_ticket_template(),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": 'attachment; filename="tickets.xlsx"'},
+    )
+
+
+async def _read_upload(file: UploadFile) -> tuple[bytes, str]:
+    """The extension and size guards both siblings apply, in one place."""
+    name = (file.filename or "").lower()
+    if not name.endswith((".xlsx", ".csv")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload an .xlsx or .csv file",
+        )
+    # Read with a ceiling rather than trusting the declared size: a client can
+    # claim any content-length, and the body would otherwise be in memory before
+    # any check that came after it. Lifted verbatim from `geo.import_geography`.
+    data = await file.read(import_service.MAX_TICKET_UPLOAD_BYTES + 1)
+    if len(data) > import_service.MAX_TICKET_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "The file must be under "
+                f"{import_service.MAX_TICKET_UPLOAD_BYTES // (1024 * 1024)} MB"
+            ),
+        )
+    return data, name
+
+
+def _import_message(report: TicketImportReport) -> str:
+    if report.dryRun:
+        return "Checked — nothing was saved"
+    parts = [f"{report.imported} ticket{'' if report.imported == 1 else 's'} raised"]
+    if report.categoriesCreated:
+        parts.append(f"{report.categoriesCreated} categories created")
+    if report.productsSubmitted:
+        parts.append(f"{report.productsSubmitted} products sent for approval")
+    return ", ".join(parts)
+
+
+@router.post(
+    "/import",
+    response_model=ApiEnvelope[TicketImportReport],
+    dependencies=[IsVendor],
+)
+async def import_own_tickets(
+    db: Db,
+    principal: CanCreate,
+    file: Annotated[UploadFile, File()],
+    dryRun: Annotated[bool, Query()] = True,
+    createCategories: Annotated[bool, Query()] = False,
+    submitProducts: Annotated[bool, Query()] = False,
+    expectedDigest: Annotated[str | None, Query()] = None,
+) -> ApiEnvelope[TicketImportReport]:
+    """A vendor uploads its own sheet. `dryRun` writes nothing.
+
+    `createCategories` and `submitProducts` default to FALSE. The confirmation
+    the console shows is presentation; the affirmative has to arrive as a
+    positive assertion, or the guard only guards clients that choose to ask.
+    """
+    data, name = await _read_upload(file)
+    report = await import_service.import_tickets(
+        db,
+        principal,
+        data,
+        name,
+        # THE pin. There is no field on this route for a vendor id to arrive in.
+        vendor_id=principal.vendor_id,
+        dry_run=dryRun,
+        create_categories=createCategories,
+        submit_products=submitProducts,
+        expected_digest=expectedDigest,
+        # A company's balance is not its vendor's business — the same line
+        # `IntakeStatusOut` draws. They are told whether it FITS, not what is
+        # left.
+        show_credits=False,
+    )
+    return envelope(report, message=_import_message(report))
+
+
+@router.post(
+    "/import/on-behalf",
+    response_model=ApiEnvelope[TicketImportReport],
+    dependencies=[IsStaff, NationalHeadUp],
+)
+async def import_tickets_for_vendor(
+    db: Db,
+    principal: CanImportForVendor,
+    vendorId: Annotated[uuid.UUID, Form()],
+    file: Annotated[UploadFile, File()],
+    dryRun: Annotated[bool, Query()] = True,
+    createCategories: Annotated[bool, Query()] = False,
+    submitProducts: Annotated[bool, Query()] = False,
+    expectedDigest: Annotated[str | None, Query()] = None,
+) -> ApiEnvelope[TicketImportReport]:
+    """Staff upload a vendor's sheet for them.
+
+    The one place in this slice where somebody other than a vendor causes a
+    ticket to exist, and it needed its own feature key rather than `jobs.create`:
+    that one was deliberately REVOKED from all four staff roles, and the console
+    reads it to decide whether to draw a Raise-a-ticket screen. Re-granting it
+    would undo that migration's whole point.
+
+    The rank floor is National Head because a bulk file carries pincodes from
+    anywhere. An Area Manager may only act inside their own states (hard rule
+    3), so admitting one would mean a per-row territory reject — a confusing
+    thing to tell somebody uploading a vendor's file. Above that level the
+    territory rule does not apply at all, rather than applying by halves.
+
+    `created_by` is the STAFF user, so the trail says who actually did it. ⚠ A
+    consequence worth knowing: a `vendor_user` sees only tickets they raised
+    themselves, so a ticket imported this way is visible to the vendor account
+    but not to its sub-users. That is correct — they did not raise it — and
+    nobody would guess it.
+    """
+    data, name = await _read_upload(file)
+    report = await import_service.import_tickets(
+        db,
+        principal,
+        data,
+        name,
+        # An id in a request is an assertion, not a fact: the service resolves
+        # it through a company-scoped loader that 404s on anything outside the
+        # caller's own company.
+        vendor_id=vendorId,
+        dry_run=dryRun,
+        create_categories=createCategories,
+        submit_products=submitProducts,
+        expected_digest=expectedDigest,
+        # Staff may see the balance; it is their company's.
+        show_credits=True,
+    )
+    return envelope(report, message=_import_message(report))
 
 
 @router.get("/summary", response_model=ApiEnvelope[DashboardSummaryOut])
