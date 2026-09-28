@@ -46,7 +46,7 @@ prefilled (`ravi.sharma@reliancegreentech.in` / `demopass`); any 6 digits pass O
 (`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
 
 Tickets, escalations, the ledger, vendors, notifications, search, earnings, redemptions and Rules
-config are live too. What is still mock is **AI review** (`services/ai.ts`), the bulk **importer**, and two
+config are live too. What is still mock is **AI review** (`services/ai.ts`) and two
 functions in `services/settings.ts` (`inviteUser` and its sibling) — so binding each stays a
 one-line change and loading / empty / error states are already there.
 
@@ -387,7 +387,13 @@ adminWeb/
     pages/
       dashboard/DashboardPage.tsx
       tickets/            TicketListPage · TicketDetailPage · ManualEntryPage
-                          BulkUploadPage · ValidationResultPage · ForceClosePage
+                          TicketImportPanel · NewCategoryTree · ForceClosePage
+                          — the importer is a PANEL, not a dialog: it is the
+                            vendor's intake screen (the peer of /portal/tickets/new,
+                            also a page) and a 200-row rejects table needs the
+                            room. `BulkUploadPage`/`ValidationResultPage` were the
+                            mock's and are gone — there is no batch id now, so
+                            nothing to route a second screen on
       escalations/        EscalationQueuePage
                           — `BonusSetupPage` moved to `tickets/`, beside its
                             assign sibling; `ManualAssignPage` was the mock's
@@ -679,8 +685,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets` | `TicketListPage` | status pills, search, **default sort = SLA urgency** (breach → warn → ok → done) |
 | `/tickets/:id` | `TicketDetailPage` | facts grid · timeline & audit trail · customer · technician · proof-of-completion grid |
 | `/tickets/new` | `ManualEntryPage` | vendor/category/model · request type · customer · SLA · submit fires the slot request |
-| `/tickets/import` | `BulkUploadPage` | dropzone, 8 required columns, max 5,000 rows |
-| `/tickets/import/:batchId` | `ValidationResultPage` | per-row pass/reject **with reason**; rejects never block the file |
+| `/tickets/import` | — | still a **redirect** to `/tickets`. Staff import from a dialog on the list, which needs no route, no `routeMeta` entry and no rail entry — and restoring the route would put a screen that spends credits behind `jobs.view`, which is what Ticket List's `match: ["/tickets/"]` prefix resolves it to |
+| `/portal/tickets/import` | `VendorTicketImportPage` | the **Excel intake channel**. Dropzone → dry run on choose → tiles, the tree of categories it would create, the warn notices, the rejects table → a checkbox confirming the new categories → `Import N tickets`. Lit in the rail only for a vendor whose `intakeChannels` includes `Excel`, from `portalNav.ts`'s one entry |
 | `/tickets/:id/force-close` | `ForceClosePage` | reason + notes + **mandatory attachments** |
 | `/tickets/:id/assign` | `AssignTechnicianPage` | real ticket + a LIVE shortlist (`subcategoryId` + `pincode`, server-filtered), and a real `POST /tickets/:id/assign` |
 | `/tickets/:id/bonus` | `BonusSetupPage` | bands from Rules config; pool balance shown, not enforced; re-notify reports the technicians actually reached |

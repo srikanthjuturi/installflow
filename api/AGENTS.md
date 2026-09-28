@@ -1150,6 +1150,151 @@ Two traps that hid this:
   absolute paths, or it exits 127 and the previous server keeps serving while you believe you
   restarted it.
 
+## The bulk ticket importer — a spreadsheet in, tickets out
+
+`features/tickets/import_service.py`, `POST /tickets/import` (a vendor's own) and
+`POST /tickets/import/on-behalf` (staff, naming a vendor). It is the **Excel intake channel**
+that `core/intake.py` has described since before anything read it, and it keeps the contract
+`geo.import_geography` and `masters.import_serials` already set: two passes over one file, a
+dry run that writes nothing and returns exactly what the commit would do, per-row rejects that
+never block the good rows, and nothing parsed in the client.
+
+**The Category column names a whole chain**, root first, the last one marked:
+
+    Electronics, Television, Android TV(islastsubcategory)
+
+Anything missing is created. The marker is strictly a checksum — the last segment is the leaf by
+definition — and it is required anyway, because a truncated paste otherwise builds a branch in
+the wrong shape that a vendor cannot undo (there is no vendor DELETE for a node).
+
+⚠ **A comma is not a safe delimiter on its own.** `product_nodes.name` is free text, so
+`Cooking, Baking & Grills` is a legal name. **If a cell contains `>`, `>` is the delimiter;
+otherwise the comma is** — per cell, never mixed. A name containing `>` cannot be expressed,
+which is the trade; the console renders paths with `›` (U+203A), so nothing on screen collides.
+
+**The one conflict no single row can see** is two rows disagreeing about where products go —
+`A, B(islastsubcategory)` in one and `A, B, C(islastsubcategory)` in another. `B` cannot be both
+a leaf and a parent. **Both rows are rejected and the chain is dropped from the plan**: there is
+no way to know which was meant, and building it either way is a branch somebody did not ask for.
+Detected in memory, before anything is written.
+
+⚠ A ONE-segment chain is rejected in `parse_chain`, not left to the database. It asks for a root
+that holds products, which `leaf_below_root` forbids — but more importantly an unrejected one is
+a leaf path of length 1, so the reconciliation above would read every ordinary
+`Electronics, Television` row in the file as disagreeing with it, and one impossible cell would
+reject the whole sheet with a sentence about the wrong problem.
+
+**A product the file names but the catalogue lacks is SUBMITTED, not ticketed.** Pending, both
+prices NULL, and the rows naming it rejected with "waiting to be priced" — which holds whoever
+ran the import, because `approved_is_priced` means an approved row carries both figures and staff
+cannot price from a sheet with no price columns either. Somebody approves it on `/approvals`, the
+same file goes in again, and those rows import.
+
+**Which is why `tickets.external_ref` exists.** That second upload re-presents every row that
+already worked, and nothing else on the table could catch it — `serial_number` is deliberately
+not unique. So a row carries the vendor's own job number, unique per vendor through the partial
+index `uq_tickets_vendor_external_ref`, and a repeat is **skipped and reported, never rejected
+and never charged**. A row with no reference gets no such protection, and the template says so.
+
+**What the sheet deliberately does not carry:** no `Vendor` column (the tenancy boundary), no
+`Latitude`/`Longitude` (null is the true statement "this address was typed", and it is what keeps
+the pincode proof rule for this channel), and no slot columns — a slot must be one of the windows
+`offered_slots` produces with a 90-minute lead, so a sheet authored at 09:00 and uploaded at 14:00
+would have half its slots refused for a reason nobody could fix by editing it. Every imported
+ticket lands `Slot Pending` and the customer picks.
+
+**Shape rules are not restated.** Each row builds a real `TicketCreateRequest` with placeholder
+ids and catches `ValidationError`, so the description rule, the service type, the service level,
+the phone and the pincode shape cannot drift from the form. The two that need a database row reuse
+the single-ticket path's own sentences through `service.serial_refusal_text` and
+`service.pincode_refusal_text`. ⚠ The **past-date rule is the exception and has to be**: it is not
+in the schema — `create_ticket` applies it separately, because "has this day gone" needs a clock.
+`today_ist` is computed once for the whole file, so an upload straddling midnight judges every row
+against one instant.
+
+**The per-row work is deduplicated, not repeated.** Products resolved once per distinct
+(chain, brand, model); pincodes in one `IN`; rules memoised per node; every node loaded in one
+query; and **one** `sequences.allocate(…, count)` for every code in the file — the counter was
+redesigned for exactly this, and `service.next_code`'s own docstring says the old `COUNT(*)`
+scheme raced and that "bulk upload would have made that the normal case".
+
+**The commit is ONE transaction** — categories, pending products and tickets together. A row
+rejected for "waiting to be priced" is a normal outcome and rolls nothing back; only a hard
+failure does, and then nothing is written. Chain creation is deliberately not committed
+separately: a file that created twelve categories and then failed to charge would leave a
+catalogue nobody asked for and no tickets to explain it.
+
+**Credits are whole-or-nothing** (`core.credits.charge_tickets`, the bulk sibling of
+`charge_ticket`): one advisory lock, one balance read, N append-only entries. A partial charge
+would mean the importer choosing which of somebody's rows to drop for a reason unrelated to the
+rows, and `uq_credit_entries_company_ticket` makes a part-charged file a part-written one. The
+dry run already showed `required` against `available`, so a refusal here only fires on a race.
+⚠ **Take the lock LATE** — it is `pg_advisory_xact_lock`, held to the end of the transaction, and
+every single-ticket `create_ticket` takes the same key. Parse, resolve and build all 500 rows
+first, so a vendor raising one ticket by hand waits milliseconds rather than the whole import.
+
+**Slot-request WhatsApps are swept, not sent inline** — 500 Meta round trips do not fit in one
+request. Imported tickets are left `slot_request_status='pending'` and
+`sweeps.sweep_pending_slot_requests` drains them. That also closes a gap that predates the
+importer: `pending` is written in the constructor and only ever cleared by the send, so a process
+that died between the commit and the send left a customer nobody would ever ask, invisible to
+`sweep_silent_slots` (which keys on the `slot_requested` event that was never written). **`pending`
+only, never `failed`** — a failed row carries Meta's own words and is somebody's action item;
+retrying it would overwrite the reason.
+
+**Two storms are damped.** Pool frames are deduped to one per distinct `(pincode, node_path_ids)`;
+per-ticket console frames and `push_pool_job` are capped at 25 and skipped above it, because that
+function runs `technicians_covering` per ticket. ⚠ Above the cap a technician with the app CLOSED
+is not pushed — the pool frame reaches open apps and `sweep_unaccepted` still escalates, but a
+batched push ("12 new jobs near 500001") is the real fix and is its own piece of work.
+
+**Staff need a key of their own: `jobs.import`.** Not `jobs.create` — hard rule 2 — because that
+one was deliberately revoked from all four staff roles by `d5f61c07ab29` and the console reads it
+to decide whether to draw a Raise-a-ticket screen. Seeded to admin and national_head and paired
+with `require_min_rank(NATIONAL_HEAD)`: a bulk file carries pincodes from anywhere, and hard rule
+3 says an Area Manager acts only inside their own states, so admitting one would mean a per-row
+territory refusal rather than a rule that either applies or does not.
+
+### `resolve_category_chains` — the first function this schema has carried
+
+Migration `c9a41f7b0e83`. One plpgsql call resolves or creates every chain in the file; a 500-row
+sheet naming eight chains is eight chains' work in one round trip instead of up to 3,000 probes.
+It returns per-segment rows carrying a `conflict` code rather than raising — a raise would abort
+the importer's transaction and take the good rows with it.
+
+Three things in the body are load-bearing:
+
+- **The `'00000000-…'::uuid` sentinel is INLINE, twice, never a plpgsql `CONSTANT`.**
+  `uq_product_nodes_parent_name_lower` is an index on an EXPRESSION, and matching one needs the
+  planner to see that expression. A literal always matches; a variable arrives as a parameter, and
+  a GENERIC plan — which Postgres may switch to after the fifth execution, exactly when a session
+  has been importing for a while — leaves `$1` unfolded and cannot. On the `INSERT` that is loud;
+  on the `SELECT` it is silent, and the probe degrades to scanning every node in the database.
+  ⚠ On a small dev tree the planner prefers a seq scan either way, so this cannot be caught by
+  eye: `SET enable_seqscan = off` and confirm `Index Scan using uq_product_nodes_parent_name_lower`
+  with all three expressions in the `Index Cond`.
+- **`ON CONFLICT … DO NOTHING` returns no row**, so a lost race re-SELECTs what the winner wrote.
+  Correct only under READ COMMITTED, which `core/database.py` runs — setting an `isolation_level`
+  on that engine means revisiting this.
+- **`depth` and `ancestor_ids` are computed exactly as `masters.service.create_node` computes
+  them.** That module calls itself the only writer of those two columns; this is the second, and
+  the three CHECKs are what catch it if they ever disagree. `models/product.py` warns a wrong
+  `ancestor_ids` breaks technician eligibility SILENTLY — jobs simply stop being offered.
+
+It is **additive**, with one deliberate exception: it will tick `is_leaf` on an existing node that
+has no children, because that is the one edit the sheet genuinely asserts and refusing it would
+strand a vendor who cannot edit a node staff created. Reported as `marked_leaf` so the console
+names it before anybody confirms — never silent. ⚠ `sort_order` is left at 0 where `create_node`
+computes `max + 1`; doing that per segment needs a correlated aggregate and a lock to be race-free,
+for a column that only decides display order.
+
+⚠ **`audit_tenancy` cannot read a plpgsql body.** It gained a fourth check for exactly this —
+it refuses any `SECURITY DEFINER` function in `public` and names any function not in
+`KNOWN_FUNCTIONS`, so a new one has to be added there with the invariant its body rests on. What
+carries the weight inside is that `p_company_id` is always the principal's and never a request
+value, every statement filters on it, and the composite self FK `fk_product_nodes_company_parent`
+makes a node under another company's parent impossible rather than merely unchecked.
+
 ## Vendor-submitted products — the approval flow
 
 A vendor may add categories and products to the master, and **may not price them**. What a
