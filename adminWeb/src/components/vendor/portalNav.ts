@@ -1,5 +1,13 @@
 import type { LucideIcon } from "lucide-react";
-import { FileText, ListFilter, Package, Tags, UserCog } from "lucide-react";
+import {
+  FileSpreadsheet,
+  FileText,
+  ListFilter,
+  Package,
+  Tags,
+  UserCog,
+  Wallet,
+} from "lucide-react";
 import type { IntakeChannel } from "@/types/vendor";
 
 /**
@@ -32,17 +40,29 @@ export interface PortalNavItem {
 /**
  * Intake channels that have a portal screen TODAY.
  *
- * A map, not a boolean, because this is what `intakeChannels` decides. `Excel`
- * is deliberately absent: the bulk importer has no backend, so a vendor given
- * that channel simply sees no extra entry screen. Add it here the day the real
- * importer lands and the nav item appears on its own. `API` has no screen by
- * definition — it is somebody else's application calling ours.
+ * A map, not a boolean, because this is what `intakeChannels` decides. `API`
+ * has no screen by definition — it is somebody else's application calling ours,
+ * and there is nothing for a person to open.
+ *
+ * `Excel` was absent until the importer had a backend; it has one now, so a
+ * vendor given that channel sees the entry on its own.
+ *
+ * Both write routes are gated on `jobs.create`, the same key, because they are
+ * the same act: a vendor raising its own tickets. The staff route is the one
+ * that needed a key of its own (`jobs.import`) — see the server's note on why
+ * re-granting `jobs.create` to staff would undo `d5f61c07ab29`.
  */
 const CHANNEL_ENTRY: Partial<Record<IntakeChannel, PortalNavItem>> = {
   Manual: {
     label: "Raise a ticket",
     to: "/portal/tickets/new",
     icon: FileText,
+    feature: "jobs.create",
+  },
+  Excel: {
+    label: "Import tickets",
+    to: "/portal/tickets/import",
+    icon: FileSpreadsheet,
     feature: "jobs.create",
   },
 };
@@ -76,6 +96,19 @@ const ALWAYS: PortalNavItem[] = [
     icon: ListFilter,
     match: ["/portal/tickets/"],
     feature: "jobs.view",
+  },
+  {
+    label: "Credit",
+    to: "/portal/credit",
+    icon: Wallet,
+    match: ["/portal/credit/"],
+    // What this vendor owes the company for jobs it raised, and paying it.
+    // Gated on `vendor.credit`, seeded to `vendor` and NOT `vendor_user` — the
+    // same line `vendor.users` draws: a sub-user raises tickets, settling up is
+    // a vendor-admin act. A sub-user still learns intake is paused, because the
+    // banner over the ticket form reads `GET /tickets/intake-status`, which is
+    // on `jobs.create`.
+    feature: "vendor.credit",
   },
   { label: "Users", to: "/portal/users", icon: UserCog, feature: "vendor.users" },
 ];

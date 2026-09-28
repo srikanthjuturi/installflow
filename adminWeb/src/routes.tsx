@@ -36,6 +36,12 @@ const RedemptionsPage = lazy(
 const RedemptionPage = lazy(() => import("@/pages/redemptions/RedemptionPage"));
 const CreditsPage = lazy(() => import("@/pages/credits/CreditsPage"));
 const RechargePage = lazy(() => import("@/pages/credits/RechargePage"));
+const VendorCreditPage = lazy(
+  () => import("@/pages/vendorCredit/VendorCreditPage")
+);
+const VendorPaymentPage = lazy(
+  () => import("@/pages/vendorCredit/VendorPaymentPage")
+);
 const PlatformRulesPage = lazy(() => import("@/pages/superadmin/PlatformRulesPage"));
 const PlatformRechargesPage = lazy(
   () => import("@/pages/superadmin/PlatformRechargesPage")
@@ -47,6 +53,12 @@ const VendorProductsPage = lazy(
   () => import("@/pages/vendor/VendorProductsPage")
 );
 const VendorBrandsPage = lazy(() => import("@/pages/vendor/VendorBrandsPage"));
+const VendorMyCreditPage = lazy(
+  () => import("@/pages/vendor/VendorMyCreditPage")
+);
+const VendorMyPaymentPage = lazy(
+  () => import("@/pages/vendor/VendorMyPaymentPage")
+);
 const ForceClosePage = lazy(() => import("@/pages/tickets/ForceClosePage"));
 const AssignTechnicianPage = lazy(
   () => import("@/pages/tickets/AssignTechnicianPage")
@@ -87,6 +99,9 @@ const VendorTicketsPage = lazy(
 );
 const VendorNewTicketPage = lazy(
   () => import("@/pages/vendor/VendorNewTicketPage")
+);
+const VendorTicketImportPage = lazy(
+  () => import("@/pages/vendor/VendorTicketImportPage")
 );
 const VendorUsersPage = lazy(() => import("@/pages/vendor/VendorUsersPage"));
 const PrivacyPolicyPage = lazy(
@@ -241,6 +256,15 @@ export const routes: RouteObject[] = [
             children: [
               { path: "portal/tickets", element: <VendorTicketsPage /> },
               { path: "portal/tickets/new", element: <VendorNewTicketPage /> },
+              // The Excel intake channel. Lit by `portalNav.ts`'s CHANNEL_ENTRY
+              // only for a vendor whose `intakeChannels` includes it; the
+              // portal guard redirects anybody else who types the URL, because
+              // it reads the same table. Declared BEFORE `portal/tickets/:id`
+              // so "import" is not parsed as a ticket id.
+              {
+                path: "portal/tickets/import",
+                element: <VendorTicketImportPage />,
+              },
               {
                 path: "portal/tickets/:id",
                 element: <TicketDetailPage backTo="/portal/tickets" actions={null} />,
@@ -252,6 +276,15 @@ export const routes: RouteObject[] = [
               { path: "portal/products", element: <VendorProductsPage /> },
               // `vendor.catalogue` too, through the same table.
               { path: "portal/brands", element: <VendorBrandsPage /> },
+              // Gated on `vendor.credit` through `portalNav.ts`. The payment
+              // route rides the entry's `match` prefix — the portal guard
+              // DENIES anything that table does not name, so a route added
+              // here alone would be silently unreachable.
+              { path: "portal/credit", element: <VendorMyCreditPage /> },
+              {
+                path: "portal/credit/payments/:id",
+                element: <VendorMyPaymentPage />,
+              },
               // The bell is in the shared Topbar, so a vendor has always been
               // able to see it. Without this route it linked into the ops tree,
               // where `RequireOps` bounced them straight back to /portal — a
@@ -336,6 +369,13 @@ export const routes: RouteObject[] = [
               { path: "territory", element: <TerritoryPage /> },
               { path: "settings/rules", element: <RulesConfigPage /> },
               { path: "settings/users", element: <UsersRolesPage /> },
+              // Guarded by `vendors.credit` off the nav table, the payment
+              // route through the entry's `match` prefix.
+              { path: "vendor-credit", element: <VendorCreditPage /> },
+              {
+                path: "vendor-credit/payments/:id",
+                element: <VendorPaymentPage />,
+              },
               // Guarded by `credits.manage` off the nav table, the recharge
               // route through the entry's `match` prefix.
               { path: "credits", element: <CreditsPage /> },

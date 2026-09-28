@@ -88,8 +88,9 @@ export const LOCAL_AVAILABLE: readonly IntakeChannel[] = ["Excel", "Manual"];
  */
 export const CHANNEL_SCREEN: Record<IntakeChannel, string | null> = {
   API: null,
-  // The importer has no backend yet, so ticking Excel grants nothing today.
-  Excel: null,
+  // Both real now: ticking either adds an entry screen to this vendor's rail,
+  // through `portalNav.ts`'s CHANNEL_ENTRY.
+  Excel: "the vendor portal",
   Manual: "the vendor portal",
 };
 
@@ -264,6 +265,37 @@ export const vendorSchema = z.object({
   status: z.enum(VENDOR_STATUSES),
   addressSearch: z.enum(ADDRESS_SEARCH),
   locationCheck: z.enum(LOCATION_CHECK),
+  /**
+   * The credit line, in whole RUPEES — what this vendor may owe before its
+   * intake stops. The form multiplies by 100 on submit.
+   *
+   * A STRING, and blank means "the company's own default", which the SERVER
+   * supplies from `company_rules.vendor_credit_limit_paise`. That is the same
+   * shape `nodeRulesSchema` uses and for the same reason: `valueAsNumber` on an
+   * empty box yields `NaN`, which reports as "expected number, received nan" —
+   * unactionable, and indistinguishable from the perfectly good answer of
+   * "whatever the company decided".
+   *
+   * Blank rather than a prefilled 5,000 because this form does not block on
+   * loading anything (see the intake-channel field), so a number typed in here
+   * before the rules arrived would be a number nobody chose. The hint names the
+   * company's figure once it is known.
+   *
+   * Bounds mirror `LIMITS["vendor_credit_limit_paise"]` in
+   * `api/app/core/rules.py`: 0 to one crore. Zero is allowed and is a real
+   * setting, not a slack floor — it means this vendor raises nothing until
+   * somebody gives it room. Lowering it below what a vendor already owes is
+   * allowed too: it stops them raising more while they settle, which is the
+   * whole point of the number.
+   */
+  creditLimit: z
+    .string()
+    .trim()
+    .refine(
+      (v) => v === "" || /^\d{1,8}$/.test(v),
+      "The credit limit must be a whole number of rupees"
+    )
+    .refine((v) => v === "" || Number(v) <= 10_000_000, "At most ₹1,00,00,000"),
   brands: brandRowsSchema,
 });
 
