@@ -7,9 +7,11 @@ in core rather than in any one of them (hard rule 4).
 """
 
 import asyncio
+import dataclasses
 import datetime
 import logging
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -265,6 +267,23 @@ async def charge_ticket(
     )
     await db.flush()
 
+    await _ring_crossing(db, company_id, before=before, after=after, settings=settings)
+
+
+async def _ring_crossing(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    *,
+    before: int,
+    after: int,
+    settings: PlatformSettings,
+) -> None:
+    """The bells, rung at the CROSSING and nowhere else.
+
+    Shared by the single charge and the bulk one so a 300-ticket import rings
+    exactly what 300 separate tickets would have rung — once — rather than three
+    hundred times, which is the noise that teaches people to ignore the bell.
+    """
     if paused(after, settings):
         await _alert(
             db,
@@ -283,6 +302,120 @@ async def charge_ticket(
                 f"pause. Recharge to keep raising tickets."
             ),
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class CreditQuote:
+    """What a batch of tickets would cost, and whether it fits.
+
+    One shape so the dry run's figures and the commit's decision cannot come
+    from different arithmetic — the importer shows `required` / `available`
+    before anybody presses Import, and `charge_tickets` re-derives the same
+    `short` under the lock.
+    """
+
+    #: `platform_settings.ticket_credits`. Zero means credits are switched off.
+    per_ticket: int
+    required: int
+    available: int
+    #: How far below zero the balance may go — a POSITIVE number.
+    floor: int
+    #: True when the WHOLE batch cannot be charged. See `charge_tickets`.
+    short: bool
+    #: Credits needed to make it fit. 0 unless `short`.
+    shortfall: int
+
+
+async def quote_tickets(
+    db: AsyncSession, company_id: uuid.UUID, *, count: int
+) -> CreditQuote:
+    """Price a batch without charging it. Reads only."""
+    settings = await load_platform_settings(db)
+    per_ticket = settings.ticket_credits
+    available = await balance(db, company_id)
+    required = per_ticket * max(count, 0)
+    after = available - required
+    short = per_ticket > 0 and after < -settings.minus_credit_limit
+    return CreditQuote(
+        per_ticket=per_ticket,
+        required=required,
+        available=available,
+        floor=settings.minus_credit_limit,
+        short=short,
+        shortfall=(-settings.minus_credit_limit - after) if short else 0,
+    )
+
+
+async def charge_tickets(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    ticket_ids: Sequence[uuid.UUID],
+    by_user: uuid.UUID | None,
+) -> int:
+    """Take credits for a whole imported file, or refuse the whole file.
+
+    The bulk sibling of `charge_ticket`, and it exists for one reason beyond
+    speed: calling that one in a loop would take the advisory lock and re-sum
+    `credit_entries` once per row — five hundred aggregate scans inside a single
+    transaction, all of them answering the same question.
+
+    **Whole or nothing, deliberately.** A partial charge would mean the importer
+    deciding which of somebody's rows to drop for a reason that has nothing to
+    do with the rows, and `uq_credit_entries_company_ticket` makes one charge per
+    ticket structural, so a part-charged file is a part-written file. The reader
+    is not ambushed by it either: the dry run already showed `required` against
+    `available`, so the refusal here only fires on a genuine race.
+
+    Per-ticket `CreditEntry` rows are still written — `ticket_id` is what the
+    Credit history screen reads, and one lumped row would make an import
+    unauditable.
+
+    Returns the credits spent. Call before the commit, like its sibling.
+    """
+    if not ticket_ids:
+        return 0
+
+    settings = await load_platform_settings(db)
+    charge = settings.ticket_credits
+    if charge <= 0:
+        return 0
+
+    await lock(db, company_id)
+    before = await balance(db, company_id)
+    total = charge * len(ticket_ids)
+    after = before - total
+    if after < -settings.minus_credit_limit:
+        name = await db.scalar(select(Company.name).where(Company.id == company_id))
+        # A task, not an await — same reason as `charge_ticket`'s: this request
+        # holds its worker's only connection until the 409 has rolled back.
+        _task = asyncio.create_task(_ring_refusal(company_id, before))
+        _background.add(_task)
+        _task.add_done_callback(_background.discard)
+        raise AppError(
+            409,
+            "OUT_OF_CREDITS",
+            f"This file needs {credits_label(total)} credits and "
+            f"{credits_label(before + settings.minus_credit_limit)} are left. "
+            f"Contact {company_name(name)} to top up, then upload it again.",
+        )
+
+    db.add_all(
+        [
+            CreditEntry(
+                company_id=company_id,
+                kind="ticket",
+                credits=charge,
+                ticket_id=ticket_id,
+                created_by=by_user,
+            )
+            for ticket_id in ticket_ids
+        ]
+    )
+    await db.flush()
+
+    await _ring_crossing(db, company_id, before=before, after=after, settings=settings)
+    return total
 
 
 async def credit_recharge(

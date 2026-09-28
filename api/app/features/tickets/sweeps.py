@@ -2,14 +2,21 @@
 
 Run by `core.scheduler.ticker`. Each returns how many notifications it wrote.
 
-Six of them now, and two are different in kind. `sweep_no_shows` reports a
+Seven of them now, and three are different in kind. `sweep_no_shows` reports a
 FAILURE that has already happened rather than a risk that still can be
 prevented; it deliberately changes nothing and charges nothing — see its own
-note on why a clock must not be allowed to fine anybody. And two of the six —
-`sweep_slot_reminders` and `sweep_customer_notice` — raise no notification at
-all: they send a message to the person who needs it, technician and customer
-respectively, and record having done so on the ticket. A routine courtesy in an
-escalation queue is the noise that makes people stop reading it.
+note on why a clock must not be allowed to fine anybody. And three of the seven
+— `sweep_slot_reminders`, `sweep_customer_notice` and
+`sweep_pending_slot_requests` — raise no notification at all: they send a
+message to the person who needs it, technician and customer respectively, and
+record having done so on the ticket. A routine courtesy in an escalation queue
+is the noise that makes people stop reading it.
+
+⚠ `sweep_pending_slot_requests` is the only one that exists to do somebody
+else's work rather than to notice something. `create_ticket` sends its own slot
+request; the bulk importer cannot, because five hundred WhatsApp round trips do
+not fit in one request. It is also the only retry in this module, and it is
+deliberately narrow — `pending` only, never `failed`. Its docstring says why.
 
 ## Idempotency is checked against whatever the sweep already changed
 
@@ -99,7 +106,10 @@ from app.core.slots import clock, time_is_choosable_clause, when_label
 from app.core.tickets import (
     NO_SHOW_GRACE_MINUTES,
     NO_SHOW_LOOKBACK_HOURS,
+    SLOT_REQUEST_BATCH,
+    SLOT_REQUEST_GRACE_MINUTES,
 )
+from app.features.tickets.service import send_slot_request
 from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.membership import Membership
@@ -803,6 +813,96 @@ async def sweep_customer_notice(db: AsyncSession) -> int:
         # than find it on the next reload.
         await publish_ticket_changed(db, row)
     return len(rows)
+
+
+async def sweep_pending_slot_requests(db: AsyncSession) -> int:
+    """The customer was never asked to pick a time.
+
+    The odd one out here: it raises no notification and reports no risk. It
+    SENDS the thing somebody is waiting for, and returns how many went.
+
+    ## Why a sweep at all
+
+    `create_ticket` sends this itself, after its commit, and writes `sent` or
+    `failed` on the row. That is the right shape for one ticket and impossible
+    for five hundred: the bulk importer cannot hold an HTTP request open for a
+    WhatsApp round trip per row, and Meta would not take them at that rate
+    anyway. So the importer writes the tickets, leaves `slot_request_status` at
+    `pending`, and this drains the queue at `SLOT_REQUEST_BATCH` a tick.
+
+    It also closes a gap that predates the importer. `pending` is written in the
+    constructor and only ever cleared by the send, so a process that died
+    between the commit and the send left a ticket whose customer was never asked
+    and which **nothing** would ever retry — invisible to `sweep_silent_slots`,
+    which keys on the `slot_requested` event that never got written.
+
+    ## `pending` only — never `failed`
+
+    A `failed` row carries Meta's own words in `slot_request_error` and is
+    somebody's action item on the console. Retrying it automatically would
+    overwrite the reason with a fresh one and hide that the number is wrong, the
+    template is unapproved, or the customer has blocked us. "Retry the failures"
+    is the obvious instinct here and it is the wrong one.
+
+    ## Idempotency
+
+    The send itself is the marker, as everywhere else in this module: it writes
+    `sent` or `failed`, and either value takes the row out of the predicate. The
+    grace window is what keeps it from racing `create_ticket`'s own send.
+    """
+    now = _now()
+    rows = list(
+        await db.scalars(
+            select(Ticket)
+            .where(
+                Ticket.deleted_at.is_(None),
+                Ticket.slot_request_status == "pending",
+                Ticket.slot_token.is_not(None),
+                Ticket.slot_start.is_(None),
+                # The same guard `sweep_silent_slots` uses: do not chase a time
+                # for a job already under way, or one nobody can still choose
+                # for. Their link no longer offers one either.
+                time_is_choosable_clause(),
+                Ticket.created_at
+                <= now - datetime.timedelta(minutes=SLOT_REQUEST_GRACE_MINUTES),
+            )
+            # Oldest first — the customer who has been waiting longest is asked
+            # first, and a large import drains in the order it was uploaded.
+            .order_by(Ticket.created_at)
+            .limit(SLOT_REQUEST_BATCH)
+        )
+    )
+    if not rows:
+        return 0
+
+    sent = 0
+    for row in rows:
+        # Never raises; records the outcome on the row. One commit per ticket,
+        # deliberately: a failure on row 40 must not throw away the 39 messages
+        # already accepted by Meta, which is exactly what one big transaction
+        # around a sequence of external calls would do.
+        await send_slot_request(db, row)
+        db.add(
+            TicketEvent(
+                company_id=row.company_id,
+                ticket_id=row.id,
+                kind="slot_requested",
+                actor_kind="system",
+                actor_label="WhatsApp",
+                # Meta's own words when it refused, so the trail says WHY a
+                # customer never got the link rather than only that one was due.
+                note=(
+                    f"Slot link sent to {row.customer_phone}"
+                    if row.slot_request_status == "sent"
+                    else f"Could not send: {row.slot_request_error or 'unknown error'}"
+                ),
+            )
+        )
+        await publish_ticket_changed(db, row)
+        await db.commit()
+        if row.slot_request_status == "sent":
+            sent += 1
+    return sent
 
 
 async def sweep_no_shows(db: AsyncSession) -> int:

@@ -14,6 +14,7 @@ from app.core.scheduler import ticker
 from app.features.tickets.sweeps import (
     sweep_customer_notice,
     sweep_force_close,
+    sweep_pending_slot_requests,
     sweep_silent_slots,
     sweep_no_shows,
     sweep_slot_reminders,
@@ -92,6 +93,11 @@ async def lifespan(app: FastAPI):
     # because the sweeps are ticket-domain queries and core must not import a
     # slice — main.py is already the composition root that imports every one.
     ticker.register("escalation", sweep_unaccepted)
+    # Registered FIRST of the slot pair: it asks the customer to pick a time,
+    # and `slot-silence` chases the ones who did not answer. On a tick where a
+    # ticket qualifies for neither yet, order costs nothing; on the tick after
+    # an import, asking before chasing is the only sane sequence.
+    ticker.register("slot-request", sweep_pending_slot_requests)
     ticker.register("slot-silence", sweep_silent_slots)
     ticker.register("force-close", sweep_force_close)
     ticker.register("slot-reminder", sweep_slot_reminders)
