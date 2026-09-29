@@ -46,7 +46,7 @@ prefilled (`ravi.sharma@reliancegreentech.in` / `demopass`); any 6 digits pass O
 (`/masters/*`) and **technicians** (`/technicians/*`, `/onboarding/*`).
 
 Tickets, escalations, the ledger, vendors, notifications, search, earnings, redemptions and Rules
-config are live too. What is still mock is **AI review** (`services/ai.ts`), the bulk **importer**, and two
+config are live too. What is still mock is **AI review** (`services/ai.ts`) and two
 functions in `services/settings.ts` (`inviteUser` and its sibling) — so binding each stays a
 one-line change and loading / empty / error states are already there.
 
@@ -247,6 +247,89 @@ Two seams to know about:
     optional) and a recharge (UTR required); `UpiQr` moved to `shared/` for the same reason.
   - The Companies table gained **Credits**. Every string on these screens is net-new and awaiting
     sign-off.
+- **Vendor credit: a VENDOR pays this company for the jobs it raised.** Not the Credits screen above
+  — that is what this company owes the PLATFORM, charged when a ticket is raised; this is what its
+  vendors owe IT for work delivered, charged when one closes. Two entries on the rail rather than two
+  tabs on one screen, because a vendor can be stopped by either and the remedies are different
+  people's work. Three surfaces.
+  - **Ops (Admin, National Head — `vendors.credit` plus a rank floor the server holds):**
+    `/vendor-credit` with `?view=vendors|payments|requests`, the `ViewSwitch` Credits and Approvals
+    already use, each list keyed so switching starts it from its own defaults. The two queues carry a
+    count from `/vendor-credit/count`; **Vendors** does not, because "how many vendors do we have" is
+    not work waiting for anybody, and a zero badge is not drawn at all. The standing table shows all
+    four figures — limit, owed, on open tickets, left — rather than just "available", because the
+    question a manager has is WHY a vendor is out of room: one that owes nothing but has committed
+    its line to open work needs a bigger line, one that owes it all needs to pay. A row opens that
+    vendor on `/vendors?search=<name>`, which `useUrlSeededListParams` reads — the same landing
+    global search uses.
+    `/vendor-credit/payments/:id` is the decision: the screenshot, the UTR, Confirm or Reject. **No
+    QR on that page** — staff are the payee, so the server sends `upiUri` as null. A limit request is
+    decided in place, because it is a number and a sentence; a payment earns a page because there is
+    something to look at.
+    ⚠ **`pausedOnly` filters the PAGE, not the query**, because "paused" is a sum over two other
+    tables. The total therefore counts the page's vendors, not the matches — see
+    `service.vendors_page`.
+  - **Vendor (`vendor.credit`, seeded to `vendor` and NOT `vendor_user`):** `/portal/credit` — room
+    left, owed, what open tickets commit, the statement, "Pay now" and "Ask for a higher limit";
+    `/portal/credit/payments/:id` carries the QR while unclaimed, then `PaymentProofForm`, exactly as
+    a recharge does. A rejected payment says how to resubmit without paying twice — a new payment,
+    the same UTR.
+    ⚠ **This is the one place a portal shows a vendor a figure rather than a boolean**, and the
+    departure is argued in `VendorCreditOut`: an address search costs them nothing and has no action,
+    a credit line is a debt with a consequence they feel and a remedy only they can carry out. Their
+    company's own balance with the platform stays hidden, unchanged.
+    ⚠ **`PayDialog` takes two decimals, not whole rupees.** A debt is whatever the tickets came to
+    and `vendor_price_paise` is only `> 0`, so a vendor can owe ₹3,200.50 — a whole-rupee box could
+    not offer that last 50 paise and the server would go on reporting it as owed while refusing every
+    request to clear it. The two-decimal check compares with a tolerance, because `3200.5 * 100` is
+    `320050.00000000006` in binary floating point and an exact test refuses a figure typed correctly.
+  - **`VendorNewTicketPage`** branches its paused notice on the new `reason` from
+    `/tickets/intake-status`: `company` keeps today's wording, `vendor` says the line is used up and
+    links to `/portal/credit`. `company` wins when both are shut — settling what the vendor owes
+    would not lift a company-level pause.
+  - **`TicketImportPanel`** blocks Import on `vendorCreditPaused || vendorCreditShort` beside the two
+    company gates, and shows "Vendor credit needed" against what is left. Without it a vendor whose
+    line is used up would press Import straight into a 409 — exactly what the company gates exist to
+    prevent, one party along.
+  - **Rules Config** gained a **Vendor credit** card (the default line a new vendor is stamped with;
+    `SpanField` took a `min` prop so it can floor at 0, which is a real setting) and
+    **`VendorPaymentAccountCard`** — the company's own UPI ID, with its own Save because it is not a
+    rule, is stored on `companies` rather than `company_rules`, and is guarded by `vendors.credit`
+    plus a rank floor rather than `settings.edit`.
+  - **The Vendors table** gained **Credit left**, and the vendor form a **Credit limit** box that is
+    BLANK by default and means "the company's default", which the server supplies. Blank rather than
+    prefilled because that form blocks on loading nothing, so a number typed in before the rules
+    arrived would be a number nobody chose; the hint names the company's figure once it is known.
+  - **The force-close form** gained a second amount — **Bill &lt;vendor&gt;** — prefilled with the
+    ticket's stamped price and clearable to nothing. Always shown, unlike the technician payout:
+    every ticket has a vendor. The two are independent and nothing couples them.
+  - **`RecordPaymentDialog`** — money that arrived by NEFT, RTGS, cheque or cash,
+    started from the vendor's row on the **Vendors** view because recording one
+    begins with the line it clears, not with the queue of claims the vendor made.
+    Amount (two decimals, uncapped, warns when it exceeds what is owed), method
+    from a fixed list, the day it ARRIVED, an optional reference and an optional
+    attachment. The copy is blunt that it restores the limit at once and cannot be
+    undone, because unlike every other action here it takes effect on one person's
+    word. `useWatch`, not `watch()` — the `ForceCloseForm` pattern and the one the
+    lint rule accepts.
+  - **Both payment surfaces print WHICH kind it was** — a `How` column and a `How`
+    row reading "UPI · the vendor paid a QR and claimed it" or
+    "NEFT · recorded from your own records". They must never read alike: one is the
+    vendor's word plus ours, the other is ours alone. A staff record shows no QR,
+    no payee and no Confirm/Reject — it is already decided.
+  - **An overpayment reads as "in credit"**, on the vendor's own card and in the
+    standings column, rather than as a negative amount owed — which is not a thing
+    anybody says.
+  - `RejectVendorCreditDialog` is this slice's own, NOT `approvals`' `RejectReasonDialog`: these
+    `reject_reason` columns are `String(160)` where that one is written against 255, and a shared
+    schema would let a reason through that the server then refuses.
+  - `ApproveLimitDialog` floors at the vendor's current limit, and **the server refuses a lower
+    figure too** (422 `BAD_AMOUNT`) — an "approval" that cut a line would write `approved` over a
+    reduction. Cutting a line is done on the Vendors form, where it reads as what it is.
+  - Three new notification kinds — `vendor_credit`, `vendor_payment`, `vendor_credit_request` — in
+    the union, the ordered array and `kinds.ts`, beside `credits`/`recharge` because they are the
+    same work seen from the other end. Every string on these screens is net-new and awaiting
+    sign-off.
 - **Editing a pincode by hand** (`PincodeFormDialog`, `SwitchOffPincodeDialog`, and the `Off` chip
   badge in `PincodeChips`) is in the same position: the prototype's Geography screen is read-only
   apart from the import, so **every string is net-new** and needs sign-off rather than extraction.
@@ -387,7 +470,13 @@ adminWeb/
     pages/
       dashboard/DashboardPage.tsx
       tickets/            TicketListPage · TicketDetailPage · ManualEntryPage
-                          BulkUploadPage · ValidationResultPage · ForceClosePage
+                          TicketImportPanel · NewCategoryTree · ForceClosePage
+                          — the importer is a PANEL, not a dialog: it is the
+                            vendor's intake screen (the peer of /portal/tickets/new,
+                            also a page) and a 200-row rejects table needs the
+                            room. `BulkUploadPage`/`ValidationResultPage` were the
+                            mock's and are gone — there is no batch id now, so
+                            nothing to route a second screen on
       escalations/        EscalationQueuePage
                           — `BonusSetupPage` moved to `tickets/`, beside its
                             assign sibling; `ManualAssignPage` was the mock's
@@ -679,8 +768,8 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/tickets` | `TicketListPage` | status pills, search, **default sort = SLA urgency** (breach → warn → ok → done) |
 | `/tickets/:id` | `TicketDetailPage` | facts grid · timeline & audit trail · customer · technician · proof-of-completion grid |
 | `/tickets/new` | `ManualEntryPage` | vendor/category/model · request type · customer · SLA · submit fires the slot request |
-| `/tickets/import` | `BulkUploadPage` | dropzone, 8 required columns, max 5,000 rows |
-| `/tickets/import/:batchId` | `ValidationResultPage` | per-row pass/reject **with reason**; rejects never block the file |
+| `/tickets/import` | — | still a **redirect** to `/tickets`. Staff import from a dialog on the list, which needs no route, no `routeMeta` entry and no rail entry — and restoring the route would put a screen that spends credits behind `jobs.view`, which is what Ticket List's `match: ["/tickets/"]` prefix resolves it to |
+| `/portal/tickets/import` | `VendorTicketImportPage` | the **Excel intake channel**. Dropzone → dry run on choose → tiles, the tree of categories it would create, the warn notices, the rejects table → a checkbox confirming the new categories → `Import N tickets`. Lit in the rail only for a vendor whose `intakeChannels` includes `Excel`, from `portalNav.ts`'s one entry |
 | `/tickets/:id/force-close` | `ForceClosePage` | reason + notes + **mandatory attachments** |
 | `/tickets/:id/assign` | `AssignTechnicianPage` | real ticket + a LIVE shortlist (`subcategoryId` + `pincode`, server-filtered), and a real `POST /tickets/:id/assign` |
 | `/tickets/:id/bonus` | `BonusSetupPage` | bands from Rules config; pool balance shown, not enforced; re-notify reports the technicians actually reached |

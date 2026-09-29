@@ -14,7 +14,7 @@ supports" — that needs the model row, so it is in the service. Neither can
 
 import datetime
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -536,6 +536,29 @@ class ForceCloseRequest(AppModel):
     #: route to paying more than the job was ever worth.
     technicianPayoutPaise: int | None = Field(default=None, ge=0)
 
+    #: What to BILL the vendor for the same job, in paise. The manager decides,
+    #: for the mirror of the reason above: only they know whether the visit
+    #: happened.
+    #:
+    #: A customer who was visited but never answered the confirmation owes the
+    #: vendor's price in full — the work was done, and what failed was the
+    #: customer replying, which was never the vendor's to fix. A ticket whose
+    #: customer never confirmed a slot had nobody attend, and billing the vendor
+    #: for it would charge them for our own unfilled appointment.
+    #:
+    #: Defaulting to None rather than to the full price is deliberate, and it is
+    #: the opposite default from what the console shows. The FORM offers the full
+    #: stamped price prefilled, because that is the common case and a manager
+    #: should have to think to reduce it. The SCHEMA defaults to nothing, because
+    #: a body that never mentioned this field came from a client that has never
+    #: heard of it, and inventing a bill from silence is the one mistake here
+    #: that takes somebody's money.
+    #:
+    #: `0` and omitted both bill nothing and write NO entry, exactly as above.
+    #: The ceiling is the ticket's own `vendor_price_paise`, enforced in the
+    #: service where the ticket is in hand.
+    vendorChargePaise: int | None = Field(default=None, ge=0)
+
 
 class TicketAttachmentOut(AppModel):
     """One force-closure attachment, served through a short-lived link."""
@@ -622,14 +645,159 @@ class AttentionOut(AppModel):
 
 
 class IntakeStatusOut(AppModel):
-    """For a vendor about to raise a ticket: would it be refused right now?
+    """For a vendor about to raise a ticket: would it be refused, and by which gate?
 
-    A yes or no and nothing else. Whether the company is paused is something
-    its vendor needs to know before filling a form; how many credits it has is
-    not their business.
+    Two gates stop intake and either one alone is enough — the COMPANY's credits
+    with the platform, and the VENDOR's own credit line with the company. See
+    `service.intake_status` for why both are here and which takes precedence.
     """
 
     paused: bool
+    #: Which gate is shut, so the form can offer the right remedy. `company`
+    #: when both are.
+    #:
+    #: Still no figures on either side. The company's balance is not its
+    #: vendor's business; the vendor's own line IS, and it reads it from
+    #: `GET /vendor-credit/me` rather than from here — this endpoint exists to
+    #: be cheap enough to ask on every page load.
+    reason: Literal["company", "vendor"] | None = None
+
+
+# ── the bulk importer's report ───────────────────────────────────────────────
+#
+# The same two-pass shape as `geo.ImportReport` and `masters.SerialImportReport`:
+# a dry run writes nothing and returns exactly what the commit would do, so
+# every number on screen is the server's own count rather than a guess made in a
+# browser that never parsed the file.
+
+
+class TicketImportReject(AppModel):
+    """One row the importer will not raise a ticket for, and why.
+
+    `reason` is the sentence a person reads — often the very sentence the
+    single-ticket path raises, reused rather than restated. `code` is for the
+    client, SCREAMING_SNAKE and stable, the same contract `AppError.code` has.
+    """
+
+    row: int
+    code: str
+    reason: str
+    #: Which column to look at. The console highlights it in the rejects table.
+    field: str | None = None
+    #: The offending cell, truncated. A reject that does not quote the value
+    #: makes somebody count rows in a spreadsheet to find it.
+    value: str | None = None
+
+
+class CategoryToCreate(AppModel):
+    """A category chain the file names that does not exist yet.
+
+    `newSegments` is only the levels that are missing, so the console can print
+    the whole path with the existing part muted — which answers "what is new"
+    and "where does it hang" in one line.
+    """
+
+    #: `Electronics › Television › Android TV`, for display.
+    path: str
+    newSegments: list[str] = Field(default_factory=list)
+    depth: int
+    #: True when this chain's last level will be marked as the last
+    #: sub-category. See `markedLeaf` for the case where it already existed.
+    isLeaf: bool = True
+    #: The node existed but was not marked as the last sub-category, and has no
+    #: sub-categories under it, so importing ticks that box. Reported on its own
+    #: because it is the one EDIT the importer makes to something already there.
+    markedLeaf: bool = False
+    #: This chain creates a brand-new MAIN sub-category — the level a technician
+    #: certifies on (`CERTIFY_DEPTH`). Nobody can be certified on a node that
+    #: did not exist a moment ago, so every ticket under it escalates the moment
+    #: it is raised. Computed here rather than left for a client to infer from
+    #: `newSegments`, because it is the most useful warning on the screen.
+    newMainSubcategory: bool = False
+    #: How many rows in this file need it.
+    rowCount: int = 0
+
+
+class ProductToSubmit(AppModel):
+    """A product the file names that the catalogue does not hold.
+
+    It is created PENDING and unpriced — a vendor may never price a product —
+    so the rows naming it are rejected until a National Head approves it. Both
+    facts are on the wire so the console states them in the server's own terms.
+    """
+
+    categoryPath: str
+    brandName: str
+    name: str
+    serviceTypes: list[str] = Field(default_factory=list)
+    rowCount: int = 0
+    #: Always true. A product this importer creates can never arrive priced.
+    awaitingApproval: bool = True
+
+
+class TicketImportReport(AppModel):
+    """What an upload would do, or what it did."""
+
+    dryRun: bool
+    #: sha256 of the bytes that produced this report, echoed back on the commit
+    #: so the numbers somebody confirmed describe the file being committed.
+    fileDigest: str
+
+    rowsRead: int
+    #: Tickets a commit of THIS file would raise. The commit button's number.
+    willImport: int
+    #: Tickets actually written. 0 on a dry run.
+    imported: int = 0
+    #: Rows whose `Reference` is already on a ticket for this vendor. Skipped,
+    #: not rejected — this is what makes a second upload a documented no-op
+    #: rather than a duplicate charge.
+    alreadyImported: int = 0
+    rejected: int = 0
+    #: Capped; `rejected` carries the true total.
+    rejects: list[TicketImportReject] = Field(default_factory=list)
+
+    categoriesToCreate: list[CategoryToCreate] = Field(default_factory=list)
+    categoriesCreated: int = 0
+    productsToSubmit: list[ProductToSubmit] = Field(default_factory=list)
+    productsSubmitted: int = 0
+
+    #: Credits. `creditsRequired` and `creditsAvailable` are STAFF-ONLY and null
+    #: for a vendor: `IntakeStatusOut` above deliberately tells a vendor only
+    #: whether intake is paused, because a company's balance is not its
+    #: vendor's business. `creditsShort` is sent to everyone — pressing Import
+    #: into a 409 is worse than the range it leaks.
+    creditsPerTicket: int = 0
+    creditsRequired: int | None = None
+    creditsAvailable: int | None = None
+    creditsShort: bool = False
+    #: Intake is already paused for this company — nothing will import.
+    intakePaused: bool = False
+
+    #: The VENDOR's own credit line against this file, in PAISE rather than
+    #: credits: this side of the money is the ticket's stamped `vendorPricePaise`
+    #: summed, not a flat per-ticket charge, so there is no "per ticket" figure
+    #: to report and the amounts are not whole rupees by construction.
+    #:
+    #: Sent to EVERYONE, unlike the two company figures above, and the asymmetry
+    #: is the one `IntakeStatusOut.reason` explains: a vendor can do nothing
+    #: about its company's balance with the platform, but its own line is a debt
+    #: it is expected to settle, and a file refused without the numbers is an
+    #: instruction to act with no way to know how much.
+    vendorCreditRequiredPaise: int = 0
+    vendorCreditAvailablePaise: int = 0
+    vendorCreditShort: bool = False
+    #: This vendor's line is already used up — nothing will import. The sibling
+    #: of `intakePaused`, one gate along.
+    vendorCreditPaused: bool = False
+
+    #: Customers the sweep will WhatsApp. Every imported ticket lands
+    #: `Slot Pending`, so this equals `imported` after a commit.
+    slotRequestsQueued: int = 0
+    #: Rows that repeat another row's serial, product and customer. REPORTED,
+    #: never rejected: `tickets.serial_number` is deliberately not unique
+    #: because a second visit to one unit repeats it. Probably a copy-paste
+    #: mistake, so it is worth a look — but it is not ours to refuse.
+    duplicateRowsInFile: int = 0
 
 
 class DashboardSummaryOut(AppModel):

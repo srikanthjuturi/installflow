@@ -14,15 +14,23 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import Principal, require_any_feature, require_feature
+from app.core.deps import (
+    Principal,
+    require_any_feature,
+    require_feature,
+    require_min_rank,
+)
 from app.core.schemas import ApiEnvelope, envelope
 from app.features.settings import service
 from app.features.settings.schemas import (
     NodeRulesOut,
     NodeRulesUpdateRequest,
+    PaymentAccountIn,
+    PaymentAccountOut,
     RulesOut,
     RulesUpdateRequest,
 )
+from app.models.role import NATIONAL_HEAD
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -39,6 +47,13 @@ ReadRules = Annotated[
     Principal, Depends(require_any_feature("settings.view", "jobs.assign"))
 ]
 EditSettings = Annotated[Principal, Depends(require_feature("settings.edit"))]
+
+#: Where vendors pay this company. Guarded like the money it moves rather
+#: than like a setting: `vendors.credit` plus a National-Head floor, the same
+#: pair that confirms a vendor's payment. `settings.edit` is seeded wider, and
+#: a UPI address is the one field on this screen that redirects money.
+EditPayee = Annotated[Principal, Depends(require_feature("vendors.credit"))]
+HeadRoute = [Depends(require_min_rank(NATIONAL_HEAD))]
 
 
 @router.get("/rules", response_model=ApiEnvelope[RulesOut])
@@ -97,4 +112,42 @@ async def clear_node_rules(
     return envelope(
         await service.clear_node_rules(db, principal, node_id),
         message="Category rules reset",
+    )
+
+
+@router.get(
+    "/payment-account",
+    response_model=ApiEnvelope[PaymentAccountOut],
+    dependencies=HeadRoute,
+)
+async def get_payment_account(
+    principal: EditPayee, db: Db
+) -> ApiEnvelope[PaymentAccountOut]:
+    """Where this company's vendors send what they owe it.
+
+    A vendor never calls this. It learns only whether an account EXISTS, from
+    `GET /vendor-credit/me`'s `paymentAvailable` — and gets the address itself
+    frozen onto its own payment request, so a change here cannot move a QR a
+    vendor is already looking at.
+    """
+    assert principal.company_id is not None
+    return envelope(await service.get_payment_account(db, principal.company_id))
+
+
+@router.put(
+    "/payment-account",
+    response_model=ApiEnvelope[PaymentAccountOut],
+    dependencies=HeadRoute,
+)
+async def put_payment_account(
+    body: PaymentAccountIn, principal: EditPayee, db: Db
+) -> ApiEnvelope[PaymentAccountOut]:
+    """Set it, or clear it by sending both fields as null.
+
+    Clearing it stops new payments being started and leaves open ones payable,
+    which is the honest behaviour: the money was already asked for.
+    """
+    return envelope(
+        await service.update_payment_account(db, principal, body),
+        message="Payment account saved",
     )

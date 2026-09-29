@@ -35,6 +35,7 @@ from app.core.credits import (
 )
 from app.core.deps import Principal
 from app.core.errors import AppError
+from app.core.money import indian
 from app.core.notifications import notify
 from app.core.realtime import publish_notification
 from app.core.schemas import ListParams
@@ -79,20 +80,12 @@ def _now() -> datetime.datetime:
 
 
 def _indian(n: int) -> str:
-    """`1,00,000` — Indian digit grouping, for amounts that reach lakhs."""
-    digits = str(abs(n))
-    if len(digits) <= 3:
-        grouped = digits
-    else:
-        head, tail = digits[:-3], digits[-3:]
-        pairs = []
-        while len(head) > 2:
-            pairs.insert(0, head[-2:])
-            head = head[:-2]
-        if head:
-            pairs.insert(0, head)
-        grouped = ",".join(pairs) + "," + tail
-    return f"-{grouped}" if n < 0 else grouped
+    """`1,00,000` — Indian digit grouping, for amounts that reach lakhs.
+
+    Delegates to `core.money.indian`, which is the one implementation. Kept as a
+    name here because every sentence in this file reads better for it.
+    """
+    return indian(n)
 
 
 def _rupees(paise: int) -> str:

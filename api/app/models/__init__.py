@@ -38,6 +38,11 @@ from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_address_search import VendorAddressSearch
 from app.models.vendor_brand import VendorBrand
+from app.models.vendor_credits import (
+    VendorCreditEntry,
+    VendorCreditRequest,
+    VendorPayment,
+)
 from app.models.web_push_subscription import WebPushSubscription
 
 __all__ = [
@@ -83,5 +88,8 @@ __all__ = [
     "Vendor",
     "VendorAddressSearch",
     "VendorBrand",
+    "VendorCreditEntry",
+    "VendorCreditRequest",
+    "VendorPayment",
     "WebPushSubscription",
 ]

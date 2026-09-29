@@ -21,8 +21,13 @@ import {
   recordNoShow,
   rescheduleTicket,
   reversePenalty,
+  importTickets,
+  type TicketImportOptions,
 } from "@/services/tickets";
+import { approvalKeys } from "./useApprovals";
+import { creditKeys } from "./useCredits";
 import { dashboardKeys } from "./useDashboard";
+import { productKeys } from "./useProductMaster";
 import { ledgerKeys } from "./useLedger";
 import { BACKSTOP_REFETCH_MS } from "./liveness";
 import { technicianKeys } from "./useTechnicians";
@@ -397,6 +402,42 @@ export function useReversePenalty() {
       queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
       queryClient.invalidateQueries({ queryKey: ledgerKeys.all });
+    },
+  });
+}
+
+/**
+ * The two-pass bulk import.
+ *
+ * A DRY RUN invalidates nothing — it wrote nothing, and refetching on it would
+ * flicker four screens for a preview the user may still cancel.
+ *
+ * A commit invalidates FOUR prefixes, where the two sibling importers each
+ * touch one. That is not belt-and-braces; a single upload really does change
+ * four slices at once, and each of these is a screen that would otherwise sit
+ * on a stale number until somebody reloaded:
+ *
+ *   tickets     the rows it raised
+ *   products    the categories it created and the products it submitted
+ *   approvals   those products are now waiting for a National Head
+ *   credits     it spent some, and the balance is on screen elsewhere
+ *   dashboard   every tile counts tickets
+ */
+export function useImportTickets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't read that file" },
+    mutationFn: ({ file, ...options }: { file: File } & TicketImportOptions) =>
+      importTickets(file, options),
+    onSuccess: (report) => {
+      if (report.dryRun) return;
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+      queryClient.invalidateQueries({ queryKey: approvalKeys.all });
+      queryClient.invalidateQueries({ queryKey: creditKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+      // The company may have crossed its floor paying for this file.
+      void queryClient.invalidateQueries({ queryKey: INTAKE_STATUS_KEY });
     },
   });
 }

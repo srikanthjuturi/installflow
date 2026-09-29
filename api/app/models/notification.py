@@ -148,6 +148,25 @@ NOTIFICATION_KINDS = (
     #: The superadmin decided a recharge the company claimed: credited, or not
     #: approved with a reason. `audience='billing'`, like `credits`.
     "recharge",
+    #: A VENDOR's credit line with this company ran out, or the ticket it just
+    #: tried to raise was refused for want of room. The other end of the money
+    #: from `credits`, and a separate kind for that reason — one is the company
+    #: owing the platform, this is a vendor owing the company, and a reader
+    #: scanning the feed must not have to open the row to tell which.
+    #:
+    #: Raised TWICE for one event, deliberately: once carrying `vendor_id` so
+    #: the vendor sees it in its own portal, and once `audience='billing'` for
+    #: the Admins and National Heads who can act on it. Two rows because a row
+    #: carries one `to`, and the two sides go to different screens — the same
+    #: reason a brand decision is announced separately from its submission.
+    "vendor_credit",
+    #: A vendor claimed it had paid what it owes, or somebody decided that
+    #: claim. The claim is `audience='billing'`; the outcome carries
+    #: `vendor_id`, because the vendor is the party waiting to hear.
+    "vendor_payment",
+    #: A vendor asked for a bigger credit line, or somebody decided that
+    #: request. Addressed the same way round as `vendor_payment`.
+    "vendor_credit_request",
 )
 
 #: Who a row is for when territory is the wrong question.
@@ -171,6 +190,17 @@ NOTIFICATION_KINDS = (
 #: to the other — either may recharge, so both hear about the balance and the
 #: outcome of a recharge whichever of them asked.
 #:
+#: `vendor` — the named vendor's own people and NOBODY on staff. The only
+#: audience that narrows AWAY from staff rather than within them, and it exists
+#: because `vendor_id` alone does not: a row carrying a vendor id and no
+#: audience is also unaddressed, so it reaches every staff reader as well. That
+#: is harmless for a one-sided announcement, and wrong the moment an event is
+#: announced to BOTH sides as two rows — the staff row and the vendor's copy of
+#: it would then both sit in the staff feed, which is the duplicate that teaches
+#: people to stop reading the feed. `vendor_credit` and its two siblings are
+#: written that way, so they use this. It still requires `vendor_id`: the
+#: audience says which KIND of reader, the id says which one.
+#:
 #: NULL is every other row: the pincode rule above, unchanged.
 AUDIENCES = (
     "payers",
@@ -179,6 +209,7 @@ AUDIENCES = (
     "national_head",
     "admin",
     "billing",
+    "vendor",
 )
 
 

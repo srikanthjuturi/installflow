@@ -30,10 +30,13 @@ export type NotificationKind =
   | "brand_rejected"
   | "upi_change"
   | "credits"
-  | "recharge";
+  | "recharge"
+  | "vendor_credit"
+  | "vendor_payment"
+  | "vendor_credit_request";
 
 /**
- * The same twenty-one, in the order the filter offers them — loudest first.
+ * The same twenty-four, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
  * The tail is the things that merely HAPPENED — a product was decided, a job
@@ -70,6 +73,13 @@ export const NOTIFICATION_KINDS = [
   // outcome of a recharge. Work for whoever pays, so beside the other asks.
   "credits",
   "recharge",
+  // A VENDOR's line with this company — used up, a payment claimed, or a bigger
+  // limit asked for. Beside the company's own credits above because it is the
+  // same kind of work seen from the other end, and because a reader wanting
+  // "who is stuck on money" wants both together.
+  "vendor_credit",
+  "vendor_payment",
+  "vendor_credit_request",
   "product_rejected",
   "brand_rejected",
   "product_approved",

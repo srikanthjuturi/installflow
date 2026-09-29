@@ -13,9 +13,17 @@ import type {
   SerialCheck,
   Ticket,
   TicketDetail,
+  TicketImportReport,
   TicketProof,
 } from "@/types/ticket";
-import { apiGet, apiGetPage, apiPatch, apiPost } from "./http";
+import {
+  apiGet,
+  apiGetBlob,
+  apiGetPage,
+  apiPatch,
+  apiPost,
+  apiUpload,
+} from "./http";
 
 /**
  * One page of tickets.
@@ -131,12 +139,29 @@ export function createTicket(input: CreateTicketInput): Promise<Ticket> {
 }
 
 /**
- * For a vendor about to raise a ticket: would it be refused right now for
- * want of credits? A yes or no — the company's balance is not the vendor's to
- * see. `POST /tickets` still decides for real, with 409 `OUT_OF_CREDITS`.
+ * For a vendor about to raise a ticket: would it be refused right now, and by
+ * which of the two gates?
+ *
+ * `company` is its company's credits with the platform — a figure the vendor is
+ * deliberately not shown, because it is not theirs to see and they can do nothing
+ * about it. `vendor` is the vendor's OWN credit line with the company, which is a
+ * debt they are expected to settle; the figures for that come from
+ * `services/vendorCredits.getMyCredit`, not from here, because this call is made
+ * on every page load and stays cheap.
+ *
+ * When both gates are shut the reason is `company`: settling what the vendor owes
+ * would not lift a company-level pause.
+ *
+ * `POST /tickets` still decides for real — 409 `OUT_OF_CREDITS` for the first gate,
+ * `VENDOR_OUT_OF_CREDITS` for the second.
  */
-export function getIntakeStatus(): Promise<{ paused: boolean }> {
-  return apiGet<{ paused: boolean }>("/tickets/intake-status");
+export interface IntakeStatus {
+  paused: boolean;
+  reason: "company" | "vendor" | null;
+}
+
+export function getIntakeStatus(): Promise<IntakeStatus> {
+  return apiGet<IntakeStatus>("/tickets/intake-status");
 }
 
 /** One already-uploaded file. A blob NAME, never a URL — see `uploads.ts`. */
@@ -160,6 +185,21 @@ export interface ForceCloseInput {
    * was priced at. Omit entirely when no technician is assigned.
    */
   technicianPayoutPaise?: number;
+  /**
+   * PAISE to BILL the vendor for the same job.
+   *
+   * The manager's number for the mirror of the reason above: only they know
+   * whether the visit happened. A customer who was visited but never answered
+   * owes the vendor's price in full — the work was done and what failed was the
+   * customer replying, which was never the vendor's to fix. One who never
+   * confirmed a slot had nobody attend, and billing for that would charge them
+   * for our own unfilled appointment.
+   *
+   * `0` and omitted both bill nothing and write no entry; the API caps it at the
+   * ticket's own stamped `vendorPricePaise`. Independent of the payout above —
+   * the two are different questions with different answers.
+   */
+  vendorChargePaise?: number;
 }
 
 /**
@@ -343,4 +383,89 @@ export function reversePenalty({
     `/tickets/${ticketId}/penalties/${entryId}/reverse`,
     { reason }
   );
+}
+
+/* ── the bulk importer ─────────────────────────────────────────────────── */
+
+/** Same ceiling and accepted kinds as the geography and serial importers. */
+export const MAX_TICKET_IMPORT_BYTES = 8 * 1024 * 1024;
+export const TICKET_IMPORT_ACCEPT = ".xlsx,.csv";
+/** What the server refuses above. Shown before a file is chosen, not after. */
+export const MAX_TICKET_IMPORT_ROWS = 500;
+
+export interface TicketImportOptions {
+  dryRun: boolean;
+  /** The confirmation, as a positive assertion. Defaults to false server-side. */
+  createCategories?: boolean;
+  submitProducts?: boolean;
+  /** The dry run's digest, echoed on the commit. */
+  expectedDigest?: string;
+  /** Staff only: whose tickets these are. Absent on the vendor's own route. */
+  vendorId?: string;
+}
+
+function importQuery(o: TicketImportOptions): string {
+  const q = new URLSearchParams({ dryRun: String(o.dryRun) });
+  if (o.createCategories) q.set("createCategories", "true");
+  if (o.submitProducts) q.set("submitProducts", "true");
+  if (o.expectedDigest) q.set("expectedDigest", o.expectedDigest);
+  return q.toString();
+}
+
+/**
+ * Upload the sheet. `dryRun` validates and writes nothing, which is what the
+ * preview sends; the same file is sent again to commit.
+ *
+ * Two uploads rather than a server-side batch, exactly as `importGeography` and
+ * `importSerials` do: the file is small, and a batch table would exist only to
+ * carry state between two clicks.
+ *
+ * Which ROUTE is the tenancy boundary, not a parameter. A vendor's own upload
+ * goes to `/tickets/import`, which has no field a vendor id could arrive in;
+ * staff go to `/tickets/import/on-behalf` and name one, which the server
+ * resolves through a company-scoped loader.
+ */
+export function importTickets(
+  file: File,
+  options: TicketImportOptions
+): Promise<TicketImportReport> {
+  const form = new FormData();
+  // A part with no filename is not treated as a file upload at all, and the
+  // server reads the extension off it to choose the parser.
+  form.append("file", file, file.name);
+  if (options.vendorId) {
+    form.append("vendorId", options.vendorId);
+    return apiUpload<TicketImportReport>(
+      `/tickets/import/on-behalf?${importQuery(options)}`,
+      form
+    );
+  }
+  return apiUpload<TicketImportReport>(
+    `/tickets/import?${importQuery(options)}`,
+    form
+  );
+}
+
+/**
+ * Download the starter .xlsx.
+ *
+ * Fetched and turned into a blob rather than linked with a plain `<a href>`:
+ * the endpoint is guarded like every other, and a bare link carries no
+ * `Authorization` header, so it would download a 401 page named `tickets.xlsx`.
+ */
+export async function downloadTicketTemplate(): Promise<void> {
+  const blob = await apiGetBlob("/tickets/import/template");
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tickets.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // Revoked on the next tick, not immediately: Safari has not started the
+    // download by the time click() returns.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
 }

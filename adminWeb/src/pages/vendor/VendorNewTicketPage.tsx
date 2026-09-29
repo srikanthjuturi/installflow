@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
@@ -61,6 +61,10 @@ export default function VendorNewTicketPage() {
   }
 
   const paused = intake.data?.paused === true;
+  // Which gate, so the banner offers the remedy that can actually work. The
+  // server sends `company` when both are shut, because settling what this vendor
+  // owes would not lift a company-level pause.
+  const ownLine = intake.data?.reason === "vendor";
 
   return (
     <>
@@ -79,9 +83,20 @@ export default function VendorNewTicketPage() {
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
           <div>
             <p className="text-sm font-semibold">New tickets are paused</p>
-            <p className="mt-0.5 text-[13px] leading-relaxed">
-              {brand.name} needs to recharge before new tickets can be raised.
-            </p>
+            {ownLine ? (
+              <p className="mt-0.5 text-[13px] leading-relaxed">
+                Your credit limit with {brand.name} is used up. Settle what you
+                owe, or ask for a higher limit, on{" "}
+                <Link to="/portal/credit" className="font-semibold underline">
+                  Credit
+                </Link>
+                .
+              </p>
+            ) : (
+              <p className="mt-0.5 text-[13px] leading-relaxed">
+                {brand.name} needs to recharge before new tickets can be raised.
+              </p>
+            )}
           </div>
         </section>
       ) : null}

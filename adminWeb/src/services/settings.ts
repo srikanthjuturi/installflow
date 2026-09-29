@@ -94,6 +94,11 @@ export interface RulesConfig {
    *  address. Only applies to a ticket whose address was picked off a map; one
    *  typed by hand is verified against its pincode instead. */
   geoRadiusM: number;
+  /** Rupees. The credit line a NEW vendor is stamped with. Changing it reaches
+   *  the next vendor added and never an existing one — each vendor carries its
+   *  own copy, so raising this cannot silently extend anybody already agreed a
+   *  different number. One vendor's is edited on the Vendors screen. */
+  vendorCreditLimit: number;
 }
 
 /* ---------------------------------------------------------------- rules API */
@@ -121,6 +126,7 @@ interface RulesPayload {
   slotReminderMinutes: number;
   customerNoticeMinutes: number;
   geoRadiusM: number;
+  vendorCreditLimit: number;
 }
 
 function _toConfig(r: RulesPayload): RulesConfig {
@@ -143,6 +149,7 @@ function _toConfig(r: RulesPayload): RulesConfig {
     slotReminderMinutes: r.slotReminderMinutes,
     customerNoticeMinutes: r.customerNoticeMinutes,
     geoRadiusM: r.geoRadiusM,
+    vendorCreditLimit: r.vendorCreditLimit,
   };
 }
 
@@ -264,6 +271,7 @@ export interface RulesConfigDraft {
   slotReminderMinutes: number;
   customerNoticeMinutes: number;
   geoRadiusM: number;
+  vendorCreditLimit: number;
 }
 
 /**
@@ -478,4 +486,41 @@ export function updateUserAccess(input: UpdateUserAccessInput): Promise<User> {
     user.status = input.status;
     return user;
   });
+}
+
+/* ------------------------------------------------- vendor payment account */
+
+/**
+ * Where this company's VENDORS send what they owe it.
+ *
+ * On the Rules screen because it is the company's own configuration, but stored
+ * on `companies` and not in `company_rules` — a UPI address is not a term of a
+ * job and has no business being frozen onto every ticket's rules snapshot.
+ *
+ * Guarded like the money it moves rather than like a setting: `vendors.credit`
+ * plus a National-Head rank floor the server holds, the same pair that confirms
+ * a vendor's payment. `settings.edit` is seeded wider, and this is the one field
+ * on that screen which redirects money.
+ *
+ * Changing it never rewrites a payment already open: `vendor_payments` freezes
+ * the pair when the request is made, so a vendor holding a QR keeps paying where
+ * it was told to.
+ */
+export interface PaymentAccount {
+  upiId: string | null;
+  /** The name a payer's UPI app shows, so they can check the QR before paying. */
+  upiName: string | null;
+  updatedAt: string | null;
+}
+
+export function getPaymentAccount(): Promise<PaymentAccount> {
+  return apiGet<PaymentAccount>("/settings/payment-account");
+}
+
+/** Set it, or clear it by sending both as null. */
+export function savePaymentAccount(input: {
+  upiId: string | null;
+  upiName: string | null;
+}): Promise<PaymentAccount> {
+  return apiPut<PaymentAccount>("/settings/payment-account", input);
 }

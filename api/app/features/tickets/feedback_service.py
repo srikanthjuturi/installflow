@@ -26,6 +26,7 @@ from app.core.realtime import (
     publish_ticket_changed,
 )
 from app.core.tickets import NO_SHOW_GRACE_MINUTES
+from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.models.membership import Membership
 from app.models.product import ProductModel
 from app.models.technician import TechnicianProfile
@@ -182,6 +183,35 @@ async def record_feedback(
                     service_type=row.service_type, model_name=model_name or "—"
                 ),
             )
+        )
+
+    if confirmed:
+        # And the other half of the same money: the vendor asked for this visit,
+        # the customer has just said it happened, so this is the moment it
+        # becomes owed. Billed in FULL — unlike a force-closure, there is no
+        # judgement to make here, because the customer confirming is the
+        # strongest evidence the job exists that this system can get.
+        #
+        # In the SAME transaction as the guarded UPDATE above, for the reason
+        # the payout gives: a bill that survived a rolled-back closure would
+        # charge for work still outstanding.
+        #
+        # Outside the `technician_id is not None` test on purpose. A ticket with
+        # no technician should not be closable at all, but if one ever is, the
+        # vendor still asked for the visit and the absence of a technician on
+        # OUR side is not a reason to hand them the job free.
+        #
+        # Billed once, and structurally: `uq_vendor_credit_entries_company_ticket`
+        # makes a second entry for this ticket impossible.
+        await charge_vendor_closure(
+            db,
+            company_id=row.company_id,
+            vendor_id=row.vendor_id,
+            ticket_id=row.id,
+            amount_paise=row.vendor_price_paise,
+            # No principal at all on this route — the customer is not a user.
+            # `created_by` stays null, as the payout's does.
+            by_user=None,
         )
 
     if not confirmed:

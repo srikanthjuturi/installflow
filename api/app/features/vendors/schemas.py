@@ -18,6 +18,7 @@ from app.core.intake import (
     UNAVAILABLE_REASON,
 )
 from app.core.phone import Phone
+from app.core.rules import LIMITS
 from app.core.schemas import AppModel, EmailOutcome
 from app.models.vendor_brand import MAX_BRAND_NAME
 from app.core.statutory import (
@@ -135,6 +136,15 @@ class OwnBrandRequest(BaseModel):
     name: BrandName
 
 
+#: The credit line's bounds, from the one declaration `company_rules`' CHECK and
+#: the console's form also read. Zero is allowed and is a real setting: it means
+#: this vendor raises nothing until somebody gives it room.
+CreditLimitPaise = Annotated[
+    int, Field(ge=LIMITS["vendor_credit_limit_paise"][0],
+               le=LIMITS["vendor_credit_limit_paise"][1])
+]
+
+
 class VendorCreateRequest(BaseModel):
     name: str = Name255
     gstNumber: GstNumber
@@ -190,6 +200,17 @@ class VendorCreateRequest(BaseModel):
     #: that has never heard of this field adding vendors that work.
     brands: BrandNames = Field(default_factory=list)
 
+    #: What this vendor may owe before its intake stops, in paise. Omitted means
+    #: the company's own default (`company_rules.vendor_credit_limit_paise`),
+    #: which is what the console sends when nobody edits the prefilled figure.
+    #:
+    #: Optional rather than required so a console that has never heard of it —
+    #: or a script — still creates a working vendor rather than one with no line
+    #: at all. There is no "no limit": a vendor is a paying counterparty, and a
+    #: missing number would have to mean either "unlimited" or "nothing", both of
+    #: which are worse than the company's own default.
+    creditLimitPaise: CreditLimitPaise | None = None
+
 
 class VendorUpdateRequest(BaseModel):
     """Omit a field to leave it alone.
@@ -217,6 +238,12 @@ class VendorUpdateRequest(BaseModel):
     isActive: bool | None = None
     addressSearchEnabled: bool | None = None
     locationCheckEnabled: bool | None = None
+    #: The credit line. Omit it to leave the line alone.
+    #:
+    #: Lowering it below what the vendor already owes is ALLOWED and is not a
+    #: mistake: it stops them raising more while they settle, which is the whole
+    #: point of the number. It bills nothing and reverses nothing.
+    creditLimitPaise: CreditLimitPaise | None = None
     #: The whole brand list, or omit it to leave the brands alone. Rows with an
     #: `id` are kept (renamed if the name changed), rows without one are new and
     #: approved, and an APPROVED brand missing from the list is removed — refused
@@ -278,6 +305,31 @@ class VendorOut(AppModel):
     #: It does not move when the switch does. Turning a vendor off is a decision
     #: about tomorrow, not a way to erase what they already spent.
     addressSearchCount: int = 0
+
+    # ── the credit line ───────────────────────────────────────────────
+    #
+    # All four in PAISE, and only the first is stored. What a vendor owes is the
+    # sum of `vendor_credit_entries`; what it has reserved is a live sum over its
+    # open tickets; available is the arithmetic. See `core.vendor_credits`.
+    #
+    # This model is STAFF-ONLY — `GET /vendors` and `/vendors/{id}` sit behind
+    # `vendors.view` plus a National-Head floor. The vendor reads the same four
+    # about itself from `GET /vendor-credit/me`.
+    #
+    #: What this vendor may owe before its intake stops.
+    creditLimitPaise: int = 0
+    #: Billed at closure, less every payment somebody confirmed arrived.
+    creditUsedPaise: int = 0
+    #: The stamped price of tickets raised and not yet closed or cancelled.
+    creditReservedPaise: int = 0
+    #: `limit - used - reserved`. Negative once closures have overtaken the line
+    #: — which is possible, because a closure is never refused.
+    creditAvailablePaise: int = 0
+    #: Whether the next ticket from this vendor is certainly refused. Exact, and
+    #: it is `available <= 0` rather than `< 0` because a ticket's price is always
+    #: positive, so no room at all means no ticket can fit.
+    creditPaused: bool = False
+
     #: How many live product models this vendor supplies, across its brands. A
     #: real COUNT — it is what the delete confirmation quotes back at the user.
     modelCount: int

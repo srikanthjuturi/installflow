@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, Index, String, text
+from sqlalchemy import Boolean, CheckConstraint, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
@@ -41,8 +41,32 @@ class Company(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     state: Mapped[str] = mapped_column(String(120), nullable=False)
     pincode: Mapped[str] = mapped_column(String(10), nullable=False)
 
+    #: Where this company's VENDORS send what they owe it, and the name their
+    #: UPI app should show them. `platform_settings` carries the same pair one
+    #: level up, for the platform's own recharges; this is the company as payee
+    #: rather than as payer.
+    #:
+    #: Null until somebody sets them, and a vendor's Pay page says so rather
+    #: than drawing a QR nobody could honour. Set by the company's own Admin or
+    #: National Head on Rules configuration, and by the superadmin's company
+    #: form — two writers for one pair, as `technician_profiles.upi_id` has.
+    upi_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    upi_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     # created_by (→ users.id, the superadmin) comes from AuditMixin.
 
     # NB: the case-insensitive UNIQUE indexes on lower(slug), lower(gst_number)
     # and lower(code) are created in the migration.
-    __table_args__ = (Index("ix_companies_is_active", "is_active"),)
+    __table_args__ = (
+        Index("ix_companies_is_active", "is_active"),
+        # The backstop `technician_profiles.upi_id` carries; `core.upi` is the
+        # rule.
+        CheckConstraint(
+            "upi_id IS NULL OR (position('@' in upi_id) > 1 AND upi_id !~ '\\s' "
+            "AND length(upi_id) >= 3)",
+            name="upi_id",
+        ),
+        # An address without the name a payer checks it against, or a name with
+        # nowhere to pay, is half a payee.
+        CheckConstraint("(upi_id IS NULL) = (upi_name IS NULL)", name="upi_pair"),
+    )

@@ -428,3 +428,113 @@ export interface CreateTicketInput {
   slotStart?: string | null;
   slotEnd?: string | null;
 }
+
+/* ── the bulk importer ─────────────────────────────────────────────────── */
+
+/**
+ * One row the importer will not raise a ticket for, and why.
+ *
+ * `reason` is the sentence, and it is the SERVER'S — several are the exact
+ * words `POST /tickets` would have raised for the same mistake, so the file and
+ * the form can never tell somebody two different things. Never reword one here.
+ */
+export interface TicketImportReject {
+  row: number;
+  code: string;
+  reason: string;
+  /** The column heading, for the rejects table. */
+  field?: string | null;
+  /** The offending cell, truncated server-side. */
+  value?: string | null;
+}
+
+/** A category chain the file names that the catalogue does not hold yet. */
+export interface CategoryToCreate {
+  /** `Electronics › Television › Android TV`. */
+  path: string;
+  /** Only the levels that are missing — the rest of `path` already exists. */
+  newSegments: string[];
+  depth: number;
+  isLeaf: boolean;
+  /**
+   * The last level exists but was not marked as the last sub-category, and has
+   * nothing under it, so importing ticks that box. The one EDIT the importer
+   * makes to something already there, which is why it is reported separately.
+   */
+  markedLeaf: boolean;
+  /**
+   * A brand-new MAIN sub-category — the level a technician certifies on.
+   * Nobody can be certified on a node that did not exist, so every ticket under
+   * it escalates the moment it is raised. The most useful warning on the screen.
+   */
+  newMainSubcategory: boolean;
+  rowCount: number;
+}
+
+/** A product the file names that the catalogue does not hold. */
+export interface ProductToSubmit {
+  categoryPath: string;
+  brandName: string;
+  name: string;
+  serviceTypes: string[];
+  rowCount: number;
+  /** Always true — a product this importer creates can never arrive priced. */
+  awaitingApproval: boolean;
+}
+
+/**
+ * What an upload would do, or what it did.
+ *
+ * A dry run writes nothing and returns exactly what the commit would do, so
+ * every figure here is the server's own count. Nothing is parsed in the
+ * browser — no spreadsheet library ships to the client.
+ */
+export interface TicketImportReport {
+  dryRun: boolean;
+  /** Echoed back on the commit so the numbers confirmed describe that file. */
+  fileDigest: string;
+
+  rowsRead: number;
+  /** What a commit of this file would raise. The commit button's number. */
+  willImport: number;
+  /** What it did raise. 0 on a dry run. */
+  imported: number;
+  /** Rows whose Reference is already on a ticket: skipped, never charged. */
+  alreadyImported: number;
+  rejected: number;
+  /** Capped server-side; `rejected` carries the true total. */
+  rejects: TicketImportReject[];
+
+  categoriesToCreate: CategoryToCreate[];
+  categoriesCreated: number;
+  productsToSubmit: ProductToSubmit[];
+  productsSubmitted: number;
+
+  creditsPerTicket: number;
+  /** Staff only — a company's balance is not its vendor's business. */
+  creditsRequired: number | null;
+  creditsAvailable: number | null;
+  /** Sent to everyone: pressing Import into a 409 is worse than the range. */
+  creditsShort: boolean;
+  intakePaused: boolean;
+
+  /**
+   * The VENDOR's own credit line against this file, in PAISE — what they will
+   * owe when these tickets close, summed from each row's stamped price.
+   *
+   * All four go to EVERYONE, unlike the two company figures above, and the
+   * asymmetry is the one `IntakeStatus.reason` explains: a vendor can do nothing
+   * about its company's balance with the platform, but its own line is a debt it
+   * is expected to settle, and a file refused without the numbers is an
+   * instruction to act with no way to know how much.
+   */
+  vendorCreditRequiredPaise: number;
+  vendorCreditAvailablePaise: number;
+  vendorCreditShort: boolean;
+  /** This vendor's line is already used up — the sibling of `intakePaused`. */
+  vendorCreditPaused: boolean;
+
+  slotRequestsQueued: number;
+  /** Repeated rows. Reported, never rejected — see the server's note. */
+  duplicateRowsInFile: number;
+}

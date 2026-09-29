@@ -1,6 +1,11 @@
+import * as React from "react";
+import { Upload } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { NarrowedNotice } from "@/components/shared/NarrowedNotice";
+import { TicketImportDialog } from "@/components/tickets/TicketImportDialog";
 import { TicketTable } from "@/components/tickets/TicketTable";
+import { Button } from "@/components/ui/button";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { useTicketFilters } from "@/hooks/useTicketFilters";
 import { useTickets } from "@/hooks/useTickets";
 
@@ -23,6 +28,11 @@ export default function TicketListPage() {
   // can paste. The page owns it; the table borrows it and reports intent back.
   const { params, setParams, clearNarrowing } = useTicketFilters();
   const { data, isLoading, isError, error, refetch } = useTickets(params);
+  const [importing, setImporting] = React.useState(false);
+  // `jobs.import`, NOT `jobs.create`: staff lost that one deliberately, and it
+  // is what draws a Raise-a-ticket screen. Importing a vendor's sheet on their
+  // behalf is a different act and carries its own key.
+  const canImport = useFeatureAccess().has("jobs.import");
 
   /* What a dashboard tile narrowed this to, said out loud.
      The board's only visible control is the status chip row, so everything a
@@ -75,7 +85,17 @@ export default function TicketListPage() {
         /* Same words as the old hard-coded default, but now it returns to the
            page and filters you left rather than a bare /tickets. */
         backLabel="Back to tickets"
+        toolbarActions={
+          canImport ? (
+            <Button size="toolbar" onClick={() => setImporting(true)}>
+              <Upload data-icon="inline-start" />
+              Import tickets
+            </Button>
+          ) : null
+        }
       />
+
+      <TicketImportDialog open={importing} onOpenChange={setImporting} />
     </>
   );
 }

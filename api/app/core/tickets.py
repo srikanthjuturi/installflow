@@ -120,6 +120,23 @@ SLOT_LEAD_MINUTES = 90
 #: window shut would call somebody absent who was standing in the kitchen.
 NO_SHOW_GRACE_MINUTES = 30
 
+#: How long a slot request may sit `pending` before the sweep takes it over.
+#:
+#: `create_ticket` sends the WhatsApp itself, after its commit, and only then
+#: writes `sent` or `failed`. So every manual ticket is `pending` for a moment,
+#: and a sweep with no grace would race that send and ask the same customer
+#: twice. A few minutes is longer than the post-commit path can plausibly take
+#: and short enough that a bulk-imported customer is not left waiting.
+SLOT_REQUEST_GRACE_MINUTES = 3
+
+#: How many slot requests one tick will send.
+#:
+#: The rate limiter, effectively: a 500-row import produces 500 messages, and
+#: Meta will not take them at once. The ticker's interval times this number is
+#: the send rate, and both are deliberately small enough that an import drains
+#: over minutes rather than arriving as one burst.
+SLOT_REQUEST_BATCH = 50
+
 #: And how far back the no-show sweep will look at all.
 #:
 #: Two jobs, both load-bearing.

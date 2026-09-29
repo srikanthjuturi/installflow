@@ -145,12 +145,29 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: Which intake channel produced this ticket: 'Manual', 'Excel' or 'API' —
     #: the same three words a vendor declares in `intake_channels`.
     #:
-    #: Only 'Manual' is written today. It is recorded from the start anyway,
-    #: because the alternative is adding the column once bulk upload exists and
-    #: having to guess retrospectively what every earlier row came in through.
+    #: 'Manual' and 'Excel' are both written today; 'API' waits on the push
+    #: endpoint. Recorded from the start rather than inferred later, because the
+    #: alternative was adding the column once bulk upload existed and having to
+    #: guess retrospectively what every earlier row came in through.
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'Manual'")
     )
+    #: The VENDOR'S OWN reference for this job — their order or docket number,
+    #: read off the `Reference` column of an imported sheet. NULL for every
+    #: manually keyed ticket, and for every ticket raised before the importer.
+    #:
+    #: It exists to make a re-upload safe, which the importer's own flow
+    #: requires: a row naming an unpriced product is rejected, somebody prices
+    #: it, and the SAME file goes in again. Without a handle the rows that
+    #: already succeeded would be raised a second time and charged a second
+    #: time. `serial_number` cannot be that handle — it is deliberately not
+    #: unique, because a service call on a unit installed months ago repeats it.
+    #:
+    #: Unique per vendor through the hand-written partial index
+    #: `uq_tickets_vendor_external_ref` (see `c9a41f7b0e83`), so a repeat is
+    #: SKIPPED and reported rather than rejected. `--autogenerate` will want to
+    #: drop that index on every run: delete the drop (hard rule 8).
+    external_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # ── when ───────────────────────────────────────────────────────────────
     #: What ops were asked for — the vendor's or the customer's target day, set

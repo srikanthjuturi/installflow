@@ -134,6 +134,32 @@ thing that adds credits. The numbers and the UPI ID are the superadmin's **Rules
 change; the ticket charge and the floor reach every company from its next ticket. Every existing
 company was given the free credits on the day it shipped. Detail: `api/AGENTS.md` → Credits.
 
+**A VENDOR pays its company for the jobs it raised, against a CREDIT LINE — and this is a
+different thing from the credits above.** Those are the company paying the platform for a ticket
+entering the system, charged when it is RAISED. This is the vendor owing the company for work
+delivered, charged when a ticket CLOSES, at the price the product carries
+(`tickets.vendor_price_paise`, stamped at intake and until now never billed). They share no table,
+and **either one alone stops a vendor's intake**.
+
+A vendor is given a line when it is created — ₹5,000 by default, a `company_rules` figure on
+Configuration → Rules Config, overridable per vendor on the Vendors form and STAMPED, so raising
+the house default never silently extends a vendor somebody agreed a different number with. Room
+left is `limit − owed − the stamped price of tickets raised and not yet closed or cancelled`, so
+raising a ticket reserves its price immediately even though nothing is owed until it closes — which
+is what stops the amount running away. A cancellation bills nothing, and that falls out of the model
+rather than needing a rule. **Closure never refuses**: the customer confirming runs with no
+principal and a force-closure is a manager settling a case, so the line may go negative — and that
+is precisely what stops the vendor's NEXT ticket, with 409 `VENDOR_OUT_OF_CREDITS`.
+
+Two ways out, both on the vendor's own **Credit** page in the portal. **Pay:** a UPI QR built from
+the **company's** UPI ID (Configuration → Rules Config), the UTR and a screenshot — and only the
+company's **Admin or National Head** confirms it arrived, which is the one thing that restores the
+line. **Ask for more:** a request the same two roles decide, possibly for a smaller figure than was
+asked. Both queues are the console's **Vendor Credit** screen. Unlike the company's balance, a
+vendor DOES see its own four figures: it is a debt with a consequence they feel and a remedy only
+they can carry out, and "paused" without the number is an instruction to act with no way to know how
+much. Detail: `api/AGENTS.md` → Vendor credit.
+
 `mobileapp/src/lib/api.ts` and `adminWeb/src/services/http.ts` are the two transports. Both speak
 the same envelope: `{ success, statusCode, message, data, errors }`.
 
@@ -411,8 +437,18 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   nothing changed on the day it shipped. Detail: `api/AGENTS.md` → Vendor brands.
   ⚠ Not to be confused with the product's WHITE-LABEL brand above — that is the tenant company,
   resolved by `useBrand` / `core/brand.py`. Never name a vendor-brand symbol a bare `brand`.
-- A vendor's **`intake_channels` decide which entry screens its portal offers.** Manual today;
-  Excel appears when the bulk importer exists; API is somebody else's application calling ours.
+- A vendor's **`intake_channels` decide which entry screens its portal offers.** Manual and
+  Excel are both real; API is somebody else's application calling ours and has no screen by
+  definition. Ticking one adds an entry to that vendor's rail, from a single table
+  (`portalNav.ts`'s `CHANNEL_ENTRY`).
+- **A sheet of tickets can name categories that do not exist, and the importer builds them.**
+  `Electronics, Television, Android TV(islastsubcategory)` — comma-separated, root first, the
+  last one marked. A dry run shows exactly which levels would be created, and a checkbox
+  confirms it before anything is written. A product the file names but the catalogue lacks is
+  **submitted pending and unpriced**, so that row does not import until somebody prices it —
+  the same rule that governs everything a vendor adds. Re-uploading the corrected file is safe:
+  a row whose `Reference` is already on a ticket is skipped, never charged twice. Detail:
+  `api/AGENTS.md` → The bulk ticket importer.
 - A vendor's **`address_search_enabled` decides whether its ticket form offers the Google address
   search.** Off means they type the address by hand, which is the same path taken when no Maps key
   is configured — so `AddressFields` needed no new branch, only a reason for `available` to be

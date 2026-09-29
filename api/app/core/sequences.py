@@ -53,6 +53,11 @@ KINDS: dict[str, str] = {
     #: A company topping up its credits — `MA-RCH-0001`. The UPI `tr` too, for
     #: the same reason as a redemption's: it is on the platform's statement.
     "recharge": "RCH",
+    #: A vendor settling what it owes its company — `RGT-VPY-0001`. The UPI
+    #: `tr` as well, for the third time and the same reason: it is the handle
+    #: the vendor and the company quote at each other when a payment is
+    #: argued about, and it lands on both their bank statements.
+    "vendor_payment": "VPY",
 }
 
 #: Zero-padding for the counter. A MINIMUM width, not a cap: the 10,000th

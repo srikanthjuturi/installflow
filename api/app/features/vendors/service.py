@@ -57,6 +57,9 @@ from app.models.product import ProductModel
 from app.models.role import ROLE_LABELS, VENDOR, VENDOR_ROLES
 from app.models.ticket import Ticket
 from app.models.user import User
+from app.core.rules import load_rules
+from app.core.vendor_credits import VendorCredit
+from app.core.vendor_credits import standing_many as vendor_standing_many
 from app.models.vendor import Vendor
 from app.models.vendor_address_search import VendorAddressSearch
 from app.models.vendor_brand import MAX_BRAND_NAME, VendorBrand
@@ -321,6 +324,7 @@ def _to_out(
     login_email: str | None = None,
     address_search_count: int = 0,
     brands: list[VendorBrandOut] | None = None,
+    credit: VendorCredit | None = None,
 ) -> VendorOut:
     return VendorOut(
         id=row.id,
@@ -340,6 +344,16 @@ def _to_out(
         addressSearchEnabled=row.address_search_enabled,
         locationCheckEnabled=row.location_check_enabled,
         addressSearchCount=address_search_count,
+        creditLimitPaise=row.credit_limit_paise,
+        # `credit` is None only if a caller builds an out without hydrating.
+        # Zeroes rather than nulls: a vendor with no entries and no open tickets
+        # genuinely owes and holds nothing, and that is a fact, not a gap.
+        creditUsedPaise=credit.used_paise if credit else 0,
+        creditReservedPaise=credit.reserved_paise if credit else 0,
+        creditAvailablePaise=(
+            credit.available_paise if credit else row.credit_limit_paise
+        ),
+        creditPaused=credit.paused if credit else False,
         modelCount=model_count,
         ticketCount=ticket_count,
         loginEmail=login_email,
@@ -358,6 +372,11 @@ async def _hydrate(
     logins = await _login_emails(db, company_id, ids)
     searches = await _address_search_counts(db, company_id, ids)
     brands = await _brands_by_vendor(db, company_id, ids)
+    # Two grouped queries for the whole page, never one per vendor. The limits
+    # come from the rows already in hand rather than being read back.
+    credit = await vendor_standing_many(
+        db, company_id, limits={r.id: r.credit_limit_paise for r in rows}
+    )
     return [
         _to_out(
             r,
@@ -366,6 +385,7 @@ async def _hydrate(
             logins.get(r.id),
             searches.get(r.id, 0),
             brands.get(r.id, []),
+            credit.get(r.id),
         )
         for r in rows
     ]
@@ -575,6 +595,15 @@ async def create_vendor(
         is_active=body.isActive,
         address_search_enabled=body.addressSearchEnabled,
         location_check_enabled=body.locationCheckEnabled,
+        # The credit line, STAMPED from the company's rule when the form did not
+        # name one. Stamped rather than read live so that raising the house
+        # default later does not silently extend every vendor somebody has
+        # already agreed a different number with — see `vendors.credit_limit_paise`.
+        credit_limit_paise=(
+            body.creditLimitPaise
+            if body.creditLimitPaise is not None
+            else (await load_rules(db, company_id)).vendor_credit_limit_paise
+        ),
         created_by=principal.user_id,
     )
     db.add(row)
@@ -775,6 +804,13 @@ async def update_vendor(
         row.address_search_enabled = body.addressSearchEnabled
     if body.locationCheckEnabled is not None:
         row.location_check_enabled = body.locationCheckEnabled
+    if body.creditLimitPaise is not None:
+        # Set directly, with no check against what the vendor already owes.
+        # Lowering it below that is a real decision — it stops them raising more
+        # until they settle — and it charges nothing either way, so there is
+        # nothing here to guard. A vendor's own request for MORE goes through
+        # `features.vendor_credits` instead, where somebody has to approve it.
+        row.credit_limit_paise = body.creditLimitPaise
     if body.brands is not None:
         await _apply_brands(db, principal, row, body.brands)
     row.updated_by = principal.user_id

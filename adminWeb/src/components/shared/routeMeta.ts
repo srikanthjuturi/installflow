@@ -61,6 +61,11 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Penalty · bonus · AI · timing",
   },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
+  /* Net-new, like Credits below, and for the same reason. */
+  "/vendor-credit": {
+    title: "Vendor credit",
+    subtitle: "Limits · payments · limit requests",
+  },
   /* Net-new — no prototype has credits. Awaiting sign-off. */
   "/credits": {
     title: "Credits",
@@ -76,10 +81,6 @@ const STATIC: Record<string, Meta> = {
 
 /** Longest-prefix rules for parameterised routes. */
 const DYNAMIC: Array<[RegExp, Meta]> = [
-  [
-    /^\/tickets\/import\/[^/]+$/,
-    { title: "Upload validation", subtitle: "Row-level result" },
-  ],
   [
     /^\/tickets\/[^/]+\/force-close$/,
     { title: "Force closure", subtitle: "Justification required" },
@@ -114,6 +115,10 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
   [
     /^\/credits\/recharges\/[^/]+$/,
     { title: "Recharge", subtitle: "Pay by UPI · submit the proof" },
+  ],
+  [
+    /^\/vendor-credit\/payments\/[^/]+$/,
+    { title: "Vendor payment", subtitle: "Check the reference · confirm or reject" },
   ],
 ];
 

@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Clock,
   Coins,
+  HandCoins,
   IndianRupee,
   MailX,
   PackagePlus,
@@ -14,6 +15,7 @@ import {
   ScanLine,
   ShieldCheck,
   Tags,
+  TrendingUp,
   UserCheck,
   UserPlus,
   UserX,
@@ -116,6 +118,30 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: BadgeIndianRupee,
     wrap: "bg-info-bg text-info",
     label: "Recharge",
+  },
+  // A VENDOR's credit line with this company ran out, or a ticket of theirs was
+  // refused for want of room. Warn, matching `credits` directly above: it is the
+  // same shape of event one party along, and it has a fix — they pay, or somebody
+  // raises their limit.
+  vendor_credit: {
+    icon: HandCoins,
+    wrap: "bg-warn-bg text-warn",
+    label: "Vendor credit",
+  },
+  // A vendor says it paid, or somebody decided that claim. Info rather than ok
+  // for the reason `recharge` gives: one kind carries both outcomes, and a green
+  // tint over "not accepted" would say the opposite of its title.
+  vendor_payment: {
+    icon: BadgeIndianRupee,
+    wrap: "bg-info-bg text-info",
+    label: "Vendor payment",
+  },
+  // A vendor asking for a bigger line, or the decision on one. Info for the same
+  // reason: both outcomes share the kind.
+  vendor_credit_request: {
+    icon: TrendingUp,
+    wrap: "bg-info-bg text-info",
+    label: "Limit request",
   },
   // Warn rather than danger, the same call `ApprovalBadge` makes: danger is
   // spoken for by the rows about a customer already let down, and a rejected

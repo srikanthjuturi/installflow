@@ -2,10 +2,11 @@ import * as React from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Download,
   FileSpreadsheet,
   Upload,
 } from "lucide-react";
+import { Notice } from "@/components/shared/Notice";
+import { RejectsTable } from "@/components/shared/RejectsTable";
 import { useFilePicker } from "@/components/shared/useFilePicker";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +25,6 @@ import {
   MAX_SERIAL_IMPORT_BYTES,
   SERIAL_IMPORT_ACCEPT,
 } from "@/services/productMaster";
-import { downloadCsv, toCsv } from "@/utils/csv";
 import type { SerialImportReport } from "@/types/product";
 
 /**
@@ -302,75 +302,17 @@ function Preview({ report }: { report: SerialImportReport }) {
       ) : null}
 
       {report.rejected ? (
-        <div className="rounded-lg border border-line">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2">
-            <p className="text-[13px] font-medium text-ink">
-              {report.rejected.toLocaleString()} row
-              {report.rejected === 1 ? "" : "s"} rejected
-              <span className="ml-1 font-normal text-ink-3">
-                — the rest still import
-              </span>
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                downloadCsv(
-                  "serial-rejects.csv",
-                  toCsv(
-                    ["Row", "Serial", "Reason"],
-                    report.rejects.map((r) => [
-                      r.row ?? "",
-                      r.serial ?? "",
-                      r.reason,
-                    ])
-                  )
-                )
-              }
-            >
-              <Download data-icon="inline-start" />
-              Download
-            </Button>
-          </div>
-          <div className="scroll-slim max-h-44 overflow-y-auto">
-            <table className="w-full text-[12px]">
-              <thead className="sticky top-0 bg-surface-2 text-ink-3">
-                <tr>
-                  <th scope="col" className="px-3 py-1.5 text-left font-medium">
-                    Row
-                  </th>
-                  <th scope="col" className="px-3 py-1.5 text-left font-medium">
-                    Serial
-                  </th>
-                  <th scope="col" className="px-3 py-1.5 text-left font-medium">
-                    Reason
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.rejects.map((r, i) => (
-                  <tr
-                    key={`${r.serial ?? "row"}-${r.row ?? i}`}
-                    className="bg-danger-bg/40"
-                  >
-                    <td className="px-3 py-1.5 text-ink-3">{r.row ?? "—"}</td>
-                    <td className="px-3 py-1.5 font-mono text-ink">
-                      {r.serial ?? "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-ink-2">{r.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {report.rejected > report.rejects.length ? (
-            <p className="border-t border-line px-3 py-1.5 text-[11px] text-ink-3">
-              Showing the first {report.rejects.length} of{" "}
-              {report.rejected.toLocaleString()}.
-            </p>
-          ) : null}
-        </div>
+        <RejectsTable
+          total={report.rejected}
+          rows={report.rejects}
+          filename="serial-rejects.csv"
+          keyOf={(r, i) => `${r.serial ?? "row"}-${r.row ?? i}`}
+          columns={[
+            { header: "Row", cell: (r) => r.row, tone: "muted" },
+            { header: "Serial", cell: (r) => r.serial, tone: "mono" },
+            { header: "Reason", cell: (r) => r.reason },
+          ]}
+        />
       ) : (
         <Notice tone="ok" icon={CheckCircle2} title="Every row can be read">
           Nothing was rejected.
@@ -382,33 +324,6 @@ function Preview({ report }: { report: SerialImportReport }) {
         Nothing has been saved yet. Importing adds what the file names and
         leaves anything it does not name alone.
       </p>
-    </div>
-  );
-}
-
-function Notice({
-  tone,
-  icon: Icon,
-  title,
-  children,
-}: {
-  tone: "ok" | "warn";
-  icon: typeof AlertTriangle;
-  title: string;
-  children: React.ReactNode;
-}) {
-  // Static class strings — an interpolated `bg-${tone}-bg` is never generated.
-  const skin =
-    tone === "ok"
-      ? "border-ok/30 bg-ok-bg text-ok"
-      : "border-warn/30 bg-warn-bg text-warn";
-  return (
-    <div className={`flex gap-2.5 rounded-lg border px-3 py-2.5 ${skin}`}>
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-      <div className="grid gap-0.5">
-        <p className="text-[13px] font-medium">{title}</p>
-        <p className="text-[12px] text-ink-2">{children}</p>
-      </div>
     </div>
   );
 }

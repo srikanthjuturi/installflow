@@ -38,6 +38,9 @@ from app.core.coverage import (
 from app.core.credits import balance as credit_balance
 from app.core.credits import charge_ticket, load_platform_settings
 from app.core.credits import paused as credits_paused
+from app.core.vendor_credits import assert_within_limit as assert_vendor_within_limit
+from app.core.vendor_credits import charge_closure as charge_vendor_closure
+from app.core.vendor_credits import standing as vendor_standing
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.ledger import (
@@ -534,10 +537,29 @@ async def _serial_refusal(
     if loaded is None:
         return None
 
+    return serial_refusal_text(serial, model.name)
+
+
+def serial_refusal_text(serial: str, model_name: str) -> str:
+    """The sentence, with no query behind it.
+
+    Split out because the bulk importer answers the same question for a whole
+    file in two queries rather than two per row, and must still say exactly
+    this. The rule lives in `_serial_refusal`; the WORDS live here, once.
+    """
     return (
-        f"{serial.strip()} is not a serial number on record for {model.name}. "
+        f"{serial.strip()} is not a serial number on record for {model_name}. "
         "Check it against the invoice, or ask for it to be added to the "
         "product master."
+    )
+
+
+def pincode_refusal_text(code: str) -> str:
+    """Why a pincode the master does not hold is refused. See the note on
+    `_assert_pincode_known` for why an unknown pincode is worth a query."""
+    return (
+        f"{code} is not a pincode we cover — check it, or ask for it to be "
+        "added to the geography master."
     )
 
 
@@ -1530,12 +1552,18 @@ async def _company_name(db: AsyncSession, company_id: uuid.UUID) -> str:
     )
 
 
-async def _send_slot_request(db: AsyncSession, row: Ticket) -> None:
+async def send_slot_request(db: AsyncSession, row: Ticket) -> None:
     """Ask the customer to pick a time. Records the outcome, never raises.
 
     A refusal is not an error for the caller: the ticket exists and the link is
     still valid, so ops can copy it out of the console or read the options down
     the phone. Raising here would lose a row over a message.
+
+    Public within the slice because `sweeps.sweep_pending_slot_requests` sends
+    the same message for tickets this module never got to — the bulk importer's,
+    and any whose post-commit send did not survive the process. Both writing
+    `sent` / `failed` through one function is what keeps the two paths from
+    recording an outcome differently.
     """
     model_name = await db.scalar(
         select(ProductModel.name).where(ProductModel.id == row.model_id)
@@ -1697,7 +1725,7 @@ async def confirm_slot(
 
     # After the commit, and never inside it: this is a network call to Expo,
     # and a slot confirmation must not be lost because a push service was slow.
-    await _push_pool_job(db, row)
+    await push_pool_job(db, row)
     await db.refresh(row)
 
     sent = await _send_slot_confirmed(db, row)
@@ -1736,23 +1764,52 @@ async def _assert_pincode_known(db: AsyncSession, code: str) -> None:
         )
     )
     if known is None:
-        raise _bad_request(
-            f"{code} is not a pincode we cover — check it, or ask for it to be "
-            "added to the geography master."
-        )
+        raise _bad_request(pincode_refusal_text(code))
 
 
 async def intake_status(db: AsyncSession, principal: Principal) -> IntakeStatusOut:
-    """Whether the next ticket this vendor's company raises would be refused.
+    """Whether the next ticket this vendor raises would be refused, and by which gate.
 
     Asked before the form is filled, so nobody types a whole ticket for a 409.
-    Says paused or not and nothing else — the balance is the company's business,
-    not its vendor's.
+
+    ## Two gates, and either one alone stops intake
+
+    The COMPANY's credits are what it pays the platform for a ticket entering
+    the system. The VENDOR's credit line is what the vendor owes the company for
+    work delivered. They are separate sums over separate tables and a vendor can
+    be stopped by either.
+
+    ## What each gate may say about itself
+
+    The company's stays a bare boolean, unchanged: whether its company is paused
+    is something a vendor needs to know before filling a form, and how many
+    credits it has left is not their business.
+
+    The vendor's names itself, and `GET /vendor-credit/me` gives that vendor its
+    own figures. That is a deliberate departure from the rule above and the
+    reason is the asymmetry: a vendor can do nothing about its company's
+    balance, but its own line is a debt it is expected to settle. "Paused" with
+    no number is an instruction to act with no way to know how much.
+
+    When BOTH are shut the reason is the company's. Settling what a vendor owes
+    would not lift a company-level pause, so naming the vendor's would send them
+    to do something that cannot work.
     """
     assert principal.company_id is not None
     settings = await load_platform_settings(db)
     current = await credit_balance(db, principal.company_id)
-    return IntakeStatusOut(paused=credits_paused(current, settings))
+    if credits_paused(current, settings):
+        return IntakeStatusOut(paused=True, reason="company")
+
+    # Staff never reach this route (`IsVendor`), so a principal here always
+    # names a vendor — but read it off the principal rather than asserting, so a
+    # future caller without one gets "not paused" rather than an exception.
+    if principal.vendor_id is not None:
+        line = await vendor_standing(db, principal.company_id, principal.vendor_id)
+        if line.paused:
+            return IntakeStatusOut(paused=True, reason="vendor")
+
+    return IntakeStatusOut(paused=False, reason=None)
 
 
 async def create_ticket(
@@ -1862,6 +1919,22 @@ async def create_ticket(
         by_user=principal.user_id,
     )
 
+    # And the VENDOR's own credit line, which is a different question: the
+    # charge above is what the company pays the platform for this ticket
+    # existing, this is what the vendor will owe the company once it closes.
+    # Either refusal rolls the same transaction back.
+    #
+    # Nothing is written here. The ticket is already flushed and non-terminal,
+    # so it is inside the vendor's `reserved` and the check is exact — see
+    # `core.vendor_credits.assert_within_limit`, which explains why the order
+    # matters.
+    await assert_vendor_within_limit(
+        db,
+        company_id=principal.company_id,
+        vendor_id=row.vendor_id,
+        just_reserved_paise=row.vendor_price_paise,
+    )
+
     # The vendor's own name, not the person's: a sub-user leaves, the ticket
     # stays, and "who raised this" should still answer with the party that is
     # accountable for it. `created_by` keeps the individual.
@@ -1910,10 +1983,10 @@ async def create_ticket(
     await publish_ticket_changed(db, row)
     await db.commit()
 
-    # No outer condition needed: `_push_pool_job` checks that the ticket is
+    # No outer condition needed: `push_pool_job` checks that the ticket is
     # actually in the pool, which is the same test the `publish_pool_changed`
     # above is nested under.
-    await _push_pool_job(db, row)
+    await push_pool_job(db, row)
     await db.refresh(row)
 
     # Both branches tell the customer something, and neither can fail the
@@ -1930,7 +2003,7 @@ async def create_ticket(
             await publish_ticket_changed(db, row)
             await db.commit()
     else:
-        await _send_slot_request(db, row)
+        await send_slot_request(db, row)
         db.add(
             record_event(
                 row,
@@ -2716,7 +2789,7 @@ async def add_bonus_and_renotify(
         node_path_ids=row.node_path_ids,
         slot_start=row.slot_start,
     )
-    await _push_pool_job(db, row)
+    await push_pool_job(db, row)
     return RenotifyOut(
         ticket=await get_ticket(db, principal, ticket_id), notified=len(audience)
     )
@@ -3406,6 +3479,25 @@ async def force_close_ticket(
             )
         )
 
+    # And what the VENDOR is billed. Clamped for the same reason and in the same
+    # way as the payout above — the console prefills it from the ticket's own
+    # stamped price, so a bigger number is a typo rather than an attack, and
+    # refusing the force-closure over it would leave the ticket open.
+    #
+    # The two numbers are independent: a technician who travelled and found
+    # nobody home is owed something while the vendor is billed nothing, and a
+    # visit that happened but was never confirmed is the reverse of that.
+    # Nothing here couples them, and nothing should.
+    billed = min(body.vendorChargePaise or 0, row.vendor_price_paise)
+    await charge_vendor_closure(
+        db,
+        company_id=principal.company_id,
+        vendor_id=row.vendor_id,
+        ticket_id=row.id,
+        amount_paise=billed,
+        by_user=principal.user_id,
+    )
+
     await publish_ticket_changed(db, row)
     if technician_id is not None:
         await publish_job_changed(
@@ -3482,12 +3574,16 @@ async def list_attachments(
     ]
 
 
-async def _push_pool_job(db: AsyncSession, row: Ticket) -> None:
+async def push_pool_job(db: AsyncSession, row: Ticket) -> None:
     """Tell eligible technicians' phones that this job is takeable.
 
     Guarded on the ticket really being in the pool. Both callers establish that
     before getting here, but they do it in two different places and only one of
     them is obvious from the call site.
+
+    ⚠ It runs `technicians_covering` per TICKET, so it is deliberately not
+    called for a large import — see `import_service`, which pushes only for
+    small batches and says why.
 
     Both open statuses, matching `jobs.pool_query`: a `Slot Pending` ticket is
     offered from the moment it is raised, and a push is the only thing that
