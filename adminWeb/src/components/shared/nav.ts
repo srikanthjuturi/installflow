@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Boxes,
   Coins,
+  HandCoins,
   IndianRupee,
   LayoutDashboard,
   ListFilter,
@@ -203,6 +204,21 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/settings/users",
         icon: UserCog,
         feature: "users.view",
+      },
+      {
+        label: "Vendor Credit",
+        to: "/vendor-credit",
+        icon: HandCoins,
+        match: ["/vendor-credit/"],
+        // What this company's VENDORS owe IT, which is the opposite end of the
+        // money from Credits below — that is what the company owes the
+        // platform. Two entries rather than two tabs on one screen because a
+        // vendor can be stopped by either and the remedies are different
+        // people's work. Seeded to admin and national_head, and the API adds a
+        // National-Head rank floor no Feature Access override can lift:
+        // confirming a payment moves money. Hard rule 8: this hides the link,
+        // the server refuses the act.
+        feature: "vendors.credit",
       },
       {
         label: "Credits",

@@ -314,6 +314,33 @@ export function RulesForm({ rules, onSubmit, isSaving }: RulesFormProps) {
             can sit a few hundred metres out on a large complex or a rural plot.
           </p>
         </RuleCard>
+
+        {/* Its own card, and the only one here that is about a VENDOR rather
+            than about a job. It is on this screen because it is a company rule
+            like the rest; it is not overridable per category, because a credit
+            line is one number a vendor draws down across everything it raises
+            and a televisions answer and an air-conditioners answer could not
+            both be it. */}
+        <RuleCard title="Vendor credit">
+          <FieldGroup className="gap-3">
+            <SpanField
+              id="vendor-credit-limit"
+              label="A new vendor starts with"
+              unit="rupees of credit"
+              min={0}
+              hint="What a vendor may owe before its tickets stop. Billed when a ticket closes, at the product's vendor price."
+              error={errors.vendorCreditLimit?.message}
+              register={register("vendorCreditLimit", { valueAsNumber: true })}
+            />
+          </FieldGroup>
+          <p className="mt-3.5 text-xs text-ink-3">
+            This is the figure a vendor added from now on is given. It never
+            changes one that already exists — each vendor carries its own, so
+            raising this cannot silently extend somebody you agreed a different
+            number with. Change one vendor&apos;s on Vendors, or approve their
+            request on Vendor credit.
+          </p>
+        </RuleCard>
       </div>
 
       <div className="mt-3.5 flex flex-wrap items-center justify-end gap-2.5">
@@ -351,6 +378,7 @@ function SpanField({
   unit,
   hint,
   error,
+  min = 1,
   register,
 }: {
   id: string;
@@ -358,6 +386,9 @@ function SpanField({
   unit: string;
   hint: string;
   error?: string;
+  /** The input's floor. 1 for every timing rule; 0 where zero is a real
+   *  setting, as it is for a vendor credit line. */
+  min?: number;
   register: ReturnType<ReturnType<typeof useForm<RulesFormValues>>["register"]>;
 }) {
   return (
@@ -370,7 +401,7 @@ function SpanField({
           id={id}
           type="number"
           inputMode="numeric"
-          min={1}
+          min={min}
           className="w-28"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : `${id}-hint`}

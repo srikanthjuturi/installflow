@@ -7,10 +7,12 @@ import {
 import {
   clearNodeRules,
   getNodeRules,
+  getPaymentAccount,
   getRulesConfig,
   inviteUser,
   listUsers,
   saveNodeRules,
+  savePaymentAccount,
   saveRulesConfig,
   updateUserAccess,
 } from "@/services/settings";
@@ -23,6 +25,10 @@ export const settingsKeys = {
   /** Under the `rules` prefix on purpose: saving the company baseline changes
    *  what every node RESOLVES to, so one invalidation has to catch both. */
   nodeRules: (nodeId: string) => ["settings", "rules", "node", nodeId] as const,
+  /** Where vendors pay this company. Stored on `companies`, not in
+   *  `company_rules`, so it sits OUTSIDE the `rules` prefix: saving the rules
+   *  must not refetch it, and saving it must not refetch them. */
+  paymentAccount: () => ["settings", "payment-account"] as const,
   /** Prefix — invalidating this catches every page and filter combination. */
   users: () => ["settings", "users"] as const,
   userPage: (params: ListParams) => ["settings", "users", params] as const,
@@ -149,5 +155,42 @@ export function useUpdateUserAccess() {
     mutationFn: updateUserAccess,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: settingsKeys.users() }),
+  });
+}
+
+/**
+ * Where this company's vendors send what they owe it.
+ *
+ * Reference data that changes when somebody presses Save, like the rules — but
+ * a separate query, because it is a separate row, a separate endpoint and a
+ * separate guard (`vendors.credit` plus a National-Head floor, rather than
+ * `settings.edit`).
+ */
+export function usePaymentAccount({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: settingsKeys.paymentAccount(),
+    queryFn: getPaymentAccount,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+/**
+ * Saves it, and clears the VENDOR-CREDIT slice as well as its own.
+ *
+ * A vendor's Credit page reads `paymentAvailable` off `GET /vendor-credit/me`,
+ * so adding a UPI ID here has to make that page stop saying payments are
+ * unavailable. Different user, usually a different browser — but the same
+ * console for an Admin who is looking at both.
+ */
+export function useSavePaymentAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't save the payment account" },
+    mutationFn: savePaymentAccount,
+    onSuccess: (saved) => {
+      queryClient.setQueryData(settingsKeys.paymentAccount(), saved);
+      void queryClient.invalidateQueries({ queryKey: ["vendor-credit"] });
+    },
   });
 }

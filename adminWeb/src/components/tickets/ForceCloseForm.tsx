@@ -77,6 +77,23 @@ const forceCloseSchema = z.object({
     .string()
     .trim()
     .refine((v) => v === "" || /^\d{1,7}$/.test(v), "Enter a whole number of rupees"),
+  /**
+   * What to BILL the vendor for the same job, in whole RUPEES as typed. Empty
+   * means nothing, which is a real answer: a ticket whose customer never
+   * confirmed a slot had nobody attend, and billing the vendor for it would
+   * charge them for our own unfilled appointment.
+   *
+   * Independent of the payout above, and nothing here couples them. A technician
+   * who travelled and found the door locked is owed something while the vendor is
+   * billed nothing; a visit that happened but was never confirmed is the reverse.
+   *
+   * Always shown, unlike the payout — every ticket has a vendor, and the ticket
+   * carries the price it was stamped with at intake.
+   */
+  vendorCharge: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d{1,9}$/.test(v), "Enter a whole number of rupees"),
 });
 
 export type ForceCloseFormValues = z.infer<typeof forceCloseSchema>;
@@ -91,6 +108,9 @@ interface ForceCloseFormProps {
    * technician attend, so there is nobody to pay and the field is not shown.
    */
   technician: { name: string; payoutPaise: number } | null;
+  /** The vendor that asked for the visit, and the price this ticket stamped for
+   *  them at intake. Always present — every ticket has both. */
+  vendor: { name: string; pricePaise: number };
   /**
    * The trail to hand back to the ticket that Cancel returns to, so abandoning
    * a force-close does not also lose the queue or the ledger behind it.
@@ -103,6 +123,7 @@ export function ForceCloseForm({
   onSubmit,
   isSubmitting,
   technician,
+  vendor,
   cancelState,
 }: ForceCloseFormProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -124,6 +145,11 @@ export function ForceCloseForm({
       // screen is a technician who DID the work and a customer who went quiet.
       // Editable down to nothing for the case where nobody attended.
       technicianPayout: technician ? String(technician.payoutPaise / 100) : "",
+      // Prefilled with the full price, for the mirror of the payout's reason:
+      // the common case is a visit that happened and a customer who went quiet,
+      // and the vendor owes for that. Editable down to nothing for the case
+      // where nobody attended.
+      vendorCharge: String(vendor.pricePaise / 100),
     },
   });
 
@@ -307,6 +333,40 @@ export function ForceCloseForm({
                 )}
               </Field>
             ) : null}
+
+            {/* Always, unlike the payout above: every ticket has a vendor, and
+                they asked for the visit whether or not anybody attended it. */}
+            <Field data-invalid={err("vendorCharge") ? true : undefined}>
+              <FieldLabel htmlFor="force-close-vendor-charge">
+                Bill {vendor.name} (₹)
+              </FieldLabel>
+              <Input
+                id="force-close-vendor-charge"
+                inputMode="numeric"
+                placeholder="0"
+                aria-invalid={err("vendorCharge") ? true : undefined}
+                aria-describedby={
+                  err("vendorCharge")
+                    ? "force-close-vendor-charge-error"
+                    : "force-close-vendor-charge-hint"
+                }
+                {...register("vendorCharge")}
+              />
+              {err("vendorCharge") ? (
+                <FieldDescription
+                  id="force-close-vendor-charge-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {err("vendorCharge")}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="force-close-vendor-charge-hint">
+                  This job is priced at {moneyPaise(vendor.pricePaise)} to them.
+                  Clear it to bill nothing — which is right when nobody attended.
+                </FieldDescription>
+              )}
+            </Field>
 
             <Field data-invalid={err("attachments") ? true : undefined}>
               <FieldLabel htmlFor="force-close-files">

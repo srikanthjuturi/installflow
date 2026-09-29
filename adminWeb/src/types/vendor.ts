@@ -95,6 +95,18 @@ export interface Vendor {
    * is correct rather than a bug.
    */
   addressSearchCount: number;
+  /**
+   * The credit line, all four in PAISE and only the first stored — see
+   * `types/vendorCredit.ts` for the arithmetic. Staff-only, like the count
+   * above: the vendor reads the same figures about itself from
+   * `GET /vendor-credit/me`.
+   */
+  creditLimitPaise: number;
+  creditUsedPaise: number;
+  creditReservedPaise: number;
+  creditAvailablePaise: number;
+  /** The next ticket from this vendor is certainly refused. */
+  creditPaused: boolean;
   /** Live product models this vendor supplies. A real COUNT, not seed data. */
   modelCount: number;
   /** Every live brand, approved first then waiting, A–Z within each. */
@@ -148,6 +160,13 @@ export interface CreateVendorInput {
   isActive: boolean;
   addressSearchEnabled: boolean;
   locationCheckEnabled: boolean;
+  /**
+   * The credit line, in PAISE. OMIT it and the server stamps the company's own
+   * default from `company_rules.vendor_credit_limit_paise` — which is what the
+   * form sends when nobody edits the box. Sending 0 is a different answer: a
+   * vendor that raises nothing until somebody gives it room.
+   */
+  creditLimitPaise?: number;
   /** The brands it sells, approved as written. Empty means it sells under its
    *  own name — the server then gives it one brand called what it is called. */
   brands: string[];
@@ -172,6 +191,9 @@ export interface UpdateVendorInput {
   isActive?: boolean;
   addressSearchEnabled?: boolean;
   locationCheckEnabled?: boolean;
+  /** Omit to leave the line alone. Lowering it below what the vendor already
+   *  owes is allowed: it stops them raising more while they settle. */
+  creditLimitPaise?: number;
   /**
    * The APPROVED brands, sent whole: a row with an `id` is kept (renamed if the
    * name changed), one without is new, and an approved brand left out is

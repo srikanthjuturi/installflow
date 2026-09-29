@@ -124,6 +124,10 @@ export default function ForceClosePage() {
         technicianPayoutPaise: current.technicianId
           ? Number(values.technicianPayout || 0) * 100
           : undefined,
+        // The vendor's side of the same closure, and always sent: every ticket
+        // has a vendor. Empty means bill nothing, which the API writes as no
+        // entry at all — so 0 and omitted say the same thing here too.
+        vendorChargePaise: Number(values.vendorCharge || 0) * 100,
       },
       {
         onSuccess: () => {
@@ -201,6 +205,11 @@ export default function ForceClosePage() {
                   }
                 : null
             }
+            /* Always present, both of them: every ticket carries a vendor, and
+               `vendorPricePaise` is NOT NULL and shown to everyone who can see
+               the ticket — the vendor included, because it is their own price
+               and there is nothing to hide from the party paying it. */
+            vendor={{ name: ticket.vendorName, pricePaise: ticket.vendorPricePaise }}
             onSubmit={(values) => void submit(ticket, values)}
           />
         </>

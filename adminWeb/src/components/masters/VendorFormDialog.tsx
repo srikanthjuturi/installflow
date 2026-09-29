@@ -32,7 +32,9 @@ import {
   useUpdateVendor,
 } from "@/hooks/useVendors";
 import { VENDOR_GST_CODES } from "@/lib/errorCodes";
+import { useRulesConfig } from "@/hooks/useSettings";
 import { cn } from "@/lib/utils";
+import { paiseToRupeeInput } from "@/utils/money";
 import type {
   CreatedVendor,
   IntakeChannel,
@@ -290,6 +292,23 @@ function VendorForm({
   const update = useUpdateVendor();
   const pending = create.isPending || update.isPending;
 
+  /*
+   * The company's own default credit line, shown so the operator knows what
+   * blank will mean. Read-only here and never written into the box — the SERVER
+   * stamps it, and prefilling would turn a value nobody chose into one they did.
+   *
+   * Reference data, cached five minutes, and this form never blocks on it: if it
+   * has not arrived (or the reader lacks `settings.view`, which Feature Access
+   * can take away) the hint simply says "the company default" without the
+   * figure. Errors are suppressed for the same reason — a hint that could not be
+   * fetched is not worth a toast on a form about something else.
+   */
+  const rules = useRulesConfig();
+  const defaultLimit =
+    rules.data !== undefined
+      ? rules.data.vendorCreditLimit.toLocaleString("en-IN")
+      : null;
+
   const {
     control,
     register,
@@ -325,6 +344,10 @@ function VendorForm({
       // for sites that cannot produce a GPS fix at all, where the alternative is
       // a technician who cannot start a job they are standing at.
       locationCheck: locationCheckOf(vendor?.locationCheckEnabled ?? true),
+      // On EDIT the vendor's own figure; on ADD blank, which the server reads as
+      // "use the company's default". `paiseToRupeeInput` and not `moneyPaise`:
+      // this round-trips through a numeric input, so it must hold bare digits.
+      creditLimit: vendor ? paiseToRupeeInput(vendor.creditLimitPaise) : "",
       // One row to start from on ADD, kept in step with the company name below
       // until somebody types in it — most vendors sell under their own name
       // first. On EDIT, every live brand; the vendor's waiting ones read-only.
@@ -659,6 +682,12 @@ function VendorForm({
       isActive: values.status === "Active",
       addressSearchEnabled: values.addressSearch === "On",
       locationCheckEnabled: values.locationCheck === "On",
+      // Omitted when blank, so the SERVER stamps the company's own default.
+      // Sending 0 instead would set a line of nothing, which is a different and
+      // much worse answer.
+      ...(values.creditLimit === ""
+        ? {}
+        : { creditLimitPaise: Number(values.creditLimit) * 100 }),
     };
     // Only the brands the office decides here. A vendor's waiting brands are
     // left out on purpose — the server leaves them alone when they are absent,
@@ -889,6 +918,22 @@ function VendorForm({
               />
             )}
           />
+        </FieldGrid>
+      </FormSection>
+
+      <FormSection legend="Credit">
+        <FieldGrid className={PAIR}>
+          {renderField("creditLimit", "Credit limit (₹)", {
+            inputMode: "numeric",
+            tabular: true,
+            // Not required: blank is a real answer, and it means the company's
+            // own default. Marking it would ask for something the operator has
+            // no basis to invent on a form they opened to add a vendor.
+            placeholder: defaultLimit ?? "Company default",
+            hint: defaultLimit
+              ? `What this vendor may owe before its tickets stop. Blank uses the company default of ₹${defaultLimit}.`
+              : "What this vendor may owe before its tickets stop. Blank uses the company default.",
+          })}
         </FieldGrid>
       </FormSection>
 

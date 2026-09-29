@@ -6,6 +6,7 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { NodeRulesForm } from "@/components/settings/NodeRulesForm";
 import { RulesForm } from "@/components/settings/RulesForm";
+import { VendorPaymentAccountCard } from "@/components/settings/VendorPaymentAccountCard";
 import { toNodeDraft } from "@/components/settings/nodeRulesSchema";
 import { toDraft } from "@/components/settings/rulesSchema";
 import {
@@ -257,6 +258,10 @@ export default function RulesConfigPage() {
               })
             }
           />
+
+          {/* Below the rules and only on the company scope: it is not a rule,
+              it is not overridable per category, and it saves on its own. */}
+          <VendorPaymentAccountCard />
         </>
       )}
     </>

@@ -81,6 +81,21 @@ export const rulesSchema = z
     // more often than dishonest ones — the point on a ticket is a geocoded
     // building centroid and the phone's fix is tens of metres wide.
     geoRadiusM: metres(50, 5000, "Proof radius"),
+    /**
+     * Rupees. The credit line a NEW vendor is stamped with.
+     *
+     * `min(0)` is a real setting, not a slack floor: zero means a vendor added
+     * from now on raises nothing until somebody gives it room. The ceiling
+     * mirrors `LIMITS["vendor_credit_limit_paise"]` and is a typo guard rather
+     * than a policy — a distributor with a thousand open installs genuinely
+     * commits lakhs, so a bound a real business can reach would refuse real
+     * work.
+     */
+    vendorCreditLimit: z
+      .number({ error: "A vendor credit limit is required" })
+      .int("Use whole rupees")
+      .min(0, "A credit limit cannot be negative")
+      .max(10_000_000, "At most ₹1,00,00,000"),
   })
   .superRefine((v, ctx) => {
     // A band that charges less the later you cancel would invert the whole
@@ -148,6 +163,7 @@ export function toFormValues(rules: RulesConfig): RulesFormValues {
     slotReminderMinutes: rules.slotReminderMinutes,
     customerNoticeMinutes: rules.customerNoticeMinutes,
     geoRadiusM: rules.geoRadiusM,
+    vendorCreditLimit: rules.vendorCreditLimit,
   };
 }
 
@@ -174,5 +190,6 @@ export function toDraft(values: RulesFormValues): RulesConfigDraft {
     slotReminderMinutes: values.slotReminderMinutes,
     customerNoticeMinutes: values.customerNoticeMinutes,
     geoRadiusM: values.geoRadiusM,
+    vendorCreditLimit: values.vendorCreditLimit,
   };
 }

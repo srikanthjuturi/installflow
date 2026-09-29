@@ -12,6 +12,7 @@ import {
 } from "@/hooks/useListParams";
 import { cn } from "@/lib/utils";
 import type { ListParams, PaginationMeta } from "@/types/api";
+import { moneyPaise } from "@/utils/money";
 import type { IntakeChannel, Vendor } from "@/types/vendor";
 import { INTAKE_CHANNELS, VENDOR_STATUSES } from "./vendorSchema";
 
@@ -198,6 +199,31 @@ export function VendorTable({
        * fire-and-forget, so a dropped request is one search nobody ever counts.
        */
       cell: (v) => v.addressSearchCount,
+    },
+    {
+      id: "credit",
+      header: "Credit left",
+      align: "right",
+      /*
+       * Room left on this vendor's line: limit − owed − what its open tickets
+       * commit. Never a dash — every vendor has a line, and an empty one is a
+       * number, not a gap.
+       *
+       * "Used up" rather than a red figure: a negative amount already reads as
+       * one, and what a reader scanning this column wants to know is whether the
+       * vendor can raise anything, which is a state and not a quantity. The full
+       * breakdown is on Vendor credit.
+       */
+      cell: (v) => (
+        <div className="leading-tight">
+          <div className="font-medium tabular-nums">
+            {moneyPaise(v.creditAvailablePaise)}
+          </div>
+          <div className="text-xs text-ink-3">
+            {v.creditPaused ? "Used up" : `of ${moneyPaise(v.creditLimitPaise)}`}
+          </div>
+        </div>
+      ),
     },
     {
       id: "status",
