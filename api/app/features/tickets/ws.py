@@ -156,10 +156,16 @@ class _Visibility:
         An ADDRESSED row (`audience`) replaces both: it reaches that audience
         and nobody else, mirroring `notifications.service._visible`. `payers`
         is the payer; a role key is that role, still inside its territory — the
-        row's pincode does that for an area manager or regional head. An
-        audience this code does not know reaches nobody.
+        row's pincode does that for an area manager or regional head; `vendor`
+        is the named vendor and no staff member at all. An audience this code
+        does not know reaches nobody.
         """
         if audience is not None:
+            if audience == "vendor":
+                # The one audience that points AWAY from staff. Tested before
+                # the guard below, which would otherwise refuse the very reader
+                # it is addressed to.
+                return self.vendor_id is not None and vendor == self.vendor_id
             if self.vendor_id is not None:
                 return False
             if audience == "payers":

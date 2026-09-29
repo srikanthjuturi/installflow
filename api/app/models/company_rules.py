@@ -138,6 +138,19 @@ class CompanyRules(Base, IdMixin, AuditMixin):
         Integer, nullable=False, server_default=text("1000")
     )
 
+    # ── what a vendor may owe ─────────────────────────────────────
+
+    #: Paise. The credit line a vendor added from now on is STAMPED with —
+    #: `vendors.credit_limit_paise`. Changing it reaches the next vendor added
+    #: and never an existing one, which is the whole reason the vendor carries
+    #: its own copy. See `core.rules.DEFAULTS` and `core.vendor_credits`.
+    #:
+    #: The one rule in this table that no product node may override, alongside
+    #: `cancel_penalty_cap_paise` — `core.rules._COMPANY_ONLY_KEYS` says why.
+    vendor_credit_limit_paise: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("500000")
+    )
+
     __table_args__ = (
         UniqueConstraint("company_id", name="uq_company_rules_company"),
         _band_list("cancel_penalties_paise", CANCEL_PENALTY_COUNT),
@@ -152,6 +165,7 @@ class CompanyRules(Base, IdMixin, AuditMixin):
         _between("slot_reminder_minutes", "slot_reminder_minutes"),
         _between("customer_notice_minutes", "customer_notice_minutes"),
         _between("geo_radius_m", "geo_radius_m"),
+        _between("vendor_credit_limit_paise", "vendor_credit_limit_paise"),
         # Escalating before the customer can even be asked to confirm is a
         # contradiction: the slot has to exist before it can go unassigned.
         CheckConstraint(

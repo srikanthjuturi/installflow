@@ -25,6 +25,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     Uuid,
@@ -35,6 +36,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
 from app.db.mixins import AuditMixin, IdMixin, SoftDeleteMixin
+from app.models.vendor_credits import CREDIT_LIMIT_MAX_PAISE
 
 
 class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
@@ -147,12 +149,36 @@ class Vendor(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Boolean, nullable=False, server_default=text("true")
     )
 
+    #: What this vendor may owe the company before its intake stops, in PAISE.
+    #: Stamped at creation from `company_rules.vendor_credit_limit_paise` and
+    #: changed afterwards by a National Head, or by approving the vendor's own
+    #: request for more room. See `app.core.vendor_credits` for the arithmetic.
+    #:
+    #: NOT NULL and stamped, not read live from the rule: a company raising the
+    #: house default must not silently extend every vendor it has already
+    #: agreed a different number with.
+    #:
+    #: There is deliberately NO balance column beside it. What a vendor owes is
+    #: the sum of `vendor_credit_entries` and what it has reserved is a live
+    #: query over its open tickets — a stored copy of either would eventually
+    #: disagree with its own rows, which is what `technician_profiles`'
+    #: deleted `jobs_completed` counter did.
+    credit_limit_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+
     __table_args__ = (
         CheckConstraint(
             "jsonb_typeof(intake_channels) = 'array' "
             "AND jsonb_array_length(intake_channels) >= 1 "
             "AND intake_channels <@ '[\"API\", \"Excel\", \"Manual\"]'::jsonb",
             name="intake_channels",
+        ),
+        # The same ceiling `vendor_credit_requests` carries, declared from the
+        # one constant so the two cannot drift. Zero is allowed and means "this
+        # vendor raises nothing until somebody gives it room".
+        CheckConstraint(
+            f"credit_limit_paise >= 0 AND credit_limit_paise <= "
+            f"{CREDIT_LIMIT_MAX_PAISE}",
+            name="credit_limit_paise",
         ),
         Index("ix_vendors_company_id", "company_id"),
         # What product_models' composite FK points at, so a model physically

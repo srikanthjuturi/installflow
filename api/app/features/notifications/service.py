@@ -75,6 +75,11 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
     # they are the payer. Resolved per read — see `payer_role` on why.
     # `'billing'` rows reach Admins and National Heads alike: either may
     # recharge the company's credits (`AUDIENCES`).
+    #
+    # `'vendor'` needs no clause and must not have one: no staff role is spelled
+    # "vendor", so it falls out of every branch below and reaches no staff
+    # reader — which is the whole point of it. The vendor it names gets it from
+    # the early return above, which matches on `vendor_id` and ignores audience.
     is_payer = principal.role in (ADMIN, NATIONAL_HEAD) and (
         principal.role == await payer_role(db, company_id=principal.company_id)
     )

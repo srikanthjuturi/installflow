@@ -37,6 +37,9 @@ NotificationKind = Literal[
     "upi_change",
     "credits",
     "recharge",
+    "vendor_credit",
+    "vendor_payment",
+    "vendor_credit_request",
 ]
 
 assert set(get_args(NotificationKind)) == set(NOTIFICATION_KINDS), (

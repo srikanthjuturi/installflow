@@ -108,6 +108,9 @@ COMPANY_TABLES: frozenset[str] = frozenset(
         "upi_change_requests",
         "vendor_address_searches",
         "vendor_brands",
+        "vendor_credit_entries",
+        "vendor_credit_requests",
+        "vendor_payments",
         "vendors",
         "web_push_subscriptions",
     }
@@ -165,6 +168,11 @@ MONEY_SUMS: tuple[tuple[str, str], ...] = (
     ("credit_entries", "credits"),
     ("credit_recharges", "amount_paise"),
     ("redemptions", "amount_paise"),
+    # The vendor side of the money. Summed for the same reason as the rest: a
+    # bill deleted while some other count moved the other way would slip past a
+    # row-count check.
+    ("vendor_credit_entries", "amount_paise"),
+    ("vendor_payments", "amount_paise"),
 )
 
 #: Columns that hold a user id with no foreign key (see `ActorMixin`). A kept row

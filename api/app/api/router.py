@@ -27,6 +27,10 @@ from app.features.tickets.router import router as tickets_router
 from app.features.tickets.ws import router as tickets_stream_router
 from app.features.territory.router import router as territory_router
 from app.features.uploads.router import router as uploads_router
+from app.features.vendor_credits.router import router as vendor_credit_router
+from app.features.vendor_credits.staff_router import (
+    router as vendor_credit_staff_router,
+)
 from app.features.users.router import router as users_router
 from app.features.vendor_users.router import router as vendor_users_router
 from app.features.vendors.router import router as vendors_router
@@ -80,3 +84,13 @@ api_router.include_router(settings_router)
 # the only door through which credits are bought.
 api_router.include_router(credits_router)
 api_router.include_router(platform_router)
+# The other end of the money: what a VENDOR owes its company for jobs it raised.
+# Charged when a ticket CLOSES, against a per-vendor credit line — a separate
+# concept from the credits above, sharing no table with them. The vendor's side
+# (`/vendor-credit/me`) claims a payment and asks for a bigger line; the staff
+# side confirms and decides, which is the only door through which either moves.
+#
+# The staff router is included FIRST so its literal `/count` and `/vendors`
+# paths are matched before anything could shadow them.
+api_router.include_router(vendor_credit_staff_router)
+api_router.include_router(vendor_credit_router)

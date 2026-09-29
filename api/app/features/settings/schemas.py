@@ -16,6 +16,7 @@ field is an amount already spent on a specific job — a fact — and it is read
 straight off the ticket by two clients. These are configuration.
 """
 
+import datetime
 import uuid
 from typing import Annotated
 
@@ -28,6 +29,7 @@ from app.core.rules import (
     LIMITS,
 )
 from app.core.schemas import AppModel
+from app.core.upi import OptionalUpiName, UpiId
 
 
 def _rupee_bounds(key: str) -> tuple[int, int]:
@@ -38,6 +40,7 @@ def _rupee_bounds(key: str) -> tuple[int, int]:
 
 _PENALTY_MIN, _PENALTY_MAX = _rupee_bounds("cancel_penalty_paise")
 _CAP_MIN, _CAP_MAX = _rupee_bounds("cancel_penalty_cap_paise")
+_VENDOR_LIMIT_MIN, _VENDOR_LIMIT_MAX = _rupee_bounds("vendor_credit_limit_paise")
 _BONUS_MIN, _BONUS_MAX = _rupee_bounds("bonus_band_paise")
 
 #: A whole-rupee penalty. `ge=0` because a company may genuinely decide a band
@@ -45,6 +48,10 @@ _BONUS_MIN, _BONUS_MAX = _rupee_bounds("bonus_band_paise")
 PenaltyRupees = Annotated[int, Field(ge=_PENALTY_MIN, le=_PENALTY_MAX)]
 BonusRupees = Annotated[int, Field(ge=max(1, _BONUS_MIN), le=_BONUS_MAX)]
 CapRupees = Annotated[int, Field(ge=_CAP_MIN, le=_CAP_MAX)]
+#: The credit line a NEW vendor is stamped with, in whole rupees. `ge=0` is a
+#: real setting rather than a slack bound: zero means a vendor added from now
+#: on raises nothing until somebody gives it room.
+VendorLimitRupees = Annotated[int, Field(ge=_VENDOR_LIMIT_MIN, le=_VENDOR_LIMIT_MAX)]
 
 
 def _bounded(key: str):
@@ -91,6 +98,11 @@ class RulesOut(AppModel):
     #: may be taken — for a ticket that HAS coordinates. One whose address was
     #: typed is verified by pincode and this number never applies to it.
     geoRadiusM: int
+    #: Rupees. The credit line a NEW vendor is stamped with. It reaches the next
+    #: vendor added and never an existing one — each vendor carries its own copy,
+    #: so raising this does not silently extend anybody already agreed a
+    #: different number. Change one vendor's on the Vendors screen.
+    vendorCreditLimit: int
 
 
 class RulesUpdateRequest(AppModel):
@@ -121,6 +133,7 @@ class RulesUpdateRequest(AppModel):
     slotReminderMinutes: _bounded("slot_reminder_minutes")
     customerNoticeMinutes: _bounded("customer_notice_minutes")
     geoRadiusM: _bounded("geo_radius_m")
+    vendorCreditLimit: VendorLimitRupees
 
     @model_validator(mode="after")
     def _check(self) -> "RulesUpdateRequest":
@@ -244,3 +257,31 @@ class NodeRulesOut(AppModel):
     #: came from the company baseline. Keyed by the wire names above, so the
     #: console can print "from TV" beside the box without matching anything up.
     inheritedFrom: dict[str, str] = {}
+
+
+class PaymentAccountOut(AppModel):
+    """Where this company's VENDORS send what they owe it.
+
+    Null until somebody sets it, and a vendor's Credit page says so rather than
+    drawing a QR nobody could honour. Both or neither —
+    `ck_companies_upi_pair` makes half a payee impossible.
+    """
+
+    upiId: str | None = None
+    #: The name a payer's UPI app should show them, so they can check the QR is
+    #: pointing where they think before they pay.
+    upiName: str | None = None
+    updatedAt: datetime.datetime | None = None
+
+
+class PaymentAccountIn(AppModel):
+    """Set it, or clear it by sending both as null."""
+
+    upiId: UpiId = None
+    upiName: OptionalUpiName = None
+
+    @model_validator(mode="after")
+    def _pair(self) -> "PaymentAccountIn":
+        if (self.upiId is None) != (self.upiName is None):
+            raise ValueError("Enter both the UPI ID and the name on the UPI account")
+        return self

@@ -232,6 +232,16 @@ DEFAULTS: dict[str, object] = {
     # Consulted ONLY for a ticket that carries coordinates. One whose address
     # was typed is on the pincode rule, and this number does not apply to it.
     "geo_radius_m": 1000,
+    # Paise. What a new VENDOR may owe this company before its intake stops —
+    # 5,000 rupees. Not what the vendor pays per ticket: a ticket costs the
+    # vendor its own stamped `vendor_price_paise`, and this is how much of that
+    # may be outstanding at once. See `app.core.vendor_credits`.
+    #
+    # It is the figure a new vendor is STAMPED with, not one read live: raising
+    # the house default must not silently extend every vendor somebody has
+    # already agreed a different number with. Lowering it likewise leaves the
+    # existing ones alone. Both reach the next vendor added.
+    "vendor_credit_limit_paise": 500000,
 }
 
 #: Bounds every writer checks: the API schema, the CHECK constraints on the
@@ -271,6 +281,19 @@ LIMITS: dict[str, tuple[int, int]] = {
     # incentive, it is the absence of one, and the absence is spelled "do not
     # fund a bonus".
     "bonus_band_paise": (1, 10000000),
+    # One crore rupees, the ceiling `vendor_credit_requests` and
+    # `vendors.credit_limit_paise` also carry — declared here because this is
+    # where every other bound is declared, and imported there. Zero is allowed
+    # and is a real setting: it means a vendor added from now on raises nothing
+    # until somebody gives it room.
+    #
+    # A crore, not the ten lakh this started at, and the difference is the point
+    # of the bound: like `cancel_penalty_cap_paise`'s, it exists to catch a typo
+    # rather than to state a policy, so it has to sit ABOVE any plausible figure.
+    # Ten lakh is not — a distributor with 1,688 open installs at 1,850 rupees
+    # each commits 31 lakh, and the development database already had one. A
+    # ceiling a real business can reach is a ceiling that refuses real work.
+    "vendor_credit_limit_paise": (0, 1000000000),
 }
 
 
@@ -278,14 +301,24 @@ LIMITS: dict[str, tuple[int, int]] = {
 #: and the settings schema all iterate, so none of them can quietly miss one.
 RULE_KEYS: tuple[str, ...] = tuple(DEFAULTS)
 
-#: The rules a product node may override. Everything except the cap.
+#: The rules a product node may override. Everything except the two that are
+#: not properties of a JOB.
 #:
-#: `cancel_penalty_cap_paise` is the only rule here that is not a property of a
-#: JOB. It caps what one TECHNICIAN can be charged across a calendar month, over
-#: every job they took — so if their TV ticket said ₹5,000 and their AC ticket
-#: said ₹3,000 there would be no answer to which applies. It stays company-wide.
+#: `cancel_penalty_cap_paise` caps what one TECHNICIAN can be charged across a
+#: calendar month, over every job they took — so if their TV ticket said
+#: ₹5,000 and their AC ticket said ₹3,000 there would be no answer to which
+#: applies.
+#:
+#: `vendor_credit_limit_paise` is a property of a VENDOR, not of a job either,
+#: and it has the same problem one level along: a line is one number a vendor
+#: draws down across everything it raises, so a televisions answer and an
+#: air-conditioners answer could not both be it. It is also the one rule here
+#: that nothing reads from a ticket's `rules_snapshot` — it is stamped onto the
+#: vendor instead, once, when the vendor is created.
+_COMPANY_ONLY_KEYS = ("cancel_penalty_cap_paise", "vendor_credit_limit_paise")
+
 NODE_OVERRIDABLE_KEYS: tuple[str, ...] = tuple(
-    key for key in RULE_KEYS if key != "cancel_penalty_cap_paise"
+    key for key in RULE_KEYS if key not in _COMPANY_ONLY_KEYS
 )
 
 

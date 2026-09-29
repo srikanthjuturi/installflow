@@ -611,7 +611,9 @@ async def users_notified_by(
     * **A regional head** hears the same thing one level up, via the state's
       region.
     * **A vendor's people** hear a row that NAMES their vendor. It widens the
-      audience; it never narrows the staff one.
+      audience; it never narrows the staff one — unless the row is also
+      addressed `'vendor'`, which is the one audience that does narrow away
+      from staff entirely.
 
     And one rule ahead of all four: **a row with an `audience`** reaches that
     audience and nobody else. `'payers'` is the users holding `payer_role`; a
@@ -666,6 +668,13 @@ async def users_notified_by(
             who = [(User.role == REGIONAL_HEAD) & covers_region.exists()]
         elif audience in (NATIONAL_HEAD, ADMIN):
             who = [User.role == audience]
+        elif audience == "vendor":
+            # The named vendor's own people, and no staff at all — the one
+            # audience that points outward. Without an id there is nobody to
+            # point at, so fail closed rather than reach every vendor.
+            if vendor_id is None:
+                return []
+            who = [User.role.in_(VENDOR_ROLES) & (Membership.vendor_id == vendor_id)]
         else:
             return []
     else:

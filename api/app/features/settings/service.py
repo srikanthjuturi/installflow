@@ -34,7 +34,10 @@ from app.core.rules import (
     resolve_rules_with_sources,
     validate_resolved,
 )
+from app.models.company import Company
 from app.features.settings.schemas import (
+    PaymentAccountIn,
+    PaymentAccountOut,
     NodeRulesOut,
     NodeRulesUpdateRequest,
     NodeRuleValues,
@@ -96,6 +99,7 @@ def _out(rules: CompanyRules) -> RulesOut:
         slotReminderMinutes=rules.slot_reminder_minutes,
         customerNoticeMinutes=rules.customer_notice_minutes,
         geoRadiusM=rules.geo_radius_m,
+        vendorCreditLimit=_to_rupees(rules.vendor_credit_limit_paise),
     )
 
 
@@ -129,6 +133,11 @@ async def update_rules(
     rules.slot_reminder_minutes = body.slotReminderMinutes
     rules.customer_notice_minutes = body.customerNoticeMinutes
     rules.geo_radius_m = body.geoRadiusM
+    # Rupees on the wire, paise in the column — this is that boundary.
+    # Deliberately NOT in `NODE_FIELDS`: a credit line belongs to a vendor, not
+    # to a job, so no product category may override it. `core.rules`'
+    # `_COMPANY_ONLY_KEYS` is the other half of that decision.
+    rules.vendor_credit_limit_paise = body.vendorCreditLimit * 100
     rules.updated_by = principal.user_id
 
     # Every node's overrides sit ON TOP of this row, so lowering the company's
@@ -405,3 +414,52 @@ async def clear_node_rules(
         await _assert_consistent(db, principal.company_id)
         await db.commit()
     return await _node_out(db, principal.company_id, node)
+
+
+# ── where vendors pay this company ───────────────────────────────────────
+#
+# On this screen because it is the company's own configuration and this is the
+# company's own configuration screen — but stored on `companies`, not in
+# `company_rules`, and that split is deliberate. `company_rules` is stamped onto
+# every ticket's `rules_snapshot` through `RULE_KEYS`; a UPI address is not a
+# term of a job and has no business being frozen onto one.
+
+
+async def _company(db: AsyncSession, company_id: uuid.UUID) -> Company:
+    row = await db.get(Company, company_id)
+    if row is None:
+        # A principal whose company has been deleted under them. 404 rather than
+        # 500: there is genuinely nothing to read.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Company not found")
+    return row
+
+
+async def get_payment_account(
+    db: AsyncSession, company_id: uuid.UUID
+) -> PaymentAccountOut:
+    row = await _company(db, company_id)
+    return PaymentAccountOut(
+        upiId=row.upi_id, upiName=row.upi_name, updatedAt=row.updated_at
+    )
+
+
+async def update_payment_account(
+    db: AsyncSession, principal: Principal, body: PaymentAccountIn
+) -> PaymentAccountOut:
+    """Set where vendors pay, or clear it by sending both as null.
+
+    Changing it does NOT rewrite any payment already open: `vendor_payments`
+    freezes the pair when the request is made, so a vendor holding a QR keeps
+    paying where it was told to. That is the point of freezing it — the
+    alternative is a QR that quietly changes payee between being shown and being
+    scanned.
+    """
+    row = await _company(db, principal.company_id)
+    row.upi_id = body.upiId
+    row.upi_name = body.upiName
+    row.updated_by = principal.user_id
+    await db.commit()
+    await db.refresh(row)
+    return PaymentAccountOut(
+        upiId=row.upi_id, upiName=row.upi_name, updatedAt=row.updated_at
+    )
