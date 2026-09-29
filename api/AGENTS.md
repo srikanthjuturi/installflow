@@ -243,6 +243,153 @@ of signing in is a 429. Normal in tests, never in use.
   there is no socket, email or push for a superadmin. A claim made overnight waits for somebody to
   look. Deliberate for now; say so before promising a turnaround.
 
+**Vendor credit — a VENDOR pays its company for the jobs it raised** (`b8e3f14a9c27`).
+`models/vendor_credits.py`, `core/vendor_credits.py`, `features/vendor_credits` (two routers:
+`router.py` for the vendor, `staff_router.py` for the company).
+
+`product_models.vendor_price_paise` had been stamped onto every ticket since intake existed, and
+its own comment called it "what the vendor is charged for asking" — but nothing had ever charged a
+vendor. The technician's half of that pair becomes a `payout` on closure; the vendor's half went
+nowhere. This is the other half, and it shares **no table** with the credits above: those are what
+the COMPANY pays the PLATFORM for a ticket entering the system, charged at creation. This is what a
+VENDOR owes the COMPANY for work delivered, charged at closure and cleared by paying.
+
+- **A credit LINE, not a wallet.** `vendors.credit_limit_paise`, stamped at creation from
+  `company_rules.vendor_credit_limit_paise` (₹5,000). Stamped, not read live, so raising the house
+  default never silently extends a vendor somebody already agreed a different number with.
+- **Four numbers, and only one of them can fall:**
+  `available = limit − used − reserved`, where `used` is `Σcharge − Σpayment` over
+  `vendor_credit_entries` and `reserved` is `SUM(vendor_price_paise)` of that vendor's
+  non-terminal tickets. Closing a ticket moves its price from `reserved` to `used`, so `available`
+  does not move — and a force-closure billed at less than full price moves it UP. Cancelling frees
+  the reservation and bills nothing. **The only thing that reduces a vendor's room is raising a
+  ticket**, which is why the gate and both bells live in `assert_within_limit` and nowhere else.
+- **Reserving open tickets is the whole point.** Without it a vendor with ₹200 of headroom could
+  raise ten ₹1,500 jobs, every gate passing, and the overshoot would surface one closure at a time.
+- **Closure NEVER refuses, and that is load-bearing.** The customer's confirmation runs with no
+  principal and a force-closure is a manager settling a case; neither may be blocked by what a
+  vendor owes. So `used` may pass `limit` and `available` may go negative — which is exactly what
+  then stops the vendor's NEXT ticket. There is no floor and no minus limit here.
+- **The gate is called AFTER the ticket is flushed**, in `create_ticket` right after
+  `charge_ticket`, and in `import_service._commit` right after `charge_tickets`. The new ticket is
+  already inside `reserved` by then, which is what makes the check exact and what closes the race;
+  the ticket row IS the reservation, so nothing separate is written. Ordering it before the flush
+  would let a single job of any size through a line with one rupee left. Tested end to end: with
+  the line shut, `POST /tickets` answers 409 `VENDOR_OUT_OF_CREDITS` and **no ticket, no company
+  credit and no advance of the ticket code counter survives** — the company is not billed for a
+  ticket the vendor gate refused.
+- **`GET /tickets/intake-status` now says WHICH gate** — `{paused, reason: "company"|"vendor"|null}`.
+  The company half stays a bare boolean (its balance is not its vendor's business); the vendor half
+  names itself so the banner can offer the remedy that works. When both are shut the reason is
+  `company`: settling what the vendor owes would not lift a company-level pause.
+- **A payment is two people's word**, as a recharge is one level up. The vendor CLAIMS (UTR
+  required, screenshot required, an `attachment/<company>/` blob), and only an **Admin or National
+  Head CONFIRMS**, which is the one thing that restores headroom. Reject is final and needs a
+  reason; the vendor may cancel only before claiming. One open payment per vendor. The COMPANY's
+  UPI ID and name are frozen on the row, so changing them never moves a QR a vendor is looking at.
+- ⚠ **`vendor_payments.amount_paise` is deliberately NOT restricted to whole rupees**, which is the
+  opposite of `credit_recharges.amount_paise` beside it. There one credit IS one rupee, so a
+  fraction would buy part of an indivisible thing. Here the amount is a DEBT, and a debt is whatever
+  the tickets came to — `vendor_price_paise` carries only `> 0`, so a vendor can owe ₹3,200.50. The
+  constraint was copied across at first and made that last 50 paise **unpayable**: the largest
+  allowed payment left it behind, `maxPaymentPaise` went on reporting it, and every request for it
+  was refused, leaving a line permanently short by an amount nobody could clear. UPI is fine with
+  paise — `core.upi.format_amount` already renders them as the two decimals `am=` takes.
+- **Staff can RECORD a payment that did not come by QR** —
+  `POST /vendor-credit/vendors/{id}/payments`, `vendor_payments.source = 'staff'`.
+  The QR flow only covers UPI, and UPI caps one transfer at ₹1,00,000; without this
+  a vendor settling ₹5,00,000 by RTGS — which is how most B2B settlement here
+  moves — had no way to have it credited, and neither did a cheque or cash. Their
+  only remedies were five separate QR payments, or a limit increase, which records
+  a credit decision in place of a payment that happened.
+  - **`source` decides which rules the row obeys**, and is set at INSERT so it can
+    never be inferred wrongly from who claimed. `vendor` → capped at the UPI limit,
+    and a claim needs the UTR AND the screenshot. `staff` → uncapped, born claimed
+    AND confirmed, needing neither, with `method` and `received_on` required
+    instead. Five CHECKs carry that split; `claim_complete` became two.
+  - **It is ONE person's word, and that is the two-people rule applied honestly
+    rather than bent.** A bank statement is the only evidence such a payment leaves
+    on our side, and the vendor — who has told nobody — is not a second observer
+    waiting to be asked; asking them to "claim" a transfer they already made would
+    be theatre. What matters is that the trail SAYS which kind of evidence it was,
+    which is what `source` is for and what both screens print.
+  - **`upi_id` / `payee_name` are NULL on a staff record**, which is why they are
+    now nullable: money that arrived by NEFT went to no UPI address, and filling
+    them from the company's settings would assert a route it never took. It also
+    means **a company that has never set a UPI ID can still clear a line**, which
+    is most of the point.
+  - **`received_on` is the day the money ARRIVED**, not the day somebody wrote it
+    down. A Friday transfer noticed on Monday is three days apart, and the
+    statement it is reconciled against is ordered by the former.
+  - It may **exceed what is owed**. An advance is a real thing, and `used` then
+    goes negative — which the screens read as "in credit" rather than as a negative
+    debt. `maxPaymentPaise` clamps at 0, so the vendor cannot pay on top of it.
+  - Final the moment it is written, as confirming a vendor's payment is. There is
+    no reversal in this product.
+- **One UTR settles once, scoped to the COMPANY** — `uq_vendor_payments_credited_utr` is partial on
+  `confirmed_at IS NOT NULL` and includes `company_id`, unlike the platform's global twin: there the
+  payee is always the platform, here it is the company, and a vendor paying two of them must not
+  look like double-claiming.
+- **The other way out is a bigger line.** `vendor_credit_requests`, one pending per vendor, decided
+  by the same two roles — and `granted_limit_paise` may be LESS than was asked, the judgement a
+  force-closure's payout already is. Approving writes `vendors.credit_limit_paise` in the same
+  transaction as the decision.
+  ⚠ **It may NOT be less than the line the vendor already has**, and that is checked against the
+  LIVE limit rather than the `current_limit_paise` frozen on the request, which goes stale if
+  somebody raised the line while it waited. An Admin may of course cut a line — on the Vendors form,
+  where it reads as what it is. Doing it through Approve would write `status = 'approved'` over a
+  reduction, and a year later nobody reading the trail could tell a grant from a cut. 422 `BAD_AMOUNT`.
+- **`audience='vendor'` is new, and it is the one audience that narrows AWAY from staff.** A row
+  carrying `vendor_id` and no audience is also unaddressed, so it reaches every staff reader too —
+  harmless for a one-sided announcement, wrong the moment an event is announced to BOTH sides as
+  two rows, which these three kinds are (a row carries one `to`, and the two sides go to different
+  screens). It is in all four readers: `notifications.service._visible` (no clause needed — no staff
+  role is spelled "vendor"), `core.coverage.users_notified_by`, and `tickets.ws.hears_notification`,
+  where it is tested BEFORE the guard that refuses every addressed row to a vendor.
+- **Bells:** `vendor_credit` (the line ran out, or a ticket was refused), `vendor_payment`,
+  `vendor_credit_request`. The refusal rings in its OWN session, fired as a task, because the
+  refusal rolls the ticket's transaction back and a bell added to it would vanish with it — and
+  `DB_MAX_OVERFLOW` is 0, so awaiting it would wait for itself. Deduped on **`(kind, vendor_id)`**
+  for 12 hours, NOT on the title: one vendor retrying all afternoon rings once while another
+  vendor's refusal still rings, and a crossing bell already rung counts.
+- **Force-closure bills the vendor the manager's number**, clamped to the ticket's stamped
+  `vendor_price_paise` — `ForceCloseRequest.vendorChargePaise`. Independent of
+  `technicianPayoutPaise` and nothing couples them: a technician who travelled and found the door
+  locked is owed something while the vendor is billed nothing, and a visit that happened but was
+  never confirmed is the reverse. `0` and omitted both bill nothing and write no entry — a body that
+  never mentioned the field came from a client that has never heard of it, and inventing a bill from
+  silence is the one mistake here that takes somebody's money.
+- **`companies.upi_id` / `upi_name`** is where a vendor pays, set on Configuration → Rules by
+  `vendors.credit` + a National-Head floor (`GET`/`PUT /settings/payment-account`). On `companies`
+  and deliberately NOT in `company_rules`: that table is stamped onto every ticket's
+  `rules_snapshot`, and a UPI address is not a term of a job.
+- **`vendor_credit_limit_paise` is the second entry in `rules._COMPANY_ONLY_KEYS`**, beside
+  `cancel_penalty_cap_paise`. No product node may override it: a line is one number a vendor draws
+  down across everything it raises, so a televisions answer and an air-conditioners answer could not
+  both be it. It is also the one rule nothing reads from a snapshot — it is stamped onto the vendor.
+- ⚠ **The migration gives each existing vendor ₹5,000 PLUS what its open tickets already commit**,
+  and leaving that out would have shipped a day-one outage: `reserved` is a live sum, not a
+  backfill, so a vendor holding a hundred open jobs would start with all of them reserved against a
+  line that has never seen a payment. On the development database that was four vendors out of six,
+  one by a factor of six hundred. Nothing is owed — no closed ticket is billed retroactively,
+  because there is no honest way to tell a vendor after the fact.
+- ⚠ **The ceiling is ₹1 crore, not the ₹10 lakh it started at.** Like
+  `cancel_penalty_cap_paise`'s, it is a typo guard rather than a policy, so it has to sit above any
+  plausible figure — a distributor with 1,688 open installs at ₹1,850 commits ₹31 lakh, and the
+  development database already had one. A ceiling a real business can reach refuses real work.
+- `core/money.py` is new: one `rupees(paise)` for the sentences a bell or an error carries, Indian
+  grouping, with the ₹ symbol and a real U+2212 minus. `features/credits/service._indian` now
+  delegates to it rather than keeping a second copy of the grouping algorithm; `redemptions`' own
+  `_rupees` deliberately does not, because the two disagree at exactly `UPI_MAX_PAISE` and that
+  value is on a signed-off screen.
+- ⚠ **A vendor's SUB-USER hears these bells and cannot open them.** `vendor.credit` is seeded to
+  `vendor` and not `vendor_user`, but `_visible`'s vendor branch matches on `vendor_id` and ignores
+  role, so a sub-user gets the row and `RequirePortalFeature` then redirects them to
+  `/portal/tickets`. Pre-existing rather than new — `_notify_brand_decided` sends a
+  `vendor.catalogue`-gated `/portal/brands` the same way — and the information still reaches them,
+  on the paused banner over the ticket form. Fixing it means splitting the read from the act, for
+  every vendor-addressed kind at once.
+
 **A slot can move**, which is what finally clears the escalation queue's missed half. Two doors move
 it through one mover in `core/reschedule.py` (a third, the customer's link, only ever books a
 first time through it — below) — the technician's, gated by a one-time code sent to the
