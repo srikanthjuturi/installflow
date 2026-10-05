@@ -260,7 +260,7 @@ async def serial_template(principal: CanView) -> StreamingResponse:
 
     On `masters.view` and NOT staff-only: a vendor loading serials onto its own
     products needs the same starter file, and the file carries no data at all —
-    one header row and two example serials, identical for every caller. Gating
+    one header row and nothing under it, identical for every caller. Gating
     it harder than the tree it accompanies would only mean a vendor guessing at
     the column name.
     """

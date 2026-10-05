@@ -1984,15 +1984,18 @@ _SERIAL_HEADERS = {
 
 
 def build_serial_template() -> io.BytesIO:
-    """A one-sheet .xlsx with the single header and two example rows."""
+    """A one-sheet .xlsx with the single header and nothing under it.
+
+    No example rows: a serial is a real number off a real invoice, and an
+    example left in the sheet imports as one — a fake serial the check would
+    then accept against this model.
+    """
     import openpyxl
 
     book = openpyxl.Workbook()
     sheet = book.active
     sheet.title = "Serials"
     sheet.append(["Serial Number"])
-    sheet.append(["SN-EXAMPLE-000001"])
-    sheet.append(["SN-EXAMPLE-000002"])
     sheet.column_dimensions["A"].width = 34
     buffer = io.BytesIO()
     book.save(buffer)
