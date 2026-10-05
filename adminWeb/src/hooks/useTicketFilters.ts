@@ -25,9 +25,23 @@ const isStatusSet = (v: string | null): boolean =>
     );
 
 const ALL = "All";
-/** Triage order — the same key the list endpoint falls back to. */
-const DEFAULT_SORT_BY = "slaState";
-const DEFAULT_SORT_DIR = "asc";
+/**
+ * Newest first. Every ticket list opens on what was raised most recently; the
+ * SLA-urgency order is still one header click away on the SLA state column.
+ *
+ * Sent explicitly rather than left to the endpoint's own fallback, which is
+ * still triage order (`slaState`) for any caller that names no sort.
+ */
+const DEFAULT_SORT_BY = "createdAt";
+const DEFAULT_SORT_DIR: SortDir = "desc";
+
+type SortDir = "asc" | "desc";
+
+/** Where a list starts when the URL names no sort. */
+interface SortDefaults {
+  sortBy: string;
+  sortDir: SortDir;
+}
 
 /**
  * Narrowing that arrives from the dashboard rather than from this screen's own
@@ -79,13 +93,13 @@ interface Field {
  * The whole request as query-string fields. Defaults are recorded rather than
  * written, so a pristine list stays at a bare `/tickets`.
  */
-function fields(p: ListParams): Field[] {
+function fields(p: ListParams, defaults: SortDefaults): Field[] {
   const search = p.search ?? "";
   const status = p.filters?.status ?? ALL;
   const page = p.page ?? 1;
   const limit = p.limit ?? DEFAULT_PAGE_SIZE;
-  const sortBy = p.sortBy ?? DEFAULT_SORT_BY;
-  const sortDir = p.sortDir ?? DEFAULT_SORT_DIR;
+  const sortBy = p.sortBy ?? defaults.sortBy;
+  const sortDir = p.sortDir ?? defaults.sortDir;
   return [
     { key: "q", value: search, isDefault: search.trim() === "" },
     { key: "status", value: status, isDefault: status === ALL },
@@ -95,8 +109,8 @@ function fields(p: ListParams): Field[] {
       value: String(limit),
       isDefault: limit === DEFAULT_PAGE_SIZE,
     },
-    { key: "sortBy", value: sortBy, isDefault: sortBy === DEFAULT_SORT_BY },
-    { key: "sortDir", value: sortDir, isDefault: sortDir === DEFAULT_SORT_DIR },
+    { key: "sortBy", value: sortBy, isDefault: sortBy === defaults.sortBy },
+    { key: "sortDir", value: sortDir, isDefault: sortDir === defaults.sortDir },
   ];
 }
 
@@ -106,9 +120,20 @@ function fields(p: ListParams): Field[] {
  * Not just the filters: page, rows-per-page and sort live here too, so the
  * exact view someone is looking at — page 3 of the escalated tickets, sorted
  * by SLA — can be pasted into a chat, bookmarked, and survives back.
+ *
+ * Starts newest first unless the page passes its own default sort.
  */
-export function useTicketFilters() {
+export function useTicketFilters({
+  sortBy: defaultSortBy = DEFAULT_SORT_BY,
+  sortDir: defaultSortDir = DEFAULT_SORT_DIR,
+}: Partial<SortDefaults> = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Two strings rather than an object, so the callbacks below depend on values
+  // and not on a fresh `{}` from every caller's render.
+  const defaults = useMemo<SortDefaults>(
+    () => ({ sortBy: defaultSortBy, sortDir: defaultSortDir }),
+    [defaultSortBy, defaultSortDir]
+  );
 
   const search = searchParams.get("q") ?? "";
   const statusParam = searchParams.get("status");
@@ -123,8 +148,12 @@ export function useTicketFilters() {
     1,
     Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE
   );
-  const sortBy = searchParams.get("sortBy") || DEFAULT_SORT_BY;
-  const sortDir = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
+  const sortBy = searchParams.get("sortBy") || defaults.sortBy;
+  const sortDirParam = searchParams.get("sortDir");
+  const sortDir: SortDir =
+    sortDirParam === "asc" || sortDirParam === "desc"
+      ? sortDirParam
+      : defaults.sortDir;
 
   // Serialised, so the memo below depends on a value rather than on a fresh
   // object identity every render.
@@ -172,10 +201,10 @@ export function useTicketFilters() {
    */
   const setParams = useCallback(
     (next: ListParams) => {
-      const before = fields(params);
+      const before = fields(params, defaults);
       const url = pending.current ?? new URLSearchParams(searchParams);
 
-      fields(next).forEach((f, i) => {
+      fields(next, defaults).forEach((f, i) => {
         if (f.value === before[i].value) return;
         if (f.isDefault) url.delete(f.key);
         else url.set(f.key, f.value);
@@ -191,7 +220,7 @@ export function useTicketFilters() {
       // Typing in the search box must not push a history entry per keystroke.
       setSearchParams(url, { replace: true });
     },
-    [params, searchParams, setSearchParams]
+    [params, searchParams, setSearchParams, defaults]
   );
 
   /**

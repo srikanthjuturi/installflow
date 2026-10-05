@@ -216,8 +216,8 @@ export function TicketTable({
       toolbarActions={toolbarActions}
       server={{ meta, params, onParams }}
       defaultSort={{
-        columnId: params.sortBy ?? "slaState",
-        dir: params.sortDir ?? "asc",
+        columnId: params.sortBy ?? "createdAt",
+        dir: params.sortDir ?? "desc",
       }}
       countLabel={(n) => (
         <>
@@ -227,9 +227,18 @@ export function TicketTable({
       summary={
         // Only true while SLA rank is the active sort — asserting it under any
         // other order would be a lie the table itself contradicts.
-        (params.sortBy ?? "slaState") === "slaState" ? (
+        params.sortBy === "slaState" ? (
           <>
             Sorted by <b className="text-ink">SLA urgency</b>
+          </>
+        ) : params.sortBy === "createdAt" ? (
+          // No column carries the created date, so this line is the only place
+          // the order is stated at all.
+          <>
+            Sorted by{" "}
+            <b className="text-ink">
+              {params.sortDir === "asc" ? "oldest first" : "newest first"}
+            </b>
           </>
         ) : null
       }
