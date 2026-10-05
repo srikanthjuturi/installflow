@@ -24,7 +24,9 @@ from app.core.schemas import (
 )
 from app.features.auth.schemas import LoginResponse, OtpRequestResponse
 from app.features.onboarding import service
+from app.features.onboarding.landing import technician_app_link
 from app.features.onboarding.schemas import (
+    AppLinkOut,
     InviteResolveOut,
     OtpVerifyInviteRequest,
     RegistrationTokenOut,
@@ -47,6 +49,13 @@ def _registration_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return creds.credentials
+
+
+@router.get("/app-link", response_model=ApiEnvelope[AppLinkOut])
+async def app_link() -> ApiEnvelope[AppLinkOut]:
+    """The download link for the console's sign-in QR. Public, like the invite
+    page that already prints it: the QR is shown before anybody signs in."""
+    return envelope(AppLinkOut(technicianAppLink=technician_app_link()))
 
 
 @router.get("/invites/{token}", response_model=ApiEnvelope[InviteResolveOut])

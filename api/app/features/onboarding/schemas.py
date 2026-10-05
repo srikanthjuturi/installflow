@@ -50,6 +50,12 @@ class InviteCategoryOut(AppModel):
     subcategories: list[InviteSubcategoryOut] = Field(default_factory=list)
 
 
+class AppLinkOut(AppModel):
+    """Where to get the technician app — the console's sign-in QR draws this."""
+
+    technicianAppLink: str
+
+
 class InviteResolveOut(AppModel):
     """What the invite screen shows before the technician has proved anything.
 
