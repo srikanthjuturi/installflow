@@ -40,12 +40,14 @@ import httpx
 
 API_DIR = Path(__file__).resolve().parent.parent
 
-#: The CONSOLE, on Netlify — a DIFFERENT host from either API site. Every link
-#: guard below compares against the target's own site because the API mints
-#: and sends those links itself; this one points at the browser app instead.
-#: adminWeb has no dev-hosted deployment (Netlify tracks `main` only), so the
-#: CONSOLE_LINK_BASE guard only runs for the prod target.
-CONSOLE_SITE = "https://reliancegreentech.netlify.app"
+#: The production CONSOLE — Azure `installflowweb`, on its custom domain — a
+#: DIFFERENT host from either API site. Every link guard below compares against
+#: the target's own site because the API mints and sends those links itself;
+#: this one points at the browser app instead. It used to be Netlify, and this
+#: guard went on insisting on the retired Netlify host, which kept every
+#: emailed "Sign in" button dead. The CONSOLE_LINK_BASE guard only runs for
+#: the prod target.
+CONSOLE_SITE = "https://service.reliancegreentech.com"
 
 #: Shipped to the server. `alembic/` travels so a migration can be run there by
 #: hand if the database is ever unreachable from a laptop — CI never uses this
