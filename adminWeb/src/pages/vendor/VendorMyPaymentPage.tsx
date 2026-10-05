@@ -6,7 +6,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { PaymentProofForm } from "@/components/shared/PaymentProofForm";
 import { ErrorState } from "@/components/shared/states";
-import { UpiQr } from "@/components/shared/UpiQr";
+import { QrCode } from "@/components/shared/QrCode";
 import { VendorPaymentBadge } from "@/components/vendorCredit/VendorCreditBadges";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,7 +109,7 @@ function Body({ payment: p }: { payment: VendorPaymentDetail }) {
         <CardContent className="flex flex-col items-center gap-4 py-2">
           {p.state === "to_pay" && p.upiUri ? (
             <>
-              <UpiQr
+              <QrCode
                 value={p.upiUri}
                 label={`UPI QR code to pay ${moneyPaise(p.amountPaise)} to ${p.payeeName}, ${p.upiId}`}
               />

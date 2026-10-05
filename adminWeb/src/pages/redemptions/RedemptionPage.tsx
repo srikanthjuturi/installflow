@@ -7,7 +7,7 @@ import { RedemptionBadge } from "@/components/redemptions/RedemptionBadge";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
-import { UpiQr } from "@/components/shared/UpiQr";
+import { QrCode } from "@/components/shared/QrCode";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -130,7 +130,7 @@ function Body({
           <CardContent className="flex flex-col items-center gap-4 py-2">
             {r.state === "to_pay" && r.upiUri ? (
               <>
-                <UpiQr
+                <QrCode
                   value={r.upiUri}
                   label={`UPI QR code to pay ${moneyPaise(r.amountPaise)} to ${r.payeeName}, ${r.upiId}`}
                 />

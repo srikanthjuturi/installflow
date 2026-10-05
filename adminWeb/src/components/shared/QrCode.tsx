@@ -6,31 +6,38 @@ import { cn } from "@/lib/utils";
 const QUIET_ZONE = 2;
 
 /**
- * A UPI payment QR, drawn in the browser from the server's finished string.
+ * A QR code, drawn in the browser from the exact string given.
  *
- * Never a QR-image service: a third party would see a technician's UPI ID next
- * to an amount, and an `<img>` that fails to load shows the payer a blank box.
+ * Never a QR-image service: a third party would see whatever is encoded — on
+ * the payment pages, a technician's UPI ID next to an amount — and an `<img>`
+ * that fails to load shows the person scanning a blank box.
  * `qrcode.create` gives the module matrix and this draws it as ONE `<path>` in
  * `currentColor` — no hex (hard rule 1), no inline style (hard rule 2), and no
  * `dangerouslySetInnerHTML` from the library's own SVG string.
  *
  * **Dark-on-white in every theme.** `bg-white text-black` is fixed on purpose:
  * a scanner wants contrast and a quiet zone, and a dark-mode plate would be a
- * code the payer's phone cannot read — the one thing it exists for.
+ * code the phone cannot read — the one thing it exists for.
  *
- * Two pages import it — a redemption, and a company's credit recharge — both
- * lazy, so `qrcode` rides in their chunks and never in the vendor bundle.
+ * Only lazy pages import it — the three UPI payment pages, and the sign-in
+ * pages through `BrandPanel` — so `qrcode` rides in their chunks and never in
+ * the main bundle.
  */
-export function UpiQr({
+export function QrCode({
   value,
   label,
   className,
+  codeClassName = "size-56",
 }: {
-  /** The server's `upiUri`. Encoded exactly as given — never rebuilt. */
+  /** Encoded exactly as given — never rebuilt (a UPI page passes the server's
+   *  finished `upiUri`). */
   value: string;
-  /** What a screen reader hears — the amount and the payee. */
+  /** What a screen reader hears. */
   label: string;
+  /** The white plate around the code. */
   className?: string;
+  /** The code's own size. */
+  codeClassName?: string;
 }) {
   const drawn = useMemo(() => {
     // Error-correction M: the level UPI apps' own codes use.
@@ -52,7 +59,7 @@ export function UpiQr({
         role="img"
         aria-label={label}
         shapeRendering="crispEdges"
-        className="block size-56"
+        className={cn("block", codeClassName)}
       >
         <path d={drawn.d} fill="currentColor" />
       </svg>

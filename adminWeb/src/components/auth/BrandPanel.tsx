@@ -1,4 +1,6 @@
 import { BrandMark } from "@/components/shared/BrandMark";
+import { QrCode } from "@/components/shared/QrCode";
+import { useTechnicianAppLink } from "@/hooks/useTechnicianAppLink";
 import { BRAND_MARK, BRAND_NAME } from "@/lib/brand";
 
 const STATS = [
@@ -8,20 +10,6 @@ const STATS = [
 ];
 
 /**
- * A PICTURE of one EAS build's install URL, not a link generated from config —
- * so it goes stale on every mobile build, exactly like the API's
- * `TECHNICIAN_APP_LINK` (see the publish-api skill). Replace the PNG whenever a
- * new build ships: left on an old one, a technician installs whatever API that
- * build was aimed at.
- *
- * It can also simply EXPIRE. An internal-distribution build is kept for a
- * limited time — the one encoded today (95627e57, Android, `preview`, commit
- * d182f7f, version code 2, the same build `TECHNICIAN_APP_LINK` names)
- * reports `expirationDate` 2026-10-07. Check with `eas build:view <id> --json`.
- */
-const TECHNICIAN_APP_QR = "/images/appqr.png";
-
-/**
  * Left half of the sign-in split. Decorative — hidden below `md`.
  *
  * The PLATFORM brand, deliberately: nobody has signed in yet, so there is no
@@ -29,6 +17,8 @@ const TECHNICIAN_APP_QR = "/images/appqr.png";
  * (`hooks/useBrand.ts`).
  */
 export function BrandPanel() {
+  const appLink = useTechnicianAppLink();
+
   return (
     <div className="relative hidden flex-col justify-between overflow-hidden bg-linear-150 from-brand-600 via-brand-500 to-brand-400 p-14 text-white md:flex">
       <div
@@ -74,25 +64,28 @@ export function BrandPanel() {
         {/* For a technician standing beside this screen. Here rather than under
             the form because the form is for console accounts only, and it
             leaves the panel along with everything else below `md` — a QR on a
-            phone's own screen is one nobody can scan. `lazy` is what keeps a
-            hidden panel from fetching it at all. */}
-        <div className="flex max-w-[420px] items-center gap-4.5 rounded-xl border border-white/15 bg-white/8 p-4">
-          <img
-            src={TECHNICIAN_APP_QR}
-            alt="QR code to download the Technician app"
-            width={128}
-            height={128}
-            loading="lazy"
-            decoding="async"
-            className="size-32 shrink-0 rounded-lg bg-white"
-          />
-          <div>
-            <div className="text-sm font-semibold">Technician app</div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-brand-200">
-              Scan with your Android phone&rsquo;s camera to download it.
-            </p>
+            phone's own screen is one nobody can scan.
+
+            The link is the API's own `TECHNICIAN_APP_LINK`, not a copy in this
+            bundle: the production console shows the Play Store and the dev
+            console the latest preview build. No link, no card — never an empty
+            box saying "scan this". */}
+        {appLink.data && (
+          <div className="flex max-w-[420px] items-center gap-4.5 rounded-xl border border-white/15 bg-white/8 p-4">
+            <QrCode
+              value={appLink.data}
+              label="QR code to download the Technician app"
+              className="shrink-0 rounded-lg p-1.5"
+              codeClassName="size-29"
+            />
+            <div>
+              <div className="text-sm font-semibold">Technician app</div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-brand-200">
+                Scan with your Android phone&rsquo;s camera to download it.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="text-xs text-brand-300">
           © {new Date().getFullYear()} {BRAND_NAME} · Internal use only
