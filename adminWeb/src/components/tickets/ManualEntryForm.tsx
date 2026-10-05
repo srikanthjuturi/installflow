@@ -109,7 +109,7 @@ export function ManualEntryForm({
     handleSubmit,
     setValue,
     getValues,
-    formState: { errors },
+    formState: { errors, isSubmitted },
   } = useForm<TicketFormValues>({
     resolver: zodResolver(ticketSchema),
     defaultValues: {
@@ -174,10 +174,15 @@ export function ManualEntryForm({
   );
   const setAddress = useCallback(
     (next: AddressValue) => {
-      setValue("address", next.address, { shouldDirty: true });
-      setValue("city", next.city, { shouldDirty: true });
-      setValue("state", next.state, { shouldDirty: true });
-      setValue("pincode", next.pincode, { shouldDirty: true });
+      // `setValue` does not re-validate by itself, so without this an error
+      // from a failed submit stayed under a box the person had since filled.
+      // Only after a submit, though — the same rule `register` follows — or
+      // typing the address would flag City and State before anyone reached them.
+      const opts = { shouldDirty: true, shouldValidate: isSubmitted };
+      setValue("address", next.address, opts);
+      setValue("city", next.city, opts);
+      setValue("state", next.state, opts);
+      setValue("pincode", next.pincode, opts);
       // Set together with the address they describe, and nulled by
       // `AddressFields` the moment one of the boxes above is hand-edited — a
       // point that has stopped matching its address is worse than no point,
@@ -185,7 +190,7 @@ export function ManualEntryForm({
       setValue("latitude", next.latitude ?? null, { shouldDirty: true });
       setValue("longitude", next.longitude ?? null, { shouldDirty: true });
     },
-    [setValue]
+    [setValue, isSubmitted]
   );
   /* A pincode the geography master does not hold is refused here, not by the
      schema: `zodResolver` clears a manually-set error on the next validation
@@ -343,17 +348,22 @@ export function ManualEntryForm({
       const path = nodeIdPath(tree, hit.nodeId);
       if (!path) return;
       setPicked(path);
-      setValue("subcategoryId", hit.nodeId, { shouldValidate: false });
-      setValue("modelId", hit.modelId, { shouldValidate: false });
-      setValue("serviceType", hit.serviceTypes[0] ?? "Installation + Demo", {
-        shouldValidate: false,
-      });
+      // Re-validated only after a submit, as `setAddress` explains — so a match
+      // picked after a failed submit clears the errors on what it just filled.
+      const opts = { shouldValidate: isSubmitted };
+      setValue("subcategoryId", hit.nodeId, opts);
+      setValue("modelId", hit.modelId, opts);
+      setValue(
+        "serviceType",
+        hit.serviceTypes[0] ?? "Installation + Demo",
+        opts
+      );
       // Normalisation, never a content change: the match was EXACT, so this can
       // differ only in case or surrounding space. Worth doing — the ticket would
       // otherwise print a serial the master spells differently.
-      setValue("serialNumber", hit.serial, { shouldValidate: false });
+      setValue("serialNumber", hit.serial, opts);
     },
-    [tree, setValue]
+    [tree, setValue, isSubmitted]
   );
 
   /* Looked up as a MUTATION rather than a query, because that is what this

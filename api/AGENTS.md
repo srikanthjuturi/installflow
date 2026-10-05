@@ -934,8 +934,8 @@ list — only a guess, since `get_tree` never shows them another vendor's ids, b
 a vendor sees only its own and this was the one serial route that did not say it.
 
 `GET /serials/template` is on `masters.view`, NOT staff-only: a vendor importing needs the same
-starter file, and it carries no data — one header row and two example serials, identical for every
-caller.
+starter file, and it carries no data — one header row and nothing under it, identical for every
+caller. No example serials: one left in the sheet would import as a real serial.
 
 **`GET /masters/serials/lookup` runs the check backwards, and it is the one place here that is an
 ORACLE RISK.** It answers "which products carry serials starting with this?", so the intake form

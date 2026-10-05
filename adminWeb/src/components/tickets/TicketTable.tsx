@@ -214,11 +214,10 @@ export function TicketTable({
       }}
       filters={filters}
       toolbarActions={toolbarActions}
+      // No `defaultSort`: until a header is clicked the order is the server's,
+      // and no column here carries the date it sorts on, so an arrow on any of
+      // them would point at the wrong thing.
       server={{ meta, params, onParams }}
-      defaultSort={{
-        columnId: params.sortBy ?? "slaState",
-        dir: params.sortDir ?? "asc",
-      }}
       countLabel={(n) => (
         <>
           Showing <b className="text-ink">{n}</b> tickets
@@ -227,7 +226,7 @@ export function TicketTable({
       summary={
         // Only true while SLA rank is the active sort — asserting it under any
         // other order would be a lie the table itself contradicts.
-        (params.sortBy ?? "slaState") === "slaState" ? (
+        params.sortBy === "slaState" ? (
           <>
             Sorted by <b className="text-ink">SLA urgency</b>
           </>

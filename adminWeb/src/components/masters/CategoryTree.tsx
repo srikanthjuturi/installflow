@@ -1,4 +1,10 @@
-import { ImageOff, MoreHorizontal, Plus, SlidersHorizontal } from "lucide-react";
+import {
+  ImageOff,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -544,6 +550,9 @@ function ModelChip({
         }
       >
         {body}
+        {/* Only on the editable chip: the read-only one above is not a button,
+            and a pencil there would promise an action that does not exist. */}
+        <Pencil className="size-3 shrink-0 text-ink-3" aria-hidden />
       </DropdownMenuTrigger>
       {/* Same anchor-width trap as `RowMenu` above, and worse here: the trigger
           is the chip itself, so the menu was as narrow as the product name

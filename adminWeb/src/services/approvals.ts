@@ -40,7 +40,17 @@ import { apiGet, apiGetPage, apiPost } from "./http";
 export function listApprovals(
   params: ListParams = {}
 ): Promise<Page<ProductSubmission>> {
-  return apiGetPage<ProductSubmission>("/masters/approvals", params);
+  return apiGetPage<ProductSubmission>("/masters/approvals", withAllStatuses(params));
+}
+
+/**
+ * The "All" pill clears the `status` filter, and an absent `status` is exactly
+ * what the server reads as `pending` — so without this, All showed the backlog
+ * under a pill claiming everything. Say `all` out loud when no status is picked.
+ */
+function withAllStatuses(params: ListParams): ListParams {
+  if (params.filters?.status) return params;
+  return { ...params, filters: { ...params.filters, status: "all" } };
 }
 
 /**
@@ -99,7 +109,7 @@ export function rejectProduct({
 export function listBrandApprovals(
   params: ListParams = {}
 ): Promise<Page<BrandSubmission>> {
-  return apiGetPage<BrandSubmission>("/masters/brand-approvals", params);
+  return apiGetPage<BrandSubmission>("/masters/brand-approvals", withAllStatuses(params));
 }
 
 /** Agree the vendor sells it. Its products may carry it from now on. */

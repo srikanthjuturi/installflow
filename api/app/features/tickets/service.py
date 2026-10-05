@@ -1011,16 +1011,24 @@ async def list_tickets(
         rank = {"breach": 0, "warn": 1, "ok": 2, "done": 3}[str(wanted)]
         stmt = stmt.where(_sla_order_case() == rank)
 
-    # Default: most urgent first, which is the whole point of the screen.
+    # Default: newest first — what was raised most recently leads, for every
+    # caller that names no sort. Most urgent first is `?sortBy=slaState`, the
+    # console's SLA state column.
     #
-    # `slotStart` is the second axis, and it is a different question from
-    # `createdAt`: when the WORK happens, not when the ticket was typed. They
-    # disagree by days — a job booked a week out is raised long before it is
-    # done — so a technician's history has to be ordered by the slot or it
-    # reads out of sequence against the dates printed beside it. Nulls last
-    # either way: a ticket with no slot yet is not a dated job, and Postgres
-    # would otherwise sort it to the top of a descending list.
-    if params.sortBy in ("createdAt", "slotStart"):
+    # The default ignores `sortDir`, because `list_params` defaults that to
+    # "asc" and so cannot say whether the caller asked for it. An explicit
+    # `?sortBy=createdAt` honours it either way.
+    #
+    # `slotStart` is a different question from `createdAt`: when the WORK
+    # happens, not when the ticket was typed. They disagree by days — a job
+    # booked a week out is raised long before it is done — so a technician's
+    # history has to be ordered by the slot or it reads out of sequence against
+    # the dates printed beside it. Nulls last either way: a ticket with no slot
+    # yet is not a dated job, and Postgres would otherwise sort it to the top of
+    # a descending list.
+    if params.sortBy == "slaState":
+        stmt = stmt.order_by(_sla_order_case().asc(), Ticket.created_at.desc())
+    elif params.sortBy in ("createdAt", "slotStart"):
         column = (
             Ticket.created_at if params.sortBy == "createdAt" else Ticket.slot_start
         )
@@ -1033,7 +1041,10 @@ async def list_tickets(
         # a stable order across pages rather than swapping between reads.
         stmt = stmt.order_by(direction, Ticket.created_at.desc())
     else:
-        stmt = stmt.order_by(_sla_order_case().asc(), Ticket.created_at.desc())
+        # `id` breaks a tie between two tickets raised in the same instant —
+        # an Excel import writes a whole sheet in one transaction — so a row
+        # cannot appear on two pages, or on none.
+        stmt = stmt.order_by(Ticket.created_at.desc(), Ticket.id.desc())
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     return await _hydrate(db, principal, rows), total
