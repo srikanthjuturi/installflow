@@ -73,7 +73,7 @@ def _android_intent(path: str) -> str:
         (p.strip() for p in settings.ANDROID_PACKAGE.split(",") if p.strip()),
         "",
     )
-    fallback = settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK
+    fallback = technician_app_link()
     parts = [
         f"intent://{path}#Intent",
         f"scheme={settings.APP_SCHEME}",
@@ -84,11 +84,23 @@ def _android_intent(path: str) -> str:
     return ";".join(parts) + ";end"
 
 
-#: Where to send someone who does not have the app. Overridden by
-#: TECHNICIAN_APP_LINK, which currently names a build artifact directly.
+#: Where to send someone who does not have the app, when TECHNICIAN_APP_LINK
+#: is empty.
 _DEFAULT_APP_LINK = "https://install.reliancegreentech.in/technician"
 
-_PAGE = """<!doctype html>
+
+def technician_app_link() -> str:
+    """Where somebody without the app goes to get it — ONE answer per server.
+
+    Production's is the Play Store listing and never changes; dev's is the
+    latest `preview` APK and changes with every build. This page and the
+    console's sign-in QR (`GET /onboarding/app-link`) both read it here, so the
+    two can never offer different apps.
+    """
+    return settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK
+
+
+_PAGE ="""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -171,7 +183,7 @@ def _render(path: str, *, title: str, heading: str, lead: str, note: str) -> HTM
             deep_link=deep_link,
             deep_link_js=f'"{deep_link}"',
             android_intent_js=f'"{android_intent}"',
-            app_link=settings.TECHNICIAN_APP_LINK or _DEFAULT_APP_LINK,
+            app_link=html.escape(technician_app_link()),
             mark=html.escape(brand.brand_mark()),
         )
     )

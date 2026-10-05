@@ -165,15 +165,15 @@ If `INVITE_LINK_BASE` changed, the mobile app needs a rebuild: its API URL and
 its Android App Link host are compiled in. Check `mobileapp/eas.json` and
 `TECHNICIAN_APP_LINK`.
 
-**`TECHNICIAN_APP_LINK` goes stale on every mobile build.** It is the APK the
-invite landing page offers under "I don't have the app yet". Left pointing at an
-older build, technicians install an app aimed at a dead API and every invite
-appears expired — which happened, and looked like an invite bug for hours.
-Update it whenever a new APK is built, until the app is on the Play Store and it
-becomes a store URL.
+**`TECHNICIAN_APP_LINK` is where somebody without the app gets it** — the
+invite landing page's "I don't have the app yet" button AND the console's
+sign-in QR. The console draws its QR from `GET /onboarding/app-link`, so there is
+no picture to regenerate: each server's one setting is the whole answer.
 
-**The console's sign-in QR is the same link as a picture** —
-`adminWeb/public/images/appqr.png`, shown on `/login` and `/forgot-password`.
-Regenerate it on the same build, or the two disagree about which app to install.
-An internal-distribution build also EXPIRES (`eas build:view <id> --json` →
-`expirationDate`), which kills both links with no new build at all.
+- **Production:** the Play Store listing. Fixed; a new build never touches it.
+- **Dev:** the latest `preview` APK. Every `eas build --profile preview` (which
+  now targets the DEV API) needs `TECHNICIAN_APP_LINK` updated in
+  `.env.dev-deploy` and the `ENV_FILE_DEV` secret, then a dev API redeploy. The
+  dev console's QR follows by itself. An internal-distribution build also
+  EXPIRES (`eas build:view <id> --json` → `expirationDate`), which kills the dev
+  link with no new build at all.
