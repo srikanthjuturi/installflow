@@ -25,23 +25,15 @@ const isStatusSet = (v: string | null): boolean =>
     );
 
 const ALL = "All";
+
 /**
- * Newest first. Every ticket list opens on what was raised most recently; the
- * SLA-urgency order is still one header click away on the SLA state column.
- *
- * Sent explicitly rather than left to the endpoint's own fallback, which is
- * still triage order (`slaState`) for any caller that names no sort.
+ * No default sort on this side. Until somebody clicks a column header the list
+ * sends no `sortBy` at all, and the ORDER is the API's to decide — newest
+ * first, in `tickets.service.list_tickets`. Holding a default here too would
+ * be a second copy of that decision, and the one sent would always win.
  */
-const DEFAULT_SORT_BY = "createdAt";
-const DEFAULT_SORT_DIR: SortDir = "desc";
-
-type SortDir = "asc" | "desc";
-
-/** Where a list starts when the URL names no sort. */
-interface SortDefaults {
-  sortBy: string;
-  sortDir: SortDir;
-}
+const isSortDir = (v: string | null): v is "asc" | "desc" =>
+  v === "asc" || v === "desc";
 
 /**
  * Narrowing that arrives from the dashboard rather than from this screen's own
@@ -93,13 +85,14 @@ interface Field {
  * The whole request as query-string fields. Defaults are recorded rather than
  * written, so a pristine list stays at a bare `/tickets`.
  */
-function fields(p: ListParams, defaults: SortDefaults): Field[] {
+function fields(p: ListParams): Field[] {
   const search = p.search ?? "";
   const status = p.filters?.status ?? ALL;
   const page = p.page ?? 1;
   const limit = p.limit ?? DEFAULT_PAGE_SIZE;
-  const sortBy = p.sortBy ?? defaults.sortBy;
-  const sortDir = p.sortDir ?? defaults.sortDir;
+  // Empty means "the server's order" — see `isSortDir` above.
+  const sortBy = p.sortBy ?? "";
+  const sortDir = p.sortDir ?? "";
   return [
     { key: "q", value: search, isDefault: search.trim() === "" },
     { key: "status", value: status, isDefault: status === ALL },
@@ -109,8 +102,8 @@ function fields(p: ListParams, defaults: SortDefaults): Field[] {
       value: String(limit),
       isDefault: limit === DEFAULT_PAGE_SIZE,
     },
-    { key: "sortBy", value: sortBy, isDefault: sortBy === defaults.sortBy },
-    { key: "sortDir", value: sortDir, isDefault: sortDir === defaults.sortDir },
+    { key: "sortBy", value: sortBy, isDefault: sortBy === "" },
+    { key: "sortDir", value: sortDir, isDefault: sortDir === "" },
   ];
 }
 
@@ -120,20 +113,9 @@ function fields(p: ListParams, defaults: SortDefaults): Field[] {
  * Not just the filters: page, rows-per-page and sort live here too, so the
  * exact view someone is looking at — page 3 of the escalated tickets, sorted
  * by SLA — can be pasted into a chat, bookmarked, and survives back.
- *
- * Starts newest first unless the page passes its own default sort.
  */
-export function useTicketFilters({
-  sortBy: defaultSortBy = DEFAULT_SORT_BY,
-  sortDir: defaultSortDir = DEFAULT_SORT_DIR,
-}: Partial<SortDefaults> = {}) {
+export function useTicketFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
-  // Two strings rather than an object, so the callbacks below depend on values
-  // and not on a fresh `{}` from every caller's render.
-  const defaults = useMemo<SortDefaults>(
-    () => ({ sortBy: defaultSortBy, sortDir: defaultSortDir }),
-    [defaultSortBy, defaultSortDir]
-  );
 
   const search = searchParams.get("q") ?? "";
   const statusParam = searchParams.get("status");
@@ -148,12 +130,12 @@ export function useTicketFilters({
     1,
     Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE
   );
-  const sortBy = searchParams.get("sortBy") || defaults.sortBy;
+  // Only what a header click put in the URL. A direction with no column to
+  // apply to is dropped rather than sent on its own.
+  const sortBy = searchParams.get("sortBy") || undefined;
   const sortDirParam = searchParams.get("sortDir");
-  const sortDir: SortDir =
-    sortDirParam === "asc" || sortDirParam === "desc"
-      ? sortDirParam
-      : defaults.sortDir;
+  const sortDir =
+    sortBy && isSortDir(sortDirParam) ? sortDirParam : undefined;
 
   // Serialised, so the memo below depends on a value rather than on a fresh
   // object identity every render.
@@ -201,10 +183,10 @@ export function useTicketFilters({
    */
   const setParams = useCallback(
     (next: ListParams) => {
-      const before = fields(params, defaults);
+      const before = fields(params);
       const url = pending.current ?? new URLSearchParams(searchParams);
 
-      fields(next, defaults).forEach((f, i) => {
+      fields(next).forEach((f, i) => {
         if (f.value === before[i].value) return;
         if (f.isDefault) url.delete(f.key);
         else url.set(f.key, f.value);
@@ -220,7 +202,7 @@ export function useTicketFilters({
       // Typing in the search box must not push a history entry per keystroke.
       setSearchParams(url, { replace: true });
     },
-    [params, searchParams, setSearchParams, defaults]
+    [params, searchParams, setSearchParams]
   );
 
   /**

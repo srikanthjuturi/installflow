@@ -172,11 +172,11 @@ async def list_tickets(
     closedWithinDays: Annotated[int | None, Query(ge=1, le=365)] = None,
     attention: Annotated[str | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
-    """One page of tickets, most urgent first.
+    """One page of tickets, newest first.
 
-    Sorted by SLA urgency by default rather than by date — the screen exists for
-    triage, so the ones already late come first. `?sortBy=createdAt` gives the
-    chronological view instead.
+    Sorted by when the ticket was raised, most recent first, unless the caller
+    names a sort. `?sortBy=slaState` gives the triage view — the ones already
+    late come first — and `?sortBy=createdAt&sortDir=asc` the oldest first.
 
     `technicianId` answers "what has this person worked", which is the console's
     technician profile. It needs no guard of its own: the query is already
