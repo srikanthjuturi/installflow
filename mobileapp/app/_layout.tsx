@@ -19,6 +19,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { useStoreUpdate } from '@/hooks/useStoreUpdate';
 import { AnalyticsProvider } from '@/lib/analytics/AnalyticsProvider';
 import { trackScreenView } from '@/lib/analytics/events';
 import { useLanguage } from '@/store/language.store';
@@ -124,6 +125,9 @@ export default function RootLayout() {
   });
 
   const ready = (fontsLoaded || fontError) && hydrated && languageReady;
+
+  // After the splash, not under it — Play's update screen opens over the app.
+  useStoreUpdate(!!ready);
 
   useEffect(() => {
     // Hide the splash on font error too, otherwise a font CDN failure leaves

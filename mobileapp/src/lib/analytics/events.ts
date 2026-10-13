@@ -99,3 +99,9 @@ export function trackUpiChangeRequested(): void {
   gaEvent('upi_change_requested');
   posthogCapture('upi_change_requested');
 }
+
+/** Google Play's update screen was shown — PostHog only. Whether people took
+ *  it is the Play Console's version-adoption chart. */
+export function trackAppUpdateOffered(versionCode: number): void {
+  posthogCapture('app_update_offered', { versionCode });
+}
