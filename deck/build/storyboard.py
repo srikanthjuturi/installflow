@@ -34,10 +34,19 @@ STORY = [
         "title": "Only a vendor raises a ticket",
         "sub": "Company staff work tickets — they no longer create them",
     },
+    # The Excel channel, shipped 28 September. The dry run is the slide: the
+    # whole file is judged before a single row is written.
+    {
+        "kind": "console", "shot": "portal-import-preview",
+        "title": "Or a whole spreadsheet at once",
+        "sub": "Checked first — every refused row says why, and nothing is saved until they confirm",
+    },
+    # The sub used to read "Before any technician has seen the job", which
+    # stopped being true when the pool began offering Slot Pending jobs.
     {
         "kind": "phone", "shot": "customer-slot",
         "title": "The customer picks the slot",
-        "sub": "Before any technician has seen the job",
+        "sub": "A technician never proposes the time, and cannot start without one",
     },
     {
         "kind": "split", "console": "console-tickets", "phone": "app-pool",
@@ -55,6 +64,11 @@ STORY = [
         "kind": "phone", "shot": "app-accept-sheet",
         "title": "First accept wins",
         "sub": "Losing the race is a normal outcome, not an error",
+    },
+    {
+        "kind": "phone", "shot": "app-job-no-time",
+        "title": "Taken early, started on time",
+        "sub": "No agreed time means no start — and the server enforces it",
     },
     {
         "kind": "grid",
@@ -118,6 +132,18 @@ STORY = [
         "title": "And takes the money out",
         "sub": "The payer scans a UPI code; only the technician confirms it arrived",
     },
+    # Vendor credit, shipped 29 September — the vendor's half of the price
+    # pair, stamped on every ticket since intake existed and never billed.
+    {
+        "kind": "console", "shot": "portal-credit",
+        "title": "The vendor pays for the work",
+        "sub": "Billed when the customer confirms; raising a ticket reserves its price",
+    },
+    {
+        "kind": "console", "shot": "console-vendor-payment",
+        "title": "And only you confirm it arrived",
+        "sub": "A vendor that runs out of line stops raising — it never stops a job finishing",
+    },
     {
         "kind": "section",
         "eyebrow": "How it is built",
@@ -132,6 +158,13 @@ STORY = [
         "kind": "console", "shot": "console-dashboard",
         "title": "Counted, never estimated",
         "sub": "Scoped to the territory the manager actually covers",
+    },
+    {
+        "kind": "grid",
+        "shots": ["app-language", "app-home-hi"],
+        "captions": ["Chosen on the phone", "The same app, in Hindi"],
+        "title": "In the technician's own language",
+        "sub": "English, Hindi, Telugu, Kannada and Tamil — push notifications included",
     },
     # Act 3 promised three things and evidenced none of them: "configurable" is
     # not multi-tenant, and role scoping is not one company being unreachable

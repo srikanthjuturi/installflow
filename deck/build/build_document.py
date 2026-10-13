@@ -150,8 +150,9 @@ def build(shots) -> Document:
     d.p(
         "It is not a call centre tool and it is not a CRM. The customer never logs in; they "
         "tap two links. Your staff do not raise jobs — the vendors whose products you install "
-        "do that themselves, from their own restricted portal. Your people supervise, "
-        "intervene when something is going wrong, and settle the money."
+        "do that themselves, from their own restricted portal, one at a time or a whole "
+        "spreadsheet at once. Your people supervise, intervene when something is going wrong, "
+        "and settle the money."
     )
 
     # ── 2. The five parties ──────────────────────────────────────────────────
@@ -160,12 +161,13 @@ def build(shots) -> Document:
     d.table(
         ["Who", "What they do", "How they use it"],
         [
-            ["**Vendor**", "Raises the ticket. The brand whose product is being installed.",
+            ["**Vendor**", "Raises the ticket, and pays you for the work once it is done. "
+             "The company whose products are being installed.",
              "Their own restricted web portal"],
             ["**Customer**", "Chooses the time, and closes the job at the end.",
              "Two WhatsApp links — no login, no app"],
             ["**Technician**", "Accepts the job, attends, captures proof.",
-             "Mobile app, signs in with a one-time code"],
+             "Mobile app in their own language; signs in with a one-time code"],
             ["**Your ops team**", "Watches, intervenes, assigns, settles.",
              "The console"],
             ["**Your admin**", "Sets the rules, the catalogue and who covers where.",
@@ -177,7 +179,9 @@ def build(shots) -> Document:
         "**Only a vendor raises a ticket.** This is deliberate. The vendor holds the invoice, "
         "so they know the serial number, the model and the customer's details at the moment "
         "of sale. Your staff can see and work every ticket, but they no longer type them in — "
-        "which removes the commonest source of wrong data at the very start of the job."
+        "which removes the commonest source of wrong data at the very start of the job. The "
+        "one exception is a spreadsheet a vendor has sent you: your admin or national head "
+        "can upload it on the vendor's behalf, and those tickets are still the vendor's."
     )
 
     # ── 3. The journey ───────────────────────────────────────────────────────
@@ -191,8 +195,8 @@ def build(shots) -> Document:
         ["Step", "Who acts", "The job becomes"],
         [
             ["1  Ticket raised", "Vendor", "Slot Pending"],
-            ["2  Time chosen", "Customer", "New — visible to technicians"],
-            ["3  Offered, masked", "System", "New"],
+            ["2  Time chosen", "Customer", "New"],
+            ["3  Offered, masked", "System", "New — though it is offered from step 1"],
             ["4  Accepted", "Technician", "Assigned"],
             ["5  Proof captured", "Technician", "In Progress"],
             ["6  Work confirmed", "Customer", "Closed"],
@@ -254,6 +258,40 @@ def build(shots) -> Document:
         "is later cancelled. If your balance has run past its floor the vendor is told that "
         "intake is paused before they fill the form in — see *What you pay us* in chapter 5."
     )
+    d.p(
+        "And it **reserves the vendor's price against their credit line** with you — the "
+        "amount they will owe once the work is done. A vendor whose line is used up is told so, "
+        "with what they owe and how to clear it, before they fill the form in. *What a vendor "
+        "pays you* in chapter 5 explains the line."
+    )
+
+    d.h3("Many at once: a spreadsheet")
+    d.p(
+        "A vendor raising dozens of jobs a day does not type them one by one. They download a "
+        "template, fill in one row per job and upload it — and the file is **checked before "
+        "anything is saved**: how many tickets it would raise, how much of their credit line "
+        "those would reserve, any category it names that your catalogue does not have yet "
+        "(which it offers to create), and every row it cannot accept, with the reason."
+    )
+    d.figure(
+        "portal-import-preview",
+        "A spreadsheet, checked before anything is saved: three rows will import, three are "
+        "refused, and each refusal says why.",
+    )
+    d.p(
+        "The refusals follow the same rules as the form — a pincode outside the master, a "
+        "serial that is not on that model's list. A product the file names that you have not "
+        "priced is added for your approval and its rows wait; once it is priced, the same file "
+        "can simply be uploaded again. Every row carries the vendor's own order reference, and "
+        "a reference already on a ticket is skipped — never raised, or charged, twice."
+    )
+    d.p(
+        "Every imported job starts by asking the customer to choose a time, exactly as a single "
+        "one does. Addresses in a sheet are typed rather than picked from the map, so those jobs "
+        "use the postal-code check described above. And if a vendor emails you the file instead, "
+        "your admin or national head can upload it on their behalf.",
+        colour=K.MUTED,
+    )
 
     # 3.2
     d.h2("Step 2 — The customer chooses the time")
@@ -273,10 +311,22 @@ def build(shots) -> Document:
         "the customer can only choose a time you can actually meet."
     )
     d.callout(
-        "**This happens before any technician sees the job.** It is the single most important "
-        "sequencing decision in the product. The technician is never asked to propose a time "
-        "and then chase the customer for agreement; they are offered a fixed appointment the "
-        "customer has already confirmed. That is why the acceptance step later is instant."
+        "**A technician never proposes a time and then chases the customer to agree it.** The "
+        "appointment is the customer's choice. The job does appear in the pool from the moment "
+        "it is raised — so it is not hidden while the clock on its service level runs — and a "
+        "technician may take it early. But they **cannot start it** until the customer has "
+        "picked a time, or a manager has agreed one with the customer by phone."
+    )
+    d.figure(
+        "app-job-no-time",
+        "Taken before the customer chose: the job is theirs, but it cannot start until a time "
+        "is agreed.",
+    )
+    d.p(
+        "That rule is enforced by the server, not just by the screen, so even an older copy of "
+        "the app on somebody's phone cannot send a technician to a door nobody has agreed to "
+        "open.",
+        colour=K.MUTED,
     )
     d.p(
         "If the customer does not answer, the ticket does not sit there silently. After a set "
@@ -287,11 +337,22 @@ def build(shots) -> Document:
     # 3.3
     d.h2("Step 3 — The job reaches the pool, masked")
     d.p(
-        "Now the job becomes visible — but only to technicians who pass three tests at once: "
-        "they are **certified** for that product category, they **cover** that pincode, and "
-        "they are **under their daily job cap** for the day the work actually happens."
+        "The job is offered — but only to technicians who pass three tests at once: they are "
+        "**certified** for that product category, they **cover** that pincode, and they are "
+        "**under their daily job cap** for the day the work actually happens."
     )
-    d.figure("app-pool", "The technician's pool. Only jobs they are eligible for appear here.")
+    d.figure(
+        "app-pool",
+        "The technician's pool. Only jobs they are eligible for appear here — the one marked "
+        "*Time not set yet* is still waiting for its customer to choose.",
+    )
+    d.p(
+        "A technician certified for more than one kind of product can narrow the list with the "
+        "chips along the top — *TV*, *AC* — which changes how much of it they are looking at, "
+        "never what they are offered. Jobs with a time and jobs still waiting on the customer "
+        "share one list, ordered so that whichever is most at risk — the next appointment, or "
+        "the job nearest its deadline — comes first."
+    )
     d.p(
         "When a technician opens one, they see the product, the area, the fixed slot and what "
         "they will earn. They do **not** see the customer's name, phone number or street "
@@ -356,6 +417,10 @@ def build(shots) -> Document:
         ],
         widths=[4.2, 11.8],
     )
+    d.p(
+        "For the installation photos the app suggests an angle for each shot — front, back, "
+        "left side, right side — so the technician is not left to guess what is wanted."
+    )
     d.h3("Gallery uploads are never accepted")
     d.p(
         "Every one of these must come from the camera, in the moment. A photo chosen from the "
@@ -388,6 +453,10 @@ def build(shots) -> Document:
         "**A technician cannot mark their own work complete.** The person who did the work is "
         "not the person who signs it off. That one rule is what makes a closed job in this "
         "system mean something."
+    )
+    d.p(
+        "The same confirmation **bills the vendor**: the price stamped on the ticket at step 1 "
+        "stops being reserved against their credit line and becomes what they owe you."
     )
 
     # 3.7
@@ -529,10 +598,11 @@ def build(shots) -> Document:
     d.figure("console-force-close", "Force-closure. A reason, a justification and an attachment are all required.")
     d.p(
         "A manager closes it by hand, with a reason, a written justification and at least one "
-        "attachment, all kept for audit. They also enter what the technician should be paid, "
-        "capped at the job's value — because a technician who travelled and found nobody home "
-        "is owed something, one whose customer never confirmed a time is owed nothing, and "
-        "only the person closing it knows which."
+        "attachment, all kept for audit. They also enter two amounts, each capped at what the "
+        "job was priced at: what the **technician is paid**, and what the **vendor is billed**. "
+        "The two are separate on purpose. A technician who travelled and found nobody home is "
+        "owed something even if the vendor is billed nothing; a visit that happened but was "
+        "never confirmed may be the reverse. Only the person closing it knows which."
     )
     d.callout(
         "**Why not close it automatically after a week of silence?** Because that would record "
@@ -548,10 +618,29 @@ def build(shots) -> Document:
     # ── 5. Money ─────────────────────────────────────────────────────────────
     d.h1("5. The money")
     d.p(
-        "Money moves on two separate rails, and it is worth getting the distinction straight "
+        "Money moves on three separate rails, and it is worth getting the distinction straight "
         "before the detail. One runs **inside your company**: what a technician earns, is "
-        "charged, and eventually takes home. The other runs **between your company and this "
-        "platform**: what you pay to raise tickets at all. They never touch."
+        "charged, and eventually takes home. One runs **from your vendors to you**: what a "
+        "vendor owes for the jobs it raised. And one runs **from you to this platform**: what "
+        "you pay to raise tickets at all. They never touch — no rail can move a rupee on "
+        "another."
+    )
+    d.table(
+        ["Rail", "Who pays whom", "Charged when", "Who confirms the money arrived"],
+        [
+            ["**Earnings**", "You pay the technician", "The customer confirms the work",
+             "The technician"],
+            ["**Vendor credit**", "The vendor pays you", "The customer confirms the work",
+             "Your admin or national head"],
+            ["**Credits**", "You pay the platform", "A ticket is raised", "Us"],
+        ],
+        widths=[3.0, 4.0, 4.6, 4.4],
+    )
+    d.p(
+        "One pattern runs through all three: **whoever receives the money is the one who says "
+        "it arrived.** Nothing in this system can see a bank account, so it records two people's "
+        "word and never confuses them — the payer says they paid; the payee confirms.",
+        colour=K.MUTED,
     )
 
     d.h2("What a technician earns")
@@ -643,9 +732,75 @@ def build(shots) -> Document:
         "exactly what they would try — and it is the one change a technician cannot make alone."
     )
 
+    d.h2("What a vendor pays you")
+    d.p(
+        "Every ticket carries the price you charge its vendor, stamped when it was raised. "
+        "When the customer confirms the work, that price becomes a **bill**. A vendor works "
+        "against a **credit line** — ₹5,000 unless you agree a different figure with them — and "
+        "four numbers describe where they stand:"
+    )
+    d.table(
+        ["Figure", "What it is"],
+        [
+            ["**Limit**", "What the vendor may owe before its new tickets stop."],
+            ["**Owed**", "Jobs the customer has confirmed and the vendor has not yet paid for."],
+            ["**On open tickets**",
+             "The price of every job the vendor has raised that is not yet finished."],
+            ["**Room left**", "Limit, less what is owed, less what open tickets commit."],
+        ],
+        widths=[4.0, 12.0],
+    )
+    d.figure(
+        "portal-credit",
+        "The vendor's own Credit page: room left, what is owed, a payment waiting to be "
+        "confirmed, and a request for a bigger line.",
+    )
+    d.p(
+        "**Raising a ticket reserves its price at once**, even though nothing is owed until the "
+        "work is done. That is what stops the figure running away: without it, a vendor with "
+        "₹200 of room could raise ten ₹1,500 jobs before any of them closed. A cancelled job "
+        "frees its reservation and bills nothing."
+    )
+    d.callout(
+        "**Finishing a job is never refused because of what a vendor owes.** The customer "
+        "confirming, or a manager force-closing, goes through whatever the vendor's balance. "
+        "A line that runs past its limit simply stops that vendor's **next** ticket — which is "
+        "the only lever this needs."
+    )
+    d.p(
+        "Unlike your own balance with us, **a vendor does see these figures**. It is their "
+        "debt, with a consequence they feel and a remedy only they can carry out — and being "
+        "told \"paused\" without the number would be an instruction to act with no way of "
+        "knowing how much."
+    )
+    d.h3("Two ways to clear it")
+    d.bullet(
+        "**Pay.** The vendor scans a UPI QR built from your company's UPI ID, pays, and submits "
+        "the transaction reference with a screenshot. Only your admin or national head can "
+        "confirm it arrived, and that confirmation is the one thing that restores the line. "
+        "Money that arrived another way — a bank transfer, a cheque — they record directly, "
+        "and the record says which kind of evidence it was."
+    )
+    d.bullet(
+        "**Ask for more.** The vendor requests a bigger line, and the same two roles decide — "
+        "in full, in part, or turned down with a reason the vendor sees."
+    )
+    d.figure_row(
+        ["console-vendor-credit", "console-vendor-payment"],
+        ["Every vendor's line, with a payment and a request waiting",
+         "The payment: check the reference, then confirm or reject"],
+        height_cm=5.0,
+    )
+    d.callout(
+        "**This is not the same as the credits you buy from us.** Those are charged when a "
+        "ticket is raised and are between you and the platform. This is charged when the work "
+        "is done and is between you and your vendor. They share nothing — but either one, on "
+        "its own, pauses a vendor's new tickets."
+    )
+
     d.h2("What you pay us")
     d.p(
-        "The second rail. Your company holds **credits**, and one credit is worth one rupee. "
+        "The third rail. Your company holds **credits**, and one credit is worth one rupee. "
         "Raising a ticket costs credits — the charge happens the moment the ticket is raised, "
         "and it is not refunded if the job is later cancelled, because the work of offering it "
         "has already been done."
@@ -688,19 +843,28 @@ def build(shots) -> Document:
             ["Customer notice", "60 minutes", "How long before the slot they are messaged"],
             ["Force-close wait", "12 hours", "Silence after which a manager is alerted"],
             ["Location radius", "1 km", "How far from the door a live photo may be taken"],
+            ["Vendor credit line", "₹5,000", "What a new vendor may owe before its tickets stop"],
         ],
         widths=[5.0, 4.4, 6.6],
     )
     d.callout(
         "**A rule can also belong to a product category.** A penalty that is right for a 32-inch "
         "television is wrong for a rooftop solar installation. Any category can override any of "
-        "these except the monthly cap, and a job remembers the rules that applied on the day it "
-        "was raised — so changing a rule tomorrow never restates what somebody already accepted."
+        "these except the monthly cap and the vendor credit line, and a job remembers the rules "
+        "that applied on the day it was raised — so changing a rule tomorrow never restates what "
+        "somebody already accepted."
     )
     d.p(
-        "The monthly cap is the exception because it is the one figure that is not about a job. "
-        "It limits what a single technician can be charged across **everything** they worked on "
-        "that month, so there is no one category it could belong to.", colour=K.MUTED,
+        "Those two are the exceptions because neither is about one job. The cap limits what a "
+        "technician can be charged across **everything** they worked on that month, and a "
+        "credit line is one figure a vendor draws down across everything they raise — so there "
+        "is no one category either could belong to.", colour=K.MUTED,
+    )
+    d.p(
+        "A vendor's line is copied from this setting on the day they are added, so raising it "
+        "never quietly extends a vendor you agreed a different figure with; one vendor's line "
+        "is changed on the Vendors screen. The same Rules screen holds your company's **UPI "
+        "ID** — where vendors pay you."
     )
     d.p(
         "Two things in this document are deliberately **not** settings. Where one cancellation "
@@ -771,12 +935,14 @@ def build(shots) -> Document:
         ["Role", "Covers", "Can do"],
         [
             ["**Admin**", "The whole company", "Everything, including rules and users"],
-            ["**National Head**", "The whole country", "Everything operational, plus vendors"],
+            ["**National Head**", "The whole country",
+             "Everything operational, plus vendors, their credit and payouts"],
             ["**Regional Head**", "Chosen regions", "Supervise and assign in those regions"],
             ["**Area Manager**", "Chosen states", "Assign, escalate, force-close, confirm no-shows"],
             ["**Technician**", "Their own pincodes", "Their own jobs, in the app"],
             ["**Vendor**", "Every ticket their people raised",
-             "Raise and watch; manage their own brands, products and serials"],
+             "Raise (by form or spreadsheet) and watch; manage their own brands, products and "
+             "serials; see and pay what they owe"],
             ["**Vendor's staff**", "Only the tickets they raised themselves",
              "Raise and watch"],
         ],
@@ -814,6 +980,39 @@ def build(shots) -> Document:
         ["console-users", "console-technicians"],
         ["Console users and roles", "The technician master"],
         height_cm=6.5,
+    )
+    d.p(
+        "Getting a new technician onto the app takes one scan: the console's own sign-in page "
+        "carries a QR code that downloads it.",
+        colour=K.MUTED,
+    )
+
+    d.h2("In the technician's own language")
+    d.p(
+        "The technician app speaks five languages — **English, Hindi, Telugu, Kannada and "
+        "Tamil**. The first time it opens, the list appears by itself, each language written in "
+        "its own script, so somebody who cannot read English never has to get past an English "
+        "screen to find it. They can change it later from the sign-in screen or their profile, "
+        "and the choice stays with the phone, through sign-out."
+    )
+    d.figure_row(
+        ["app-language", "app-home-hi"],
+        ["Chosen on the phone", "The same home screen, in Hindi"],
+        height_cm=10.0,
+    )
+    d.p(
+        "It is the whole app, not a few labels: every screen, every error message, and the "
+        "push notifications too — which arrive in the phone's language even when the app is "
+        "closed. Customer names, addresses, amounts and job numbers are shown as "
+        "they were entered."
+    )
+
+    d.h3("Keeping the app up to date")
+    d.p(
+        "When a new version is published on Google Play, the app offers Google Play's own "
+        "update sheet. The update downloads in the background and installs only while the app "
+        "is in the background with no proof half-captured, because installing restarts the "
+        "app. Nobody is ever forced to update, and never in the middle of a job."
     )
 
     # ── 8. Brand and data ────────────────────────────────────────────────────
@@ -860,8 +1059,8 @@ def build(shots) -> Document:
     # ── 9. Honest gaps ───────────────────────────────────────────────────────
     d.h1("9. What is not built yet")
     d.p(
-        "One thing is designed and visible in the product's architecture but not switched on, "
-        "and it is better to say so plainly than to let it be discovered later."
+        "Two things are not finished, and it is better to say so plainly than to let them be "
+        "discovered later."
     )
     d.h3("Automated photo verification")
     d.p(
@@ -880,6 +1079,14 @@ def build(shots) -> Document:
         "Until it is switched on, proof is captured and stored exactly as described in step 5 "
         "— the serial mismatch is still visible to your staff, it is simply a person who "
         "notices it rather than a model.", colour=K.MUTED,
+    )
+
+    d.h3("WhatsApp messages in other languages")
+    d.p(
+        "The technician app and its notifications are in five languages, but WhatsApp messages "
+        "— to customers and to technicians — are still sent in English. Each one is a message "
+        "template that Meta approves separately for every language, so each language arrives "
+        "on WhatsApp only once Meta has approved it."
     )
 
     # ── 10. Appendix ─────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ anybody has seen a screen and does not depend on the capture pipeline at all:
 
 | File | What it is |
 |---|---|
-| `dist/Reliance GreenTech - End to End.pptx` | The explainer deck. Eight slides of drawn shapes and plain sentences — the parties, the ticket's real statuses from intake to payout, what each branch costs, and the two money rails. **No screenshots**, so `npm run capture` is not a prerequisite. Built by `build/build_demo_deck.py`. |
+| `dist/Reliance GreenTech - End to End.pptx` | The explainer deck. Nine slides of drawn shapes and plain sentences — the parties, how a company comes to exist, the ticket's real statuses from intake to payout, what each branch costs, and the three money rails. **No screenshots**, so `npm run capture` is not a prerequisite. Built by `build/build_demo_deck.py`. |
 | `dist/Reliance GreenTech - Product Overview.pptx` | The pitch deck. One slide per step of the flow, a 3–6 word headline, and the screen doing the talking. |
 | `dist/Reliance GreenTech - Screen Catalogue.pptx` | The slide-by-slide leave-behind. Every screen, grouped by who uses it. |
 | `dist/Reliance GreenTech - How It Works.docx` / `.pdf` | The explanatory document — for a client to read alone and come away understanding the whole product. |
@@ -56,6 +56,15 @@ target throws at `chromium.launch()`, `out/shots.json` is left untouched, and th
 build steps below then happily rebuild `dist/` from the **previous** run's
 screenshots with today's date stamped on them.
 
+The browser is about 700 MB and lands on `C:` by default. On a machine short of
+space there, install it elsewhere and name the place on every run that launches it
+(`seed`, `capture`, `map`) — Playwright reads the variable each time:
+
+```bash
+export PLAYWRIGHT_BROWSERS_PATH='D:/tmp/ms-playwright'
+npx playwright install chromium
+```
+
 The PDF step needs **Microsoft Word** (`export_pdf.ps1` drives it over COM), and
 `build/render_preview.ps1` needs **PowerPoint**. There is no fallback for either.
 
@@ -73,11 +82,19 @@ surface; the manifest is merged, not replaced, so the others survive.
 ## Everything is captured against a seeded DEVELOPMENT tenant
 
 `seed/seed_dev.mjs` builds a whole company through the real API — staff, a vendor
-with its own login, three technicians, a priced catalogue, and thirteen tickets
-driven to seven different points of the lifecycle, so the dashboard counts
+with its own login, three technicians, a priced catalogue, and fourteen tickets
+driven to eight different points of the lifecycle, so the dashboard counts
 something, the escalation queue has a row, the ledger holds both a payout and a
-penalty, the pool has work in it, and both customer-facing pages have live
-tokens.
+penalty, the pool has work in it — including a job taken before its customer chose
+a time — and both customer-facing pages have live tokens.
+
+It also leaves the vendor **owing** something and both of its ways out undecided: a
+payment claimed and not yet confirmed, and a request for a bigger credit line. The
+vendor is given a ₹25,000 line rather than the ₹5,000 default, because every ticket
+reserves its price at intake and the plan commits about ₹20,000 — on the default
+the fourth ticket is refused with 409 `VENDOR_OUT_OF_CREDITS`. UTRs are derived from
+the clock: one is credited once across the whole platform, and `--reset` only
+soft-deletes the previous company, so a constant UTR fails on the second run.
 
 **Every write goes through the endpoints, never SQL.** That is the point: the API
 stamps both prices and the rules snapshot at intake and writes a `ticket_events`
@@ -117,6 +134,13 @@ non-GET to the API except signing in, and `assertNoWrites()` fails the run if
 anything tried. It is what stops a stray click changing a job's state between one
 screenshot and the next — and it means pointing `DECK_CONSOLE_URL` at the
 deployed console is safe, at which point masking switches back on by itself.
+
+**One exception: the ticket importer's dry run** (`/tickets/import?dryRun=true`),
+which the API answers before its commit step and which writes nothing. It is
+forwarded with `route.continue()`, not `route.fetch()` — the latter re-sends a
+multipart body empty, and the API answers "The file is empty". The real import
+(`dryRun=false`) is still aborted. The sheet it checks is written by
+`capture/console.mjs` into `out/import-sample.csv`, all invented.
 
 ## Re-running
 

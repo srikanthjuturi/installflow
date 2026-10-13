@@ -94,8 +94,32 @@ export const VENDOR = {
   state: 'Karnataka',
   pincode: '560058',
   loginEmail: `imran.qureshi@${VENDOR_MAIL_DOMAIN}`,
-  intakeChannels: ['Manual'],
+  // Excel as well as Manual, so the portal's rail carries "Import tickets" —
+  // the spreadsheet channel is a screen of its own and was never photographed.
+  intakeChannels: ['Manual', 'Excel'],
   brands: VENDOR_BRANDS,
+  // ₹25,000, not the house default of ₹5,000. Every ticket RESERVES its vendor
+  // price the moment it is raised, and the plan below commits about ₹20,000 —
+  // on the default line the fourth `POST /tickets` is refused with 409
+  // VENDOR_OUT_OF_CREDITS. Stamped on the vendor, so the Rules screenshot still
+  // shows the ₹5,000 default the document's table quotes.
+  creditLimitPaise: 2_500_000,
+};
+
+/**
+ * Where this company's vendors pay what they owe it — `PUT /settings/payment-
+ * account`. Until it is set the vendor's Credit page says so instead of drawing
+ * a QR. `okmeridian` is not a real UPI handle, so the address routes nowhere.
+ */
+export const COMPANY_PAYEE = {
+  upiId: 'collections@okmeridian',
+  upiName: 'Meridian Appliances',
+};
+
+/** The vendor's "ask for more", left undecided so the console's queue has a row. */
+export const VENDOR_LIMIT_REQUEST = {
+  requestedLimitPaise: 5_000_000,
+  note: 'Festive season — we expect around forty installs a week through November.',
 };
 
 /**
@@ -203,7 +227,7 @@ export const VENDOR_SUBMITTED_MODEL = {
  * These have to agree. Intake refuses a serial the chosen model does not hold
  * — but ONLY once that model holds at least one, so loading serials without
  * also making every seeded ticket serial a member of the right model's list
- * turns all thirteen `POST /tickets` calls into 400s. One function generates
+ * turns every `POST /tickets` call into a 400. One function generates
  * both, which is the only way they cannot drift.
  */
 export const ticketSerial = (prefix, index) =>
@@ -229,12 +253,14 @@ export const CUSTOMERS = [
   { name: 'Sanjay Kulkarni', phone: '+919000000410', address: '44, Sunrise Colony' },
   { name: 'Meera Gupta', phone: '+919000000411', address: '21, Gandhi Bazaar Main' },
   { name: 'Aarav Desai', phone: '+919000000412', address: '3, Rose Garden Layout, 6th Cross' },
+  { name: 'Pooja Shetty', phone: '+919000000413', address: '56, Cauvery Layout, 4th Main' },
 ];
 
 /**
  * How far each ticket is driven. The mix is what makes the console's screens
  * worth photographing — a dashboard of zeroes proves nothing.
  *
+ *   takenNoTime  accepted before the customer picked a time → "taken, not started"
  *   slotPending  raised, customer not yet asked to choose  → the slot page
  *   pool         slot confirmed, nobody has accepted       → the job pool
  *   assigned     a technician has taken it
@@ -251,6 +277,12 @@ const VISIT = { serviceType: 'Tech Visit', description: 'No picture after a powe
 const SERVICE = { serviceType: 'Service', description: 'Annual service due; cooling has dropped noticeably over the last month.' };
 
 export const TICKET_PLAN = [
+  // FIRST, and that position is load-bearing. The pool offers `Slot Pending`
+  // jobs, so a technician may take one before the customer has chosen — and
+  // may not start it. `dev_tokens.py` hands the customer capture the NEWEST
+  // unconfirmed slot token, so the two plain slotPending tickets must be raised
+  // after this one or the slot page would be photographed for a taken job.
+  { stage: 'takenNoTime', serviceType: INSTALL, technician: 0 },
   { stage: 'slotPending', serviceType: INSTALL },
   { stage: 'slotPending', ...VISIT },
   { stage: 'pool', serviceType: INSTALL },

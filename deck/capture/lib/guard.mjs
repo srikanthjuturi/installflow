@@ -31,6 +31,25 @@ const ALLOWED_WRITES = [
   /\/auth\/switch-company$/,
 ];
 
+/**
+ * The ticket importer's DRY RUN — a POST that writes nothing.
+ *
+ * Choosing a file on the import screen starts the check by itself, and the
+ * check is the screen worth photographing: what would be created, what would
+ * wait for a price, and every row refused with its reason. `import_tickets`
+ * returns its report BEFORE `_commit` when `dry_run` is set, so the request is
+ * a read in all but verb.
+ *
+ * Matched on the query as well as the path, and `dryRun=false` — the real
+ * import, behind the panel's own button — is still aborted.
+ */
+function isImportDryRun(url) {
+  return (
+    /\/tickets\/import(\/on-behalf)?$/.test(url.pathname) &&
+    url.searchParams.get('dryRun') === 'true'
+  );
+}
+
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
@@ -61,7 +80,9 @@ export function createInterceptor({ label, readOnly = true, mask = true }) {
     const isApi = url.includes('/api/v1/');
 
     if (isApi && readOnly && !READ_METHODS.has(method)) {
-      const allowed = ALLOWED_WRITES.some((re) => re.test(new URL(url).pathname));
+      const parsed = new URL(url);
+      const allowed =
+        ALLOWED_WRITES.some((re) => re.test(parsed.pathname)) || isImportDryRun(parsed);
       if (!allowed) {
         state.blocked.push(`${method} ${url}`);
         // Abort rather than fulfil an empty 200: a silent success would let the
@@ -70,6 +91,16 @@ export function createInterceptor({ label, readOnly = true, mask = true }) {
         await route.abort('blockedbyclient');
         return;
       }
+    }
+
+    // Forwarded untouched rather than through `route.fetch()` below, which
+    // re-sends a multipart body EMPTY — the API answered "The file is empty"
+    // and the preview never drew. Its response skips masking, which is safe:
+    // the report only echoes the sample sheet `console.mjs` wrote, and every
+    // name in it is invented.
+    if (isApi && isImportDryRun(new URL(url))) {
+      await route.continue();
+      return;
     }
 
     if (!isApi) {

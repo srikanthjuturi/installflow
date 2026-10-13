@@ -98,6 +98,27 @@ export class ApiError extends Error {
 }
 
 /** One call. `token` omitted means unauthenticated. */
+/**
+ * `fetch`, retried ONCE when the pooled socket turns out to be dead.
+ *
+ * uvicorn closes an idle keep-alive connection after five seconds, and Node's
+ * fetch keeps it in its pool regardless. `--reset` shells out to
+ * `dev_tokens.py` for longer than that, so the very next request — the POST
+ * that creates the company — was written onto a closed socket and failed with
+ * ECONNRESET every time, without ever reaching the server (its access log had
+ * no line for it). Only that error is retried, and only once: it means the
+ * request was never read, so sending it again cannot do anything twice.
+ */
+async function fetchOnLiveSocket(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    const code = error.cause?.code;
+    if (code !== 'ECONNRESET' && code !== 'UND_ERR_SOCKET') throw error;
+    return fetch(url, init);
+  }
+}
+
 export async function call(pathname, { token, method = 'GET', body, form, raw = false } = {}) {
   const headers = {};
   if (token) headers.authorization = `Bearer ${token}`;
@@ -117,7 +138,7 @@ export async function call(pathname, { token, method = 'GET', body, form, raw = 
 
   let response;
   try {
-    response = await fetch(url, { method, headers, body: payload });
+    response = await fetchOnLiveSocket(url, { method, headers, body: payload });
   } catch (cause) {
     // Node's bare "fetch failed" names neither the URL nor the reason.
     throw new Error(`${method} ${url} — ${cause.cause?.message ?? cause.message}`, { cause });
@@ -139,7 +160,7 @@ export async function upload(token, bytes, filename, contentType, kind) {
   const form = new FormData();
   form.append('file', new Blob([bytes], { type: contentType }), filename);
   const query = kind ? `?kind=${encodeURIComponent(kind)}` : '';
-  const response = await fetch(`${BASE}/uploads${query}`, {
+  const response = await fetchOnLiveSocket(`${BASE}/uploads${query}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}` },
     body: form,
