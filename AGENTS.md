@@ -197,6 +197,17 @@ loads it only when that module is present. GA4 is the Measurement Protocol over 
 (`ga4.ts`), deliberately not Firebase. Do not add any *other* third-party native module
 (`react-native-mmkv`, `react-native-keyboard-controller`, Sentry) without flagging it first.
 
+**A new Play Store release is offered by Google Play's own "Update available" sheet** — the
+FLEXIBLE in-app update, through our own local module `mobileapp/modules/play-update` (Kotlin, Play
+Core `app-update`), wired in `mobileapp/src/hooks/useStoreUpdate.ts`. Play draws the sheet in the
+phone's language, so it has no copy of ours, and it learns of a release from Play, so nothing is
+bumped after publishing. Update downloads in the background; the new build is installed only while
+the app is in the BACKGROUND with no unsubmitted proof shots, because installing restarts the app.
+That is also why it is not `expo-in-app-updates`: that library restarts the moment the download
+lands, mid-proof included. Never forced. It appears only in a build installed FROM Play, for a
+release newer than that build — so the first release carrying it prompts nobody; the one after
+does. Test through Play's internal testing track or internal app sharing, never a preview APK.
+
 ## Hard rules
 
 ### 0. This product is MULTI-TENANT. Applies everywhere, before anything below.
