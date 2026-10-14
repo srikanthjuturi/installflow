@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,7 @@ from app.core.product_tree import (
     APPROVAL_STATES,
     APPROVED,
     CATALOGUE,
+    CATEGORIES,
     INTAKE,
     MAX_NODE_DEPTH,
     PENDING,
@@ -73,7 +74,8 @@ from app.features.masters.schemas import (
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
-from app.models.technician import TechnicianNode
+from app.models.technician import ACTIVE as TECHNICIAN_ACTIVE
+from app.models.technician import TechnicianNode, TechnicianProfile
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_brand import VendorBrand
@@ -451,9 +453,12 @@ async def get_tree(
 
         catalogue   every approval state, and empty branches KEPT. The ops
                     Categories screen, the vendor's own product screen, and the
-                    subtree every write echoes back.
+                    subtree every write echoes back. For a VENDOR, narrowed to
+                    its own work — see "A vendor's catalogue" below.
         intake      approved products only, and empty branches pruned. The
                     ticket form's pickers.
+        categories  the categories and NO products. Where a vendor picks the
+                    category a new product or sub-category goes under.
 
     One parameter rather than two booleans, because the two settings are not
     independent choices. A caller that could ask for approved-only while keeping
@@ -469,9 +474,33 @@ async def get_tree(
     A node whose parent was filtered out is DROPPED, never promoted to a root.
     Pausing *TV* has to take *Android TV* with it; a child that floated up to the
     top level would be offered as a choice its own parent had withdrawn.
+
+    ## A vendor's catalogue is its own work, not the company's tree
+
+    Its products were always pinned to its own. The CATEGORIES were not: keeping
+    empty branches (so a category a vendor has just added stays on screen) also
+    kept every other branch in the company, so a brand-new vendor opened "My
+    products" onto the whole master — staff's empty categories and the
+    sub-categories OTHER vendors had created, whose names are often that
+    vendor's product line ("Samsung Washing Machines"). So `catalogue` keeps,
+    for a vendor, a node holding one of its products, a node it created, and
+    the ancestors of either so the path reads — nothing else. Choosing where to
+    file something NEW is `categories`, which offers the company's categories
+    with no products in them at all.
     """
     company_id = principal.company_id
     for_intake = purpose == INTAKE
+    # The picker a vendor files under. No product of anybody's rides along, so
+    # the model query below is not even run.
+    categories_only = purpose == CATEGORIES
+
+    # A portal account whose membership names no vendor is a corrupt row, and it
+    # must fail CLOSED. Left to the substitution below it would set `vendor_id`
+    # to None — which is "no filter", the staff reading — and hand it every
+    # vendor's products. `require_vendor_principal` refuses the same account on
+    # every write; this is the read.
+    if principal.is_vendor and principal.vendor_id is None:
+        return []
 
     node_stmt = select(ProductNode).where(
         ProductNode.company_id == company_id,
@@ -508,8 +537,14 @@ async def get_tree(
             )
         )
     )
-    models = list(
-        await db.scalars(model_stmt.order_by(ProductModel.sort_order, ProductModel.name))
+    models = (
+        []
+        if categories_only
+        else list(
+            await db.scalars(
+                model_stmt.order_by(ProductModel.sort_order, ProductModel.name)
+            )
+        )
     )
 
     # One extra query for the brand names, joined in Python like everything else
@@ -539,6 +574,22 @@ async def get_tree(
     for m in models:
         models_by_node.setdefault(m.node_id, []).append(m)
 
+    # A vendor's catalogue: the nodes its own work sits in, and the path above
+    # them (see the docstring). `models` is already pinned to this vendor, so a
+    # node in `models_by_node` holds one of ITS products. Every portal write
+    # echoes back through `_one_root`, and each touches a node this keeps — one
+    # the vendor created, or one now holding its product — so no committed write
+    # can answer 404 the way the old `vendor_id`-driven pruning once did.
+    keep: set[uuid.UUID] | None = None
+    if principal.is_vendor and purpose == CATALOGUE:
+        keep = set()
+        for n in nodes:
+            if n.id in models_by_node or (
+                n.created_by is not None and n.created_by in own_creators
+            ):
+                keep.add(n.id)
+                keep.update(n.ancestor_ids or [])
+
     built: dict[uuid.UUID, ProductNodeOut] = {}
     # The two things carried down as we go: the resolved icon, and the
     # breadcrumb (which is `parent.path` plus this node's name).
@@ -546,6 +597,8 @@ async def get_tree(
     roots: list[ProductNodeOut] = []
 
     for n in nodes:
+        if keep is not None and n.id not in keep:
+            continue
         parent = built.get(n.parent_id) if n.parent_id is not None else None
         if n.parent_id is not None and parent is None:
             # Its parent was filtered out (paused, or another vendor's branch).
@@ -700,12 +753,26 @@ async def _coverage_counts(
     on both *TV* and *Android TV* is one technician, and a sum would report two.
     The pairs are fetched whole because the catalogue is small and the join is
     then a dictionary lookup rather than one query per node.
+
+    ACTIVE technicians only — the pool's own `status` test. Removing a
+    technician deletes their pincodes but keeps their certification rows, so
+    without it every removed or suspended technician went on being counted as
+    somebody who "can take these" when no pool would ever offer them a job.
     """
     if not nodes:
         return {}
     rows = await db.execute(
-        select(TechnicianNode.node_id, TechnicianNode.technician_id).where(
-            TechnicianNode.company_id == company_id
+        select(TechnicianNode.node_id, TechnicianNode.technician_id)
+        .join(
+            TechnicianProfile,
+            and_(
+                TechnicianProfile.company_id == TechnicianNode.company_id,
+                TechnicianProfile.id == TechnicianNode.technician_id,
+            ),
+        )
+        .where(
+            TechnicianNode.company_id == company_id,
+            TechnicianProfile.status == TECHNICIAN_ACTIVE,
         )
     )
     direct: dict[uuid.UUID, set[uuid.UUID]] = {}
@@ -2542,7 +2609,12 @@ async def lookup_serial(
         .offset(offset)
         .limit(MAX_SERIAL_MATCHES)
     )
-    if principal.is_vendor and principal.vendor_id is not None:
+    if principal.is_vendor:
+        # Fail CLOSED: a portal account whose membership names no vendor finds
+        # nothing. Skipping the pin when `vendor_id` was None — which this used
+        # to do — read that corrupt row as "no vendor, so unrestricted".
+        if principal.vendor_id is None:
+            return []
         stmt = stmt.where(ProductModel.vendor_id == principal.vendor_id)
 
     rows = (await db.execute(stmt)).all()

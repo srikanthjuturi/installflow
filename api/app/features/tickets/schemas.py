@@ -16,7 +16,7 @@ import datetime
 import uuid
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.core.coordinates import IndiaLatitude, IndiaLongitude
 from app.core.phone import Phone
@@ -838,15 +838,33 @@ class DashboardSummaryOut(AppModel):
 class SerialCorrectionRequest(AppModel):
     """Correcting the EXPECTED serial — the one taken off the invoice.
 
-    Never the observed one. What the technician read on site is a record of what
-    was there and is not editable by anybody; this fixes the number the order
-    was raised with, which is where the mistake nearly always is.
+    Never the observed one — that is `ReadingCorrectionRequest`, manager-only.
+    This fixes the number the order was raised with, which is where the mistake
+    nearly always is.
     """
 
     serialNumber: str = Field(min_length=1, max_length=64)
     #: Optional, and worth asking for: "invoice says 88417" explains a
     #: correction that a bare value never will.
     reason: str | None = Field(default=None, max_length=255)
+
+
+class ReadingCorrectionRequest(AppModel):
+    """Correcting the OBSERVED serial — what the technician typed on site.
+
+    For the case `SerialCorrectionRequest` cannot fix: the order is right and
+    the technician mistyped. Manager-only, and the reason is REQUIRED, because
+    this edits evidence and the trail must say why.
+    """
+
+    #: Trimmed BEFORE the length check, so a reason of spaces is refused rather
+    #: than written to the trail as an empty justification.
+    observedSerial: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+    ]
+    reason: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    ]
 
 
 class SerialCheckOut(AppModel):

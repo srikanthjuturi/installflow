@@ -170,6 +170,25 @@ export async function captureMobile({ browser, recorder }) {
   });
   await interceptor.install(context);
 
+  // A fresh phone opens the language list by itself on first launch, over
+  // sign-in, so somebody who cannot read English never has to get past an
+  // English screen. A fresh browser context IS a fresh phone, so the sheet sat
+  // over the number field and sign-in failed. Answer it the way a technician
+  // would — once — and only when nothing is chosen, so the Hindi shot below can
+  // change it and have the change survive a reload.
+  await context.addInitScript(() => {
+    try {
+      if (!localStorage.getItem('reliancegreentech.language')) {
+        localStorage.setItem(
+          'reliancegreentech.language',
+          JSON.stringify({ state: { chosen: 'en' }, version: 1 }),
+        );
+      }
+    } catch {
+      /* blocked storage: the sheet will show, and the run will say so */
+    }
+  });
+
   // Metro bundles the whole app on the first request and can take minutes doing
   // it. Playwright's 30-second default turns that into a navigation timeout
   // that looks like the app is broken.
@@ -198,11 +217,11 @@ export async function captureMobile({ browser, recorder }) {
   }
 
   /**
-   * Ids for the two detail screens, read through the technician's OWN session
+   * Rows for the detail screens, read through the technician's OWN session
    * inside the page rather than guessed — these are the same lists the Jobs tab
    * and the pool screen render.
    */
-  const idFrom = async (endpoint) =>
+  const rowsFrom = async (endpoint) =>
     page
       .evaluate(async ([base, path]) => {
         try {
@@ -212,18 +231,24 @@ export async function captureMobile({ browser, recorder }) {
             headers: token ? { authorization: `Bearer ${token}` } : {},
           });
           const body = await response.json();
-          const rows = body?.data?.items ?? body?.data ?? [];
-          return rows[0]?.id ?? rows[0]?.ticketId ?? null;
+          return body?.data?.items ?? body?.data ?? [];
         } catch {
-          return null;
+          return [];
         }
       }, [API, endpoint])
-      .catch(() => null);
+      .catch(() => []);
+  const idOf = (row) => row?.id ?? row?.ticketId ?? null;
+
+  // The pool offers `Slot Pending` jobs as well as confirmed ones, and sorts a
+  // job with no time by its deadline — so the FIRST row is often one with no
+  // slot at all, and "the slot does not [stay hidden]" would be captioning a
+  // screen with no slot on it. Pick a row that has one.
+  const poolRows = await rowsFrom('/jobs/pool');
+  const offerId = idOf(poolRows.find((row) => row.slotStart) ?? poolRows[0]);
 
   // The masked offer, from the running app. Customer name and phone are still
   // hidden here — this technician has not accepted it — which is the product
   // doing its own masking rather than the deck doing it for them.
-  const offerId = await idFrom('/jobs/pool');
   if (offerId) {
     await page.goto(`${APP}/pool/${offerId}`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2400);
@@ -260,7 +285,11 @@ export async function captureMobile({ browser, recorder }) {
     });
   }
 
-  const jobId = await idFrom('/jobs/mine');
+  // Two of this technician's jobs, chosen for what they show: one with an
+  // agreed time, and the one the seed had him take before the customer chose.
+  const mine = await rowsFrom('/jobs/mine');
+  const jobId = idOf(mine.find((row) => row.status === 'Assigned' && row.slotStart));
+  const noTimeId = idOf(mine.find((row) => row.status === 'Assigned' && !row.slotStart));
 
   if (jobId ?? technician.ticketId) {
     await page.goto(`${APP}/job/${jobId ?? technician.ticketId}`, { waitUntil: 'domcontentloaded' });
@@ -275,6 +304,61 @@ export async function captureMobile({ browser, recorder }) {
     });
     interceptor.assertMasked('/jobs/');
   }
+
+  // Taken, and not startable. The note in place of "Start job" is net-new copy
+  // approved on 2026-09-21; the server refuses the proof with 409
+  // NO_TIME_AGREED as well, because installed builds predate the note.
+  if (noTimeId) {
+    await page.goto(`${APP}/job/${noTimeId}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2400);
+    await recorder.record({
+      id: 'app-job-no-time',
+      section: 'Technician app',
+      title: 'Taken before the customer chose',
+      sub: 'The job is theirs, but it cannot start until a time is agreed',
+      kind: 'phone-raw',
+      target: page,
+    });
+  }
+
+  // The language list. Tapping a row switches the whole app, so nothing here
+  // is pressed — it is opened, photographed and left.
+  await page.goto(`${APP}/language`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2200);
+  await recorder.record({
+    id: 'app-language',
+    section: 'Technician app',
+    title: 'Five languages',
+    sub: 'Each in its own script, chosen on the phone and kept through sign-out',
+    kind: 'phone-raw',
+    target: page,
+  });
+
+  // Home, in Hindi. The choice is stored per phone under the same key the init
+  // script answered; changing it and reloading is exactly what the app does
+  // after a tap, without pressing anything that could write.
+  await page.evaluate(() =>
+    localStorage.setItem(
+      'reliancegreentech.language',
+      JSON.stringify({ state: { chosen: 'hi' }, version: 1 }),
+    ),
+  );
+  await page.goto(`${APP}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2800);
+  await recorder.record({
+    id: 'app-home-hi',
+    section: 'Technician app',
+    title: 'The same app, in Hindi',
+    sub: 'Every word on every screen, and the push notifications too',
+    kind: 'phone-raw',
+    target: page,
+  });
+  await page.evaluate(() =>
+    localStorage.setItem(
+      'reliancegreentech.language',
+      JSON.stringify({ state: { chosen: 'en' }, version: 1 }),
+    ),
+  );
 
   interceptor.assertNoWrites();
   await context.close();

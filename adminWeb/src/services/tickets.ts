@@ -8,6 +8,7 @@
 
 import type { ListParams, Page } from "@/types/api";
 import type {
+  CorrectReadingInput,
   CorrectSerialInput,
   CreateTicketInput,
   SerialCheck,
@@ -110,6 +111,18 @@ export function correctTicketSerial({
   ...body
 }: CorrectSerialInput): Promise<TicketDetail> {
   return apiPatch<TicketDetail>(`/tickets/${id}/serial`, body);
+}
+
+/**
+ * Correct what the technician TYPED on site — for when the order is right and
+ * the slip was theirs, which `correctTicketSerial` cannot fix. Area Manager and
+ * above; never the vendor. **409 `NO_READING_YET`** means no proof yet.
+ */
+export function correctTicketReading({
+  id,
+  ...body
+}: CorrectReadingInput): Promise<TicketDetail> {
+  return apiPatch<TicketDetail>(`/tickets/${id}/observed-serial`, body);
 }
 
 /**
@@ -316,7 +329,9 @@ export interface RescheduleInput {
  * **409 `ESCALATION_IS_A_REFUSAL`** means the customer said the job was NOT
  * done, which needs a technician or a closure rather than a new time.
  * **409 `SLOT_NO_LONGER_AVAILABLE`** means the window went while the dialog was
- * open. **409 `TICKET_NOT_RESCHEDULABLE`** means it has moved past the point a
+ * open. **409 `SLOT_UNCHANGED`** means it is the window the ticket is already
+ * booked into — the list never offers that one, so only a stale dialog sends it.
+ * **409 `TICKET_NOT_RESCHEDULABLE`** means it has moved past the point a
  * time can be set. Each carries a sentence saying what to do instead, and the
  * toaster shows it — nothing here branches on the code.
  */

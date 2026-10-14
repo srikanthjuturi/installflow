@@ -35,7 +35,7 @@ export default function TicketListPage() {
   const canImport = useFeatureAccess().has("jobs.import");
 
   /* What a dashboard tile narrowed this to, said out loud.
-     The board's only visible control is the status chip row, so everything a
+     The board's only visible filter is the Status dropdown, so everything a
      tile sends beyond one status — "not yet closed", an SLA bucket, a closure
      window, a pair of statuses, a territory, a range of intake dates — would
      otherwise withhold rows with nothing on screen to explain it. Same fix, and

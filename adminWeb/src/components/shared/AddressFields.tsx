@@ -87,6 +87,12 @@ type Part = Exclude<keyof AddressValue, "latitude" | "longitude">;
 
 export interface AddressFieldsProps {
   value: AddressValue;
+  /**
+   * Every edit and every auto-fill lands here. An RHF caller writing it with
+   * `setValue` must re-validate once the form is submitted, or the errors on
+   * these boxes outlive the values that fix them — see `ManualEntryForm`'s
+   * `write`.
+   */
   onChange: (next: AddressValue) => void;
   /** Unique per form — every id and every `aria-describedby` is built from it. */
   idPrefix: string;

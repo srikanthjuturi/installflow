@@ -32,13 +32,15 @@ import uuid
 
 from fastapi import BackgroundTasks, HTTPException, status as http_status
 from sqlalchemy import Select, and_, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
 from app.core.config import settings
-from app.core.coverage import has_cap_room, nearest_manager_for
+from app.core.coverage import has_cap_room, nearest_manager_for, still_offerable
 from app.core.errors import AppError
 from app.core.escalation import escalate, whatsapp_the_area_manager
+from app.core.job_passes import passed_as_offered
 from app.core.ledger import (
     cap_remaining,
     charged_this_month,
@@ -59,9 +61,15 @@ from app.core.rules import (
     load_rules,
     snapshot_value,
 )
-from app.core.reschedule import announce as announce_reschedule, move_slot, send_slot_moved
+from app.core.reschedule import (
+    OWN_NUMBER_NOTE,
+    announce as announce_reschedule,
+    is_own_number,
+    move_slot,
+    send_slot_moved,
+)
 from app.core.schemas import ListParams
-from app.core.slots import bookable_slots, when_label
+from app.core.slots import bookable_slots, reschedule_slots, when_label
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
     MIN_PRODUCT_PHOTOS,
@@ -104,6 +112,7 @@ from app.models.technician import (
     TechnicianPincode,
     TechnicianProfile,
 )
+from app.models.job_pass import JobPass
 from app.models.ledger import LedgerEntry
 from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
@@ -137,6 +146,7 @@ def pool_query(
     technician_id: uuid.UUID,
     eligible_only: bool = True,
     open_only: bool = True,
+    hide_passed: bool = True,
 ) -> Select:
     """Every ticket this technician may be offered, soonest slot first.
 
@@ -262,18 +272,11 @@ def pool_query(
     conditions = [
         Ticket.company_id == company_id,
         Ticket.deleted_at.is_(None),
-        # ONE expression for "there is still time to do this", both shapes in
-        # it. Two separate predicates would be two chances to drift, and the
-        # drift would be silent: a pool that quietly stops offering half the
-        # work looks exactly like a quiet week.
-        or_(
-            # A window that has already opened cannot be travelled to. The pool
-            # is a list of commitments a technician could still keep.
-            and_(Ticket.slot_start.is_not(None), Ticket.slot_start > now),
-            # No time agreed yet. The service level is the only deadline there
-            # is, so it is the one that decides.
-            and_(Ticket.slot_start.is_(None), Ticket.sla_due_at > now),
-        ),
+        # "There is still time to do this" — a slot that has not opened, or no
+        # slot and an SLA still running. Shared with the bonus path in
+        # `core.coverage`, so a manager can never put a job back into a pool
+        # that this line would then hide from everybody.
+        still_offerable(now),
         covers_pincode,
         certified_for,
         is_active,
@@ -290,6 +293,15 @@ def pool_query(
             # the Availability screen, which was untrue until this line.
             has_cap_room(company_id=company_id, technician_id=technician_id),
         ]
+    # A job this technician PASSED is not offered to them again — on every
+    # flag, so the list, the offer and `accept` all agree it is gone. Only
+    # while it carries the time and bonus it was passed on: a new slot or a
+    # new bonus is a new offer and brings it back (`models.job_pass`). Only
+    # `pass_job` turns this off, so passing twice is still a pass.
+    if hide_passed:
+        conditions.append(
+            ~passed_as_offered(company_id=company_id, technician_id=technician_id)
+        )
 
     return (
         select(Ticket)
@@ -646,6 +658,79 @@ async def get_offer(
         )
     offers, _ = await _hydrate(db, [row])
     return offers[0]
+
+
+async def pass_job(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+    user_id: uuid.UUID,
+) -> None:
+    """Say no to one offer. It leaves THIS technician's pool and nobody else's.
+
+    Found through `pool_query` like `accept`, so a guessed id, another
+    company's ticket or a job outside this technician's coverage is the same
+    404. The flags are relaxed so the harmless repeats do not 404:
+
+      * `hide_passed=False` — passing twice updates the row, it is not an error;
+      * `open_only=False` — passing a job somebody accepted a second ago (the
+        card was stale). Recorded anyway: if they give it back on the same
+        terms, this technician has already answered it;
+      * `eligible_only=False` — a full day or the offline toggle is no reason
+        to refuse a "no".
+
+    A job this technician HOLDS is refused: giving that back is a
+    cancellation, with its band, and a pass must never be a free way round it.
+
+    Nothing is published and nobody is told. The job did not change for anyone
+    else — it is still open, still theirs to take — and the passing app
+    refreshes its own pool.
+    """
+    row = await db.scalar(
+        pool_query(
+            company_id=company_id,
+            technician_id=profile.id,
+            eligible_only=False,
+            open_only=False,
+            hide_passed=False,
+        ).where(Ticket.id == ticket_id)
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    if row.technician_id == profile.id:
+        raise JobRefused(
+            "JOB_IS_YOURS",
+            "This job is already yours. To give it up, cancel it from the job's page.",
+        )
+
+    # The terms it was passed on travel with the pass — see `models.job_pass`.
+    # An upsert, so a double tap or a retry is one row holding the latest pass.
+    stmt = pg_insert(JobPass).values(
+        company_id=company_id,
+        ticket_id=row.id,
+        technician_id=profile.id,
+        slot_start=row.slot_start,
+        bonus_paise=row.bonus_paise,
+        created_by=user_id,
+        updated_by=user_id,
+    )
+    await db.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_job_passes_ticket_technician",
+            set_={
+                "slot_start": stmt.excluded.slot_start,
+                "bonus_paise": stmt.excluded.bonus_paise,
+                "updated_by": stmt.excluded.updated_by,
+                # Set by hand: `onupdate` is not applied to an ON CONFLICT.
+                "updated_at": func.now(),
+            },
+        )
+    )
+    await db.commit()
 
 
 def JobRefused(code: str, detail: str) -> AppError:
@@ -2090,6 +2175,30 @@ def _reschedule_horizon() -> datetime.datetime:
     return _now() + datetime.timedelta(hours=RESCHEDULE_HORIZON_HOURS)
 
 
+def _window_refused(
+    row: Ticket, slot_start: datetime.datetime, otherwise: str
+) -> AppError:
+    """Why a posted window is not on the list: it is the current one, or it went.
+
+    The list never offers the window the job already holds, so a build that
+    still does — or anything posting by hand — lands here. Said as its own
+    code, because "that time is no longer free" would be false: it is free,
+    and the job is in it. The start alone tells the two apart, since a window
+    the list DID offer with that start is not the held one and was matched.
+    """
+    if (
+        row.slot_start is not None
+        and row.slot_end is not None
+        and slot_start == row.slot_start
+    ):
+        return JobRefused(
+            "SLOT_UNCHANGED",
+            f"This visit is already booked for "
+            f"{when_label(row.slot_start, row.slot_end)} — pick a different time.",
+        )
+    return JobRefused("SLOT_NO_LONGER_AVAILABLE", otherwise)
+
+
 async def reschedule_options(
     db: AsyncSession,
     ticket_id: uuid.UUID,
@@ -2112,7 +2221,9 @@ async def reschedule_options(
     row = await _load_reschedulable(
         db, ticket_id, company_id=company_id, technician_id=technician_id
     )
-    windows = await bookable_slots(
+    # `reschedule_slots`, not `bookable_slots`: the window the job is in now is
+    # not somewhere it can move TO, and the screen offered it as one.
+    windows = await reschedule_slots(
         db, row, technician_id=technician_id, horizon=_reschedule_horizon()
     )
     return [SlotOptionOut(slotStart=s, slotEnd=e) for s, e in windows]
@@ -2168,15 +2279,17 @@ async def request_reschedule_code(
         db, ticket_id, company_id=company_id, technician_id=technician_id
     )
     # Refuse before spending a code, not after. Same reasoning as the ordering
-    # in `reschedule` below.
+    # in `reschedule` below — and the current window is refused here too, so
+    # the customer is never WhatsApped a code agreeing to the time they have.
     if not any(
         w[0] == slot_start
-        for w in await bookable_slots(
+        for w in await reschedule_slots(
             db, row, technician_id=technician_id, horizon=_reschedule_horizon()
         )
     ):
-        raise JobRefused(
-            "SLOT_NO_LONGER_AVAILABLE",
+        raise _window_refused(
+            row,
+            slot_start,
             "That time is no longer free — pick another before sending a code.",
         )
     return await issue_code(
@@ -2220,12 +2333,13 @@ async def reschedule(
 
     ## The posted window is a claim
 
-    Re-derived from `bookable_slots` here rather than trusted, exactly as
-    `tickets.confirm_slot` re-derives its own. The screen was rendered at some
-    point in the past and a window open then may have closed since — and
-    `record_no_show` now depends on this being checked: a past window accepted
-    here would let a stale no-show bell charge somebody the top band for a visit
-    everybody agreed to move.
+    Re-derived from `reschedule_slots` (`bookable_slots`, minus the window it
+    holds) here rather than trusted, exactly as `tickets.confirm_slot`
+    re-derives its own. The screen was rendered at some point in the past and a
+    window open then may have closed since — and `record_no_show` now depends
+    on this being checked: a past window accepted here would let a stale
+    no-show bell charge somebody the top band for a visit everybody agreed to
+    move.
     """
     row = await _load_reschedulable(
         db, ticket_id, company_id=company_id, technician_id=profile.id
@@ -2259,7 +2373,7 @@ async def reschedule(
     match = next(
         (
             w
-            for w in await bookable_slots(
+            for w in await reschedule_slots(
                 db, row, technician_id=profile.id, horizon=_reschedule_horizon()
             )
             if w[0] == slot_start
@@ -2267,8 +2381,13 @@ async def reschedule(
         None,
     )
     if match is None:
-        raise JobRefused(
-            "SLOT_NO_LONGER_AVAILABLE",
+        # Also where a move to the window it already holds stops — before the
+        # code burns, and before a "moved" WhatsApp, push and bell that would
+        # all announce a change that is not one. An installed build may still
+        # offer that window, so this is the guard, not the list.
+        raise _window_refused(
+            row,
+            slot_start,
             "That time has gone while you were choosing — pick another. The "
             "customer's code still works.",
         )
@@ -2307,8 +2426,11 @@ async def reschedule(
     # case to deter the dishonest one is the wrong trade.
     #
     # So it is recorded instead — on the trail, and as a bell somebody can act
-    # on. Allow, record, ring.
-    own_number = (await _technician_phone(db, profile)) == row.customer_phone
+    # on. Allow, record, ring. And in that case nothing anywhere may say the
+    # customer confirmed: not the trail, not the bell, not `slot_confirmed_at`.
+    own_number = is_own_number(
+        await _technician_phone(db, profile), row.customer_phone
+    )
 
     moved = await move_slot(
         db,
@@ -2319,11 +2441,10 @@ async def reschedule(
         actor_label=name,
         # The one door that has earned this: a code that reached the customer's
         # own phone came back, so `slot_confirmed_at` really does mean they
-        # picked it.
-        customer_agreed=True,
+        # picked it. Not when it reached the technician's.
+        customer_agreed=not own_number,
         note=(
-            "customer confirmed by code"
-            + (" · ⚠ sent to the technician's own number" if own_number else "")
+            (OWN_NUMBER_NOTE if own_number else "customer confirmed by code")
             + ("" if not note else f" · {note}")
         ),
     )
@@ -2334,19 +2455,40 @@ async def reschedule(
             "where it is now.",
         )
 
-    await announce_reschedule(db, row, previous=previous, by=name)
+    # Everybody's bell, the vendor's included. It says the customer confirmed
+    # only when the code reached somebody other than the technician; otherwise
+    # it names who moved it and leaves the rest to the warning below.
+    await announce_reschedule(
+        db, row, previous=previous, by=name, customer_confirmed=not own_number
+    )
     if own_number:
         # Staff only — no `vendor_id`. This is a governance concern about our
         # own technician, and the vendor is not the audience for it.
+        #
+        # Written for a manager to act on at a glance: what moved, why the
+        # code proves nothing, and what to do. No accusation — the honest
+        # reading (a technician installing at home, a vendor who typed the
+        # technician's number) is the common one.
+        when = when_label(row.slot_start, row.slot_end)
+
+        def _warning(who: str) -> str:
+            return (
+                f"{who} moved this visit to {when}. The confirmation code went "
+                f"to {row.customer_phone}, the technician's own number, so we "
+                f"can't be sure the customer agreed. Please confirm the new "
+                f"time with the customer."
+            )
+
+        # `notify` cuts at 255. A long name gives way, not the instruction.
+        detail = _warning(name)
+        if len(detail) > 255:
+            detail = _warning("The technician")
         raised = await notify(
             db,
             company_id=company_id,
             kind="escalation",
-            title=f"{row.code} rescheduled using the technician's own number",
-            detail=(
-                f"{name} moved this visit with a code sent to {row.customer_phone}, "
-                f"which is their own number — so the customer did not confirm it."
-            ),
+            title=f"Check {row.code}'s new time with the customer",
+            detail=detail,
             to=f"/tickets/{row.id}",
             ticket_id=row.id,
             pincode=row.pincode,

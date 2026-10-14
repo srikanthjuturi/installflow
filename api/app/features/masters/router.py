@@ -133,7 +133,7 @@ async def get_nodes(
     includeInactive: Annotated[bool, Query()] = False,
     vendorId: Annotated[uuid.UUID | None, Query()] = None,
     purpose: Annotated[
-        str, Query(pattern="(?i)^(catalogue|intake)$")
+        str, Query(pattern="(?i)^(catalogue|intake|categories)$")
     ] = "catalogue",
 ) -> ApiEnvelope[list[ProductNodeOut]]:
     """The catalogue, whole or narrowed to one vendor. Roots, nested downward.
@@ -144,8 +144,10 @@ async def get_nodes(
 
     `vendorId` returns only that vendor's models. `purpose=intake` additionally
     hides products nobody has approved and prunes the branches that leaves
-    empty, so a picker never offers a path that dead-ends. See
-    `core.product_tree.TREE_PURPOSES` for why that is one parameter and not two.
+    empty, so a picker never offers a path that dead-ends. `purpose=categories`
+    is the category tree with no products in it — what a vendor files a new
+    product or category under. See `core.product_tree.TREE_PURPOSES` for why
+    that is one parameter and not two.
 
     The pattern is case-insensitive because this rides in a shareable query
     string, and an older bookmark carrying `?purpose=Intake` must not 422 a

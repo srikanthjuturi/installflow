@@ -82,9 +82,14 @@ APPROVAL_STATES = (PENDING, APPROVED, REJECTED)
 #:
 #:     catalogue   every approval state, empty branches KEPT. Maintenance
 #:                 screens: the ops Categories page, a vendor's own product
-#:                 page, and the subtree every write echoes back.
+#:                 page, and the subtree every write echoes back. For a VENDOR
+#:                 it is narrowed to the vendor's own work — its products, the
+#:                 categories it created, and the path above each.
 #:     intake      approved products only, empty branches pruned. The ticket
 #:                 form's pickers.
+#:     categories  the company's categories and NO products at all. Where a
+#:                 vendor chooses a category to file a new product or category
+#:                 under — the one thing its narrowed catalogue cannot offer.
 #:
 #: ONE parameter rather than two booleans, because the two settings are not
 #: independent choices — they are one question, "am I filling this in or picking
@@ -93,4 +98,5 @@ APPROVAL_STATES = (PENDING, APPROVED, REJECTED)
 #: pruning exists to prevent.
 CATALOGUE = "catalogue"
 INTAKE = "intake"
-TREE_PURPOSES = (CATALOGUE, INTAKE)
+CATEGORIES = "categories"
+TREE_PURPOSES = (CATALOGUE, INTAKE, CATEGORIES)

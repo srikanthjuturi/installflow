@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/shared/states";
+import { plural } from "@/lib/plural";
 import { moneyPaise } from "@/utils/money";
 import type { LedgerPool } from "@/services/ledger";
 
@@ -79,8 +80,10 @@ export function PoolSummary({
             <div className="mt-2.5 text-[28px] leading-none font-semibold tracking-tight">
               {moneyPaise(pool.penaltiesCollectedPaise)}
             </div>
+            {/* The API counts the penalties that still stand — a reversed one
+                is out of both the sum and the count — so the words say so. */}
             <div className="mt-1.5 text-xs text-ink-3">
-              across {pool.cancellations} cancellations
+              across {plural(pool.cancellations, "cancellation")} (not reversed)
             </div>
           </CardContent>
         </Card>
@@ -94,7 +97,7 @@ export function PoolSummary({
               {moneyPaise(pool.bonusesPaidPaise)}
             </div>
             <div className="mt-1.5 text-xs text-ink-3">
-              across {pool.pickups} escalation pickups
+              across {plural(pool.pickups, "escalation pickup")}
             </div>
           </CardContent>
         </Card>

@@ -30,7 +30,7 @@ containment against the same column.
 import datetime
 import uuid
 
-from sqlalchemy import ColumnElement, Date, case, cast, func, or_, select
+from sqlalchemy import ColumnElement, Date, and_, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -74,6 +74,46 @@ from app.models.user import User
 CAP_EXEMPT_STATUSES = ("Cancelled",)
 
 
+def still_offerable(now: datetime.datetime) -> ColumnElement:
+    """Is there still time to do the OUTER `Ticket` — may any pool offer it?
+
+    The TICKET's half of pool eligibility, beside the technician's half below.
+    `pool_query` filters on it, and `tickets.add_bonus_and_renotify` puts it in
+    its guarded UPDATE, so a job is never handed back to the pool once the pool
+    can no longer show it.
+
+    ONE expression for both shapes of offerable job. Two separate predicates
+    would be two chances to drift, and the drift would be silent: a pool that
+    quietly stops offering half the work looks exactly like a quiet week.
+
+      * **A slot is set** — offerable until the window OPENS. One that has
+        already begun cannot be travelled to; the pool is a list of commitments
+        a technician could still keep.
+      * **No slot yet** — offerable until `sla_due_at`. The service level is the
+        only deadline there is, so it is the one that decides.
+
+    ⚠ This is why a bonus on a job whose slot has already started is refused
+    rather than accepted. It used to be accepted: the ticket went back to `New`,
+    this hid it from every pool, `sweeps.sweep_unaccepted` skips a deadline that
+    has passed, and it sat in `New` for ever — out of the pool and out of the
+    escalation queue at once, while the manager was told N phones had rung.
+    """
+    return or_(
+        and_(Ticket.slot_start.is_not(None), Ticket.slot_start > now),
+        and_(Ticket.slot_start.is_(None), Ticket.sla_due_at > now),
+    )
+
+
+def offer_deadline(row: Ticket) -> datetime.datetime:
+    """`still_offerable`'s deadline, read off a loaded row.
+
+    For a caller that has the ticket in hand and needs to say WHY it cannot go
+    back to the pool, before the guarded UPDATE that carries `still_offerable`
+    itself. Kept beside it so the two cannot drift apart unnoticed.
+    """
+    return row.slot_start if row.slot_start is not None else row.sla_due_at
+
+
 async def technicians_covering(
     db: AsyncSession,
     *,
@@ -107,6 +147,11 @@ async def technicians_covering(
     is the CORRECT reading rather than a relaxation. It matches `has_cap_room`,
     which exempts the same rows for the same reason; what bounds a technician's
     slotless jobs is the free-window guard in `jobs.accept`.
+
+    It does NOT test the ticket's own time window (`still_offerable`): it is
+    handed literals, not a ticket. A caller must only ask about a job the pool
+    can still show, or this counts — and the push rings — phones that will open
+    onto "Job not found".
 
     Returns profile ids, which is what `push_tokens.technician_id` keys on.
     """

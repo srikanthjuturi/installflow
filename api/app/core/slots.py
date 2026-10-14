@@ -200,7 +200,9 @@ async def bookable_slots(
                 Ticket.company_id == row.company_id,
                 Ticket.technician_id == against,
                 # Not this ticket. Re-booking a visit must not be blocked by the
-                # time it currently holds.
+                # time it currently holds. (Which leaves that time ON the list —
+                # `reschedule_slots` below takes it off for the doors that move
+                # a slot.)
                 Ticket.id != row.id,
                 Ticket.deleted_at.is_(None),
                 Ticket.status.not_in(CAP_EXEMPT_STATUSES),
@@ -227,6 +229,54 @@ async def bookable_slots(
         return not any(begins < h_end and h_start < ends for h_start, h_end in held)
 
     return [w for w in windows if free(*w)]
+
+
+def holds_window(
+    row: Ticket, start: datetime.datetime, end: datetime.datetime
+) -> bool:
+    """Whether this ticket is already booked into exactly `start`–`end`.
+
+    Start AND end, compared as instants — never as rendered labels. An aware
+    datetime equals another naming the same moment whatever its zone, so an
+    IST window from `offered_slots` matches the UTC pair the row was read back
+    as. A ticket with no slot holds nothing.
+    """
+    return (
+        row.slot_start is not None
+        and row.slot_start == start
+        and row.slot_end == end
+    )
+
+
+async def reschedule_slots(
+    db: AsyncSession,
+    row: Ticket,
+    *,
+    horizon: datetime.datetime,
+    now: datetime.datetime | None = None,
+    technician_id: uuid.UUID | None = _UNSET,
+) -> list[tuple[datetime.datetime, datetime.datetime]]:
+    """`bookable_slots` for MOVING a visit: the same list, minus where it is now.
+
+    Both reschedule doors list from this and re-derive what they were posted
+    from it — the technician's in `jobs` and the manager's in `tickets` — so
+    the window a ticket already holds can be neither offered nor booked.
+
+    It needs taking out by hand because nothing else removes it. Unassigned,
+    `bookable_slots` subtracts nothing at all; assigned, it deliberately skips
+    this ticket's own booking so the current slot cannot block the move — and
+    the current window came straight back as a "new" time. Booking it changes
+    nothing, yet still writes a `rescheduled` event, WhatsApps the customer that
+    their visit moved from 3–5 PM to 3–5 PM, pushes the technician and rings
+    the vendor.
+
+    Not folded into `bookable_slots` itself: the customer's own link reads that
+    too, and a slot typed in at intake is one they may rightly pick to confirm.
+    """
+    windows = await bookable_slots(
+        db, row, now=now, technician_id=technician_id, horizon=horizon
+    )
+    return [w for w in windows if not holds_window(row, *w)]
 
 
 # ── how a window is written down ─────────────────────────────────────────────

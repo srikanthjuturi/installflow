@@ -64,6 +64,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.notifications import notify
+from app.core.phone import to_e164
 from app.core.realtime import (
     publish_job_changed,
     publish_notification,
@@ -78,6 +79,45 @@ from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
 
 log = logging.getLogger(__name__)
+
+
+# ── a code that went to the technician's own phone ───────────────────────────
+#
+# The technician's door proves the customer agreed by sending a code to the
+# ticket's customer number and having it read back. When that number is ALSO
+# the technician's own, the code reached them and proves nothing about the
+# customer. The move is still allowed (`jobs.service.reschedule` says why); what
+# changes is every sentence that would otherwise claim the customer confirmed.
+
+#: What the `rescheduled` event's note says in that case. The bell says the
+#: same thing in more words; the two must not disagree.
+OWN_NUMBER_NOTE = (
+    "⚠ code sent to the technician's own number, so we can't be sure the "
+    "customer agreed"
+)
+
+#: The part every such note has carried, before and after the wording above.
+#: Rows written earlier say "⚠ sent to the technician's own number", and the
+#: timeline has to read those the same way.
+_OWN_NUMBER_MARK = "technician's own number"
+
+
+def is_own_number(technician_phone: str | None, customer_phone: str | None) -> bool:
+    """Would a code sent to the customer reach the technician themselves?
+
+    Compared in E.164 rather than as typed. Both columns are normalised on the
+    way in, so today this changes nothing — but "9010943033" and "+919010943033"
+    are the same phone, and a comparison that called them different would stay
+    silent on exactly the case it exists for. No phone on either side is "no".
+    """
+    if not technician_phone or not customer_phone:
+        return False
+    return to_e164(technician_phone) == to_e164(customer_phone)
+
+
+def code_went_to_technician(note: str | None) -> bool:
+    """Does this technician's `rescheduled` note say the code reached them?"""
+    return _OWN_NUMBER_MARK in (note or "")
 
 
 def _now() -> datetime.datetime:
@@ -242,6 +282,7 @@ async def announce(
     *,
     previous: tuple[datetime.datetime | None, datetime.datetime | None],
     by: str,
+    customer_confirmed: bool = False,
 ) -> None:
     """Ring the bell for a moved slot. Never commits.
 
@@ -255,6 +296,11 @@ async def announce(
     too. A slot moving is not the routine courtesy `reminded` is: it changes a
     commitment somebody made, and the two sweeps that deliberately raise no bell
     are the counter-example, not the precedent.
+
+    `customer_confirmed` says so in the first words, and only the technician's
+    door may pass it — and only when the code reached somebody other than the
+    technician. A manager's move carries no code, so its bell names who moved it
+    and claims nothing about the customer.
     """
     when = when_label(row.slot_start, row.slot_end) if row.slot_start else "a new time"
     was = (
@@ -262,14 +308,18 @@ async def announce(
         if previous[0] and previous[1]
         else None
     )
+    detail = f"Was {was} · rescheduled by {by}" if was else f"Slot set by {by}"
+    if customer_confirmed:
+        detail = (
+            "The customer confirmed the new time with the code sent to their "
+            f"phone. {detail}"
+        )
     raised = await notify(
         db,
         company_id=row.company_id,
         kind="rescheduled",
         title=f"{row.code} moved to {when}",
-        detail=(
-            f"Was {was} · rescheduled by {by}" if was else f"Slot set by {by}"
-        ),
+        detail=detail,
         to=f"/tickets/{row.id}",
         ticket_id=row.id,
         pincode=row.pincode,

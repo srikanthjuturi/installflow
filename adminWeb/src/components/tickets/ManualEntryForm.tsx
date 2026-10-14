@@ -7,7 +7,7 @@ import {
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { Link } from "react-router";
-import type { Control } from "react-hook-form";
+import type { Control, UseFormSetValue } from "react-hook-form";
 import { Controller, useController, useForm, useWatch } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -135,6 +135,23 @@ export function ManualEntryForm({
   });
 
   /**
+   * Every value this form writes ITSELF goes through here, never bare `setValue`.
+   *
+   * After a submit, RHF re-validates a field as it changes — but only a change
+   * that arrives through a registered input or a controller. `setValue`
+   * validates only when told to, so the errors the submit put on the address,
+   * the pincode and the category never cleared: QA's pincode read 500018 above
+   * "Pincode must be 6 digits". Validating once the form has been submitted is
+   * the rule `reValidateMode` already applies to the typed fields — quiet while
+   * somebody fills it in, live once they have been told what is wrong.
+   */
+  const write = useCallback<UseFormSetValue<TicketFormValues>>(
+    (name, value, options) =>
+      setValue(name, value, { ...options, shouldValidate: isSubmitted }),
+    [setValue, isSubmitted]
+  );
+
+  /**
    * The category drill-down's answer so far — one node id per level.
    *
    * Local rather than form state, and deliberately: the intermediate levels are
@@ -160,8 +177,9 @@ export function ManualEntryForm({
   const serviceLevelHours = useWatch({ control, name: "serviceLevelHours" });
 
   /* The address is one control over four form fields, so it is watched and
-     written rather than registered. `AddressFields` owns the Google lookup and
-     the check against the geography master; the form owns the values. */
+     written rather than registered — through `write`, or its errors would
+     outlive the values that fix them. `AddressFields` owns the Google lookup
+     and the check against the geography master; the form owns the values. */
   const address = useWatch({ control, name: "address" });
   const city = useWatch({ control, name: "city" });
   const state = useWatch({ control, name: "state" });
@@ -174,23 +192,18 @@ export function ManualEntryForm({
   );
   const setAddress = useCallback(
     (next: AddressValue) => {
-      // `setValue` does not re-validate by itself, so without this an error
-      // from a failed submit stayed under a box the person had since filled.
-      // Only after a submit, though — the same rule `register` follows — or
-      // typing the address would flag City and State before anyone reached them.
-      const opts = { shouldDirty: true, shouldValidate: isSubmitted };
-      setValue("address", next.address, opts);
-      setValue("city", next.city, opts);
-      setValue("state", next.state, opts);
-      setValue("pincode", next.pincode, opts);
+      write("address", next.address, { shouldDirty: true });
+      write("city", next.city, { shouldDirty: true });
+      write("state", next.state, { shouldDirty: true });
+      write("pincode", next.pincode, { shouldDirty: true });
       // Set together with the address they describe, and nulled by
       // `AddressFields` the moment one of the boxes above is hand-edited — a
       // point that has stopped matching its address is worse than no point,
       // because the server enforces it against the technician who turns up.
-      setValue("latitude", next.latitude ?? null, { shouldDirty: true });
-      setValue("longitude", next.longitude ?? null, { shouldDirty: true });
+      write("latitude", next.latitude ?? null, { shouldDirty: true });
+      write("longitude", next.longitude ?? null, { shouldDirty: true });
     },
-    [setValue, isSubmitted]
+    [write]
   );
   /* A pincode the geography master does not hold is refused here, not by the
      schema: `zodResolver` clears a manually-set error on the next validation
@@ -270,9 +283,9 @@ export function ManualEntryForm({
     const node = levels[level]?.options.find((n) => n.id === id);
     // Only a leaf is an answer. Anything above it leaves the field empty, so
     // submitting mid-drill fails validation on the box that is still blank.
-    setValue("subcategoryId", node?.isLeaf ? id : "", { shouldValidate: false });
-    setValue("modelId", "", { shouldValidate: false });
-    setValue("serviceType", "Installation + Demo", { shouldValidate: false });
+    write("subcategoryId", node?.isLeaf ? id : "");
+    write("modelId", "");
+    write("serviceType", "Installation + Demo");
   }
 
   // Whether a model's name needs its brand in front — see `modelLabel`. Worked
@@ -348,22 +361,15 @@ export function ManualEntryForm({
       const path = nodeIdPath(tree, hit.nodeId);
       if (!path) return;
       setPicked(path);
-      // Re-validated only after a submit, as `setAddress` explains — so a match
-      // picked after a failed submit clears the errors on what it just filled.
-      const opts = { shouldValidate: isSubmitted };
-      setValue("subcategoryId", hit.nodeId, opts);
-      setValue("modelId", hit.modelId, opts);
-      setValue(
-        "serviceType",
-        hit.serviceTypes[0] ?? "Installation + Demo",
-        opts
-      );
+      write("subcategoryId", hit.nodeId);
+      write("modelId", hit.modelId);
+      write("serviceType", hit.serviceTypes[0] ?? "Installation + Demo");
       // Normalisation, never a content change: the match was EXACT, so this can
       // differ only in case or surrounding space. Worth doing — the ticket would
       // otherwise print a serial the master spells differently.
-      setValue("serialNumber", hit.serial, opts);
+      write("serialNumber", hit.serial);
     },
-    [tree, setValue, isSubmitted]
+    [tree, write]
   );
 
   /* Looked up as a MUTATION rather than a query, because that is what this
@@ -494,15 +500,27 @@ export function ManualEntryForm({
   const exactMatches = matches.filter(
     (m) => m.serial.toLowerCase() === typedSerial
   );
-  const match = exactMatches.length === 1 ? exactMatches[0] : undefined;
-
-  /** The serial names a DIFFERENT product than the one selected. An offer. */
+  /** The selected model IS one of the serial's products — whether the form
+   *  filled it or the user picked it by hand. Worth confirming either way: it
+   *  tells the vendor the number will survive intake. One of several counts:
+   *  a serial may legally sit on two products, and the API accepts either. */
+  const confirmed = modelId
+    ? exactMatches.find((m) => m.modelId === modelId)
+    : undefined;
+  /** The serial is on record, but only for products OTHER than the one
+   *  selected. `_assert_serial_known` refuses that (`SERIAL_ON_OTHER_PRODUCT`)
+   *  even when the selected model has no serials loaded — "unchecked" means
+   *  "cannot say", and the master can say. QA raised a washing machine's
+   *  serial against a switch board under this very notice because the button
+   *  still worked; it now waits until the two agree, by taking the offer below
+   *  or by changing the serial. */
+  const serialOnOtherProduct =
+    Boolean(modelId) && !confirmed && exactMatches.length > 0;
+  /** The one other product, offered by name. An offer, never a silent switch. */
   const conflicting =
-    match && modelId && modelId !== match.modelId ? match : undefined;
-  /** The selected model IS the serial's product — whether the form filled it or
-   *  the user picked it by hand. Worth confirming either way: it tells the
-   *  vendor the number will survive intake. */
-  const confirmed = match && modelId === match.modelId ? match : undefined;
+    serialOnOtherProduct && exactMatches.length === 1
+      ? exactMatches[0]
+      : undefined;
 
   /* ── will `_assert_serial_known` refuse this at submit? ───────────────────
      Zero serials on the chosen model means UNCHECKED — anything is accepted,
@@ -520,13 +538,15 @@ export function ManualEntryForm({
     !lookup.isPending && searchedFor.trim().toLowerCase() === typedSerial;
   const serialWillBeRefused =
     serialChecked && typedSerial.length > 0 && serialLookupSettled && !confirmed;
+  /** Either serial refusal. Named because the button and its reason share it. */
+  const serialBlocked = serialWillBeRefused || serialOnOtherProduct;
 
   const err = (name: keyof TicketFormValues) => errors[name]?.message;
 
   function submit(values: TicketFormValues) {
     // The button is disabled in this state, but a form can still be submitted
     // by keyboard while a check is in flight.
-    if (addressBlocked || paused || serialWillBeRefused) return;
+    if (addressBlocked || paused || serialBlocked) return;
     onSubmit({
       vendorId: values.vendorId,
       subcategoryId: values.subcategoryId,
@@ -687,8 +707,10 @@ export function ManualEntryForm({
                                accept the number
                   conflicting  they disagree. An OFFER, never a silent switch:
                                the model may be what the user meant and the
-                               serial the typo
+                               serial the typo. Submit waits until they agree —
+                               the API refuses the pair, so red, not amber
                   several      two products carry the number, so the form asks
+                               (and, once a model is chosen, waits likewise)
                 Silence otherwise, including on no match — most serials are not
                 loaded, and that is not a failure worth a line of text. */}
             {confirmed ? (
@@ -697,26 +719,32 @@ export function ManualEntryForm({
                 {modelLabel(confirmed.modelName, confirmed.brandName, severalBrands)}.
               </FieldDescription>
             ) : conflicting ? (
-              <FieldDescription className="flex flex-wrap items-center gap-2 text-warn">
+              <FieldDescription className="flex flex-wrap items-center gap-2 text-danger">
                 {/* With the brand where the vendor sells several: two brands may
                     each have a "43 inch LED" here, and without it this sentence
                     could name the very model already selected. */}
                 <span>
                   This serial belongs to{" "}
                   {modelLabel(conflicting.modelName, conflicting.brandName, severalBrands)},
-                  not the model selected below.
+                  not the model selected below. Switch to it, or correct the
+                  serial, to raise this ticket.
                 </span>
+                {/* `text-ink`: `outline` sets no colour of its own, so it would
+                    inherit the red above and read as a destructive action. */}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="text-ink"
                   onClick={() => applyMatch(conflicting)}
                 >
                   Use {modelLabel(conflicting.modelName, conflicting.brandName, severalBrands)}
                 </Button>
               </FieldDescription>
             ) : exactMatches.length > 1 ? (
-              <FieldDescription className="text-warn">
+              <FieldDescription
+                className={serialOnOtherProduct ? "text-danger" : "text-warn"}
+              >
                 {exactMatches.length} products carry this exact serial — pick
                 one from the list, or set the category and model below.
               </FieldDescription>
@@ -786,11 +814,7 @@ export function ManualEntryForm({
                 disabled={!chosen}
                 control={control}
                 error={err("modelId")}
-                onChanged={() =>
-                  setValue("serviceType", "Installation + Demo", {
-                    shouldValidate: false,
-                  })
-                }
+                onChanged={() => write("serviceType", "Installation + Demo")}
               />
               <SelectField
                 name="serviceType"
@@ -1060,14 +1084,25 @@ export function ManualEntryForm({
       </Card>
 
       <div className="mt-3.5 flex flex-wrap justify-end gap-2.5">
+        {/* Why the button is dead, said where the pointer is. The serial notice
+            that explains it sits at the top of a long form, out of sight by the
+            time anybody reaches this button. */}
+        {serialBlocked ? (
+          <p
+            id="submit-blocked-reason"
+            className="mr-auto self-center text-xs text-danger"
+          >
+            The serial number and the product do not match — see Serial number
+            above.
+          </p>
+        ) : null}
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={
-            isSubmitting || addressBlocked || paused || serialWillBeRefused
-          }
+          disabled={isSubmitting || addressBlocked || paused || serialBlocked}
+          aria-describedby={serialBlocked ? "submit-blocked-reason" : undefined}
         >
           {isSubmitting && <Spinner data-icon="inline-start" />}
           {/* Follows the slot, like the banner above: with a time already

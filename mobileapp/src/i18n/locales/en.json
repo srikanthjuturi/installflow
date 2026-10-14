@@ -477,6 +477,7 @@
       "upcoming": "Upcoming",
       "startingSoon": "Starting soon",
       "awaitingTime": "Awaiting time",
+      "slotClosed": "Slot closed",
       "inProgress": "In progress",
       "completed": "Completed",
       "cancelled": "Cancelled"
@@ -559,6 +560,14 @@
       "job": "Job",
       "area": "Area",
       "acceptUnlock": "Accept & unlock details"
+    },
+    "pass": {
+      "confirmTitle": "Pass this job?",
+      "confirmBody": "It will be removed from your job offers and left for other technicians. You'll see it again only if its time or bonus changes.",
+      "confirm": "Pass job",
+      "done": "Job passed",
+      "failedTitle": "Couldn't pass this job",
+      "failedBody": "Something went wrong. Check your connection and try again."
     },
     "detail": {
       "title": "Job details",

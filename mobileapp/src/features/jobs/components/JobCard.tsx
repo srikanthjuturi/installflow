@@ -55,7 +55,7 @@ export function JobCard({ job, onPress, variant = 'mine' }: JobCardProps) {
             </View>
           </View>
         ) : (
-          <StatusBadge status={job.status} hoursToSlot={job.hoursToSlot} />
+          <StatusBadge job={job} />
         )}
 
         <Text style={{ fontFamily: 'Roboto_500Medium', fontSize: 11, color: color.textMuted }}>

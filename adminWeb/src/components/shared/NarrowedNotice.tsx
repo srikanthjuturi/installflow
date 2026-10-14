@@ -9,7 +9,7 @@
  * screen is broken.
  *
  * Only ever names what the reader CANNOT see. A filter with a visible control —
- * the queue's `half` pill, the board's status chips — reflects the URL already,
+ * the queue's `half` pill, the board's Status dropdown — reflects the URL already,
  * and naming it here would be the screen explaining a thing it is showing.
  *
  * Renders nothing when nothing is narrowed, so a caller can hand it whatever it

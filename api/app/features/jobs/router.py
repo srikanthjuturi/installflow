@@ -195,6 +195,35 @@ async def accept_job(
 
 
 @router.post(
+    "/{ticket_id}/pass",
+    response_model=ApiEnvelope[None],
+    dependencies=[CanSeePool],
+)
+async def pass_job(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[None]:
+    """Decline an offer: it leaves this technician's pool, and only theirs.
+
+    Idempotent — passing again, or passing a job somebody has just accepted, is
+    still 200. **404** for anything that was never in this technician's pool,
+    a guessed id included. **409 `JOB_IS_YOURS`** for a job they hold: that is
+    a cancellation, with its band, never a pass.
+
+    It comes back by itself if its time or bonus changes — see `models.job_pass`.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    await service.pass_job(
+        db,
+        ticket_id,
+        company_id=principal.company_id,
+        profile=profile,
+        user_id=principal.user_id,
+    )
+    return envelope(None, message="Job passed")
+
+
+@router.post(
     "/{ticket_id}/proof",
     response_model=ApiEnvelope[JobOut],
     dependencies=[CanSeePool],
@@ -366,6 +395,9 @@ async def send_reschedule_code(
     **429** means the customer was sent one moments ago; the body says how long
     to wait. The throttles are per phone number, so this is also what a customer
     with two tickets in one afternoon will occasionally see.
+
+    **409 `SLOT_UNCHANGED`** means the window is the one the job is already
+    booked into — refused before any code is sent.
     """
     principal, profile = me
     assert principal.company_id is not None
@@ -398,6 +430,8 @@ async def reschedule_job(
     **401** is the code — wrong, expired, or minted for a different ticket.
     **409 `SLOT_NO_LONGER_AVAILABLE`** means the window went while the screen
     was open, and the customer will need to pick again from a fresh list.
+    **409 `SLOT_UNCHANGED`** means it is the window the job is already in, and
+    the code is left unspent.
 
     Deliberately no penalty and no escalation, which is the entire difference
     from `/cancel`: the customer agreed to this, and proved it.

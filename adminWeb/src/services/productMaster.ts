@@ -41,16 +41,20 @@ import type { ListParams, Page } from "@/types/api";
  *   catalogue  every approval state, and empty branches kept. Maintenance
  *              screens — the ops Categories page and a vendor's own products
  *              page, where a category with nothing in it yet is a real row
- *              somebody still has to fill.
+ *              somebody still has to fill. For a VENDOR the server narrows it to
+ *              their own work: their products, the categories they created and
+ *              the path above each — never another vendor's branch.
  *   intake     approved products only, and the branches that leaves empty are
  *              pruned. The ticket form's pickers, which must never offer a path
  *              that dead-ends.
+ *   categories the company's categories with NO products in them. Where a
+ *              vendor chooses what a new product or category goes under.
  *
  * One parameter rather than two flags, because the two settings are not
  * independent: approved-only while KEEPING empty branches is a picker full of
  * dead ends, which is the thing the pruning exists to prevent.
  */
-export type TreePurpose = "catalogue" | "intake";
+export type TreePurpose = "catalogue" | "intake" | "categories";
 
 /**
  * The catalogue, whole or narrowed to one vendor. Roots, nested downward.

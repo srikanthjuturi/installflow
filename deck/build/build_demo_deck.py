@@ -227,9 +227,9 @@ def slide_parties(prs):
     # No hard line breaks: the card is narrow, so a forced break plus the
     # natural wrap gives a ragged two-word line every time.
     people = [
-        (VENDOR, "The vendor", "Raises every ticket. Company staff no longer create them."),
+        (VENDOR, "The vendor", "Raises every ticket, and pays you once the work is done."),
         (CUSTOMER, "The customer", "Picks the appointment. Never logs in — taps two links."),
-        (TECH, "The technician", "Accepts the job and proves the work on site."),
+        (TECH, "The technician", "Accepts the job and proves the work on site, in their own language."),
         (COMPANY, "Your team", "Supervises, steps in, and settles the money."),
         (PLATFORM, "The platform", "Us. Holds the geography master and the credits."),
     ]
@@ -334,7 +334,7 @@ def slide_setup(prs):
     build = [
         "Managers, and their territory",
         "Catalogue, brands and serials",
-        "The vendor, and its login",
+        "The vendor, its login and credit line",
         "Technicians, added or invited",
     ]
     small_h = Inches(0.56)
@@ -425,11 +425,11 @@ def slide_lifecycle(prs):
     )
 
     steps = [
-        ("1", "The vendor raises it", "The serial is checked, credits are charged, and both prices are frozen."),
+        ("1", "The vendor raises it", "The serial is checked, credits are charged, the vendor's price is reserved, and both prices are frozen."),
         ("2", "The customer picks a time", "A WhatsApp link, a two-hour window. No app, no login, no password."),
-        ("3", "A technician accepts", "Offered only to those with the skill, the pincode and the spare capacity — masked until accepted. First accept wins."),
+        ("3", "A technician accepts", "Offered only to those with the skill, the pincode and the capacity, masked until accepted. First accept wins; no agreed time, no start."),
         ("4", "Proof on site", "Barcode, serial, installation photos and a geo-tagged live shot. Gallery uploads are never accepted."),
-        ("5", "The customer confirms", "The only thing that closes a job. A technician cannot sign off their own work."),
+        ("5", "The customer confirms", "The only thing that closes a job — and what bills the vendor. A technician cannot sign off their own work."),
         ("6", "The technician is paid", "They ask for the balance, your national head scans a UPI code, and the technician confirms it arrived."),
     ]
 
@@ -602,62 +602,76 @@ def slide_costs(prs):
 
 
 def slide_money(prs):
+    """Three rails, stacked. The vendor's was added on 29 September: until then
+    the vendor's half of the price pair was stamped on every ticket and never
+    billed, so this slide could honestly say two."""
     slide = blank(prs)
     eyebrow(slide, "The money")
-    heading(slide, "Two rails, and they never touch")
+    heading(slide, "Three rails, and they never touch")
 
     usable = T.SLIDE_W - 2 * T.MARGIN
 
     rails = [
-        ("Your company pays the platform", COMPANY,
-         ["Your company", "Recharge by UPI", "We confirm", "Credits"],
-         "One credit is one rupee. Every ticket raised spends some, and they are "
-         "never refunded — a cancellation included. Only we can confirm a "
-         "recharge, and that confirmation is the one thing that adds credits."),
         ("Your company pays the technician", TECH,
          ["Work confirmed", "Payout credited", "Technician redeems", "Their bank"],
-         "The ledger holds payouts, penalties, bonuses and reversals. One request "
-         "takes the whole balance, capped at ₹1,00,000 because that is UPI's limit "
-         "on a single transaction."),
+         "Payouts, penalties, bonuses and reversals in one ledger. One request takes "
+         "the whole balance, up to UPI's ₹1,00,000 limit on a single transaction."),
+        ("Your vendor pays your company", VENDOR,
+         ["Ticket raised", "Price reserved", "Work confirmed", "Vendor pays"],
+         "A credit line, ₹5,000 unless agreed otherwise. Run out, and the vendor's "
+         "next ticket stops — a job already raised still finishes."),
+        ("Your company pays the platform", COMPANY,
+         ["Your company", "Recharge by UPI", "We confirm", "Credits"],
+         "One credit is one rupee, spent when a ticket is raised and never refunded "
+         "— a cancellation included. Only we can confirm a recharge."),
     ]
 
+    rail_w = Emu(int(usable * 0.62))
     for rail_index, (title, tint, chain, detail) in enumerate(rails):
-        base = Inches(2.15) + rail_index * Inches(2.35)
-        text(slide, T.MARGIN, base, usable, Inches(0.35), title,
-             size=Pt(16), bold=True, colour=tint)
+        base = Inches(2.0) + rail_index * Inches(1.62)
+        text(slide, T.MARGIN, base, rail_w, Inches(0.32), title,
+             size=Pt(15), bold=True, colour=tint)
 
         arrow_w = Inches(0.28)
         gap = Inches(0.1)
-        chip_w = Emu(int((usable * 0.62 - (arrow_w + 2 * gap) * (len(chain) - 1)) / len(chain)))
-        chip_top = Emu(int(base + Inches(0.5)))
-        chip_h = Inches(0.62)
+        chip_w = Emu(int((rail_w - (arrow_w + 2 * gap) * (len(chain) - 1)) / len(chain)))
+        chip_top = Emu(int(base + Inches(0.42)))
+        chip_h = Inches(0.5)
 
         for index, label in enumerate(chain):
             left = Emu(int(T.MARGIN + index * (chip_w + arrow_w + 2 * gap)))
             card(slide, left, chip_top, chip_w, chip_h, tint=tint, radius=0.18)
             text(slide, left + Inches(0.08), chip_top, chip_w - Inches(0.16), chip_h,
-                 label, size=Pt(11.5), bold=True, align=PP_ALIGN.CENTER,
+                 label, size=Pt(11), bold=True, align=PP_ALIGN.CENTER,
                  anchor=MSO_ANCHOR.MIDDLE, spacing=1.1)
             if index < len(chain) - 1:
                 arrow(slide, Emu(int(left + chip_w + gap)),
                       Emu(int(chip_top + chip_h / 2 - Inches(0.09))),
                       arrow_w, Inches(0.18), colour=tint)
 
-        text(slide, T.MARGIN, Emu(int(base + Inches(1.3))), Emu(int(usable * 0.62)),
-             Inches(0.8), detail, size=Pt(11.5), colour=T.MUTED, spacing=1.3)
+        text(slide, T.MARGIN, Emu(int(base + Inches(1.0))), rail_w,
+             Inches(0.55), detail, size=Pt(10.5), colour=T.MUTED, spacing=1.25)
 
     note_left = Emu(int(T.MARGIN + usable * 0.66))
     note_w = Emu(int(usable * 0.34))
-    card(slide, note_left, Inches(2.15), note_w, Inches(3.1), fill=T.WHITE, tint=T.ACCENT)
-    text(slide, note_left + Inches(0.34), Inches(2.5), note_w - Inches(0.68), Inches(0.6),
-         "Neither party sees\nthe other's figure", size=Pt(16), bold=True,
+    inner_left = note_left + Inches(0.34)
+    inner_w = note_w - Inches(0.68)
+    card(slide, note_left, Inches(2.0), note_w, Inches(4.5), fill=T.WHITE, tint=T.ACCENT)
+    text(slide, inner_left, Inches(2.3), inner_w, Inches(0.6),
+         "Neither party sees\nthe other's figure", size=Pt(15), bold=True,
          colour=T.ACCENT, spacing=1.14)
-    text(slide, note_left + Inches(0.34), Inches(3.35), note_w - Inches(0.68), Inches(1.7),
-         "A ticket stamps two amounts the moment it is raised — what the "
-         "technician will earn, and what the vendor is charged — and the server "
-         "strips each from the other side's view. Re-pricing your catalogue next "
-         "month cannot change what an already-accepted job was worth.",
-         size=Pt(12), colour=T.MUTED, spacing=1.32)
+    text(slide, inner_left, Inches(3.05), inner_w, Inches(1.3),
+         "A ticket stamps what the technician earns and what the vendor is charged "
+         "when it is raised, and the server strips each from the other side's view. "
+         "Re-pricing next month cannot change an accepted job.",
+         size=Pt(11.5), colour=T.MUTED, spacing=1.3)
+    text(slide, inner_left, Inches(4.55), inner_w, Inches(0.6),
+         "Whoever receives the\nmoney confirms it", size=Pt(15), bold=True,
+         colour=T.ACCENT, spacing=1.14)
+    text(slide, inner_left, Inches(5.3), inner_w, Inches(1.0),
+         "The technician, your admin or national head, or us — never the person "
+         "who paid. Nothing here can see a bank.",
+         size=Pt(11.5), colour=T.MUTED, spacing=1.3)
     footer(slide)
 
 

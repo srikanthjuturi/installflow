@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import {
   CategoryTree,
   CategoryTreeSkeleton,
@@ -13,6 +13,10 @@ import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState, ErrorState } from "@/components/shared/states";
+import {
+  CategoryPickerDialog,
+  type PickFor,
+} from "@/components/vendor/CategoryPickerDialog";
 import {
   RejectedProductsNotice,
   type RejectedProduct,
@@ -54,8 +58,16 @@ function collectRejected(nodes: ProductNode[]): RejectedProduct[] {
  * yet has to stay on screen — otherwise a vendor would watch the category they
  * just created vanish before they could file anything under it.
  *
- * The server substitutes their own vendor id whatever is asked for, so the
- * models here are theirs and no other vendor's.
+ * The server narrows it to THEIR work: their products (it substitutes their
+ * own vendor id whatever is asked for), the categories they created, and the
+ * path above each. It used to send the company's whole tree, so a brand-new
+ * vendor opened this page onto every other vendor's branches.
+ *
+ * That narrowing is why "Add product" and "Add category" open a picker rather
+ * than relying on a row's menu: the category somebody needs to file under is
+ * usually one they have nothing in yet, so it is not on this page. The picker
+ * reads the company's categories with no products in them — see
+ * `CategoryPickerDialog`.
  */
 export default function VendorProductsPage() {
   const { data: me } = useMe();
@@ -67,6 +79,9 @@ export default function VendorProductsPage() {
     "catalogue"
   );
   const [dialog, setDialog] = useState<OpenDialog>(null);
+  // The step BEFORE an add dialog: which category it goes in. Separate from
+  // `dialog` because choosing is what decides which add dialog opens next.
+  const [picking, setPicking] = useState<PickFor | null>(null);
   const removeModel = useDeleteOwnModel();
 
   // Where a rejection notification lands.
@@ -88,16 +103,27 @@ export default function VendorProductsPage() {
         description="The products you can raise tickets against"
       />
 
-      <div className="mb-3.5 flex items-center justify-between gap-3">
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">My products</h2>
-        <Button
-          type="button"
-          size="toolbar"
-          onClick={() => setDialog({ kind: "add-node", parent: null })}
-        >
-          <Plus data-icon="inline-start" />
-          Add category
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="toolbar"
+            variant="outline"
+            onClick={() => setPicking("category")}
+          >
+            <FolderPlus data-icon="inline-start" />
+            Add category
+          </Button>
+          <Button
+            type="button"
+            size="toolbar"
+            onClick={() => setPicking("product")}
+          >
+            <Plus data-icon="inline-start" />
+            Add product
+          </Button>
+        </div>
       </div>
 
       <RejectedProductsNotice
@@ -144,6 +170,24 @@ export default function VendorProductsPage() {
           </p>
         </>
       )}
+
+      {/* Choosing where a new product or category goes. Picking hands over to
+          the add dialog below, so the two are never open together. */}
+      {picking ? (
+        <CategoryPickerDialog
+          open
+          onOpenChange={(next) => !next && setPicking(null)}
+          pickFor={picking}
+          onPick={(node) => {
+            setPicking(null);
+            if (picking === "product" && node) {
+              setDialog({ kind: "add-model", node });
+            } else if (picking === "category") {
+              setDialog({ kind: "add-node", parent: node });
+            }
+          }}
+        />
+      ) : null}
 
       {/* One dialog is mounted at a time, driven by the same value the tree
           emits — so no two can be open at once and none can be left holding a

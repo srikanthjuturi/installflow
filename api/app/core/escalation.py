@@ -45,6 +45,7 @@ from app.core.realtime import (
     publish_pool_changed,
     publish_ticket_changed,
 )
+from app.core.slots import when_label
 from app.integrations import whatsapp
 from app.models.company import Company
 from app.models.ticket import Ticket
@@ -73,7 +74,15 @@ def time_to_slot(slot: datetime.datetime | None) -> str:
 
 
 def hours_to(slot: datetime.datetime | None) -> str:
-    """`2h 40m to slot`, for a title a manager reads at a glance."""
+    """`2h 40m to slot`, for a title a manager reads at a glance.
+
+    `slot already started` once it has: `time_to_slot` floors at zero, so a
+    slot that opened an hour ago read "0h 00m to slot" — a countdown to
+    something already under way. `sweeps.sweep_unaccepted` now escalates those
+    tickets, and a technician cancelling after the slot opened always did.
+    """
+    if slot is not None and slot <= _now():
+        return "slot already started"
     span = time_to_slot(slot)
     return span if span == "no slot" else f"{span} to slot"
 
@@ -216,16 +225,22 @@ async def whatsapp_the_area_manager(db: AsyncSession, row: Ticket) -> None:
                 row.pincode,
             )
             return
+        # The visit, and the minutes left to the deadline this job escalated
+        # against — its slot, or with none its SLA. Negative once passed; the
+        # builder words all of it, for both registered bodies.
+        if row.slot_start and row.slot_end:
+            when, due = when_label(row.slot_start, row.slot_end), row.slot_start
+        else:
+            when, due = None, row.sla_due_at
+        minutes_left = int((due - _now()).total_seconds() // 60)
         for manager in managers:
-            span = time_to_slot(row.slot_start)
             await whatsapp.send_escalation(
                 manager.phone or "",
                 brand.company_name(company),
                 row.code,
                 f"{row.city} {row.pincode}",
-                # The template reads "…and the slot is {{4}}", so this has to
-                # complete that sentence rather than repeat the noun.
-                "not set" if span == "no slot" else f"in {span}",
+                when,
+                minutes_left,
             )
     except Exception:
         log.exception("escalation %s: could not message the area manager", row.code)

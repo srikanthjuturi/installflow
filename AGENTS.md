@@ -619,6 +619,11 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   live catalogue with no backfill and no flag day — a company loads its models one at a time rather
   than having every vendor's intake break on deploy — and it is why the console shows the count on
   the model: zero is a state, not an empty list.
+  **Unchecked is not a free pass for a serial the master gives to ANOTHER product.** A serial on
+  one of the same vendor's live products, and not on the chosen one, is refused with 400
+  `SERIAL_ON_OTHER_PRODUCT` even when the chosen model has no serials — on the form, the importer
+  and the serial correction alike. Only the SAME vendor's products count, so a competitor's
+  serial behaves exactly like an unknown one and nothing leaks. Detail: `api/AGENTS.md`.
   **A vendor manages its OWN products' serials — add, import, correct, remove.** It holds the
   invoice, so it is the party that knows the numbers.
   ⚠ Removing the LAST serial turns the check off for that model, so delete does let a vendor lift

@@ -10,7 +10,7 @@ import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
 import type { SlaState, Ticket } from "@/types";
 
-import { STATUS_CHIPS } from "./statusChips";
+import { STATUS_FILTER } from "./statusFilter";
 
 /** Breach first — the whole point of the list is triage. */
 const SLA_RANK: Record<SlaState, number> = {
@@ -183,8 +183,17 @@ export function TicketTable({
     {
       id: "status",
       label: "Status",
-      variant: "pills",
-      options: STATUS_CHIPS.map((chip) => ({ value: chip, label: chip })),
+      variant: "select",
+      options: [
+        ...STATUS_FILTER.map((s) => ({ value: s, label: s })),
+        // The dashboard's funnel links with a SET — "Closed,Force-Closed". It
+        // is not a choice anybody can make here, but while it is in force the
+        // trigger should name it the way `NarrowedNotice` does rather than
+        // print the raw query value.
+        ...(status.includes(",")
+          ? [{ value: status, label: status.split(",").join(" or ") }]
+          : []),
+      ],
       value: status,
       onChange: (v) =>
         narrow({ ...params, filters: { ...params.filters, status: v } }),

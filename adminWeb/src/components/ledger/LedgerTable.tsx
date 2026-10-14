@@ -12,7 +12,8 @@ import {
 } from "@/components/shared/DataTable";
 import { formatTimeOfDay } from "@/utils/datetime";
 import { dayLabel } from "@/lib/dayGroup";
-import { moneyPaise } from "@/utils/money";
+import { moneyPaiseSigned } from "@/utils/money";
+import { ALL_FILTER, withFilter } from "@/hooks/useListParams";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LedgerEntry } from "@/types";
 
@@ -23,8 +24,8 @@ import type { LedgerEntry } from "@/types";
 const KIND_CHIP: Record<LedgerEntry["kind"], string> = {
   penalty: "bg-danger-bg text-danger",
   bonus: "bg-ok-bg text-ok",
-  // Money back to the technician like a bonus, but not a bonus — its own tone
-  // so the two credits are never read as one.
+  // Money out of the pool like a bonus, but not a bonus — its own tone so the
+  // two are never read as one.
   reversal: "bg-info-bg text-info",
 };
 
@@ -39,7 +40,35 @@ const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
   reversal: "Penalty reversed",
 };
 
-const ALL = "All";
+/**
+ * Beside a penalty that was later given back. The table and the CSV both say
+ * it this way, so the export reads "Penalty (reversed)" exactly as the row does.
+ */
+const REVERSED_MARK = "(reversed)";
+
+/**
+ * Which way each kind moves the POOL — this screen's point of view, and the one
+ * "Current pool balance" is the sum of. A penalty is collected into the pool;
+ * a bonus is paid out of it; a reversal gives a penalty back to the technician,
+ * so that money leaves the pool too.
+ *
+ * The API stores a magnitude and no sign because the direction depends on who
+ * is looking: the technician's own Earnings reads the same rows the other way
+ * round, a penalty as a debit. That view belongs to the app, not to this one.
+ *
+ * A reversed penalty keeps its `+`. It WAS collected, and its reversal row is
+ * what takes it back out — so the signed rows still add up to the balance.
+ * Striking the charge out as well would take the same money out twice.
+ */
+const POOL_SIGN: Record<LedgerEntry["kind"], 1 | -1> = {
+  penalty: 1,
+  bonus: -1,
+  reversal: -1,
+};
+
+const poolPaise = (e: LedgerEntry) => POOL_SIGN[e.kind] * e.amountPaise;
+
+const ALL = ALL_FILTER;
 
 interface LedgerTableProps {
   /** Every page loaded so far, already filtered and sorted by the server. */
@@ -47,7 +76,7 @@ interface LedgerTableProps {
   /** The LAST page's meta — `totalRecords` is the whole filtered ledger. */
   meta?: PaginationMeta;
   params: ListParams;
-  /** Merges what it is given into the query — see `applyParams` on the page. */
+  /** The next whole query — see `applyParams` on the page. */
   onParams: (next: ListParams) => void;
   isLoading: boolean;
   isFetching?: boolean;
@@ -85,7 +114,7 @@ export function LedgerTable({
   /* Both link columns leave the ledger, and both landed on a screen that sent
      the reader to its own list — a technician row to the roster, a ticket row
      to the board. Neither is where they were. The origin keeps the query
-     string, so Back also restores the kind filter and the date range. */
+     string, so Back also restores the Type filter (`?type=` on the page). */
   const origin = useNavOrigin("Back to ledger");
 
   // The rows in hand — which, on an infinite list, is everything scrolled to
@@ -105,8 +134,8 @@ export function LedgerTable({
       id: "kind",
       header: "Type",
       cell: (l) => (
-        // The word carries the debit/credit distinction, so the amount's
-        // colour is never the only signal.
+        // The word names the kind; the amount's sign and colour say which way
+        // it moved the pool, so colour is never the only signal.
         <span className="flex flex-wrap items-center gap-1.5">
           <span
             className={cn(
@@ -117,10 +146,11 @@ export function LedgerTable({
             {KIND_LABEL[l.kind]}
           </span>
           {/* The charge stays on the ledger as it was; this says it was later
-              given back. The reversal is its own row, usually newer. */}
+              given back. The reversal is its own row, usually newer — in the
+              reversal chip's colour, so the two read as one pair. */}
           {l.reversed ? (
-            <span className="text-[11px] font-semibold text-ink-3">
-              Reversed
+            <span className="text-[11px] font-semibold text-info">
+              {REVERSED_MARK}
             </span>
           ) : null}
         </span>
@@ -164,15 +194,16 @@ export function LedgerTable({
       header: "Amount",
       align: "right",
       cellClassName: "font-mono font-semibold",
-      // The sign is applied HERE and nowhere else. The API stores a magnitude
-      // because a penalty is money IN to the pool and money OUT of the
-      // technician, and this column is the technician's view — so a penalty
-      // reads as a debit. See the note on `LedgerEntry`.
-      cell: (l) => (
-        <span className={l.kind === "penalty" ? "text-danger" : "text-ok"}>
-          {moneyPaise(l.kind === "penalty" ? -l.amountPaise : l.amountPaise)}
-        </span>
-      ),
+      // The POOL's sign — see `POOL_SIGN`. Green in, red out, and the `+`/`−`
+      // says the same thing for anyone who cannot tell the two colours apart.
+      cell: (l) => {
+        const signed = poolPaise(l);
+        return (
+          <span className={signed < 0 ? "text-danger" : "text-ok"}>
+            {moneyPaiseSigned(signed)}
+          </span>
+        );
+      },
     },
   ];
 
@@ -190,8 +221,10 @@ export function LedgerTable({
         { value: "reversal", label: "Penalty reversed" },
       ],
       value: kind,
-      // A change, not a whole query — the page merges it in.
-      onChange: (v) => onParams({ page: 1, filters: { kind: v } }),
+      // `withFilter` drops "All" rather than sending it as a kind — the API
+      // matches nothing for kind "all", which is what emptied the ledger on
+      // "Clear filters". The page drops it too; neither should rely on the other.
+      onChange: (v) => onParams(withFilter(params, "kind", v)),
       allValue: ALL,
       match: () => true,
     },
@@ -199,7 +232,17 @@ export function LedgerTable({
 
   return (
     <section className="mt-3.5">
-      <h2 className="mb-3.5 text-sm font-semibold">Transaction ledger</h2>
+      <div className="mb-3.5">
+        <h2 className="text-sm font-semibold">Transaction ledger</h2>
+        {/* Says which side the signs are from. Without it a `+` on a penalty
+            reads as the technician being paid, which is the opposite. */}
+        <p className="mt-1 text-xs text-ink-3">
+          <b className="font-semibold text-ok">+</b> is money into the pool,{" "}
+          <b className="font-semibold text-danger">−</b> is money out of it. A
+          reversed penalty keeps its row; the Penalty reversed row takes the
+          money back out.
+        </p>
+      </div>
 
       <DataTable
         errorTitle="Couldn't load the transaction ledger"
@@ -248,14 +291,15 @@ export function LedgerTable({
                   visible.map((e) => [
                     e.at,
                     e.reversed
-                      ? `${KIND_LABEL[e.kind]} (reversed)`
+                      ? `${KIND_LABEL[e.kind]} ${REVERSED_MARK}`
                       : KIND_LABEL[e.kind],
                     e.technicianName,
                     e.ticketCode,
                     e.reason,
-                    // Signed RUPEES, not the moneyPaise() string: a
-                    // spreadsheet has to be able to sum the column.
-                    (e.kind === "penalty" ? -e.amountPaise : e.amountPaise) / 100,
+                    // Signed RUPEES, not the moneyPaiseSigned() string: a
+                    // spreadsheet has to be able to sum the column. The same
+                    // pool sign as the table, so the sum is the balance.
+                    poolPaise(e) / 100,
                   ])
                 )
               )
@@ -267,6 +311,8 @@ export function LedgerTable({
         }
         emptyTitle="No transactions yet"
         emptyDescription="Cancellation penalties collected and escalation bonuses paid will appear here."
+        // The default names a search box this table does not have.
+        filteredEmptyDescription="Try a different type."
       />
     </section>
   );

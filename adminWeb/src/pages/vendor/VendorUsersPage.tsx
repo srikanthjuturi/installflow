@@ -8,7 +8,11 @@ import { AddVendorUserDialog } from "@/components/vendor/AddVendorUserDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { useListParams } from "@/hooks/useListParams";
+import {
+  useListParams,
+  useParamsWriter,
+  withSearch,
+} from "@/hooks/useListParams";
 import { useMe } from "@/hooks/useAuth";
 import { useDeleteVendorUser, useVendorUsers } from "@/hooks/useVendorUsers";
 import type { VendorUser } from "@/types/vendorUser";
@@ -26,7 +30,12 @@ const NONE = "—";
  */
 export default function VendorUsersPage() {
   const [params, setParams] = useListParams();
-  const { data, isLoading, isError, error, refetch } = useVendorUsers(params);
+  // The search box is CONTROLLED by `params`. Left to the table it held the
+  // term in local state, and in server mode the table passes rows through
+  // untouched — so typing filtered nothing and nothing reached the API.
+  const write = useParamsWriter(params, setParams);
+  const { data, isLoading, isFetching, isError, error, refetch } =
+    useVendorUsers(params);
   const { data: me } = useMe();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<VendorUser | null>(null);
@@ -98,9 +107,15 @@ export default function VendorUsersPage() {
         getRowId={(u) => u.membershipId}
         server={{ meta: data?.pagination, params, onParams: setParams }}
         isLoading={isLoading}
+        isFetching={isFetching && !isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}
-        search={{ placeholder: "Search name or email" }}
+        search={{
+          placeholder: "Search name or email",
+          value: params.search ?? "",
+          // `withSearch` also sends the list back to page 1.
+          onChange: (v) => write((p) => withSearch(p, v)),
+        }}
         emptyTitle="No users yet"
         emptyDescription="Add someone and they can raise tickets for you."
         filteredEmptyTitle="No users match that search"

@@ -27,6 +27,18 @@ export function moneyPaise(paise: number | null | undefined): string {
 }
 
 /**
+ * `moneyPaise` with the direction spelled out both ways: `+₹800`, `−₹500`.
+ *
+ * For a column of MOVEMENTS, where a figure without a sign is ambiguous — the
+ * pool ledger, whose rows go in and out of one balance. A plain total (a
+ * balance, a price) stays on `moneyPaise`: there a `+` is noise. Zero has no
+ * direction and gets no sign.
+ */
+export function moneyPaiseSigned(paise: number): string {
+  return `${paise > 0 ? "+" : ""}${moneyPaise(paise)}`;
+}
+
+/**
  * A paise figure as the bare rupee digits a form field holds — `45000` → `"450"`.
  *
  * Unformatted on purpose: this is the inverse of the `Number(value) * 100` a

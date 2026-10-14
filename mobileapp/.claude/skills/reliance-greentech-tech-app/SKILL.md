@@ -220,6 +220,12 @@ Matched by id on the job's `nodePathIds`, never by name. Empty for a chip:
 `Details unlock after you accept` — Customer `R•••• M••••`, Phone `+91 ••••• •••••`,
 Area, Distance. CTAs `Accept job` / `Pass`.
 
+**Pass confirms, and the server keeps it** *(added after QA, not in the prototype — copy pending
+sign-off).* A native dialog `Pass this job?` / `It will be removed from your job offers and left
+for other technicians. You'll see it again only if its time or bonus changes.` · `Cancel` /
+`Pass job`, then the toast `Job passed` and back to the pool. `POST /jobs/:id/pass` hides the job
+from this technician only, until its slot or bonus changes (`api/app/models/job_pass.py`).
+
 ### Accept sheet
 `Commit to this slot?` / `The customer already confirmed {slot}. Accepting locks you to that
 time — cancelling later carries a penalty.` · rows Job / Area ·
@@ -373,8 +379,15 @@ binding time.
 |---|---|---|
 | completed | `Completed` | `statusCompleted` |
 | in progress | `In progress` | `statusInProgress` |
-| `hoursToSlot <= 4` | `Starting soon` | `statusStartingSoon` |
+| no agreed time | `Awaiting time` | `statusUpcoming` |
+| slot END has passed | `Slot closed` | `statusSlotClosed` |
+| ≤ 4h to slot start | `Starting soon` | `statusStartingSoon` |
 | otherwise | `Upcoming` | `statusUpcoming` |
+
+`jobBadge` in `ui/StatusBadge` is the one implementation; every card calls it. It reads
+`slotStart`/`slotEnd` against the clock at RENDER, not `hoursToSlot`, which is frozen when the
+list is fetched. `Slot closed` is not in the prototype (it has no missed job); the words are the
+console's own for the same state.
 
 ### Penalty bands
 

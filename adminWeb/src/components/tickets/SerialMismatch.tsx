@@ -20,12 +20,15 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import {
+  useCorrectTicketReading,
   useCorrectTicketSerial,
+  useTicketProof,
   useTicketSerialCheck,
 } from "@/hooks/useTickets";
 import type { TicketDetail } from "@/types/ticket";
@@ -56,9 +59,21 @@ function howRead(ticket: TicketDetail): string | null {
  * The banner and the dialog name the two numbers the same way — "on the order"
  * and "read on site" — because three names for one number is what made the
  * first version of this hard to follow.
+ *
+ * The OTHER slip — the order is right and the technician typed it wrong — had
+ * no way out: the right number was already the order's (nothing to save) and
+ * the wrong one was refused by the serial list. `canCorrectReading` adds the
+ * second correction, to the reading, for an Area Manager and above. Never the
+ * vendor: it edits evidence, so it needs a manager, a reason and the photo.
  */
-export function SerialMismatchBanner({ ticket }: { ticket: TicketDetail }) {
-  const [open, setOpen] = useState(false);
+export function SerialMismatchBanner({
+  ticket,
+  canCorrectReading = false,
+}: {
+  ticket: TicketDetail;
+  canCorrectReading?: boolean;
+}) {
+  const [open, setOpen] = useState<"order" | "reading" | null>(null);
 
   if (!ticket.serialMismatch) return null;
 
@@ -85,25 +100,45 @@ export function SerialMismatchBanner({ ticket }: { ticket: TicketDetail }) {
             {how ? ` (${how})` : null}
           </p>
           <p className="mt-1 text-xs text-ink-3">
-            If the order has the wrong number, correct it. The technician's
-            reading can't be changed.
+            {canCorrectReading
+              ? "If the order has the wrong number, correct the order. If the technician typed it wrong, check their photo and correct the reading."
+              : "If the order has the wrong number, correct it. If the technician typed it wrong, an Area Manager can correct their reading."}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
-          onClick={() => setOpen(true)}
-        >
-          Correct the order serial
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
+            onClick={() => setOpen("order")}
+          >
+            Correct the order serial
+          </Button>
+          {canCorrectReading ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
+              onClick={() => setOpen("reading")}
+            >
+              Correct the technician's reading
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpen(null);
+        }}
+      >
         {/* Unmounts on close, so the form is fresh on every open. */}
         <DialogContent className="sm:max-w-md">
-          {open ? (
-            <CorrectSerialForm ticket={ticket} onDone={() => setOpen(false)} />
+          {open === "order" ? (
+            <CorrectSerialForm ticket={ticket} onDone={() => setOpen(null)} />
+          ) : open === "reading" ? (
+            <CorrectReadingForm ticket={ticket} onDone={() => setOpen(null)} />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -328,5 +363,266 @@ function CorrectSerialForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+const readingSchema = z.object({
+  observedSerial: z
+    .string()
+    .trim()
+    .min(1, "Enter the serial shown in the photo")
+    .max(64, "Serials are at most 64 characters"),
+  reason: z
+    .string()
+    .trim()
+    .min(1, "Say why — this changes what the technician recorded")
+    .max(255, "Keep the note under 255 characters"),
+});
+
+type ReadingValues = z.infer<typeof readingSchema>;
+
+/**
+ * Correcting what the technician TYPED, for when the order was right.
+ *
+ * The photo is the point of this dialog: the typed value was only a
+ * transcription of it, so the manager reads the real number off the picture
+ * rather than taking anybody's word. A scanned serial has no serial photo —
+ * the barcode step stands in for it — so that one is shown instead.
+ *
+ * No serial-list check here, unlike the order dialog: a reading says what is
+ * on the unit, and a unit the list does not know is exactly what a mismatch is
+ * for. The reason is required because this edits evidence.
+ */
+function CorrectReadingForm({
+  ticket,
+  onDone,
+}: {
+  ticket: TicketDetail;
+  onDone: () => void;
+}) {
+  const correct = useCorrectTicketReading();
+  const order = ticket.serialNumber ?? "";
+  const current = ticket.observedSerial ?? "";
+  const how = howRead(ticket);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    formState: { errors },
+  } = useForm<ReadingValues>({
+    resolver: zodResolver(readingSchema),
+    defaultValues: { observedSerial: current, reason: "" },
+  });
+
+  // Same two rules as the order dialog, pointed the other way: unchanged is
+  // EXACT (the server writes nothing), a match is case-insensitive (how
+  // `serialMismatch` compares).
+  const typed = (useWatch({ control, name: "observedSerial" }) ?? "").trim();
+  const unchanged = typed === current;
+  const matchesOrder =
+    typed !== "" && typed.toUpperCase() === order.trim().toUpperCase();
+
+  function fillOrder() {
+    setValue("observedSerial", order, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+  }
+
+  function submit(values: ReadingValues) {
+    correct.mutate(
+      {
+        id: ticket.id,
+        observedSerial: values.observedSerial,
+        reason: values.reason,
+      },
+      {
+        onSuccess: (saved) => {
+          toast.add({
+            title: "Reading corrected",
+            description: saved.serialMismatch
+              ? `The reading is now ${saved.observedSerial}, which still differs from the order.`
+              : `The reading is now ${saved.observedSerial}. It matches the order.`,
+          });
+          onDone();
+        },
+      }
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
+      <DialogHeader>
+        <DialogTitle>Correct the technician's reading</DialogTitle>
+        <DialogDescription>
+          Use this when the order is right and the technician typed the serial
+          wrong. Read the real number off their photo. The old reading stays in
+          the timeline.
+        </DialogDescription>
+      </DialogHeader>
+
+      <ReadingPhoto ticket={ticket} />
+
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-md border border-line-2 bg-surface-2 px-3.5 py-3 text-[13px]">
+        <dt className="text-ink-3">On the order</dt>
+        <dd className="font-semibold break-all text-ink">{order || "—"}</dd>
+        <dt className="text-ink-3">Read on site now</dt>
+        <dd className="break-all text-ink">
+          <span className="font-semibold">{current}</span>
+          {how ? <span className="text-ink-3"> ({how})</span> : null}
+        </dd>
+      </dl>
+
+      <FieldGroup className="gap-4">
+        <Field data-invalid={errors.observedSerial ? true : undefined}>
+          <FieldLabel htmlFor="reading-value" required>
+            Correct reading
+          </FieldLabel>
+          <div className="flex gap-2">
+            <Input
+              id="reading-value"
+              autoComplete="off"
+              className="min-w-0 flex-1"
+              aria-invalid={errors.observedSerial ? true : undefined}
+              aria-describedby={
+                errors.observedSerial
+                  ? "reading-value-error"
+                  : typed
+                    ? "reading-value-hint"
+                    : undefined
+              }
+              {...register("observedSerial")}
+            />
+            {/* The usual fix: the technician mistyped and the order is right. */}
+            {order && !matchesOrder ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="max-w-1/2"
+                onClick={fillOrder}
+              >
+                <span className="truncate">Use {order}</span>
+              </Button>
+            ) : null}
+          </div>
+          {typed === "" ? null : unchanged ? (
+            <FieldDescription id="reading-value-hint" className="text-ink-3">
+              This is already the reading.
+            </FieldDescription>
+          ) : matchesOrder ? (
+            <FieldDescription
+              id="reading-value-hint"
+              className="flex items-start gap-1.5 text-ok"
+            >
+              <Check className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              Matches the order. The warning will go away.
+            </FieldDescription>
+          ) : (
+            <FieldDescription
+              id="reading-value-hint"
+              className="flex items-start gap-1.5 text-warn"
+            >
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span className="break-all">
+                Still different from the order ({order}). The warning will stay.
+              </span>
+            </FieldDescription>
+          )}
+          {errors.observedSerial ? (
+            <FieldDescription
+              id="reading-value-error"
+              role="alert"
+              className="text-danger"
+            >
+              {errors.observedSerial.message}
+            </FieldDescription>
+          ) : null}
+        </Field>
+
+        <Field data-invalid={errors.reason ? true : undefined}>
+          <FieldLabel htmlFor="reading-reason" required>
+            Why
+          </FieldLabel>
+          <Textarea
+            id="reading-reason"
+            rows={2}
+            placeholder="e.g. photo shows 400097-2210 — technician typed 2210"
+            aria-invalid={errors.reason ? true : undefined}
+            aria-describedby={errors.reason ? "reading-reason-error" : undefined}
+            {...register("reason")}
+          />
+          {errors.reason ? (
+            <FieldDescription
+              id="reading-reason-error"
+              role="alert"
+              className="text-danger"
+            >
+              {errors.reason.message}
+            </FieldDescription>
+          ) : (
+            <FieldDescription>
+              Goes into the ticket's trail beside the old reading.
+            </FieldDescription>
+          )}
+        </Field>
+      </FieldGroup>
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={correct.isPending || unchanged}>
+          {correct.isPending ? <Spinner /> : null}
+          Save
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+/**
+ * The picture the reading should have been copied from. The serial photo when
+ * the technician typed it; the barcode photo when it was scanned, because a
+ * scanned serial skips the serial step.
+ */
+function ReadingPhoto({ ticket }: { ticket: TicketDetail }) {
+  const [failed, setFailed] = useState(false);
+  const { data, isLoading, isError } = useTicketProof(ticket.id);
+  const kind = ticket.observedSerialSource === "scanned" ? "barcode" : "serial";
+  const label = kind === "barcode" ? "Barcode photo" : "Serial photo";
+  const shot = data?.find((p) => p.kind === kind);
+
+  if (isLoading) return <Skeleton className="aspect-4/3 w-full rounded-md" />;
+
+  if (isError || !shot?.url || failed) {
+    return (
+      <p className="rounded-md bg-surface-3 px-3.5 py-3 text-xs text-ink-2">
+        {isError
+          ? "Couldn't load the photo. It is also in Proof of completion on this page."
+          : `No ${label.toLowerCase()} is available for this ticket.`}
+      </p>
+    );
+  }
+
+  return (
+    <a
+      href={shot.url}
+      target="_blank"
+      rel="noreferrer"
+      className="group relative block overflow-hidden rounded-md bg-surface-3 focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none"
+    >
+      <img
+        src={shot.url}
+        alt={label}
+        onError={() => setFailed(true)}
+        className="max-h-64 w-full object-contain"
+      />
+      {/* Over the photograph, so it needs its own ground — as on ProofThumb. */}
+      <span className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-[11px] font-medium text-white">
+        {label} · opens full size
+      </span>
+    </a>
   );
 }

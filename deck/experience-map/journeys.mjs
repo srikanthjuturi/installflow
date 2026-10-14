@@ -83,6 +83,13 @@ export const ACTS = [
           'proto-login-otp',
         ],
       },
+      {
+        // build_document.py — "In the technician's own language". The list
+        // opens by itself on a new phone, before anything else is asked.
+        actor: 'technician',
+        title: 'In the technician’s own language',
+        shots: ['app-language', 'app-home-hi'],
+      },
     ],
   },
   {
@@ -100,7 +107,9 @@ export const ACTS = [
         title: 'The vendor raises the ticket',
         // The brands and the serial master moved to the act above — they are
         // what somebody set up beforehand, not part of filling in the form.
-        shots: ['portal-new-ticket', 'portal-tickets'],
+        // The spreadsheet route is the same step — "Many at once" in the
+        // document — so it sits beside the form rather than in a journey of its own.
+        shots: ['portal-new-ticket', 'portal-import-preview', 'portal-tickets'],
       },
       {
         step: 2,
@@ -118,7 +127,9 @@ export const ACTS = [
         step: 4,
         actor: 'technician',
         title: 'A technician accepts',
-        shots: ['app-accept-sheet', 'app-job-detail', 'app-jobs'],
+        // `app-job-no-time`: the pool offers jobs before the customer has
+        // chosen, so a taken job can be waiting on its time — and not startable.
+        shots: ['app-accept-sheet', 'app-job-detail', 'app-job-no-time', 'app-jobs'],
       },
       {
         step: 5,
@@ -189,9 +200,16 @@ export const ACTS = [
     eyebrow: 'What you can see',
     title: 'Counted,\nnever estimated',
     lede:
-      'What the job cost you, and what your operation is doing right now. ' +
+      'What the job cost you, what your vendors owe you, and what your ' +
+      'operation is doing right now. ' +
       'Every figure is a count over the territory the reader actually covers.',
     journeys: [
+      {
+        // build_document.py — "What a vendor pays you"
+        actor: 'vendor',
+        title: 'What a vendor pays you',
+        shots: ['portal-credit', 'console-vendor-credit', 'console-vendor-payment'],
+      },
       {
         actor: 'company',
         title: 'What you pay us',

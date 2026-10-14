@@ -1,36 +1,60 @@
-import { useState } from "react";
+import { useMemo } from "react";
+import { useSearchParams } from "react-router";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { LedgerTable } from "@/components/ledger/LedgerTable";
 import { PoolSummary } from "@/components/ledger/PoolSummary";
 import { useLedgerEntries, useLedgerPool } from "@/hooks/useLedger";
+import { ALL_FILTER } from "@/hooks/useListParams";
 import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
+import type { LedgerEntry } from "@/types";
+
+/** The query-string key for the Type filter — the control's own name. */
+const TYPE_PARAM = "type";
+const KINDS: readonly LedgerEntry["kind"][] = ["penalty", "bonus", "reversal"];
 
 export default function LedgerPage() {
   const pool = useLedgerPool();
 
+  // The Type filter lives in the query string, like the ticket board's Status.
+  // A filtered ledger is then a link somebody can paste, and "Back to ledger"
+  // from a technician or a ticket — which keeps the query string — comes back
+  // to the same filtered view rather than the whole ledger.
+  //
+  // Validated, not trusted: anything but the three kinds means no filter. Sent
+  // as it stands, the API would match nothing and the screen would say nothing
+  // matches under a dropdown naming a type that does not exist.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const typeParam = searchParams.get(TYPE_PARAM);
+  const kind = KINDS.find((k) => k === typeParam);
+
   // Newest first — a ledger is read from the most recent transaction back.
   // No `page`: the table loads on scroll, so the cursor lives inside the
   // infinite query rather than in this screen's state.
-  const [params, setParams] = useState<ListParams>({
-    limit: DEFAULT_PAGE_SIZE,
-    sortBy: "date",
-    sortDir: "desc",
-  });
+  const params = useMemo<ListParams>(
+    () => ({
+      limit: DEFAULT_PAGE_SIZE,
+      sortBy: "date",
+      sortDir: "desc",
+      ...(kind ? { filters: { kind } } : {}),
+    }),
+    [kind]
+  );
 
-  // Merged into the current query, not swapped for it — "Clear filters" resets
-  // several things at once, and a replacing setter would let the last win.
+  // The Type is the only thing on this screen anybody can change — no column
+  // sorts, and a list that loads on scroll has no page or page size — so it is
+  // the only thing written back.
   //
-  // `page` is dropped on the way in. The table still reports it when a filter
-  // changes ("and start from the top"), which is right for a pager and
-  // meaningless here: changing the filter already restarts the query from page
-  // one, and keeping the number would only churn the cache key.
-  const applyParams = (next: ListParams) =>
-    setParams((prev) => ({
-      ...prev,
-      ...next,
-      page: undefined,
-      filters: { ...prev.filters, ...next.filters },
-    }));
+  // "All" is the dropdown's value for "no filter", NOT a kind, so it removes
+  // the key instead of travelling. It used to travel: "Clear filters" (and
+  // picking "Type: all") asked the API for kind "all", which matches no rows,
+  // and the ledger read "No transactions yet" over a pool full of them.
+  const applyParams = (next: ListParams) => {
+    const value = next.filters?.kind;
+    const url = new URLSearchParams(searchParams);
+    if (value && value !== ALL_FILTER) url.set(TYPE_PARAM, value);
+    else url.delete(TYPE_PARAM);
+    setSearchParams(url, { replace: true });
+  };
 
   const entries = useLedgerEntries(params);
   // Every page loaded so far, in order. The table renders what it is given;

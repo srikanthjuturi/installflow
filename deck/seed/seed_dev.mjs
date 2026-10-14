@@ -4,10 +4,11 @@
  *   node seed/seed_dev.mjs
  *
  * A company, its staff, a vendor with a login, three technicians, a product
- * catalogue with real prices, and thirteen tickets driven to seven different
+ * catalogue with real prices, and fourteen tickets driven to eight different
  * points of the lifecycle — so the console's dashboard counts something, the
  * escalation queue has a row, the ledger has both a payout and a penalty, the
- * job pool has work in it, and the two customer-facing pages have live tokens.
+ * job pool has work in it, the two customer-facing pages have live tokens, and
+ * the vendor owes something it can be seen paying.
  *
  * Everything invented lives in `fixtures.mjs`. Every write goes through the real
  * endpoints, so prices and the rules snapshot are stamped at intake and each
@@ -30,6 +31,7 @@ import {
 import {
   COMPANY, DEMO_PASSWORD, STAFF, VENDOR, TECHNICIANS, CATALOGUE, CUSTOMERS, TICKET_PLAN,
   VENDOR_SUBUSER, VENDOR_PENDING_BRAND, VENDOR_SUBMITTED_MODEL,
+  COMPANY_PAYEE, VENDOR_LIMIT_REQUEST,
   ticketSerial, spareSerial, SPARE_SERIALS_PER_MODEL,
 } from './fixtures.mjs';
 
@@ -264,8 +266,8 @@ async function createCatalogue(token, vendorId) {
  * form. An EMPTY list means unchecked, which is how this could ship against a
  * live catalogue with no backfill; the flip side is that the moment a model
  * holds one serial, `POST /tickets` refuses anything not on its list. So every
- * serial the ticket loop is about to quote has to be a member here, or all
- * thirteen tickets 400.
+ * serial the ticket loop is about to quote has to be a member here, or every
+ * seeded ticket 400s.
  *
  * `serialsFor` is the single source for both: the loop below and the ticket
  * loop call it with the same `(leaf, index)`.
@@ -312,6 +314,9 @@ function rulesBody(rules, overrides = {}) {
     slotReminderMinutes: rules.slotReminderMinutes,
     customerNoticeMinutes: rules.customerNoticeMinutes,
     geoRadiusM: rules.geoRadiusM,
+    // Required since vendor credit shipped. A body without it is a 422, and the
+    // widen step below fails before the escalation ticket is ever raised.
+    vendorCreditLimit: rules.vendorCreditLimit,
     ...overrides,
   };
 }
@@ -473,6 +478,17 @@ async function submitProof(techToken, ticketId, serial, pincode, blobs, point) {
     body: { artifacts, observedSerial: serial, observedSerialSource: 'scanned' },
   });
 }
+
+/**
+ * A twelve-digit UTR nobody has used, led by `lead` so two claims in one run
+ * differ.
+ *
+ * It cannot be a constant. A UTR is credited ONCE across the whole platform —
+ * `uq_credit_recharges_credited_utr` — and `--reset` only soft-deletes the
+ * previous company, so its confirmed recharge keeps the number and the next
+ * run's confirm was refused with 409 UTR_ALREADY_CREDITED.
+ */
+const freshUtr = (lead) => `${lead}${String(Date.now()).slice(-11)}`;
 
 // ── The run ──────────────────────────────────────────────────────────────────
 
@@ -692,6 +708,17 @@ async function main() {
       continue;
     }
 
+    if (plan.stage === 'takenNoTime') {
+      // The pool offers Slot Pending jobs, so this is a real state: taken,
+      // and refused at "Start job" with 409 NO_TIME_AGREED until the customer
+      // picks a time. The job screen shows a note in place of the button.
+      const techToken = await tokenFor(plan.technician);
+      await call(`/jobs/${ticket.id}/accept`, { token: techToken, method: 'POST' });
+      record('takenNoTime');
+      log(`    ${detail.code}  taken by ${TECHNICIANS[plan.technician].fullName}, no time agreed yet`);
+      continue;
+    }
+
     await confirmSlot(slotToken, index % 3);
 
     if (plan.stage === 'pool') {
@@ -760,6 +787,7 @@ async function main() {
       id: ticket.id,
       rating: plan.rating ?? 5,
       payoutPaise: detail.technicianPayoutPaise ?? null,
+      vendorPricePaise: detail.vendorPricePaise ?? null,
     });
     log(`    ${detail.code}  work done, waiting to be closed`);
   }
@@ -784,7 +812,7 @@ async function main() {
   if (toClose.length) {
     const tokens = devTicketTokens();
     let forced = 0;
-    for (const { code, rating, id, payoutPaise } of toClose) {
+    for (const { code, rating, id, payoutPaise, vendorPricePaise } of toClose) {
       const token = tokens[code]?.feedback;
       if (token) {
         await call(`${ORIGIN}/feedback/${token}`, {
@@ -814,6 +842,10 @@ async function main() {
             'window. Closing on the technician’s evidence.',
           attachments: [{ blobName: uploaded.photos, fileName: 'installed-unit.png' }],
           technicianPayoutPaise: payoutPaise ?? undefined,
+          // Omitted bills the vendor NOTHING — the API will not invent a bill
+          // from silence — so the work that was done is billed in full here,
+          // exactly as a customer's confirmation would have billed it.
+          vendorChargePaise: vendorPricePaise ?? undefined,
         },
       });
       forced += 1;
@@ -864,7 +896,7 @@ async function main() {
     token: admin,
     method: 'POST',
     body: {
-      utr: '412783996201',
+      utr: freshUtr(4),
       proof: {
         blobName: rechargeProof.blobName ?? rechargeProof.name ?? rechargeProof.url,
         fileName: 'upi-receipt.png',
@@ -897,6 +929,50 @@ async function main() {
   } else {
     log('    nothing to redeem — no payout landed in the ledger');
   }
+
+  // 7e — vendor credit. The vendor's half of the price pair is billed when a
+  //      ticket closes, so the closures above are what it now owes. Both of the
+  //      vendor's ways out are left WAITING, because a decided one leaves the
+  //      console's Vendor credit queue empty: a payment claimed and not yet
+  //      confirmed, and a request for a bigger line nobody has answered.
+  step('Vendor credit');
+  // Where the vendor pays. Until this is set the Credit page says so instead
+  // of drawing a QR, and `POST /me/payments` has no payee to freeze.
+  await call('/settings/payment-account', { token: admin, method: 'PUT', body: COMPANY_PAYEE });
+  log(`    payee ${COMPANY_PAYEE.upiId}`);
+
+  const line = await call('/vendor-credit/me', { token: vendor });
+  log(
+    `    line ₹${line.limitPaise / 100} · owed ₹${line.usedPaise / 100} · ` +
+      `open tickets ₹${line.reservedPaise / 100} · room ₹${line.availablePaise / 100}`,
+  );
+  if (line.maxPaymentPaise > 0) {
+    // The whole of what is owed — the server caps it at that and at UPI's limit.
+    const payment = await call('/vendor-credit/me/payments', {
+      token: vendor,
+      method: 'POST',
+      body: { amountPaise: line.maxPaymentPaise },
+    });
+    const receipt = await upload(vendor, proofImages.barcode, 'upi-receipt.png', 'image/png', 'attachment');
+    await call(`/vendor-credit/me/payments/${payment.id}/claim`, {
+      token: vendor,
+      method: 'POST',
+      body: {
+        utr: freshUtr(5),
+        proof: { blobName: receipt.blobName ?? receipt.name ?? receipt.url, fileName: 'upi-receipt.png' },
+      },
+    });
+    log(`    ${payment.code ?? 'payment'}  ₹${line.maxPaymentPaise / 100} claimed, waiting for confirmation`);
+  } else {
+    log('    nothing owed yet — no ticket closed, so no payment to claim');
+  }
+
+  await call('/vendor-credit/me/limit-requests', {
+    token: vendor,
+    method: 'POST',
+    body: VENDOR_LIMIT_REQUEST,
+  });
+  log(`    asked for a ₹${VENDOR_LIMIT_REQUEST.requestedLimitPaise / 100} line, undecided`);
 
   // 8 — write down what was made.
   step('Credentials');

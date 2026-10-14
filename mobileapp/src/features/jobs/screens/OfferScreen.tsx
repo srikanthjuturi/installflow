@@ -1,14 +1,16 @@
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ErrorState, Skeleton } from '@/components/feedback';
+import { ErrorState, Skeleton, showToast } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
 import { Button, Pill, Text } from '@/components/ui';
 import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
+import { usePassJob } from '@/features/jobs/hooks/usePassJob';
+import { errorText } from '@/i18n/errorText';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import { formatPaise } from '@/utils/money';
@@ -30,6 +32,37 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { data: job, isError, refetch } = useOffer(jobId);
+  const pass = usePassJob(jobId);
+
+  // Pass used to be a plain Back: nothing was recorded and the job was in the
+  // pool again on the next refresh. Now it is a decision the server keeps, so
+  // it is asked first — in the phone's own dialog, the same one Remove photo
+  // and Delete account use, because a pass needs no more design than a
+  // yes/no. Cancel is first and Pass job is styled as the destructive one.
+  const confirmPass = () => {
+    Alert.alert(t('jobs.pass.confirmTitle'), t('jobs.pass.confirmBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('jobs.pass.confirm'),
+        style: 'destructive',
+        onPress: () =>
+          pass.mutate(undefined, {
+            onSuccess: () => {
+              showToast(t('jobs.pass.done'));
+              // Back to the pool it came from; straight to the pool when the
+              // offer was opened cold from a notification, with nothing below.
+              if (router.canGoBack()) router.back();
+              else router.replace('/pool');
+            },
+            onError: (error) =>
+              Alert.alert(
+                t('jobs.pass.failedTitle'),
+                errorText(error, t('jobs.pass.failedBody')),
+              ),
+          }),
+      },
+    ]);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: color.surface }}>
@@ -267,10 +300,16 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
           label={t('jobs.offer.accept')}
           trailingIcon="arrowRight"
           onPress={() => router.push(`/accept-slot?jobId=${jobId}`)}
-          disabled={!job}
+          disabled={!job || pass.isPending}
         />
         <View style={{ marginTop: 4 }}>
-          <Button label={t('jobs.offer.pass')} variant="ghost" onPress={() => router.back()} />
+          <Button
+            label={t('jobs.offer.pass')}
+            variant="ghost"
+            onPress={confirmPass}
+            loading={pass.isPending}
+            disabled={!job}
+          />
         </View>
       </View>
     </View>

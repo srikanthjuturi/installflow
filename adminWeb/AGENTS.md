@@ -67,7 +67,7 @@ Eight places, all restored by uncommenting, starting from the note in `component
 | `services/dashboard.ts` | the **AI flagged** KPI tile and the **AI verification** attention card |
 | `components/settings/RulesForm.tsx` | the **AI verification threshold** card (`ThresholdSlider`) |
 | `components/settings/NodeRulesForm.tsx` | the per-category **AI confidence threshold** override |
-| `components/tickets/statusChips.ts` | the `AI Review` filter chip |
+| `components/tickets/statusFilter.ts` | the `AI Review` option in the Status dropdown |
 
 `/ai-review` falls through to the 404 page, which is the truth; it needed no redirect because the
 screens carried no feature key, so closing them opens nothing (contrast the escalation redirects
@@ -139,19 +139,19 @@ things about it are worth knowing before editing:
   not "link it somewhere close".
 - **A filter the destination cannot show must announce itself.** The escalation queue has no
   control for territory or intake dates, and the ticket board has none for an SLA bucket, "not yet
-  closed", a closure window or a PAIR of statuses — the chips can show one status and cannot show
-  a set. Arriving with any of them set would hide rows with nothing on screen to explain it, so
-  the shared `NarrowedNotice` names them and offers the way out ("Show the whole queue", "Show the
+  closed", a closure window or a PAIR of statuses — the Status dropdown can show one status and
+  cannot pick a set. Arriving with any of them set would hide rows with nothing on screen to
+  explain it, so the shared `NarrowedNotice` names them and offers the way out ("Show the whole queue", "Show the
   whole board"). It names only what the reader cannot see: the queue's `half` pill and a single
-  status chip are visible controls that reflect the URL already.
+  status in the dropdown are visible controls that reflect the URL already.
   `useTicketFilters.clearNarrowing()` is what the board's escape calls — the hook owns the
   query-string contract, so the key list lives there rather than in a component that would drift
   from it. It drops a multi-status too, and keeps a single one.
   `DataTable`'s `narrowed` prop is the other half: without it a board holding rows back reads
   "No tickets yet", which is the console telling somebody their work does not exist.
-- **Picking a status chip clears `open` and `closedWithinDays`.** Both are status-shaped, so
+- **Picking a status clears `open` and `closedWithinDays`.** Both are status-shaped, so
   arriving on "Closed this week" and then clicking Slot Pending would ask for slot-pending tickets
-  closed in the last seven days and read empty under a chip insisting otherwise. `slaState` is a
+  closed in the last seven days and read empty under a filter insisting otherwise. `slaState` is a
   different axis and survives — "breaching AND assigned" is a refinement somebody may want.
 - **The queue's filters live in the query string.** They were `useState`, which is why
   `?half=live` was ignored and the card's link did nothing. A filter in component state cannot be
@@ -765,7 +765,7 @@ confusing screen, not a leak. That is not a reason to be careless with it.
 | `/login` | `LoginPage` | single step, two doors: email + password, or Google (button + One Tap). No OTP — signing IN never asks for a code here |
 | `/forgot-password` | `ForgotPasswordPage` | three steps in local state: email → 6-digit code emailed → new password, then straight into a session. Signed-out only (under `RedirectIfSignedIn`), and it shares `AuthLayout` with `/login`. `OtpStep.tsx` was dead prototype code until this used it |
 | `/` | `DashboardPage` | 4 KPI tiles · SLA stacked bar · 3-stat funnel · "Needs your attention" (4 cards) · recent tickets — **every figure deep-links** to the list holding exactly what it counted; the bar itself stays a picture, its legend is the way in |
-| `/tickets` | `TicketListPage` | status pills, search, **default sort = SLA urgency** (breach → warn → ok → done) |
+| `/tickets` | `TicketListPage` | Status dropdown (every status a ticket can reach; was seven pills until 2026-10-13), search, **default sort = SLA urgency** (breach → warn → ok → done) |
 | `/tickets/:id` | `TicketDetailPage` | facts grid · timeline & audit trail · customer · technician · proof-of-completion grid |
 | `/tickets/new` | `ManualEntryPage` | vendor/category/model · request type · customer · SLA · submit fires the slot request |
 | `/tickets/import` | — | still a **redirect** to `/tickets`. Staff import from a dialog on the list, which needs no route, no `routeMeta` entry and no rail entry — and restoring the route would put a screen that spends credits behind `jobs.view`, which is what Ticket List's `match: ["/tickets/"]` prefix resolves it to |
@@ -888,7 +888,7 @@ grep -rn 'FieldGroup className=' src/ | grep -Ei 'grid|COLS'   # should find not
 | Server state | TanStack Query | tickets, escalations, AI queue, technicians, ledger, rules, users |
 | Client state | Zustand | session + active role, sidebar open, theme, multi-step form drafts |
 | Form state | RHF + Zod | manual entry, bulk upload, bonus, force-close, rules config |
-| URL state | React Router | filters, status pill, page, selected id — filters belong in the query string so a view is shareable |
+| URL state | React Router | filters, status, page, selected id — filters belong in the query string so a view is shareable |
 
 Query keys are tuples: `['tickets', filters]`, `['ticket', id]`,
 `['escalations', 'list', params]`. Invalidate by prefix after every mutation. `staleTime` 30s for
@@ -1551,10 +1551,18 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   NH → Admin answer. It limits nobody; rank and territory do, server-side.
   `ReversePenaltyDialog` is `RescheduleDialog`'s required-reason shape (3–160, the ledger column),
   with the amount on the button like `NoShowDialog`. Full amount only; no undo. The ledger table
-  learned `reversal` ("Penalty reversed", `+`, info tone) and tags a charge "Reversed". All of this
+  learned `reversal` ("Penalty reversed", info tone) and tags a charge "(reversed)". All of this
   copy is net-new — neither prototype has a reversal — and was **approved as written on
   2026-09-11**, together with the vendor-edit and "Send app link" wording; a new string still
   needs sign-off.
+- **The pool ledger signs every amount from the POOL's side** (`POOL_SIGN` in `LedgerTable`):
+  a penalty `+` (in, green), a bonus and a reversal `−` (out, red), so the signed rows add up to
+  "Current pool balance". The API sends a magnitude; the technician's Earnings in the app reads
+  the same rows the other way round and is right to. A reversed charge keeps its `+` — its
+  reversal row is what takes the money out, so striking the charge too would count it twice.
+  The CSV writes the same signs and labels. The Type filter is `?type=` in the URL, and "All"
+  never travels: sent as a kind it matched nothing, which is what emptied the ledger on
+  "Clear filters".
 - Force-closure **requires** attachments and records who, when, and on what basis. Audit is a
   stated requirement, not a nicety.
 - **A force-closure's attachments are staff-only; its proof images are not.** Proof is the work

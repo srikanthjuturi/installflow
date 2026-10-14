@@ -48,8 +48,9 @@ export interface AiFlag {
  * **No sign is stored.** A penalty and a bonus point in opposite directions,
  * but which direction depends on who is looking: to the POOL a penalty is
  * money in, to the TECHNICIAN it is a debit. The API's own note explains it;
- * here it means the table applies the technician's sign where it prints one,
- * out loud, rather than trusting a sign that means two things.
+ * here it means the pool screen applies the POOL's sign where it prints one
+ * (`POOL_SIGN` in `LedgerTable`), out loud, rather than trusting a sign that
+ * means two things.
  */
 export interface LedgerEntry {
   id: string;

@@ -9,6 +9,7 @@ as captions.
 from __future__ import annotations
 
 import datetime
+import re
 from pathlib import Path
 
 from PIL import Image
@@ -58,6 +59,31 @@ def _run(paragraph, text, *, size, bold=False, italic=False, colour=INK,
     if caps:
         run.font.all_caps = True
     return run
+
+
+#: `**bold**`, or `*italic*` — whose content may not start with a space, so a
+#: lone asterisk in running text is left alone.
+_INLINE = re.compile(r"(\*\*.+?\*\*|\*[^*\s][^*]*?\*)")
+
+
+def _inline(paragraph, text, *, size, colour=INK, italic=False):
+    """Write `text` with its `**bold**` and `*italic*` spans honoured.
+
+    Only bold used to be. Every `*italic*` in the document — a heading named in
+    passing, a category path, a vendor's name — printed with its asterisks in
+    the delivered PDF, because each writer split on `**` alone. Inside text
+    that is already italic (a caption), an italic span is set upright instead,
+    which is how emphasis inside italics is done.
+    """
+    for piece in _INLINE.split(text):
+        if not piece:
+            continue
+        if piece.startswith("**") and piece.endswith("**") and len(piece) > 4:
+            _run(paragraph, piece[2:-2], size=size, bold=True, italic=italic, colour=colour)
+        elif piece.startswith("*") and piece.endswith("*") and len(piece) > 2:
+            _run(paragraph, piece[1:-1], size=size, italic=not italic, colour=colour)
+        else:
+            _run(paragraph, piece, size=size, italic=italic, colour=colour)
 
 
 def today() -> str:
@@ -131,9 +157,7 @@ def p(document, text, *, size=Pt(10.5), colour=INK, italic=False, space_after=8)
     never emphasise a term reads flat over thirty pages."""
     para = document.add_paragraph()
     para.paragraph_format.space_after = Pt(space_after)
-    for index, chunk in enumerate(text.split("**")):
-        if chunk:
-            _run(para, chunk, size=size, bold=index % 2 == 1, italic=italic, colour=colour)
+    _inline(para, text, size=size, colour=colour, italic=italic)
     return para
 
 
@@ -141,9 +165,7 @@ def bullet(document, text):
     para = document.add_paragraph(style="List Bullet")
     para.paragraph_format.space_after = Pt(3)
     para.paragraph_format.left_indent = Cm(0.7)
-    for index, chunk in enumerate(text.split("**")):
-        if chunk:
-            _run(para, chunk, size=Pt(10.5), bold=index % 2 == 1)
+    _inline(para, text, size=Pt(10.5))
     return para
 
 
@@ -157,9 +179,7 @@ def callout(document, text):
     para = cell.paragraphs[0]
     para.paragraph_format.space_before = Pt(6)
     para.paragraph_format.space_after = Pt(6)
-    for index, chunk in enumerate(text.split("**")):
-        if chunk:
-            _run(para, chunk, size=Pt(10), bold=index % 2 == 1, colour=INK)
+    _inline(para, text, size=Pt(10), colour=INK)
     document.add_paragraph().paragraph_format.space_after = Pt(2)
     return table
 
@@ -181,9 +201,7 @@ def table(document, headers, rows, *, widths=None):
         for index, value in enumerate(row):
             para = cells[index].paragraphs[0]
             para.paragraph_format.space_after = Pt(2)
-            for part, chunk in enumerate(str(value).split("**")):
-                if chunk:
-                    _run(para, chunk, size=Pt(9.5), bold=part % 2 == 1)
+            _inline(para, str(value), size=Pt(9.5))
 
     if widths:
         for row in grid.rows:
@@ -250,7 +268,7 @@ def _caption(document, text):
     para = document.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     para.paragraph_format.space_after = Pt(12)
-    _run(para, text, size=Pt(8.5), italic=True, colour=MUTED)
+    _inline(para, text, size=Pt(8.5), italic=True, colour=MUTED)
     return para
 
 

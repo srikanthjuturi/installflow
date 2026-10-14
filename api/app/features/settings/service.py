@@ -29,6 +29,7 @@ from app.core.deps import Principal
 from app.core.rules import (
     CANCEL_PENALTY_BANDS,
     LIMITS,
+    RULE_KEYS,
     load_rules,
     resolve_rules,
     resolve_rules_with_sources,
@@ -77,30 +78,16 @@ def _to_rupees(paise: int) -> int:
 
 
 def _out(rules: CompanyRules) -> RulesOut:
-    ai_min, ai_max = LIMITS["ai_confidence_threshold"]
-    return RulesOut(
-        penalty=[
-            PenaltyBandOut(band=band, amount=_to_rupees(paise))
-            # zip, not an index: the label list is the authority on how many
-            # bands there are, and the CHECK on the column already guarantees
-            # the stored array matches its length.
-            for band, paise in zip(CANCEL_PENALTY_BANDS, rules.cancel_penalties_paise)
-        ],
-        penaltyCap=_to_rupees(rules.cancel_penalty_cap_paise),
-        bonusAmounts=[_to_rupees(p) for p in rules.bonus_bands_paise],
-        aiThreshold=rules.ai_confidence_threshold,
-        aiThresholdMin=ai_min,
-        aiThresholdMax=ai_max,
-        slaWarnAtPct=rules.sla_warn_at_pct,
-        slotConfirmTimeoutHours=rules.slot_silence_hours,
-        escalationTriggerHours=rules.escalate_hours_before_slot,
-        customerWaitHours=rules.force_close_hours,
-        renotifyGraceMinutes=rules.renotify_grace_minutes,
-        slotReminderMinutes=rules.slot_reminder_minutes,
-        customerNoticeMinutes=rules.customer_notice_minutes,
-        geoRadiusM=rules.geo_radius_m,
-        vendorCreditLimit=_to_rupees(rules.vendor_credit_limit_paise),
-    )
+    """The company row on the wire — through `_effective_out`, deliberately.
+
+    There used to be two copies of this mapping, one for the company and one for
+    a category's resolved set. `vendorCreditLimit` was added to the first and
+    not the second, so every category's rules failed to load: `RulesOut`
+    refused the incomplete dict and the 500 that followed carried no CORS
+    headers, so the console said it could not reach the server. One builder
+    means a field added to `RulesOut` cannot reach one scope and miss the other.
+    """
+    return _effective_out({key: getattr(rules, key) for key in RULE_KEYS})
 
 
 async def get_rules(db: AsyncSession, company_id: uuid.UUID) -> RulesOut:
@@ -252,11 +239,18 @@ def _own_values(row: ProductNodeRules | None) -> NodeRuleValues:
 
 
 def _effective_out(resolved: dict) -> RulesOut:
-    """The resolved dict in the same shape `GET /settings/rules` answers with."""
+    """A full rule set, keyed as `core.rules` keys it, in the wire shape.
+
+    The ONE builder of `RulesOut`: `_out` passes the company row through here,
+    and a category passes its resolved set. See `_out` for why there is one.
+    """
     ai_min, ai_max = LIMITS["ai_confidence_threshold"]
     return RulesOut(
         penalty=[
             PenaltyBandOut(band=band, amount=_to_rupees(paise))
+            # zip, not an index: the label list is the authority on how many
+            # bands there are, and the CHECK on the column already guarantees
+            # the stored array matches its length.
             for band, paise in zip(
                 CANCEL_PENALTY_BANDS, resolved["cancel_penalties_paise"]
             )
@@ -274,6 +268,10 @@ def _effective_out(resolved: dict) -> RulesOut:
         slotReminderMinutes=resolved["slot_reminder_minutes"],
         customerNoticeMinutes=resolved["customer_notice_minutes"],
         geoRadiusM=resolved["geo_radius_m"],
+        # Always the company's figure, even for a category: it is one of
+        # `core.rules._COMPANY_ONLY_KEYS`, so `resolve_rules` never lets a node
+        # override it.
+        vendorCreditLimit=_to_rupees(resolved["vendor_credit_limit_paise"]),
     )
 
 

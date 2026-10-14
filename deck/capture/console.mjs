@@ -16,8 +16,12 @@
  * mean to make is aborted before it reaches the database.
  */
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { createInterceptor } from './lib/guard.mjs';
 import { credentials, env } from './lib/env.mjs';
+import { DECK_ROOT } from './lib/shot.mjs';
+import { spareSerial, SPARE_SERIALS_PER_MODEL } from '../seed/fixtures.mjs';
 
 const SITE = env('DECK_CONSOLE_URL', 'http://localhost:5173');
 
@@ -135,6 +139,10 @@ const ADMIN_SCREENS = [
   // where money crosses the company's boundary.
   ['console-credits', '/credits', 'Tickets are paid for in credits', 'Charged when a ticket is raised, and never refunded'],
   ['console-redemptions', '/redemptions', 'Technicians cashing out', 'Paid by UPI, from the payer’s own phone'],
+  // Shipped 29 September: the third money rail, a vendor paying the company
+  // for the jobs it raised. Its own rail entry, three views of one queue.
+  ['console-vendor-credit', '/vendor-credit', 'What each vendor owes you', 'The line, what is owed, what open tickets commit, and the room left'],
+  ['console-vendor-requests', '/vendor-credit?view=requests', 'A vendor asks for a bigger line', 'Granted in full, in part, or turned down with a reason'],
 ];
 
 async function captureAdmin({ browser, recorder }) {
@@ -198,6 +206,16 @@ async function captureAdmin({ browser, recorder }) {
     }
   }
 
+  // The staff side of the importer — "Import tickets" on the ticket list, a
+  // vendor's sheet uploaded on its behalf — is NOT captured. Its Vendor select
+  // auto-picks a company's only vendor and then shows that vendor's raw UUID in
+  // the trigger: Base UI's `Select.Value` renders the value unless the Root is
+  // given `items`, and none of the console's selects are. A slide of that would
+  // look like a bug because it is one. The vendor's own import screen tells the
+  // same story; capture this again once the select names the vendor. (If you
+  // do, open it in a tab of its own and close that with `runBeforeUnload:
+  // false` — with the importer open, the next `goto` on the same tab timed out.)
+
   await page.goto(`${SITE}/technicians`, { waitUntil: 'domcontentloaded' });
   await settle(page);
   const techHref = await firstLinked(page, '^/technicians/[^/]+$');
@@ -228,6 +246,38 @@ async function captureAdmin({ browser, recorder }) {
       section: 'Ops console',
       title: 'Scan, pay, and say so',
       sub: 'Only the technician can confirm it arrived',
+      kind: 'console',
+      target: page,
+    });
+  }
+
+  // The vendor's payment, opened from the queue. The seed leaves it CLAIMED and
+  // undecided, which is the one state that shows the UTR, the screenshot and
+  // the decision a person has to take.
+  await page.goto(`${SITE}/vendor-credit?view=payments`, { waitUntil: 'domcontentloaded' });
+  await settle(page);
+  const paymentHref = await firstLinked(page, '^/vendor-credit/payments/[^/]+$');
+  const paymentOpened = paymentHref
+    ? await page
+        .goto(`${SITE}${paymentHref}`, { waitUntil: 'domcontentloaded' })
+        .then(() => settle(page))
+        .then(() => true)
+    : await openFirstRow(page, /\/vendor-credit\/payments\/[0-9a-f-]{8,}/);
+  if (paymentOpened) {
+    // `settle` gives skeletons fifteen seconds and then shoots anyway, and this
+    // page fetches the payment AND a signed link to its screenshot — the first
+    // run photographed two grey placeholders. Wait for the reference itself.
+    await page
+      .getByText(/UTR|reference/i)
+      .first()
+      .waitFor({ timeout: 30000 })
+      .catch(() => {});
+    await settle(page);
+    await recorder.record({
+      id: 'console-vendor-payment',
+      section: 'Ops console',
+      title: 'The vendor says it paid',
+      sub: 'Only an admin or national head confirms it arrived',
       kind: 'console',
       target: page,
     });
@@ -331,6 +381,76 @@ async function openModelSerials(page) {
   }
 }
 
+/**
+ * A small sheet that exercises every outcome the dry run reports.
+ *
+ * Three rows that import, quoting serials the seed loaded as SPARES (on the
+ * model, never raised); one naming a category chain the catalogue lacks, so the
+ * preview lists what it would create and a product that would wait for a price;
+ * one pincode no master holds; one serial that is not on its model's list.
+ * Every name and number is invented, like the rest of `seed/fixtures.mjs`.
+ */
+function importSampleCsv() {
+  const due = new Date(Date.now() + 3 * 86400000);
+  const date = [due.getDate(), due.getMonth() + 1, due.getFullYear()]
+    .map((part, i) => (i < 2 ? String(part).padStart(2, '0') : String(part)))
+    .join('-');
+
+  // Leaf order is the CATALOGUE walk: Meridian 43", Meridian 55", Sunview 32", Meridian 1.5T.
+  const spare = (modelIndex, n, prefix) =>
+    spareSerial(prefix, modelIndex * SPARE_SERIALS_PER_MODEL + n);
+  const tv = 'Electronics, Television, Android TV(islastsubcategory)';
+  const row = (cells) =>
+    cells.map((c) => (/[",\n]/.test(c) ? `"${c.replaceAll('"', '""')}"` : c)).join(',');
+
+  return [
+    row(['Serial Number', 'Category', 'Brand', 'Model', 'Service Type', 'Problem Description',
+      'Customer Name', 'Mobile Number', 'Address', 'City', 'State', 'Pin Code', 'Expected Date',
+      'Service Level (hours)', 'Reference']),
+    row([spare(0, 1, 'MRD'), tv, 'Meridian', 'Meridian 43" 4K Smart LED', 'Installation + Demo', '',
+      'Harish Gowda', '+919000000501', '22, Temple Street, Malleshwaram', 'Bengaluru', 'Karnataka',
+      '560003', date, '24', 'CR-PO-4471']),
+    row([spare(0, 2, 'MRD'), tv, 'Meridian', 'Meridian 43" 4K Smart LED', 'Installation + Demo', '',
+      'Rekha Murthy', '+919000000502', '7, Sampige Road, 8th Cross', 'Bengaluru', 'Karnataka',
+      '560003', date, '24', 'CR-PO-4472']),
+    row([spare(2, 1, 'SNV'), tv, 'Sunview', 'Sunview 32" HD Ready', 'Installation + Demo', '',
+      'Joseph Mathew', '+919000000503', '41, Richmond Town, Hosur Road', 'Bengaluru', 'Karnataka',
+      '560025', date, '48', 'CR-PO-4473']),
+    row(['MRDWM0000117', 'Home Appliances, Washing Machine, Front Load(islastsubcategory)', 'Meridian',
+      'Meridian 8 kg Front Load', 'Installation + Demo', '', 'Shalini Rao', '+919000000504',
+      '9, Brigade Gardens, 2nd Main', 'Bengaluru', 'Karnataka', '560025', date, '48', 'CR-PO-4474']),
+    row([spare(0, 3, 'MRD'), tv, 'Meridian', 'Meridian 43" 4K Smart LED', 'Installation + Demo', '',
+      'Gopal Iyengar', '+919000000505', '3, Lake Road', 'Bengaluru', 'Karnataka',
+      '999999', date, '24', 'CR-PO-4475']),
+    row(['MRD99999999', tv, 'Meridian', 'Meridian 55" QLED', 'Installation + Demo', '',
+      'Nandini Kamath', '+919000000506', '18, Infantry Road', 'Bengaluru', 'Karnataka',
+      '560001', date, '24', 'CR-PO-4476']),
+  ].join('\n') + '\n';
+}
+
+/**
+ * Choose the sample sheet on the import screen and wait for the dry run.
+ *
+ * Tolerant, like `openDialog`: a moved control costs this one shot, never the
+ * rest of the portal. The page is already on `/portal/tickets/import`.
+ */
+async function previewImport(page) {
+  try {
+    const file = path.join(DECK_ROOT, 'out', 'import-sample.csv');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, importSampleCsv(), 'utf8');
+
+    await page.goto(`${SITE}/portal/tickets/import`, { waitUntil: 'domcontentloaded' });
+    await settle(page);
+    await page.locator('input[type="file"]').first().setInputFiles(file);
+    await page.getByText('Rows read', { exact: true }).first().waitFor({ timeout: 30000 });
+    await settle(page);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── The same console, as an area manager ──────────────────────────────────────
 
 async function captureAreaManager({ browser, recorder, ticketHref }) {
@@ -399,10 +519,27 @@ async function captureVendor({ browser, recorder }) {
     ['portal-products', '/portal/products', 'The catalogue they can raise against', ''],
     ['portal-brands', '/portal/brands', 'A vendor sells several brands', 'A product carries exactly one, and it waits for your approval'],
     ['portal-users', '/portal/users', 'Their own people', ''],
+    ['portal-credit', '/portal/credit', 'What the vendor owes you', 'Billed when a job closes; raising one reserves its price'],
+    ['portal-import', '/portal/tickets/import', 'Many tickets from one spreadsheet', 'Checked first — nothing is saved until they confirm'],
   ]) {
     await page.goto(`${SITE}${route}`, { waitUntil: 'domcontentloaded' });
     await settle(page);
     await recorder.record({ id, section: 'Vendor portal', title, sub, kind: 'console', target: page });
+  }
+
+  // The importer's dry run. Choosing a file starts the check by itself, and
+  // the check writes nothing — the guard lets exactly that one POST through.
+  if (await previewImport(page)) {
+    await recorder.record({
+      id: 'portal-import-preview',
+      section: 'Vendor portal',
+      title: 'Shown exactly what would happen',
+      sub: 'New categories, products awaiting a price, and every row that cannot be read',
+      kind: 'console',
+      target: page,
+    });
+  } else {
+    process.stdout.write('  ! the import preview did not appear — skipped\n');
   }
 
   await page.goto(`${SITE}/portal/tickets`, { waitUntil: 'domcontentloaded' });
