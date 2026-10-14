@@ -29,11 +29,15 @@ function reasonFor(ticket: Ticket): string {
  * here is a customer nobody is going to — one holding a confirmed slot, or one
  * who never picked a time and whose service level is running out regardless.
  *
- * `missed` is the same card for a slot that has already closed. It keeps both
- * actions — a manager may still want to send somebody late, and a bonus is
- * still what would persuade them — but drops the alarm colouring, because a
- * red border that means "act now" on twenty rows nobody can act on is what
- * teaches people to stop reading the colour.
+ * `missed` is the same card for a slot that has already closed. It keeps
+ * Assign manually — a manager may still want to send somebody late — but drops
+ * the alarm colouring, because a red border that means "act now" on twenty rows
+ * nobody can act on is what teaches people to stop reading the colour.
+ *
+ * The bonus goes once the slot has STARTED (or, with no slot, the SLA has run
+ * out), live half included: the pool never offers a window that has opened, so
+ * the API refuses it rather than put the job back where no technician can see
+ * it. Change the time is the way back to the pool from there.
  */
 export function EscalationCard({
   ticket,
@@ -94,6 +98,9 @@ export function EscalationCard({
   const countdown = noSlot
     ? { ...slotCountdown(ticket.slaDueAt, null, new Date(readAt)), label: "Time to SLA" }
     : slotCountdown(ticket.slotStart, ticket.slotEnd, new Date(readAt));
+  // Mirrors the API's `POOL_WINDOW_CLOSED`: a bonus re-offers the job through
+  // the pool, and the pool stops at the moment the window opens.
+  const canBonus = countdown.state !== "open" && countdown.state !== "closed";
 
   return (
     <Card className={missed ? undefined : "border-l-3 border-l-danger"}>
@@ -182,9 +189,11 @@ export function EscalationCard({
               that records that call, and the one thing that takes a row out of
               the Missed pile for good. */}
           {missed && canReschedule ? renderReschedule() : null}
-          <LinkButton to={`/tickets/${ticket.id}/bonus`} state={origin}>
-            Add bonus &amp; re-notify
-          </LinkButton>
+          {canBonus ? (
+            <LinkButton to={`/tickets/${ticket.id}/bonus`} state={origin}>
+              Add bonus &amp; re-notify
+            </LinkButton>
+          ) : null}
           <LinkButton
             variant="outline"
             to={`/tickets/${ticket.id}/assign`}

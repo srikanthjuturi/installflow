@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Combobox } from "@/components/ui/combobox";
@@ -77,6 +78,31 @@ export function Toolbar<T>({
   tableId,
   pageSize,
 }: ToolbarProps<T>) {
+  // The box shows what was TYPED, never `query` directly. Two lists showed why:
+  // a server-paged list stores the term trimmed (`withSearch`), so binding the
+  // box to `query` swallowed every space — "Rahul Verma" arrived as
+  // "RahulVerma"; and the ticket board keeps its term in the URL, which lands a
+  // render after the keystroke, so the box kept snapping back to the previous
+  // term and "Rahul Verma" arrived as "Rl erma".
+  //
+  // `pending` is every term sent up and not yet echoed back. A `query` found
+  // there is our own keystroke arriving late and leaves the box alone; anything
+  // else — Clear filters, Back, a pasted link — came from outside and replaces
+  // what is typed.
+  const [draft, setDraft] = useState(query);
+  const [pending, setPending] = useState<string[]>([]);
+  const [echoed, setEchoed] = useState(query);
+  if (query !== echoed) {
+    setEchoed(query);
+    const at = pending.indexOf(query.trim());
+    if (at === -1) {
+      setDraft(query);
+      setPending([]);
+    } else {
+      setPending(pending.slice(at + 1));
+    }
+  }
+
   if (!search && filters.length === 0 && !actions && !pageSize) return null;
 
   return (
@@ -91,8 +117,13 @@ export function Toolbar<T>({
           <Search className="size-4 shrink-0 text-ink-3" aria-hidden />
           <input
             type="search"
-            value={query}
-            onChange={(e) => onQuery(e.target.value)}
+            value={draft}
+            onChange={(e) => {
+              const next = e.target.value;
+              setDraft(next);
+              setPending((p) => [...p, next.trim()]);
+              onQuery(next);
+            }}
             placeholder={search.placeholder}
             aria-label={search.placeholder}
             aria-controls={tableId}

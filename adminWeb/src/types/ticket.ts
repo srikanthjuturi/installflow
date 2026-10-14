@@ -391,6 +391,16 @@ export interface CorrectSerialInput {
   reason?: string | null;
 }
 
+/**
+ * Correcting what the technician TYPED on site, when that was the slip.
+ * Manager-only, and the reason is required: it edits evidence.
+ */
+export interface CorrectReadingInput {
+  id: string;
+  observedSerial: string;
+  reason: string;
+}
+
 /** `GET /tickets/:id/serial-check` — would that correction be accepted? */
 export interface SerialCheck {
   /** Also true when the product has no serial list: that is unchecked. */

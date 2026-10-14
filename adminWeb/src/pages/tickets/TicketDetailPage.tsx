@@ -176,6 +176,12 @@ export default function TicketDetailPage({
      `reversing` outlives `reverseOpen` on purpose: clearing the penalty the
      moment the dialog starts to close would blank its sentence mid-animation. */
   const canReversePenalty = isOps && has("penalties.reverse");
+
+  /* Correcting what the technician typed, when the order was right. `isOps`,
+     not `canAct`, like the order correction beside it: a settled ticket's
+     record can still be wrong. `jobs.assign` is the four staff roles; the
+     server adds the Area-Manager floor and refuses a vendor regardless. */
+  const canCorrectReading = isOps && has("jobs.assign");
   const [reverseOpen, setReverseOpen] = useState(false);
   const [reversing, setReversing] = useState<TicketPenalty | null>(null);
   const reversePenalty = useReversePenalty();
@@ -293,7 +299,10 @@ export default function TicketDetailPage({
                     those facts, and it is the reason anybody arriving from the
                     bell opened this ticket. Both surfaces show it — the vendor
                     holds the invoice, so it is often theirs to settle. */}
-                <SerialMismatchBanner ticket={ticket} />
+                <SerialMismatchBanner
+                  ticket={ticket}
+                  canCorrectReading={canCorrectReading}
+                />
               </CardContent>
             </Card>
 

@@ -196,14 +196,21 @@ export function DataTable<T>({
                   filteredEmptyDescription ??
                   "Try a different filter, or clear the search."
                 }
+                // Only when the table holds something of its own to clear.
+                // Empty purely because of `narrowed` — a filter with no control
+                // here — the button reset nothing and the list stayed empty, so
+                // it is left out; whoever narrowed the table offers the way
+                // back (the ticket board's NarrowedNotice, above it).
                 action={
-                  <button
-                    type="button"
-                    onClick={t.clear}
-                    className="text-sm font-semibold text-brand-400 hover:text-brand-500"
-                  >
-                    Clear filters
-                  </button>
+                  t.isFiltered ? (
+                    <button
+                      type="button"
+                      onClick={t.clear}
+                      className="text-sm font-semibold text-brand-400 hover:text-brand-500"
+                    >
+                      Clear filters
+                    </button>
+                  ) : undefined
                 }
               />
             ) : (

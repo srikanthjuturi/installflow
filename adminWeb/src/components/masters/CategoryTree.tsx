@@ -1,4 +1,10 @@
-import { ImageOff, MoreHorizontal, Plus, SlidersHorizontal } from "lucide-react";
+import {
+  ChevronDown,
+  ImageOff,
+  MoreHorizontal,
+  Plus,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -107,18 +113,38 @@ function RulesPill() {
   );
 }
 
+/**
+ * A node's own menu — a CATEGORY's actions, never a product's. The trigger
+ * stays an icon (one per row, and the rows are many), but it is named for what
+ * it acts on, both to a screen reader and on hover: QA read the ⋯ beside a
+ * leaf's products as the place a product's actions live. A product's actions
+ * are on the product chip's own labelled "Actions" button below.
+ */
 function RowMenu({
   label,
+  tooltip,
   items,
 }: {
+  /** The accessible name, which carries the node's name. */
   label: string;
+  /** The hover tooltip — short, because the row already shows the name. */
+  tooltip: string;
   items: { label: string; onSelect: () => void; danger?: boolean }[];
 }) {
+  // A vendor's menu can come back empty (a category it did not create, at the
+  // deepest level). A labelled button that opens nothing is worse than none.
+  if (items.length === 0) return null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={label} />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            title={tooltip}
+          />
         }
       >
         <MoreHorizontal aria-hidden />
@@ -223,13 +249,15 @@ function RootNode({
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Rules for ${node.name}`}
+                title="Rules for this category"
                 onClick={() => onOpenRules(node)}
               >
                 <SlidersHorizontal aria-hidden />
               </Button>
             ) : null}
             <RowMenu
-              label={`Actions for ${node.name}`}
+              label={`Category actions for ${node.name}`}
+              tooltip="Category actions"
               items={menuFor ? menuFor(node) : nodeMenuItems(node, onAction, onOpenRules)}
             />
           </div>
@@ -342,7 +370,8 @@ function ChildNode({
                 </Button>
               ) : null}
               <RowMenu
-                label={`Actions for ${node.name}`}
+                label={`Category actions for ${node.name}`}
+                tooltip="Category actions"
                 items={menuFor ? menuFor(node) : nodeMenuItems(node, onAction, onOpenRules)}
               />
             </div>
@@ -471,7 +500,14 @@ function ModelChip({
           <ImageOff className="size-3" />
         )}
       </span>
-      <span className={cn(model.isActive ? undefined : "line-through")}>
+      {/* `wrap-anywhere` so one long unbroken model code wraps inside the chip
+          instead of pushing it past the row's edge. */}
+      <span
+        className={cn(
+          "min-w-0 wrap-anywhere",
+          model.isActive ? undefined : "line-through"
+        )}
+      >
         {model.name}
       </span>
       {/* The brand is what a technician reads first on a job card, so it earns
@@ -532,6 +568,19 @@ function ModelChip({
     );
   }
 
+  /* The whole chip opens the menu, as it always did, but it now SAYS so: a
+     labelled "Actions ▾" end on every chip, edged like a button. QA could not
+     tell the chip was clickable and took the category's ⋯ for the product's.
+
+     One labelled control per product rather than visible Edit and Remove
+     buttons on each: a leaf holds five or six products, so that would be a
+     dozen extra buttons a row — half of them red — and Remove stays one
+     deliberate step away. The menu's two items already read exactly as QA
+     asked: "Edit product" and "Remove product".
+
+     The accessible name is the chip's own text — product, brand, size, any
+     Pending badge — ending in "Actions", so a screen reader hears which product
+     the menu is for and that it is a menu (the trigger sets aria-haspopup). */
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -539,17 +588,27 @@ function ModelChip({
           <button
             type="button"
             title={title}
-            className="flex items-center gap-1.5 rounded-md bg-surface-3 px-2 py-1.25 text-xs font-medium text-ink-2 transition-colors hover:bg-surface-2 focus-visible:ring-3 focus-visible:ring-brand-500/40"
+            className="group/chip flex max-w-full items-stretch overflow-hidden rounded-md border border-line bg-surface-3 text-left text-xs font-medium text-ink-2 transition-colors hover:bg-surface-2 focus-visible:ring-3 focus-visible:ring-brand-500/40 aria-expanded:bg-surface-2"
           />
         }
       >
-        {body}
+        <span className="flex min-w-0 items-center gap-1.5 px-2 py-1">
+          {body}
+        </span>
+        <span className="flex shrink-0 items-center gap-0.5 border-l border-line px-2 font-semibold whitespace-nowrap text-brand-500">
+          Actions
+          <ChevronDown
+            className="size-3 transition-transform group-aria-expanded/chip:rotate-180"
+            aria-hidden
+          />
+        </span>
       </DropdownMenuTrigger>
       {/* Same anchor-width trap as `RowMenu` above, and worse here: the trigger
           is the chip itself, so the menu was as narrow as the product name
-          happened to be. */}
+          happened to be. Aligned to the chip's END, under the "Actions" label
+          somebody just clicked, not under the start of a long product name. */}
       <DropdownMenuContent
-        align="start"
+        align="end"
         className="w-auto min-w-44 max-w-[calc(100vw-2rem)]"
       >
         <DropdownMenuItem

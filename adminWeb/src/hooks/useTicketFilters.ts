@@ -167,7 +167,7 @@ export function useTicketFilters() {
    *
    * Callers hand back a copy of `params` with a field or two replaced, and
    * "Clear filters" fires two of them in the same tick — one resetting the
-   * search box, one the status pill, each still carrying the other's stale
+   * search box, one the Status dropdown, each still carrying the other's stale
    * value. Diffing means each write touches only its own key.
    */
   const setParams = useCallback(
@@ -201,10 +201,10 @@ export function useTicketFilters() {
    * contract; a second list of key names in a component is the list that drifts
    * when one is added.
    *
-   * A MULTI status goes with them and a single one stays. The chips can show
-   * one status and cannot show a set, so a set is exactly as invisible as the
-   * rest of this — while a lone "Slot Pending" is on screen, selected, and
-   * clearing it would undo something the reader can see themselves.
+   * A MULTI status goes with them and a single one stays. The dropdown picks
+   * one status and cannot pick a set, so a set, like the rest of this, can only
+   * have arrived from somewhere else — while a lone "Slot Pending" is a choice the reader
+   * can see and make themselves, and clearing it would undo it.
    */
   const clearNarrowing = useCallback(() => {
     const url = new URLSearchParams(searchParams);

@@ -7,6 +7,7 @@ import {
 import {
   assignTechnician,
   checkTicketSerial,
+  correctTicketReading,
   correctTicketSerial,
   createTicket,
   getIntakeStatus,
@@ -238,6 +239,19 @@ export function useCorrectTicketSerial() {
     onSuccess: (ticket) => {
       // The response IS the updated ticket, so seed the detail rather than
       // putting a spinner between the correction and the screen showing it.
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+    },
+  });
+}
+
+/** Correct the technician's typed reading. Same cache handling as above. */
+export function useCorrectTicketReading() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't correct the reading" },
+    mutationFn: correctTicketReading,
+    onSuccess: (ticket) => {
       queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
     },

@@ -30,9 +30,13 @@ export interface LedgerPool {
    * back.
    */
   balancePaise: number;
-  /** Positive. The debit sign belongs on the entry, not on the total. */
+  /** Positive, and NET of reversals. The sign belongs on the entry, not here. */
   penaltiesCollectedPaise: number;
-  /** Entries, not tickets — a job cancelled twice collected twice. */
+  /**
+   * Entries, not tickets — a job cancelled twice collected twice. Only the
+   * penalties still standing: a reversed one drops out of the count exactly as
+   * its money drops out of the sum above.
+   */
   cancellations: number;
   bonusesPaidPaise: number;
   pickups: number;
