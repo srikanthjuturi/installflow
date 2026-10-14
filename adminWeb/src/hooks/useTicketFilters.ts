@@ -25,9 +25,15 @@ const isStatusSet = (v: string | null): boolean =>
     );
 
 const ALL = "All";
-/** Triage order — the same key the list endpoint falls back to. */
-const DEFAULT_SORT_BY = "slaState";
-const DEFAULT_SORT_DIR = "asc";
+
+/**
+ * No default sort on this side. Until somebody clicks a column header the list
+ * sends no `sortBy` at all, and the ORDER is the API's to decide — newest
+ * first, in `tickets.service.list_tickets`. Holding a default here too would
+ * be a second copy of that decision, and the one sent would always win.
+ */
+const isSortDir = (v: string | null): v is "asc" | "desc" =>
+  v === "asc" || v === "desc";
 
 /**
  * Narrowing that arrives from the dashboard rather than from this screen's own
@@ -84,8 +90,9 @@ function fields(p: ListParams): Field[] {
   const status = p.filters?.status ?? ALL;
   const page = p.page ?? 1;
   const limit = p.limit ?? DEFAULT_PAGE_SIZE;
-  const sortBy = p.sortBy ?? DEFAULT_SORT_BY;
-  const sortDir = p.sortDir ?? DEFAULT_SORT_DIR;
+  // Empty means "the server's order" — see `isSortDir` above.
+  const sortBy = p.sortBy ?? "";
+  const sortDir = p.sortDir ?? "";
   return [
     { key: "q", value: search, isDefault: search.trim() === "" },
     { key: "status", value: status, isDefault: status === ALL },
@@ -95,8 +102,8 @@ function fields(p: ListParams): Field[] {
       value: String(limit),
       isDefault: limit === DEFAULT_PAGE_SIZE,
     },
-    { key: "sortBy", value: sortBy, isDefault: sortBy === DEFAULT_SORT_BY },
-    { key: "sortDir", value: sortDir, isDefault: sortDir === DEFAULT_SORT_DIR },
+    { key: "sortBy", value: sortBy, isDefault: sortBy === "" },
+    { key: "sortDir", value: sortDir, isDefault: sortDir === "" },
   ];
 }
 
@@ -123,8 +130,12 @@ export function useTicketFilters() {
     1,
     Number(searchParams.get("limit")) || DEFAULT_PAGE_SIZE
   );
-  const sortBy = searchParams.get("sortBy") || DEFAULT_SORT_BY;
-  const sortDir = searchParams.get("sortDir") === "desc" ? "desc" : "asc";
+  // Only what a header click put in the URL. A direction with no column to
+  // apply to is dropped rather than sent on its own.
+  const sortBy = searchParams.get("sortBy") || undefined;
+  const sortDirParam = searchParams.get("sortDir");
+  const sortDir =
+    sortBy && isSortDir(sortDirParam) ? sortDirParam : undefined;
 
   // Serialised, so the memo below depends on a value rather than on a fresh
   // object identity every render.

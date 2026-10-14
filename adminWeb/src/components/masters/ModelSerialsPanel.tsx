@@ -136,29 +136,28 @@ export function ModelSerialsPanel({
             <Plus data-icon="inline-start" />
             Add manually
           </Button>
-          <div className="flex flex-col items-start gap-0.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setImporting(true)}
-            >
-              <FileSpreadsheet data-icon="inline-start" />
-              Import spreadsheet
-            </Button>
-            <button
-              type="button"
-              onClick={() => {
-                void downloadSerialTemplate().catch(() =>
-                  toast.add({ title: "Couldn't download the template" })
-                );
-              }}
-              className="inline-flex items-center gap-1 text-[11px] text-ink-3 underline-offset-2 hover:text-ink hover:underline"
-            >
-              <Download className="size-3" aria-hidden />
-              Download template
-            </button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setImporting(true)}
+          >
+            <FileSpreadsheet data-icon="inline-start" />
+            Import spreadsheet
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void downloadSerialTemplate().catch(() =>
+                toast.add({ title: "Couldn't download the template" })
+              );
+            }}
+          >
+            <Download data-icon="inline-start" />
+            Download template
+          </Button>
         </div>
       </div>
 
