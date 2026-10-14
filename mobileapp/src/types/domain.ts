@@ -295,8 +295,10 @@ export interface Job {
   /** They answered and said the work is NOT finished. */
   customerRefused: boolean;
   /**
-   * Hours until the committed slot; negative means past. Single source for
-   * status badges, pool filtering and penalty bands.
+   * Hours until the committed slot, as of when the job was FETCHED; negative
+   * means past. Callers now only ask whether it is null. The status badge reads
+   * the slot instants at render instead (`jobBadge`), because this goes stale
+   * in the cache, and the penalty band comes from the server.
    *
    * NULL when no time has been agreed — a job can be accepted before the
    * customer picks one. Null rather than a sentinel number: `Infinity` and `0`

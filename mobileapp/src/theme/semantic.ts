@@ -103,6 +103,9 @@ export const color = {
   statusInProgress: { fg: palette.primary[500], bg: palette.primary[50] },
   statusCompleted: { fg: palette.success[500], bg: palette.success[100] },
   statusCancelled: { fg: palette.danger[500], bg: palette.danger[100] },
+  /** Still theirs, never started, and the window has shut — the one state on
+   *  Upcoming that needs doing something about rather than waiting for. */
+  statusSlotClosed: { fg: palette.danger[500], bg: palette.danger[100] },
 
   // ── money ───────────────────────────────────────────────────────────────
   credit: palette.success[500],

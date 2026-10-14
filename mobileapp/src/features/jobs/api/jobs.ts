@@ -183,12 +183,12 @@ function toJobStatus(status: string): JobStatus {
 const POOL_LIMIT = 100;
 
 /**
- * Derived here rather than sent, and recomputed on every read.
+ * Derived here rather than sent.
  *
- * It drives the status badge and the penalty band, so a value cached at fetch
- * time would drift: a job that was "Upcoming" when the list loaded is
- * "Starting soon" twenty minutes later, and the penalty for cancelling it has
- * changed band.
+ * Computed when the list is fetched, so it is only as fresh as the cache. That
+ * is why nothing time-sensitive reads its value any more: the status badge
+ * compares the slot instants with the clock at render (`jobBadge`), and the
+ * penalty band comes from the server.
  *
  * NULL for a job with no agreed time, and null rather than a number on purpose.
  * Returning `Infinity` or `0` would let every `<=` comparison downstream keep

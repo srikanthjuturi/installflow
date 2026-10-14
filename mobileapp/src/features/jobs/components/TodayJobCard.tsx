@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { Text } from '@/components/ui';
+import { jobBadge, Text } from '@/components/ui';
 import { jobSlotShort } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -11,16 +11,6 @@ import type { Job } from '@/types/domain';
 export interface TodayJobCardProps {
   job: Job;
   onPress: () => void;
-}
-
-function badge(job: Job) {
-  if (job.status === 'completed') return { label: 'completed', ...color.statusCompleted } as const;
-  if (job.status === 'inprogress') return { label: 'inProgress', ...color.statusInProgress } as const;
-  // Ahead of the =4h test: `null <= 4` is TRUE in JavaScript, so a job with no
-  // agreed time would otherwise announce itself as "Starting soon".
-  if (job.hoursToSlot === null) return { label: 'awaitingTime', ...color.statusUpcoming } as const;
-  if (job.hoursToSlot <= 4) return { label: 'startingSoon', ...color.statusStartingSoon } as const;
-  return { label: 'upcoming', ...color.statusUpcoming } as const;
 }
 
 /**
@@ -33,7 +23,7 @@ function badge(job: Job) {
  */
 export function TodayJobCard({ job, onPress }: TodayJobCardProps) {
   const { t } = useTranslation();
-  const status = badge(job);
+  const status = jobBadge(job);
 
   return (
     <Pressable onPress={onPress} accessibilityRole="button">
