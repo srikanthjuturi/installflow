@@ -134,6 +134,11 @@ TENANT_LINKS = [
     ("tickets", "model_id", "product_models"),
     ("tickets", "technician_id", "technician_profiles"),
     ("ticket_events", "ticket_id", "tickets"),
+    # A technician's pass on an offer. One pointing across a tenant boundary
+    # would hide one company's job from another company's technician — or,
+    # read the other way, confirm that a ticket id exists somewhere else.
+    ("job_passes", "ticket_id", "tickets"),
+    ("job_passes", "technician_id", "technician_profiles"),
     # Proof photographs — the inside of a customer's home. Of everything in
     # this list, the row that would hurt most to leak across a tenant boundary.
     ("ticket_proofs", "ticket_id", "tickets"),

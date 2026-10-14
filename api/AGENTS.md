@@ -431,6 +431,10 @@ Eight things about it are load-bearing:
   for the visit and were the one party a move never reached. A code sent to a number that is also
   the technician's own is allowed, recorded on the trail and rung to the area manager: refusing
   would punish a technician installing at their own address with a cancellation penalty.
+  Only the technician's door with a code that reached somebody else may SAY the customer
+  confirmed — the `rescheduled` bell, the trail title and `slot_confirmed_at` all check
+  `core.reschedule.is_own_number`, and the warning bell asks a manager to confirm with the
+  customer instead (QA bug 8 read "the customer did not confirm it" as a false alarm).
 - **The customer's own link is a third door, and it books through the same mover.**
   `confirm_slot` calls `move_slot(customer_agreed=True)`: a first booking by the one party whose word
   `slot_confirmed_at` records. It used to be an unguarded write of its own. That raced a technician
@@ -883,15 +887,33 @@ every vendor's intake breaking on deploy. `ProductModelOut.serialCount` carries 
 for the same reason: zero is a *state*, not an empty list, and the console has to be able to say
 "this model is not checked" without somebody opening it.
 
+**But unchecked is not a free pass for a serial the master gives to ANOTHER product.** QA raised a
+washing machine's serial against a switch board with no serials, under the form's own mismatch
+notice, and it went through. So a miss on the chosen model now asks first whether one of the
+**same vendor's live products** carries the number (`tickets.serial_owners`), and if so refuses
+with 400 `SERIAL_ON_OTHER_PRODUCT`, naming it — whether or not the chosen model has serials. The
+older refusal now carries a code too, `SERIAL_UNKNOWN`; both are `_serial_refusal`'s
+`SerialRefusal(code, message)`, and the importer puts the same pair on a rejected row.
+
+- **Same vendor only — the oracle guard.** Pinned in the query: a serial on a competitor's product
+  behaves exactly as an unknown serial does, so intake can never confirm that somebody else's
+  number exists. Staff correcting a ticket are measured against the TICKET's vendor, not theirs.
+- **Live only** — approved, active, not deleted, under a live category: the set
+  `masters.lookup_serial` offers. So the form can always show this refusal before submit, and its
+  "Use …" offer always lands on something intake accepts. A paused or retired product's serials
+  block nothing.
+- **A serial on the chosen model is fine whatever else carries it** — one serial on two products
+  is legal, and a hit on the chosen one returns before the other-product probe runs.
+
 Three things about it are load-bearing:
 
 - **A serial is never CONSUMED.** Raising a ticket spends nothing here and marks nothing used.
   `tickets.serial_number` is deliberately not unique — a service call on a unit installed months
   ago repeats its serial — so a row has to keep matching for the life of the unit. Treating these
   as stock to draw down would break the second visit to every customer.
-- **The check is two queries, and the order is the point.** An index probe for the typed serial
-  answers the common case; only a MISS pays for the `EXISTS` that tells "not loaded, allow" from
-  "loaded, refuse". Counting the model's serials up front is the obvious implementation and the
+- **The order of the queries is the point.** An index probe for the typed serial answers the
+  common case; only a MISS pays for the other-product probe and then the `EXISTS` that tells "not
+  loaded, allow" from "loaded, refuse". Counting the model's serials up front is the obvious implementation and the
   wrong one — it reads thousands of rows to answer what the unique index already answers.
 - **`correct_serial` runs the same guard**, and without it the whole thing is bypassable: raise the
   ticket quoting a serial the model covers, then `PATCH /tickets/{id}/serial` to anything. That
@@ -903,6 +925,14 @@ Three things about it are load-bearing:
   dialog's one-click suggestion is the number the technician read, which is exactly the number
   nobody loaded. Exact match on the ticket's own model only, so it is not the prefix oracle
   `lookup_serial` has to guard.
+- **When the TECHNICIAN mistyped, `PATCH /tickets/{id}/observed-serial` corrects the reading.**
+  `correct_serial` fixes only the order, so a right order and a wrong reading had no way out: the
+  right number was already the order's (nothing to save) and the typo was refused by the list. This
+  one edits evidence, so it is Area Manager and above with `jobs.assign` — never the vendor — the
+  reason is required, the old value goes into a `serial_corrected` event (one kind for both
+  corrections; the note says which, so no migration), and the serial photo is what the manager
+  reads the number from. Deliberately NOT checked against the serial list: a reading says what is
+  on the unit, and an unknown unit is what a mismatch exists to surface.
 
 Staff load them (`masters.edit` + `IsStaff`), by hand or from a spreadsheet. The importer is
 deliberately the same shape as `features/geo`'s — template, dry run, per-row rejects that never
@@ -1353,7 +1383,8 @@ ticket lands `Slot Pending` and the customer picks.
 **Shape rules are not restated.** Each row builds a real `TicketCreateRequest` with placeholder
 ids and catches `ValidationError`, so the description rule, the service type, the service level,
 the phone and the pincode shape cannot drift from the form. The two that need a database row reuse
-the single-ticket path's own sentences through `service.serial_refusal_text` and
+the single-ticket path's own sentences through `service.serial_refusal_text` (plus
+`serial_elsewhere_text`, fed by the same `serial_owners` query) and
 `service.pincode_refusal_text`. ⚠ The **past-date rule is the exception and has to be**: it is not
 in the schema — `create_ticket` applies it separately, because "has this day gone" needs a clock.
 `today_ist` is computed once for the whole file, so an upload straddling midnight judges every row
@@ -1491,6 +1522,20 @@ omits it keeps seeing everything; defaulting to `intake` would have silently emp
 maintenance screens the day it shipped. It also fixed a latent bug — pruning used to trigger on
 `vendor_id is not None`, so `_one_root` dropped a vendor's brand-new empty category and answered a
 committed write with a 404.
+
+**For a VENDOR, `catalogue` is its own work, and `categories` is where it files new things.**
+Keeping empty branches also kept every OTHER branch, so a brand-new vendor's "My products" opened
+onto the company's whole tree — including sub-categories other vendors had created, whose names are
+often their product line (*Samsung Washing Machines*). A vendor's `catalogue` now keeps a node that
+holds one of its products, a node it created (`_vendor_user_ids`), and the ancestors of either —
+nothing else. Every portal write still echoes cleanly: each touches a node that rule keeps. The
+third purpose, `categories`, is the company's categories with no products at all (the model query
+is not even run); the portal's "Add product" / "Add category" pickers read it, because the
+category a vendor needs is usually one it has nothing in yet. ⚠ That picker still shows category
+NAMES other vendors created — categories are company-wide and names are unique among siblings, so
+hiding them would answer a vendor's same-named category with a 409 about a row it cannot see. A
+vendor account whose membership names no vendor gets `[]` from `get_tree` and from
+`lookup_serial`; both used to skip the pin and read it as "unrestricted".
 
 **Two audience costs, both measured and both accepted.** Neither is a bug to be found later:
 
@@ -1969,23 +2014,156 @@ Two rules the templates themselves impose, both already paid for:
   "…and the slot is {{4}}", and {{4}} was fed `hours_to()`, which appends "to slot" — so every
   escalation Meta ever delivered said *"the slot is 2h 40m to slot"*. Fixed at the CALLER:
   `core/escalation` now splits `time_to_slot` (bare span) from `hours_to` (suffixed, for a bell
-  title that supplies no suffix of its own).
+  title that supplies no suffix of its own). Since `job_escalation_v2`, neither reaches WhatsApp:
+  the call site passes minutes and `build_escalation_payload` words them for both bodies.
 - **A body may not start or end with a variable** — subcode `2388299`. It cost a submission on the
   feedback template, which is why `job_feedback` opens with "Your" and `job_escalation` with
   "Escalation" rather than with `{{1}}`.
 
 Currently diverging on purpose: the registered `job_escalation` body says "reassign it", which is
 wrong — nothing was ever assigned, so there is nothing to RE-assign, and the word sends a manager
-hunting for a technician to replace. The fallback says "assign a technician". Correct the
-registered body with the next template change, not on its own.
+hunting for a technician to replace. Its fallback now carries the `job_escalation_v2` wording
+below, which says "assign a technician"; the approved v1 body keeps sending until v2 is approved
+and named in `.env`.
 
-### `technician_assigned` is NOT registered yet
+And `job_accepted_manager`: its fallback already carries the v2 wording below, while the approved
+v1 body keeps sending until v2 is approved and named in `.env`.
 
-`WHATSAPP_TECHNICIAN_TEMPLATE_NAME` is empty in both `.env` files, so
-`sweep_customer_notice` currently falls back to free-form text and reaches nobody outside the
-24-hour window. Everything else about the feature works — the sweep runs, and the ticket's
-`customer_notified` event records Meta's refusal — so what is missing is one UTILITY submission,
-not code. The body to register, five parameters, opening with "Your" for subcode `2388299`:
+### `job_accepted_manager_v2` is APPROVED and configured — the manager's "job accepted" message, reworded
+
+QA (bug 9, 2026-09-28) found the area manager's message hard to read:
+
+> Hello Sneha The Manager, one of the jobs in your area has just been accepted.
+> Technician1 has taken TC-INST-0005 in Ranga Reddy 500019, for Mon 28 Sep, 7:00–9:00 PM.
+> Nothing needs doing. Open the Testing Company console if you want the full ticket, the
+> customer's details, or to reassign it.
+
+"Has taken" and "Nothing needs doing" are idiom, and the ticket, the area and the time run
+together in one sentence. Those words are the APPROVED `job_accepted_manager` body, so they can only
+change through Meta. Editing that template in place would also move it from four parameters to six
+on whatever day Meta approves the edit, and every send between then and a deploy would fail with
+`132000` (wrong number of values). Hence a **new name**, `job_accepted_manager_v2`, and a new setting,
+`WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME`, which wins over the old one when set. Until then
+nothing changes for anybody except one parameter: v1's `{{4}}` now reads "ticket TC-INST-0005 in
+Ranga Reddy 500019, with the visit on Mon 28 Sep, 7:00–9:00 PM".
+
+Submitted 2026-10-13 and approved by Meta as UTILITY the same day; the setting below is in all three
+env files, and one real send to an allowlisted number went through. What was submitted, for a
+resubmission under a new name — WhatsApp Manager → Message templates → Create, category **UTILITY**, name
+**`job_accepted_manager_v2`**, language **English (US) `en_US`** (the same as
+`WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_LANG`), no header, no footer, no buttons. Body, line breaks
+exactly as shown:
+
+```
+Hello {{1}}, a technician has accepted a job in your area. No action is needed from you.
+
+Ticket: {{2}}
+Technician: {{3}}
+Area: {{4}}
+Visit: {{5}}
+
+To see the full ticket and the customer's details, or to reassign the job, open the {{6}} console.
+```
+
+| | Parameter | Sample value for Meta |
+|---|---|---|
+| `{{1}}` | the manager's full name | `Sneha Rao` |
+| `{{2}}` | ticket code | `TC-INST-0005` |
+| `{{3}}` | technician's name | `Ravi Kumar` |
+| `{{4}}` | ticket city and pincode | `Ranga Reddy 500019` |
+| `{{5}}` | the visit window, or `Not fixed yet — the customer has not picked a time` | `Mon 28 Sep, 7:00–9:00 PM` |
+| `{{6}}` | the company, from `brand.company_name` | `GreenTech Demo Services` |
+
+Six variables in a body is how the FIRST `job_accepted_manager` submission was rejected (subcode
+`2388293`, too many variables for the words). A labelled line needs its own variable — a parameter
+may not hold a line break — so v2 pays in fixed words instead: 38, over six per variable, more than
+the approved `job_accepted` (28 for five). It opens with "Hello" and ends on "console." for
+`2388299`. If Meta still refuses on `2388293`, drop the `Area:` line and fold the area into `{{2}}`
+(`TC-INST-0005, Ranga Reddy 500019`) — that is a code change in `build_job_accepted_manager_payload`
+too, because the parameter list changes.
+
+When Meta approves: set `WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME=job_accepted_manager_v2` in
+`api/.env`, `api/.env.dev-deploy` and `api/.env.production`, deploy, and send one to an allowlisted number (a wrong
+parameter count is `132000`, and only a real send finds it). Leave the v1 name set — it is the
+fallback if v2 is ever paused — and do not set v2 before approval: `publish.py` refuses a
+configured name Meta has not approved, and a send under it fails with `132001`.
+
+### `job_escalation_v2` is APPROVED and configured — the area manager's escalation, reworded
+
+The approved `job_escalation` body makes a manager decode it:
+
+> Escalation from GreenTech Demo Services: job TC-INST-0005 at Hyderabad 500019 still has no
+> technician and the slot is in 2h 40m.
+>
+> Open the ops console to reassign it or add a bonus.
+
+"Escalation from X:" is our queue's word, not theirs; "the slot is in 2h 40m" reads like code, and
+read "in 0h 00m" once a slot had started; "the ops console" is internal wording where the
+white-label rule wants the company's name; and "reassign" is wrong, because nothing was ever
+assigned. Same remedy as `job_accepted_manager_v2`, for the same reason — four parameters become
+five, so an in-place edit would fail every send with `132000` from the day Meta approved it until a
+deploy: a **new name**, `job_escalation_v2`, behind a new setting,
+`WHATSAPP_ESCALATION_V2_TEMPLATE_NAME`, which wins over `WHATSAPP_ESCALATION_TEMPLATE_NAME` when
+set. Until then only v1's `{{4}}` changes: "in 2 hours 40 minutes", "already 20 minutes past its
+start time", or "not set yet — the customer has not picked a time".
+
+Submitted 2026-10-13 and approved by Meta as UTILITY the same day; the setting below is in all three
+env files, and one real send to an allowlisted number went through. What was submitted, for a
+resubmission under a new name — WhatsApp Manager → Message templates → Create, category **UTILITY**, name
+**`job_escalation_v2`**, language **English (US) `en_US`** (the same as
+`WHATSAPP_ESCALATION_TEMPLATE_LANG`), no header, no footer, no buttons. Body, line breaks exactly as
+shown:
+
+```
+Action needed: a job in your area has no technician, and it is due soon.
+
+Ticket: {{1}}
+Area: {{2}}
+Visit: {{3}}
+Time left: {{4}}
+
+Please assign a technician, add a bonus or change the visit time in the {{5}} console.
+```
+
+| | Parameter | Sample value for Meta |
+|---|---|---|
+| `{{1}}` | ticket code | `TC-INST-0005` |
+| `{{2}}` | ticket city and pincode | `Ranga Reddy 500019` |
+| `{{3}}` | the visit window, or `Not fixed yet — the customer has not picked a time` | `Mon 28 Sep, 7:00–9:00 PM` |
+| `{{4}}` | time left to the slot, or with no slot to the SLA; `None — …` once it has passed | `2 hours 40 minutes until the visit starts` |
+| `{{5}}` | the company, from `brand.company_name` | `GreenTech Demo Services` |
+
+`{{4}}` is worded in `build_escalation_payload` from the minutes `core.escalation` passes, rounded
+toward urgency (time left down, lateness up): `2 hours 40 minutes until the visit starts`,
+`Less than a minute until the visit starts`, `None — the visit was due to start 20 minutes ago`,
+and the same three against `the SLA deadline` for a ticket with no slot. The "None" shapes are
+real: a technician giving a job back after its window opened escalates it (`jobs.service.cancel`).
+That case is why the closing sentence names three ways out rather than two: for that job the
+console refuses a bonus (`POOL_WINDOW_CLOSED`), but assigning a technician and changing the visit
+time — the queue's Assign manually and Change the time — both still work, so the sentence stays
+true for every message it closes.
+
+Five variables against 35 fixed words — seven per variable, above `job_accepted_manager_v2` (38 for
+six) and the approved v1 itself (23 for four) — for subcode `2388293`.
+It opens with "Action needed" and ends on "console." for `2388299`. If Meta still refuses on
+`2388293`, fold the area into `{{1}}` (`TC-INST-0005, Ranga Reddy 500019`) and drop the `Area:`
+line — a code change in `build_escalation_payload` too, because the parameter list changes.
+
+When Meta approves: set `WHATSAPP_ESCALATION_V2_TEMPLATE_NAME=job_escalation_v2` in `api/.env`,
+`api/.env.dev-deploy` and `api/.env.production`, deploy, and send one to an allowlisted number (a
+wrong parameter count is `132000`, and only a real send finds it). Leave the v1 name set — it is the
+fallback if v2 is ever paused — and do not set v2 before approval: `publish.py` refuses a
+configured name Meta has not approved (every `WHATSAPP_*_TEMPLATE_NAME` that is set, on the `prod`
+target), and a send under it fails with `132001`.
+
+### `technician_assigned` is configured
+
+`WHATSAPP_TECHNICIAN_TEMPLATE_NAME=technician_assigned` is set in `api/.env`, `api/.env.dev-deploy`
+and `api/.env.production`, so `sweep_customer_notice` sends it as a template. This section used to
+say it was not registered and empty in both files; that was true when it was written and has not
+been since. Meta's status was not re-checked when this was corrected — `publish.py` refuses a
+production deploy naming a template Meta has not approved, and the `curl` under `slot_rescheduled`
+below answers it directly. The body, five parameters, opening with "Your" for subcode `2388299`:
 
 ```
 Your {{2}} visit from {{1}} is today at {{3}}.

@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.coverage import technicians_covering
+from app.core.job_passes import technicians_who_passed
 from app.core.push_text import PushText, normalize_language
 from app.models.product import ProductNode
 from app.models.push_token import PushToken
@@ -316,6 +317,11 @@ async def announce_pool_job(
         node_path_ids=node_path_ids,
         slot_start=slot_start,
     )
+    # Minus whoever passed this job on the terms it has now: their pool hides
+    # it (`core.job_passes`), so a push would open onto nothing. Matters when a
+    # job comes back unchanged — its taker cancelled, or the same bonus again.
+    passed = await technicians_who_passed(db, company_id=company_id, ticket_id=ticket_id)
+    technician_ids = [t for t in technician_ids if t not in passed]
     if not technician_ids:
         return 0
 

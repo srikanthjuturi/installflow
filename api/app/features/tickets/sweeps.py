@@ -83,10 +83,11 @@ import datetime
 import logging
 import uuid
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
+from app.core.coverage import offer_deadline, still_offerable
 from app.core.escalation import (
     escalate,
     hours_to,
@@ -307,6 +308,44 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
     `jobs.service.accept` in the WHERE clause: a technician who accepted between
     the SELECT and the UPDATE wins, `rowcount` is 0, and nothing is recorded
     about a job that is no longer empty.
+
+    ## A slot that has STARTED with nobody on it is escalated too
+
+    This used to stop at the deadline — "already started is not at risk, it is
+    missed" — and that left a hole with no bottom. A ticket can still be `New`
+    and unclaimed when its slot opens: a manager funds a bonus twenty minutes
+    before the slot, `renotify_grace_minutes` (30 by default, up to 720) holds
+    this sweep off until after the start, and nobody takes it. From the moment
+    the slot opens the pool cannot offer it (`coverage.still_offerable`), the
+    at-risk arm never matches a deadline that has passed, and the escalation
+    queue only lists `Escalated` — so it sat in `New` for ever, in nobody's pool
+    and nobody's queue. A ticker that did not run through a job's whole window
+    left the same hole.
+
+    So the second arm below takes any unclaimed ticket WITH a slot that the pool
+    can no longer offer straight to `Escalated`: the queue's live half while the
+    window is open and somebody can still be assigned, its missed half once it
+    shuts, where Change the time is the exit. It is not an apology any more —
+    both halves now carry a remedy. No grace on this arm: the grace keeps a job
+    in a pool that can still show it, and this one cannot be shown. A bonus
+    therefore gets the whole time left before the slot, and the first tick after
+    the slot opens escalates it.
+
+    What the old stop protected is kept where it still applies:
+
+      * no SLOTLESS ticket is taken this way. When its service level runs out,
+        `_sweep_expired_without_slot` raises its `force_close` bell and leaves
+        the ticket where it is — a different remedy, and taking it here as well
+        would put one ticket in two queues;
+      * no WhatsApp to the area manager for a started slot. Every registered
+        body of `job_escalation` offers "add a bonus", which is refused for it
+        (`POOL_WINDOW_CLOSED`), and is worded for a job that is still coming
+        up. The bell and the queue are the record — and the first tick after
+        this ships moves every ticket already stuck there at once, which is the
+        burst a phone should not take.
+
+    Still one bell per ticket: the guarded UPDATE is the marker here exactly as
+    above, and only a reschedule — always to a future slot — brings it back.
     """
     now = _now()
     # A job that was just PUT BACK gets its grace period. Same shape as the
@@ -341,32 +380,48 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
                 Ticket.status.in_(("New", "Slot Pending")),
                 Ticket.technician_id.is_(None),
                 Ticket.deleted_at.is_(None),
-                # The deadline this job is measured against: its slot when it
-                # has one, its service level when it does not. `coalesce`, so
-                # the two live in one expression rather than in an `or_` that
-                # could drift — and so a slotless ticket cannot fall out of the
-                # comparison silently, which is what NULL does to `>`.
-                #
-                # Already started is not "at risk", it is missed — and a
-                # notification about it would be an apology, not an action.
-                func.coalesce(Ticket.slot_start, Ticket.sla_due_at) > now,
-                # This company's own window, not the deployment's.
-                func.coalesce(Ticket.slot_start, Ticket.sla_due_at)
-                <= now + _hours(_rule("escalate_hours_before_slot")),
-                # NULL means never re-published, which is the common case and
-                # must pass — hence the explicit IS NULL rather than relying on
-                # a comparison against NULL, which is neither true nor false.
                 or_(
-                    republished.is_(None),
-                    republished
-                    <= now - _minutes(_rule("renotify_grace_minutes")),
+                    # AT RISK — the pool can still offer it, and its deadline is
+                    # inside this company's window.
+                    and_(
+                        # The pool's own test (`coverage.still_offerable`): the
+                        # slot when there is one, the service level when there
+                        # is not. The same expression the missed arm negates, so
+                        # no ticket with a slot can fall between the two arms.
+                        still_offerable(now),
+                        # This company's own window, not the deployment's.
+                        # `coalesce` for the same two deadlines, so a slotless
+                        # ticket cannot fall out of the comparison silently,
+                        # which is what NULL does to `<=`.
+                        func.coalesce(Ticket.slot_start, Ticket.sla_due_at)
+                        <= now + _hours(_rule("escalate_hours_before_slot")),
+                        # NULL means never re-published, which is the common
+                        # case and must pass — hence the explicit IS NULL rather
+                        # than relying on a comparison against NULL, which is
+                        # neither true nor false.
+                        or_(
+                            republished.is_(None),
+                            republished
+                            <= now - _minutes(_rule("renotify_grace_minutes")),
+                        ),
+                    ),
+                    # STARTED — a slot that no pool can offer any more, with
+                    # nobody on it. No grace and no window: see the docstring.
+                    # Slotless tickets are `_sweep_expired_without_slot`'s.
+                    and_(
+                        Ticket.slot_start.is_not(None),
+                        not_(still_offerable(now)),
+                    ),
                 ),
             )
         )
     )
 
-    escalated: list[Ticket] = []
+    escalated: list[tuple[Ticket, bool]] = []
     for row in candidates:
+        # Which arm it came from, read off the row with the same `now` the
+        # query used. `offer_deadline` is `still_offerable` for a loaded row.
+        started = row.slot_start is not None and offer_deadline(row) <= now
         # `core.escalation` owns the transition, the event, the bell and the
         # doorbells. It lives there rather than here because a cancellation
         # inside this same window escalates too — see its module docstring —
@@ -397,10 +452,12 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
         # False means somebody took it while this sweep was running. That is the
         # system working, not a failure.
         if moved:
-            escalated.append(row)
+            escalated.append((row, started))
 
-    for row in escalated:
-        await whatsapp_the_area_manager(db, row)
+    for row, started in escalated:
+        # Not for a slot already under way — the docstring says why.
+        if not started:
+            await whatsapp_the_area_manager(db, row)
     return len(escalated)
 
 

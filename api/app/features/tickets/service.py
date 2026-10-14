@@ -19,6 +19,7 @@ region rather than an approximation of it. See `_visible_pincodes`.
 import datetime
 import secrets
 import uuid
+from typing import NamedTuple
 
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, and_, case, func, or_, select, update
@@ -33,6 +34,8 @@ from app.core.coverage import (
     has_cap_room,
     ist_day_bounds,
     nearest_manager_for,
+    offer_deadline,
+    still_offerable,
     technicians_covering,
 )
 from app.core.credits import balance as credit_balance
@@ -43,6 +46,7 @@ from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.core.vendor_credits import standing as vendor_standing
 from app.core.deps import Principal
 from app.core.errors import AppError
+from app.core.job_passes import technicians_who_passed
 from app.core.ledger import (
     cap_remaining,
     charged_this_month,
@@ -56,6 +60,7 @@ from app.core.realtime import (
     publish_pool_changed,
     publish_ticket_changed,
 )
+from app.core.product_label import model_label, vendors_with_several_brands
 from app.core.product_tree import APPROVED, PENDING
 from app.core.schemas import ListParams, canonical_filter
 from app.core.scope import (
@@ -81,12 +86,14 @@ from app.core.slots import (
     clock_range,
     day_label,
     offered_slots,
+    reschedule_slots,
     time_is_choosable,
     time_is_choosable_clause,
     when_label,
 )
 from app.core.reschedule import (
     announce as announce_reschedule,
+    code_went_to_technician,
     move_slot,
     send_slot_moved,
 )
@@ -463,18 +470,35 @@ async def _resolve_product(
     return vendor, node, model
 
 
+class SerialRefusal(NamedTuple):
+    """Why a serial is refused: a stable code for the client, a sentence for
+    the person. The importer puts the same pair on a rejected row."""
+
+    code: str
+    message: str
+
+
+#: The chosen model has serials loaded, and this is not one of them.
+SERIAL_UNKNOWN = "SERIAL_UNKNOWN"
+#: The serial is on record for ANOTHER of the same vendor's products, and not
+#: for the one chosen — whether or not the chosen one has serials loaded.
+SERIAL_ON_OTHER_PRODUCT = "SERIAL_ON_OTHER_PRODUCT"
+
+
 async def _assert_serial_known(
     db: AsyncSession, model: ProductModel, serial: str
 ) -> None:
     """Refuse a serial the model's list does not carry. See `_serial_refusal`."""
     refusal = await _serial_refusal(db, model, serial)
     if refusal is not None:
-        raise _bad_request(refusal)
+        raise AppError(
+            http_status.HTTP_400_BAD_REQUEST, refusal.code, refusal.message
+        )
 
 
 async def _serial_refusal(
     db: AsyncSession, model: ProductModel, serial: str
-) -> str | None:
+) -> SerialRefusal | None:
     """Why this serial would be refused for this model, or None if it would not.
 
     The rule behind `_assert_serial_known`, returning its sentence instead of
@@ -482,7 +506,8 @@ async def _serial_refusal(
     show the same words. Two copies of this rule would disagree the first time
     one of them changed.
 
-    The serial must be one this model actually covers — IF any are loaded.
+    The serial must be one this model actually covers — IF any are loaded —
+    and must not be one the master already gives to a DIFFERENT product.
 
     `tickets.serial_number` is the number off the vendor's invoice, and until
     `product_model_serials` existed nothing could say whether it was plausible
@@ -492,20 +517,39 @@ async def _serial_refusal(
 
     ## An EMPTY list means unchecked, not "nothing matches"
 
-    A model nobody has loaded serials for is not checked at all. That is what
-    lets this ship against a live catalogue: there is no backfill and no flag
-    day, and a company loads its models one at a time instead of every vendor's
-    intake breaking on deploy. The console shows the count on each model so
-    "this one is not checked" is readable rather than inferred.
+    A model nobody has loaded serials for is not checked against its OWN list.
+    That is what lets this ship against a live catalogue: there is no backfill
+    and no flag day, and a company loads its models one at a time instead of
+    every vendor's intake breaking on deploy. The console shows the count on
+    each model so "this one is not checked" is readable rather than inferred.
 
-    ## Two queries, in this order
+    ## But a serial the master gives to ANOTHER product is refused regardless
+
+    Unchecked meant "we cannot say", and that stops being true the moment the
+    number is loaded on a different model: QA raised a washing machine's serial
+    against a switch board that had no serials, and the ticket went through
+    under the form's own mismatch warning. So a miss on the chosen model asks,
+    before anything else, whether one of the SAME VENDOR's live products carries
+    the number (`serial_owners`), and refuses naming it if so.
+
+    Only the same vendor's, and that is the oracle guard rather than a gap: a
+    serial on a competitor's product behaves exactly as an unknown serial does,
+    so this can never confirm that somebody else's number exists. Only live
+    products too — approved, active, not deleted, in a live category — the set
+    `masters.lookup_serial` offers, so the form can show this refusal before
+    submit and its "Use …" offer always leads somewhere intake accepts. A
+    serial on the chosen model is fine whatever else carries it: a serial may
+    legally sit on two products.
+
+    ## Queries, in this order
 
     The probe comes first and answers the common case — a serial that is on the
     model — with a single hit on
     `uq_product_model_serials_model_serial_lower`. Only a MISS pays for the
-    second query, which decides whether the miss means "not loaded, so allow"
-    or "loaded, so refuse". Counting the model's serials up front would be the
-    obvious implementation and the wrong one: it reads thousands of rows to
+    rest: the other-product probe (`ix_product_model_serials_company_serial_lower`)
+    and then the `EXISTS` that decides whether the miss means "not loaded, so
+    allow" or "loaded, so refuse". Counting the model's serials up front would be
+    the obvious implementation and the wrong one: it reads thousands of rows to
     answer what the index already answers.
 
     Compared trimmed and lower-cased, which is what
@@ -526,6 +570,19 @@ async def _serial_refusal(
     if hit is not None:
         return None
 
+    owners = (
+        await serial_owners(db, model.company_id, model.vendor_id, {needle})
+    ).get(needle, [])
+    owners = [m for m in owners if m.id != model.id]
+    if owners:
+        labels = await model_labels(db, [model, *owners])
+        return SerialRefusal(
+            SERIAL_ON_OTHER_PRODUCT,
+            serial_elsewhere_text(
+                serial, [labels[m.id] for m in owners], labels[model.id]
+            ),
+        )
+
     loaded = await db.scalar(
         select(ProductModelSerial.id)
         .where(
@@ -537,7 +594,87 @@ async def _serial_refusal(
     if loaded is None:
         return None
 
-    return serial_refusal_text(serial, model.name)
+    return SerialRefusal(SERIAL_UNKNOWN, serial_refusal_text(serial, model.name))
+
+
+async def serial_owners(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    needles: set[str],
+) -> dict[str, list[ProductModel]]:
+    """Which of THIS vendor's live products carry each serial — one query.
+
+    `needles` are already trimmed and lower-cased; so are the keys returned.
+    Shared by the single ticket (one needle) and the importer (the whole file),
+    so the two cannot disagree about which products count.
+
+    Pinned to the vendor in the query, never filtered after it: another
+    vendor's product carrying the number must be indistinguishable from no
+    product carrying it. Live means what `masters.lookup_serial` offers —
+    approved, active, not deleted, under a live category.
+    """
+    if not needles:
+        return {}
+    rows = await db.execute(
+        select(func.lower(ProductModelSerial.serial), ProductModel)
+        .join(
+            ProductModel,
+            and_(
+                ProductModel.id == ProductModelSerial.product_model_id,
+                ProductModel.company_id == ProductModelSerial.company_id,
+            ),
+        )
+        .join(
+            ProductNode,
+            and_(
+                ProductNode.id == ProductModel.node_id,
+                ProductNode.company_id == ProductModel.company_id,
+            ),
+        )
+        .where(
+            ProductModelSerial.company_id == company_id,
+            func.lower(ProductModelSerial.serial).in_(needles),
+            ProductModel.vendor_id == vendor_id,
+            ProductModel.deleted_at.is_(None),
+            ProductModel.is_active.is_(True),
+            ProductModel.approval_status == APPROVED,
+            ProductNode.deleted_at.is_(None),
+            ProductNode.is_active.is_(True),
+        )
+        .order_by(
+            func.lower(ProductModelSerial.serial), ProductModel.name, ProductModel.id
+        )
+    )
+    out: dict[str, list[ProductModel]] = {}
+    for needle, owner in rows.all():
+        out.setdefault(needle, []).append(owner)
+    return out
+
+
+async def model_labels(
+    db: AsyncSession, models: list[ProductModel]
+) -> dict[uuid.UUID, str]:
+    """Each model as the ticket form names it — brand in front where the vendor
+    sells several (`core.product_label.model_label`), or "on record for 43 inch
+    LED, not 43 inch LED" could name two different units."""
+    if not models:
+        return {}
+    several = await vendors_with_several_brands(db, {m.vendor_id for m in models})
+    brand_names = dict(
+        (
+            await db.execute(
+                select(VendorBrand.id, VendorBrand.name).where(
+                    VendorBrand.id.in_({m.brand_id for m in models}),
+                    VendorBrand.company_id == models[0].company_id,
+                )
+            )
+        ).all()
+    )
+    return {
+        m.id: model_label(m.name, brand_names.get(m.brand_id), m.vendor_id in several)
+        for m in models
+    }
 
 
 def serial_refusal_text(serial: str, model_name: str) -> str:
@@ -551,6 +688,27 @@ def serial_refusal_text(serial: str, model_name: str) -> str:
         f"{serial.strip()} is not a serial number on record for {model_name}. "
         "Check it against the invoice, or ask for it to be added to the "
         "product master."
+    )
+
+
+def serial_elsewhere_text(serial: str, owners: list[str], model_name: str) -> str:
+    """The `SERIAL_ON_OTHER_PRODUCT` sentence, for the form and the importer.
+
+    Says nothing about which one to fix, because either may be the mistake: the
+    product may be mis-picked, or the serial mistyped into a number that
+    happens to be another product's.
+    """
+    named = (
+        owners
+        if len(owners) <= 3
+        else [*owners[:2], f"{len(owners) - 2} other products"]
+    )
+    listed = (
+        named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
+    )
+    return (
+        f"{serial.strip()} is a serial number on record for {listed}, not "
+        f"{model_name}. Check the serial and the product against the invoice."
     )
 
 
@@ -1418,7 +1576,9 @@ _EVENT_TITLES = {
     "feedback_received": "Customer responded",
     "reopened": "Customer says it is not finished",
     "serial_mismatch": "Serial did not match the order",
-    "serial_corrected": "Expected serial corrected",
+    # Either number — the order's or the technician's reading. The note says
+    # which, so one event kind serves both without a migration.
+    "serial_corrected": "Serial corrected",
     "reminded": "Technician reminded",
     # Missed when the sweep that writes it shipped, so this one has been
     # rendering the raw key too — the same fault the note above describes, still
@@ -1465,7 +1625,16 @@ _EVENT_TITLES_BY_ACTOR = {
 }
 
 
-def _event_title(kind: str, actor_kind: str) -> str:
+def _event_title(kind: str, actor_kind: str, note: str | None = None) -> str:
+    # The technician's door, when the customer number on the ticket was their
+    # own: the code reached the technician, so "customer confirmed by code"
+    # would be false. The note says why; the title says what to do about it.
+    if (
+        kind == "rescheduled"
+        and actor_kind == "technician"
+        and code_went_to_technician(note)
+    ):
+        return "Rescheduled — check the new time with the customer"
     return _EVENT_TITLES_BY_ACTOR.get(
         (kind, actor_kind), _EVENT_TITLES.get(kind, kind)
     )
@@ -1497,7 +1666,7 @@ async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
         TimelineEventOut(
             at=e.created_at,
             kind=e.kind,
-            title=_event_title(e.kind, e.actor_kind),
+            title=_event_title(e.kind, e.actor_kind, e.note),
             actorKind=e.actor_kind,
             by=e.actor_label,
             note=e.note,
@@ -2134,6 +2303,66 @@ async def correct_serial(
     return await get_ticket(db, principal, ticket_id)
 
 
+async def correct_reading(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    observed_serial: str,
+    reason: str,
+) -> TicketDetailOut:
+    """Fix the serial the technician TYPED, when the typing was the mistake.
+
+    `correct_serial` assumes the order is wrong, and when it is the technician
+    who slipped — the order says `Test@Serial123`, they keyed `123` — that
+    dialog had nothing to save: the right number is already the order's, and
+    the wrong one is refused by the model's serial list. The mismatch could
+    never be cleared.
+
+    The reading is still evidence, so this is not the open door
+    `correct_serial` is. An Area Manager and above only (the router), never the
+    vendor; a reason is required; and the old value goes into the trail, so the
+    correction never quietly rewrites what was recorded. The serial PHOTO is
+    untouched and is what the manager reads the real number from — the typed
+    value was only ever a transcription of it.
+
+    Not checked against the model's serial list. The reading claims what is on
+    the unit, and a unit the list does not know is exactly what a mismatch
+    exists to surface. `observed_serial_source` is left alone too: it says how
+    the technician captured it, and the trail says who corrected it.
+    """
+    row = await _load(db, principal, ticket_id)
+    was = row.observed_serial
+    if not was:
+        raise _refused(
+            "NO_READING_YET",
+            "Nothing was read on site yet. The technician enters the serial "
+            "when they submit proof.",
+        )
+
+    now = observed_serial.strip()
+    if now == was:
+        return await get_ticket(db, principal, ticket_id)
+
+    row.observed_serial = now
+    db.add(
+        record_event(
+            row,
+            "serial_corrected",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            note=(
+                f"Technician's reading corrected from {was} to {now}"
+                f" — {reason.strip()}"
+            ),
+            by_user=principal.user_id,
+        )
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+    return await get_ticket(db, principal, ticket_id)
+
+
 async def check_serial(
     db: AsyncSession, principal: Principal, ticket_id: uuid.UUID, serial: str
 ) -> SerialCheckOut:
@@ -2153,7 +2382,10 @@ async def check_serial(
     row = await _load(db, principal, ticket_id)
     model = await _ticket_model(db, row)
     refusal = None if model is None else await _serial_refusal(db, model, serial)
-    return SerialCheckOut(accepted=refusal is None, message=refusal)
+    return SerialCheckOut(
+        accepted=refusal is None,
+        message=refusal.message if refusal is not None else None,
+    )
 
 
 async def _ticket_model(db: AsyncSession, row: Ticket) -> ProductModel | None:
@@ -2716,6 +2948,13 @@ async def add_bonus_and_renotify(
     this company's `renotify_grace_minutes` — the grace exists precisely because
     the ticket is going back into a window it never left, and without it the
     next tick five minutes later would take it straight back out.
+
+    **Refused once the slot has started** (or, with no slot, once the service
+    level has run out) — `core.coverage.still_offerable`, the pool's own test.
+    Accepting it put the ticket in `New` where no pool showed it and no sweep
+    re-escalated it, so it vanished from the queue while the manager was told
+    technicians had been re-notified. A missed slot is emptied by Change the
+    time, which `record_no_show` and the queue's Missed heading already say.
     """
     row = await _load(db, principal, ticket_id)
 
@@ -2724,6 +2963,25 @@ async def add_bonus_and_renotify(
             "NOT_ESCALATED",
             "A bonus can only be added to a job that nobody has accepted. "
             f"This ticket is {row.status}.",
+        )
+    # One clock for the check and the UPDATE below, so the only thing that can
+    # make the UPDATE match nothing is somebody else changing the row.
+    now = _now()
+    if offer_deadline(row) <= now:
+        raise _refused(
+            "POOL_WINDOW_CLOSED",
+            (
+                "This job's slot has already started, so no technician can be "
+                "offered it any more. Change the time with the customer to put "
+                "it back in the pool, or assign it manually."
+            )
+            if row.slot_start is not None
+            else (
+                "This job's service level has already run out, so no "
+                "technician can be offered it any more. Agree a time with the "
+                "customer and use Change the time to put it back in the pool, "
+                "or assign it manually."
+            ),
         )
     # ⚠ The assert that stood here — "`Escalated` with no technician implies a
     # slot" — is no longer true. A job with no agreed time can be offered,
@@ -2744,6 +3002,8 @@ async def add_bonus_and_renotify(
             Ticket.company_id == principal.company_id,
             Ticket.status == "Escalated",
             Ticket.technician_id.is_(None),
+            # Never back into a pool that cannot show it — see above.
+            still_offerable(now),
         )
         .values(status=back_to, bonus_paise=amount_paise)
     )
@@ -2789,6 +3049,14 @@ async def add_bonus_and_renotify(
         node_path_ids=row.node_path_ids,
         slot_start=row.slot_start,
     )
+    # Minus whoever passed it on the terms it has now — the push skips them
+    # (`core.push.announce_pool_job`, one definition in `core.job_passes`), so
+    # counting them claimed phones that never rang. It bites on the SAME bonus
+    # funded again; a different amount is a new offer and they are back in.
+    passed = await technicians_who_passed(
+        db, company_id=row.company_id, ticket_id=row.id
+    )
+    audience = [t for t in audience if t not in passed]
     await push_pool_job(db, row)
     return RenotifyOut(
         ticket=await get_ticket(db, principal, ticket_id), notified=len(audience)
@@ -3183,10 +3451,11 @@ async def reschedule_options(
 ) -> list[SlotOptionOut]:
     """The windows this ticket could be given, soonest first.
 
-    `bookable_slots` with no `technician_id` argument, which resolves the row's
-    OWN technician — so an assigned job is offered only times that person can
-    actually serve, and an unassigned one is offered everything. Both are right,
-    and neither needed a branch here.
+    `reschedule_slots` with no `technician_id` argument, which resolves the
+    row's OWN technician — so an assigned job is offered only times that person
+    can actually serve, and an unassigned one is offered everything. Both are
+    right, and neither needed a branch here. Either way the window it is booked
+    into now is left off: that is where it is, not somewhere it can move to.
 
     The horizon is `RESCHEDULE_HORIZON_HOURS`, not `sla_due_at`: a ticket being
     re-slotted has usually blown its service level already, and bounding by it
@@ -3194,7 +3463,7 @@ async def reschedule_options(
     exists for.
     """
     row = await _load_reschedulable(db, principal, ticket_id)
-    windows = await bookable_slots(db, row, horizon=_reschedule_horizon())
+    windows = await reschedule_slots(db, row, horizon=_reschedule_horizon())
     return [SlotOptionOut(slotStart=s, slotEnd=e) for s, e in windows]
 
 
@@ -3226,12 +3495,29 @@ async def reschedule(
     match = next(
         (
             w
-            for w in await bookable_slots(db, row, horizon=_reschedule_horizon())
+            for w in await reschedule_slots(db, row, horizon=_reschedule_horizon())
             if w[0] == slot_start
         ),
         None,
     )
     if match is None:
+        # The list never offers the window the ticket already holds, so posting
+        # it lands here. Said as its own code, because "no longer free" would be
+        # false — and stopped here because the move would change nothing yet
+        # still WhatsApp the customer, push the technician and ring the vendor.
+        # The start alone tells the two apart: a listed window with that start
+        # is not the held one, and would have matched.
+        if (
+            row.slot_start is not None
+            and row.slot_end is not None
+            and slot_start == row.slot_start
+        ):
+            raise _refused(
+                "SLOT_UNCHANGED",
+                f"This visit is already booked for "
+                f"{when_label(row.slot_start, row.slot_end)} — pick a different "
+                f"window.",
+            )
         raise _refused(
             "SLOT_NO_LONGER_AVAILABLE",
             "That window is no longer free — pick another.",
@@ -3588,8 +3874,13 @@ async def push_pool_job(db: AsyncSession, row: Ticket) -> None:
     Both open statuses, matching `jobs.pool_query`: a `Slot Pending` ticket is
     offered from the moment it is raised, and a push is the only thing that
     reaches a technician who does not have the app open.
+
+    And only while the pool can still show it (`core.coverage.still_offerable`):
+    a push about a job whose slot has started opens onto "Job not found".
     """
     if row.status not in ("New", "Slot Pending") or row.technician_id is not None:
+        return
+    if offer_deadline(row) <= _now():
         return
     await announce_pool_job(
         db,

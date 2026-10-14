@@ -215,11 +215,33 @@ class Settings(BaseSettings):
     #: technician and the area rather than the customer.
     WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_NAME: str = ""
     WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_LANG: str = "en_US"
+    #: The REWORDED manager message — `job_accepted_manager_v2`, six body
+    #: parameters, laid out as labelled lines (Ticket / Technician / Area /
+    #: Visit) because QA found the first one's run-on sentence hard to read.
+    #: A new NAME rather than an edit, because Meta approves a body and the
+    #: parameter list is a different shape (six, not four): edited in place,
+    #: the switch would happen on the day Meta approved it rather than on a
+    #: deploy, and every send in between would fail with 132000.
+    #: When set it wins over `WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_NAME`; leave it
+    #: EMPTY until Meta approves (publish.py refuses a configured name that is
+    #: still in review). Shares that setting's `_LANG`.
+    WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME: str = ""
     #: The only message this system sends to its own STAFF. Managers have no
     #: mobile app, so an escalation four hours from a slot cannot wait for
     #: somebody to open a browser tab.
     WHATSAPP_ESCALATION_TEMPLATE_NAME: str = ""
     WHATSAPP_ESCALATION_TEMPLATE_LANG: str = "en_US"
+    #: The REWORDED escalation — `job_escalation_v2`, five body parameters,
+    #: laid out as labelled lines (Ticket / Area / Visit / Time left), because
+    #: the first one's "Escalation from …:", "the slot is in 2h 40m", "ops
+    #: console" and "reassign it" all needed explaining. A new NAME rather than
+    #: an edit, for the reason `WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME`
+    #: gives: the parameter list changes shape, and an in-place edit would
+    #: switch on the day Meta approved it, with every send until a deploy
+    #: failing 132000. When set it wins over `WHATSAPP_ESCALATION_TEMPLATE_NAME`;
+    #: leave it EMPTY until Meta approves (publish.py refuses a configured name
+    #: that is still in review). Shares that setting's `_LANG`.
+    WHATSAPP_ESCALATION_V2_TEMPLATE_NAME: str = ""
     # Comma-separated E.164 numbers. When set, ONLY these receive a real send;
     # anything else is refused before it reaches Meta.
     #

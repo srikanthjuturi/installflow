@@ -64,6 +64,7 @@ from app.features.tickets.schemas import (
     IntakeStatusOut,
     NoShowRequest,
     PenaltyReverseRequest,
+    ReadingCorrectionRequest,
     RenotifyOut,
     RescheduleRequest,
     SerialCheckOut,
@@ -683,7 +684,8 @@ async def reschedule_ticket(
     **409 `ESCALATION_IS_A_REFUSAL`** means the customer said the job was NOT
     done, which needs a technician or a closure rather than a new time.
     **409 `SLOT_NO_LONGER_AVAILABLE`** means the window went while the dialog
-    was open.
+    was open. **409 `SLOT_UNCHANGED`** means it is the window the ticket is
+    already booked into.
     """
     return envelope(
         await service.reschedule(
@@ -761,8 +763,8 @@ async def correct_ticket_serial(
     staff in its territory and the vendor that raised it. The vendor matters
     most here: the invoice is theirs, so a mistyped serial is theirs to correct.
 
-    Only the EXPECTED serial. What the technician read on site is evidence and
-    is not editable, by anyone.
+    Only the EXPECTED serial. What the technician read on site has its own
+    route below, closed to the vendor.
     """
     return envelope(
         await service.correct_serial(
@@ -773,6 +775,35 @@ async def correct_ticket_serial(
             reason=body.reason,
         ),
         message="Serial updated",
+    )
+
+
+@router.patch(
+    "/{ticket_id}/observed-serial",
+    response_model=ApiEnvelope[TicketDetailOut],
+    dependencies=[AreaManagerUp],
+)
+async def correct_ticket_reading(
+    ticket_id: uuid.UUID, db: Db, principal: CanAssign, body: ReadingCorrectionRequest
+) -> ApiEnvelope[TicketDetailOut]:
+    """Correct the serial the technician typed on site, when THAT was the slip.
+
+    The route above cannot: when the order is already right there is nothing
+    to change on it, and the mismatch could never clear. Area Manager and
+    above with `jobs.assign` — never the vendor, because this edits evidence —
+    with a required reason, and the old value kept in the trail.
+
+    **409 `NO_READING_YET`** means proof has not been submitted.
+    """
+    return envelope(
+        await service.correct_reading(
+            db,
+            principal,
+            ticket_id,
+            observed_serial=body.observedSerial,
+            reason=body.reason,
+        ),
+        message="Reading corrected",
     )
 
 

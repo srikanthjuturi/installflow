@@ -4,6 +4,7 @@ from app.models.company import Company
 from app.models.company_rules import CompanyRules
 from app.models.credits import CreditEntry, CreditRecharge, PlatformSettings
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
+from app.models.job_pass import JobPass
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.otp import OtpCode
@@ -54,6 +55,7 @@ __all__ = [
     "CreditRecharge",
     "District",
     "Feature",
+    "JobPass",
     "LedgerEntry",
     "Membership",
     "MembershipRegion",

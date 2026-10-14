@@ -27,7 +27,7 @@ from app.features.tickets.slot_page import router as slot_page_router
 from app.features.onboarding.well_known import router as well_known_router
 from app.core.config import settings
 from app.core.database import engine
-from app.core.errors import register_exception_handlers
+from app.core.errors import UnhandledErrorMiddleware, register_exception_handlers
 from app.core.notification_relay import relay
 from app.core.realtime import broker
 
@@ -143,6 +143,11 @@ app = FastAPI(
 )
 
 register_exception_handlers(app)
+
+# BEFORE CORS, so CORS wraps it: the last middleware added is the outermost.
+# Otherwise an unhandled 500 leaves without CORS headers and the console reads
+# it as "Cannot reach the server". See `UnhandledErrorMiddleware`.
+app.add_middleware(UnhandledErrorMiddleware)
 
 # Browser clients (the adminWeb console) call this API cross-origin in dev.
 app.add_middleware(

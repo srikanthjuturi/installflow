@@ -1188,7 +1188,8 @@ async def _resolve_catalogue(
     submit_products: bool,
     dry_run: bool,
 ) -> None:
-    """Brand, product, serial and pincode — for the whole file, in five queries.
+    """Brand, product, serial and pincode — for the whole file, in a handful of
+    queries.
 
     The single-ticket path asks these per ticket, which is right for one and
     ruinous for five hundred. Every guard `_resolve_product` applies is still
@@ -1204,7 +1205,12 @@ async def _resolve_catalogue(
         same reason it is last there.
     """
     from app.features.tickets.service import (
+        SERIAL_ON_OTHER_PRODUCT,
+        SERIAL_UNKNOWN,
+        model_labels,
         pincode_refusal_text,
+        serial_elsewhere_text,
+        serial_owners,
         serial_refusal_text,
     )
 
@@ -1365,7 +1371,7 @@ async def _resolve_catalogue(
             row.model_id = model.id
             row.model = model
 
-    # ── serials: two queries for the file, not two per row ───────────────
+    # ── serials: a few queries for the file, not two per row ─────────────
     live = [r for r in rows if r.reject is None and r.model_id is not None]
     wanted_pairs = {
         (r.model_id, r.cells.get("serialNumber", "").strip().lower())
@@ -1406,17 +1412,54 @@ async def _resolve_catalogue(
             ).all()
         }
 
+    # A miss on the row's own model is still refused when another of THIS
+    # vendor's live products carries the serial — even an unchecked model. One
+    # query for the file, through the single-ticket path's own `serial_owners`,
+    # so another vendor's product is as absent here as it is there.
+    misses = {s for m, s in wanted_pairs if (m, s) not in hits}
+    owners = (
+        await serial_owners(db, principal.company_id, vendor.id, misses)
+        if misses
+        else {}
+    )
+    elsewhere: dict[int, list[ProductModel]] = {}
+    involved: dict[uuid.UUID, ProductModel] = {}
+    for row in live:
+        serial = row.cells.get("serialNumber", "").strip().lower()
+        if not serial or (row.model_id, serial) in hits:
+            continue
+        others = [m for m in owners.get(serial, []) if m.id != row.model_id]
+        if not others:
+            continue
+        elsewhere[row.number] = others
+        involved.update({m.id: m for m in others})
+        if row.model is not None:
+            involved[row.model.id] = row.model
+    labels = await model_labels(db, list(involved.values()))
+
     for row in live:
         serial = row.cells.get("serialNumber", "").strip()
         if not serial or row.model_id is None:
             continue
         if (row.model_id, serial.lower()) in hits:
             continue
+        model = row.model
+        others = elsewhere.get(row.number)
+        if others:
+            row.refuse(
+                SERIAL_ON_OTHER_PRODUCT,
+                serial_elsewhere_text(
+                    serial,
+                    [labels[m.id] for m in others],
+                    labels.get(row.model_id, model.name if model else "this product"),
+                ),
+                "serialNumber",
+            )
+            continue
         if row.model_id not in checked:
             continue  # Nothing loaded for this model: unchecked, so allowed.
-        model = row.model
         row.refuse(
-            "SERIAL_UNKNOWN",
+            SERIAL_UNKNOWN,
             serial_refusal_text(serial, model.name if model else "this product"),
             "serialNumber",
         )

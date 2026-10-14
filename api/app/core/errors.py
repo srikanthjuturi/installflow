@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _HTTP_422 = 422
 
@@ -64,6 +65,55 @@ def _error_body(
     return body
 
 
+def _unhandled_response() -> JSONResponse:
+    message = "Something went wrong"
+    return JSONResponse(status_code=500, content=_error_body(500, message, [message]))
+
+
+class UnhandledErrorMiddleware:
+    """Turn an unhandled error into the 500 envelope INSIDE the CORS layer.
+
+    `main.py` must add this BEFORE `CORSMiddleware`, so that CORS wraps it.
+
+    The `Exception` handler below is not enough on its own. Starlette mounts a
+    handler for `Exception` on `ServerErrorMiddleware`, the outermost layer,
+    which sits OUTSIDE every `add_middleware` — CORS included. So its 500 left
+    with no `Access-Control-Allow-Origin`, the browser refused to hand the
+    response to the console, and the console reported "Cannot reach the server"
+    for what was really a bug in one endpoint. That is how the per-category
+    Rules Config failure presented.
+
+    Pure ASGI rather than `BaseHTTPMiddleware`, which buffers the response and
+    has a history of breaking streaming and background tasks. If the response
+    has already started there is nothing to replace, so the error propagates to
+    the handler below exactly as before.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        started = False
+
+        async def _send(message: Message) -> None:
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, _send)
+        except Exception:
+            if started:
+                raise
+            logger.exception("Unhandled error on %s", scope.get("path"))
+            await _unhandled_response()(scope, receive, send)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def _http_exc(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -108,10 +158,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         """Last resort: log the detail, return the envelope.
 
         Without this, an unhandled error renders a raw traceback into the
-        response body — internals a client should never see.
+        response body — internals a client should never see. Errors from a
+        route normally stop at `UnhandledErrorMiddleware` first; this catches
+        what is raised outside it.
         """
         logger.exception("Unhandled error on %s", request.url.path)
-        message = "Something went wrong"
-        return JSONResponse(
-            status_code=500, content=_error_body(500, message, [message])
-        )
+        return _unhandled_response()

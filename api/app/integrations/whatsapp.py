@@ -468,9 +468,14 @@ async def _send(payload: dict, *, what: str) -> SendResult:
 
 
 def build_escalation_payload(
-    phone: str, company: str, code: str, area: str, left: str
+    phone: str,
+    company: str,
+    code: str,
+    area: str,
+    when: str | None,
+    minutes_left: int,
 ) -> dict:
-    """"Nobody has taken this job and the slot is close." To the area manager.
+    """"Nobody has taken this job and it is due soon." To the area manager.
 
     The only message this system sends to its OWN staff. Everything else here
     goes to a customer or a technician, and the reason for the exception is
@@ -478,58 +483,149 @@ def build_escalation_payload(
     when they next open a browser tab, which is no use at nine in the evening
     for a job whose slot is at eight tomorrow.
 
-    Registered as `job_escalation` (UTILITY, en_US, four body parameters):
+    `when` is the visit window (`slots.when_label`), or None when the customer
+    has not picked a time. `minutes_left` counts down to the deadline the job
+    was escalated against — the slot's start, or with no slot the SLA, the
+    same `coalesce` `sweep_unaccepted` uses — and is NEGATIVE once it has
+    passed. That happens: a technician may give a job back after its window
+    opened, and `jobs.service.cancel` escalates it all the same.
+
+    ## Two registered bodies, and which one is sent
+
+    **`job_escalation_v2`** — the one to send, once Meta approves it and
+    `WHATSAPP_ESCALATION_V2_TEMPLATE_NAME` is filled in (UTILITY, en_US, FIVE
+    body parameters). The first body opened on "Escalation from …:", which is
+    console jargon; said "the slot is in 2h 40m", which reads like code; sent
+    the manager to "the ops console", which is our word, not the company's;
+    and said "reassign it" about a job nobody was ever assigned. This one
+    answers a busy manager's questions in the order they ask them: what is
+    wrong, which job, where, when, how long is left, what to do. The body to
+    submit, line breaks exactly as shown:
+
+        Action needed: a job in your area has no technician, and it is due soon.
+
+        Ticket: {{1}}
+        Area: {{2}}
+        Visit: {{3}}
+        Time left: {{4}}
+
+        Please assign a technician, add a bonus or change the visit time in the {{5}} console.
+
+    Parameters in reading order: ticket code, area, visit window (or "Not
+    fixed yet — …"), time left (or "None — …" once the deadline has passed),
+    company. The free-form fallback below says exactly this, so a dev box with
+    no template configured shows the new words.
+
+    **`job_escalation`** — APPROVED and live; sent until v2 is approved and its
+    setting filled in. Its words are fixed in Meta and cannot change here;
+    only `{{4}}` can, and it now reads "in 2 hours 40 minutes", "already 20
+    minutes past its start time" or "not set yet — the customer has not picked
+    a time" (it was "in 2h 40m", "in 0h 00m" for a slot already under way,
+    and "not set"):
 
         Escalation from {{1}}: job {{2}} at {{3}} still has no technician and
         the slot is {{4}}.
 
         Open the ops console to reassign it or add a bonus.
 
-    Opens with "Escalation" rather than a variable — Meta rejects a body that
-    starts or ends with one (subcode 2388299), which cost a submission on the
-    feedback template before this one.
+    ⚠ **A parameter completes the sentence around it.** v1's `{{4}}` follows
+    "the slot is", so it never repeats the noun — it was once fed `hours_to()`
+    and every message read "the slot is 2h 40m to slot".
 
-    ⚠ **{{4}} must complete "the slot is …", not repeat the noun.** It was fed
-    `hours_to()`, which appends "to slot", so every message this template has
-    ever sent read "the slot is 2h 40m to slot". Fixed at the CALLER — see
-    `core.escalation.whatsapp_the_area_manager`, which now passes "in 2h 40m" —
-    rather than by editing the body, because the body is registered with Meta
-    and re-approval costs days for a wording change the parameter can absorb.
+    ⚠ **Variables against words — subcode 2388293.** v2 has five variables, one
+    per labelled line because a parameter may not hold a line break, and pays
+    for them in fixed words: 35, seven per variable — above
+    `job_accepted_manager_v2` (38 for six), the approved `job_escalation` itself
+    (23 for four), `job_accepted` and `technician_assigned`. It opens with
+    "Action needed" and closes with "console." for subcode 2388299.
 
-    ⚠ **The fallback below says "assign a technician"; the registered body
-    still says "reassign it".** Deliberate, and not to be "fixed" by making
-    them match: nothing was ever assigned, so there is nothing to RE-assign,
-    and the word sends a manager looking for a technician to replace. The
-    fallback carries the corrected wording; the registered body needs a
-    re-submission to Meta, which is a days-long round trip nobody should
-    trigger for one word in isolation. Correct it with the next template
-    change.
+    The closing names all three ways out because one of them is shut in one
+    case: a technician giving a job back after its window opened escalates it,
+    and for that job the console refuses a bonus (`POOL_WINDOW_CLOSED`) — but
+    assigning someone and changing the visit time both still work.
     """
+    company, code, area = _one_line(company), _one_line(code), _one_line(area)
+    visit = (
+        _one_line(when)
+        if when
+        else "Not fixed yet — the customer has not picked a time"
+    )
+    target = "the visit starts" if when else "the SLA deadline"
+    if minutes_left > 0:
+        left = f"{_duration(minutes_left)} until {target}"
+    elif minutes_left == 0:
+        left = f"Less than a minute until {target}"
+    elif when:
+        left = f"None — the visit was due to start {_duration(minutes_left)} ago"
+    else:
+        left = f"None — the SLA deadline passed {_duration(minutes_left)} ago"
+
+    if settings.WHATSAPP_ESCALATION_V2_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_ESCALATION_V2_TEMPLATE_NAME,
+            settings.WHATSAPP_ESCALATION_TEMPLATE_LANG,
+            [code, area, visit, left, company],
+        )
     if settings.WHATSAPP_ESCALATION_TEMPLATE_NAME:
+        # The v1 body reads "…and the slot is {{4}}." — so {{4}} must complete
+        # that sentence, and must not end with a full stop of its own.
+        if not when:
+            slot_is = "not set yet — the customer has not picked a time"
+        elif minutes_left > 0:
+            slot_is = f"in {_duration(minutes_left)}"
+        elif minutes_left == 0:
+            slot_is = "less than a minute away"
+        else:
+            slot_is = f"already {_duration(minutes_left)} past its start time"
         return _template_payload(
             phone,
             settings.WHATSAPP_ESCALATION_TEMPLATE_NAME,
             settings.WHATSAPP_ESCALATION_TEMPLATE_LANG,
-            [company, code, area, left],
+            [company, code, area, slot_is],
         )
-    # Development only — see build_invite_payload for why a template is what
-    # makes this actually arrive.
+    # Development only — see build_invite_payload. The same words as v2.
     return _text_payload(
         phone,
         (
-            f"Escalation from {company}: job {code} at {area} still has no "
-            f"technician and the slot is {left}.\n\n"
-            "Open the ops console to assign a technician or add a bonus."
+            "Action needed: a job in your area has no technician, and it is "
+            "due soon.\n\n"
+            f"Ticket: {code}\n"
+            f"Area: {area}\n"
+            f"Visit: {visit}\n"
+            f"Time left: {left}\n\n"
+            "Please assign a technician, add a bonus or change the visit time "
+            f"in the {company} console."
         ),
     )
 
 
+def _duration(minutes: int) -> str:
+    """`2 hours 40 minutes`, `1 hour`, `25 minutes` — a span in words.
+
+    Sign is ignored; the caller's sentence says whether it is ahead or past.
+    Words rather than `2h 40m`, which reads like code, and whose under-an-
+    hour form — `0h 25m` — reads worse. No days: the escalation window is
+    hours wide, and "30 hours" is still plain.
+    """
+    hours, mins = divmod(abs(minutes), 60)
+    parts = [f"{hours} hour{'' if hours == 1 else 's'}"] if hours else []
+    if mins or not hours:
+        parts.append(f"{mins} minute{'' if mins == 1 else 's'}")
+    return " ".join(parts)
+
+
 async def send_escalation(
-    phone: str, company: str, code: str, area: str, left: str
+    phone: str,
+    company: str,
+    code: str,
+    area: str,
+    when: str | None,
+    minutes_left: int,
 ) -> SendResult:
     """Tell an area manager a job is about to miss its slot. Never raises."""
     return await _send(
-        build_escalation_payload(phone, company, code, area, left),
+        build_escalation_payload(phone, company, code, area, when, minutes_left),
         what="escalation",
     )
 
@@ -678,7 +774,33 @@ def build_job_accepted_manager_payload(
     No customer name and no phone number: a manager needs to know who is going
     where, and the customer's details are on the ticket for whoever opens it.
 
-    Registered as `job_accepted_manager` (UTILITY, en_US, FOUR body parameters):
+    ## Two registered bodies, and which one is sent
+
+    **`job_accepted_manager_v2`** — the one to send, once Meta approves it and
+    `WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME` is filled in (UTILITY, en_US,
+    SIX body parameters). QA found the first body hard to read — "has taken",
+    "Nothing needs doing", and the ticket, area and time run together in one
+    sentence — so this one answers a busy manager's questions in the order
+    they ask them: what happened, do I need to act, which job, where and when.
+    The body to submit, line breaks exactly as shown:
+
+        Hello {{1}}, a technician has accepted a job in your area. No action is needed from you.
+
+        Ticket: {{2}}
+        Technician: {{3}}
+        Area: {{4}}
+        Visit: {{5}}
+
+        To see the full ticket and the customer's details, or to reassign the job, open the {{6}} console.
+
+    Parameters in reading order: manager, ticket code, technician, area, visit
+    time (or "Not fixed yet — …"), company. The free-form fallback below says
+    exactly this, so a dev box with no template configured shows the new words.
+
+    **`job_accepted_manager`** — APPROVED and live; sent until v2 is approved
+    and its setting filled in. Its words are fixed in Meta and cannot change
+    here; only `{{4}}` can, and it now reads "ticket TC-… in …, with the visit
+    on …" instead of the bare "TC-… in …, for …":
 
         Hello {{2}}, one of the jobs in your area has just been accepted.
 
@@ -687,34 +809,70 @@ def build_job_accepted_manager_payload(
         Nothing needs doing. Open the {{1}} console if you want the full
         ticket, the customer's details, or to reassign it.
 
-    ⚠ Four, not six, and the body is deliberately wordy. Meta rejected the
-    first submission with subcode **2388293 — "Parameters words ratio exceeds
-    limit"**: a short body with many variables reads as a template built to
-    smuggle arbitrary content past review, so it is refused. The fix is both
-    halves — fewer variables AND more fixed words.
-
-    So the ticket code, the area and the time are concatenated into `{{4}}`
-    rather than being three parameters. They are always rendered together in
-    that order anyway, which is what makes them one fact rather than three.
+    ⚠ **Variables against words — subcode 2388293.** Meta rejected the very
+    first submission, which had six variables in a short body, with
+    "Parameters words ratio exceeds limit". The v1 answer was four variables
+    and more words. v2 goes back to six because a labelled line needs its own
+    variable (a parameter may not contain a line break), and pays for it in
+    fixed words: 38 of them, over six per variable — above the five and a half
+    of `job_accepted` and `technician_assigned`, both approved, and more than
+    twice the community rule of thumb (3 × variables + 1 words; Meta publishes
+    no figure). It opens with "Hello" and closes with "console." for subcode
+    2388299.
     """
-    tail = f", for {when}" if when else " — no time agreed yet"
-    detail = f"{code} in {area}{tail}"
+    manager, technician, area = (
+        _one_line(manager),
+        _one_line(technician),
+        _one_line(area),
+    )
+    visit = when or "Not fixed yet — the customer has not picked a time"
+    if settings.WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME:
+        return _template_payload(
+            phone,
+            settings.WHATSAPP_ACCEPTED_MANAGER_V2_TEMPLATE_NAME,
+            settings.WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_LANG,
+            [manager, code, technician, area, visit, company],
+        )
     if settings.WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_NAME:
+        # The v1 body reads "{{3}} has taken {{4}}." — so {{4}} must complete
+        # that sentence, and must not end with a full stop of its own.
+        tail = (
+            f", with the visit on {when}"
+            if when
+            else ", and the customer has not picked a visit time yet"
+        )
         return _template_payload(
             phone,
             settings.WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_NAME,
             settings.WHATSAPP_ACCEPTED_MANAGER_TEMPLATE_LANG,
-            [company, manager, technician, detail],
+            [company, manager, technician, f"ticket {code} in {area}{tail}"],
         )
+    # Development only — see build_invite_payload. The same words as v2.
     return _text_payload(
         phone,
         (
-            f"Hello {manager}, one of the jobs in your area has just been "
-            f"accepted.\n\n{technician} has taken {detail}.\n\n"
-            f"Nothing needs doing. Open the {company} console if you want the "
-            "full ticket, the customer's details, or to reassign it."
+            f"Hello {manager}, a technician has accepted a job in your area. "
+            "No action is needed from you.\n\n"
+            f"Ticket: {code}\n"
+            f"Technician: {technician}\n"
+            f"Area: {area}\n"
+            f"Visit: {visit}\n\n"
+            "To see the full ticket and the customer's details, or to reassign "
+            f"the job, open the {company} console."
         ),
     )
+
+
+def _one_line(text: str) -> str:
+    """Collapse every run of whitespace to one space, and trim the ends.
+
+    Meta refuses a template parameter containing a line break, a tab or more
+    than four spaces in a row, and a name typed with a stray newline would
+    otherwise fail the whole send. It also tidies an area built as
+    `f"{city} {pincode}"` when the ticket's city is blank — " 500019" would
+    render as "Area:  500019".
+    """
+    return " ".join(text.split())
 
 
 async def send_job_accepted(
