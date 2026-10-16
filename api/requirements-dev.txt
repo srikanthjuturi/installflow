@@ -1,0 +1,4 @@
+-r requirements.txt
+# Test tooling only — never installed on Azure. scripts/publish.py ships
+# requirements.txt alone (00-index X1).
+pytest==8.4.2

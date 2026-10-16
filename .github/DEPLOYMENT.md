@@ -213,8 +213,11 @@ Not required for anything above to work, but tidy:
 - **Local `alembic upgrade head` refuses `RelianceProdDB`** unless
   `CONFIRM_PROD=yes-i-mean-it` is also set — enforced in `api/alembic/env.py`,
   unrelated to and unaffected by the CI changes above.
-- **The api PR check is a syntax/import smoke test**, not real testing — no
-  ruff/mypy/pytest configured yet.
+- **The api PR check is a syntax/import smoke test plus pytest unit tests** —
+  pure functions only, no database (`api/pytest.ini`, `api/tests/unit`); no
+  ruff/mypy configured yet. Both clients' PR checks also run `npm test`
+  (vitest for adminWeb, jest-expo for mobileapp). See
+  `RequirementDocs/franchisee/00-prerequisites-and-test-harness.md`.
 
 ## What this deliberately does not cover
 

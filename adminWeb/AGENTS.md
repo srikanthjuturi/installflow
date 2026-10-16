@@ -1271,6 +1271,7 @@ cd adminWeb
 npm run dev
 npm run lint        # must pass before every commit
 npm run typecheck
+npm test            # vitest — src/**/*.test.{ts,tsx}, jsdom
 npm run build
 ```
 

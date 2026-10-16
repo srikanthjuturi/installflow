@@ -75,6 +75,10 @@ class PincodeOut(AppModel):
     #: 'import' | 'manual'. 'manual' means the spreadsheet does not cover this
     #: code — see the column note on the model.
     source: str = "import"
+    #: The pincode's representative point. None until loaded by
+    #: app.scripts.import_pincode_coordinates — both or neither, never one alone.
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class PincodeCreateRequest(AppModel):

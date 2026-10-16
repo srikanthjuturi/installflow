@@ -25,6 +25,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
 
   mobileapp:
     name: mobileapp — lint & typecheck
@@ -42,13 +43,13 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
 
   api:
-    name: api — import/syntax check
-    # api has no ruff/mypy/pytest configured (checked: not in requirements.txt,
-    # no pyproject.toml/pytest.ini). This is deliberately the weakest of the
-    # three checks — a syntax/import smoke test, not real coverage. Replace it
-    # once real Python tooling exists; see .github/DEPLOYMENT.md decision #9.
+    name: api — import check & unit tests
+    # Syntax/import smoke test, as before, plus real unit tests now that
+    # pytest is configured (pytest.ini) — pure functions only, no database;
+    # see RequirementDocs/franchisee/00-index.md X1.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -70,3 +71,6 @@ jobs:
         run: python -m compileall -q app alembic scripts
       - name: Import the app (catches broken imports)
         run: python -c "import app.main"
+      - run: pip install -r requirements-dev.txt
+      - name: Unit tests (pure — no database, see RequirementDocs/franchisee/00-index.md X1)
+        run: python -m pytest

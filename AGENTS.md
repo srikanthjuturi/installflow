@@ -342,6 +342,7 @@ npm run start:dev-client  # expo start --dev-client — against a dev-client bui
 npm run lint           # must pass before every commit (includes i18n:check)
 npm run i18n:check     # every translation has en.json's keys, placeholders and tags
 npm run typecheck
+npm test               # jest-expo — src/**/__tests__/**
 npm run doctor
 ```
 
@@ -352,9 +353,11 @@ cd api
 ./.venv/Scripts/python.exe run.py                       # uvicorn on :8000
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe -m app.scripts.bootstrap      # the superadmin
+./.venv/Scripts/python.exe -m pytest                     # unit tests — pure, no database
 
 cd adminWeb
 npm run dev      # vite; the API must be up for anything to load
+npm test         # vitest
 ```
 
 ⚠ **Those api commands hit the DEVELOPMENT database.** There are two, on one Azure server:

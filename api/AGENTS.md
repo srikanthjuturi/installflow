@@ -582,6 +582,21 @@ the superadmin out of the very screen that maintains this data. Every **write** 
 Geography is global, so **404-not-403 does not apply here** — there is no tenant to leak by
 confirming a code exists, and an unknown one is an ordinary 404.
 
+#### Pincode coordinates (`pincodes.latitude` / `longitude`)
+
+Loaded by `app.scripts.import_pincode_coordinates` from an external lat/lon file — not researched
+by hand and not part of `RequirementDocs/Reliance Green Tech Pin Code.xlsx`. The script is
+UPDATE-only (it never inserts a pincode the geography master does not already have), and
+`import_geography` never writes these two columns, so a loaded point survives every future
+geography sheet re-upload, exactly as `is_active` does.
+
+As of 2026-10-16, RelianceDB carries a point for **19,496 of 19,496** pincodes — every row. Owner
+ruling G2 stands regardless of coverage: **trust whatever the data says; a pincode with no point
+contributes 0 km to the travel-distance calculation** (`core.coordinates.metres_between`) rather
+than the request failing or a value being guessed. `RelianceProdDB` must be migrated to
+`f9c2d8a3e17b` and loaded the same way before Task 10 (travel allowance) publishes against it —
+see Environments below for running a one-off command against production.
+
 ### 2. RBAC is enforced here, never in the UI.
 
 Hiding a button is presentation. Every endpoint carries `require_feature("...")`, and territory
@@ -1284,6 +1299,26 @@ RELIANCEGREENTECH PRIVATE LIMITED (the client — **keep**), and TWINCORE TECHNO
 twice (one active, one inactive, same GSTIN). The app had just been published; anything registered
 since is exactly the case decision 1 warns about.
 
+## Unit tests
+
+`pytest` (`pytest.ini`, `tests/unit/`) tests **pure functions only — parsers, calculators, state
+machines.** Owner ruling X1: API unit tests never touch a database; what a request actually does
+is proven by each task's acceptance criteria and by `app/scripts/seed/verify.py`, not by pytest.
+
+`tests/unit/conftest.py` carries an `autouse=True` guard fixture that monkeypatches
+`sqlalchemy.ext.asyncio.create_async_engine` and `psycopg.connect` / `psycopg.AsyncConnection.connect`
+to raise — `tests/unit/test_no_db_guard.py` is what proves the wall is actually there, not merely
+documented. The same file sets placeholder `POSTGRES_*` / `JWT_SECRET_KEY` env vars in its **module
+body**, before `app` is ever imported: `app/core/config.py` builds `Settings()` at import time and
+fails without them, and collection fails before any fixture runs if they are set inside one instead.
+
+**Rule for every later task:** a module tested here must be importable with no database. If a pure
+function lives beside DB code, the test imports only the pure symbol; if importing the module pulls
+in an engine, move the pure function to its own `app/core/` module first.
+
+`pytest==8.*` lives only in `requirements-dev.txt`, never in `requirements.txt` — that file is what
+Oryx installs on Azure (`scripts/publish.py`), and test tooling must not ship.
+
 ## Commands
 
 ```bash
@@ -1295,6 +1330,7 @@ python -m app.scripts.create_database --name <db>      # a new database on the s
 python -m app.scripts.copy_geography --to <db>         # the geography master, ids preserved
 python -m app.scripts.cleanup_db --check               # after adding a table — no database
 python -m app.scripts.cleanup_db --keep <id> --dry-run # see "Database cleanup" before anything else
+pip install -r requirements-dev.txt && python -m pytest  # unit tests — pure, no database (see above)
 ```
 
 ### ⚠ Orphaned workers, and why "stale code" keeps happening on Windows
