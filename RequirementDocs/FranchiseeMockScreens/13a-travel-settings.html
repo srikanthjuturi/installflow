@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13a Travel settings — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a{cursor:pointer}
+  .viewbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .viewbar .sp{flex:1}
+  .unit{position:relative}
+  .unit .in{padding-right:46px}
+  .unit .u{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--ink-3);font-size:12.5px;pointer-events:none}
+  .unit.pre .in{padding-left:28px;padding-right:11px}
+  .unit.pre .u{right:auto;left:11px}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .off-note{margin:2px 0 14px}
+  .preview{margin-top:6px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:14px 16px}
+  .preview h4{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .preview .lines{margin:10px 0 0;padding:0;list-style:none;font-size:13.5px;display:grid;gap:5px}
+  .preview .lines li.res{font-size:15px;font-weight:600;color:var(--ok);padding-top:6px;border-top:1px dashed var(--input)}
+  .preview .lines li.res.zero{color:var(--ink-2)}
+  .preview .lines .cap{color:var(--warn)}
+  .demo{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink-2)}
+  .skel-card{height:384px;padding:18px;display:grid;gap:14px;align-content:start}
+  .savebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .savebar .t{color:var(--ink-3);font-size:12.5px;flex:1;min-width:260px}
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  .staffonly{display:none}
+  body.staff .staffonly{display:flex}
+  body.staff .portalonly{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" data-rail>
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small data-brand-sub>Franchise portal · SkyFix Services</small></div></div>
+    <div class="portalonly" style="display:contents">
+      <div class="grp">Work</div>
+      <a>Spare parts <span class="n">3</span></a><a>Tickets</a><a>Technicians</a><a>Employees</a><a>Employee statements</a>
+      <div class="grp">Settings</div>
+      <a class="on">Allowance rules</a><a>Facility users</a>
+    </div>
+    <div class="staffonly" style="display:none;flex-direction:column;gap:2px">
+      <div class="grp">Operations</div>
+      <a>Tickets</a><a>Technicians</a><a>Franchisees</a><a>Spare parts</a>
+      <div class="grp">Configuration</div>
+      <a>Rules Config</a><a class="on">Allowances</a>
+    </div>
+    <div class="who" data-who>Meena R · Franchisee admin</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1 data-title>Allowance rules</h1><div class="sub" data-sub>Travel and speed allowances for your technicians</div></div>
+      <span class="sp"></span>
+      <div class="avatar" data-av>MR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.4</b> (Allowance rules — travel; formula §4.1; copy §5.10 “Travel”). Worked example is SkyFix Services · Ravi Kumar · 21.6 km straight → ₹40. The preview below really computes with the server formula.</div>
+
+      <div class="viewbar">
+        <div class="seg" role="group" aria-label="What to show"><button class="on">Travel</button><button onclick="location.href='13b-speed-matrix.html'">Speed</button></div>
+        <span class="sp"></span>
+        <span class="sub" style="color:var(--ink-3);font-size:12.5px">Mock only — whose rules:</span>
+        <div class="seg" id="variant">
+          <button class="on" data-v="portal">Franchise portal (SkyFix)</button>
+          <button data-v="staff">Staff · Acme Home</button>
+        </div>
+        <div class="seg staffonly" id="ro" style="display:none">
+          <button class="on" data-ro="0">Admin / National Head (edit)</button>
+          <button data-ro="1">Regional Head (read-only)</button>
+        </div>
+      </div>
+
+      <div class="pill-info staffonly" style="display:none" id="homeNote">Editing Acme Home’s rules — the home franchisee, implied. Other franchisees’ rules are read-only on their Franchisees page.</div>
+
+      <!-- DATA -->
+      <div data-view="data">
+        <form id="f" class="grid g2" novalidate onsubmit="return false">
+
+          <!-- Freelancers -->
+          <section class="card" data-card="fl">
+            <header><div><h2>Freelancers</h2><div class="sub">Paid on each job a freelancer completes, measured one way from their base to the customer.</div></div></header>
+            <div class="body">
+              <div class="row2">
+                <div class="field"><label for="fl-free">Free distance (km)</label>
+                  <div class="unit"><input class="in" id="fl-free" data-k="free" value="20" inputmode="numeric"><span class="u">km</span></div>
+                  <div class="hint">Nothing is paid up to this distance.</div><div class="err" data-e="free"></div></div>
+                <div class="field"><label for="fl-step">Pay for every (km)</label>
+                  <div class="unit"><input class="in" id="fl-step" data-k="step" value="2" inputmode="numeric"><span class="u">km</span></div>
+                  <div class="hint">Part of a step is not paid.</div><div class="err" data-e="step"></div></div>
+              </div>
+              <div class="row2">
+                <div class="field"><label for="fl-rate">Amount per step (₹)</label>
+                  <div class="unit pre"><input class="in" id="fl-rate" data-k="rate" value="10" inputmode="numeric"><span class="u">₹</span></div>
+                  <div class="err" data-e="rate"></div></div>
+                <div class="field"><label for="fl-road">Road factor (%)</label>
+                  <div class="unit"><input class="in" id="fl-road" data-k="road" value="130" inputmode="numeric"><span class="u">%</span></div>
+                  <div class="hint">Straight-line distance × this = road distance. 130 % suits most cities.</div><div class="err" data-e="road"></div></div>
+              </div>
+              <div class="field"><label for="fl-max">Most per job (₹)</label>
+                <div class="unit pre"><input class="in" id="fl-max" data-k="max" value="300" inputmode="numeric"><span class="u">₹</span></div>
+                <div class="err" data-e="max"></div></div>
+              <div class="pill-warn off-note hide" data-off>Off — set an amount per step to switch it on.</div>
+
+              <div class="preview">
+                <h4>Worked example</h4>
+                <div class="field" style="margin:0"><label for="fl-km">Straight-line distance to the customer (km)</label>
+                  <div class="unit"><input class="in" id="fl-km" data-k="km" value="21.6" inputmode="decimal"><span class="u">km</span></div></div>
+                <ul class="lines" data-lines></ul>
+              </div>
+            </div>
+          </section>
+
+          <!-- Employees -->
+          <section class="card" data-card="em">
+            <header><div><h2>Employees</h2><div class="sub">Paid on each job an employee completes, on top of salary, through their monthly statement.</div></div></header>
+            <div class="body">
+              <div class="row2">
+                <div class="field"><label for="em-free">Free distance (km)</label>
+                  <div class="unit"><input class="in" id="em-free" data-k="free" value="30" inputmode="numeric"><span class="u">km</span></div>
+                  <div class="hint">Nothing is paid up to this distance.</div><div class="err" data-e="free"></div></div>
+                <div class="field"><label for="em-step">Pay for every (km)</label>
+                  <div class="unit"><input class="in" id="em-step" data-k="step" value="1" inputmode="numeric"><span class="u">km</span></div>
+                  <div class="hint">Part of a step is not paid.</div><div class="err" data-e="step"></div></div>
+              </div>
+              <div class="row2">
+                <div class="field"><label for="em-rate">Amount per step (₹)</label>
+                  <div class="unit pre"><input class="in" id="em-rate" data-k="rate" value="0" inputmode="numeric"><span class="u">₹</span></div>
+                  <div class="err" data-e="rate"></div></div>
+                <div class="field"><label for="em-road">Road factor (%)</label>
+                  <div class="unit"><input class="in" id="em-road" data-k="road" value="130" inputmode="numeric"><span class="u">%</span></div>
+                  <div class="hint">Straight-line distance × this = road distance. 130 % suits most cities.</div><div class="err" data-e="road"></div></div>
+              </div>
+              <div class="field"><label for="em-max">Most per job (₹)</label>
+                <div class="unit pre"><input class="in" id="em-max" data-k="max" value="0" inputmode="numeric"><span class="u">₹</span></div>
+                <div class="err" data-e="max"></div></div>
+              <div class="pill-warn off-note hide" data-off>Off — set an amount per step to switch it on.</div>
+
+              <div class="preview">
+                <h4>Worked example</h4>
+                <div class="field" style="margin:0"><label for="em-km">Straight-line distance to the customer (km)</label>
+                  <div class="unit"><input class="in" id="em-km" data-k="km" value="21.6" inputmode="decimal"><span class="u">km</span></div></div>
+                <ul class="lines" data-lines></ul>
+              </div>
+            </div>
+          </section>
+        </form>
+
+        <div class="card" style="margin-top:16px"><div class="body savebar">
+          <span class="t">Changes apply to jobs accepted from now on. Jobs already accepted keep the allowance they were given.</span>
+          <span class="demo"><span class="proposed">Try:</span>
+            <button class="btn sm" type="button" id="tryErr">Show the ₹0-maximum error</button>
+            <button class="btn sm" type="button" id="tryReset">Reset values</button></span>
+          <button class="btn pri" type="button" id="save">Save travel rules</button>
+        </div></div>
+      </div>
+
+      <!-- LOADING -->
+      <div data-view="loading" class="hide">
+        <div class="grid g2"><div class="card skel-card"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:55%"></div></div>
+          <div class="card skel-card"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel"></div><div class="skel" style="width:70%"></div><div class="skel"></div><div class="skel" style="width:55%"></div></div></div>
+      </div>
+
+      <!-- ERROR -->
+      <div data-view="error" class="hide">
+        <div class="card"><div class="empty"><b>Couldn’t load the travel rules</b>Something went wrong reaching the server.<div style="margin-top:12px"><button class="btn" data-toast="Retrying…">Retry</button></div></div></div>
+      </div>
+
+      <div class="notebox">
+        <h3>Wording added by the mock — needs sign-off</h3>
+        <ul>
+          <li class="">“Up to ₹1,00,000” / “Up to ₹10,000” — out-of-range message for the two rupee fields (doc only gives “Enter a whole number of rupees”; bounds are Task 10’s 0–10 000 000 paise and 0–1 000 000 paise).</li>
+          <li>“Mock only — whose rules”, “Try: …”, the Franchise portal / Staff segment, the Admin / Regional Head toggle and the home-franchisee info bar (“Editing Acme Home’s rules — the home franchisee, implied …”) are mock scaffolding (dashed orange outline), not product copy.</li>
+          <li>Error-state body “Something went wrong reaching the server.” and Retry button label (the doc names only the title).</li>
+          <li>Staff-variant subtitle uses §5.10 “Allowances · Travel and speed allowances for {home franchisee}’s technicians”.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="state-switch"><button data-state="data" class="on">Data</button><button data-state="loading">Loading</button><button data-state="error">Error</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var inr = function(n){ return "₹" + Number(n).toLocaleString("en-IN"); };
+  var cards = document.querySelectorAll("[data-card]");
+  var readOnly = false;
+
+  function val(card,k){ return card.querySelector('[data-k="'+k+'"]').value.trim(); }
+  function isInt(s){ return /^\d{1,9}$/.test(s); }
+
+  // Server formula (app/core/travel.py): tenths, half-up, partial steps dropped. Integer maths only.
+  function explain(straightKm, r){
+    var straightM = Math.round(straightKm * 1000);
+    var roadT = Math.floor((straightM * r.road + 5000) / 10000);          // tenths of a km, half-up
+    var beyondT = Math.max(0, roadT - r.free * 10);
+    var steps = Math.floor(beyondT / (r.step * 10));
+    var raw = steps * r.rate;
+    var amount = Math.min(r.max, raw);
+    return {roadKm: roadT/10, beyondKm: beyondT/10, steps: steps, raw: raw, amount: amount, capped: raw > r.max, off: r.rate === 0};
+  }
+
+  function render(card){
+    var errs = {};
+    var f = {free:val(card,"free"), step:val(card,"step"), rate:val(card,"rate"), road:val(card,"road"), max:val(card,"max")};
+    if(!isInt(f.free) || +f.free > 500) errs.free = !isInt(f.free) ? "Enter a whole number of kilometres" : "Between 0 and 500 km";
+    if(!isInt(f.step) || +f.step < 1 || +f.step > 50) errs.step = "Between 1 and 50 km";
+    if(!isInt(f.rate)) errs.rate = "Enter a whole number of rupees"; else if(+f.rate > 10000) errs.rate = "Up to ₹10,000";
+    if(!isInt(f.road) || +f.road < 100 || +f.road > 300) errs.road = "Between 100 % and 300 %";
+    if(!isInt(f.max)) errs.max = "Enter a whole number of rupees"; else if(+f.max > 100000) errs.max = "Up to ₹1,00,000";
+    if(!errs.max && !errs.rate && +f.rate > 0 && +f.max === 0) errs.max = "Set a maximum per job — with a ₹0 maximum the allowance is always ₹0.";
+
+    ["free","step","rate","road","max"].forEach(function(k){
+      var e = card.querySelector('[data-e="'+k+'"]');
+      e.textContent = errs[k] || "";
+      card.querySelector('[data-k="'+k+'"]').classList.toggle("bad", !!errs[k]);
+    });
+
+    var ok = Object.keys(errs).length === 0;
+    var off = isInt(f.rate) && +f.rate === 0;
+    card.querySelector("[data-off]").classList.toggle("hide", !off);
+
+    var ul = card.querySelector("[data-lines]");
+    var km = parseFloat(val(card,"km"));
+    if(!ok || isNaN(km) || km < 0){ ul.innerHTML = '<li style="color:var(--ink-3)">Fix the fields above to see the worked example.</li>'; card._valid = ok; return; }
+    var r = {free:+f.free, step:+f.step, rate:+f.rate, road:+f.road, max:+f.max};
+    var x = explain(km, r);
+    var h = "";
+    h += "<li>" + km + " km × " + r.road + " % = " + x.roadKm.toFixed(1) + " km by road</li>";
+    if(!x.off){
+      if(x.beyondKm > 0) h += "<li>" + x.beyondKm.toFixed(1) + " km beyond the free " + r.free + " km = " + x.steps + " steps of " + r.step + " km</li>";
+      if(x.steps > 0) h += "<li>" + x.steps + " × " + inr(r.rate) + " = " + inr(x.raw) + "</li>";
+      if(x.capped) h += '<li class="cap">Capped at ' + inr(r.max) + "</li>";
+    }
+    if(x.off) h += '<li class="res zero">Pays nothing — the allowance is off</li>';
+    else if(x.steps === 0) h += '<li class="res zero">Pays nothing — within the free distance</li>';
+    else h += '<li class="res">Pays ' + inr(x.amount) + "</li>";
+    ul.innerHTML = h;
+    card._valid = ok;
+  }
+
+  function all(){ cards.forEach(render); }
+  document.getElementById("f").addEventListener("input", function(e){ var c = e.target.closest("[data-card]"); if(c) render(c); });
+
+  document.getElementById("save").addEventListener("click", function(){
+    if(readOnly) return;
+    all();
+    var ok = true; cards.forEach(function(c){ ok = ok && c._valid; });
+    var t = document.getElementById("toast");
+    t.textContent = ok ? "Travel rules saved" : "Couldn’t save the travel rules";
+    t.classList.add("show"); setTimeout(function(){ t.classList.remove("show"); }, 2600);
+  });
+
+  document.getElementById("tryErr").addEventListener("click", function(){
+    var c = document.querySelector('[data-card="em"]');
+    c.querySelector('[data-k="rate"]').value = "10"; c.querySelector('[data-k="max"]').value = "0"; render(c);
+    c.scrollIntoView({behavior:"smooth",block:"center"});
+  });
+  document.getElementById("tryReset").addEventListener("click", function(){
+    var d = {fl:{free:20,step:2,rate:10,road:130,max:300,km:21.6}, em:{free:30,step:1,rate:0,road:130,max:0,km:21.6}};
+    cards.forEach(function(c){ var o = d[c.getAttribute("data-card")]; Object.keys(o).forEach(function(k){ c.querySelector('[data-k="'+k+'"]').value = o[k]; }); render(c); });
+  });
+
+  // Variant toggles (mock scaffolding)
+  function setReadOnly(on){
+    readOnly = on;
+    document.querySelectorAll("#f input").forEach(function(i){ if(i.getAttribute("data-k") !== "km") i.disabled = on; });
+    var s = document.getElementById("save"); s.classList.toggle("hide", on);
+    document.getElementById("tryErr").classList.toggle("hide", on);
+    document.getElementById("tryReset").classList.toggle("hide", on);
+  }
+  document.getElementById("variant").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return;
+    var staff = b.getAttribute("data-v") === "staff";
+    document.body.classList.toggle("staff", staff);
+    document.querySelector("[data-brand-sub]").textContent = staff ? "Operations console" : "Franchise portal · SkyFix Services";
+    document.querySelector("[data-title]").textContent = staff ? "Allowances" : "Allowance rules";
+    document.querySelector("[data-sub]").textContent = staff ? "Travel and speed allowances for Acme Home’s technicians" : "Travel and speed allowances for your technicians";
+    document.querySelector("[data-who]").textContent = staff ? "Nisha Rao · National Head" : "Meena R · Franchisee admin";
+    document.querySelector("[data-av]").textContent = staff ? "NR" : "MR";
+    document.querySelectorAll(".staffonly").forEach(function(el){ if(el.id === "ro" || el.id === "homeNote") el.style.display = staff ? "" : "none"; });
+    document.querySelectorAll(".rail .staffonly").forEach(function(el){ el.style.display = staff ? "flex" : "none"; });
+    if(!staff) setReadOnly(false); else setReadOnly(document.querySelector("#ro .on").getAttribute("data-ro") === "1");
+  });
+  document.getElementById("ro").addEventListener("click", function(e){
+    var b = e.target.closest("button"); if(!b) return; setReadOnly(b.getAttribute("data-ro") === "1");
+  });
+  all();
+})();
+</script>
+</body>
+</html>

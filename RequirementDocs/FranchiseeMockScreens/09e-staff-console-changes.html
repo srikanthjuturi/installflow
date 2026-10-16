@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Appliances · Staff console changes (mock 09e)</title>
+<link rel="stylesheet" href="_shared/console.css">
+<link rel="stylesheet" href="_shared/portal-09.css">
+<script src="_shared/mock.js" defer></script>
+<script src="_shared/portal-09.js" defer></script>
+<style>
+  .fsel{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--ink-2)}
+  .fsel select{width:230px}
+  .fact-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px}
+  @media(max-width:900px){.fact-row{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body data-brand="Acme Appliances">
+<div class="app" data-scope data-swapscope>
+
+  <!-- ============ STAFF RAIL — the company's own console, no franchisee line ============ -->
+  <aside class="rail">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Overview</div>
+    <a href="#"><i class="ic"></i>Dashboard</a>
+    <div class="grp">Tickets</div>
+    <a href="#ticket" data-tab="ticket" class="on"><i class="ic"></i>Ticket List</a>
+    <div class="grp">Operations</div>
+    <a href="#"><i class="ic"></i>Escalation Queue<span class="n">3</span></a>
+    <a href="#"><i class="ic"></i>Approvals<span class="n">2</span></a>
+    <a href="#redemptions" data-tab="redemptions"><i class="ic"></i>Redemptions</a>
+    <div class="grp">Master Data</div>
+    <a href="#profile" data-tab="profile"><i class="ic"></i>Technicians</a>
+    <a href="08a-franchisees-list.html"><i class="ic"></i>Franchisees</a>
+    <a href="#ledger" data-tab="ledger"><i class="ic"></i>Penalty &amp; Bonus</a>
+    <a href="#"><i class="ic"></i>Vendors</a>
+    <a href="#"><i class="ic"></i>Territory</a>
+    <a href="#"><i class="ic"></i>Categories</a>
+    <div class="grp">Configuration</div>
+    <a href="#"><i class="ic"></i>Rules Config</a>
+    <a href="#"><i class="ic"></i>Users &amp; Roles</a>
+    <div class="who"><b>Rohan Mehta</b>National Head<br><a href="#">Account</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn sm menu" data-menu aria-label="Open menu">&#9776;</button>
+      <div class="ttl" data-ttl="ticket"><h1>Ticket SKY-INST-0412</h1><span class="sub">Timeline &amp; audit trail</span></div>
+      <div class="ttl hide" data-ttl="ledger"><h1>Penalty &amp; bonus pool</h1><span class="sub">Cancellation penalties collected and the escalation bonuses they fund.</span></div>
+      <div class="ttl hide" data-ttl="redemptions"><h1>Redemptions</h1><span class="sub">Pay technicians their redeemed balance by UPI</span></div>
+      <div class="ttl hide" data-ttl="profile"><h1>Technician profile</h1><span class="sub">Category · pincode · bandwidth</span></div>
+      <span class="mb"><b>Acme Appliances</b>Operations console</span>
+      <span class="sp"></span>
+      <button class="bell" aria-label="Notifications" data-toast="Notifications"><i></i><span class="n">3</span></button>
+      <div class="avatar" title="Rohan Mehta">RM</div>
+    </header>
+
+    <main class="page">
+      <div class="note"><b>Mock of Task 09 §5.10 — staff-console changes from Tasks 05/06</b> (commit <code>feat(console): staff screens learn franchisees</code>): Penalty &amp; Bonus and Redemptions get a <b>Franchisee</b> selector (read-only where <code>canAct</code> is false) · the ticket page's penalty row shows <b>Reverse</b> only when the server sends <code>canReverse</code> · the force-close form hides the payout box for an employee's job · a home employee's profile gains <b>Download statement</b>. Use the rail to move between the four screens; each has a small “Mock:” control.</div>
+
+      <!-- hidden proxy buttons for the Franchisee <select> (select -> data-show) -->
+      <div class="hide"><button data-show="fr:home">h</button><button data-show="fr:sec">s</button><button data-show="fr:sky">k</button></div>
+
+      <!-- ================= PANE: Penalty & Bonus ================= -->
+      <section data-pane="ledger" class="stack hide">
+        <div class="card">
+          <div class="toolbar">
+            <label class="fsel">Franchisee
+              <select class="in fsel-sel" aria-label="Franchisee">
+                <option value="home" selected>Acme Appliances (home)</option>
+                <option value="sec">Acme Secunderabad</option>
+                <option value="sky">SkyFix Services</option>
+              </select></label>
+            <span class="mut" style="font-size:12px">Admin and National Head only · defaults to home</span>
+          </div>
+        </div>
+
+        <div class="ro-banner hide" data-swap="fr:sec fr:sky"><b>Managed by <span data-swap="fr:sec">Acme Secunderabad</span><span class="hide" data-swap="fr:sky">SkyFix Services</span></b>
+          <span class="proposed">You can read this pool; its own franchisee admin works it. Rows carry no actions.</span></div>
+
+        <div class="pool-tiles">
+          <div class="card main"><div class="l" style="opacity:.8">Current pool balance</div>
+            <div class="v"><span data-swap="fr:home">₹700</span><span class="hide" data-swap="fr:sec">₹2,100</span><span class="hide" data-swap="fr:sky">₹1,600</span></div><div class="d">Available for escalation bonuses</div></div>
+          <div class="card"><div class="l neg">Penalties collected</div>
+            <div class="v"><span data-swap="fr:home">₹1,100</span><span class="hide" data-swap="fr:sec">₹2,500</span><span class="hide" data-swap="fr:sky">₹2,000</span></div>
+            <div class="d">across <span data-swap="fr:home">2 cancellations</span><span class="hide" data-swap="fr:sec">3 cancellations</span><span class="hide" data-swap="fr:sky">3 cancellations</span> (not reversed)</div></div>
+          <div class="card"><div class="l pos">Bonuses paid</div><div class="v">₹400</div><div class="d">across 1 escalation pickup</div></div>
+        </div>
+
+        <div class="card">
+          <div class="tw">
+            <table class="t">
+              <thead><tr><th>Time</th><th>Type</th><th>Technician</th><th>Ticket</th><th>Reason</th><th class="num">Amount</th><th data-swap="fr:home" class="proposed">Action</th></tr></thead>
+              <tbody data-swap="fr:home">
+                <tr><td>11-10-2026 12:10</td><td><span class="chip dng">Penalty</span></td><td>Naveen Kumar <span class="code">TCH-3002</span></td><td class="mono">ACM-INST-0231</td><td>Cancel under 2h before slot</td><td class="num">+₹800</td><td><button class="btn sm" data-open="dlgRev">&#8630; Reverse</button></td></tr>
+                <tr><td>10-10-2026 17:25</td><td><span class="chip ok">Bonus</span></td><td>Sagar Rao <span class="code">TCH-3008</span></td><td class="mono">ACM-INST-0229</td><td>Escalation pickup</td><td class="num">−₹400</td><td></td></tr>
+                <tr><td>07-10-2026 09:12</td><td><span class="chip dng">Penalty</span></td><td>Sagar Rao <span class="code">TCH-3008</span></td><td class="mono">ACM-INST-0220</td><td>Cancel more than 4h before slot</td><td class="num">+₹300</td><td><button class="btn sm" data-open="dlgRev">&#8630; Reverse</button></td></tr>
+              </tbody>
+              <tbody class="hide" data-swap="fr:sec">
+                <tr><td>13-10-2026 10:02</td><td><span class="chip dng">Penalty</span></td><td>Venkat Rao <span class="code">TCH-3501</span></td><td class="mono">SEC-INST-0108</td><td>No-show</td><td class="num">+₹1,200</td></tr>
+                <tr><td>11-10-2026 18:40</td><td><span class="chip ok">Bonus</span></td><td>Anjali Menon <span class="code">TCH-3507</span></td><td class="mono">SEC-INST-0104</td><td>Escalation pickup</td><td class="num">−₹400</td></tr>
+                <tr><td>08-10-2026 14:15</td><td><span class="chip dng">Penalty</span></td><td>Venkat Rao <span class="code">TCH-3501</span></td><td class="mono">SEC-INST-0099</td><td>Cancel under 2h before slot</td><td class="num">+₹800</td></tr>
+                <tr><td>02-10-2026 11:30</td><td><span class="chip dng">Penalty</span></td><td>Anjali Menon <span class="code">TCH-3507</span></td><td class="mono">SEC-INST-0091</td><td>Cancel 2–4h before slot</td><td class="num">+₹500</td></tr>
+              </tbody>
+              <tbody class="hide" data-swap="fr:sky">
+                <tr><td>12-10-2026 16:20</td><td><span class="chip dng">Penalty</span></td><td>Ravi Teja <span class="code">TCH-4021</span></td><td class="mono">SKY-INST-0412</td><td>Cancel 2–4h before slot</td><td class="num">+₹500</td></tr>
+                <tr><td>09-10-2026 11:05</td><td><span class="chip ok">Bonus</span></td><td>Imran Shaikh <span class="code">TCH-4027</span></td><td class="mono">SKY-INST-0405</td><td>Escalation pickup</td><td class="num">−₹400</td></tr>
+                <tr><td>28-09-2026 13:12</td><td><span class="chip dng">Penalty</span></td><td>Kavita Rao <span class="code">TCH-4040</span></td><td class="mono">SKY-INST-0371</td><td>No-show</td><td class="num">+₹1,200</td></tr>
+                <tr><td>20-09-2026 09:44</td><td><span class="chip dng">Penalty</span></td><td>Ravi Teja <span class="code">TCH-4021</span></td><td class="mono">SKY-INST-0352</td><td>Cancel more than 4h before slot</td><td class="num">+₹300</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pg"><span data-swap="fr:home">Acme Appliances (home) — canAct: true</span><span class="hide" data-swap="fr:sec">Acme Secunderabad — canAct: false · read only</span><span class="hide" data-swap="fr:sky">SkyFix Services — canAct: false · read only</span><span>Newest first</span></div>
+        </div>
+        <div class="mockbar blk"><b>canAct</b> comes from the server per row (F8): home money keeps today's rules; a non-home franchisee's pool is worked by its own franchisee admin (Task 09 pool screen), so here the selector shows it read-only.</div>
+      </section>
+
+      <!-- ================= PANE: Redemptions ================= -->
+      <section data-pane="redemptions" class="stack hide">
+        <div class="card">
+          <div class="toolbar">
+            <label class="fsel">Franchisee
+              <select class="in fsel-sel" aria-label="Franchisee">
+                <option value="home" selected>Acme Appliances (home)</option>
+                <option value="sec">Acme Secunderabad</option>
+                <option value="sky">SkyFix Services</option>
+              </select></label>
+            <div class="seg" role="group" aria-label="Status"><button>All</button><button class="on">To pay</button><button>Awaiting technician</button><button>Settled</button><button>Declined</button></div>
+          </div>
+          <div class="tw">
+            <table class="t">
+              <thead><tr><th>Reference</th><th>Technician</th><th class="num">Amount</th><th>UPI ID</th><th>Requested</th><th>Status</th></tr></thead>
+              <tbody data-swap="fr:home"><tr><td class="mono">RDM-0035</td><td>Naveen Kumar <span class="code">TCH-3002</span></td><td class="num">₹5,000</td><td class="mono">naveen.k@okaxis</td><td>3 hours ago</td><td><span class="chip warn">To pay</span></td></tr></tbody>
+              <tbody class="hide" data-swap="fr:sec"><tr><td class="mono">RDM-0036</td><td>Venkat Rao <span class="code">TCH-3501</span></td><td class="num">₹7,800</td><td class="mono">venkat.rao@okicici</td><td>yesterday</td><td><span class="chip warn">To pay</span></td></tr></tbody>
+              <tbody class="hide" data-swap="fr:sky"><tr><td class="mono">RDM-0041</td><td>Ravi Teja <span class="code">TCH-4021</span></td><td class="num">₹3,200</td><td class="mono">ravi.teja@okhdfc</td><td>2 hours ago</td><td><span class="chip warn">To pay</span></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <header><h2>Redemption <span class="code" data-swap="fr:home">RDM-0035</span><span class="code hide" data-swap="fr:sec">RDM-0036</span><span class="code hide" data-swap="fr:sky">RDM-0041</span></h2><span class="sub">Pay by UPI · record the proof</span></header>
+          <div class="body">
+            <div data-swap="fr:home" class="two">
+              <div class="stack"><div class="big" style="margin:0">₹5,000</div><span>Naveen Kumar <span class="code">TCH-3002</span></span><div class="qr" data-qr></div><span class="mut" style="font-size:11px">Mock QR — not scannable</span></div>
+              <div class="stack">
+                <b>Mark as paid</b>
+                <div class="field"><label>Payment screenshot <span class="neg">*</span></label><button class="btn" type="button">&#128247; Payment screenshot</button></div>
+                <div class="field"><label>UTR / reference (optional)</label><input class="in" placeholder="e.g. 412345678901"></div>
+                <div class="inline-act"><button class="btn pri" data-toast="Marked as paid">Mark as paid</button><button class="btn">Decline</button></div>
+                <span class="hint-s">Claim and Decline are offered because <code>canAct</code> is true — home is paid by the National Head, else the Admin.</span>
+              </div>
+            </div>
+            <div class="hide" data-swap="fr:sec fr:sky">
+              <div class="ro-banner"><b>Managed by <span data-swap="fr:sec">Acme Secunderabad</span><span class="hide" data-swap="fr:sky">SkyFix Services</span></b>
+                <span class="proposed">Its own franchisee admin pays this one; you can read it. No Mark as paid, no Decline.</span></div>
+              <dl class="kv" style="margin-top:14px;grid-template-columns:120px 1fr"><dt>Amount</dt><dd><b data-swap="fr:sec">₹7,800</b><b class="hide" data-swap="fr:sky">₹3,200</b></dd><dt>Status</dt><dd><span class="chip warn">To pay</span></dd></dl>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PANE: ticket page ================= -->
+      <section data-pane="ticket" class="stack">
+        <div class="mockbar">
+          <b>Mock: viewing as</b>
+          <div class="seg"><button class="on" data-show="v:nh">Rohan Mehta (National Head)</button><button data-show="v:am">Rekha Iyer (Area Manager, Telangana)</button></div>
+          <span data-swap="v:nh">The server sends <code>canReverse: true</code> on each penalty.</span>
+          <span class="hide" data-swap="v:am">SkyFix is a non-home franchisee, so <code>canReverse</code> is false for an Area Manager.</span>
+        </div>
+
+        <div class="card">
+          <header style="flex-wrap:wrap"><h2 class="mono" style="font-size:16px">Ticket SKY-INST-0412</h2><span class="chip assigned">Assigned</span><span style="flex:1"></span>
+            <button class="btn sm">Change the time</button><button class="btn sm">Reassign</button>
+            <button class="btn sm dng" data-open="dlgForce">Force closure</button></header>
+          <div class="body">
+            <dl class="kv" style="grid-template-columns:150px 1fr 150px 1fr">
+              <dt>Vendor</dt><dd>Crestline Distributors</dd><dt>Category</dt><dd>Television</dd>
+              <dt>Product model</dt><dd>Meridian 43″ Android TV</dd><dt>Service type</dt><dd>Installation</dd>
+              <dt>Confirmed slot</dt><dd>16-10-2026, 10:00–12:00</dd><dt>Pincode</dt><dd>500032</dd>
+              <dt>Billed to vendor</dt><dd>₹600</dd><dt>Technician payout</dt><dd>₹450</dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="two">
+          <div class="card"><header><h2>Assigned technician</h2></header><div class="body">
+            <div class="who-c"><div class="avatar">MR</div><div><span class="nm">Meena R</span><span class="hint-s"><span class="code">TCH-4033</span> · <span class="chip employee">Employee</span> · SkyFix Services</span></div></div>
+          </div></div>
+
+          <div class="card">
+            <header><h2>Penalties</h2></header>
+            <div class="body">
+              <div class="pen-row">
+                <div class="grow"><b>Ravi Teja</b><small>Cancel 2–4h before slot · 12-10-2026 16:20</small>
+                  <div style="margin-top:8px">
+                    <button class="btn sm" data-swap="v:nh" data-open="dlgRev">&#8630; Reverse<span style="position:absolute;left:-9999px"> the ₹500 penalty to Ravi Teja</span></button>
+                    <span class="mut hide" data-swap="v:am" style="font-size:12px">Managed by SkyFix Services</span>
+                  </div></div>
+                <b class="neg">−₹500</b>
+              </div>
+              <div class="pen-row">
+                <div class="grow"><b>Meena R</b><small>Cancel under 2h before slot · 03-10-2026 15:48</small>
+                  <div style="margin-top:6px;font-size:12px;color:var(--ink-2)">&#8630; Reversed by Rohan Mehta · 04-10-2026 10:30 · Customer moved the visit</div></div>
+                <b class="strike">−₹800</b>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mockbar" style="display:block">Row 1 shows <b>Reverse</b> only when <code>canReverse</code>; without it the row says <span class="proposed">Managed by SkyFix Services</span> instead of a dead button. Row 2 is already reversed, so no button for anybody. <b>Force closure</b> (top right) opens the dialog for this employee's job.</div>
+      </section>
+
+      <!-- ================= PANE: technician profile (statement) ================= -->
+      <section data-pane="profile" class="stack hide">
+        <div class="mockbar"><b>Mock: open the profile of</b>
+          <div class="seg"><button class="on" data-show="p:home">Sagar Rao — employee of Acme Appliances (home)</button><button data-show="p:sky">Meena R — employee of SkyFix Services</button></div></div>
+
+        <div class="ro-banner hide" data-swap="p:sky"><span>Run by SkyFix Services. Their franchisee admin manages this technician.</span></div>
+
+        <div class="card">
+          <div class="body">
+            <div class="who-c" style="gap:14px">
+              <div class="photo" style="width:56px;height:56px;font-size:18px"><span data-swap="p:home">SR</span><span class="hide" data-swap="p:sky">MR</span></div>
+              <div style="flex:1"><div class="nm" style="font-size:16px"><span data-swap="p:home">Sagar Rao</span><span class="hide" data-swap="p:sky">Meena R</span></div>
+                <span class="code"><span data-swap="p:home">TCH-3008</span><span class="hide" data-swap="p:sky">TCH-4033</span></span> <span class="chip ok">Active</span></div>
+            </div>
+            <div class="fact-row" style="margin-top:16px">
+              <div class="facts" style="display:block"><small>Franchisee</small><span><span data-swap="p:home">Acme Appliances <span class="chip plain">Home</span></span><span class="hide" data-swap="p:sky">SkyFix Services</span></span></div>
+              <div class="facts" style="display:block"><small>Type</small><span><span class="chip employee">Employee</span></span></div>
+              <div class="facts" style="display:block"><small>Phone</small><span><span data-swap="p:home">+91 98000 00008</span><span class="hide" data-swap="p:sky">+91 98000 00002</span></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-swap="p:home">
+          <header><h2>Download statement</h2><span class="sub">Travel, speed rewards, penalties and bonuses for the month, to add to salary</span></header>
+          <div class="body">
+            <div class="inline-act" style="align-items:flex-end">
+              <div class="field" style="margin:0"><label for="m2">Month</label>
+                <select class="in" id="m2" style="width:210px"><option>October 2026 (so far)</option><option selected>September 2026</option><option>August 2026</option><option>July 2026</option></select></div>
+              <button class="btn pri" data-toast="Statement downloaded · Sagar Rao, September 2026">&#8681; Download statement</button>
+            </div>
+            <p class="hint-s" style="margin-top:10px">Defaults to the previous IST month, since payroll runs after a month closes. File: <span class="mono">acme-appliances-acme-appliances-tch-3008-2026-09.csv</span> — <span class="mono">GET /ledger/statements/{technicianId}?month=2026-09</span>. National Head and above, home franchisee only.</p>
+          </div>
+        </div>
+        <div class="mockbar blk hide" data-swap="p:sky">No <b>Download statement</b> here: a non-home employee's statement is downloaded by SkyFix's own franchisee admin under <i>Employee statements</i> in the portal. Edit and UPI actions are hidden too (<code>canManage</code> false).</div>
+      </section>
+
+      <div class="signoff">
+        <h2>Wording added by the mock — needs sign-off</h2>
+        <ul>
+          <li>Doc §5.10 PROPOSED, used as given: <code>Franchisee</code> · <code>Managed by {franchisee}</code> · <code>Employees are paid through salary — no per-job payout.</code> · <code>Download statement</code>.</li>
+          <li><span class="proposed">Read-only sentences</span> beside "Managed by …": "You can read this pool; its own franchisee admin works it. Rows carry no actions." and "Its own franchisee admin pays this one; you can read it. No Mark as paid, no Decline."; the <span class="proposed">Action</span> column header; the "Managed by SkyFix Services" label standing in for a hidden Reverse button on the ticket page.</li>
+          <li><b>Open point:</b> §5.10 says ledger "actions are read-only when the row's <code>canAct</code> is false", but today's staff ledger has no row action (staff reverse on the ticket page, Task 09 §4.3 / §5.4). The mock draws Reverse on home rows to show the behaviour — delete the column if the owner does not want it.</li>
+          <li>Statement card: sub-line "Travel, speed rewards, penalties and bonuses for the month, to add to salary", the month options, "Newest first"-style helper and the file-name/endpoint note (the console names the file <code>{company}-{franchisee}-{code}-{YYYY-MM}.csv</code>, so a home employee's name repeats the company).</li>
+          <li>Selector helper line "Admin and National Head only · defaults to home"; status pills in Redemptions; sample franchisee/technician/ticket names and amounts; the "canAct" captions are developer notes, not UI.</li>
+          <li>Force-close dialog: the "Force close" confirm button label is a guess (the staff form's own label is not in the doc); other field copy is the staff form's, unchanged.</li>
+        </ul>
+      </div>
+      <div class="sp-b"></div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= DIALOG: reverse (staff ReversePenaltyDialog) ================= -->
+<div class="scrim" id="dlgRev">
+  <div class="dlg sm" role="dialog" aria-modal="true" aria-labelledby="rvT">
+    <header><h3 id="rvT">Reverse this penalty?</h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p class="mut" style="margin:0 0 12px">The technician gets the full amount back. It comes off their penalties for the month and out of the penalty pool, and they are told on their phone.</p>
+      <div class="field"><label>Why is it being reversed? <span class="neg">*</span></label><input class="in" maxlength="160" placeholder="Customer asked to cancel, confirmed by phone"><span class="hint">Required. It is kept with the money and on the ticket's trail.</span></div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn pri" data-close data-toast="Penalty reversed">Reverse penalty</button></footer>
+  </div>
+</div>
+
+<!-- ================= DIALOG: force close an EMPLOYEE's job ================= -->
+<div class="scrim" id="dlgForce">
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="fcT">
+    <header><h3 id="fcT">Force-close ticket · <span class="mono">SKY-INST-0412</span></h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <div class="mockbar" style="margin-bottom:12px"><b>Mock: this ticket's technician is</b>
+        <div class="seg"><button class="on" data-show="ft:emp">Meena R (Employee)</button><button data-show="ft:free">Ravi Teja (Freelancer) — for comparison</button></div></div>
+      <p class="mut" style="margin:0 0 12px;font-size:12.5px">Only after the customer wait period has elapsed. Supporting documents &amp; images are mandatory and recorded for audit.</p>
+      <p class="pill-warn" style="margin:0 0 14px">This closes the job without the customer's confirmation. It cannot be undone, and your name, the reason and these attachments are recorded on the ticket.</p>
+
+      <div class="field"><label>Reason for force-closure <span class="neg">*</span></label>
+        <div class="stack" style="gap:8px">
+          <label class="chk" style="border:1px solid var(--brand-500);background:#eceeff66;border-radius:8px;padding:10px 12px"><input type="radio" name="fr" checked> Customer unreachable after multiple attempts</label>
+          <label class="chk" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px"><input type="radio" name="fr"> Customer confirmed verbally, unable to close in app</label>
+          <label class="chk" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px"><input type="radio" name="fr"> Customer declined to respond within window</label>
+        </div></div>
+
+      <div class="field"><label>Justification notes <span class="neg">*</span></label><textarea class="in" placeholder="Describe the attempts made to reach the customer and the basis for closure…"></textarea></div>
+
+      <!-- payout: freelancer only -->
+      <div class="field hide" data-swap="ft:free"><label>Credit Ravi Teja (₹)</label><input class="in" value="450" inputmode="numeric">
+        <span class="hint">This job pays ₹450. Lower it if they attended but could not finish, or clear it to credit nothing.</span></div>
+      <!-- employee: no payout box, one line instead -->
+      <div class="pill-info" data-swap="ft:emp" style="margin-bottom:14px">Employees are paid through salary — no per-job payout.</div>
+
+      <div class="field"><label>Bill Crestline Distributors (₹)</label><input class="in" value="600" inputmode="numeric">
+        <span class="hint">This job is priced at ₹600 to them. Clear it to bill nothing — which is right when nobody attended.</span></div>
+
+      <div class="field"><label>Supporting attachments (required)</label>
+        <div class="drop">Attach call logs, signed acknowledgment, or on-site photos<br><span class="mut" style="font-size:12px">JPG, PNG, WEBP or HEIC · up to 10 MB each</span><br><button class="btn sm" style="margin-top:8px" type="button">Choose files</button></div></div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn dng" data-close data-toast="SKY-INST-0412 force-closed">Force close</button></footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* Page-local: the Franchisee <select> drives the same data-show swap the buttons use, and the two selects stay in step. */
+(function () {
+  document.addEventListener("change", function (e) {
+    var sel = e.target.closest(".fsel-sel"); if (!sel) return;
+    document.querySelectorAll(".fsel-sel").forEach(function (s) { s.value = sel.value; });
+    var b = document.querySelector('[data-show="fr:' + sel.value + '"]'); if (b) b.click();
+  });
+})();
+</script>
+</body>
+</html>

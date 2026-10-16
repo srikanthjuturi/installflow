@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spare-part state machine - explainer for task 12</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+.topnav{background:var(--brand-500);color:#fff;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px}
+.topnav b{font-size:15px}.topnav a{color:#dfe1ff}.topnav a:hover{color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.scroll{overflow-x:auto}
+.proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+h2.sec{font-size:17px;margin:8px 0 0}
+p{margin:0}
+table.t td,table.t th{font-size:13px;vertical-align:top}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
+code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-3);padding:0 4px;border-radius:4px}
+svg text{font-family:"IBM Plex Sans",sans-serif}
+.job{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--border);border-radius:12px;background:#fff;padding:12px 16px}
+.job .code{font-family:"IBM Plex Mono",monospace;font-weight:600}
+.req{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;background:#fff;padding:10px 12px;margin-top:8px;font-size:13px}
+.req .nm{font-weight:600;min-width:130px}
+.req .acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.log{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto}
+.log li{padding:6px 0;border-bottom:1px solid var(--border-2);font-size:12.5px}
+.log li b{font-family:"IBM Plex Mono",monospace;font-size:12px}
+.log .mv{color:var(--st-part);font-weight:600}
+.msg{margin-top:10px;font-size:13px;min-height:20px}
+.dim{color:var(--ink-3)}.ok{color:var(--ok);font-weight:600}
+.cat li{padding:5px 0;border-bottom:1px dashed var(--border-2);font-size:13px;list-style:none}
+.cat{margin:0;padding:0}
+.cat s{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="topnav"><b>Spare-part state machine - task 12</b>
+<a href="index.html">Index</a><a href="#machine">State machine</a><a href="#sim">Try it</a><a href="#who">Who does what</a><a href="#catalogue">Catalogue inheritance</a></div>
+
+<div class="wrap">
+<div class="note"><b>Mocks:</b> <a href="../franchisee/12-spare-parts-backend.md">12-spare-parts-backend.md</a> under <a href="../franchisee/00-index.md">00-index.md</a> (decisions P1-P7, D1-D24 there). Part, job and people names are the worked example in that doc (drain pump on <span class="mono">RGT-INST-0412</span>, Meena the facility operator). Ships in R7, after the mobile build (X4); no money, no stock counts - only the log (P5).</div>
+
+<h2 class="sec" id="machine">1. The request state machine</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:8px">The technician only <b>raises</b> a request. Facility staff log every other step. The machine is P4 with one ruling added: <span class="proposed">a facility may cancel an approved request (<code>approved &rarr; rejected</code>, reason required)</span>, so a part that can never be supplied no longer needs a force-close to clear it.</p>
+<div class="scroll">
+<svg viewBox="0 0 900 300" width="100%" style="min-width:760px" role="img" aria-label="requested, approved, rejected, issued, returned">
+<defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#565c68"/></marker></defs>
+<rect x="10" y="125" width="120" height="56" rx="10" fill="#eef0f4" stroke="#8b909d"/>
+<text x="70" y="147" text-anchor="middle" font-size="12.5" font-weight="600">Technician raises</text>
+<text x="70" y="164" text-anchor="middle" font-size="10.5" fill="#565c68">job In Progress or</text>
+<text x="70" y="176" text-anchor="middle" font-size="10.5" fill="#565c68">Awaiting Part</text>
+<line x1="130" y1="153" x2="178" y2="153" stroke="#565c68" stroke-width="1.6" marker-end="url(#a2)"/>
+<rect x="180" y="123" width="130" height="60" rx="10" fill="#fdf0dc" stroke="#a05a00" stroke-width="1.6"/>
+<text x="245" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#a05a00">requested</text>
+<text x="245" y="168" text-anchor="middle" font-size="10.5" fill="#565c68">open</text>
+<rect x="370" y="123" width="130" height="60" rx="10" fill="#fdf0dc" stroke="#a05a00" stroke-width="1.6"/>
+<text x="435" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#a05a00">approved</text>
+<text x="435" y="168" text-anchor="middle" font-size="10.5" fill="#565c68">open</text>
+<rect x="560" y="123" width="130" height="60" rx="10" fill="#e6f5ec" stroke="#1a8a4d" stroke-width="1.6"/>
+<text x="625" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#1a8a4d">issued</text>
+<text x="625" y="168" text-anchor="middle" font-size="10.5" fill="#565c68">new part with technician</text>
+<rect x="750" y="123" width="130" height="60" rx="10" fill="#e6f5ec" stroke="#1a8a4d" stroke-width="1.6"/>
+<text x="815" y="150" text-anchor="middle" font-size="14" font-weight="700" fill="#1a8a4d">returned</text>
+<text x="815" y="168" text-anchor="middle" font-size="10.5" fill="#565c68">old part received back</text>
+<rect x="275" y="235" width="130" height="52" rx="10" fill="#fceef0" stroke="#cf3446" stroke-width="1.6"/>
+<text x="340" y="259" text-anchor="middle" font-size="14" font-weight="700" fill="#cf3446">rejected</text>
+<text x="340" y="276" text-anchor="middle" font-size="10.5" fill="#565c68">reason required</text>
+<line x1="310" y1="153" x2="368" y2="153" stroke="#565c68" stroke-width="1.6" marker-end="url(#a2)"/>
+<text x="339" y="145" text-anchor="middle" font-size="12" font-weight="600">approve</text>
+<line x1="500" y1="153" x2="558" y2="153" stroke="#565c68" stroke-width="1.6" marker-end="url(#a2)"/>
+<text x="529" y="145" text-anchor="middle" font-size="12" font-weight="600">issue</text>
+<line x1="690" y1="153" x2="748" y2="153" stroke="#565c68" stroke-width="1.6" marker-end="url(#a2)"/>
+<text x="719" y="145" text-anchor="middle" font-size="12" font-weight="600">return</text>
+<path d="M262 183 L300 233" fill="none" stroke="#565c68" stroke-width="1.6" marker-end="url(#a2)"/>
+<text x="238" y="215" text-anchor="end" font-size="12" font-weight="600">reject</text>
+<path d="M420 183 L380 233" fill="none" stroke="#565c68" stroke-width="1.6" marker-end="url(#a2)"/>
+<text x="436" y="212" font-size="11.5" font-weight="600" fill="#cf3446">Facility cancels an approved request</text>
+<text x="420" y="262" font-size="10.5" fill="#565c68">reason required; the job goes back to</text>
+<text x="420" y="275" font-size="10.5" fill="#565c68">In Progress once nothing is requested or approved</text>
+<path d="M180 108 H500" fill="none" stroke="#a05a00" stroke-width="2"/>
+<text x="340" y="96" text-anchor="middle" font-size="11.5" fill="#a05a00" font-weight="600">OPEN: job is Awaiting Part - Complete refused with 409 PARTS_PENDING</text>
+<path d="M560 108 H880" fill="none" stroke="#1a8a4d" stroke-width="2"/>
+<text x="720" y="96" text-anchor="middle" font-size="11.5" fill="#1a8a4d" font-weight="600">SETTLED: never holds the job</text>
+<text x="10" y="22" font-size="12.5" font-weight="600" fill="#171a21">Job status follows the requests: any open request means Awaiting Part, none means In Progress.</text>
+<text x="10" y="40" font-size="11.5" fill="#565c68">Only In Progress and Awaiting Part ever move. A request settled after Complete or a force-closure moves nothing.</text>
+</svg>
+</div>
+</div></div>
+
+<h2 class="sec" id="sim">2. Try it - job status and requests</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">You play both sides. The technician raises requests; Meena (facility operator, SkyFix) logs the steps. Watch the job flip between <span class="chip progress">In Progress</span> and <span class="chip part">Awaiting Part</span>, and try Complete while a request is open.</p>
+<div class="job"><span class="code">RGT-INST-0412</span><span>Acme FL-7 (7 kg) - 500032 - SkyFix Services - Ravi</span><span id="jobchip" style="margin-left:auto"></span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+<select class="in" id="sel" style="max-width:240px"><option>Drain pump</option><option>Door lock</option><option>Inlet hose</option><option>Other: drain hose clamp</option></select>
+<button class="btn pri" id="bRaise">Technician: raise request</button>
+<button class="btn" id="bComplete">Technician: Complete</button>
+<button class="btn" id="bResched">Reschedule the visit</button>
+<button class="btn ghost" id="bReset">Reset</button>
+</div>
+<label class="chk proposed" style="margin-top:10px"><input type="checkbox" id="noDesk"> Simulate: the technician's franchisee has no active facility admin or operator (no parts desk)</label>
+<div class="msg" id="msg"></div>
+<div class="two" style="margin-top:6px">
+<div><div class="dim" style="font-size:12px;margin-top:6px">Requests (facility's desk)</div><div id="reqs"></div></div>
+<div><div class="dim" style="font-size:12px;margin-top:6px">Ticket events and notifications</div><ul class="log" id="log"></ul></div>
+</div>
+</div></div>
+
+<h2 class="sec" id="who">3. Who may do each step, and what it does to the job</h2>
+<div class="card"><div class="scroll"><table class="t">
+<thead><tr><th>Step</th><th>Who</th><th>Job status effect</th><th>Recorded</th><th>Told</th></tr></thead><tbody>
+<tr><td><b>Raise</b> (<code>POST /jobs/{id}/part-requests</code>)</td><td>The assigned technician only, on their own job (a guessed id is 404). Only while the job is <code>In Progress</code> <i>or</i> <code>Awaiting Part</code> (D1, writer's reading of P2; else 409 <code>PART_REQUEST_NOT_IN_PROGRESS</code>). <span class="proposed">Refused with 409 <code>NO_FACILITY</code> when the technician's franchisee has no active facility admin or operator; the app then shows "Your franchisee has no parts desk yet."</span></td><td><code>In Progress</code> &rarr; <code>Awaiting Part</code></td><td><code>status_changed</code> + <code>part_requested</code>, same transaction</td><td>Bell <code>part_requested</code> to the franchisee's facility. A double tap on the same open part returns the existing request (D3).</td></tr>
+<tr><td><b>Approve</b></td><td>Franchisee admin, facility admin, facility operator (<code>parts.handle</code>). <span class="proposed">No company Admin / NH fallback, home franchisee included (R4): they add a facility admin for home instead.</span></td><td>None - approved is still open</td><td><code>part_approved</code></td><td>Push <code>part.approved</code> to the technician. For an <b>Other</b> request: offer "Add "&lt;name&gt;" to &lt;category&gt;'s parts list" (P7).</td></tr>
+<tr><td><b>Reject</b> (reason required)</td><td>Same people, on a <code>requested</code> <i>or an <code>approved</code></i> request <span class="proposed">("Facility cancels an approved request")</span></td><td><code>Awaiting Part</code> &rarr; <code>In Progress</code> if nothing else is open</td><td><code>part_rejected</code> (+ <code>status_changed</code>)</td><td>Push <code>part.rejected</code>; bell <code>part_decided</code> to territory staff (they may need a force-close or another plan)</td></tr>
+<tr><td><b>Issue</b> "new part issued to technician" (note optional)</td><td>Same people</td><td><code>Awaiting Part</code> &rarr; <code>In Progress</code> if nothing else is open</td><td><code>part_issued</code> (+ <code>status_changed</code>)</td><td>Push <code>part.issued</code>; bell <code>part_issued</code> to territory staff (a revisit may need booking)</td></tr>
+<tr><td><b>Return</b> "old part received back" (note and photo optional)</td><td>Same people</td><td>None - a log entry, never a gate</td><td><code>part_returned</code></td><td>No push, no bell</td></tr>
+<tr><td><b>Complete</b> (technician)</td><td>The technician</td><td>Refused with 409 <code>PARTS_PENDING</code> while any request is <code>requested</code> or <code>approved</code></td><td>-</td><td>-</td></tr>
+<tr><td><b>Reschedule a revisit</b></td><td>Technician with the customer's code, or a manager</td><td>Allowed in <code>Awaiting Part</code> (and <code>In Progress</code>); the status is unchanged by the move (D8)</td><td><code>rescheduled</code></td><td>Customer WhatsApp, as today</td></tr>
+</tbody></table></div>
+<div class="body" style="padding-top:10px;display:grid;gap:6px;font-size:12.5px;color:var(--ink-2)">
+<div class="proposed"><b>Home franchisee has no fallback (R4).</b> A technician whose franchisee has no active facility admin or operator cannot raise a request (409 <code>NO_FACILITY</code>). Company Admin and National Head cannot work the queue, but they <b>can create facility users for the home franchisee</b> (Facility users page, "Add facility admin"). The facility queue they open shows no home queue.</div>
+<div><b>A wrong step is 409 <code>PART_REQUEST_BAD_STATE</code></b>: <span class="proposed">"This request is already approved - refresh to see where it is."</span> Two facility users racing: one wins.</div>
+<div><b>Facility actions are allowed whatever the ticket's status</b> (D6): an old pump comes back on Friday, after the job is <code>Awaiting Customer</code>. Only the status recompute is conditional - it runs only while the ticket is <code>Awaiting Part</code>.</div>
+<div><b>The technician cannot cancel in <code>Awaiting Part</code></b> (cancel is Assigned-only). Exits from a stuck wait: the facility rejects, or a manager force-closes.</div>
+<div><b>Speed clock:</b> every move into or out of <code>Awaiting Part</code> is a <code>status_changed</code> event with exact from / to, which is how task 11 subtracts the wait.</div>
+</div></div>
+
+<h2 class="sec" id="catalogue">4. The inherited catalogue</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">Parts sit on category nodes (any level, root included) and on product models. A ticket's list is every part on its node path <b>root first</b> plus its model's own; the same name at several levels shows once, <b>deepest wins</b>; an <i>inactive</i> deeper row hides the name inherited from above (D11). The ticket here is a Service call for the model <b>Acme FL-7 (7 kg)</b>.</p>
+<label class="chk" style="margin-bottom:12px"><input type="checkbox" id="gask" checked> The FL-7's own "Door gasket" row is switched off (the FL-7 gasket is not a field part)</label>
+<div class="two">
+<div class="scroll"><table class="t" id="rawtab"><thead><tr><th>Level</th><th>Where</th><th>Part</th><th>Active</th></tr></thead><tbody></tbody></table></div>
+<div>
+<div class="dim" style="font-size:12px">What the app offers Ravi (<code>GET /jobs/{id}/parts</code>), then "Other" with a typed name:</div>
+<ul class="cat" id="offer"></ul>
+<div id="hidden" style="margin-top:8px;font-size:12.5px"></div>
+</div>
+</div>
+<div class="pill-info" style="margin-top:12px"><b>Other and the catalogue (P7, D13).</b> Approving an Other request with "Add to catalogue" creates a part on the ticket's own <b>leaf node</b> (here Front Load), links the request to it and clears <code>other_name</code> - the request keeps what the technician typed in <code>part_name</code>. If the name already exists on that node it is linked, not duplicated. It is the one catalogue write a facility user can make.</div>
+</div></div>
+</div>
+
+<script>
+(function(){
+  function $(i){return document.getElementById(i);}
+  /* ---------- simulator ---------- */
+  var T={requested:{approve:"approved",reject:"rejected"},approved:{issue:"issued",reject:"rejected"},issued:{"return":"returned"},rejected:{},returned:{}};
+  var OPEN={requested:1,approved:1};
+  var job,reqs,log,seq,rn;
+  function reset(){job="In Progress";reqs=[];log=[];seq=7;draw();say("Job is In Progress. Raise a request to start.","");}
+  function chip(s){var c={ "In Progress":"progress","Awaiting Part":"part","Awaiting Customer":"await",requested:"part",approved:"part",issued:"closed",returned:"closed",rejected:"dng"}[s]||"";return '<span class="chip '+c+'">'+s+"</span>";}
+  function say(t,cls){$("msg").innerHTML=cls==="err"?'<div class="pill-err">'+t+"</div>":(cls==="ok"?'<div class="pill-ok">'+t+"</div>":(t?'<div class="pill-info">'+t+"</div>":""));}
+  function ev(kind,actor,extra,mv){log.unshift('<li><b>'+kind+'</b> <span class="dim">'+actor+'</span>'+(mv?' <span class="mv">'+mv+'</span>':'')+(extra?'<div class="dim">'+extra+'</div>':'')+'</li>');}
+  function anyOpen(){return reqs.some(function(r){return OPEN[r.st];});}
+  function settle(actor){
+    if(job==="Awaiting Part"&&!anyOpen()){job="In Progress";ev("status_changed",actor,"Spare parts settled","Awaiting Part → In Progress");return true;}
+    return false;
+  }
+  function draw(){
+    $("jobchip").innerHTML=chip(job);
+    var h="";
+    reqs.forEach(function(r){
+      var acts=Object.keys(T[r.st]).map(function(a){return '<button class="btn sm" data-act="'+a+'" data-id="'+r.id+'">'+a.charAt(0).toUpperCase()+a.slice(1)+'</button>';}).join("");
+      h+='<div class="req"><span class="nm">'+r.name+'</span><span class="mono dim">'+r.code+'</span>'+chip(r.st)+'<span class="acts">'+(acts||'<span class="dim">no further steps</span>')+"</span></div>";
+    });
+    $("reqs").innerHTML=h||'<div class="dim" style="padding:10px 0;font-size:13px">No requests yet.</div>';
+    $("log").innerHTML=log.join("")||'<li class="dim">No events yet.</li>';
+  }
+  $("bRaise").addEventListener("click",function(){
+    var name=$("sel").value.replace(/^Other: /,"");var isOther=/^Other/.test($("sel").value);
+    if($("noDesk").checked){say("409 NO_FACILITY - this franchisee has no active facility admin or operator, so nobody could handle the request. The app shows \"Your franchisee has no parts desk yet.\" and disables Need a spare part.","err");return;}
+    if(job!=="In Progress"&&job!=="Awaiting Part"){say("409 PART_REQUEST_NOT_IN_PROGRESS - a request can only be raised while the job is In Progress or Awaiting Part.","err");return;}
+    var dupe=reqs.filter(function(r){return OPEN[r.st]&&r.name.toLowerCase()===name.toLowerCase();})[0];
+    if(dupe){say("Idempotent (D3): "+dupe.code+" for \""+name+"\" is already open - the existing request is returned, no second one is created.","");return;}
+    var code="RGT-SPR-"+("000"+seq).slice(-4);seq++;
+    reqs.push({id:code,code:code,name:name,st:"requested",other:isOther});
+    var moved=false;
+    if(job==="In Progress"){job="Awaiting Part";moved=true;ev("status_changed","Ravi","Waiting for a spare part","In Progress → Awaiting Part");}
+    ev("part_requested","Ravi",code+" · "+name+(isOther?" (Other)":"")+" — bell part_requested to SkyFix facility");
+    say(code+" raised."+(moved?" The job moved In Progress → Awaiting Part in the same transaction.":" The job was already Awaiting Part."),"ok");draw();
+  });
+  $("reqs").addEventListener("click",function(e){
+    var b=e.target.closest("[data-act]");if(!b)return;
+    var r=reqs.filter(function(x){return x.id===b.getAttribute("data-id");})[0],a=b.getAttribute("data-act");
+    var to=T[r.st][a];
+    if(!to){say("409 PART_REQUEST_BAD_STATE - This request is already "+r.st+" - refresh to see where it is.","err");return;}
+    r.fromApproved=(r.st==="approved"&&a==="reject");r.st=to;var who="Meena (facility)";
+    var note={approve:"part_approved — push part.approved"+(r.other?"; offer: add \""+r.name+"\" to Front Load's parts list":""),reject:"part_rejected — push part.rejected, bell part_decided to territory staff — reason: "+(r.fromApproved?"Supplier can't supply it (approved request cancelled)":"No FL-7 pumps until 28 Oct"),issue:"part_issued — push part.issued, bell part_issued to territory staff — note: FL-7 pump, box 3","return":"part_returned — no push, no bell (log only)"}[a];
+    var kind=note.split(" ")[0];ev(kind,who,r.code+" · "+r.name+" — "+note.slice(kind.length+3));
+    var moved=false;
+    if(a==="reject"||a==="issue")moved=settle(who);
+    say(r.code+" is now "+to+"."+(moved?" That was the last open request, so the job returned to In Progress.":(a==="return"||a==="approve"?" Job status unchanged by this step.":(job==="Awaiting Part"?" Other requests are still open, so the job stays Awaiting Part.":""))),"ok");draw();
+  });
+  $("bComplete").addEventListener("click",function(){
+    if(job==="Awaiting Customer"){say("The job is already complete; waiting for the customer to confirm.","");return;}
+    if(anyOpen()){say("409 PARTS_PENDING - the job cannot be completed while a part request is requested or approved.","err");return;}
+    job="Awaiting Customer";ev("completed","Ravi","","In Progress → Awaiting Customer");
+    say("Completed. From here a request can no longer be raised, but the facility can still log issue and return - returning the old part is a log entry, never a gate.","ok");draw();
+  });
+  $("bResched").addEventListener("click",function(){
+    if(job==="Awaiting Customer"){say("A completed job cannot be rescheduled.","err");return;}
+    ev("rescheduled","Ravi","Thursday 10-12, with the customer's code — status stays "+job+" (D8)");say("Rescheduled. The status is unchanged by the move.","ok");draw();
+  });
+  $("bReset").addEventListener("click",reset);
+  reset();
+
+  /* ---------- catalogue ---------- */
+  var LV=["Home Appliances (root)","Washing Machine","Front Load","Acme FL-7 (model)"];
+  var rows=[[0,"Power cord",true],[1,"Drain pump",true],[1,"Inlet hose",true],[1,"Door gasket",true],[2,"Door lock",true],[2,"Drum bearing",true],[3,"Control board FL-7",true],[3,"Door gasket",false]];
+  function cat(){
+    var off=$("gask").checked;
+    var data=rows.map(function(r){return {lv:r[0],name:r[1],act:r[0]===3&&r[1]==="Door gasket"?!off:r[2]};});
+    $("rawtab").querySelector("tbody").innerHTML=data.map(function(d){return "<tr><td>"+d.lv+"</td><td>"+LV[d.lv]+"</td><td>"+d.name+"</td><td>"+(d.act?'<span class="ok">yes</span>':'<span class="dim">switched off</span>')+"</td></tr>";}).join("");
+    var best={};data.forEach(function(d){var k=d.name.toLowerCase();if(!best[k]||d.lv>best[k].lv)best[k]=d;});
+    var offer=Object.keys(best).map(function(k){return best[k];}).filter(function(d){return d.act;}).sort(function(a,b){return a.name.toLowerCase()<b.name.toLowerCase()?-1:1;});
+    $("offer").innerHTML=offer.map(function(d){return "<li>"+d.name+' <span class="dim">- from '+LV[d.lv]+"</span></li>";}).join("")+'<li><i>Other</i> - the technician types a name</li>';
+    var hid=Object.keys(best).map(function(k){return best[k];}).filter(function(d){return !d.act;});
+    $("hidden").innerHTML=hid.map(function(d){return '<s>'+d.name+'</s> <span class="dim">hidden: the deepest row ('+LV[d.lv]+') is switched off, so the name inherited from Washing Machine is not offered either.</span>';}).join("");
+  }
+  $("gask").addEventListener("change",cat);cat();
+})();
+</script>
+</body>
+</html>
