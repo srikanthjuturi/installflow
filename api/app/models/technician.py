@@ -66,6 +66,13 @@ ACTIVE = "active"
 INACTIVE = "inactive"
 SUSPENDED = "suspended"
 
+#: Who runs this technician's money (00-index.md T1). Default freelancer: that
+#: is what every technician was before franchisees existed, and F5's backfill
+#: makes it so again for every row the migration touches.
+TYPE_EMPLOYEE = "employee"
+TYPE_FREELANCER = "freelancer"
+TECHNICIAN_TYPES = (TYPE_EMPLOYEE, TYPE_FREELANCER)
+
 
 class TechnicianInvite(Base, IdMixin, AuditMixin):
     """A phone number that has been invited, and nothing else yet.
@@ -83,6 +90,17 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
     region_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("regions.id", ondelete="RESTRICT"), nullable=False
+    )
+    #: Who will run this technician's money once they register. COMPOSITE FK —
+    #: an invite can never name another company's franchisee. NOT NULL, unlike
+    #: the index table's note: this is copied straight into a NOT NULL profile
+    #: column at registration, and a null here would surface as a failed
+    #: self-registration — the worst moment to discover it (01 §3.2).
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: What kind of technician this will be once registered — see
+    #: `TECHNICIAN_TYPES`. Copied to the profile exactly as `franchisee_id` is.
+    technician_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'freelancer'")
     )
 
     #: Who appointed them. The user id has no FK on purpose — the manager may
@@ -132,6 +150,9 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
         UniqueConstraint(
             "company_id", "id", name="uq_technician_invites_company_id_id"
         ),
+        CheckConstraint(
+            "technician_type IN ('employee', 'freelancer')", name="technician_type"
+        ),
         Index("ix_technician_invites_company_status", "company_id", "status"),
         Index("ix_technician_invites_region_id", "region_id"),
         # The four membership/user FKs. An invite names up to four people — who
@@ -141,6 +162,16 @@ class TechnicianInvite(Base, IdMixin, AuditMixin):
         Index("ix_technician_invites_manager", "manager_membership_id"),
         Index("ix_technician_invites_registered_membership", "registered_membership_id"),
         Index("ix_technician_invites_registered_user", "registered_user_id"),
+        # Composite, so an invite can never name another company's franchisee.
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_technician_invites_company_franchisee",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_technician_invites_company_franchisee", "company_id", "franchisee_id"
+        ),
         # NB: the partial UNIQUE on (company_id, phone) for LIVE invites is
         # hand-written in the migration — SQLAlchemy cannot express a WHERE
         # clause in a table constraint.
@@ -201,6 +232,17 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     code: Mapped[str] = mapped_column(String(24), nullable=False)
     region_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("regions.id", ondelete="RESTRICT"), nullable=False
+    )
+    #: Who runs this technician's money. COMPOSITE FK — see __table_args__.
+    #: NOT NULL after the backfill (01 §3.2): a franchisee runs every
+    #: technician, home included, so there is no state this can honestly be
+    #: null in.
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: `employee` or `freelancer` — see `TECHNICIAN_TYPES`. A change is frozen
+    #: into `accept_snapshot` (Task 10) for any job already accepted, so this
+    #: column only ever governs what happens NEXT.
+    technician_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'freelancer'")
     )
 
     #: Jobs per day this technician will accept. **NULL means no limit** — a
@@ -362,6 +404,19 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         CheckConstraint(
             "status IN ('active','inactive','suspended')",
             name="status",
+        ),
+        CheckConstraint(
+            "technician_type IN ('employee', 'freelancer')", name="technician_type"
+        ),
+        # Composite, so a profile can never name another company's franchisee.
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_technician_profiles_company_franchisee",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_technician_profiles_company_franchisee", "company_id", "franchisee_id"
         ),
     )
 

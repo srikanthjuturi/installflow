@@ -131,6 +131,13 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
     #: a reversal can never name another company's penalty.
     reverses_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
+    #: Whose pool / whose money (00-index F11, F12). The technician's franchisee
+    #: at write time; a reversal copies the penalty's instead (`core.ledger.entry`),
+    #: so money returns to the pool that collected it even if the technician has
+    #: since moved franchisee. Never updated afterwards — a technician moving
+    #: franchisee later does not move money already written.
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+
     __table_args__ = (
         CheckConstraint(
             "kind IN ('penalty', 'bonus', 'payout', 'reversal')", name="kind"
@@ -162,10 +169,24 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
         # The covering index for the ticket FK. Postgres creates none, and
         # without it deleting one ticket scans the whole ledger.
         Index("ix_ledger_entries_company_ticket", "company_id", "ticket_id"),
+        # Covering index for the franchisee FK AND the per-franchisee pool /
+        # ledger list (F12), newest first.
+        Index(
+            "ix_ledger_entries_company_franchisee",
+            "company_id",
+            "franchisee_id",
+            "created_at",
+        ),
         ForeignKeyConstraint(
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],
             name="fk_ledger_entries_company_technician",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_ledger_entries_company_franchisee",
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(

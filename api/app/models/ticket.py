@@ -53,6 +53,10 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     # ── what, and whose ────────────────────────────────────────────────────
     #: All three are COMPOSITE FKs — see __table_args__.
     vendor_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: Who runs the technicians for this job — stamped at intake from the
+    #: pincode (core.franchise), moved only by a carve-out while the ticket is
+    #: unassigned (F6, Task 03). Assigned work keeps it. COMPOSITE FK.
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     #: The catalogue node this job sits under. Renamed from `subcategory_id`
     #: when the product tree merged into one recursive table; the values never
     #: changed, so nothing had to be re-keyed.
@@ -434,6 +438,7 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_tickets_company_node", "company_id", "node_id"),
         Index("ix_tickets_company_model", "company_id", "model_id"),
         Index("ix_tickets_company_technician", "company_id", "technician_id"),
+        Index("ix_tickets_company_franchisee", "company_id", "franchisee_id"),
         # A vendor USER's list is "my vendor, and raised by me". `created_by`
         # comes from ActorMixin as a plain UUID with no foreign key, so the
         # FK-coverage query that catches this class of miss would never ask for
@@ -464,6 +469,12 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],
             name="fk_tickets_company_technician",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_tickets_company_franchisee",
             ondelete="RESTRICT",
         ),
     )

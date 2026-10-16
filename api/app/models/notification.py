@@ -167,6 +167,11 @@ NOTIFICATION_KINDS = (
     #: A vendor asked for a bigger credit line, or somebody decided that
     #: request. Addressed the same way round as `vendor_payment`.
     "vendor_credit_request",
+    #: A technician's coverage moved to a different franchisee because a
+    #: carve-out claimed pincodes they were the sole coverage for (Task 03,
+    #: F6). Not raised for a ticket re-stamp — that is `franchisee_changed` on
+    #: `ticket_events`, a different audience entirely.
+    "technician_moved",
 )
 
 #: Who a row is for when territory is the wrong question.

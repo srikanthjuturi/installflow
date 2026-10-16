@@ -203,6 +203,20 @@ TENANT_LINKS = [
     # How much a vendor may owe. A request naming another company's vendor
     # would let one tenant's National Head raise a stranger's credit line.
     ("vendor_credit_requests", "vendor_id", "vendors"),
+    # Who owns a pincode. One pointing at another company's franchisee would
+    # route one tenant's tickets to a second tenant's technicians.
+    ("franchisee_pincodes", "franchisee_id", "franchisees"),
+    # A franchise login. Proves the LINK; whether one franchisee can read
+    # another's rows inside a company is an application invariant
+    # (core.franchise_scope, Task 02) this script cannot see.
+    ("memberships", "franchisee_id", "franchisees"),
+    ("technician_profiles", "franchisee_id", "franchisees"),
+    ("technician_invites", "franchisee_id", "franchisees"),
+    ("tickets", "franchisee_id", "franchisees"),
+    # Money. A payout or penalty booked to another company's franchisee would
+    # put one tenant's money in a second tenant's pool.
+    ("ledger_entries", "franchisee_id", "franchisees"),
+    ("redemptions", "franchisee_id", "franchisees"),
 ]
 
 

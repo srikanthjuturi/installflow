@@ -40,6 +40,7 @@ NotificationKind = Literal[
     "vendor_credit",
     "vendor_payment",
     "vendor_credit_request",
+    "technician_moved",
 ]
 
 assert set(get_args(NotificationKind)) == set(NOTIFICATION_KINDS), (

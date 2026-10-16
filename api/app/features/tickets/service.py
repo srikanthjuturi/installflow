@@ -46,6 +46,7 @@ from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.core.vendor_credits import standing as vendor_standing
 from app.core.deps import Principal
 from app.core.errors import AppError
+from app.core.franchise import franchisee_for_pincode
 from app.core.job_passes import technicians_who_passed
 from app.core.ledger import (
     cap_remaining,
@@ -2011,6 +2012,9 @@ async def create_ticket(
         company_id=principal.company_id,
         code=await next_code(db, principal.company_id),
         vendor_id=vendor.id,
+        # Computed after `_assert_pincode_known` above, so the code is known to
+        # exist by the time this asks who owns it.
+        franchisee_id=await franchisee_for_pincode(db, principal.company_id, body.pincode),
         node_id=node.id,
         # The node and everything above it, root first. Stamped so eligibility
         # is one array test on the ticket rather than a walk up the catalogue —
@@ -3344,6 +3348,10 @@ async def reverse_penalty(
             reason=text[:160],
             by_user=principal.user_id,
             reverses_id=penalty.id,
+            # A reversal gives money back out of the pool that collected the
+            # penalty (F12) — the PENALTY's franchisee, not the technician's
+            # current one, in case they moved franchisee in between.
+            franchisee_id=penalty.franchisee_id,
         )
     )
     db.add(

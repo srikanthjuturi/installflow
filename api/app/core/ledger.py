@@ -44,6 +44,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
 from app.models.ledger import POOL_KINDS, LedgerEntry
+from app.models.technician import TechnicianProfile
 
 IST = datetime.timezone(datetime.timedelta(minutes=SLOT_TIMEZONE_OFFSET_MINUTES))
 
@@ -302,6 +303,7 @@ def entry(
     reason: str,
     by_user: uuid.UUID | None = None,
     reverses_id: uuid.UUID | None = None,
+    franchisee_id: uuid.UUID | None = None,
 ) -> LedgerEntry:
     """Build the row for money that just moved. The caller adds and commits it.
 
@@ -312,6 +314,18 @@ def entry(
 
     `reverses_id` is for a `reversal` and nothing else — the CHECK
     `reversal_points_back` holds the two together.
+
+    `franchisee_id` defaults to the technician's franchisee AT WRITE TIME, read
+    inside the INSERT itself (an embedded scalar subquery), so it cannot drift
+    from the row it describes and no caller has to load the profile first. Pass
+    it only to override — `tickets.service.reverse_penalty` does, so a reversal
+    gives money back out of the pool that collected the penalty even if the
+    technician has since moved franchisee (00-index.md §3.2, §4.6).
+
+    ⚠ After the flush the attribute is EXPIRED when the default subquery is
+    used. Reading `row.franchisee_id` in async code without
+    `await db.refresh(row, ["franchisee_id"])` raises `MissingGreenlet`. No
+    current caller reads it back.
     """
     return LedgerEntry(
         company_id=company_id,
@@ -322,6 +336,16 @@ def entry(
         reason=reason,
         created_by=by_user,
         reverses_id=reverses_id,
+        franchisee_id=(
+            franchisee_id
+            if franchisee_id is not None
+            else select(TechnicianProfile.franchisee_id)
+            .where(
+                TechnicianProfile.company_id == company_id,
+                TechnicianProfile.id == technician_id,
+            )
+            .scalar_subquery()
+        ),
     )
 
 

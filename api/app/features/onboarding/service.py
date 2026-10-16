@@ -343,6 +343,9 @@ async def register(
         company_id=invite.company_id,
         code=await tech_service.next_code(session, invite.company_id),
         region_id=invite.region_id,
+        # Copied, not joined — the invite records what was offered.
+        franchisee_id=invite.franchisee_id,
+        technician_type=invite.technician_type,
         daily_job_cap=body.dailyJobCap or invite.daily_job_cap,
         # `body.upiId` is deliberately NOT saved — see `RegisterRequest.upiId`.
         # A UPI ID is added on Payout account, with its name and its own code.

@@ -19,10 +19,13 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.franchise import franchisees_for_pincodes
 from app.core.rules import load_rules
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES, TERMINAL_STATUSES
 from app.features.earnings import service as earnings_service
+from app.models.franchisee import Franchisee, FranchiseePincode
 from app.models.ledger import LedgerEntry
+from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
 from app.models.ticket_event import TicketEvent
@@ -45,6 +48,9 @@ async def run(db: AsyncSession, *, company_id: uuid.UUID) -> list[Problem]:
         _earnings_match_the_ledger,
         _nobody_passed_the_monthly_cap,
         _live_tickets_still_have_a_future,
+        _company_has_one_home,
+        _open_unassigned_tickets_route_by_pincode,
+        _technicians_on_live_franchisees,
     ):
         problems.extend(await check(db, company_id))
     return problems
@@ -232,4 +238,98 @@ async def _live_tickets_still_have_a_future(
             f"pool will not offer it",
         )
         for tid in stale
+    ]
+
+
+async def _company_has_one_home(db: AsyncSession, company_id: uuid.UUID) -> list[Problem]:
+    """F4: a company has exactly one live home franchisee, and it owns no pincode rows.
+
+    The home is the catch-all — "everything no other franchisee owns" — which
+    is only true if it never acquires a `franchisee_pincodes` row of its own.
+    """
+    homes = (
+        await db.scalars(
+            select(Franchisee.id).where(
+                Franchisee.company_id == company_id,
+                Franchisee.is_home.is_(True),
+                Franchisee.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    problems: list[Problem] = []
+    if len(homes) != 1:
+        problems.append(
+            Problem(
+                "company has one home",
+                f"company {company_id} has {len(homes)} live home franchisee(s), expected 1",
+            )
+        )
+        return problems
+    owned = await db.scalar(
+        select(func.count())
+        .select_from(FranchiseePincode)
+        .where(FranchiseePincode.company_id == company_id, FranchiseePincode.franchisee_id == homes[0])
+    )
+    if owned:
+        problems.append(
+            Problem(
+                "company has one home",
+                f"home franchisee {homes[0]} owns {owned} franchisee_pincodes row(s); it should own none",
+            )
+        )
+    return problems
+
+
+async def _open_unassigned_tickets_route_by_pincode(
+    db: AsyncSession, company_id: uuid.UUID
+) -> list[Problem]:
+    """An open, unassigned ticket's stamped franchisee must agree with its pincode, today.
+
+    Two paths that must agree: what `create_ticket` stamped at intake, and what
+    `franchisees_for_pincodes` answers right now. They stay in step after Task
+    03 ships, because F6's carve-out re-stamps exactly this set when a pincode
+    changes owner.
+    """
+    rows = (
+        await db.execute(
+            select(Ticket.id, Ticket.pincode, Ticket.franchisee_id).where(
+                Ticket.company_id == company_id,
+                Ticket.status.in_(("New", "Slot Pending")),
+                Ticket.technician_id.is_(None),
+                Ticket.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    if not rows:
+        return []
+    routes = await franchisees_for_pincodes(db, company_id, {pincode for _id, pincode, _f in rows})
+    return [
+        Problem(
+            "open unassigned tickets route by pincode",
+            f"ticket {tid} is stamped franchisee {stamped} but pincode {pincode} "
+            f"now routes to {routes.get(pincode)}",
+        )
+        for tid, pincode, stamped in rows
+        if routes.get(pincode) != stamped
+    ]
+
+
+async def _technicians_on_live_franchisees(db: AsyncSession, company_id: uuid.UUID) -> list[Problem]:
+    """No live technician points at a franchisee that is deleted or inactive."""
+    rows = await db.scalars(
+        select(TechnicianProfile.id)
+        .join(Membership, Membership.id == TechnicianProfile.membership_id)
+        .join(Franchisee, Franchisee.id == TechnicianProfile.franchisee_id)
+        .where(
+            TechnicianProfile.company_id == company_id,
+            Membership.deleted_at.is_(None),
+            (Franchisee.deleted_at.is_not(None)) | (Franchisee.is_active.is_(False)),
+        )
+    )
+    return [
+        Problem(
+            "technicians on live franchisees",
+            f"technician profile {tid} points at a deleted or inactive franchisee",
+        )
+        for tid in rows
     ]

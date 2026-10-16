@@ -187,6 +187,12 @@ EVENT_KINDS = (
     #: `ledger_entries`, written in the same transaction. Its own kind because
     #: the trail has to say the money came back, not just that it was taken.
     "penalty_reversed",
+    #: An UNASSIGNED ticket was re-stamped to a different franchisee by a
+    #: carve-out (Task 03, F6) — the pincode it sits in changed owner while the
+    #: ticket itself had nobody holding it yet. Assigned work never moves this
+    #: way; the trail says so because "why did this job's franchisee change"
+    #: is a question only the carve-out answers.
+    "franchisee_changed",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -239,7 +245,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'feedback_requested', 'completed', 'feedback_received', "
             "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
             "'customer_notified', 'escalated', 'bonus_added', 'released', "
-            "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed')",
+            "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed', "
+            "'franchisee_changed')",
             name="kind",
         ),
         CheckConstraint(

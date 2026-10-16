@@ -385,6 +385,9 @@ async def request(
     row = Redemption(
         company_id=company_id,
         technician_id=profile.id,
+        # The technician's franchisee when they asked — `locked` is the same
+        # profile row, already FOR-UPDATE locked above.
+        franchisee_id=locked.franchisee_id,
         code=code,
         amount_paise=amount,
         upi_id=locked.upi_id,

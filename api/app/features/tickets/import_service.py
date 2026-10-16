@@ -107,6 +107,7 @@ from app.core.vendor_credits import assert_within_limit as assert_vendor_within_
 from app.core.vendor_credits import quote as quote_vendor_credit
 from app.core.deps import Principal
 from app.core.errors import AppError
+from app.core.franchise import franchisees_for_pincodes
 from app.core.product_tree import APPROVED, PENDING, REJECTED
 from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.rules import resolve_rules
@@ -1681,6 +1682,12 @@ async def _commit(
     # upload would have made that the normal case".
     codes = await allocate(db, principal.company_id, "ticket", len(ready))
 
+    # Every pincode the file lands on, in ONE query — the same reason `codes`
+    # above is allocated as a block rather than per row.
+    routes = await franchisees_for_pincodes(
+        db, principal.company_id, {r.body.pincode for r in ready if r.body is not None}
+    )
+
     # Every node the file lands on, in ONE query — `node_path_ids` needs each
     # one's `ancestor_ids`, and asking per row is the per-row query this whole
     # module exists to avoid.
@@ -1709,6 +1716,7 @@ async def _commit(
             company_id=principal.company_id,
             code=code,
             vendor_id=vendor.id,
+            franchisee_id=routes[body.pincode],
             node_id=node.id,
             model_id=model.id,
             node_path_ids=[*node.ancestor_ids, node.id],

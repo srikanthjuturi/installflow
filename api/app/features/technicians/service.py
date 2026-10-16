@@ -30,6 +30,7 @@ from app.core.config import settings
 from app.core.coverage import jobs_held_by_technician, upi_reviewer
 from app.core.deps import Principal
 from app.core.errors import AppError
+from app.core.franchise import home_franchisee_id
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
 from app.core.schemas import ListParams
@@ -100,6 +101,7 @@ from app.models.technician import (
     REG_MANAGER,
     REGISTERED,
     SENT,
+    TYPE_FREELANCER,
     TechnicianInvite,
     TechnicianInvitePincode,
     TechnicianPincode,
@@ -1723,11 +1725,15 @@ async def create_technician(
     )
     now = _now()
     if profile is None:
+        # Staff-added technicians belong to the home franchisee (F8) — choosing
+        # another franchisee or type from the request is Task 05.
         profile = TechnicianProfile(
             membership_id=membership.id,
             company_id=principal.company_id,
             code=await next_code(session, principal.company_id),
             region_id=region.id,
+            franchisee_id=await home_franchisee_id(session, principal.company_id),
+            technician_type=TYPE_FREELANCER,
             daily_job_cap=body.dailyJobCap,
             upi_id=body.upiId,
             upi_name=body.upiName if body.upiId else None,
@@ -2124,6 +2130,8 @@ async def create_invite(
         company_id=principal.company_id,
         phone=body.phone,
         region_id=region.id,
+        franchisee_id=await home_franchisee_id(session, principal.company_id),
+        technician_type=TYPE_FREELANCER,
         invited_by_user_id=principal.user_id,
         invited_by_membership_id=own_id,
         manager_membership_id=body.managerId or own_id,
