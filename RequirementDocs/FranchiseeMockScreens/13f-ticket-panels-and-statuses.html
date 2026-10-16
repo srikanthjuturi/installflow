@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13f Ticket panels, statuses and ledger — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a{cursor:pointer}
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  .tabbar{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+  .tabbar .tabs{border-bottom:0}
+  .twocol{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.twocol{grid-template-columns:1fr}}
+  .stack{display:grid;gap:16px}
+  .hdr{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 18px}
+  .hdr h2{margin:0;font-size:18px}
+  .hdr .sp{flex:1}
+  .pnl .kv{grid-template-columns:120px 1fr}
+  .pnl .frozen{font-size:12.5px;color:var(--ink-3);margin:0 0 12px}
+  .money{font-weight:600;font-variant-numeric:tabular-nums}
+  .reason{margin-top:10px}
+  .prow{padding:12px 0;border-bottom:1px solid var(--border-2)}
+  .prow:last-child{border-bottom:0;padding-bottom:0}
+  .prow:first-child{padding-top:0}
+  .prow .l1{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .prow .l2{color:var(--ink-3);font-size:12.5px;margin-top:2px}
+  .prow .q{font-size:13px;margin-top:4px}
+  .mini{list-style:none;margin:8px 0 0;padding:0;font-size:12.5px;color:var(--ink-2);display:grid;gap:3px}
+  .tl-ic{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none}
+  .tl-ic svg{width:14px;height:14px}
+  .tl-ic.info{background:var(--info-bg);color:var(--info)}.tl-ic.ok{background:var(--ok-bg);color:var(--ok)}.tl-ic.warn{background:var(--warn-bg);color:var(--warn)}.tl-ic.base{background:var(--surface-3);color:var(--ink-2)}
+  .tl .it{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-2)}
+  .tl .it:last-child{border-bottom:0}
+  .tl .tt{font-size:13.5px;font-weight:600}.tl .nt{font-size:12.5px;color:var(--ink-2)}.tl .tm{font-size:12px;color:var(--ink-3)}
+  .demo{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--ink-3);margin-top:12px;padding-top:10px;border-top:1px dashed var(--input)}
+  .demo select{padding:3px 6px;border:1px solid var(--input);border-radius:6px;font:12px "IBM Plex Sans"}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  @media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi.click{cursor:pointer}.kpi.click:hover{background:var(--surface-2)}
+  .poolgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:900px){.poolgrid{grid-template-columns:1fr}}
+  .poolgrid .sub2{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .sum{font-size:13px;color:var(--ink-2);padding:12px 18px;border-top:1px solid var(--border-2)}
+  .amt{font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+  .amt.pos{color:var(--danger)}.amt.neg{color:var(--ok)}
+  .daydiv td{background:var(--surface-3);font-size:11.5px;font-weight:600;color:var(--ink-3);letter-spacing:.05em}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .err{color:var(--danger);font-size:11.5px;margin-top:4px;min-height:14px}
+  .unit{position:relative}.unit .in{padding-left:28px}.unit .u{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-3)}
+  .scr{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" data-tabs>
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Operations</div>
+    <a>Dashboard</a><a class="on" data-tab="detail">Tickets</a><a>Technicians</a><a>Escalations</a><a>Spare parts</a>
+    <div class="grp">Money</div>
+    <a data-tab="ledger">Penalty &amp; Bonus</a><a>Earnings</a>
+    <div class="who" id="whoAmI">Nisha Rao · National Head</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1 id="pgTitle">Tickets</h1><div class="sub" id="pgSub">RGT-INST-0412</div></div>
+      <span class="sp"></span><div class="avatar">NR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.1, §5.2, §5.8</b> (new ticket panels, “Awaiting Part” status, force-close travel field, ledger kinds; copy §5.10 “Ticket panels, ledger, force-close”). Three tabs below; Ticket detail has a scenario switcher so you can see every panel state.</div>
+
+      <div class="tabbar" data-tabs>
+        <div class="tabs">
+          <button class="on" data-tab="detail">Ticket detail</button>
+          <button data-tab="status">Status chips &amp; ticket list</button>
+          <button data-tab="ledger">Pool ledger (Penalty &amp; Bonus)</button>
+        </div>
+      </div>
+
+      <!-- ===================== TICKET DETAIL ===================== -->
+      <div data-pane="detail">
+        <div class="scr"><span class="proposed" style="font-size:12px">Viewing as:</span>
+          <div class="seg" id="viewas">
+            <button class="on" data-va="nh">National Head</button>
+            <button data-va="am">Area Manager</button>
+            <button data-va="fac">Facility staff (SkyFix)</button>
+            <button data-va="ven">Vendor</button>
+          </div></div>
+        <div class="scr"><span class="proposed" style="font-size:12px">Mock scenario:</span>
+          <div class="seg" id="scen">
+            <button class="on" data-s="1">Awaiting Part · clock running</button>
+            <button data-s="2">Closed · speed penalty</button>
+            <button data-s="3">No base location</button>
+            <button data-s="4">Force-closed</button>
+            <button data-s="5">Accepted before travel existed</button>
+          </div></div>
+
+        <div class="card" style="margin-bottom:16px"><div class="hdr">
+          <h2 class="mono">RGT-INST-0412</h2><span id="hStatus"></span>
+          <span style="color:var(--ink-3);font-size:13px">Installation · Sunview 43" Android TV</span>
+          <span class="sp"></span><span id="hBtns" class="chips"></span>
+        </div></div>
+
+        <div class="twocol">
+          <div class="stack">
+            <section class="card pnl"><header><h2>Ticket</h2></header><div class="body">
+              <dl class="kv"><dt>Category</dt><dd>Electronics › Television › Android TV</dd>
+                <dt>Product</dt><dd>Sunview 43" <span class="chip">Sunview</span></dd>
+                <dt>Expected serial</dt><dd class="mono">SV43-A9-004417</dd>
+                <dt>Expected date</dt><dd>15-10-2026</dd>
+                <dt>Time agreed</dt><dd>15-10-2026 · 10:00 – 12:00</dd>
+                <dt>Vendor</dt><dd>Crestline Distributors</dd></dl>
+            </div></section>
+            <section class="card pnl"><header><h2>Timeline</h2></header><div class="body tl" id="timeline"></div></section>
+          </div>
+
+          <div class="stack" id="rightCol">
+            <section class="card pnl"><header><h2>Customer</h2></header><div class="body">
+              <dl class="kv"><dt>Name</dt><dd>Rohit Verma</dd><dt>Phone</dt><dd>+91 90000 11111</dd><dt>Address</dt><dd>Plot 14, Kondapur Main Road, Hyderabad 500081</dd></dl></div></section>
+            <section class="card pnl"><header><h2>Technician</h2></header><div class="body">
+              <dl class="kv"><dt>Name</dt><dd>Ravi Kumar <span class="chip brand">Freelancer</span></dd><dt>Franchisee</dt><dd>SkyFix Services</dd><dt>Phone</dt><dd>+91 98480 12345</dd></dl></div></section>
+            <div id="pNote"></div>
+            <div id="pTravel"></div>
+            <div id="pSpeed"></div>
+            <div id="pPen"></div>
+            <div id="pParts"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== STATUS CHIPS & LIST ===================== -->
+      <div data-pane="status" class="hide">
+        <section class="card" style="margin-bottom:16px">
+          <header><div><h2>Status chips</h2><div class="sub">Every status the board can show. <b>Awaiting Part</b> is new — warn tint and the words, never colour alone.</div></div></header>
+          <div class="body"><div class="chips" id="chipset"></div>
+            <p class="proposed" style="font-size:12px;color:var(--ink-3);margin:12px 0 0;display:inline-block">AI Review stays a ticket status but its chip and filter option are hidden in the console while AI verification is not built.</p></div>
+        </section>
+
+        <div class="kpis" style="margin-bottom:16px">
+          <div class="card kpi"><div class="l">New / slot pending</div><div class="v" id="k1">2</div></div>
+          <div class="card kpi click" id="kAssigned"><div class="l">Assigned / in progress</div><div class="v" id="k2">5</div><div class="d">Assigned, In Progress, Awaiting Part · <a href="#" onclick="return false">View</a></div></div>
+          <div class="card kpi"><div class="l">Awaiting customer</div><div class="v">1</div></div>
+          <div class="card kpi"><div class="l">Escalated</div><div class="v">1</div></div>
+        </div>
+
+        <section class="card">
+          <div class="toolbar">
+            <input class="in search" placeholder="Search tickets" style="max-width:240px">
+            <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)" for="stSel">Status</label>
+            <select class="in" id="stSel" style="width:260px"></select>
+            <span class="sp"></span><span id="stCount" style="color:var(--ink-3);font-size:12.5px"></span>
+          </div>
+          <div style="overflow:auto"><table class="t"><thead><tr><th>Ticket</th><th>Product</th><th>Technician</th><th>Place</th><th>Status</th></tr></thead><tbody id="tkRows"></tbody></table></div>
+          <div class="empty hide" id="tkEmpty"><b>No tickets match</b>Try another status.</div>
+        </section>
+      </div>
+
+      <!-- ===================== LEDGER ===================== -->
+      <div data-pane="ledger" class="hide">
+        <div class="poolgrid" style="margin-bottom:16px">
+          <section class="card kpi"><div class="l">Current pool balance</div><div class="v" id="lBal">—</div></section>
+          <section class="card kpi"><div class="l">Penalties collected</div><div class="v" id="lCol">—</div><div class="sub2" id="lColSub"></div></section>
+          <section class="card kpi"><div class="l">Bonuses paid</div><div class="v" id="lBon">—</div><div class="sub2" id="lBonSub"></div></section>
+        </div>
+        <section class="card">
+          <div class="toolbar">
+            <label style="font-size:12.5px;font-weight:600;color:var(--ink-2)" for="lType">Type</label>
+            <select class="in" id="lType" style="width:200px">
+              <option value="all">All</option><option value="penalty">Penalty</option><option value="bonus">Bonus</option>
+              <option value="speed_reward">Speed reward</option><option value="speed_penalty">Speed penalty</option><option value="reversal">Penalty reversed</option>
+            </select>
+            <label class="chk proposed" style="margin-left:8px"><input type="checkbox" id="lUnk"> Show a row of a kind the console has never heard of (fallback)</label>
+            <span class="sp"></span><button class="btn" data-toast="CSV downloaded — same labels and signs as the table">Export CSV</button>
+          </div>
+          <div style="overflow:auto"><table class="t"><thead><tr><th>Time</th><th>Type</th><th>Technician</th><th>Ticket</th><th>Note</th><th class="num">Amount</th></tr></thead><tbody id="lRows"></tbody></table></div>
+          <div class="sum" id="lSum"></div>
+        </section>
+      </div>
+
+      <div class="notebox">
+        <h3>Wording added by the mock — needs sign-off</h3>
+        <ul>
+          <li>Ticket-detail chrome that the doc does not specify: panel titles “Ticket / Timeline / Customer / Technician”, buttons “Change the time”, “Re-assign”, “Force close”, field captions (Category, Product, Expected serial…) — approximations of the existing console screens, not part of this task.</li>
+          <li>Timeline title for the speed event “Speed settled” and its note text (server-written; the doc says the title is the server’s). The penalty row’s reason after “Speed penalty ·” is likewise an illustrative server string.</li>
+          <li>Force-close dialog: title “Force-close RGT-INST-0412”, labels Reason / Justification / Technician payout (₹) / Attachments, the hint “At most the job’s price.”, button “Force-close ticket”, the error “Enter a whole number of rupees” (re-used from the travel form) and the dev line “Would send travelPaise: …”. Only “Travel allowance (₹)”, the hint and “At most {max}” are from §5.10.</li>
+          <li>Status pane: the AI-Review footnote, the KPI tile captions (“New / slot pending”, “Awaiting customer”, “Escalated”), “No tickets match / Try another status.”, and the multi-status option label “Assigned, In Progress, Awaiting Part”.</li>
+          <li>Ledger pane: Note column and sample reasons, “Export CSV” toast, and the unknown-kind demo row (raw kind <code>fuel_adjustment</code>, neutral chip, unsigned amount — acceptance 3).</li>
+          <li>Ruling R8 / R1 wording: the “Viewing as” switcher (mock scaffolding) and its three notes — “SkyFix Services is not the home franchisee. You see this ticket’s travel amount and speed outcome, but not its base’s coordinates or SkyFix’s pool, so its penalties are not listed here.”, “Facility staff see the ticket and its part requests only. No travel or speed amounts are shown to them.”, “Vendors see the ticket and its status only. No travel or speed amounts are shown to them.” — and the speed panel row “Clock · Starts at the later of accepting and the slot start: …”, with the timeline wording “since the clock started at the slot start”.</li>
+          <li>Mock scaffolding (dashed): “Mock scenario”, “Mock: speed outcome / capped / reversed”.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Force-close dialog -->
+<div class="scrim" id="dlgForce"><div class="dlg">
+  <header><h3 id="fcTitle">Force-close RGT-INST-0412</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd">
+    <div class="pill-warn" style="margin-bottom:14px">The customer never confirmed. Closing this records a decision nobody but you made — add the reason and evidence.</div>
+    <div class="row2">
+      <div class="field"><label for="fcReason">Reason</label><select class="in" id="fcReason"><option>Customer did not respond to the closure request</option><option>Customer unreachable after repeated attempts</option><option>Other</option></select></div>
+      <div class="field"><label for="fcPay">Technician payout (₹)</label><div class="unit"><input class="in" id="fcPay" value="0" inputmode="numeric"><span class="u">₹</span></div><div class="hint">At most the job’s price.</div></div>
+    </div>
+    <div class="field" id="fcTravelF"><label for="fcTravel">Travel allowance (₹)</label>
+      <div class="unit"><input class="in" id="fcTravel" inputmode="numeric"><span class="u">₹</span></div>
+      <div class="hint" id="fcHint"></div><div class="err" id="fcErr"></div></div>
+    <div class="field"><label for="fcJust">Justification</label><textarea class="in" id="fcJust" placeholder="What happened, and what you checked"></textarea></div>
+    <div class="field"><label>Attachments</label><button class="btn" type="button" data-toast="File picker (not mocked)">Add a file</button> <span class="hint">At least one</span></div>
+    <div class="pill-info proposed hide" id="fcSent"></div>
+  </div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="fcGo">Force-close ticket</button></footer>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]}); };
+  var inr = function(n){ return "₹" + Number(n).toLocaleString("en-IN"); };
+  function toast(t){ var el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(function(){el.classList.remove("show")},3000); }
+  var SVG = {
+    timer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
+    wrench:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>',
+    dot:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>'
+  };
+
+  /* ================= status chips ================= */
+  var STATUS = [["New","new"],["Slot Pending","warn"],["Assigned","assigned"],["In Progress","progress"],["Awaiting Part","part"],["Awaiting Customer","await"],["Escalated","dng"],["Closed","closed"],["Force-Closed","force"],["Cancelled",""]];
+  var cls = function(s){ var m = STATUS.filter(function(x){return x[0]===s})[0]; return m ? m[1] : ""; };
+  var chipHTML = function(s){ return '<span class="chip '+cls(s)+'">'+s+'</span>'; };
+  $("chipset").innerHTML = STATUS.map(function(s){ return s[0]==="Awaiting Part" ? '<span class="chip part" style="box-shadow:0 0 0 2px #fff,0 0 0 3px var(--st-part)">Awaiting Part</span>' : chipHTML(s[0]); }).join("");
+
+  /* ================= scenarios ================= */
+  var travelBase = {technician:"Ravi Kumar", acceptedAt:"15-10-2026 07:42", fromLabel:"Base · pincode centre", toLabel:"Customer’s address pin", straight:21.6, factor:130, km:28.1, free:20, step:2, perStep:1000, max:30000, amount:4000, reason:null, credited:null, defPaise:4000, maxPaise:30000};
+  var speedBase = {matchedOn:"node", matchedName:"Television", rw:12, pa:24, rP:20000, pP:15000, clockStarted:"15-10-2026 10:00", clockWhy:"the slot start; accepted 07:42", outcome:"pending", partWait:2.1, working:null, capped:false, reversed:false};
+  var reqBase = {code:"RGT-SPR-0007", part:"HDMI cable", other:true, status:"approved", raised:"15-10-2026 09:40", note:"HDMI port loose, need a replacement cable", trail:["Raised by Ravi Kumar · 15-10-2026 09:40","Approved by Arjun Rao · 15-10-2026 10:05"], photo:false};
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+  var SC = {
+    1:{status:"Awaiting Part", travel:clone(travelBase), speed:clone(speedBase), parts:[clone(reqBase)], pen:[], terminal:false, assignable:false,
+       tl:[["base","Ticket raised","Raised by Crestline Distributors","14-10-2026 16:10"],["base","Assigned to Ravi Kumar","Accepted from the pool","15-10-2026 07:42"],["base","Started","Live photo taken at the address","15-10-2026 09:30"],["info","Spare part requested","HDMI cable · RGT-SPR-0007","15-10-2026 09:40","wrench"],["ok","Spare part approved","HDMI cable · RGT-SPR-0007","15-10-2026 10:05","wrench"]]},
+    2:{status:"Closed", travel:(function(){var t=clone(travelBase);t.credited=4000;return t})(),
+       speed:(function(){var s=clone(speedBase);s.outcome="penalty";s.working=25.1;return s})(),
+       parts:[(function(){var r=clone(reqBase);r.status="returned";r.photo=true;r.trail=["Raised by Ravi Kumar · 15-10-2026 09:40","Approved by Arjun Rao · 15-10-2026 10:05","Issued by Arjun Rao · 15-10-2026 11:50","Old part received by Arjun Rao · 16-10-2026 17:20"];return r})()],
+       pen:[{kind:"speed_penalty",reason:"Finished in 25.1 working hours, after the 24 h limit",amount:15000,when:"16-10-2026 14:05"}], terminal:true,
+       tl:[["base","Ticket raised","Raised by Crestline Distributors","14-10-2026 16:10"],["base","Assigned to Ravi Kumar","Accepted from the pool","15-10-2026 07:42"],["info","Spare part requested","HDMI cable · RGT-SPR-0007","15-10-2026 09:40","wrench"],["ok","Spare part approved","HDMI cable · RGT-SPR-0007","15-10-2026 10:05","wrench"],["ok","New part issued to technician","HDMI cable · RGT-SPR-0007","15-10-2026 11:50","wrench"],["base","Completed","Technician pressed Complete","16-10-2026 13:12"],["info","Speed settled","Finished in 25.1 working hours (27.2 h since the clock started at the slot start, 2.1 h waiting for parts) · after 24 h — speed penalty","16-10-2026 14:05","timer"],["ok","Old part received back","HDMI cable · RGT-SPR-0007","16-10-2026 17:20","wrench"],["base","Closed","Confirmed by the customer","16-10-2026 14:05"]]},
+    3:{status:"In Progress", travel:(function(){var t=clone(travelBase);t.reason="no_base_location";t.amount=0;t.km=0;t.straight=0;t.defPaise=0;t.baseSource=null;return t})(),
+       speed:(function(){var s=clone(speedBase);s.partWait=0;return s})(), parts:[], pen:[], terminal:false, assignable:true,
+       tl:[["base","Ticket raised","Raised by Crestline Distributors","14-10-2026 16:10"],["base","Assigned to Ravi Kumar","Accepted from the pool","15-10-2026 07:42"],["base","Started","Live photo taken at the address","15-10-2026 09:30"]]},
+    4:{status:"Force-Closed", travel:(function(){var t=clone(travelBase);t.credited=4000;return t})(),
+       speed:(function(){var s=clone(speedBase);s.outcome="force_closed";s.working=7.2;s.partWait=0;return s})(), parts:[], pen:[], terminal:true,
+       tl:[["base","Ticket raised","Raised by Crestline Distributors","14-10-2026 16:10"],["base","Assigned to Ravi Kumar","Accepted from the pool","15-10-2026 07:42"],["base","Completed","Technician pressed Complete","15-10-2026 17:10"],["base","Force-closed","Nisha Rao · customer never confirmed · attachment kept","18-10-2026 10:00"]]},
+    5:{status:"Assigned", travel:null, speed:null, parts:[], pen:[], terminal:false, assignable:true,
+       tl:[["base","Ticket raised","Raised by Crestline Distributors","09-10-2026 12:00"],["base","Assigned to Ravi Kumar","Accepted from the pool — before travel and speed rules existed","09-10-2026 12:30"]]}
+  };
+  var sc = 1, over = {out:null,cap:false,rev:false}, va = "nh";
+  var VA_WHO = {nh:["Nisha Rao · National Head","NR"],am:["Kavitha S · Area Manager","KS"],fac:["Arjun Rao · Facility operator","AR"],ven:["Crestline Distributors · Vendor","CD"]};
+  var T = function(){ return SC[sc]; };
+
+  function hm(h){ var m = Math.round(h*60); return Math.floor(m/60)+" h "+(m%60)+" m"; }
+  function fmtW(w){ return (Math.round(w*10)/10)+" h"; }
+
+  function travelPanel(t){
+    if(!T().travel) return "";
+    var tr = T().travel, amt = tr.amount, paid;
+    if(tr.credited) paid = "Paid "+inr(tr.credited/100);
+    else if(amt>0 && !T().terminal) paid = "Paid when the customer confirms";
+    else paid = "Not paid";
+    var h = '<section class="card pnl"><header><h2>Travel allowance</h2></header><div class="body">'+
+      '<p class="frozen">Frozen when '+esc(tr.technician)+' accepted · '+tr.acceptedAt+'</p>';
+    if(tr.reason==="no_base_location"){
+      h += '<dl class="kv"><dt>Allowance</dt><dd><span class="money">'+inr(0)+'</span> · Not paid</dd></dl><div class="pill-warn reason">No base location when accepted — nothing to pay.</div>';
+    } else {
+      h += '<dl class="kv"><dt>Distance</dt><dd>'+tr.km.toFixed(1)+' km by road ('+tr.straight+' km straight × '+tr.factor+' %)</dd>'+
+        '<dt>From</dt><dd>'+tr.fromLabel+'</dd><dt>To</dt><dd>'+tr.toLabel+'</dd>'+
+        '<dt>Rule</dt><dd>'+tr.free+' km free, then '+inr(tr.perStep/100)+' per '+tr.step+' km, up to '+inr(tr.max/100)+'</dd>'+
+        '<dt>Allowance</dt><dd><span class="money">'+inr(amt/100)+'</span> · '+paid+'</dd></dl>';
+      if(tr.reason==="no_customer_point") h += '<div class="pill-warn reason">No location for the customer — measured as 0 km.</div>';
+    }
+    return h+'</div></section>';
+  }
+
+  function speedPanel(){
+    var s = T().speed; if(!s) return "";
+    s = clone(s); var outcome = over.out || s.outcome;
+    if(over.out){ s.capped = over.cap; s.reversed = over.rev; }
+    if(outcome==="pending") s.working = null; else if(s.working==null) s.working = 7.2;
+    var oc;
+    if(outcome==="pending") oc = "Settled when the customer confirms";
+    else if(outcome==="reward") oc = "Rewarded "+inr(s.rP/100);
+    else if(outcome==="penalty") oc = "Penalised −"+inr(s.pP/100);
+    else if(outcome==="none") oc = "Neither — between the two";
+    else oc = "Not paid — force-closed";
+    if(s.capped && outcome==="penalty") oc += " · capped by the monthly limit";
+    if(s.reversed && outcome==="penalty") oc += " · reversed";
+    var taken;
+    if(outcome==="pending") taken = "Clock running since "+s.clockStarted+(s.partWait>0?" · excluding "+fmtW(s.partWait)+" waiting for parts":"");
+    else taken = hm(s.working)+(s.partWait>0?" · excluding "+fmtW(s.partWait)+" waiting for parts":"");
+    var h = '<section class="card pnl"><header><h2>Speed allowance</h2></header><div class="body"><dl class="kv">'+
+      '<dt>Rule</dt><dd>'+(s.matchedOn==="model"?"Product: ":"Category: ")+esc(s.matchedName)+'</dd>'+
+      '<dt>Reward</dt><dd>Within '+s.rw+' h · '+inr(s.rP/100)+'</dd>'+
+      '<dt>Penalty</dt><dd>After '+s.pa+' h · −'+inr(s.pP/100)+'</dd>'+
+      '<dt>Clock</dt><dd><span class="proposed">Starts at the later of accepting and the slot start: '+s.clockStarted+' ('+s.clockWhy+')</span></dd>'+
+      '<dt>Time taken</dt><dd>'+taken+'</dd><dt>Outcome</dt><dd>'+oc+'</dd></dl>'+
+      '<div class="demo"><span>Mock: speed outcome</span><select id="oSel">'+
+      ["pending","reward","penalty","none","force_closed"].map(function(o){ return '<option value="'+o+'"'+(o===outcome?' selected':'')+'>'+o+'</option>'; }).join("")+
+      '</select><label><input type="checkbox" id="oCap"'+(s.capped?' checked':'')+'> capped</label><label><input type="checkbox" id="oRev"'+(s.reversed?' checked':'')+'> reversed</label></div></div></section>';
+    return h;
+  }
+
+  function penPanel(){
+    var p = T().pen; if(!p.length) return "";
+    var h = '<section class="card pnl"><header><h2>Penalties</h2></header><div class="body">';
+    p.forEach(function(x){
+      h += '<div class="prow"><div class="l1"><span class="chip dng">'+(x.kind==="speed_penalty"?"Speed penalty":"Penalty")+'</span><span class="money">'+inr(x.amount/100)+'</span><span style="flex:1"></span><button class="btn sm" data-toast="Reverse penalty dialog (existing)">Reverse</button></div>'+
+        '<div class="l2">'+(x.kind==="speed_penalty"?"Speed penalty · ":"")+esc(x.reason)+'</div><div class="l2">'+x.when+'</div></div>';
+    });
+    return h+'</div></section>';
+  }
+
+  function partsPanel(){
+    var ps = T().parts; if(!ps.length) return "";
+    var h = '<section class="card pnl"><header><h2>Spare parts</h2></header><div class="body">';
+    ps.forEach(function(r){
+      var chip = {requested:"info",approved:"assigned",issued:"ok",returned:"",rejected:"warn"}[r.status];
+      var lab = r.status.charAt(0).toUpperCase()+r.status.slice(1);
+      h += '<div class="prow"><div class="l1"><b>'+esc(r.part)+'</b><span class="chip '+chip+'">'+lab+'</span></div>'+
+        '<div class="l2">'+r.code+' · raised '+r.raised+'</div>'+(r.note?'<div class="q">“'+esc(r.note)+'”</div>':'')+
+        '<ul class="mini">'+r.trail.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>'+
+        (r.photo?'<div class="l2" style="margin-top:6px">Photo on record</div>':'')+
+        '<div style="margin-top:8px"><a href="#" onclick="return false">Open request</a></div></div>';
+    });
+    return h+'</div></section>';
+  }
+
+  function renderTimeline(){
+    $("timeline").innerHTML = T().tl.map(function(e){
+      var k = e[0], ic = e[4] ? SVG[e[4]] : SVG.dot;
+      return '<div class="it"><div class="tl-ic '+k+'">'+ic+'</div><div style="flex:1"><div class="tt">'+esc(e[1])+(e[1]==="Speed settled"?' <span class="proposed" style="font-weight:400;font-size:11px"> server title</span>':'')+'</div><div class="nt">'+esc(e[2])+'</div></div><div class="tm">'+e[3]+'</div></div>';
+    }).join("");
+  }
+
+  function renderDetail(){
+    var s = T();
+    $("hStatus").innerHTML = chipHTML(s.status);
+    var b = "";
+    if(!s.terminal && (va==="nh" || va==="am")){
+      if(s.assignable) b += '<button class="btn" data-toast="Re-assign (existing)">Re-assign</button>';
+      b += '<button class="btn" data-toast="Change the time (existing) — offered in Awaiting Part too">Change the time</button>';
+      b += '<button class="btn dng" id="forceBtn">Force close</button>';
+    }
+    $("hBtns").innerHTML = b;
+    var staff = va==="nh" || va==="am";
+    $("pTravel").innerHTML = staff ? travelPanel() : ""; $("pSpeed").innerHTML = staff ? speedPanel() : ""; $("pPen").innerHTML = va==="nh" ? penPanel() : ""; $("pParts").innerHTML = (va==="ven") ? "" : partsPanel();
+    var note = "";
+    if(va==="am") note = "SkyFix Services is not the home franchisee. You see this ticket’s travel amount and speed outcome, but not its base’s coordinates or SkyFix’s pool, so its penalties are not listed here.";
+    else if(va==="fac") note = "Facility staff see the ticket and its part requests only. No travel or speed amounts are shown to them.";
+    else if(va==="ven") note = "Vendors see the ticket and its status only. No travel or speed amounts are shown to them.";
+    $("pNote").innerHTML = note ? '<div class="pill-info proposed">'+note+'</div>' : "";
+    $("whoAmI").textContent = VA_WHO[va][0]; document.querySelector(".topbar .avatar").textContent = VA_WHO[va][1];
+    renderTimeline();
+  }
+
+  /* ================= force-close ================= */
+  function openForce(){
+    var tr = T().travel;
+    $("fcSent").classList.add("hide"); $("fcErr").textContent=""; $("fcTravel").classList.remove("bad");
+    var show = tr && tr.maxPaise>0;
+    $("fcTravelF").classList.toggle("hide", !show);
+    if(show){
+      $("fcTravel").value = String(tr.defPaise/100);
+      $("fcHint").textContent = "Worked out as "+inr(tr.defPaise/100)+" when "+tr.technician+" accepted ("+tr.km.toFixed(1)+" km). At most "+inr(tr.maxPaise/100)+". Clear it to pay nothing.";
+    }
+    $("fcTitle").textContent = "Force-close RGT-INST-0412";
+    $("dlgForce").classList.add("open");
+  }
+  function validateTravel(){
+    var tr = T().travel; if(!tr || !(tr.maxPaise>0)) return {ok:true, paise:null};
+    var v = $("fcTravel").value.trim(), e = "";
+    if(v!=="" && !/^\d{1,7}$/.test(v)) e = "Enter a whole number of rupees";
+    else if(v!=="" && +v*100 > tr.maxPaise) e = "At most "+inr(tr.maxPaise/100);
+    $("fcErr").textContent = e; $("fcTravel").classList.toggle("bad", !!e);
+    return {ok:!e, paise: v===""?0:+v*100};
+  }
+  $("fcTravel").addEventListener("input", validateTravel);
+  $("fcGo").addEventListener("click", function(){
+    var r = validateTravel(); if(!r.ok) return;
+    var m = $("fcSent"); m.classList.remove("hide");
+    m.textContent = r.paise===null ? "Would send no travelPaise — this ticket has no travel block." : "Would send travelPaise: "+r.paise+(r.paise===0?" — no travel row is written.":"");
+    toast("Ticket force-closed");
+  });
+
+  /* ================= ticket list ================= */
+  var TK = [
+    ["RGT-INST-0412","Sunview 43\" Android TV","Ravi Kumar","Hyderabad · 500081","Awaiting Part"],
+    ["RGT-INST-0408","Meridian 55\"","Imran Sheikh","Hyderabad · 500049","Awaiting Part"],
+    ["RGT-INST-0415","Acme FL-7 (7 kg)","Ravi Kumar","Hyderabad · 500032","Assigned"],
+    ["RGT-INST-0419","Meridian 55\"","Imran Sheikh","Hyderabad · 500049","Assigned"],
+    ["RGT-INST-0422","Acme FL-7 (7 kg)","Lakshmi N","Hyderabad · 500084","In Progress"],
+    ["RGT-INST-0430","Sunview 32\"","—","Hyderabad · 500081","Slot Pending"],
+    ["RGT-INST-0431","Acme FL-7 (7 kg)","—","Hyderabad · 500032","New"],
+    ["RGT-INST-0399","Acme FL-7 (7 kg)","Lakshmi N","Hyderabad · 500084","Awaiting Customer"],
+    ["RGT-INST-0391","Sunview 43\" Android TV","Ravi Kumar","Hyderabad · 500081","Escalated"],
+    ["RGT-INST-0405","Acme FL-7 (7 kg)","Suresh Babu","Hyderabad · 500032","Closed"],
+    ["RGT-INST-0377","Meridian 55\"","Imran Sheikh","Hyderabad · 500049","Force-Closed"],
+    ["RGT-INST-0372","Sunview 32\"","—","Hyderabad · 500081","Cancelled"]
+  ];
+  var sel = $("stSel");
+  sel.innerHTML = '<option value="all">All statuses</option>' + STATUS.map(function(s){ return '<option value="'+s[0]+'">'+s[0]+'</option>'; }).join("") + '<option value="multi">Assigned, In Progress, Awaiting Part</option>';
+  sel.value = "Awaiting Part";
+  var MULTI = ["Assigned","In Progress","Awaiting Part"];
+  function renderTickets(){
+    var v = sel.value;
+    var list = TK.filter(function(r){ return v==="all" || (v==="multi" ? MULTI.indexOf(r[4])>=0 : r[4]===v); });
+    $("tkRows").innerHTML = list.map(function(r){ return '<tr><td><b class="mono" style="font-size:12.5px">'+r[0]+'</b></td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td><td>'+r[3]+'</td><td>'+chipHTML(r[4])+'</td></tr>'; }).join("");
+    $("tkEmpty").classList.toggle("hide", list.length>0);
+    $("stCount").textContent = list.length + (list.length===1?" ticket":" tickets");
+    var n = TK.filter(function(r){return MULTI.indexOf(r[4])>=0}).length; $("k2").textContent = n;
+    $("k1").textContent = TK.filter(function(r){return r[4]==="New"||r[4]==="Slot Pending"}).length;
+  }
+  sel.addEventListener("change", renderTickets);
+  $("kAssigned").addEventListener("click", function(){ sel.value="multi"; renderTickets(); window.scrollTo({top:document.body.scrollHeight/3,behavior:"smooth"}); });
+
+  /* ================= ledger ================= */
+  var KL = {penalty:"Penalty",bonus:"Bonus",reversal:"Penalty reversed",speed_reward:"Speed reward",speed_penalty:"Speed penalty"};
+  var KC = {penalty:"dng",bonus:"ok",reversal:"info",speed_reward:"ok",speed_penalty:"dng"};
+  var SIGN = {penalty:1,bonus:-1,reversal:-1,speed_reward:-1,speed_penalty:1};
+  var L = [
+    {at:"15-10-2026 11:42",kind:"speed_reward",tech:"Ravi Kumar",ticket:"RGT-INST-0391",note:"Finished within 12 h",amt:200},
+    {at:"15-10-2026 10:20",kind:"speed_penalty",tech:"Lakshmi N",ticket:"RGT-INST-0366",note:"Finished after 24 h",amt:150},
+    {at:"15-10-2026 10:05",kind:"reversal",tech:"Imran Sheikh",ticket:"RGT-INST-0377",note:"Given back — customer had asked for a later visit",amt:150},
+    {at:"14-10-2026 18:30",kind:"penalty",tech:"Suresh Babu",ticket:"RGT-INST-0380",note:"Cancelled less than 2 h before the slot",amt:500},
+    {at:"14-10-2026 16:02",kind:"speed_penalty",tech:"Imran Sheikh",ticket:"RGT-INST-0377",note:"Finished after 24 h",amt:150,reversed:true},
+    {at:"14-10-2026 12:44",kind:"bonus",tech:"Ravi Kumar",ticket:"RGT-INST-0391",note:"Escalation bonus",amt:100},
+    {at:"13-10-2026 09:15",kind:"penalty",tech:"Lakshmi N",ticket:"RGT-INST-0361",note:"Cancelled 2–4 h before the slot",amt:300}
+  ];
+  var UNK = {at:"13-10-2026 08:00",kind:"fuel_adjustment",tech:"Suresh Babu",ticket:"—",note:"Inserted by hand on the dev database",amt:50};
+  function renderLedger(){
+    var rows = L.slice(); if($("lUnk").checked) rows.push(UNK);
+    var col=0, bon=0, spP=0, spR=0;
+    L.forEach(function(e){
+      if(e.kind==="penalty") col+=e.amt;
+      if(e.kind==="speed_penalty"){ col+=e.amt; if(!e.reversed) spP+=e.amt; }
+      if(e.kind==="reversal") col-=e.amt;
+      if(e.kind==="bonus") bon+=e.amt;
+      if(e.kind==="speed_reward"){ bon+=e.amt; spR+=e.amt; }
+    });
+    $("lBal").textContent = inr(col-bon); $("lCol").textContent = inr(col); $("lBon").textContent = inr(bon);
+    $("lColSub").textContent = spP? "incl. "+inr(spP)+" speed penalties" : "";
+    $("lBonSub").textContent = spR? "incl. "+inr(spR)+" speed rewards" : "";
+    $("lSum").innerHTML = "Penalties collected <b>"+inr(col)+"</b> − Bonuses paid <b>"+inr(bon)+"</b> = <b>"+inr(col-bon)+"</b> Current pool balance";
+    var f = $("lType").value, h = "", lastDay = "";
+    rows.filter(function(e){ return f==="all" || e.kind===f; }).forEach(function(e){
+      var day = e.at.slice(0,10), time = e.at.slice(11);
+      if(day!==lastDay){ h += '<tr class="daydiv"><td colspan="6">'+day+'</td></tr>'; lastDay = day; }
+      var known = KL[e.kind] !== undefined, label = known ? KL[e.kind] : e.kind, c = known ? KC[e.kind] : "";
+      var sg = known ? SIGN[e.kind] : null;
+      var txt = sg===null ? inr(e.amt) : (sg>0?"+":"−")+inr(e.amt);
+      var cl = sg===null ? "" : (sg>0?"pos":"neg");
+      h += '<tr><td>'+time+'</td><td><span class="chip '+c+'">'+label+'</span>'+(e.reversed?' <span style="font-size:11px;font-weight:600;color:var(--info)">(reversed)</span>':'')+'</td><td>'+esc(e.tech)+'</td><td class="mono" style="font-size:12.5px">'+e.ticket+'</td><td style="color:var(--ink-2)">'+esc(e.note)+'</td><td class="amt '+cl+'">'+txt+'</td></tr>';
+    });
+    $("lRows").innerHTML = h || '<tr><td colspan="6"><div class="empty"><b>Nothing here</b>No entries of this type.</div></td></tr>';
+  }
+  $("lType").addEventListener("change", renderLedger); $("lUnk").addEventListener("change", renderLedger);
+
+  /* ================= wiring ================= */
+  document.addEventListener("click", function(e){
+    var t;
+    if((t=e.target.closest("#scen button"))){ sc = +t.getAttribute("data-s"); over = {out:null,cap:false,rev:false}; renderDetail(); }
+    else if((t=e.target.closest("#viewas button"))){ va = t.getAttribute("data-va"); renderDetail(); }
+    else if(e.target.closest("#forceBtn")) openForce();
+    else if((t=e.target.closest("[data-tab]"))){
+      var k = t.getAttribute("data-tab");
+      // keep the rail and the tab bar in step
+      document.querySelectorAll("[data-tab]").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-tab")===k); });
+      $("pgTitle").textContent = k==="ledger" ? "Penalty & Bonus" : "Tickets";
+      $("pgSub").textContent = k==="detail" ? "RGT-INST-0412" : k==="status" ? "All tickets" : "Penalties collected and bonuses paid";
+    }
+  });
+  document.addEventListener("change", function(e){
+    if(e.target.id==="oSel"){ over.out = e.target.value; var cur = T().speed; over.cap = $("oCap") ? $("oCap").checked : false; over.rev = $("oRev") ? $("oRev").checked : false; $("pSpeed").innerHTML = speedPanel(); }
+    else if(e.target.id==="oCap"||e.target.id==="oRev"){ over.out = over.out || $("oSel").value; over.cap = $("oCap").checked; over.rev = $("oRev").checked; $("pSpeed").innerHTML = speedPanel(); }
+  });
+
+  renderDetail(); renderTickets(); renderLedger();
+})();
+</script>
+</body>
+</html>

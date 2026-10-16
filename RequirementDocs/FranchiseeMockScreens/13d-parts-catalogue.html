@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13d Parts catalogue — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a{cursor:pointer}
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  body.noparts .mi-parts{display:none}
+
+  /* category tree (real console look: bands per depth, indented) */
+  .ctree{list-style:none;margin:0;padding:0}
+  .ctree ul{list-style:none;margin:0;padding:0 0 0 22px}
+  .crow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-2);position:relative}
+  .crow:hover{background:var(--surface-2)}
+  .crow .ic{width:30px;height:30px;border-radius:8px;background:var(--brand-100);color:var(--brand-500);display:grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+  .crow .nm{flex:1;min-width:0}
+  .crow .nm b{font-weight:600}
+  .crow .nm small{display:block;color:var(--ink-3);font-size:12px}
+  .d1>.crow{background:#fafbfd}.d2>.crow{background:#fff}
+  .mchips{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px 12px 36px;border-bottom:1px solid var(--border-2)}
+  .mchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:6px 8px 6px 12px;background:#fff;font-size:13px;position:relative}
+  .mchip small{color:var(--ink-3)}
+  .dots{border:1px solid transparent;background:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--ink-2);font-size:18px;line-height:1}
+  .dots:hover{background:var(--surface-3);border-color:var(--border)}
+  .menu{position:absolute;right:8px;top:calc(100% - 4px);min-width:200px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:5px;z-index:30;display:none}
+  .menu.open{display:block}
+  .menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:7px;font:13px "IBM Plex Sans";cursor:pointer;color:var(--ink)}
+  .menu button:hover{background:var(--surface-3)}
+  .menu hr{border:0;border-top:1px solid var(--border-2);margin:4px 0}
+  .mchip .menu{right:0;top:100%}
+
+  /* spare parts dialog */
+  .sec-t{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;margin:16px 0 8px}
+  .grp-t{font-size:12.5px;color:var(--ink-2);margin:10px 0 6px;font-weight:600}
+  .pchips{display:flex;gap:6px;flex-wrap:wrap}
+  .pchip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface-2);border-radius:99px;padding:3px 6px 3px 12px;font-size:13px}
+  .pchip.hid{opacity:.7}.pchip.hid .nm{text-decoration:line-through;color:var(--ink-3)}
+  .pchip .hh{font-size:11.5px;color:var(--ink-3);font-style:italic}
+  .link{border:0;background:none;color:var(--brand-400);font:500 12px "IBM Plex Sans";cursor:pointer;padding:2px 4px;border-radius:4px}
+  .link:hover{background:var(--brand-100)}.link.d{color:var(--danger)}
+  .own{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px}
+  .own .r{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border-2)}
+  .own .r:last-child{border-bottom:0}
+  .own .r .nm{flex:1}
+  .own .r.off .nm{color:var(--ink-3)}
+  .own .r input{flex:1;max-width:320px;padding:5px 9px}
+  .addrow{display:flex;gap:10px;margin-top:12px}
+  .addrow .in{flex:1}
+  .err{color:var(--danger);font-size:11.5px;margin-top:4px;min-height:14px}
+  .skelrow{display:grid;gap:12px;padding:6px 0}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .viewer{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Operations</div>
+    <a>Dashboard</a><a>Tickets</a><a>Technicians</a><a>Spare parts</a>
+    <div class="grp">Masters</div>
+    <a class="on">Categories &amp; products</a><a>Vendors</a><a>Territory</a>
+    <div class="grp">Configuration</div>
+    <a>Rules Config</a><a>Allowances</a><a>Users &amp; roles</a>
+    <div class="who">Nisha Rao · National Head</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Categories &amp; products</h1><div class="sub">Everything you service, in the order customers find it</div></div>
+      <span class="sp"></span>
+      <div class="viewer"><span class="proposed">Viewing as:</span>
+        <div class="seg" id="viewer"><button class="on" data-v="admin">Admin / National Head</button><button data-v="rh">Regional Head (no parts.catalogue)</button></div></div>
+      <div class="avatar">NR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.6</b> (Parts catalogue on Categories &amp; products — <code>SparePartsDialog</code>; contract §4.6; copy §5.10 “Parts catalogue”). Open a row’s ⋯ menu → <i>Spare parts</i>, or a product chip’s <i>Actions</i>. Example is Acme’s Home Appliances → Washing Machine → Front Load → Acme FL-7 (7 kg) from Task 12 §1.</div>
+
+      <section class="card">
+        <div class="toolbar"><input class="in search" placeholder="Search categories and products"><span class="sp"></span><button class="btn pri" data-toast="Add category (not mocked here)">Add category</button></div>
+        <ul class="ctree">
+          <li class="d0">
+            <div class="crow"><span class="ic">HA</span><div class="nm"><b>Home Appliances</b><small>1 sub-category</small></div>
+              <button class="dots" data-menu="m-ha" aria-label="Actions">⋯</button>
+              <div class="menu" id="m-ha"><button>Edit category</button><button>Add sub-category</button><button>Rules for this category</button><button class="mi-parts" data-parts="node:ha">Spare parts</button></div></div>
+            <ul><li class="d1">
+              <div class="crow"><span class="ic">WM</span><div class="nm"><b>Washing Machine</b><small>1 sub-category</small></div>
+                <button class="dots" data-menu="m-wm" aria-label="Actions">⋯</button>
+                <div class="menu" id="m-wm"><button>Edit category</button><button>Add sub-category</button><button>Rules for this category</button><button class="mi-parts" data-parts="node:wm">Spare parts</button></div></div>
+              <ul><li class="d2">
+                <div class="crow"><span class="ic">FL</span><div class="nm"><b>Front Load</b><small>Last sub-category · 1 product</small></div>
+                  <button class="dots" data-menu="m-fl" aria-label="Actions">⋯</button>
+                  <div class="menu" id="m-fl"><button>Edit category</button><button>Add product</button><button>Rules for this category</button><button class="mi-parts" data-parts="node:fl">Spare parts</button></div></div>
+                <div class="mchips">
+                  <span class="mchip">Acme FL-7 (7 kg) <small>Acme</small>
+                    <button class="dots" data-menu="m-fl7" aria-label="Actions" style="width:26px;height:26px">⋯</button>
+                    <div class="menu" id="m-fl7"><button>Edit product</button><button class="mi-parts" data-parts="model:fl7">Spare parts</button><hr><button style="color:var(--danger)">Delete product</button></div></span>
+                </div>
+              </li></ul>
+            </li></ul>
+          </li>
+        </ul>
+      </section>
+
+      <div class="notebox">
+        <h3>Wording added by the mock — needs sign-off</h3>
+        <ul>
+          <li>“Viewing as: Admin / National Head | Regional Head (no parts.catalogue)” — a scaffolding toggle to show that a user without <code>parts.catalogue</code> sees no <i>Spare parts</i> item (acceptance 25).</li>
+          <li>Page chrome for Categories &amp; products (“Everything you service…”, search placeholder, “Add category”, menu items Edit / Add / Rules / Delete) approximates the existing console screen and is not part of this task.</li>
+          <li>Group header “From {owner}” is §5.10’s; the “Hide here” on an inherited chip creates a hidden row of that name in <i>Added here</i> (two calls in the real build).</li>
+          <li>Error-state body “Something went wrong reaching the server.” and the Retry label (doc has only the title “Couldn’t load the parts list”); “Cancel” on the Remove confirm, and the “Done” footer button on the dialog.</li>
+          <li>Inline messages “Enter a part name” / “Up to 80 characters” / “That part is already on this list” are §5.10; “Save” / “Cancel” hints for inline rename are hidden behaviour (Enter / Escape), no wording.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SparePartsDialog -->
+<div class="scrim" id="dlgParts"><div class="dlg">
+  <header><div style="flex:1"><h3 id="pTitle">Spare parts</h3><div id="pSub" style="color:var(--ink-3);font-size:12.5px;margin-top:2px"></div></div><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd">
+    <div data-view="data" id="pData">
+      <div id="pFrom"></div>
+      <div class="sec-t">Added here</div>
+      <div id="pOwn"></div>
+      <div class="addrow"><input class="in" id="pName" placeholder="Part name, e.g. Wall bracket" maxlength="120" aria-label="Part name"><button class="btn pri" id="pAdd" type="button">Add part</button></div>
+      <div class="err" id="pErr"></div>
+    </div>
+    <div data-view="loading" class="hide"><div class="skelrow"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel" style="width:70%"></div><div class="skel"></div></div></div>
+    <div data-view="error" class="hide"><div class="empty"><b>Couldn’t load the parts list</b>Something went wrong reaching the server.<div style="margin-top:12px"><button class="btn" data-toast="Retrying…">Retry</button></div></div></div>
+  </div>
+  <footer><button class="btn" data-close>Done</button></footer>
+</div></div>
+
+<!-- Remove confirm -->
+<div class="scrim" id="dlgRm" style="z-index:60"><div class="dlg sm">
+  <header><h3 id="rmTitle">Remove?</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><p style="margin:6px 0;color:var(--ink-2)">Technicians stop seeing it. Requests that already name it keep it.</p></div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn dng" id="rmGo">Remove part</button></footer>
+</div></div>
+
+<div class="state-switch"><button data-state="data" class="on">Data</button><button data-state="loading">Loading</button><button data-state="error">Error</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  function toast(t){ var el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(function(){el.classList.remove("show")},2600); }
+  var esc = function(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]}); };
+
+  var owners = {
+    ha:{kind:"node", name:"Home Appliances", parent:null},
+    wm:{kind:"node", name:"Washing Machine", parent:"ha"},
+    fl:{kind:"node", name:"Front Load", parent:"wm"},
+    fl7:{kind:"model", name:"Acme FL-7 (7 kg)", parent:"fl"}
+  };
+  var seq = 1, parts = [];
+  function P(o,n,a){ parts.push({id:seq++, owner:o, name:n, active:a!==false}); }
+  P("ha","Power cord");
+  P("wm","Drain pump"); P("wm","Inlet hose"); P("wm","Door gasket");
+  P("fl","Door lock"); P("fl","Drum bearing");
+  P("fl7","Control board FL-7"); P("fl7","Door gasket", false);
+
+  var cur = null, renaming = null, rmId = null;
+  var low = function(s){ return s.trim().toLowerCase(); };
+  function chain(id){ var out=[], p=owners[id].parent; while(p){ out.push(p); p=owners[p].parent; } return out; } // nearest first
+  function ownParts(id){ return parts.filter(function(p){return p.owner===id}); }
+
+  function render(){
+    var o = owners[cur];
+    $("pTitle").textContent = "Spare parts · " + o.name;
+    $("pSub").textContent = o.kind==="node" ? "Every product under "+o.name+" offers these, plus anything added further down." : "This product offers these on top of its categories’ parts.";
+    var own = ownParts(cur), hidden = {};
+    own.forEach(function(p){ if(!p.active) hidden[low(p.name)] = true; });
+
+    var from = "";
+    chain(cur).forEach(function(oid){
+      var list = ownParts(oid).filter(function(p){return p.active});
+      if(!list.length) return;
+      from += '<div class="grp-t">From '+esc(owners[oid].name)+'</div><div class="pchips">';
+      list.forEach(function(p){
+        var h = hidden[low(p.name)];
+        from += '<span class="pchip'+(h?' hid':'')+'"><span class="nm">'+esc(p.name)+'</span>'+(h?'<span class="hh">hidden here</span>':'<button class="link" data-hide-inh="'+esc(p.name)+'">Hide here</button>')+'</span>';
+      });
+      from += '</div>';
+    });
+    $("pFrom").innerHTML = '<div class="sec-t">From above</div>' + (from || '<div style="color:var(--ink-3);font-size:13px">Nothing above this level lists any parts.</div>');
+
+    var h = "";
+    if(!own.length) h = '<div style="color:var(--ink-3);font-size:13px;padding:6px 2px">No parts added here yet.</div>';
+    else {
+      h = '<div class="own">';
+      own.forEach(function(p){
+        if(renaming===p.id){
+          h += '<div class="r"><input class="in" id="rnIn" value="'+esc(p.name)+'" maxlength="120" aria-label="Rename part"><span class="err" id="rnErr" style="margin:0"></span></div>';
+        } else {
+          h += '<div class="r'+(p.active?'':' off')+'"><span class="nm">'+esc(p.name)+'</span>'+(p.active?'':'<span class="chip">Hidden</span>')+
+            '<button class="link" data-rn="'+p.id+'">Rename</button>'+
+            '<button class="link" data-tg="'+p.id+'">'+(p.active?'Hide here':'Show here')+'</button>'+
+            '<button class="link d" data-rm="'+p.id+'">Remove</button></div>';
+        }
+      });
+      h += '</div>';
+    }
+    $("pOwn").innerHTML = h;
+    if(renaming){ var i=$("rnIn"); if(i){ i.focus(); i.select(); } }
+  }
+
+  function nameError(name, exceptId){
+    var n = name.trim();
+    if(!n) return "Enter a part name";
+    if(n.length>80) return "Up to 80 characters";
+    if(ownParts(cur).some(function(p){ return p.id!==exceptId && low(p.name)===low(n); })) return "That part is already on this list";
+    return "";
+  }
+
+  function open(key){
+    var k = key.split(":"); cur = k[1]; renaming = null; $("pErr").textContent=""; $("pName").value="";
+    render(); $("dlgParts").classList.add("open");
+  }
+
+  document.addEventListener("click", function(e){
+    var t;
+    // menus
+    if((t = e.target.closest("[data-menu]"))){
+      var m = $(t.getAttribute("data-menu")), wasOpen = m.classList.contains("open");
+      document.querySelectorAll(".menu.open").forEach(function(x){x.classList.remove("open")});
+      if(!wasOpen) m.classList.add("open");
+      return;
+    }
+    if(!e.target.closest(".menu")) document.querySelectorAll(".menu.open").forEach(function(x){x.classList.remove("open")});
+    if((t = e.target.closest("[data-parts]"))){ document.querySelectorAll(".menu.open").forEach(function(x){x.classList.remove("open")}); open(t.getAttribute("data-parts")); return; }
+    if(e.target.closest("#viewer button")){ document.body.classList.toggle("noparts", e.target.closest("button").getAttribute("data-v")==="rh"); return; }
+
+    // dialog actions
+    if((t = e.target.closest("[data-hide-inh]"))){
+      var nm = t.getAttribute("data-hide-inh");
+      if(ownParts(cur).some(function(p){return low(p.name)===low(nm)})){ return; }
+      parts.push({id:seq++, owner:cur, name:nm, active:false}); render();
+    }
+    else if((t = e.target.closest("[data-tg]"))){ var p = parts.filter(function(x){return x.id==t.getAttribute("data-tg")})[0]; p.active=!p.active; render(); }
+    else if((t = e.target.closest("[data-rn]"))){ renaming = +t.getAttribute("data-rn"); render(); }
+    else if((t = e.target.closest("[data-rm]"))){ rmId = +t.getAttribute("data-rm"); var q = parts.filter(function(x){return x.id===rmId})[0]; $("rmTitle").textContent = "Remove "+q.name+"?"; $("dlgRm").classList.add("open"); }
+    else if(e.target.closest("#rmGo")){ parts = parts.filter(function(x){return x.id!==rmId}); $("dlgRm").classList.remove("open"); render(); }
+    else if(e.target.closest("#pAdd")) add();
+  });
+
+  function add(){
+    var err = nameError($("pName").value);
+    $("pErr").textContent = err; $("pName").classList.toggle("bad", !!err);
+    if(err) return;
+    parts.push({id:seq++, owner:cur, name:$("pName").value.trim(), active:true});
+    $("pName").value=""; render();
+  }
+  $("pName").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); add(); } });
+  $("pName").addEventListener("input", function(){ $("pErr").textContent=""; });
+
+  // rename: Enter saves, Escape cancels — both stop the event reaching the surrounding page
+  document.addEventListener("keydown", function(e){
+    if(!renaming || !e.target || e.target.id!=="rnIn") return;
+    if(e.key==="Enter"){
+      e.preventDefault(); e.stopPropagation();
+      var err = nameError(e.target.value, renaming);
+      if(err){ $("rnErr").textContent = err; return; }
+      parts.filter(function(x){return x.id===renaming})[0].name = e.target.value.trim(); renaming=null; render();
+    } else if(e.key==="Escape"){
+      e.preventDefault(); e.stopPropagation(); renaming=null; render();
+    }
+  }, true);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Franchisee — mock 08b</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a .ic{width:14px;height:14px;border:1.5px solid currentColor;border-radius:4px;opacity:.7;flex:none}
+  .rail a.on .ic{opacity:1}
+  .proposed{background:#fff2c9;outline:1px dashed #d8b800;outline-offset:1px;border-radius:3px}
+  .mockbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;border:1px dashed var(--ink-3);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--ink-2);background:#fff}
+  .mockbar b{font-weight:600;color:var(--ink)}
+  .mockbar label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+  .tablewrap{overflow-x:auto}
+  .tablewrap table.t{min-width:640px}
+  .badges{display:flex;gap:6px;flex-wrap:wrap}
+  .chip.home{background:#fff;border:1px solid var(--brand-300);color:var(--brand-500)}
+  .code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3)}
+  .link{display:inline;background:none;border:0;padding:0;color:var(--brand-400);font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer}
+  .link.dng{color:var(--danger)}
+  .link+.link{margin-left:14px}
+  .back{font-size:13px;font-weight:500}
+  .head{display:flex;gap:16px;align-items:center;padding:18px;flex-wrap:wrap}
+  .head .mk{width:48px;height:48px;border-radius:12px;background:var(--brand-100);color:var(--brand-500);display:grid;place-items:center;font-weight:700;font-size:13px}
+  .head h2{margin:0;font-size:19px}
+  .head .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .ranges{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:15px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;word-break:break-all}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cards label{border:1px solid var(--input);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--ink-2)}
+  .cards label:has(input:checked){border-color:var(--brand-500);background:var(--brand-100)}
+  .cards b{display:block;font-size:13px;color:var(--ink)}
+  .cards.locked{opacity:.55;pointer-events:none}
+  .acc{display:flex;gap:6px;flex-wrap:wrap}
+  .mini th,.mini td{padding:7px 12px!important;font-size:12.5px}
+  .psec{border:1px solid var(--border);border-radius:10px;margin-top:12px;overflow:hidden}
+  .psec>h4{margin:0;padding:10px 14px 0;font-size:13.5px}
+  .psec>p{margin:2px 14px 8px;font-size:12px;color:var(--ink-3)}
+  .psec.bad{border-color:#efb5bd}.psec.bad>h4{color:var(--danger)}
+  .sum{display:flex;gap:6px 14px;flex-wrap:wrap;list-style:none;margin:10px 0 0;padding:0;font-size:13px}
+  .sum li:first-child{font-weight:600}
+  .sum li+li:before{content:"\00b7";margin-right:14px;color:var(--ink-3)}
+  .pv{display:none}.pv.on{display:block}
+  .picker{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+  .picker button{border:1px solid var(--input);background:#fff;border-radius:99px;padding:3px 10px;font:500 11.5px "IBM Plex Sans",sans-serif;cursor:pointer}
+  .picker button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .tpw{display:grid;gap:12px}
+  .tpw code{display:block;border:1px solid var(--border);background:#fff;border-radius:8px;padding:8px 12px;font:600 15px "IBM Plex Mono",monospace;letter-spacing:.04em}
+  .tpw .box{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px;display:grid;gap:10px}
+  .tpw .lb{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+  .toast{white-space:pre-line}
+  /* scenes */
+  body:not(.sc-ext) .v-ext,body:not(.sc-new) .v-new,body:not(.sc-home) .v-home,body:not(.sc-err) .v-err{display:none!important}
+  body.sc-home .not-home,body.sc-err .not-err,body.sc-home .v-en,body.sc-err .v-en{display:none!important}
+  body.ro .manage{display:none!important}
+  body.sc-home .only-ext,body:not(.sc-home) .only-home{display:none!important}
+  body:not(.inactive) .if-inactive{display:none!important}
+  body.inactive .if-active{display:none!important}
+  @media(max-width:900px){.cards{grid-template-columns:1fr}.topbar{padding:0 14px}.page{padding:14px}.head .acts{margin-left:0}}
+</style>
+</head>
+<body class="sc-ext">
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Overview</div>
+    <a href="#"><i class="ic"></i>Dashboard</a>
+    <div class="grp">Tickets</div>
+    <a href="#"><i class="ic"></i>Ticket List</a>
+    <div class="grp">Operations</div>
+    <a href="#"><i class="ic"></i>Escalation Queue<span class="n">3</span></a>
+    <a href="#"><i class="ic"></i>Approvals<span class="n">2</span></a>
+    <a href="#"><i class="ic"></i>Redemptions</a>
+    <div class="grp">Master Data</div>
+    <a href="08c-technicians-franchisee-columns.html"><i class="ic"></i>Technicians</a>
+    <a href="08a-franchisees-list.html" class="on"><i class="ic"></i>Franchisees</a>
+    <a href="#"><i class="ic"></i>Penalty &amp; Bonus</a>
+    <a href="#"><i class="ic"></i>Vendors</a>
+    <a href="#"><i class="ic"></i>Territory</a>
+    <a href="#"><i class="ic"></i>Categories</a>
+    <div class="grp">Configuration</div>
+    <a href="#"><i class="ic"></i>Rules Config</a>
+    <a href="#"><i class="ic"></i>Users &amp; Roles</a>
+    <a href="#"><i class="ic"></i>Vendor Credit</a>
+    <a href="#"><i class="ic"></i>Credits</a>
+    <div class="who">Priya Nair<br>National Head</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Franchisee</h1><div class="sub">Pincodes &middot; admins &middot; technicians</div></div>
+      <div class="sp"></div>
+      <div class="avatar">PN</div>
+    </div>
+
+    <div class="page" data-scope>
+      <div class="note"><b>Mock of Task 08 &sect;5.5 / &sect;5.6 / &sect;5.10</b> (<code>08-console-franchisees-screen.md</code>): <code>/franchisees/:id</code> &mdash; header, pincode range editor with dry-run carve-out preview and confirm step, franchisee admins panel. Grey dashed bars and the dark pill are mock controls, not product UI. Open <em>Edit pincodes</em> and use the scenario chips inside the dialog.</div>
+
+      <div class="mockbar">
+        <b>Mock: franchisee</b>
+        <span class="seg" id="sceneSeg">
+          <button class="on" type="button" data-scene="ext">SkyFix Services</button>
+          <button type="button" data-scene="new">Just added (no pincodes)</button>
+          <button type="button" data-scene="home">Home (Acme Appliances)</button>
+          <button type="button" data-scene="err">Couldn't load (404)</button>
+        </span>
+        <b>signed in as</b>
+        <span class="seg"><button class="on" type="button" data-role="admin">Admin / National Head</button><button type="button" data-role="ro">Area Manager (view only)</button></span>
+        <label><input type="checkbox" id="mFail"> Simulate: email fails to send</label>
+        <label><input type="checkbox" id="mRace"> Simulate: 409 when applying pincodes</label>
+        <label><input type="checkbox" id="mAnother"> Simulate: SkyFix has another active admin</label>
+      </div>
+
+      <a class="back" href="08a-franchisees-list.html">&larr; Back to franchisees</a>
+
+      <!-- ERROR SCENE -->
+      <section class="card v-err">
+        <div class="empty"><b>Couldn't load this franchisee</b>
+          <button class="btn" type="button" data-toast="Couldn't load this franchisee">Retry</button></div>
+      </section>
+
+      <!-- HEADER -->
+      <section class="card not-err">
+        <div class="head">
+          <div class="mk sw" data-ext="SKY" data-home="HOME">SKY</div>
+          <div>
+            <h2 class="fname">SkyFix Services</h2>
+            <div class="badges" style="margin-top:6px">
+              <span class="chip info v-en">External</span>
+              <span class="chip brand v-home">Internal</span><span class="chip home v-home">Home</span>
+              <span class="chip ok if-active">Active</span><span class="chip force if-inactive">Inactive</span>
+            </div>
+          </div>
+          <div class="acts">
+            <button class="btn manage" type="button" data-open="dlgEdit">Edit details</button>
+            <button class="btn manage not-home" type="button" data-open="dlgPin">Edit pincodes</button>
+            <button class="btn dng manage not-home if-active" type="button" data-open="dlgDeact">Deactivate</button>
+            <button class="btn pri manage not-home if-inactive" type="button" id="btnActivate">Activate</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid g2 not-err">
+        <!-- DETAILS -->
+        <section class="card">
+          <header><h2>Details</h2></header>
+          <div class="body">
+            <dl class="kv" style="margin:0">
+              <dt>Code</dt><dd class="code sw" data-ext="SKY" data-home="HOME" style="font-size:13px;color:var(--ink)">SKY</dd>
+              <dt>Kind</dt><dd><span class="chip info v-en">External</span><span class="chip brand v-home">Internal</span></dd>
+              <dt>Contact</dt><dd class="sw" data-ext="Ravi Kumar" data-home="Priya Nair">Ravi Kumar</dd>
+              <dt>Phone</dt><dd class="sw" data-ext="+91 98480 12345" data-home="+91 98450 11223">+91 98480 12345</dd>
+              <dt>Email</dt><dd class="sw" data-ext="ops@skyfix.in" data-home="admin@acme.in">ops@skyfix.in</dd>
+              <dt>Status</dt><dd><span class="chip ok if-active">Active</span><span class="chip force if-inactive">Inactive</span></dd>
+              <dt>Created</dt><dd class="sw" data-ext="15-10-2026" data-home="02-03-2024">15-10-2026</dd>
+            </dl>
+            <div class="pill-info v-home" style="margin-top:14px">The home franchisee owns every pincode no other franchisee owns. Give pincodes to another franchisee to take them from it.</div>
+          </div>
+        </section>
+
+        <div class="grid" style="align-content:start">
+          <!-- PINCODES -->
+          <section class="card" id="pincodes">
+            <header>
+              <h2>Pincodes</h2>
+              <span class="sub sw" data-ext="11 pincodes" data-new="0 pincodes" data-home="19,471 pincodes">11 pincodes</span>
+              <span style="flex:1"></span>
+              <button class="btn sm manage not-home" type="button" data-open="dlgPin">Add pincodes</button>
+            </header>
+            <div class="body">
+              <div class="ranges v-ext">500030-500040</div>
+              <div class="v-new" style="color:var(--ink-3)">No pincodes yet &mdash; this franchisee owns nothing and is offered no tickets.</div>
+              <div class="v-home"><span class="chip">All unclaimed</span></div>
+            </div>
+          </section>
+
+          <!-- TECHNICIANS -->
+          <section class="card">
+            <header>
+              <h2>Technicians</h2>
+              <span class="sub sw" data-ext="4 technicians &middot; 1 open invite" data-new="0 technicians &middot; 0 open invites" data-home="38 technicians &middot; 0 open invites" data-html="1">4 technicians &middot; 1 open invite</span>
+              <span style="flex:1"></span>
+              <a class="btn sm" href="08c-technicians-franchisee-columns.html">View technicians</a>
+            </header>
+          </section>
+        </div>
+      </div>
+
+      <!-- ADMINS PANEL (states via the dark pill: data / loading / empty / error) -->
+      <section class="card not-err" id="admins">
+        <header>
+          <div>
+            <h2>Franchisee admins</h2>
+            <span class="sub">They sign in to the franchise portal and run this franchisee's technicians and money.</span>
+          </div>
+          <span style="flex:1"></span>
+          <button class="btn pri manage" type="button" data-open="dlgAddAdmin">+ Add admin</button>
+        </header>
+        <div class="body v-home" style="padding-bottom:0"><div class="pill-info">Optional for the home franchisee &mdash; your area managers and heads already run its technicians. <span class="proposed">Any of its admins can be deactivated: company Admin and National Head act for the home franchisee.</span></div></div>
+
+        <div data-view="data" class="tablewrap">
+          <table class="t">
+            <thead><tr><th>Admin</th><th>Phone</th><th>Last active</th><th>Status</th><th><span class="hide">Actions</span></th></tr></thead>
+            <tbody>
+              <tr class="only-home">
+                <td><b>Kiran Mehta</b><div class="code">kiran@acme.in</div></td>
+                <td>+91 98450 77881</td>
+                <td>12-10-2026</td>
+                <td><span class="chip ok">Active</span></td>
+                <td class="num"><span class="manage"><button class="link" type="button" data-open="dlgReissue">Email a new password</button><button class="link dng" type="button" data-open="dlgDeactAdmin" data-admin="Kiran Mehta">Deactivate</button></span></td>
+              </tr>
+              <tr class="only-ext">
+                <td><b>Anil</b><div class="code">anil@skyfix.in</div></td>
+                <td>+91 98765 43210</td>
+                <td>14-10-2026</td>
+                <td><span class="chip ok">Active</span></td>
+                <td class="num"><span class="manage"><button class="link" type="button" data-open="dlgReissue">Email a new password</button><button class="link dng" type="button" data-open="dlgDeactAdmin" data-admin="Anil">Deactivate</button></span></td>
+              </tr>
+              <tr class="only-ext">
+                <td><b>Meena Rao</b><div class="code">meena@skyfix.in</div></td>
+                <td>+91 98123 45670</td>
+                <td>Never</td>
+                <td><span class="chip force">Inactive</span></td>
+                <td class="num"><span class="manage"><button class="link" type="button" data-open="dlgReissue">Email a new password</button><button class="link" type="button" data-toast="Meena Rao activated">Activate</button></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div data-view="loading" class="body hide">
+          <div class="skel" style="width:60%;margin-bottom:14px"></div><div class="skel" style="width:80%;margin-bottom:14px"></div><div class="skel" style="width:45%"></div>
+        </div>
+        <div data-view="empty" class="empty hide"><b>No admins yet</b>Add one and they get an email with a temporary password.</div>
+        <div data-view="error" class="empty hide"><b>Couldn't load the admins</b><button class="btn" type="button" data-toast="Couldn't load the admins">Retry</button></div>
+      </section>
+
+      <section class="card" style="border-style:dashed;box-shadow:none">
+        <header><h2>Wording added by the mock &mdash; needs sign-off</h2></header>
+        <div class="body" style="font-size:13px">
+          <ul style="margin:0;padding-left:18px;display:grid;gap:4px">
+            <li><span class="proposed">Ticket</span> &mdash; first column header of the re-stamped tickets sample (&sect;5.10 names no column for it; <em>Pincode</em> and <em>From</em> are reused).</li>
+            <li><span class="proposed">Retry</span> &mdash; ErrorState button (named in &sect;7, no string in &sect;5.10).</li>
+            <li><span class="proposed">{name} deactivated</span> for an admin, <span class="proposed">{name} activated</span> for an admin &mdash; &sect;5.10 has toasts for franchisees and for add / reissue only.</li>
+            <li><span class="proposed">{name} still has {n} technicians.</span> &mdash; the API's own 409 <code>FRANCHISEE_HAS_TECHNICIANS</code> message, shown in the toast under <em>Couldn't deactivate the franchisee</em>; the wording is the server's to settle.</li>
+            <li><span class="proposed">500035 &mdash; Acme Secunderabad</span> style line in the 409 toast: the format is from &sect;4.1, the toast body wording is the mock's.</li>
+            <li><span class="proposed">Just added (no pincodes)</span>, plus every grey mock-control label &mdash; not product copy.</li>
+            <li><span class="proposed">Add another admin first &mdash; a franchisee can&rsquo;t be left without one.</span> &mdash; the 409 <code>FRANCHISEE_LAST_ADMIN</code> message (ruling R3), shown in the Deactivate dialog and a toast titled <span class="proposed">Couldn&rsquo;t deactivate {name}</span>. Refused only for the last active admin of a non-home franchisee; the home franchisee is exempt, with the added hint <span class="proposed">Any of its admins can be deactivated: company Admin and National Head act for the home franchisee.</span> The grey toggle &ldquo;Simulate: SkyFix has another active admin&rdquo; is mock control.</li>
+            <li>Home-scene contact data (Priya Nair, admin@acme.in) and the home admin Kiran Mehta are invented sample data.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PINCODES DIALOG (PincodeRangesDialog + CarveOutPreview) ============ -->
+<div class="scrim" id="dlgPin">
+  <div class="dlg wide">
+    <header><h3>Pincodes for <span class="fname">SkyFix Services</span></h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+
+      <!-- EDIT PHASE -->
+      <div id="phEdit">
+        <p style="margin:0 0 12px;color:var(--ink-2);font-size:13px">Type ranges and single pincodes, separated by commas or new lines &mdash; for example 500001-500099, 500120. Only pincodes in the master are kept.</p>
+        <div class="field" style="margin-bottom:6px">
+          <label for="ranges">Pincode ranges</label>
+          <textarea id="ranges" class="in" spellcheck="false" style="font-family:'IBM Plex Mono',monospace" aria-describedby="rangesErr"></textarea>
+          <div class="err" id="rangesErr" role="alert"></div>
+        </div>
+
+        <div class="mockbar" style="margin-bottom:10px">
+          <b>Mock: preview for</b>
+          <span class="picker" style="margin:0" id="picker">
+            <button type="button" data-sc="carve" class="on">Carve-out</button>
+            <button type="button" data-sc="clash">Clash</button>
+            <button type="button" data-sc="unknown">Codes not in master</button>
+            <button type="button" data-sc="noimpact">No impact</button>
+            <button type="button" data-sc="removal">Removal</button>
+            <button type="button" data-sc="backwards">Runs backwards</button>
+            <button type="button" data-sc="badtoken">Bad token</button>
+            <button type="button" data-sc="idle">Idle</button>
+            <button type="button" data-sc="loading">Checking</button>
+            <button type="button" data-sc="race">After a 409</button>
+          </span>
+        </div>
+
+        <!-- carve-out -->
+        <div class="pv on" data-pv="carve" data-text="500030-500040" data-primary="Review changes" data-sentence="1 technician moves, 1 loses pincodes and 2 tickets are re-stamped." data-toast="Pincodes saved for SkyFix Services &middot; 11 pincodes &middot; 1 moved &middot; 1 trimmed &middot; 2 tickets re-stamped">
+          <ul class="sum"><li>11 pincodes</li><li>11 added</li></ul>
+          <div class="psec"><h4>Technicians who move here</h4><p>All of their pincodes are inside this franchisee.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Technician</th><th>From</th><th class="num">Pincodes</th></tr></thead><tbody>
+              <tr><td><b>Ravi Teja</b> <span class="code">TCH-4021</span></td><td>Acme Appliances</td><td class="num">3</td></tr></tbody></table></div></div>
+          <div class="psec"><h4>Technicians who lose pincodes</h4><p>Some of their pincodes change hands; they keep the rest.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Technician</th><th>From</th><th>Losing</th><th class="num">Keeping</th></tr></thead><tbody>
+              <tr><td><b>Suresh</b> <span class="code">TCH-4007</span></td><td>Acme Appliances</td><td class="code" style="color:var(--ink)">500032</td><td class="num">4</td></tr></tbody></table></div></div>
+          <div class="psec"><h4>Tickets re-stamped</h4><p>Open tickets nobody has taken yet move with their pincode. Jobs a technician already holds keep their technician.</p>
+            <div style="padding:0 14px 8px;font-weight:600;font-size:13px">2 tickets</div>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th><span class="proposed">Ticket</span></th><th>Pincode</th><th>From</th></tr></thead><tbody>
+              <tr><td><a class="code" href="#" target="_blank">SKY-INST-0001</a></td><td class="code" style="color:var(--ink)">500031</td><td>Acme Appliances</td></tr>
+              <tr><td><a class="code" href="#" target="_blank">SKY-INST-0002</a></td><td class="code" style="color:var(--ink)">500038</td><td>Acme Appliances</td></tr></tbody></table></div></div>
+        </div>
+
+        <!-- clash -->
+        <div class="pv" data-pv="clash" data-text="500010-500040" data-primary="Review changes" data-disabled="1">
+          <ul class="sum"><li>31 pincodes</li><li>24 added</li></ul>
+          <div class="psec bad"><h4>Already owned by another franchisee</h4><p>Remove these &mdash; a pincode belongs to one franchisee only.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Pincode</th><th>Owned by</th></tr></thead><tbody>
+              <tr><td class="code" style="color:var(--ink)">500010</td><td>Acme Secunderabad</td></tr>
+              <tr><td class="code" style="color:var(--ink)">500011</td><td>Acme Secunderabad</td></tr>
+              <tr><td class="code" style="color:var(--ink)">500012</td><td>Acme Secunderabad</td></tr>
+              <tr><td class="code" style="color:var(--ink)">500013</td><td>Acme Secunderabad</td></tr>
+              <tr><td class="code" style="color:var(--ink)">500014</td><td>Acme Secunderabad</td></tr>
+              <tr><td colspan="2" style="color:var(--ink-3)">+2 more</td></tr></tbody></table></div></div>
+        </div>
+
+        <!-- race: state after a 409 -->
+        <div class="pv" data-pv="race" data-text="500030-500040" data-primary="Review changes" data-disabled="1">
+          <ul class="sum"><li>11 pincodes</li><li>10 added</li></ul>
+          <div class="psec bad"><h4>Already owned by another franchisee</h4><p>Remove these &mdash; a pincode belongs to one franchisee only.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Pincode</th><th>Owned by</th></tr></thead><tbody>
+              <tr><td class="code" style="color:var(--ink)">500035</td><td>Acme Secunderabad</td></tr></tbody></table></div></div>
+        </div>
+
+        <!-- unknown codes -->
+        <div class="pv" data-pv="unknown" data-text="500030-500045" data-primary="Review changes" data-sentence="1 technician moves, 1 loses pincodes and 2 tickets are re-stamped." data-toast="Pincodes saved for SkyFix Services &middot; 11 pincodes &middot; 1 moved &middot; 1 trimmed &middot; 2 tickets re-stamped">
+          <ul class="sum"><li>11 pincodes</li><li>5 in these ranges are not in the pincode master and are skipped.</li><li>11 added</li></ul>
+          <div class="psec"><h4>Technicians who move here</h4><p>All of their pincodes are inside this franchisee.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Technician</th><th>From</th><th class="num">Pincodes</th></tr></thead><tbody>
+              <tr><td><b>Ravi Teja</b> <span class="code">TCH-4021</span></td><td>Acme Appliances</td><td class="num">3</td></tr></tbody></table></div></div>
+          <div class="psec"><h4>Technicians who lose pincodes</h4><p>Some of their pincodes change hands; they keep the rest.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Technician</th><th>From</th><th>Losing</th><th class="num">Keeping</th></tr></thead><tbody>
+              <tr><td><b>Suresh</b> <span class="code">TCH-4007</span></td><td>Acme Appliances</td><td class="code" style="color:var(--ink)">500032</td><td class="num">4</td></tr></tbody></table></div></div>
+          <div class="psec"><h4>Tickets re-stamped</h4><p>Open tickets nobody has taken yet move with their pincode. Jobs a technician already holds keep their technician.</p>
+            <div style="padding:0 14px 10px;font-weight:600;font-size:13px">2 tickets</div></div>
+        </div>
+
+        <!-- no impact -->
+        <div class="pv" data-pv="noimpact" data-text="500050-500060" data-primary="Save pincodes" data-toast="Pincodes saved for SkyFix Services &middot; 11 pincodes &middot; 0 moved &middot; 0 trimmed &middot; 0 tickets re-stamped">
+          <ul class="sum"><li>11 pincodes</li><li>11 added</li><li>No technicians or tickets are affected.</li></ul>
+        </div>
+
+        <!-- removal -->
+        <div class="pv" data-pv="removal" data-text="500030-500035" data-primary="Review changes" data-sentence="1 technician moves, 1 loses pincodes and 3 tickets are re-stamped." data-toast="Pincodes saved for SkyFix Services &middot; 6 pincodes &middot; 1 moved &middot; 1 trimmed &middot; 3 tickets re-stamped">
+          <ul class="sum"><li>6 pincodes</li><li>5 handed back to Acme Appliances</li></ul>
+          <div class="psec"><h4>Technicians who move to Acme Appliances</h4><p>All of their pincodes are being handed back.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Technician</th><th>From</th><th class="num">Pincodes</th></tr></thead><tbody>
+              <tr><td><b>Dev Anand</b> <span class="code">TCH-4033</span></td><td>SkyFix Services</td><td class="num">2</td></tr></tbody></table></div></div>
+          <div class="psec"><h4>Technicians who lose pincodes</h4><p>Some of their pincodes change hands; they keep the rest.</p>
+            <div class="tablewrap"><table class="t mini"><thead><tr><th>Technician</th><th>From</th><th>Losing</th><th class="num">Keeping</th></tr></thead><tbody>
+              <tr><td><b>Kiran Rao</b> <span class="code">TCH-4040</span></td><td>SkyFix Services</td><td class="code" style="color:var(--ink)">500038</td><td class="num">3</td></tr></tbody></table></div></div>
+          <div class="psec"><h4>Tickets re-stamped</h4><p>Open tickets nobody has taken yet move with their pincode. Jobs a technician already holds keep their technician.</p>
+            <div style="padding:0 14px 10px;font-weight:600;font-size:13px">3 tickets</div></div>
+        </div>
+
+        <!-- syntax errors: no request is sent, so no preview -->
+        <div class="pv" data-pv="backwards" data-text="500099-500001" data-primary="Review changes" data-disabled="1" data-error="&ldquo;500099-500001&rdquo; runs backwards &mdash; put the smaller pincode first."></div>
+        <div class="pv" data-pv="badtoken" data-text="5000" data-primary="Review changes" data-disabled="1" data-error="&ldquo;5000&rdquo; is not a pincode or a range. Use six digits, or two joined by a dash."></div>
+
+        <!-- idle -->
+        <div class="pv" data-pv="idle" data-text="" data-primary="Review changes" data-disabled="1">
+          <p style="color:var(--ink-3);margin:12px 0 0">Type a pincode or a range to see what it covers.</p>
+        </div>
+
+        <!-- loading -->
+        <div class="pv" data-pv="loading" data-text="500030-500040" data-primary="Review changes" data-disabled="1">
+          <p style="color:var(--ink-3);margin:12px 0 8px">Checking&hellip;</p>
+          <div class="skel" style="width:30%;margin-bottom:10px"></div><div class="skel" style="width:70%;margin-bottom:10px"></div><div class="skel" style="width:55%"></div>
+        </div>
+      </div>
+
+      <!-- CONFIRM PHASE -->
+      <div id="phConfirm" class="hide">
+        <h4 style="margin:6px 0 8px;font-size:15px">Apply these pincodes?</h4>
+        <p style="margin:0 0 12px;color:var(--ink-2);font-size:13.5px"><span id="confirmSentence"></span> The technicians' new admins are notified.</p>
+        <div class="pill-warn" id="confirmRace" style="display:none">Mock: with &ldquo;409 when applying&rdquo; ticked, pressing Apply pincodes returns to the edit step instead.</div>
+      </div>
+    </div>
+
+    <footer id="ftEdit">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn pri" type="button" id="btnPrimary">Review changes</button>
+    </footer>
+    <footer id="ftConfirm" class="hide">
+      <button class="btn" type="button" id="btnBack">Back</button>
+      <button class="btn pri" type="button" id="btnApply">Apply pincodes</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ============ EDIT DETAILS ============ -->
+<div class="scrim" id="dlgEdit">
+  <div class="dlg">
+    <header><h3>Edit <span class="fname">SkyFix Services</span></h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p style="margin:0 0 16px;color:var(--ink-2);font-size:13px">Changes apply straight away.</p>
+      <div class="field"><label>Name</label><input class="in sw" value="SkyFix Services" data-ext="SkyFix Services" data-home="Acme Appliances"></div>
+      <div class="field">
+        <label>Kind</label>
+        <div class="cards" id="kindCards">
+          <label><input type="radio" name="ekind" id="kInt"><span><b>Internal</b>Part of Acme Appliances.</span></label>
+          <label><input type="radio" name="ekind" id="kExt" checked><span><b>External</b>A separate business working under the Acme Appliances name.</span></label>
+        </div>
+        <div class="hint v-home">The home franchisee is always internal.</div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Contact name</label><input class="in sw" value="Ravi Kumar" data-ext="Ravi Kumar" data-home="Priya Nair"></div>
+        <div class="field"><label>Contact phone</label><input class="in sw" value="98480 12345" data-ext="98480 12345" data-home="98450 11223"></div>
+      </div>
+      <div class="field"><label>Contact email</label><input class="in sw" value="ops@skyfix.in" data-ext="ops@skyfix.in" data-home="admin@acme.in"></div>
+    </div>
+    <footer><button class="btn" type="button" data-close>Cancel</button><button class="btn pri" type="button" data-close data-toast="SkyFix Services saved">Save changes</button></footer>
+  </div>
+</div>
+
+<!-- ============ DEACTIVATE FRANCHISEE ============ -->
+<div class="scrim" id="dlgDeact">
+  <div class="dlg sm">
+    <header><h3>Deactivate <span class="fname">SkyFix Services</span>?</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p style="margin:0;color:var(--ink-2)">Its <span class="sw" data-ext="11" data-new="0" data-home="0">11</span> pincodes go back to Acme Appliances, with any open tickets nobody has taken. Its admins can no longer sign in. This is refused while it still has technicians.</p>
+      <div class="mockbar" style="margin-top:14px"><span>Mock: with technicians (SkyFix Services) the API answers 409 and the dialog stays open; on &ldquo;Just added&rdquo; it succeeds.</span></div>
+    </div>
+    <footer><button class="btn" type="button" data-close>Cancel</button><button class="btn dng" type="button" id="btnDeactGo">Deactivate</button></footer>
+  </div>
+</div>
+
+<!-- ============ ADD ADMIN ============ -->
+<div class="scrim" id="dlgAddAdmin">
+  <div class="dlg">
+    <div id="addForm">
+      <header><h3>Add a franchisee admin</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+      <div class="bd">
+        <p style="margin:0 0 16px;color:var(--ink-2);font-size:13px">They get an email with a temporary password and sign in to the franchise portal for <span class="fname">SkyFix Services</span>.</p>
+        <div class="field"><label>Full name</label><input class="in" value="Anil"></div>
+        <div class="row2">
+          <div class="field"><label>Email</label><input class="in" value="anil@skyfix.in"></div>
+          <div class="field"><label>Mobile number</label><input class="in" value="98765 43210"></div>
+        </div>
+      </div>
+      <footer><button class="btn" type="button" data-close>Cancel</button><button class="btn pri" type="button" id="btnAddAdmin">Add admin</button></footer>
+    </div>
+    <div id="addPanel" class="hide">
+      <div class="bd" style="padding-top:22px">
+        <div class="tpw">
+          <div><h3 style="margin:0;font-size:17px">Admin added, but the email didn't send</h3><p style="margin:6px 0 0;color:var(--ink-2);font-size:13px">The email could not be sent.</p></div>
+          <div class="box"><div><div class="lb">Email</div>anil@skyfix.in</div><div><div class="lb">Temporary password</div><code>Qw7#mT2!pXz9</code></div><button class="btn" type="button" style="justify-self:start" data-toast="Copied">Copy</button></div>
+          <p style="margin:0;color:var(--ink-2);font-size:13px">Send this to them yourself &mdash; it is not stored anywhere and cannot be shown again.</p>
+        </div>
+      </div>
+      <footer><button class="btn pri" type="button" data-close id="btnAddDone">Done</button></footer>
+    </div>
+  </div>
+</div>
+
+<!-- ============ REISSUE PASSWORD ============ -->
+<div class="scrim" id="dlgReissue">
+  <div class="dlg">
+    <div id="reForm">
+      <header><h3>Email Anil a new password?</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+      <div class="bd"><p style="margin:0;color:var(--ink-2)">anil@skyfix.in will be signed out everywhere and will need the new password to sign in again. Their current one stops working.</p></div>
+      <footer><button class="btn" type="button" data-close>Cancel</button><button class="btn pri" type="button" id="btnReissue">Email a new password</button></footer>
+    </div>
+    <div id="rePanel" class="hide">
+      <div class="bd" style="padding-top:22px">
+        <div class="tpw">
+          <div><h3 style="margin:0;font-size:17px">Password reset, but the email didn't send</h3><p style="margin:6px 0 0;color:var(--ink-2);font-size:13px">The email could not be sent.</p></div>
+          <div class="box"><div><div class="lb">Email</div>anil@skyfix.in</div><div><div class="lb">Temporary password</div><code>Hn4$kR8@vBd2</code></div><button class="btn" type="button" style="justify-self:start" data-toast="Copied">Copy</button></div>
+          <p style="margin:0;color:var(--ink-2);font-size:13px">Send this to them yourself &mdash; it is not stored anywhere and cannot be shown again.</p>
+        </div>
+      </div>
+      <footer><button class="btn pri" type="button" data-close id="btnReDone">Done</button></footer>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DEACTIVATE ADMIN ============ -->
+<div class="scrim" id="dlgDeactAdmin">
+  <div class="dlg sm">
+    <header><h3 id="daTitle">Deactivate Anil?</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd"><p style="margin:0;color:var(--ink-2)">They are signed out everywhere and cannot sign in until reactivated.</p>
+      <div class="pill-err proposed hide" id="lastAdminErr" role="alert" style="margin-top:12px">Add another admin first &mdash; a franchisee can&rsquo;t be left without one.</div></div>
+    <footer><button class="btn" type="button" data-close>Cancel</button><button class="btn dng" type="button" id="btnDeactAdmin">Deactivate admin</button></footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="state-switch" role="group" aria-label="Mock: admins panel state">
+  <button type="button" class="on" data-state="data">admins: data</button>
+  <button type="button" data-state="loading">loading</button>
+  <button type="button" data-state="empty">empty</button>
+  <button type="button" data-state="error">error</button>
+</div>
+
+<script>
+(function () {
+  var B = document.body, scene = "ext";
+  function $(id) { return document.getElementById(id); }
+  function toast(html, ms) {
+    var t = $("toast"); t.innerHTML = html; t.classList.add("show");
+    clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove("show"); }, ms || 3600);
+  }
+  function openD(id) { $(id).classList.add("open"); }
+  function closeD(id) { $(id).classList.remove("open"); }
+
+  /* ---------- franchisee scenes ---------- */
+  function setScene(n) {
+    scene = n;
+    ["ext", "new", "home", "err"].forEach(function (s) { B.classList.remove("sc-" + s); });
+    B.classList.add("sc-" + n);
+    B.classList.remove("inactive");
+    document.querySelectorAll(".fname").forEach(function (e) { e.textContent = n === "home" ? "Acme Appliances" : "SkyFix Services"; });
+    document.querySelectorAll(".sw").forEach(function (e) {
+      var v = e.getAttribute("data-" + n); if (v === null) v = e.getAttribute("data-ext"); if (v === null) return;
+      if (e.tagName === "INPUT") e.value = v; else e.innerHTML = v;
+    });
+    $("kindCards").classList.toggle("locked", n === "home");
+    $("kInt").checked = n === "home"; $("kExt").checked = n !== "home";
+    // admins panel: SkyFix and the home franchisee each have admins to show
+    document.querySelector('.state-switch [data-state="' + (n === "ext" || n === "home" ? "data" : "empty") + '"]').click();
+  }
+  document.addEventListener("click", function (e) {
+    var s = e.target.closest("[data-scene]"); if (s) setScene(s.getAttribute("data-scene"));
+    var r = e.target.closest("[data-role]"); if (r) B.classList.toggle("ro", r.getAttribute("data-role") === "ro");
+  });
+
+  /* ---------- deactivate / activate ---------- */
+  $("btnDeactGo").addEventListener("click", function () {
+    if (scene === "ext") {
+      toast("<b>Couldn't deactivate the franchisee</b>\nSkyFix Services still has 4 technicians.", 4600);   // dialog stays open (criterion 8)
+    } else {
+      closeD("dlgDeact"); B.classList.add("inactive"); toast("SkyFix Services deactivated");
+    }
+  });
+  $("btnActivate").addEventListener("click", function () {
+    B.classList.remove("inactive"); toast("SkyFix Services activated &mdash; Give it pincodes to start sending it tickets.");
+  });
+
+  /* ---------- admins ---------- */
+  var adminName = "Anil";
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest('[data-open="dlgDeactAdmin"]'); if (!o) return;
+    adminName = o.getAttribute("data-admin") || "Anil";
+    $("daTitle").textContent = "Deactivate " + adminName + "?";
+    $("lastAdminErr").classList.add("hide");
+  }, true);
+  $("btnDeactAdmin").addEventListener("click", function () {
+    // the last active admin of a NON-home franchisee is refused (409 FRANCHISEE_LAST_ADMIN); the home franchisee is exempt
+    if (scene !== "home" && !$("mAnother").checked) {
+      $("lastAdminErr").classList.remove("hide");
+      toast("<b>Couldn't deactivate " + adminName + "</b>\nAdd another admin first &mdash; a franchisee can&rsquo;t be left without one.", 4600);
+      return;
+    }
+    closeD("dlgDeactAdmin"); toast(adminName + " deactivated");
+  });
+  $("btnAddAdmin").addEventListener("click", function () {
+    if ($("mFail").checked) { $("addForm").classList.add("hide"); $("addPanel").classList.remove("hide"); }
+    else { closeD("dlgAddAdmin"); toast("<b>anil@skyfix.in added</b>\nA temporary password is on its way to them."); }
+  });
+  $("btnAddDone").addEventListener("click", function () { setTimeout(function () { $("addForm").classList.remove("hide"); $("addPanel").classList.add("hide"); }, 200); });
+  $("btnReissue").addEventListener("click", function () {
+    if ($("mFail").checked) { $("reForm").classList.add("hide"); $("rePanel").classList.remove("hide"); }
+    else { closeD("dlgReissue"); toast("New password emailed to anil@skyfix.in"); }
+  });
+  $("btnReDone").addEventListener("click", function () { setTimeout(function () { $("reForm").classList.remove("hide"); $("rePanel").classList.add("hide"); }, 200); });
+
+  /* ---------- pincode dialog ---------- */
+  var cur = "carve", ta = $("ranges");
+  function show(sc) {
+    cur = sc;
+    document.querySelectorAll("#picker button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-sc") === sc); });
+    var pv = null;
+    document.querySelectorAll(".pv").forEach(function (p) { var on = p.getAttribute("data-pv") === sc; p.classList.toggle("on", on); if (on) pv = p; });
+    ta.value = pv.getAttribute("data-text");
+    var err = pv.getAttribute("data-error");
+    $("rangesErr").innerHTML = err || "";
+    var btn = $("btnPrimary");
+    btn.textContent = pv.getAttribute("data-primary");
+    btn.disabled = pv.hasAttribute("data-disabled");
+    btn.classList.toggle("dis", btn.disabled);
+  }
+  document.querySelectorAll("#picker button").forEach(function (b) { b.addEventListener("click", function () { show(b.getAttribute("data-sc")); }); });
+  // typing: known texts map to their preview; anything else falls back to "Checking" then the carve-out sample
+  var byText = {};
+  document.querySelectorAll(".pv").forEach(function (p) { var t = p.getAttribute("data-text"); if (t && !byText[t] && p.getAttribute("data-pv") !== "loading" && p.getAttribute("data-pv") !== "race") byText[t] = p.getAttribute("data-pv"); });
+  var typingT;
+  ta.addEventListener("input", function () {
+    clearTimeout(typingT);
+    var v = ta.value.trim();
+    if (!v) { show("idle"); ta.value = ""; return; }
+    var keep = ta.value;
+    typingT = setTimeout(function () { var sc = byText[v] || "carve"; show(sc); ta.value = byText[v] ? ta.value : keep; }, 500);
+  });
+  function phase(p) {
+    $("phEdit").classList.toggle("hide", p !== "edit"); $("ftEdit").classList.toggle("hide", p !== "edit");
+    $("phConfirm").classList.toggle("hide", p !== "confirm"); $("ftConfirm").classList.toggle("hide", p !== "confirm");
+  }
+  function activePv() { return document.querySelector('.pv[data-pv="' + cur + '"]'); }
+  $("btnPrimary").addEventListener("click", function () {
+    var pv = activePv(); if (this.disabled) return;
+    if (pv.getAttribute("data-primary") === "Save pincodes") { closeD("dlgPin"); toast(pv.getAttribute("data-toast")); return; }
+    $("confirmSentence").textContent = pv.getAttribute("data-sentence");
+    $("confirmRace").style.display = $("mRace").checked ? "block" : "none";
+    phase("confirm");
+  });
+  $("btnBack").addEventListener("click", function () { phase("edit"); });
+  $("btnApply").addEventListener("click", function () {
+    if ($("mRace").checked) {
+      $("mRace").checked = false; phase("edit"); show("race");
+      toast("<b>Couldn't save the pincodes</b>\n500035 — Acme Secunderabad", 5200);
+      return;
+    }
+    var pv = activePv(); closeD("dlgPin"); phase("edit"); toast(pv.getAttribute("data-toast"));
+  });
+  // reset to the edit step each time the dialog is opened
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest('[data-open="dlgPin"]'); if (o) { phase("edit"); show("carve"); }
+  }, true);
+  show("carve"); setScene("ext");
+  if (location.hash === "#pincodes") { phase("edit"); show("carve"); openD("dlgPin"); }
+})();
+</script>
+</body>
+</html>

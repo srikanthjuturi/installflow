@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technicians — mock 08c</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a .ic{width:14px;height:14px;border:1.5px solid currentColor;border-radius:4px;opacity:.7;flex:none}
+  .rail a.on .ic{opacity:1}
+  .proposed{background:#fff2c9;outline:1px dashed #d8b800;outline-offset:1px;border-radius:3px}
+  .mockbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;border:1px dashed var(--ink-3);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--ink-2);background:#fff}
+  .mockbar b{font-weight:600;color:var(--ink)}
+  .tablewrap{overflow-x:auto}
+  .tablewrap table.t{min-width:1280px}
+  .w40{width:140px}
+  .code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3)}
+  .who2{display:flex;gap:10px;align-items:center}
+  .av{width:34px;height:34px;border-radius:50%;background:var(--brand-100);color:var(--brand-500);display:grid;place-items:center;font-weight:600;font-size:12px;flex:none}
+  .nm{font-weight:500;color:var(--ink)}
+  .link{display:inline;background:none;border:0;padding:0;color:var(--brand-400);font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer}
+  .link.dng{color:var(--danger)}
+  .link+.link{margin-left:12px}
+  .acts{display:flex;justify-content:flex-end;gap:12px;align-items:center}
+  .chip.home{background:#fff;border:1px solid var(--brand-300);color:var(--brand-500);margin-left:6px;font-size:10.5px;padding:1px 8px}
+  .bar{display:inline-block;width:56px;height:6px;border-radius:99px;background:var(--surface-3);vertical-align:middle;margin-right:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--ok)}
+  .bar i.near{background:var(--warn)}
+  .sm2{font-size:12px;color:var(--ink-2)}
+  .muted{color:var(--ink-3)}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cards label{border:1px solid var(--input);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--ink-2)}
+  .cards label:has(input:checked){border-color:var(--brand-500);background:var(--brand-100)}
+  .cards b{display:block;font-size:13px;color:var(--ink)}
+  .cards input{margin-top:3px}
+  fieldset.sec{border:0;border-top:1px solid var(--border-2);margin:14px 0 0;padding:12px 0 0}
+  fieldset.sec legend{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:0 8px 0 0}
+  .ro-line{border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:8px 11px;font-size:13.5px;color:var(--ink-2)}
+  .catgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+  .photo{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+  .photo .av{width:56px;height:56px;font-size:16px}
+  .edit-only{display:none}
+  .is-edit .edit-only{display:block}
+  .is-edit .add-only{display:none!important}
+  .notice{background:var(--info-bg);color:var(--info);border-radius:8px;padding:10px 12px;font-size:13px}
+  @media(max-width:900px){.cards,.catgrid{grid-template-columns:1fr}.topbar{padding:0 14px}.page{padding:14px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Overview</div>
+    <a href="#"><i class="ic"></i>Dashboard</a>
+    <div class="grp">Tickets</div>
+    <a href="#"><i class="ic"></i>Ticket List</a>
+    <div class="grp">Operations</div>
+    <a href="#"><i class="ic"></i>Escalation Queue<span class="n">3</span></a>
+    <a href="#"><i class="ic"></i>Approvals<span class="n">2</span></a>
+    <a href="#"><i class="ic"></i>Redemptions</a>
+    <div class="grp">Master Data</div>
+    <a href="08c-technicians-franchisee-columns.html" class="on"><i class="ic"></i>Technicians</a>
+    <a href="08a-franchisees-list.html"><i class="ic"></i>Franchisees</a>
+    <a href="#"><i class="ic"></i>Penalty &amp; Bonus</a>
+    <a href="#"><i class="ic"></i>Vendors</a>
+    <a href="#"><i class="ic"></i>Territory</a>
+    <a href="#"><i class="ic"></i>Categories</a>
+    <div class="grp">Configuration</div>
+    <a href="#"><i class="ic"></i>Rules Config</a>
+    <a href="#"><i class="ic"></i>Users &amp; Roles</a>
+    <a href="#"><i class="ic"></i>Vendor Credit</a>
+    <a href="#"><i class="ic"></i>Credits</a>
+    <div class="who">Kiran Reddy<br>Area Manager</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Technicians</h1><div class="sub">Technician master list</div></div>
+      <div class="sp"></div>
+      <div class="avatar">KR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mock of Task 08 &sect;5.8 / &sect;5.10</b> (<code>08-console-franchisees-screen.md</code>): the existing Technicians list with the new <em>Franchisee</em> and <em>Type</em> columns and filters, <code>canManage</code>-gated row actions, and the Add / Edit technician form with the new Type field. Everything else on the screen is today's console. Signed in as an Area Manager: Ravi Teja and Lakshmi Devi belong to other franchisees, so their rows show no actions.</div>
+
+      <section class="card">
+        <div class="toolbar">
+          <input class="in search" style="max-width:300px" type="search" placeholder="Search by name, mobile, ID or pincode…" aria-label="Search">
+          <select class="in w40" aria-label="Onboarding"><option>Onboarding</option><option>Not sent</option><option>Invite sent</option><option>Delivery failed</option><option>Cancelled</option><option>Expired</option></select>
+          <select class="in w40" aria-label="Status"><option>Status</option><option>Active</option><option>Inactive</option><option>Suspended</option></select>
+          <select class="in w40" aria-label="Region"><option>Region</option><option>South</option><option>West</option></select>
+          <select class="in w40" aria-label="Franchisee"><option>Franchisee</option><option>Acme Appliances</option><option>Acme Secunderabad</option><option>Acme Warangal</option><option>SkyFix Services</option></select>
+          <select class="in w40" aria-label="Type"><option>Type</option><option>Employee</option><option>Freelancer</option></select>
+          <span class="sp"></span>
+          <button class="btn" type="button" data-open="dlgInvite">&#10148; Invite technician</button>
+          <button class="btn pri" type="button" data-open="dlgTech" data-variant="add">+ Add technician</button>
+        </div>
+
+        <!-- DATA -->
+        <div data-view="data" class="tablewrap">
+          <table class="t">
+            <caption class="hide">Technicians and open invites, with their franchisee, type, categories, service pincodes, region, bandwidth, availability and status</caption>
+            <thead><tr>
+              <th>Technician</th><th>Franchisee</th><th>Type</th><th>Categories</th><th>Pincodes</th><th>Region</th><th>Availability</th><th>Bandwidth</th><th class="num">Jobs</th><th class="num">Cancels</th><th>Status</th><th><span class="hide">Actions</span></th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="who2"><div class="av">S</div><div><a class="nm" href="#">Suresh</a><div class="code">TCH-4007</div></div></div></td>
+                <td>Acme Appliances<span class="chip home">Home</span></td>
+                <td><span class="chip">Freelancer</span></td>
+                <td>Television, Audio</td>
+                <td class="code" style="color:var(--ink)">500032, 500045, 500051, 500060, 500073</td>
+                <td>South</td>
+                <td><span class="chip ok">Online</span></td>
+                <td><span class="bar"><i style="width:50%"></i></span><span class="sm2">3/6</span></td>
+                <td class="num">112</td><td class="num">2</td>
+                <td><span class="chip ok">Active</span></td>
+                <td><div class="acts"><button class="link" type="button" data-toast="App link sent to Suresh">Send app link</button><button class="link" type="button" data-open="dlgTech" data-variant="edit">Edit</button><button class="link dng" type="button">Remove</button></div></td>
+              </tr>
+              <tr>
+                <td><div class="who2"><div class="av">R</div><div><a class="nm" href="#">Ravi Teja</a><div class="code">TCH-4021</div></div></div></td>
+                <td>SkyFix Services</td>
+                <td><span class="chip">Freelancer</span></td>
+                <td>Air Conditioners</td>
+                <td class="code" style="color:var(--ink)">500033, 500034, 500035</td>
+                <td>South</td>
+                <td><span class="chip ok">Online</span></td>
+                <td><span class="bar"><i style="width:40%"></i></span><span class="sm2">2/5</span></td>
+                <td class="num">48</td><td class="num">1</td>
+                <td><span class="chip ok">Active</span></td>
+                <td><!-- canManage = false: Send app link / Edit / Remove are not rendered --></td>
+              </tr>
+              <tr>
+                <td><div class="who2"><div class="av">L</div><div><a class="nm" href="#">Lakshmi Devi</a><div class="code">TCH-4012</div></div></div></td>
+                <td>Acme Secunderabad</td>
+                <td><span class="chip info">Employee</span></td>
+                <td>Washing Machines</td>
+                <td class="code" style="color:var(--ink)">500003, 500004, 500005</td>
+                <td>South</td>
+                <td><span class="chip ok">Online</span></td>
+                <td><span class="sm2">4 today <span class="muted">&middot; no limit</span></span></td>
+                <td class="num">76</td><td class="num">0</td>
+                <td><span class="chip ok">Active</span></td>
+                <td><!-- canManage = false --></td>
+              </tr>
+              <tr>
+                <td><div class="who2"><div class="av">M</div><div><a class="nm" href="#">Mohan Reddy</a><div class="code">TCH-4015</div></div></div></td>
+                <td>Acme Appliances<span class="chip home">Home</span></td>
+                <td><span class="chip info">Employee</span></td>
+                <td>Refrigerators</td>
+                <td class="code" style="color:var(--ink)">500081, 500082</td>
+                <td>South</td>
+                <td><span class="chip warn">Unreachable</span></td>
+                <td><span class="bar"><i class="near" style="width:100%"></i></span><span class="sm2">4/4</span></td>
+                <td class="num">203</td><td class="num">5</td>
+                <td><span class="chip ok">Active</span></td>
+                <td><div class="acts"><button class="link" type="button" data-toast="App link sent to Mohan Reddy">Send app link</button><button class="link" type="button" data-open="dlgTech" data-variant="edit">Edit</button><button class="link dng" type="button">Remove</button></div></td>
+              </tr>
+              <tr>
+                <td><div class="who2"><div class="av" style="opacity:.6">?</div><div><div class="code" style="color:var(--ink);font-weight:600;font-size:13px">+91 98480 55501</div><div class="sm2 muted">Invited &middot; <span style="color:var(--warn)">Expires in 3 days</span></div></div></div></td>
+                <td>Acme Appliances<span class="chip home">Home</span></td>
+                <td><span class="chip">Freelancer</span></td>
+                <td>&mdash;</td>
+                <td>&mdash;</td>
+                <td>South</td>
+                <td>&mdash;</td><td>&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td>
+                <td><span class="sm2" style="color:var(--info);font-weight:600">&#9679; Invite sent</span></td>
+                <td><div class="acts"><button class="link" type="button" data-toast="Invite link copied">Copy link</button><button class="link" type="button" data-toast="Invite resent">Resend</button><button class="link dng" type="button">Cancel</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pg"><span class="proposed">Showing 1&ndash;5 of 5</span><span></span></div>
+        </div>
+
+        <!-- LOADING -->
+        <div data-view="loading" class="hide" style="padding:16px;display:grid;gap:14px">
+          <div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:60%"></div>
+        </div>
+        <!-- FILTERED EMPTY -->
+        <div data-view="filtered" class="empty hide"><b>No technicians match those filters</b>Try a different status or region, or clear the search.</div>
+        <!-- ERROR -->
+        <div data-view="error" class="empty hide"><b>Couldn't load technicians</b><button class="btn" type="button" data-toast="Couldn't load technicians">Retry</button></div>
+      </section>
+
+      <!-- Profile preview: not-manageable notice and the two new facts -->
+      <section class="card">
+        <header><h2>Technician profile &mdash; Ravi Teja (opened by an Area Manager)</h2><span class="sub">TechProfileHeader and the notice from &sect;5.8, shown for context</span></header>
+        <div class="body" style="display:grid;gap:14px">
+          <div class="notice">Run by SkyFix Services. Their franchisee admin manages this technician.</div>
+          <dl class="kv" style="margin:0;grid-template-columns:110px 1fr">
+            <dt>Franchisee</dt><dd>SkyFix Services</dd>
+            <dt>Type</dt><dd>Freelancer</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="card" style="border-style:dashed;box-shadow:none">
+        <header><h2>Wording added by the mock &mdash; needs sign-off</h2></header>
+        <div class="body" style="font-size:13px">
+          <ul style="margin:0;padding-left:18px;display:grid;gap:4px">
+            <li><span class="proposed">Example: Suresh is switched to Employee on 20-10-2026. The job he accepted on 19-10-2026 still pays him; the next one he accepts does not.</span> &mdash; a worked example under the Type field (&sect;5.10 gives only the one-line hint).</li>
+            <li><span class="proposed">Suresh still has &#8377;1,240 they can redeem. Let them redeem it, then change the type.</span> (409 <code>TECHNICIAN_HAS_BALANCE</code>, refused when a freelancer would become an employee while redeemable money remains) and <span class="proposed">Suresh still has 2 open jobs. Change the type once they are finished.</span> (409 <code>TECHNICIAN_HAS_OPEN_JOBS</code>) &mdash; shown inside the Type field when Save is pressed, driven by the grey &ldquo;Edit, Freelancer to Employee&rdquo; bar (rulings R5; the server's wording is still to be settled, the amounts and counts are sample data).</li>
+            <li><span class="proposed">Retry</span>, <span class="proposed">Showing 1&ndash;5 of 5</span> &mdash; generic ErrorState / DataTable chrome, not in &sect;5.10.</li>
+            <li>Filter placeholders reuse the filter name (<em>Franchisee</em>, <em>Type</em>) rather than an &ldquo;All&rdquo; option.</li>
+            <li>Sample people, numbers, regions and categories (Lakshmi Devi, Mohan Reddy, 500081&hellip;) are invented data; <em>Home</em> chip beside the franchisee name is &sect;5.8's &ldquo;small Home badge&rdquo; reusing the approved <em>Home</em> string.</li>
+            <li>The <em>Profile</em> card above is a context aid for &sect;5.8's notice; its card title and caption are the mock's.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ======== Add / Edit technician (TechnicianFormDialog) ======== -->
+<div class="scrim" id="dlgTech">
+  <div class="dlg wide" id="techDlg">
+    <header><h3 id="tTitle">Add technician</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p style="margin:0 0 6px;color:var(--ink-2);font-size:13px" id="tDesc">Jobs are offered on category and pincode, so both are required.</p>
+      <div class="mockbar" style="margin:8px 0 4px"><b>Mock: form</b>
+        <span class="seg" id="varSeg"><button class="on" type="button" data-v="add">Add</button><button type="button" data-v="edit">Edit (Suresh)</button></span>
+        <b>Edit, Freelancer to Employee</b><span class="seg" id="typeSim"><button class="on" type="button" data-sim="none">Allowed</button><button type="button" data-sim="balance">Has a redeemable balance</button><button type="button" data-sim="jobs">Holds open jobs</button></span></div>
+
+      <fieldset class="sec"><legend>Identity</legend>
+        <div class="photo"><div class="av">S</div><div class="sm2">Optional. Tap the camera to add and crop a clear face photo.</div></div>
+        <div class="row2">
+          <div class="field"><label>Full name *</label><input class="in" id="tName" placeholder="Full name" value=""></div>
+          <div class="field"><label>Mobile number *</label><input class="in" id="tPhone" placeholder="+91 " value="">
+            <div class="hint add-only">They sign in with this number and a one-time code. The app link goes to it on WhatsApp.</div>
+            <div class="hint edit-only">The number they sign in with. It can't be changed here.</div></div>
+        </div>
+
+        <div class="edit-only field" id="frLine">
+          <label>Franchisee</label>
+          <div class="ro-line">Acme Appliances</div>
+        </div>
+
+        <div class="field">
+          <label>Type</label>
+          <div class="cards">
+            <label><input type="radio" name="ttype" checked><span><b>Freelancer</b>Paid for each job they close.</span></label>
+            <label><input type="radio" name="ttype"><span><b>Employee</b>On salary: no per-job payout and no redemptions. Allowances and penalties still apply.</span></label>
+          </div>
+          <div class="hint">A change applies to jobs accepted after it.</div>
+          <div class="hint"><span class="proposed">Example: Suresh is switched to Employee on 20-10-2026. The job he accepted on 19-10-2026 still pays him; the next one he accepts does not.</span></div>
+          <div class="pill-err proposed hide" id="typeErr" role="alert" style="margin-top:8px"></div>
+        </div>
+
+        <div class="field"><label>UPI ID</label><input class="in" placeholder="e.g. 9822066301@ybl">
+          <div class="hint">Optional — where their earnings are paid. They can add it themselves in the app; after that, changes come to a manager.</div></div>
+        <div class="field"><label>Name on the UPI account</label><input class="in" placeholder="As their UPI app shows it"></div>
+      </fieldset>
+
+      <fieldset class="sec"><legend>Coverage</legend>
+        <div class="row2">
+          <div class="field"><label>Region *</label><select class="in"><option>South</option><option>West</option></select></div>
+          <div class="field"><label>Service pincodes *</label>
+            <input class="in" placeholder="Search a pincode or a place">
+            <div class="hint">Pincodes in South, inside Telangana. Search by code or district. Pincodes another franchisee owns are refused.</div></div>
+        </div>
+      </fieldset>
+
+      <fieldset class="sec"><legend>Categories *</legend>
+        <div class="hint" style="margin-bottom:8px">Pick the main sub-categories this technician works on. Ticking one covers everything nested under it, including sub-categories added later.</div>
+        <div class="catgrid">
+          <label class="chk"><input type="checkbox" checked> Television</label>
+          <label class="chk"><input type="checkbox" checked> Audio</label>
+          <label class="chk"><input type="checkbox"> Air Conditioners</label>
+          <label class="chk"><input type="checkbox"> Refrigerators</label>
+        </div>
+      </fieldset>
+    </div>
+    <footer>
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn pri" type="button" data-close id="tSubmit" data-toast="Suresh added">Add technician</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ======== Invite technician (Type field added) ======== -->
+<div class="scrim" id="dlgInvite">
+  <div class="dlg">
+    <header><h3>Invite technician</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <div class="field"><label>Mobile number *</label><input class="in" placeholder="+91 " value="+91 98480 55501"></div>
+      <div class="field">
+        <label>Type</label>
+        <div class="cards">
+          <label><input type="radio" name="itype" checked><span><b>Freelancer</b>Paid for each job they close.</span></label>
+          <label><input type="radio" name="itype"><span><b>Employee</b>On salary: no per-job payout and no redemptions. Allowances and penalties still apply.</span></label>
+        </div>
+        <div class="hint">A change applies to jobs accepted after it.</div>
+      </div>
+    </div>
+    <footer><button class="btn" type="button" data-close>Cancel</button><button class="btn pri" type="button" data-close data-toast="Invite sent">Invite technician</button></footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="state-switch" role="group" aria-label="Mock: list state">
+  <button type="button" class="on" data-state="data">data</button>
+  <button type="button" data-state="loading">loading</button>
+  <button type="button" data-state="filtered">filtered empty</button>
+  <button type="button" data-state="error">error</button>
+</div>
+
+<script>
+(function () {
+  var dlg = document.getElementById("techDlg");
+  function variant(v) {
+    var edit = v === "edit";
+    dlg.classList.toggle("is-edit", edit);
+    document.getElementById("tTitle").textContent = edit ? "Edit Suresh" : "Add technician";
+    document.getElementById("tDesc").textContent = edit
+      ? "TCH-4007 · jobs are offered on category and pincode, so both stay required."
+      : "Jobs are offered on category and pincode, so both are required.";
+    document.getElementById("tName").value = edit ? "Suresh" : "";
+    var p = document.getElementById("tPhone"); p.value = edit ? "+91 98480 11007" : ""; p.readOnly = edit;
+    var s = document.getElementById("tSubmit"); s.textContent = edit ? "Save changes" : "Add technician"; s.setAttribute("data-toast", edit ? "Suresh saved" : "Suresh added");
+    document.querySelectorAll("#varSeg button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-v") === v); });
+    document.getElementById("typeErr").classList.add("hide");
+  }
+  var sim = "none";
+  document.getElementById("typeSim").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return; sim = b.getAttribute("data-sim");
+    document.getElementById("typeErr").classList.add("hide");
+  });
+  document.querySelectorAll('input[name="ttype"]').forEach(function (r) { r.addEventListener("change", function () { document.getElementById("typeErr").classList.add("hide"); }); });
+  document.getElementById("tSubmit").addEventListener("click", function (e) {
+    var err = document.getElementById("typeErr");
+    err.classList.add("hide");
+    if (!dlg.classList.contains("is-edit")) return;
+    var toEmployee = document.querySelectorAll('input[name="ttype"]')[1].checked;
+    if (!toEmployee || sim === "none") return;
+    err.textContent = sim === "balance"
+      ? "Suresh still has \u20B91,240 they can redeem. Let them redeem it, then change the type."
+      : "Suresh still has 2 open jobs. Change the type once they are finished.";
+    err.classList.remove("hide");
+    e.stopPropagation();   // keep the dialog open, no toast
+  });
+  document.addEventListener("click", function (e) {
+    var o = e.target.closest("[data-variant]"); if (o) variant(o.getAttribute("data-variant"));
+    var b = e.target.closest("#varSeg button"); if (b) variant(b.getAttribute("data-v"));
+  });
+  variant("add");
+})();
+</script>
+</body>
+</html>

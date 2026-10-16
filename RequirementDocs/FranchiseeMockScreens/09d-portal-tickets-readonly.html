@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Appliances · Tickets, read only (mock 09d)</title>
+<link rel="stylesheet" href="_shared/console.css">
+<link rel="stylesheet" href="_shared/portal-09.css">
+<script src="_shared/mock.js" defer></script>
+<script src="_shared/portal-09.js" defer></script>
+</head>
+<body data-brand="Acme Appliances">
+<div class="app" data-scope data-swapscope>
+
+  <!-- rail: franchisee admin -->
+  <aside class="rail" aria-label="Franchise portal" data-swap="role:admin">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<span class="fr">SkyFix Services</span></div></div>
+    <a href="09a-portal-technicians.html#technicians"><i class="ic"></i>Technicians</a>
+    <a href="09b-portal-upi-and-redemptions.html#upi"><i class="ic"></i>UPI changes<span class="n">1</span></a>
+    <a href="09b-portal-upi-and-redemptions.html#redemptions"><i class="ic"></i>Redemptions<span class="n">1</span></a>
+    <a href="09c-portal-pool-and-statements.html#pool"><i class="ic"></i>Penalty &amp; bonus pool</a>
+    <a href="09c-portal-pool-and-statements.html#statements"><i class="ic"></i>Employee statements</a>
+    <a href="#tickets" data-tab="tickets" data-also="ticket" class="on"><i class="ic"></i>Tickets</a>
+    <div class="who"><b>Anil Reddy</b>Franchisee Admin<br><a href="#">Account</a></div>
+  </aside>
+  <!-- rail: facility operator — holds only franchise.tickets (+ parts keys with no entry yet) -->
+  <aside class="rail hide" aria-label="Franchise portal" data-swap="role:facility">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<span class="fr">SkyFix Services</span></div></div>
+    <a href="#tickets" data-tab="tickets" data-also="ticket" class="on"><i class="ic"></i>Tickets</a>
+    <div class="who"><b>Farah Khan</b>Facility Operator<br><a href="#">Account</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn sm menu" data-menu aria-label="Open menu">&#9776;</button>
+      <div class="ttl" data-ttl="tickets"><h1>Tickets</h1><span class="sub">Tickets in SkyFix Services's pincodes — read only</span></div>
+      <div class="ttl hide" data-ttl="ticket"><h1>Ticket detail</h1><span class="sub">Timeline &amp; audit trail</span></div>
+      <span class="mb"><b>Acme Appliances</b>SkyFix Services</span>
+      <span class="sp"></span>
+      <button class="bell" aria-label="Notifications" data-toast="Notifications · Recent events for SkyFix Services"><i></i><span class="n" data-swap="role:admin">2</span></button>
+      <button class="btn sm signout" data-toast="Signed out">Sign out</button>
+      <div class="avatar" data-swap="role:admin" title="Anil Reddy">AR</div><div class="avatar hide" data-swap="role:facility" title="Farah Khan">FK</div>
+    </header>
+
+    <main class="page">
+      <div class="note"><b>Mock of Task 09 §4.5, §5.6 (<code>FranchiseTicketsPage</code>, <code>TicketDetailPage actions={null}</code>), index F13 and §6 (vendorPricePaise withheld).</b> The portal reads the existing <code>/tickets</code> endpoints scoped by the principal — read-only: no Assign, Reschedule, No-show, Force close, penalty Reverse, reading correction or attachments panel. <em>Billed to vendor</em> shows <b>—</b> (an external franchisee has no business seeing it); <em>Technician payout</em> is visible.</div>
+
+      <div class="mockbar">
+        <b>Mock: sign in as</b>
+        <div class="seg"><button class="on" data-show="role:admin">Franchisee admin (Anil Reddy)</button><button data-show="role:facility">Facility operator (Farah Khan)</button></div>
+        <span data-swap="role:admin">Lands on <span class="mono">/franchise/technicians</span>; six rail entries.</span>
+        <span class="hide" data-swap="role:facility">Lands on <span class="mono">/franchise/tickets</span> (first held entry); rail shows only Tickets; <span class="mono">/franchise/technicians</span> redirects back here. Sees only tickets that have a spare-part request.</span>
+      </div>
+
+      <!-- ================= PANE: tickets list ================= -->
+      <section data-pane="tickets" class="stack">
+        <div class="card">
+          <div class="toolbar">
+            <input class="in search" placeholder="Search ticket, customer or serial" aria-label="Search tickets">
+            <select class="in" style="width:150px" aria-label="Status"><option>Status: All</option><option>Slot Pending</option><option>Assigned</option><option>In Progress</option><option>Awaiting Part</option><option>Closed</option></select>
+            <span class="sp"></span>
+            <span class="mut" style="font-size:12px">No “New ticket”, no Import — only a vendor raises tickets</span>
+          </div>
+
+          <div data-view="loading" class="hide" aria-busy="true">
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+          </div>
+
+          <div data-view="empty" class="hide empty">
+            <div class="ic2">&#9776;</div>
+            <div data-swap="role:admin"><b>No tickets yet</b><p>Tickets for SkyFix Services's pincodes appear here once a vendor raises them.</p></div>
+            <div class="hide" data-swap="role:facility"><b>No tickets need you yet</b><p>Tickets with a spare-part request appear here.</p></div>
+          </div>
+
+          <div data-view="error" class="hide empty err">
+            <div class="ic2 bad">!</div><b>Couldn't load tickets</b><p role="alert">Something went wrong. Try again.</p>
+            <button class="btn" data-toast="Couldn't load tickets · Something went wrong. Try again.">&#8635; Retry</button>
+          </div>
+
+          <div data-view="data">
+            <div class="tw">
+              <table class="t">
+                <thead><tr><th>Ticket</th><th>Customer</th><th>Category / Model</th><th>Service type</th><th>SLA</th><th>Slot</th><th>Technician</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr data-swap="role:admin">
+                    <td><a class="mono nm" href="#ticket" data-tab="ticket">SKY-INST-0419</a></td>
+                    <td>Lakshmi Devi<span class="hint-s">500032</span></td>
+                    <td>Television<span class="hint-s">Meridian 43″ Android TV</span></td>
+                    <td>Installation</td><td>24h</td>
+                    <td>16-10-2026<span class="hint-s">10:00–12:00</span></td>
+                    <td>Ravi Teja</td><td><span class="chip assigned">Assigned</span></td>
+                  </tr>
+                  <tr data-swap="role:admin">
+                    <td><a class="mono nm" href="#ticket" data-tab="ticket">SKY-INST-0418</a></td>
+                    <td>Rahul Verma<span class="hint-s">500035</span></td>
+                    <td>Air conditioner<span class="hint-s">Sunview 1.5T Inverter</span></td>
+                    <td>Installation</td><td>48h</td>
+                    <td class="mut">—</td><td class="mut">—</td><td><span class="chip await">Slot Pending</span></td>
+                  </tr>
+                  <tr>
+                    <td><a class="mono nm" href="#ticket" data-tab="ticket">SKY-INST-0415</a></td>
+                    <td>Farida Begum<span class="hint-s">500033</span></td>
+                    <td>Washing machine<span class="hint-s">Sunview 7kg Front Load</span></td>
+                    <td>Demo</td><td>24h</td>
+                    <td>15-10-2026<span class="hint-s">14:00–16:00</span></td>
+                    <td>Imran Shaikh</td><td><span class="chip part">Awaiting Part</span></td>
+                  </tr>
+                  <tr>
+                    <td><a class="mono nm" href="#ticket" data-tab="ticket">SKY-INST-0409</a></td>
+                    <td>Suresh Kumar<span class="hint-s">500038</span></td>
+                    <td>Television<span class="hint-s">Meridian 55″ OLED</span></td>
+                    <td>Installation</td><td>24h</td>
+                    <td>14-10-2026<span class="hint-s">10:00–12:00</span></td>
+                    <td>Meena R</td><td><span class="chip progress">In Progress</span></td>
+                  </tr>
+                  <tr data-swap="role:admin">
+                    <td><a class="mono nm" href="#ticket" data-tab="ticket">SKY-INST-0405</a></td>
+                    <td>Anita Joshi<span class="hint-s">500031</span></td>
+                    <td>Television<span class="hint-s">Meridian 43″ Android TV</span></td>
+                    <td>Installation</td><td>24h</td>
+                    <td>09-10-2026<span class="hint-s">16:00–18:00</span></td>
+                    <td>Imran Shaikh</td><td><span class="chip closed">Closed</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pg"><span data-swap="role:admin">Showing 1–5 of 5 · tickets stamped SkyFix Services</span><span class="hide" data-swap="role:facility">Showing 1–2 of 2 · tickets with a spare-part request</span><span>Page 1 of 1</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PANE: ticket detail ================= -->
+      <section data-pane="ticket" class="stack hide">
+        <div class="inline-act" style="align-items:center"><a class="btn sm" href="#tickets" data-tab="tickets">&larr; Back to tickets</a></div>
+
+        <div class="card">
+          <header style="flex-wrap:wrap">
+            <h2 class="mono" style="font-size:16px">Ticket SKY-INST-0419</h2><span class="chip assigned">Assigned</span>
+            <span class="sp" style="flex:1"></span>
+            <span class="mut" style="font-size:12px">No action buttons — <code>actions={null}</code></span>
+          </header>
+          <div class="body">
+            <dl class="kv" style="grid-template-columns:150px 1fr 150px 1fr">
+              <dt>Vendor</dt><dd>Crestline Distributors</dd>
+              <dt>Brand</dt><dd>Meridian</dd>
+              <dt>Category</dt><dd>Television</dd>
+              <dt>Product model</dt><dd>Meridian 43″ Android TV</dd>
+              <dt>Service type</dt><dd>Installation</dd>
+              <dt>Service level</dt><dd>24h</dd>
+              <dt>Problem</dt><dd>Wall-mount installation and set-up</dd>
+              <dt>Expected serial</dt><dd class="mono">MRD43A-2209-77310</dd>
+              <dt>Address</dt><dd>12-3-45, Tarnaka Road, Hyderabad, Telangana</dd>
+              <dt>Pincode</dt><dd>500032</dd>
+              <dt>Expected date</dt><dd>16-10-2026</dd>
+              <dt>Created</dt><dd>14-10-2026 17:32</dd>
+              <dt>Confirmed slot</dt><dd>16-10-2026, 10:00–12:00</dd>
+              <dt>Billed to vendor</dt><dd><b title="Withheld from franchise principals">—</b> <span class="hint-s">Withheld from franchise users</span></dd>
+              <dt>Technician payout</dt><dd><b>₹450</b></dd>
+              <dt></dt><dd></dd>
+            </dl>
+          </div>
+        </div>
+
+        <div class="two">
+          <div class="stack">
+            <div class="card"><header><h2>Customer</h2></header><div class="body">
+              <dl class="kv" style="grid-template-columns:90px 1fr"><dt>Name</dt><dd>Lakshmi Devi</dd><dt>Phone</dt><dd>+91 98480 12345</dd><dt>Address</dt><dd>12-3-45, Tarnaka Road, Hyderabad</dd></dl>
+            </div></div>
+            <div class="card"><header><h2>Assigned technician</h2></header><div class="body">
+              <div class="who-c"><div class="avatar">RT</div><div><span class="nm">Ravi Teja</span><span class="hint-s"><span class="code">TCH-4021</span> · Freelancer · SkyFix Services</span></div></div>
+            </div></div>
+          </div>
+          <div class="card"><header><h2>Timeline</h2></header><div class="body">
+            <div class="tl-line"><time>14-10-2026 17:32</time><span>Ticket raised by Crestline Distributors</span></div>
+            <div class="tl-line"><time>14-10-2026 18:05</time><span>Customer picked 16-10-2026, 10:00–12:00</span></div>
+            <div class="tl-line"><time>14-10-2026 18:30</time><span>Accepted by Ravi Teja</span></div>
+            <div class="tl-line" style="border:0"><time>—</time><span class="mut">Proof of completion appears here once the job is done.</span></div>
+          </div></div>
+        </div>
+
+        <div class="mockbar" style="display:block;line-height:1.6"><b>Hidden on this page for franchise users</b> (same as the vendor's read-only view): Assign technician · Change the time (reschedule) · Mark no-show · Force close · Reverse penalty · Reading correction · Attachments panel. Opening a ticket stamped to another franchisee answers 404 — “Couldn't load this ticket”.</div>
+      </section>
+
+      <div class="signoff">
+        <h2>Wording added by the mock — needs sign-off</h2>
+        <ul>
+          <li>Search placeholder "Search ticket, customer or serial", status filter option labels, footer lines "Showing 1–5 of 5 · tickets stamped SkyFix Services" / "Showing 1–2 of 2 · tickets with a spare-part request", and the "No “New ticket”, no Import…" aside (annotation, not UI copy).</li>
+          <li><span class="proposed">Withheld from franchise users</span> hint beside the <b>—</b> on <em>Billed to vendor</em>; the doc only requires the dash.</li>
+          <li>Ticket detail: sample address, problem text, serial, customer, timeline sentences ("Ticket raised by …", "Customer picked …", "Accepted by …", "Proof of completion appears here once the job is done.") and the "Back to tickets" label in the page header (the doc's route passes <code>backLabel="Back to tickets"</code>).</li>
+          <li>Facility variant reuses the doc's empty copy exactly; the bar describing landing behaviour is a mock aid. The facility rail shows only Tickets because parts/facility-user entries belong to Task 13.</li>
+        </ul>
+        <p style="margin:8px 0 0">Doc §5.9: "Tickets" title/sub-line, empty copy for both roles, "Back to tickets". Staff wording reused: "Couldn't load tickets", the FactGrid labels, Customer / Assigned technician cards.</p>
+      </div>
+      <div class="sp-b"></div>
+    </main>
+  </div>
+</div>
+
+<div class="state-switch" role="group" aria-label="Mock: list state">
+  <button data-state="loading">Loading</button><button data-state="empty">Empty</button><button data-state="error">Error</button><button data-state="data" class="on">Data</button>
+</div>
+<div class="toast" id="toast" role="status"></div>
+</body>
+</html>

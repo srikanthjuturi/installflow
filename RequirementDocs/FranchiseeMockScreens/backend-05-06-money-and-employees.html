@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Money and employees - explainer for tasks 05-06</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+.topnav{background:var(--brand-500);color:#fff;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px}
+.topnav b{font-size:15px}.topnav a{color:#dfe1ff}.topnav a:hover{color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.scroll{overflow-x:auto}
+.proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+h2.sec{font-size:17px;margin:8px 0 0}
+p{margin:0}
+table.t td,table.t th{font-size:13px;vertical-align:top}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
+code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-3);padding:0 4px;border-radius:4px}
+.flow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
+.flow .bx{flex:1 1 150px;border:1px solid var(--border);border-radius:10px;background:#fff;padding:10px 12px;font-size:12.5px}
+.flow .bx b{display:block;font-size:13px;margin-bottom:3px}
+.flow .bx.hi{border-color:var(--brand-400);background:var(--brand-100)}
+.flow .bx.pay{border-color:var(--accent);background:#fff3ee}
+.flow .ar{align-self:center;font-size:22px;color:var(--ink-3)}
+@media(max-width:900px){.flow .ar{transform:rotate(90deg);flex:0 0 100%;text-align:center}}
+.pool{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fff}
+.pool h3{margin:0 0 8px;font-size:14px}
+.pool .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed var(--border-2)}
+.pool .bal{font-size:22px;font-weight:600;margin-top:8px}
+.pos{color:var(--ok)}.neg{color:var(--danger)}
+.ok{color:var(--ok);font-weight:700}.no{color:var(--danger);font-weight:700}.dim{color:var(--ink-3)}
+.csv{font-family:"IBM Plex Mono",monospace;font-size:12px}
+.csv td,.csv th{white-space:nowrap}
+.csvmeta{font-family:"IBM Plex Mono",monospace;font-size:12.5px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="topnav"><b>Money and employees - tasks 05-06</b>
+<a href="index.html">Index</a><a href="#who">Who pays and approves</a><a href="#pool">Penalty pool</a><a href="#ledger">Ledger comparison</a><a href="#statement">Statement</a><a href="#types">Type changes</a></div>
+
+<div class="wrap">
+<div class="note"><b>Mocks:</b> <a href="../franchisee/05-technician-ops-move-to-franchisee.md">05-technician-ops-move-to-franchisee.md</a> and <a href="../franchisee/06-employees.md">06-employees.md</a>, under <a href="../franchisee/00-index.md">00-index.md</a>. The two ship in the same API publish (R2). Names and figures are the worked examples in those docs; combined figures on the ledger comparison are marked.</div>
+
+<h2 class="sec" id="who">1. Who approves and who pays</h2>
+<div class="card" data-scope><div class="body">
+<p style="margin-bottom:10px">Ravi asks to be paid. <b>Whose</b> job is it to pay depends on his franchisee. The home franchisee keeps today's rules exactly (F8); every other franchisee runs its own money.</p>
+<div class="seg" data-tabs style="margin-bottom:12px"><button class="on" data-tab="home">Home franchisee technician</button><button data-tab="ext">SkyFix (non-home) technician</button></div>
+
+<div data-pane="home">
+<div class="flow">
+<div class="bx"><b>1. Ravi redeems</b>One request for the whole balance, e.g. 3,200 rupees. Stamped with his franchisee.</div><div class="ar">&rarr;</div>
+<div class="bx hi"><b>2. Bell to the payers</b>Audience <code>payers</code>: the company's <b>National Head, else Admin</b>. The app shows the payer's role label (<code>payerLabel</code>).</div><div class="ar">&rarr;</div>
+<div class="bx pay"><b>3. Payer scans the UPI QR</b>Pays on their own phone, then <b>claims</b> "I paid" with a screenshot. May decline before claiming.</div><div class="ar">&rarr;</div>
+<div class="bx"><b>4. Ravi confirms</b>Only the technician confirms it arrived. Nobody else can mark it paid.</div>
+</div>
+<p style="margin-top:8px;font-size:12.5px;color:var(--ink-3)">A home franchisee may also have franchisee admins; they can act in the portal alongside, but the bell is not addressed to them.</p>
+</div>
+
+<div data-pane="ext" class="hide">
+<div class="flow">
+<div class="bx"><b>1. Ravi redeems</b>Same request, stamped <code>franchisee_id = SkyFix</code>.</div><div class="ar">&rarr;</div>
+<div class="bx hi"><b>2. Bell to SkyFix's admins</b>Audience <code>franchisee_admin</code> with <code>franchisee_id</code>. Only Priya's bell rings. The app says "Your <b>Franchisee Admin</b> will be asked...".</div><div class="ar">&rarr;</div>
+<div class="bx pay"><b>3. Priya claims</b><code>POST /franchise/redemptions/{id}/claim</code>. Staff claim / decline on a SkyFix redemption: 404.</div><div class="ar">&rarr;</div>
+<div class="bx"><b>4. Ravi confirms</b>Unchanged. The portal has no confirm route.</div>
+</div>
+<div class="pill-info proposed" style="margin-top:10px"><b>Settled:</b> there is no company fallback for a non-home franchisee. Instead the last active admin of a non-home franchisee cannot be deactivated (409 <span class="mono">FRANCHISEE_LAST_ADMIN</span>: "Add another admin first &mdash; a franchisee can't be left without one."), so someone is always there to approve UPI changes and pay redemptions.</div>
+</div>
+
+<div class="scroll" style="margin-top:14px"><table class="t">
+<thead><tr><th>Duty</th><th>Home franchisee</th><th>Any other franchisee</th></tr></thead><tbody>
+<tr><td>Add / invite / edit / set type / remove a technician</td><td>AM, RH, NH, Admin as today, plus home's franchisee admins (portal)</td><td>Only that franchisee's admins</td></tr>
+<tr><td>Approve a technician's UPI change</td><td>Today's AM, RH, NH, Admin chain, plus home's franchisee admins</td><td>Only that franchisee's admins (<code>reviewer_role = franchisee_admin</code>)</td></tr>
+<tr><td>Pay a redemption</td><td>National Head, else Admin, plus home's franchisee admins</td><td>Only that franchisee's admins</td></tr>
+<tr><td>Reverse a penalty</td><td>Ticket's AM, else RH, NH, Admin (or anyone senior), plus home's franchisee admins</td><td>That franchisee's admins <b>and</b> company Admin / NH</td></tr>
+<tr><td>Pool and ledger entries</td><td>Admin / NH entries, balance for <code>jobs.assign</code> holders, plus home's franchisee admins</td><td>That franchisee's admins; Admin / NH read-only</td></tr>
+<tr><td>Work <b>tickets</b> (assign, reschedule, force-close, escalations)</td><td colspan="2">Unchanged - company staff, in both cases (F7)</td></tr>
+</tbody></table></div>
+</div></div>
+
+<h2 class="sec" id="pool">2. One penalty pool per franchisee</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">Every ledger row carries the technician's <code>franchisee_id</code>, so each franchisee has its own closed circuit: <code>balance = penalties + speed penalties &minus; reversals &minus; bonuses &minus; speed rewards</code> (F12). Step through the 05 worked example for SkyFix.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<button class="btn pri" id="pstep">Next event</button><button class="btn" id="preset">Reset</button><span id="pmsg" style="align-self:center;font-size:13px;color:var(--ink-2)"></span></div>
+<div class="two">
+<div class="pool"><h3>SkyFix Services - pool <span class="dim" style="font-weight:400;font-size:12px">GET /franchise/ledger/pool</span></h3>
+<div class="row"><span>Penalties collected</span><b id="p_pen">&#8377;0</b></div>
+<div class="row"><span>Reversals (given back)</span><b id="p_rev">&#8377;0</b></div>
+<div class="row"><span>Bonuses paid</span><b id="p_bon">&#8377;0</b></div>
+<div class="bal" id="p_bal">&#8377;0</div><div class="dim" style="font-size:12px">balance (negative is a real, documented state)</div></div>
+<div class="pool"><h3>Acme Appliances (home) - pool <span class="dim" style="font-weight:400;font-size:12px">GET /ledger/pool</span></h3>
+<div class="row"><span>Movement from these events</span><b>none</b></div>
+<p style="margin-top:10px;font-size:13px;color:var(--ink-2)">The company console reads home by default (<code>franchiseeId</code> absent), so staff see exactly what they saw before the programme. An Area Manager's bonus screen reads <i>SkyFix's</i> balance (<code>?franchiseeId=</code>) when funding a SkyFix escalation - the pool that pays.</p></div>
+</div>
+</div></div>
+
+<h2 class="sec" id="ledger">3. One closed job - freelancer vs employee</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">The customer confirms a SkyFix install. Figures combine the worked examples: payout 450 rupees (06), travel 70 rupees for 35.1 km (10), a 200-rupee speed reward for finishing in 9 hours (11). <b>Employees get no per-job payout (T2) - they still get travel, speed, penalties and bonuses (T3).</b></p>
+<div class="scroll"><table class="t">
+<thead><tr><th>Ledger row written on closure</th><th>Ravi - freelancer</th><th>Meena - employee</th><th>Rule</th></tr></thead><tbody>
+<tr><td class="mono">payout</td><td class="ok">present - &#8377;450</td><td class="no">absent (no row)</td><td>T2. The ticket still carries the product's price; the vendor is still billed in full. The ledger's silence is the fact.</td></tr>
+<tr><td class="mono">travel</td><td class="ok">present - &#8377;70</td><td class="ok">present - &#8377;70</td><td>T3, TA6. Not a pool kind. Reason "Travel allowance - 35.1 km".</td></tr>
+<tr><td class="mono">speed_reward</td><td class="ok">present - &#8377;200</td><td class="ok">present - &#8377;200</td><td>S6. A pool kind: paid from SkyFix's pool, like a bonus.</td></tr>
+<tr><td>franchisee_id on each row</td><td>SkyFix</td><td>SkyFix</td><td>The technician's franchisee at write time (F12)</td></tr>
+<tr><td>ledger_entries.technician_type</td><td>freelancer</td><td>employee</td><td>Stamped at write time, so a later type change never restates a month</td></tr>
+<tr><td>Counts toward the redeemable balance</td><td class="ok">yes (freelancer stream)</td><td class="no">never</td><td>T4. Employee-era money is paid by salary, never by UPI</td></tr>
+<tr><td>Earnings tiles (old and new apps)</td><td>earned 520 + bonuses 200 = net 720</td><td>earned 70 (the travel) + bonuses 200 = net 270</td><td>Index 6a folds travel into earned and speed reward into bonuses so installed builds still add up</td></tr>
+<tr><td>Where the employee's money is paid</td><td class="dim">Redeem, by UPI</td><td>Monthly statement CSV, added to salary</td><td>Salary itself is never recorded here</td></tr>
+</tbody></table></div>
+<div class="pill-info" style="margin-top:10px"><b>Force-close:</b> for an employee the payout field is <b>ignored, not refused</b> - the already-deployed console pre-fills the full payout, and a 422 would block every force-closure of an employee's job. The event note says why: <span class="proposed">"... - no per-job payout: employee"</span>. No speed money on a force-close (S5, planner default).</div>
+</div></div>
+
+<h2 class="sec" id="statement">4. Employee monthly statement</h2>
+<div class="card" ><div class="body">
+<p style="margin-bottom:10px"><code>GET /franchise/statements/{technicianId}?month=2026-10</code> returns <code>statement-SKY-TCH-4033-2026-10.csv</code> (UTF-8 with BOM, IST calendar month). Every row lands in the month it was <b>written</b>, so a downloaded month never changes. Meena's story (06):</p>
+<div class="seg" data-tabs style="margin-bottom:10px" id="revseg"><button class="on" data-rev="oct">Priya reverses the penalty on 28 Oct</button><button data-rev="nov">...on 5 Nov instead</button></div>
+<div class="csvmeta proposed" id="csvmeta"></div>
+<div class="scroll"><table class="t csv" id="csvtab"><thead><tr><th>Date (IST)</th><th>Ticket</th><th>Item</th><th>Details</th><th class="num">Credit (&#8377;)</th><th class="num">Debit (&#8377;)</th><th>Reverses</th></tr></thead><tbody></tbody></table></div>
+<div class="scroll" style="margin-top:8px"><table class="t csv" id="csvtot"><thead><tr><th colspan="4">Totals</th><th class="num">Credit (&#8377;)</th><th class="num">Debit (&#8377;)</th></tr></thead><tbody></tbody></table></div>
+<div id="novbox" class="hide" style="margin-top:12px"></div>
+<ul style="margin:12px 0 0;padding-left:20px;display:grid;gap:3px;font-size:12.5px;color:var(--ink-2)">
+<li>Every kind in the totals order has a line even when zero, so the clerk's template does not change shape when travel and speed ship.</li>
+<li>A kind the table does not know is listed raw, flagged "unrecognised item - not in the net", and excluded from Net. <code>payout</code> is deliberately absent.</li>
+<li>Text cells starting with <code>= + - @</code> are prefixed with an apostrophe (spreadsheet formula injection). The sample layout is <b>PROPOSED copy</b> (dashed) pending owner sign-off.</li>
+<li>Staff twin <code>GET /ledger/statements/{id}</code> serves the <b>home</b> franchisee only (NH and above). A technician of another franchisee, or another company: 404 "Statement not found".</li>
+</ul>
+</div></div>
+
+<h2 class="sec" id="types">5. Changing a technician's type - what is refused</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">The franchisee admin (home: anyone with <code>technicians.edit</code>) can change <code>technicianType</code>. A change only affects jobs accepted <i>after</i> it (T1, frozen in the accept snapshot) - but task 05/06 add two guards on top. <b>Both are stricter than T1 and need owner confirmation.</b></p>
+<div class="row3">
+<div class="field"><label for="t_old">Current type</label><select class="in" id="t_old"><option value="freelancer">freelancer</option><option value="employee">employee</option></select></div>
+<div class="field"><label for="t_new">Change to</label><select class="in" id="t_new"><option value="employee">employee</option><option value="freelancer">freelancer</option></select></div>
+<div class="field"><label for="t_jobs">Open jobs held</label><input class="in" id="t_jobs" type="number" min="0" value="0"></div>
+</div>
+<div class="field" style="max-width:340px"><label for="t_bal">Redeemable freelancer balance (&#8377;)</label><input class="in" id="t_bal" type="number" value="3200"><span class="hint">An open redemption is already reserved, so it does not count; a negative balance is allowed.</span></div>
+<div id="t_out"></div>
+<div class="scroll" style="margin-top:14px"><table class="t">
+<thead><tr><th>Case</th><th>Answer</th><th>Message</th></tr></thead><tbody>
+<tr><td>Any change while the technician holds an open job</td><td><span class="chip dng">409 TECHNICIAN_HAS_OPEN_JOBS</span></td><td><span class="proposed">"&lt;n&gt; open job(s). Finish or reassign them before changing the type."</span></td></tr>
+<tr><td>Freelancer to employee with redeemable money left</td><td><span class="chip dng">409 TECHNICIAN_HAS_BALANCE</span></td><td><span class="proposed">"&#8377;3,200 is still waiting to be redeemed. Ask them to redeem it (or pay it), then change the type."</span></td></tr>
+<tr><td>Freelancer to employee with a negative balance</td><td><span class="chip ok">allowed</span></td><td>The debt stays in the freelancer stream; it is not deducted from salary</td></tr>
+<tr><td>Employee to freelancer</td><td><span class="chip ok">allowed</span></td><td>Only the open-jobs guard applies. Employee-era rows are never redeemable, so nothing is paid twice</td></tr>
+<tr><td>An employee presses Redeem (a stale screen)</td><td><span class="chip dng">409 EMPLOYEE_CANNOT_REDEEM</span></td><td><span class="proposed">"Employees are paid through salary, so there is nothing to redeem."</span> Checked before "a request is already open". Their redemption history and the confirm of an earlier open request still work.</td></tr>
+<tr><td>Employee's <code>GET /redemptions/me</code></td><td><span class="chip">200</span></td><td><code>canRedeem: false</code>, <code>redeemablePaise: 0</code> so every installed build disables Redeem</td></tr>
+</tbody></table></div>
+<p style="margin-top:8px;font-size:12.5px;color:var(--ink-3)">Alternatives left to the owner for the balance case: let an employee redeem the freelancer stream only, or put the balance on the first statement as an opening line.</p>
+</div></div>
+</div>
+
+<script>
+(function(){
+  function rs(p){var neg=p<0;var v=Math.abs(p)/100;return (neg?"-":"")+"₹"+v.toLocaleString("en-IN");}
+  /* ---- pool stepper ---- */
+  var ev=[
+    {m:"Ravi cancels a job 3 hours before the slot: a 500-rupee penalty row, franchisee_id = SkyFix.",pen:50000,rev:0,bon:0},
+    {m:"An escalated SkyFix ticket is funded with a 400-rupee bonus and Ravi completes it: a bonus row, SkyFix's.",pen:50000,rev:0,bon:40000},
+    {m:"Priya reverses the penalty in full from her Pool screen: a reversal row copying the penalty's franchisee.",pen:50000,rev:50000,bon:40000}
+  ];
+  var i=-1;
+  function pool(){
+    var s=i<0?{pen:0,rev:0,bon:0,m:"Start: SkyFix's pool is empty."}:ev[i];
+    document.getElementById("p_pen").textContent=rs(s.pen);
+    document.getElementById("p_rev").textContent=rs(s.rev);
+    document.getElementById("p_bon").textContent=rs(s.bon);
+    var b=s.pen-s.rev-s.bon;var el=document.getElementById("p_bal");
+    el.textContent=rs(b);el.className="bal "+(b<0?"neg":"pos");
+    document.getElementById("pmsg").textContent=s.m;
+    document.getElementById("pstep").disabled=i>=ev.length-1;
+  }
+  document.getElementById("pstep").addEventListener("click",function(){if(i<ev.length-1){i++;pool();}});
+  document.getElementById("preset").addEventListener("click",function(){i=-1;pool();});
+  pool();
+
+  /* ---- statement ---- */
+  var base=[
+    {d:"09 Oct 2026 14:05",t:"SKY-INST-0412",item:"Penalty",det:"Cancel 2–4h before slot",cr:0,db:50000,rv:"",k:"penalty"},
+    {d:"12 Oct 2026 18:40",t:"SKY-INST-0419",item:"Reassignment bonus",det:"Escalation pickup",cr:40000,db:0,rv:"",k:"bonus"}
+  ];
+  var revRow={d:"28 Oct 2026 11:02",t:"SKY-INST-0412",item:"Penalty reversed",det:"Customer moved the visit",cr:50000,db:0,rv:"SKY-INST-0412 penalty of 09 Oct 2026",k:"reversal"};
+  var ORDER=[["bonus","Reassignment bonus"],["travel","Travel allowance"],["speed_reward","Speed reward"],["reversal","Penalty reversed"],["penalty","Penalty"],["speed_penalty","Speed penalty"]];
+  function two(p){return (p/100).toFixed(2);}
+  function stmt(rows,monthLabel,withMeta){
+    var body="",tot={},cr=0,db=0;
+    rows.forEach(function(r){
+      body+="<tr><td>"+r.d+"</td><td>"+r.t+"</td><td>"+r.item+"</td><td>"+r.det+"</td><td class='num'>"+(r.cr?two(r.cr):"")+"</td><td class='num'>"+(r.db?two(r.db):"")+"</td><td>"+r.rv+"</td></tr>";
+      tot[r.k]=tot[r.k]||{c:0,d:0};tot[r.k].c+=r.cr;tot[r.k].d+=r.db;cr+=r.cr;db+=r.db;
+    });
+    if(!rows.length)body="<tr><td colspan='7' class='dim'>No rows this month - the file still has its header and all-zero totals.</td></tr>";
+    var tb="";
+    ORDER.forEach(function(o){var x=tot[o[0]]||{c:0,d:0};tb+="<tr><td colspan='4'>"+o[1]+"</td><td class='num'>"+two(x.c)+"</td><td class='num'>"+two(x.d)+"</td></tr>";});
+    var net=cr-db;
+    tb+="<tr><td colspan='4'><b>Net for the month</b></td><td class='num'><b>"+two(net)+"</b></td><td></td></tr>";
+    return {body:body,tot:tb,net:net};
+  }
+  function setRev(which){
+    var rows=base.slice(),extra=null;
+    if(which==="oct")rows.push(revRow);
+    var s=stmt(rows);
+    document.getElementById("csvmeta").innerHTML="Monthly statement,SkyFix Services,October 2026<br>Employee,Meena R,TCH-4033,+919800000002";
+    document.querySelector("#csvtab tbody").innerHTML=s.body;
+    document.querySelector("#csvtot tbody").innerHTML=s.tot;
+    var nb=document.getElementById("novbox");
+    if(which==="nov"){
+      var rr={d:"05 Nov 2026 10:15",t:"SKY-INST-0412",item:"Penalty reversed",det:"Customer moved the visit",cr:50000,db:0,rv:"SKY-INST-0412 penalty of 09 Oct 2026",k:"reversal"};
+      var n=stmt([rr]);
+      nb.className="";
+      nb.innerHTML="<div class='pill-info' style='margin-bottom:8px'>October's file keeps reading <b>net "+two(s.net)+"</b> (the penalty stands in the month it was written). The reversal appears in <b>November's</b> file:</div><div class='scroll'><table class='t csv'><thead><tr><th>Date (IST)</th><th>Ticket</th><th>Item</th><th>Details</th><th class='num'>Credit</th><th class='num'>Debit</th><th>Reverses</th></tr></thead><tbody>"+n.body+"</tbody></table></div><p style='font-size:12.5px;margin-top:6px'>November net: <b>+"+two(n.net)+"</b></p>";
+    }else{
+      nb.className="hide";nb.innerHTML="<div class='pill-ok'>October net +"+two(s.net)+": bonus 400 - penalty 500 + reversal 500.</div>";
+      nb.className="";
+    }
+  }
+  document.getElementById("revseg").addEventListener("click",function(e){
+    var b=e.target.closest("[data-rev]");if(b)setRev(b.getAttribute("data-rev"));
+  });
+  setRev("oct");
+
+  /* ---- type change ---- */
+  function chk(){
+    var o=document.getElementById("t_old").value,n=document.getElementById("t_new").value;
+    var jobs=parseInt(document.getElementById("t_jobs").value||"0",10);
+    var bal=Math.round(parseFloat(document.getElementById("t_bal").value||"0")*100);
+    var out=document.getElementById("t_out");
+    if(o===n){out.innerHTML="<div class='pill-info'>No change - the type is already "+n+".</div>";return;}
+    if(jobs>0){out.innerHTML="<div class='pill-err'><b>409 TECHNICIAN_HAS_OPEN_JOBS</b><br>"+jobs+" open job(s). Finish or reassign them before changing the type.</div>";return;}
+    if(o==="freelancer"&&n==="employee"&&bal>0){out.innerHTML="<div class='pill-err'><b>409 TECHNICIAN_HAS_BALANCE</b><br>"+rs(bal)+" is still waiting to be redeemed. Ask them to redeem it (or pay it), then change the type.</div>";return;}
+    var extra=(o==="freelancer"&&n==="employee")?(bal<0?" The negative balance stays in the freelancer stream; it is not deducted from salary.":" Jobs accepted from now on pay no per-job amount; travel, speed, penalties and bonuses still apply."):" The redeemable balance resumes from the freelancer stream as it was; employee-era rows are never redeemable.";
+    out.innerHTML="<div class='pill-ok'><b>Allowed.</b>"+extra+"</div>";
+  }
+  ["t_old","t_new","t_jobs","t_bal"].forEach(function(id){var el=document.getElementById(id);el.addEventListener("input",chk);el.addEventListener("change",chk);});
+  chk();
+})();
+</script>
+</body>
+</html>

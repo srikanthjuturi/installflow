@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Franchisees — mock 08a</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a .ic{width:14px;height:14px;border:1.5px solid currentColor;border-radius:4px;opacity:.7;flex:none}
+  .rail a.on .ic{opacity:1}
+  .proposed{background:#fff2c9;outline:1px dashed #d8b800;outline-offset:1px;border-radius:3px}
+  .mockbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;border:1px dashed var(--ink-3);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--ink-2);background:#fff}
+  .mockbar b{font-weight:600;color:var(--ink)}
+  .tablewrap{overflow-x:auto}
+  .tablewrap table.t{min-width:860px}
+  .w40{width:150px}
+  .nm{font-weight:600;color:var(--ink)}
+  .nm:hover{color:var(--brand-400)}
+  .code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3)}
+  .hint-s{display:block;font-size:11.5px;color:var(--ink-3)}
+  .badges{display:flex;gap:6px;flex-wrap:wrap}
+  .chip.home{background:#fff;border:1px solid var(--brand-300);color:var(--brand-500)}
+  .link{display:inline;background:none;border:0;padding:0;color:var(--brand-400);font:600 12px "IBM Plex Sans",sans-serif;cursor:pointer}
+  .link+.link{margin-left:14px}
+  tr[data-href]{cursor:pointer}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cards label{border:1px solid var(--input);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--ink-2)}
+  .cards label:has(input:checked){border-color:var(--brand-500);background:var(--brand-100)}
+  .cards b{display:block;font-size:13px;color:var(--ink)}
+  .cards input{margin-top:3px}
+  .steps{display:flex;gap:6px;margin:0 0 14px}
+  .steps i{flex:1;height:4px;border-radius:4px;background:var(--border)}
+  .steps i.on{background:var(--brand-500)}
+  .empty .btn{margin-top:14px}
+  body.ro .manage{display:none!important}
+  @media(max-width:900px){.cards{grid-template-columns:1fr}.topbar{padding:0 14px}.page{padding:14px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Overview</div>
+    <a href="#"><i class="ic"></i>Dashboard</a>
+    <div class="grp">Tickets</div>
+    <a href="#"><i class="ic"></i>Ticket List</a>
+    <div class="grp">Operations</div>
+    <a href="#"><i class="ic"></i>Escalation Queue<span class="n">3</span></a>
+    <a href="#"><i class="ic"></i>Approvals<span class="n">2</span></a>
+    <a href="#"><i class="ic"></i>Redemptions</a>
+    <div class="grp">Master Data</div>
+    <a href="08c-technicians-franchisee-columns.html"><i class="ic"></i>Technicians</a>
+    <a href="08a-franchisees-list.html" class="on"><i class="ic"></i>Franchisees</a>
+    <a href="#"><i class="ic"></i>Penalty &amp; Bonus</a>
+    <a href="#"><i class="ic"></i>Vendors</a>
+    <a href="#"><i class="ic"></i>Territory</a>
+    <a href="#"><i class="ic"></i>Categories</a>
+    <div class="grp">Configuration</div>
+    <a href="#"><i class="ic"></i>Rules Config</a>
+    <a href="#"><i class="ic"></i>Users &amp; Roles</a>
+    <a href="#"><i class="ic"></i>Vendor Credit</a>
+    <a href="#"><i class="ic"></i>Credits</a>
+    <div class="who">Priya Nair<br>National Head</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Franchisees</h1><div class="sub">Who runs your technicians, and where</div></div>
+      <div class="sp"></div>
+      <div class="avatar">PN</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mock of Task 08 &sect;5.5 / &sect;5.6 / &sect;5.10</b> (<code>08-console-franchisees-screen.md</code>): the Franchisees list and the Add franchisee dialog. Dashed grey bars and the dark pill at the bottom are mock controls, not product UI. Click a franchisee name to open mock 08b.</div>
+
+      <div class="mockbar">
+        <b>Mock: signed in as</b>
+        <span class="seg" id="roleSeg"><button class="on" data-role="admin" type="button">Admin / National Head</button><button data-role="ro" type="button">Area Manager (franchisees.view only)</button></span>
+        <span>Read-only hides Add franchisee, Edit and Pincodes.</span>
+      </div>
+
+      <section class="card">
+        <header><h2>Franchisees</h2><span class="sub">Franchisees, the pincodes each one owns, and their admins.</span></header>
+        <div class="toolbar">
+          <input class="in search" type="search" placeholder="Search by name or code" aria-label="Search by name or code">
+          <select class="in w40" aria-label="Kind"><option>Kind</option><option>Internal</option><option>External</option></select>
+          <select class="in w40" aria-label="Status"><option>Status</option><option>Active</option><option>Inactive</option></select>
+          <span class="sp"></span>
+          <button class="btn pri manage" type="button" data-open="dlgAdd">+ Add franchisee</button>
+        </div>
+
+        <!-- DATA -->
+        <div data-view="data" class="tablewrap">
+          <table class="t">
+            <caption class="hide">Franchisees with their kind, pincodes, technicians, admins and status</caption>
+            <thead><tr>
+              <th>Franchisee</th><th>Kind</th><th class="num">Pincodes</th><th class="num">Technicians</th><th class="num">Admins</th><th>Status</th><th><span class="hide">Actions</span></th>
+            </tr></thead>
+            <tbody>
+              <tr data-href="08b-franchisee-detail.html">
+                <td><a class="nm" href="08b-franchisee-detail.html">Acme Appliances</a><div class="code">HOME</div></td>
+                <td><div class="badges"><span class="chip brand">Internal</span><span class="chip home">Home</span></div></td>
+                <td class="num">19,471<span class="hint-s">All unclaimed</span></td>
+                <td class="num">38</td>
+                <td class="num">0</td>
+                <td><span class="chip ok">Active</span></td>
+                <td class="num"><span class="manage"><a class="link" href="08b-franchisee-detail.html">Edit</a></span></td>
+              </tr>
+              <tr data-href="08b-franchisee-detail.html">
+                <td><a class="nm" href="08b-franchisee-detail.html">Acme Secunderabad</a><div class="code">SEC</div></td>
+                <td><div class="badges"><span class="chip brand">Internal</span></div></td>
+                <td class="num">14</td>
+                <td class="num">12</td>
+                <td class="num">1</td>
+                <td><span class="chip ok">Active</span></td>
+                <td class="num"><span class="manage"><a class="link" href="08b-franchisee-detail.html">Edit</a><a class="link" href="08b-franchisee-detail.html#pincodes">Pincodes</a></span></td>
+              </tr>
+              <tr data-href="08b-franchisee-detail.html">
+                <td><a class="nm" href="08b-franchisee-detail.html">Acme Warangal</a><div class="code">WGL</div></td>
+                <td><div class="badges"><span class="chip brand">Internal</span></div></td>
+                <td class="num">0</td>
+                <td class="num">0</td>
+                <td class="num">0</td>
+                <td><span class="chip force">Inactive</span></td>
+                <td class="num"><span class="manage"><a class="link" href="08b-franchisee-detail.html">Edit</a><a class="link" href="08b-franchisee-detail.html#pincodes">Pincodes</a></span></td>
+              </tr>
+              <tr data-href="08b-franchisee-detail.html">
+                <td><a class="nm" href="08b-franchisee-detail.html">SkyFix Services</a><div class="code">SKY</div></td>
+                <td><div class="badges"><span class="chip info">External</span></div></td>
+                <td class="num">11</td>
+                <td class="num">4</td>
+                <td class="num">1</td>
+                <td><span class="chip ok">Active</span></td>
+                <td class="num"><span class="manage"><a class="link" href="08b-franchisee-detail.html">Edit</a><a class="link" href="08b-franchisee-detail.html#pincodes">Pincodes</a></span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pg"><span class="proposed">Showing 1&ndash;4 of 4</span><span></span></div>
+        </div>
+
+        <!-- LOADING -->
+        <div data-view="loading" class="tablewrap hide">
+          <table class="t">
+            <thead><tr><th>Franchisee</th><th>Kind</th><th class="num">Pincodes</th><th class="num">Technicians</th><th class="num">Admins</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="skel" style="width:140px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:40px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:60px"></div></td><td></td></tr>
+              <tr><td><div class="skel" style="width:120px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:40px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:60px"></div></td><td></td></tr>
+              <tr><td><div class="skel" style="width:160px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:40px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:60px"></div></td><td></td></tr>
+              <tr><td><div class="skel" style="width:110px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:40px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:30px;margin-left:auto"></div></td><td><div class="skel" style="width:60px"></div></td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- EMPTY -->
+        <div data-view="empty" class="empty hide">
+          <b>No franchisees yet</b>
+          Add one and give it the pincodes it will run.
+          <div><button class="btn pri manage" type="button" data-open="dlgAdd">+ Add franchisee</button></div>
+        </div>
+
+        <!-- FILTERED EMPTY -->
+        <div data-view="filtered" class="empty hide">
+          <b>No franchisees match those filters</b>
+          Try a different kind or status, or clear the search.
+        </div>
+
+        <!-- ERROR -->
+        <div data-view="error" class="empty hide">
+          <b>Couldn't load franchisees</b>
+          <button class="btn" type="button" data-toast="Couldn't load franchisees">Retry</button>
+        </div>
+      </section>
+
+      <section class="card" style="border-style:dashed;box-shadow:none">
+        <header><h2>Wording added by the mock &mdash; needs sign-off</h2></header>
+        <div class="body" style="font-size:13px">
+          <ul style="margin:0;padding-left:18px;display:grid;gap:4px">
+            <li><span class="proposed">Showing 1&ndash;4 of 4</span> &mdash; pagination footer, copied from the generic DataTable pattern; not in &sect;5.10.</li>
+            <li><span class="proposed">Retry</span> &mdash; the ErrorState button (named in &sect;7 criterion 1, no string in &sect;5.10). Shown plain here because the generic ErrorState owns it.</li>
+            <li>Dropdown placeholders for the two filters use the filter name itself (<em>Kind</em>, <em>Status</em>) instead of an &ldquo;All&rdquo; option, to stay inside the table.</li>
+            <li>Mock-only controls (role switcher, state switcher) are not product copy.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Add franchisee dialog (Task 08 &sect;5.5 FranchiseeFormDialog, step 1 of 2) -->
+<div class="scrim" id="dlgAdd">
+  <div class="dlg">
+    <header><h3>Add franchisee</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <div class="steps" aria-hidden="true"><i class="on"></i><i></i></div>
+      <p style="margin:0 0 16px;color:var(--ink-2);font-size:13px">Step 1 of 2 &mdash; details. You give it pincodes next.</p>
+
+      <div class="field"><label for="f-name">Name</label><input id="f-name" class="in" value="SkyFix Services"></div>
+
+      <div class="field">
+        <label>Kind</label>
+        <div class="cards">
+          <label><input type="radio" name="kind" value="internal"><span><b>Internal</b>Part of Acme Appliances.</span></label>
+          <label><input type="radio" name="kind" value="external" checked><span><b>External</b>A separate business working under the Acme Appliances name.</span></label>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field"><label for="f-cn">Contact name</label><input id="f-cn" class="in" value="Ravi Kumar"></div>
+        <div class="field"><label for="f-cp">Contact phone</label><input id="f-cp" class="in" inputmode="numeric" value="98480 12345"></div>
+      </div>
+      <div class="field"><label for="f-ce">Contact email</label><input id="f-ce" class="in" type="email" value="ops@skyfix.in"></div>
+
+    </div>
+    <footer>
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn pri" type="button" data-close data-toast="SkyFix Services added">Save and add pincodes</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="state-switch" role="group" aria-label="Mock: list state">
+  <button type="button" class="on" data-state="data">data</button>
+  <button type="button" data-state="loading">loading</button>
+  <button type="button" data-state="empty">empty</button>
+  <button type="button" data-state="filtered">filtered empty</button>
+  <button type="button" data-state="error">error</button>
+</div>
+
+<script>
+  // Mock-only behaviour: row click navigates, role switch hides manage controls.
+  document.addEventListener("click", function (e) {
+    var r = e.target.closest("[data-role]");
+    if (r) { document.body.classList.toggle("ro", r.getAttribute("data-role") === "ro"); }
+    var row = e.target.closest("tr[data-href]");
+    if (row && !e.target.closest("a,button")) { location.href = row.getAttribute("data-href"); }
+  });
+</script>
+</body>
+</html>
