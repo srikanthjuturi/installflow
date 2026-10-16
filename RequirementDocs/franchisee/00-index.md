@@ -132,6 +132,7 @@ Three features ride on the franchisee:
 | `franchisee_travel_rules` | 10 | `id, company_id, franchisee_id, technician_type, free_km, step_km, paise_per_step, road_factor_pct, max_paise_per_job`. Unique `(company_id, franchisee_id, technician_type)`. Two rows per franchisee, stamped at creation. |
 | `franchisee_speed_rules` | 11 | `id, company_id, franchisee_id, technician_type, node_id NULL, model_id NULL, reward_within_hours, penalty_after_hours, reward_paise, penalty_paise`. CHECK exactly one of node/model. CHECK `penalty_after_hours >= reward_within_hours`. Partial uniques per (company_id, franchisee_id, technician_type, node_id) and (company_id, franchisee_id, technician_type, model_id). |
 | `spare_parts` | 12 | `id, company_id, node_id NULL, model_id NULL, name, is_active, deleted_at`. CHECK exactly one of node/model. Unique `lower(name)` per node / per model where `deleted_at IS NULL`. |
+| `technician_transfers` | 17 | Audit of manual technician moves: `company_id, technician_id, from_franchisee_id, to_franchisee_id, reason, transferred_by_user_id, transferred_at` + composite FKs and covering indexes. Written in the same transaction as the move; downgrade refuses while rows exist. |
 | `spare_part_requests` | 12 | `id, company_id, code, franchisee_id, ticket_id, technician_id, spare_part_id NULL, other_name NULL, part_name (frozen label), note, status, decided_at, decided_by_user_id, decided_by_label, reject_reason, rejected_from ('requested'|'approved'; owner ruling 2026-10-15), issued_at, issued_by_user_id, issued_by_label, issue_note, returned_at, returned_by_user_id, returned_by_label, return_note, return_photo_blob_name`. CHECK exactly one of spare_part_id/other_name. |
 
 ### 3.2 New columns on existing tables
@@ -144,6 +145,7 @@ Three features ride on the franchisee:
 | `technician_invites.franchisee_id`, `technician_invites.technician_type` | 01 | Copied to the profile at registration. |
 | `tickets.franchisee_id` | 01 | NOT NULL after backfill. Stamped at intake from the pincode (Task 04). |
 | `tickets.accept_snapshot` | 10 | JSONB NULL. Written on accept/assign. Keys below. |
+| `tickets.routing_override` | 18 | boolean NOT NULL DEFAULT false. Derived server-side (`target franchisee != owner of the pincode`) when staff hand an unassigned ticket to another franchisee; waives ONLY the pincode-coverage half of eligibility. Never sent by a client. |
 | `ledger_entries.franchisee_id` | 01 | NOT NULL after backfill. = the **technician's** franchisee at write time (the payer) — **except a `reversal`, which copies the reversed entry's franchisee** so money returns to the pool that collected it. Set inside `core/ledger.entry`. |
 | `ledger_entries.technician_type` | 05 | The writer's type at write time (`employee`/`freelancer`), so a statement and the pool stay truthful after a type change. |
 | `redemptions.franchisee_id` | 01 | NOT NULL after backfill. = the technician's franchisee when requested. |
@@ -224,6 +226,8 @@ Read through a helper (`app/core/accept_snapshot.py`) — never with a bare `[]`
 | 4 | `9e1b5d3c7a26` | `9e1b5d3c7a26_travel_allowance.py` | `7c4f2e9a1d58` | 10 |
 | 5 | `b4a8e2f6c903` | `b4a8e2f6c903_speed_allowance.py` | `9e1b5d3c7a26` | 11 |
 | 6 | `d6c3a9f1e874` | `d6c3a9f1e874_spare_parts.py` | `b4a8e2f6c903` | 12 |
+| 7 | `e8a2c5b7d913` | `e8a2c5b7d913_technician_transfers.py` | `d6c3a9f1e874` | 17 |
+| 8 | `f3b9d1a6c845` | `f3b9d1a6c845_hand_ticket_to_franchisee.py` | `e8a2c5b7d913` | 18 |
 
 If tasks land out of order, the implementing agent re-points `down_revision` to the current head and says so in the commit — never a branch in the chain.
 
@@ -241,6 +245,8 @@ If tasks land out of order, the implementing agent re-points `down_revision` to 
 | `app/core/franchise_logins.py` | `create_login`, `reissue_password`, `set_active`, `mail_password`, `login_base`, `last_active`, `blocks_last_admin` (pure) / `active_admin_count` (owner ruling 2026-10-15, R3) | 03 | shared by 03 and 12 |
 | `app/core/carve_out.py`, `app/core/franchise_routing.py` | pure carve-out planner and routing decisions | 03/04 | pure, unit-tested |
 | `app/core/audience.py`, `franchise_money.py`, `penalty_reversal.py`, `employment.py`, `statements.py` | `audience.hears` (one rule, used by all four notification readers), money visibility, shared penalty reversal, `pays_per_job` / `may_redeem`, statement builder | 05/06 | see Tasks 05, 06 |
+| `app/core/technician_transfer.py`, `app/models/technician_transfer.py`, `features/technicians/transfer_service.py`, `core.ledger.open_redemption_exists` | pure transfer decider, model, service, helper | 17 | push key `technician.moved` |
+| `app/core/franchise_handover.py`, `coverage.technicians_by_franchisee`, `restamp_ticket(release_override=)`, `technicians_covering(routing_override=)`, `PoolChanged.routing_override` | pure handover decider and the override plumbing | 18 | notification kind `ticket_handed` (13 chars) |
 | `app/core/pincode_ranges.py` | `parse_pincode_ranges(text: str) -> list[tuple[int,int]]`, `expand(ranges, existing: set[str]) -> set[str]`, `compress(codes) -> str` | 03 | **pure**; unit-tested |
 | `app/core/deps.py` | `Principal.franchisee_id`, `Principal.is_franchise`; `require_franchise_principal` / `FranchisePrincipal` = **franchisee_admin ONLY**; `require_facility_principal` / `FacilityPrincipal` = **any of the three franchise roles** (parts work). Feature keys still gate each route. | 02 | auth |
 | `app/core/franchise_scope.py` | `managed_franchisee_ids(db, principal, *, purpose='manage'|'view'|'reverse') -> set[UUID] | None` (None = all in company), `can_manage_technician(db, principal, tech) -> bool` | 02 | F7/F8 in one place |
@@ -282,7 +288,9 @@ If tasks land out of order, the implementing agent re-points `down_revision` to 
 | 13 | [13-console-allowances-and-parts.md](13-console-allowances-and-parts.md) | Travel/speed settings, base map pin, parts catalogue, facility queue, ticket panels | web | 10, 11, 12 |
 | 14 | [14-mobile-base-location.md](14-mobile-base-location.md) | Home card, Profile, onboarding step, pincode/GPS/OSM pin | mobile | 10 |
 | 15 | [15-mobile-spare-parts-and-allowances.md](15-mobile-spare-parts-and-allowances.md) | Part request, Awaiting Part, travel/speed on job & earnings | mobile | 12, 14 |
-| 16 | [16-rollout-and-docs.md](16-rollout-and-docs.md) | Prod order, seed/verify, cleanup_db, audit, AGENTS.md updates | all | all |
+| 17 | [17-technician-transfer.md](17-technician-transfer.md) | Admin/NH move a technician between franchisees (open-jobs / balance refusals, coverage re-fit, audit table, bells + push) | api + web | 05, 06, 08, 09 |
+| 18 | [18-hand-ticket-to-franchisee.md](18-hand-ticket-to-franchisee.md) | Staff hand an unassigned ticket to another franchisee; `tickets.routing_override` waives the pincode half of eligibility | api + web | 04, 05, 09 |
+| 16 | [16-rollout-and-docs.md](16-rollout-and-docs.md) | Prod order, seed/verify, cleanup_db, audit, AGENTS.md updates (also covers 17 and 18 as R9 and R10) | all | all |
 
 **Release gates.** (a) Task 07 is on Play (production track) before Tasks 10–12 are published. (b) Each
 migration runs on `RelianceProdDB` (by the owner) before the API that needs it is published.
@@ -304,7 +312,7 @@ migration runs on `RelianceProdDB` (by the owner) before the API that needs it i
 3. **Snapshot at accept** for anything that depends on the technician (type, franchisee, travel, speed);
    snapshot at intake (existing `rules_snapshot`) for anything that depends only on the ticket.
 4. **Events in the same transaction** as the change they describe (`ticket_events`).
-5. **Eligibility predicates live in five places** — `jobs/service.pool_query`, `core/coverage.technicians_covering`,
+5. **Eligibility predicates live in five places** (a ticket with `routing_override = true`, Task 18, waives only the pincode-coverage half in each) — `jobs/service.pool_query`, `core/coverage.technicians_covering`,
    the guarded UPDATE in `jobs/service.accept`, the assign guard in `tickets/service.assign_technician`, and
    `jobs/ws.py`. A task that changes who may take a job changes all five.
 6. **Role vocabularies are hard-coded in several places** — `coverage.payer_role`, `coverage.upi_reviewer`,
@@ -389,6 +397,17 @@ and each changed contract there is marked *(owner ruling 2026-10-15)*. (These **
 tickets read-only (F13); an employee's force-close payout field is ignored, not refused; reversals land in the month they
 are written.
 
+## 6d. Owner rulings — 2026-10-16
+
+| # | Ruling | Where it lands |
+|---|---|---|
+| R11 | **Yes, a manual technician transfer.** Admin/NH move a technician between franchisees; refused while open jobs or redeemable money remain; coverage re-fitted to the target's range; history stays where it was earned. | Task 17 |
+| R12 | **Company staff may hand an unassigned ticket to another franchisee** (reason required; a derived `routing_override` waives the pincode-coverage check only). | Task 18 |
+| R13 | **SETTLED:** an external franchisee's freelancers are paid the company's product technician payout — no per-franchisee payout table or percentage. | Tasks 01, 05 as built |
+| R14 | **SETTLED:** one franchisee per login. An owner of two franchisees uses two logins. | Task 02 as built |
+
+Open points raised by Tasks 17/18 (written defaults apply): a technician with a NEGATIVE balance may transfer, with a warning (Task 17); an API caller may omit `pincodes` and trim coverage without previewing (Task 17); the source franchisee's admin gets no bell when a ticket leaves (Task 18); hand-over reuses `jobs.assign` plus the Area Manager floor rather than a new key, and external targets need no higher rank (Task 18).
+
 ## 7. Copy sign-off checklist
 
 Each client task has a **PROPOSED copy** section. Tick when signed off:
@@ -399,3 +418,5 @@ Each client task has a **PROPOSED copy** section. Tick when signed off:
 - [ ] 07 Mobile new ledger kinds / status labels / employee earnings
 - [ ] 14 Mobile base location
 - [ ] 15 Mobile spare-part request and allowance display
+- [ ] 17 Technician transfer dialog and push
+- [ ] 18 Hand-to-franchisee dialog

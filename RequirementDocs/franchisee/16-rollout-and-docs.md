@@ -31,7 +31,7 @@ script that must know every table, and the written rules the next developer read
    signs in, and lands in the staff shell where every list is empty or 403 (Task 08 §8 trap 1). →
    **08 and 09 deploy together.**
 
-**Done means:** every release R0–R8 below is live on production, the §7 smoke passes on dev, the scripts in §5
+**Done means:** every release R0–R10 below is live on production, the §7 smoke passes on dev, the scripts in §5
 are green on dev, and the prose in §6 is in the repository.
 
 ---
@@ -48,7 +48,7 @@ Judgement calls made here:
 
 | # | Decision (writer) | Why |
 |---|---|---|
-| W1 | **Nine releases, R0–R8** (§4). API releases are kept small so each migration has one owner sitting and one rollback story; client releases ride beside the API release that makes them safe. Tasks 10, 11 and 12 may be merged into one sitting if the owner prefers — every gate that applies to one applies to all three. | A failed release then names one task. |
+| W1 | **Eleven releases, R0–R10** (§4). API releases are kept small so each migration has one owner sitting and one rollback story; client releases ride beside the API release that makes them safe. Tasks 10, 11 and 12 may be merged into one sitting if the owner prefers — every gate that applies to one applies to all three. | A failed release then names one task. |
 | W2 | **Task 04 rides in R1** with 01–03, not alone later. | A carve-out (Task 03) re-stamps tickets; without Task 04 nothing reads the stamp, so a franchisee could exist on prod whose tickets every technician is still offered. If 04 is not ready, R1 ships 01–03 and **no non-home franchisee may be created on prod** until 04 is published. |
 | W3 | **Task 05 and Task 06 publish together** (R2), as both their docs require (05 §8 trap 1, 06 §8 trap 1). | Between them an employee is paid per job and that money is later dropped from the redeemable balance. |
 | W4 | **The owner migrates production to an explicit revision**, never `head`: `alembic upgrade 5d2a8c6e0b13`, not `upgrade head`. | `main` may carry a later migration than the release needs; naming the revision makes the sitting do exactly what the gate allowed. |
@@ -213,6 +213,7 @@ R0 prerequisites ─► R1 01·02·03·04 (API) ─► R2 05·06 (API) ─► R3
                                                                                          ▼
                    R5 10 (API) + 13-travel (console) + 14 (Play) ─► R6 11 (API) + 13-speed
                    ─► R7 12 (API) + 13-parts (console) ─► R8 15 (Play) ─► docs final pass
+                   ─► R9 17 (API, then console) ─► R10 18 (API, then console)
 ```
 
 ### R0 — Prerequisites (Task 00)
@@ -320,6 +321,28 @@ R0 prerequisites ─► R1 01·02·03·04 (API) ─► R2 05·06 (API) ─► R3
 | **Prod migration / API / adminWeb** | None. |
 | **Mobile** | Re-run `seed_play_review --production` (W9) — now with the parts additions of §5.4 — then production EAS build → internal → production. |
 | **After** | The §7.2 smoke on dev passes end to end. §6 prose reconciled with the code as merged. Index §7 checklist fully ticked. |
+
+### R9 — Technician transfer (Task 17)
+
+| | |
+|---|---|
+| **Tasks** | 17 (API `POST /technicians/{id}/transfer`, `technician_transfers`; console dialog on the technician profile). |
+| **Gate** | R1, R2 and R3 live (Tasks 05, 06, 08, 09). Copy **17 signed off**. |
+| **Prod migration** | `e8a2c5b7d913` (additive; its downgrade refuses while any row exists) — the owner runs it, then the API is published. |
+| **API / adminWeb** | API first, then the console action. No mobile build (the technician gets a push, `technician.moved`, which the installed app shows as an ordinary notification). |
+| **Verify** | `audit_tenancy` (TENANT_LINKS 18 → 21), `cleanup_db` classifies `technician_transfers`, and a `seed/verify.py` check that a transferred technician's old ledger rows keep their franchisee. |
+| **Rollback** | Hide the console action; the route is inert without callers; downgrade only while `technician_transfers` is empty. |
+
+### R10 — Hand a ticket to another franchisee (Task 18)
+
+| | |
+|---|---|
+| **Tasks** | 18 (API `POST /tickets/{id}/franchisee`, `GET /tickets/{id}/franchisee-options`, `tickets.routing_override`; console action on the staff ticket page). |
+| **Gate** | R9 live (its migration is the tail of the chain); R1–R3 live; Task 12 live if tickets with part requests are in play (hand-over is refused once a job has started). Copy **18 signed off**. |
+| **Prod migration** | `f3b9d1a6c845` (adds `tickets.routing_override` NOT NULL DEFAULT false) — the owner runs it, then the API is published. API first, then the console. No mobile build. |
+| **Verify** | `seed/verify.py`: no ticket has `routing_override = true` while its franchisee owns the pincode; the five eligibility places agree (pool, push targeting, assign guard, socket, accept). `audit_tenancy` unaffected (no new table). |
+| **Rollback** | Hide the console action; clear flags only after re-stamping those tickets to their pincode owner; downgrade drops the column. |
+| **AGENTS.md** | One paragraph in root and api AGENTS.md: *a handed-over ticket is the one place a technician may be eligible without covering the pincode*. |
 
 ---
 

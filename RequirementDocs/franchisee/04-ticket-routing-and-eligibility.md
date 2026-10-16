@@ -651,3 +651,13 @@ SELECT f.id, f.name, f.is_home FROM franchisees f JOIN companies c ON c.id = f.c
 - **Out of scope:** franchise notifications and audiences (Task 05), part-request visibility for facility staff
   (Task 12 replaces the `sql_false()` lines in `scoped` and `franchise_hears_ticket`), the console ticket page's
   franchisee label (Tasks 08/09), hiding `vendorPricePaise` from franchise users (owner decision, settled 2026-10-15, §4.4).
+
+### Cross-task note — `routing_override` (Task 18, added 2026-10-16)
+
+A ticket carrying `routing_override = true` waives **only the pincode-coverage half** of eligibility. The
+franchisee match, certification, active status, daily cap and online toggle still apply. The five eligibility
+places stay in step: `jobs/service.pool_query`, `core/coverage.technicians_covering` (new required keyword
+`routing_override`), `_load_assignable_technician` (the assign guard), the pool socket frame
+(`PoolChanged.routing_override`, `pool_frame_matches`) and the `accept` guarded UPDATE, which has no coverage clause
+today and must not gain one. `restamp_ticket` returns `None` for an override ticket, so a released handed-over ticket
+stays with the franchisee it was handed to. Task 18 owns the column, the endpoint and the tests.

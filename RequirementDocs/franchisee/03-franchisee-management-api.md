@@ -918,3 +918,13 @@ WHERE c.name = 'GreenTech Demo Services' GROUP BY 1, 2, 3;
   presentational note for Task 08: `lastLoginAt` is "last active" (§4.4), so its column header should say so.
 - **One refusal beyond Task 08's list:** deactivate also refuses (plain 409) while redemptions stamped with
   the franchisee are open — its admins are about to lose access and nobody else pays them (F8).
+
+### Cross-task note — Task 18 (hand-over) and Task 17 (transfer) (added 2026-10-16)
+
+- **Carve-out skips handed-over tickets.** The re-stamp in the apply step selects only tickets with
+  `routing_override = false`. A ticket staff deliberately handed to another franchisee (Task 18) is never silently
+  pulled back by a later pincode change.
+- **Deactivating a franchisee hands its unassigned override tickets back to their pincode owner**
+  (`restamp_ticket(release_override=True)`), clearing the flag, so nothing is left pointing at an inactive franchisee.
+- **Technician transfer** (Task 17) is a separate, manual path from the carve-out. It reuses this task's coverage-fit
+  helper and its refusals (`TECHNICIAN_HAS_OPEN_JOBS`, `TECHNICIAN_HAS_BALANCE`).

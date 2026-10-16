@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>18 Hand a ticket to another franchisee — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  .tabbar{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}
+  .tabbar .tabs{border-bottom:0}
+  .twocol{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
+  .stack{display:grid;gap:16px}
+  .hdr{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 18px}
+  .hdr h2{margin:0;font-size:18px}.hdr .sp{flex:1}
+  .btns{display:flex;gap:10px;flex-wrap:wrap}
+  .pnl .kv{grid-template-columns:130px 1fr}
+  .scr{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .tl .it{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-2)}
+  .tl .it:last-child{border-bottom:0}
+  .tl-ic{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:13px}
+  .tl-ic.base{background:var(--surface-3);color:var(--ink-2)}.tl-ic.info{background:var(--info-bg);color:var(--info)}
+  .tl-ic.warn{background:var(--warn-bg);color:var(--warn)}.tl-ic.ok{background:var(--ok-bg);color:var(--ok)}
+  .tl .tt{font-size:13.5px;font-weight:600}.tl .nt{font-size:12.5px;color:var(--ink-2)}.tl .tm{font-size:12px;color:var(--ink-3)}
+  .demo{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--ink-3);margin:0 0 12px;padding-bottom:10px;border-bottom:1px dashed var(--input)}
+  .demo button{border:1px solid var(--input);background:#fff;border-radius:99px;padding:3px 10px;font:500 12px "IBM Plex Sans";cursor:pointer;color:var(--ink-2)}
+  .demo button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .opts{display:grid;gap:8px;margin:0 0 14px}
+  .opt{display:flex;gap:12px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;background:#fff}
+  .opt:hover{background:var(--surface-2)}
+  .opt.sel{border-color:var(--brand-400);box-shadow:0 0 0 2px var(--brand-100)}
+  .opt.dis{opacity:.6;cursor:not-allowed;background:var(--surface-2)}
+  .opt .nm{font-weight:600}.opt .sub{font-size:12px;color:var(--ink-3)}
+  .opt .grow{flex:1;min-width:0}
+  .opt .cnt{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink-2);text-align:right;white-space:nowrap}
+  .opt .cnt b{font-size:15px;color:var(--ink)}
+  .opt .cnt.zero b{color:var(--danger)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .err{color:var(--danger);font-size:11.5px;margin-top:4px;min-height:14px}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .shell{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg)}
+  .shell .bar{background:linear-gradient(180deg,var(--sidebar-from),var(--sidebar-to));color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;font-weight:600;font-size:13px}
+  .shell .bar small{color:#b9bcf0;font-weight:400}
+  .shell .in2{padding:14px;display:grid;gap:12px}
+  .nf{text-align:center;padding:36px 12px;color:var(--ink-3)}.nf b{display:block;color:var(--ink);font-size:20px;margin-bottom:4px}
+  .bell{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:10px;font-size:12.5px}
+  .bell .dotb{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:5px;flex:none}
+  @media(max-width:900px){.twocol{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Operations</div>
+    <a>Dashboard</a><a class="on">Tickets</a><a>Technicians</a><a>Escalations<span class="n">2</span></a><a>Franchisees</a>
+    <div class="who">Kavitha S · Area Manager</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Tickets</h1><div class="sub">ACM-INST-0500</div></div>
+      <span class="sp"></span><div class="avatar">KS</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mocks Task 18</b> (<code>RequirementDocs/franchisee/18-hand-ticket-to-franchisee.md</code> §5): the <b>Hand to another franchisee</b> action on the staff ticket page, its dialog in every state, the timeline afterwards, and the two franchise portals. Dashed outlines are PROPOSED wording. Use the switchers to walk the states; the data is invented.</div>
+
+      <div class="tabbar" data-tabs>
+        <div class="tabs">
+          <button class="on" data-tab="page">1 · Ticket page and dialog</button>
+          <button data-tab="after">2 · After the hand-over</button>
+          <button data-tab="portals">3 · The two franchise portals</button>
+        </div>
+      </div>
+
+      <!-- ============ 1 · TICKET PAGE ============ -->
+      <div data-pane="page" data-scope>
+        <div class="scr"><span class="proposed" style="font-size:12px">Mock scenario:</span>
+          <div class="seg" id="scen">
+            <button class="on" data-s="live">Escalated · window still open</button>
+            <button data-s="closed">Escalated · window closed</button>
+            <button data-s="assigned">Assigned to Ravi (no button)</button>
+          </div></div>
+
+        <div class="card" style="margin-bottom:16px"><div class="hdr">
+          <h2 class="mono">ACM-INST-0500</h2><span id="hStatus"></span><span id="hChip"></span>
+          <span style="color:var(--ink-3);font-size:13px">Installation · Windwell 1.5 ton split AC</span>
+          <span class="sp"></span>
+          <span class="btns" id="hBtns"></span>
+        </div></div>
+
+        <div class="twocol">
+          <div class="stack">
+            <section class="card pnl"><header><h2>Ticket</h2></header><div class="body">
+              <dl class="kv"><dt>Category</dt><dd>Electronics › Air conditioners › Split AC</dd>
+                <dt>Product</dt><dd>Windwell 1.5 ton</dd>
+                <dt>Franchisee</dt><dd id="fName">SkyFix Services <span class="chip">External</span></dd>
+                <dt>Pincode</dt><dd class="mono">500032 <span style="color:var(--ink-3)">· owned by SkyFix Services</span></dd>
+                <dt>Time agreed</dt><dd id="slotTxt">17-10-2026 · 14:00 – 16:00</dd>
+                <dt>Vendor</dt><dd>Crestline Distributors</dd></dl>
+            </div></section>
+            <section class="card pnl"><header><h2>Timeline</h2></header><div class="body tl" id="timeline"></div></section>
+          </div>
+          <div class="stack">
+            <section class="card pnl"><header><h2>Customer</h2></header><div class="body">
+              <dl class="kv"><dt>Name</dt><dd>Rohit Verma</dd><dt>Phone</dt><dd>+91 63018 15418</dd><dt>Address</dt><dd>Plot 14, Kondapur Main Road, Hyderabad 500032</dd></dl></div></section>
+            <section class="card pnl"><header><h2>Technician</h2></header><div class="body" id="techBody"></div></section>
+            <div id="whyNo" class="pill-info proposed hide">Assigned tickets can't be handed over. Cancel it from the technician, or use Re-assign.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 2 · AFTER ============ -->
+      <div data-pane="after" class="hide">
+        <div class="twocol">
+          <div class="stack">
+            <section class="card pnl"><header><h2>Timeline</h2><span class="sub">after the hand-over, no reload</span></header><div class="body tl">
+              <div class="it"><div class="tl-ic info">⇄</div><div><div class="tt">Moved to another franchisee</div>
+                <div class="nt proposed">SkyFix Services → Acme Secunderabad · handed over: SkyFix has no AC-certified technician · back in the pool</div>
+                <div class="tm">Escalated → Slot Pending · Kavitha S (staff) · 16-10-2026 09:24</div></div></div>
+              <div class="it"><div class="tl-ic warn">!</div><div><div class="tt">Escalated</div><div class="nt">Nobody accepted before the slot window</div><div class="tm">System · 16-10-2026 09:10</div></div></div>
+              <div class="it"><div class="tl-ic base">·</div><div><div class="tt">Slot confirmed</div><div class="nt">Customer chose 17-10-2026, 14:00 – 16:00</div><div class="tm">Customer · 15-10-2026 18:42</div></div></div>
+              <div class="it"><div class="tl-ic base">·</div><div><div class="tt">Ticket raised</div><div class="nt">Raised by Crestline Distributors</div><div class="tm">15-10-2026 16:10</div></div></div>
+            </div></section>
+          </div>
+          <div class="stack">
+            <section class="card pnl"><header><h2>Ticket</h2></header><div class="body">
+              <dl class="kv"><dt>Status</dt><dd><span class="chip warn">Slot Pending</span> <span class="chip info proposed">Handed over</span></dd>
+                <dt>Franchisee</dt><dd>Acme Secunderabad <span class="chip">Internal</span></dd>
+                <dt>Pincode</dt><dd class="mono">500032 <span style="color:var(--ink-3)">· owned by SkyFix Services</span></dd></dl></div></section>
+            <section class="card pnl"><header><h2>Re-assign</h2><span class="sub">the shortlist for a handed ticket</span></header><div class="body">
+              <p class="proposed" style="margin:0 0 10px;font-size:12.5px;color:var(--ink-2)">Handed over to Acme Secunderabad. Pincode coverage isn't required for this job.</p>
+              <table class="t"><thead><tr><th>Technician</th><th>Franchisee</th><th class="num">Day load</th></tr></thead><tbody>
+                <tr><td>Sunil Reddy <span class="chip ok">Online</span></td><td>Acme Secunderabad</td><td class="num">1 / 4</td></tr>
+                <tr><td>Anita Das <span class="chip ok">Online</span></td><td>Acme Secunderabad</td><td class="num">0 / 3</td></tr>
+                <tr><td>Imran Khan <span class="chip">Offline</span></td><td>Acme Secunderabad</td><td class="num">2 / 4</td></tr>
+              </tbody></table></div></section>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 3 · PORTALS ============ -->
+      <div data-pane="portals" class="hide">
+        <div class="grid g2">
+          <div class="shell">
+            <div class="bar"><span class="mark" style="width:26px;height:26px;border-radius:7px;background:#fff;color:var(--brand-500);display:grid;place-items:center;font-size:11px">SF</span>SkyFix Services <small>franchise portal · Meena, Franchisee Admin</small></div>
+            <div class="in2">
+              <div class="pill-info proposed" style="font-size:12px">The SOURCE franchisee: after the hand-over the ticket is no longer theirs.</div>
+              <section class="card"><header><h2>Tickets</h2><span class="sub">read-only</span></header>
+                <table class="t"><thead><tr><th>Ticket</th><th>Status</th><th>Place</th></tr></thead><tbody>
+                  <tr><td class="mono">ACM-INST-0497</td><td><span class="chip assigned">Assigned</span></td><td>500034</td></tr>
+                  <tr><td class="mono">ACM-INST-0491</td><td><span class="chip new">New</span></td><td>500031</td></tr>
+                </tbody></table>
+                <div class="pg"><span>2 tickets · <b>ACM-INST-0500</b> is no longer in this list</span></div></section>
+              <section class="card"><div class="nf"><b>Ticket not found</b>Opening <span class="mono">/franchise/tickets/…0500</span> answers 404, never 403.</div></section>
+            </div>
+          </div>
+
+          <div class="shell">
+            <div class="bar"><span class="mark" style="width:26px;height:26px;border-radius:7px;background:#fff;color:var(--brand-500);display:grid;place-items:center;font-size:11px">AS</span>Acme Secunderabad <small>franchise portal · Vikram, Franchisee Admin</small></div>
+            <div class="in2">
+              <div class="pill-ok proposed" style="font-size:12px">The TARGET franchisee: it now sees the ticket, read-only, with the move on the timeline.</div>
+              <div class="bell"><span class="dotb"></span><div><b class="proposed">ACM-INST-0500 handed to Acme Secunderabad</b><div class="proposed" style="color:var(--ink-3)">Kavitha S moved it from SkyFix Services. SkyFix has no AC-certified technician.</div></div></div>
+              <section class="card"><div class="hdr" style="padding:12px 16px">
+                <h2 class="mono" style="font-size:15px">ACM-INST-0500</h2><span class="chip warn">Slot Pending</span><span class="chip info proposed">Handed over</span><span class="sp"></span>
+                <span class="chip">Read only</span></div>
+                <div class="body" style="padding-top:0"><dl class="kv"><dt>Product</dt><dd>Windwell 1.5 ton split AC</dd><dt>Place</dt><dd>Hyderabad 500032</dd><dt>Technician</dt><dd style="color:var(--ink-3)">Nobody yet — your technicians can take it from the pool</dd></dl></div></section>
+              <section class="card"><header><h2>Timeline</h2></header><div class="body tl">
+                <div class="it"><div class="tl-ic info">⇄</div><div><div class="tt">Moved to another franchisee</div><div class="nt proposed">SkyFix Services → Acme Secunderabad · handed over: SkyFix has no AC-certified technician · back in the pool</div><div class="tm">Kavitha S (staff) · 16-10-2026 09:24</div></div></div>
+                <div class="it"><div class="tl-ic base">·</div><div><div class="tt">Ticket raised</div><div class="tm">15-10-2026 16:10</div></div></div>
+              </div></section>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notebox">
+        <h3>Wording added by the mock — needs sign-off</h3>
+        <ul>
+          <li>Everything dashed: the button <span class="proposed">Hand to another franchisee</span>, the chip <span class="proposed">Handed over</span>, the dialog title/intro/standing warning, the option counts (<span class="proposed">3 eligible · 2 online</span>, <span class="proposed">0 eligible</span>), the zero-eligible and nobody-online warnings, the closed-window note, the Reason label, hint and errors, the blocked sentence, the two toasts, the timeline note, the Re-assign line and the target admin's bell (full table: Task 18 §5.3).</li>
+          <li>Ticket-page chrome that Task 18 does not specify and the real page already has: panel titles “Ticket / Timeline / Customer / Technician”, the buttons “Change the time” and “Re-assign”, the timeline titles “Escalated”, “Slot confirmed”, “Ticket raised”, and the technician rows (names, “Online/Offline”, “Day load”).</li>
+          <li>The portal shells: the franchise-portal bar, the ticket list columns, “Read only”, “Ticket not found”, and the line “Nobody yet — your technicians can take it from the pool” (Task 09 owns the real portal wording).</li>
+          <li>Mock scaffolding (dashed pills): “Mock scenario”, the dialog's “Mock state” switcher and the sample franchisees (Metro Cooling Services is invented to show a zero count).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Hand-over dialog ============ -->
+<div class="scrim" id="dlgHand"><div class="dlg">
+  <header><h3 id="dTitle">Hand ACM-INST-0500 to another franchisee</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd">
+    <div class="demo"><span>Mock state</span>
+      <button class="on" data-dst="choose">Choose</button><button data-dst="loading">Loading</button><button data-dst="zero">0 eligible</button>
+      <button data-dst="reason">Reason error</button><button data-dst="blocked">Blocked</button></div>
+    <div id="dBody"></div>
+  </div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="dGo">Hand over</button></footer>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]}); };
+  function toast(t){ var el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(function(){el.classList.remove("show")},3200); }
+
+  var FR = [
+    {id:"sec", name:"Acme Secunderabad", chips:["Internal"], elig:3, online:2},
+    {id:"home", name:"Acme Appliances", chips:["Home","Internal"], elig:1, online:0},
+    {id:"metro", name:"Metro Cooling Services", chips:["External"], elig:0, online:0},
+    {id:"sky", name:"SkyFix Services", chips:["External","Current"], elig:0, online:0, current:true}
+  ];
+  var S = {scen:"live", handed:false, dst:"choose", pick:null, reason:"", touched:false};
+
+  function chipHTML(c){ return '<span class="chip'+(c==="Home"?" brand":"")+(c==="Current"?" proposed":"")+'">'+c+'</span>'; }
+  function cnt(f){
+    if(f.elig===0) return '<div class="cnt zero"><b>0</b> eligible</div>';
+    return '<div class="cnt"><b>'+f.elig+'</b> eligible · '+f.online+' online</div>';
+  }
+  function reasonErr(t){
+    t = t.replace(/^\s+|\s+$/g,"");
+    if(t.length<3) return "Say why you're handing it over.";
+    if(t.length>255) return "Keep it under 255 characters.";
+    return "";
+  }
+  function closedWindow(){ return S.scen==="closed"; }
+
+  function renderDlg(){
+    var body = $("dBody"), go = $("dGo");
+    if(S.dst==="loading"){
+      body.innerHTML = '<div class="skel" style="width:60%;margin:8px 0 18px"></div>'+[1,2,3].map(function(){return '<div class="skel" style="height:44px;margin-bottom:8px;border-radius:10px"></div>';}).join("");
+      go.disabled = true; go.classList.add("dis"); return;
+    }
+    if(S.dst==="blocked"){
+      body.innerHTML = '<div class="pill-err proposed">ACM-INST-0500 already has a technician. Cancel it from them first, or re-assign it.</div>'+
+        '<p style="font-size:12px;color:var(--ink-3);margin:10px 0 0">The options call answered <code>canHandOver: false</code> (<code>TICKET_ASSIGNED</code>) — there is no choice to offer, only Close.</p>';
+      go.disabled = true; go.classList.add("dis"); return;
+    }
+    if(S.dst==="zero"){ S.pick="metro"; S.reason = S.reason || "Nobody at SkyFix can take ACs this week"; }
+    if(S.dst==="reason"){ S.pick="sec"; S.reason = "ab"; S.touched = true; }
+    var cur = "SkyFix Services";
+    var h = '<p class="proposed" style="margin:0 0 10px;font-size:13px;color:var(--ink-2)">Use this when '+cur+' can’t take the job — nobody certified, everyone at their daily limit, or nobody online.</p>'+
+      '<div class="pill-warn proposed" style="margin-bottom:14px">Handing a ticket over takes it away from '+cur+'. The other franchisee’s technicians are offered it, and they are paid by their own franchisee’s rules, including travel.</div>'+
+      '<div class="field"><label>Franchisee</label></div><div class="opts" id="opts">'+
+      FR.map(function(f){
+        return '<label class="opt'+(f.current?' dis':'')+(S.pick===f.id?' sel':'')+'" data-f="'+f.id+'"><input type="radio" name="fr" '+(f.current?'disabled ':'')+(S.pick===f.id?'checked ':'')+'>'+
+          '<div class="grow"><div class="nm">'+esc(f.name)+'</div><div class="chips" style="margin-top:3px">'+f.chips.map(chipHTML).join("")+'</div></div>'+
+          '<span class="proposed">'+cnt(f)+'</span></label>';
+      }).join("")+'</div>';
+    var f = FR.filter(function(x){return x.id===S.pick})[0];
+    if(f && f.elig===0) h += '<div class="pill-warn proposed" style="margin-bottom:14px">Nobody at '+esc(f.name)+' can take this job right now. You can still hand it over, and then assign someone by hand.</div>';
+    else if(f && f.elig>0 && f.online===0) h += '<div class="pill-info proposed" style="margin-bottom:14px">'+f.elig+' eligible, but none are online. They’ll see it when they go online.</div>';
+    if(closedWindow()) h += '<div class="pill-info proposed" style="margin-bottom:14px">This job’s time has passed, so no technician can be offered it. Handing it over still moves it; change the time with the customer to put it in the pool.</div>';
+    var err = S.touched ? reasonErr(S.reason) : "";
+    h += '<div class="field"><label for="dReason" class="proposed" style="align-self:flex-start">Reason</label>'+
+      '<textarea class="in'+(err?' bad':'')+'" id="dReason" placeholder="Why is it moving? Shown to both franchisees’ admins on the ticket.">'+esc(S.reason)+'</textarea>'+
+      '<div class="err proposed" id="dErr">'+esc(err)+'</div></div>';
+    body.innerHTML = h;
+    var ok = !!S.pick && !reasonErr(S.reason);
+    go.disabled = !ok; go.classList.toggle("dis", !ok);
+  }
+
+  /* dialog interactions */
+  document.addEventListener("click", function(e){
+    var d = e.target.closest("[data-dst]");
+    if(d){ S.dst = d.getAttribute("data-dst"); if(S.dst==="choose"){S.pick=null;S.reason="";S.touched=false;} d.parentElement.querySelectorAll("button").forEach(function(b){b.classList.toggle("on", b===d)}); renderDlg(); return; }
+    var o = e.target.closest(".opt");
+    if(o && !o.classList.contains("dis") && $("dlgHand").contains(o)){ S.pick = o.getAttribute("data-f"); S.dst="choose"; renderDlg(); e.preventDefault(); return; }
+  });
+  document.addEventListener("input", function(e){
+    if(e.target.id==="dReason"){
+      S.reason = e.target.value;
+      var ok = !!S.pick && !reasonErr(S.reason);
+      $("dGo").disabled = !ok; $("dGo").classList.toggle("dis", !ok);
+    }
+  });
+  document.addEventListener("focusout", function(e){
+    if(e.target.id==="dReason"){ S.touched = true; var err = reasonErr(S.reason); $("dErr").textContent = err; e.target.classList.toggle("bad", !!err); }
+  });
+  $("dGo").addEventListener("click", function(){
+    if(this.disabled) return;
+    var f = FR.filter(function(x){return x.id===S.pick})[0];
+    S.handed = true;
+    $("dlgHand").classList.remove("open");
+    var n = f.online;
+    toast(closedWindow() ? "ACM-INST-0500 handed to "+f.name+". It isn’t in the pool — its time has passed."
+                         : "ACM-INST-0500 handed to "+f.name+". "+n+" technician(s) notified.");
+    S.toName = f.name;
+    renderPage();
+  });
+  document.addEventListener("click", function(e){
+    var b = e.target.closest("[data-open='dlgHand']");
+    if(b){ S.dst="choose"; S.pick=null; S.reason=""; S.touched=false; document.querySelectorAll("[data-dst]").forEach(function(x){x.classList.toggle("on", x.getAttribute("data-dst")==="choose")}); renderDlg(); }
+  });
+
+  /* ticket page */
+  function tlItem(ic, cls, t, n, m, prop){ return '<div class="it"><div class="tl-ic '+cls+'">'+ic+'</div><div><div class="tt">'+t+'</div>'+(n?'<div class="nt'+(prop?' proposed':'')+'">'+n+'</div>':'')+'<div class="tm">'+m+'</div></div></div>'; }
+  function renderPage(){
+    var assigned = S.scen==="assigned", closed = closedWindow();
+    var status = assigned ? "Assigned" : (S.handed && !closed ? "Slot Pending" : "Escalated");
+    var cls = {"Assigned":"assigned","Escalated":"dng","Slot Pending":"warn"}[status];
+    $("hStatus").innerHTML = '<span class="chip '+cls+'">'+status+'</span>';
+    $("hChip").innerHTML = S.handed ? '<span class="chip info proposed">Handed over</span>' : "";
+    var btns = '<button class="btn">Change the time</button>';
+    if(!assigned) btns += '<button class="btn proposed" data-open="dlgHand">Hand to another franchisee</button>';
+    btns += '<button class="btn pri">Re-assign</button>';
+    $("hBtns").innerHTML = btns;
+    $("whyNo").classList.toggle("hide", !assigned);
+    $("fName").innerHTML = (S.handed ? S.toName : "SkyFix Services")+' <span class="chip">'+(S.handed ? "Internal" : "External")+'</span>';
+    $("slotTxt").textContent = closed ? "15-10-2026 · 14:00 – 16:00 (passed)" : "17-10-2026 · 14:00 – 16:00";
+    $("techBody").innerHTML = assigned
+      ? '<dl class="kv"><dt>Name</dt><dd>Ravi Kumar <span class="chip brand">Freelancer</span></dd><dt>Franchisee</dt><dd>SkyFix Services</dd><dt>Phone</dt><dd>+91 98480 12345</dd></dl>'
+      : '<div style="color:var(--ink-3)">Nobody assigned.</div>';
+    var tl = "";
+    if(S.handed) tl += tlItem("⇄","info","Moved to another franchisee", esc("SkyFix Services → "+S.toName+" · handed over: "+(S.reason||"")+(closed?"":" · back in the pool")), (closed?"":"Escalated → Slot Pending · ")+"Kavitha S (staff) · 16-10-2026 09:24", true);
+    if(assigned) tl += tlItem("✓","base","Assigned to Ravi Kumar","Accepted from the pool","16-10-2026 08:02");
+    else tl += tlItem("!","warn","Escalated","Nobody accepted before the slot window","System · 16-10-2026 09:10");
+    tl += tlItem("·","base","Slot confirmed","Customer chose "+(closed?"15-10-2026":"17-10-2026")+", 14:00 – 16:00","Customer · 15-10-2026 18:42");
+    tl += tlItem("·","base","Ticket raised","Raised by Crestline Distributors","15-10-2026 16:10");
+    $("timeline").innerHTML = tl;
+  }
+  document.getElementById("scen").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-s]"); if(!b) return;
+    S.scen = b.getAttribute("data-s"); S.handed = false; renderPage();
+  });
+  renderPage(); renderDlg();
+})();
+</script>
+</body>
+</html>
