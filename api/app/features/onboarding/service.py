@@ -175,6 +175,8 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
         user_id = None
         is_vendor = False
         vendor_id = None
+        is_franchise = False
+        franchisee_id = None
 
     categories = _flatten_for_invite(
         await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]

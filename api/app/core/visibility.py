@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.scope import ALL_INDIA_ROLES, Scope, own_scope, pincodes_in_states
 from app.models.membership import Membership
-from app.models.role import AREA_MANAGER
+from app.models.role import AREA_MANAGER, FRANCHISEE_ADMIN
 from app.models.technician import TechnicianPincode, TechnicianProfile
 
 if TYPE_CHECKING:  # `deps` imports core modules, so the real import would cycle.
@@ -41,7 +41,19 @@ def technician_scope(
 
     The statement must already join `Membership` and `TechnicianProfile`; this
     only narrows.
+
+    A franchise principal's roster is their FRANCHISEE, not their pincode
+    territory (F7): the franchisee admin sees exactly their franchisee's
+    technicians — the home admin sees the home's, which is today's whole roster —
+    and the facility roles see nobody, because they work parts, not people. A
+    corrupt principal (`franchisee_id` unset for a franchise role) cannot reach
+    here past the guards, and a `== None` against a NOT NULL column reads as a
+    false predicate anyway.
     """
+    if principal.is_franchise:
+        if principal.role == FRANCHISEE_ADMIN:
+            return stmt.where(TechnicianProfile.franchisee_id == principal.franchisee_id)
+        return stmt.where(sql_false())
     if principal.role in ALL_INDIA_ROLES:
         return stmt
 

@@ -68,6 +68,14 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
             *_NEWEST_FIRST
         )
 
+    if principal.is_franchise:
+        # Nothing names a franchise principal yet — Task 05 adds the
+        # `franchisee_admin` audience and `notifications.franchisee_id`, Task 12
+        # the facility roles. Fail closed rather than fall through to the staff
+        # branch, where `visible_pincodes` returning [] would already say no —
+        # but silently, and only while the list stays a list.
+        return stmt.where(sql_false())
+
     # Addressed rows first, and decided in Python so the SQL stays a literal:
     # a reader sees unaddressed rows, rows addressed to THEIR ROLE (a UPI change
     # asked of the area manager, say — the territory filter below still keeps

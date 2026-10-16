@@ -197,8 +197,18 @@ async def visible_pincodes(
     Vendors are NOT handled here. They see by ownership rather than geography,
     which is a different question with a different answer, and each slice states
     its own — a ticket's owner is its vendor_id, and a notification may have no
-    owner at all.
+    owner at all. Franchise principals are the same shape of answer and the same
+    absence here: they are scoped by OWNERSHIP in each slice
+    (`tickets.franchisee_id`, Task 04), never by geography. After a carve-out
+    (F6) an assigned ticket keeps its old franchisee while its pincode now
+    belongs to a different one, so geography would show a franchisee's admin a
+    ticket whose technician and money are somebody else's and hide one that is
+    theirs — the violation the `franchisee_id` column exists to stop.
+    Returning [] here is therefore the explicit fail-closed for everything that
+    still calls this function with one.
     """
+    if principal.is_franchise:
+        return []
     if principal.role in ALL_INDIA_ROLES:
         return None
 

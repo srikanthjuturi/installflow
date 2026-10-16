@@ -326,6 +326,12 @@ async def scoped(db: AsyncSession, stmt: Select, principal: Principal) -> Select
             stmt = stmt.where(Ticket.created_by == principal.user_id)
         return stmt
 
+    if principal.is_franchise:
+        # Franchise ticket visibility is Task 04 (F13), by ownership —
+        # `tickets.franchisee_id == principal.franchisee_id`, never by pincodes.
+        # Until then it fails closed: a guessed ticket id reads 404.
+        return stmt.where(sql_false())
+
     return _apply_visibility(stmt, await _visible_pincodes(db, principal))
 
 

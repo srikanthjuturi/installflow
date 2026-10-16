@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import case, delete, func, literal, or_, select, union_all, update
+from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -86,7 +87,7 @@ from app.models.company import Company
 from app.models.membership import Membership
 from app.models.otp import PURPOSE_PAYOUT_ACCOUNT, PURPOSE_SELF_DELETE
 from app.models.product import ProductNode
-from app.models.role import AREA_MANAGER, ROLE_LABELS, TECHNICIAN
+from app.models.role import AREA_MANAGER, ROLE_LABELS, FRANCHISEE_ADMIN, TECHNICIAN
 from app.models.ticket import Ticket
 from app.models.upi_change import UpiChangeRequest
 from app.models.technician import (
@@ -306,6 +307,12 @@ def _visible_technicians(stmt, principal: Principal, own_id, own: Scope):
 
 
 def _visible_invites(stmt, principal: Principal, own: Scope):
+    if principal.is_franchise:
+        # Same rule as the roster above: the franchisee admin sees the invites
+        # FOR their franchisee, the facility roles see none (F7).
+        if principal.role == FRANCHISEE_ADMIN:
+            return stmt.where(TechnicianInvite.franchisee_id == principal.franchisee_id)
+        return stmt.where(sql_false())
     if principal.role in ALL_INDIA_ROLES:
         return stmt
     mine = TechnicianInvite.invited_by_user_id == principal.user_id

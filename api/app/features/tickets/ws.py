@@ -52,6 +52,7 @@ from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import (
     ADMIN,
+    FRANCHISE_ROLES,
     NATIONAL_HEAD,
     ROLE_RANKS,
     SUPERADMIN,
@@ -78,6 +79,7 @@ class _Visibility:
         "all_india",
         "pincodes",
         "vendor_id",
+        "franchise",
         "user_id",
         "vendor_user",
         "payer",
@@ -89,6 +91,7 @@ class _Visibility:
         self.all_india = False
         self.pincodes: set[str] = set()
         self.vendor_id: uuid.UUID | None = None
+        self.franchise = False
         self.user_id: uuid.UUID | None = None
         self.vendor_user = False
         #: For rows addressed to a role — see `hears_notification`.
@@ -114,6 +117,15 @@ class _Visibility:
         if principal.is_vendor:
             self.vendor_id = principal.vendor_id
             self.vendor_user = principal.role == VENDOR_USER
+            self._at = time.monotonic()
+            return
+        if principal.is_franchise:
+            # Franchise principals hear nothing yet — the REST rule this must
+            # mirror (`service.scoped`) says nothing either, and a franchise
+            # principal who reaches the staff branch below would otherwise fall
+            # into the all-india/pincodes default and hear every company-wide
+            # row. Task 04 (F13) replaces this with ownership.
+            self.franchise = True
             self._at = time.monotonic()
             return
 
@@ -159,7 +171,13 @@ class _Visibility:
         row's pincode does that for an area manager or regional head; `vendor`
         is the named vendor and no staff member at all. An audience this code
         does not know reaches nobody.
+
+        A franchise principal hears nothing, before any of it — without this
+        they would reach the staff territory branch and every company-wide row
+        (a null pincode) would reach them. Task 05 opens this deliberately.
         """
+        if self.franchise:
+            return False
         if audience is not None:
             if audience == "vendor":
                 # The one audience that points AWAY from staff. Tested before
@@ -182,6 +200,8 @@ class _Visibility:
         return pincode in self.pincodes
 
     def may_hear(self, event: TicketChanged) -> bool:
+        if self.franchise:
+            return False
         if self.vendor_id is not None:
             if event.vendor_id != self.vendor_id:
                 return False
@@ -238,6 +258,14 @@ async def _authenticate(
             is_superadmin=False,
             company_id=company_id,
             vendor_id=membership.vendor_id,
+            # The websocket does not go through `get_current_principal`, so the
+            # `Principal` is hand-built and `franchisee_id` must be carried the
+            # same way `vendor_id` is. Only franchise roles get one — a
+            # `franchisee_id` on a staff membership is ignored, exactly as the
+            # REST resolver ignores it.
+            franchisee_id=membership.franchisee_id
+            if user.role in FRANCHISE_ROLES
+            else None,
         ),
         company_id,
     )

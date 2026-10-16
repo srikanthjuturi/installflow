@@ -41,6 +41,7 @@ from app.features.users.schemas import (
 from app.models.company import Company
 from app.models.membership import Membership
 from app.models.role import (
+    FRANCHISE_ROLES,
     VENDOR_ROLES,
     AREA_MANAGER,
     NATIONAL_HEAD,
@@ -59,6 +60,28 @@ def _region_name(scope: Scope, region_id: uuid.UUID) -> str:
     """An area manager's regions are derived from his states and written in the
     same transaction, so the name is always already in the scope."""
     return next((r.name for r in scope.regions if r.id == region_id), "")
+
+
+def role_not_creatable_here(role: str) -> str | None:
+    """PURE. Why `/users` cannot create this role, or None. Rank cannot express
+    any of these — a vendor (6) and the franchise roles (8–10) rank below every
+    staff role, so an Area Manager 'outranks' them and `ensure_below_rank` would
+    wave every one of them through.
+
+    Franchise logins are created by `app.core.franchise_logins.py` (franchisee
+    admins, by Admin/NH, Task 03) and reused for facility users (Task 12) —
+    never here. Each needs a `franchisee_id` on its membership, which this
+    endpoint has no way to supply; one made here would authenticate, and have a
+    franchisee nowhere."""
+    if role == SUPERADMIN or role not in ROLE_RANKS:
+        return "Invalid role"
+    if role == TECHNICIAN:
+        return "Onboard technicians from the Technicians screen"
+    if role in VENDOR_ROLES:
+        return "Vendor accounts are created with the vendor, on the Vendors screen"
+    if role in FRANCHISE_ROLES:
+        return "Franchise accounts are created on the Franchisees screen"
+    return None
 
 
 async def _appointed_by(
@@ -127,7 +150,12 @@ async def _load_membership(
     """Fetch one member — inside the caller's company AND their territory.
 
     Territory-filtered on purpose: a guessed id from another region must read as
-    'not found', never as a row the caller isn't entitled to see.
+    'not found', never as a row the caller isn't entitled to see. Franchise
+    logins are excluded outright — the screen never lists them, so every
+    get/update/reissue/delete here 404s on a guessed franchise membership id
+    (their management lives on the franchisee screens). Stricter than vendors,
+    whose rows this CAN load by id — that is a pre-existing gap the reissue
+    guard patches by hand; franchise never opens it.
     """
     own_id, scope = await own_scope(
         session, user_id=principal.user_id, company_id=principal.company_id
@@ -139,6 +167,7 @@ async def _load_membership(
             Membership.id == membership_id,
             Membership.company_id == principal.company_id,
             Membership.deleted_at.is_(None),
+            User.role.not_in(list(FRANCHISE_ROLES)),
         )
     )
     stmt = territory_scope(
@@ -366,8 +395,10 @@ async def list_users(
             # blanks here; a vendor account has no territory, so its scope
             # column would be a dash — and, worse, `ensure_below_rank` would let
             # any admin suspend or remove a vendor's login from a screen that
-            # never explains what it is.
-            User.role.not_in([TECHNICIAN, *VENDOR_ROLES]),
+            # never explains what it is. Franchise logins are not on list
+            # either — their management lives on the franchisee screens, and a
+            # membership with a `franchisee_id` has no territory rows here.
+            User.role.not_in([TECHNICIAN, *VENDOR_ROLES, *FRANCHISE_ROLES]),
         )
     )
     # A regional head's list simply never contains another region's people.
@@ -404,29 +435,16 @@ async def list_users(
 async def create_user(
     session: AsyncSession, principal: Principal, body: UserCreateRequest
 ) -> UserCreatedOut:
-    if body.role == SUPERADMIN or body.role not in ROLE_RANKS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
     # A technician needs a profile, certifications and coverage, none of which
-    # this endpoint can create. One made here would be a membership no
-    # technician endpoint can see and no job can be offered to.
-    if body.role == TECHNICIAN:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Onboard technicians from the Technicians screen",
-        )
-    # Same reasoning, different screen: a vendor account needs a `vendor_id` on
-    # its membership, which this endpoint has no way to supply. One made here
-    # would authenticate, hold `jobs.create`, and have no vendor to raise a
-    # ticket against.
-    #
-    # And the rank check below would NOT catch it — a vendor ranks 6, below
-    # every staff role, so an Area Manager "outranks" one and would sail past.
-    # Rank cannot express "not this family of roles".
-    if body.role in VENDOR_ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Vendor accounts are created with the vendor, on the Vendors screen",
-        )
+    # this endpoint can create. A vendor account needs a `vendor_id` on its
+    # membership and a franchise account a `franchisee_id`, for the same
+    # reason — and the rank check below would catch NONE of them, because all
+    # three families rank below every staff role, so an Area Manager
+    # "outranks" each one and would sail past. Rank cannot express "not this
+    # family of roles"; the refusals are by name, and one place says why.
+    reason = role_not_creatable_here(body.role)
+    if reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
     ensure_below_rank(principal, body.role)
 
     # Territory is validated before anything is written, so a bad scope never
