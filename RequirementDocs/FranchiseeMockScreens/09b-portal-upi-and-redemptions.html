@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Appliances · UPI changes and Redemptions (mock 09b)</title>
+<link rel="stylesheet" href="_shared/console.css">
+<link rel="stylesheet" href="_shared/portal-09.css">
+<script src="_shared/mock.js" defer></script>
+<script src="_shared/portal-09.js" defer></script>
+</head>
+<body data-brand="Acme Appliances">
+<div class="app" data-scope data-swapscope>
+
+  <aside class="rail" aria-label="Franchise portal">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<span class="fr">SkyFix Services</span></div></div>
+    <a href="09a-portal-technicians.html#technicians"><i class="ic"></i>Technicians</a>
+    <a href="#upi" data-tab="upi" data-also="upi-profile" class="on"><i class="ic"></i>UPI changes<span class="n" data-swap="up:open">1</span></a>
+    <a href="#redemptions" data-tab="redemptions" data-also="redemption"><i class="ic"></i>Redemptions<span class="n">1</span></a>
+    <a href="09c-portal-pool-and-statements.html#pool"><i class="ic"></i>Penalty &amp; bonus pool</a>
+    <a href="09c-portal-pool-and-statements.html#statements"><i class="ic"></i>Employee statements</a>
+    <a href="09d-portal-tickets-readonly.html#tickets"><i class="ic"></i>Tickets</a>
+    <div class="who"><b>Anil Reddy</b>Franchisee Admin<br><a href="#">Account</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn sm menu" data-menu aria-label="Open menu">&#9776;</button>
+      <div class="ttl" data-ttl="upi"><h1>UPI changes</h1><span class="sub">Technicians asking to be paid somewhere new</span></div>
+      <div class="ttl hide" data-ttl="upi-profile"><h1>Technician profile</h1><span class="sub">Category · pincode · bandwidth</span></div>
+      <div class="ttl hide" data-ttl="redemptions"><h1>Redemptions</h1><span class="sub">Technician payouts by UPI</span></div>
+      <div class="ttl hide" data-ttl="redemption"><h1>Redemption</h1><span class="sub">Pay by UPI · record the proof</span></div>
+      <span class="mb"><b>Acme Appliances</b>SkyFix Services</span>
+      <span class="sp"></span>
+      <button class="bell" aria-label="Notifications, 2 unread" data-toast="Notifications · Recent events for SkyFix Services"><i></i><span class="n">2</span></button>
+      <button class="btn sm signout" data-toast="Signed out">Sign out</button>
+      <div class="avatar" title="Anil Reddy">AR</div>
+    </header>
+
+    <main class="page">
+      <div class="note"><b>Mock of Task 09 §4.2–4.3, §5.4–5.5 (UpiChangeTable, UpiChangePanel via the workspace adapter, RedemptionTable / RedemptionPage), §5.9 copy.</b> A UPI change is approved or rejected by the franchisee admin on the technician's profile — <b>no code is asked for; the manager is the check</b>. A redemption is paid by scanning the QR and recording the proof; there is <b>no confirm</b> for the payer — only the technician confirms receipt. Employees cannot redeem.</div>
+
+      <!-- ================= PANE: UPI changes queue ================= -->
+      <section data-pane="upi" class="stack">
+        <div class="card">
+          <header><h2>UPI changes</h2><span class="sub">Technicians asking to change the UPI ID they are paid on</span></header>
+          <div class="toolbar">
+            <span class="mut" style="font-size:12.5px">Status</span>
+            <div class="seg" role="group" aria-label="Status">
+              <button class="on" data-show="st:pending">Pending</button><button data-show="st:approved">Approved</button><button data-show="st:rejected">Rejected</button><button data-show="st:all">All</button>
+            </div>
+          </div>
+
+          <div data-view="loading" class="hide" aria-busy="true">
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+          </div>
+
+          <div data-view="empty" class="hide">
+            <div class="empty"><div class="ic2">&#8644;</div><b>No UPI changes waiting</b><p>When a technician asks to be paid on a new UPI ID, it appears here.</p></div>
+            <div class="empty" style="border-top:1px dashed var(--border);padding:24px 16px"><b>No changes match that status</b><p>Try a different status.</p>
+              <span class="mut" style="font-size:11.5px">(shown instead when a status other than Pending is chosen and has no rows)</span></div>
+          </div>
+
+          <div data-view="error" class="hide empty err">
+            <div class="ic2 bad">!</div><b>Couldn't load UPI changes</b><p role="alert">Something went wrong. Try again.</p>
+            <button class="btn" data-toast="Couldn't load UPI changes · Something went wrong. Try again.">&#8635; Retry</button>
+          </div>
+
+          <div data-view="data">
+            <div class="tw">
+              <table class="t">
+                <thead><tr><th>Technician</th><th>Current UPI ID</th><th>Asked for</th><th>Requested</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr data-swap="st:pending st:all">
+                    <td><div class="who-c"><div class="avatar">IS</div><div><a class="nm" href="#upi-profile" data-tab="upi-profile">Imran Shaikh</a><span class="hint-s code">TCH-4027</span></div></div></td>
+                    <td class="mono">imran.s@oksbi</td>
+                    <td><span class="mono">imrans@paytm</span><span class="hint-s">Imran Shaikh</span></td>
+                    <td>2 hours ago</td>
+                    <td><span class="chip warn">Pending</span></td>
+                  </tr>
+                  <tr class="hide" data-swap="st:approved st:all">
+                    <td><div class="who-c"><div class="avatar">RT</div><div><a class="nm" href="#upi-profile" data-tab="upi-profile">Ravi Teja</a><span class="hint-s code">TCH-4021</span></div></div></td>
+                    <td class="mono">ravi.teja@okhdfc</td>
+                    <td><span class="mono">ravit@ybl</span><span class="hint-s">Ravi Teja</span></td>
+                    <td>09-10-2026</td>
+                    <td><span class="chip ok">Approved</span></td>
+                  </tr>
+                  <tr class="hide" data-swap="st:rejected st:all">
+                    <td><div class="who-c"><div class="avatar">AD</div><div><a class="nm" href="#upi-profile" data-tab="upi-profile">Arjun Das</a><span class="hint-s code">TCH-4012</span></div></div></td>
+                    <td class="mono">arjun.d@okicici</td>
+                    <td><span class="mono">arjun-d@axl</span><span class="hint-s">A. Das</span></td>
+                    <td>30-09-2026</td>
+                    <td><span class="chip">Rejected</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pg"><span>Pending first, oldest first</span><span>Click a technician to decide on their profile</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PANE: technician profile with the UPI panel ================= -->
+      <section data-pane="upi-profile" class="stack hide">
+        <div class="inline-act" style="align-items:center">
+          <a class="btn sm" href="#upi" data-tab="upi">&larr; Back to UPI changes</a>
+          <span class="mut" style="font-size:12px">Mock: view profile of</span>
+          <div class="seg"><button class="on" data-show="who:imran">Imran Shaikh (Freelancer)</button><button data-show="who:meena">Meena R (Employee)</button></div>
+        </div>
+
+        <div class="two" style="grid-template-columns:320px 1fr">
+          <!-- header card -->
+          <div class="card"><div class="body">
+            <div style="text-align:center">
+              <div class="photo" style="margin:0 auto 10px" data-swap="who:imran">IS</div>
+              <div class="photo hide" style="margin:0 auto 10px" data-swap="who:meena">MR</div>
+              <div class="nm" style="font-size:16px"><span data-swap="who:imran">Imran Shaikh</span><span class="hide" data-swap="who:meena">Meena R</span></div>
+              <div class="code"><span data-swap="who:imran">TCH-4027</span><span class="hide" data-swap="who:meena">TCH-4033</span></div>
+              <div style="margin-top:8px"><span class="chip ok">Active</span></div>
+            </div>
+            <dl class="kv" style="grid-template-columns:90px 1fr;margin-top:16px;font-size:13px">
+              <dt>Phone</dt><dd><span data-swap="who:imran">+91 98000 00003</span><span class="hide" data-swap="who:meena">+91 98000 00002</span></dd>
+              <dt>Region</dt><dd>South</dd>
+              <dt>Joined</dt><dd>Aug 2026</dd>
+              <dt>Rating</dt><dd>—</dd>
+              <dt>UPI ID</dt><dd><span data-swap="who:imran"><span class="mono" style="font-size:12px">imran.s@oksbi</span><span class="hint-s">Imran Shaikh</span></span><span class="hide" data-swap="who:meena">—</span></dd>
+              <dt>Franchisee</dt><dd>SkyFix Services</dd>
+              <dt>Type</dt><dd><span data-swap="who:imran"><span class="chip freelancer">Freelancer</span></span><span class="hide" data-swap="who:meena"><span class="chip employee">Employee</span></span></dd>
+            </dl>
+          </div></div>
+
+          <div class="stack">
+            <!-- UPI change panel (freelancer only) -->
+            <div class="card upi-panel" data-swap="who:imran">
+              <header style="flex-direction:column;align-items:flex-start;gap:2px">
+                <h2 data-swap="up:open up:approved up:rejected">UPI ID change requested</h2>
+                <span class="sub">Imran Shaikh asked on 15-10-2026 10:12 · sent to the Franchisee Admin</span>
+              </header>
+              <div class="body stack">
+                <div class="payees">
+                  <div class="payee"><small>Now</small><b>Imran Shaikh</b><span class="mono">imran.s@oksbi</span></div>
+                  <div class="arrow">&rarr;</div>
+                  <div class="payee"><small>Asked for</small><b>Imran Shaikh</b><span class="mono">imrans@paytm</span></div>
+                </div>
+                <div class="inline-act" data-swap="up:open">
+                  <button class="btn pri" data-show="up:approved" data-toast="UPI ID changed · Imran Shaikh's earnings now go to imrans@paytm.">Approve change</button>
+                  <button class="btn" data-open="dlgReject">Reject</button>
+                </div>
+                <div class="pill-ok hide" data-swap="up:approved">UPI ID changed · Imran Shaikh's earnings now go to imrans@paytm. The UPI changes badge has cleared.</div>
+                <div class="pill-warn hide" data-swap="up:rejected">Change rejected · Imran Shaikh keeps imran.s@oksbi.</div>
+                <div class="mockbar blk">No code is sent or asked for here — the franchisee admin deciding on the profile <b>is</b> the check (same panel Area Managers use). Reset the mock with <a href="" onclick="location.reload();return false">reload</a>.</div>
+              </div>
+            </div>
+
+            <!-- payouts card (new) -->
+            <div class="card">
+              <header><h2 class="proposed">Payouts</h2></header>
+              <div class="body">
+                <div data-swap="who:imran"><dl class="kv"><dt>Redemption</dt><dd>Can redeem — requests appear under <a href="#redemptions" data-tab="redemptions">Redemptions</a>.</dd></dl></div>
+                <div class="hide" data-swap="who:meena">
+                  <dl class="kv"><dt>Redemption</dt><dd><span class="chip employee proposed">Not redeemable</span></dd><dt>Why</dt><dd>Employees are paid through salary, so there is nothing to redeem.</dd><dt>Statement</dt><dd><a href="09c-portal-pool-and-statements.html#statements">Download this month's statement</a> under Employee statements.</dd></dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PANE: redemptions list ================= -->
+      <section data-pane="redemptions" class="stack hide">
+        <div class="card">
+          <header><h2>Redemptions</h2><span class="sub">Pay technicians their redeemed balance by UPI</span></header>
+          <div class="toolbar">
+            <input class="in search" placeholder="Search reference or technician" aria-label="Search redemptions">
+            <div class="seg" role="group" aria-label="Status">
+              <button data-show="rs:all">All</button><button class="on" data-show="rs:topay">To pay</button><button data-show="rs:awaiting">Awaiting technician</button><button data-show="rs:settled">Settled</button><button data-show="rs:declined">Declined</button>
+            </div>
+          </div>
+
+          <div data-view="loading" class="hide" aria-busy="true">
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+          </div>
+          <div data-view="empty" class="hide empty"><div class="ic2">&#8377;</div><b>No redemptions yet</b><p>Requests technicians send appear here.</p></div>
+          <div data-view="error" class="hide empty err"><div class="ic2 bad">!</div><b>Couldn't load redemptions</b><p role="alert">Something went wrong. Try again.</p><button class="btn" data-toast="Couldn't load redemptions · Something went wrong. Try again.">&#8635; Retry</button></div>
+
+          <div data-view="data">
+            <div class="tw">
+              <table class="t">
+                <thead><tr><th>Reference</th><th>Technician</th><th class="num">Amount</th><th>UPI ID</th><th>Requested</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr data-swap="rs:topay rs:all">
+                    <td><a class="mono" href="#redemption" data-tab="redemption">RDM-0041</a></td>
+                    <td><span class="nm">Ravi Teja</span> <span class="code">TCH-4021</span></td>
+                    <td class="num">₹3,200</td><td class="mono">ravi.teja@okhdfc</td><td>2 hours ago</td><td><span class="chip warn">To pay</span></td>
+                  </tr>
+                  <tr class="hide" data-swap="rs:awaiting rs:all">
+                    <td><a class="mono" href="#redemption" data-tab="redemption">RDM-0040</a></td>
+                    <td><span class="nm">Imran Shaikh</span> <span class="code">TCH-4027</span></td>
+                    <td class="num">₹4,500</td><td class="mono">imran.s@oksbi</td><td>yesterday</td><td><span class="chip info">Awaiting technician</span></td>
+                  </tr>
+                  <tr class="hide" data-swap="rs:settled rs:all">
+                    <td><a class="mono" href="#redemption" data-tab="redemption">RDM-0038</a></td>
+                    <td><span class="nm">Ravi Teja</span> <span class="code">TCH-4021</span></td>
+                    <td class="num">₹12,450</td><td class="mono">ravi.teja@okhdfc</td><td>08-10-2026</td><td><span class="chip ok">Settled</span></td>
+                  </tr>
+                  <tr class="hide" data-swap="rs:declined rs:all">
+                    <td><a class="mono" href="#redemption" data-tab="redemption">RDM-0037</a></td>
+                    <td><span class="nm">Imran Shaikh</span> <span class="code">TCH-4027</span></td>
+                    <td class="num">₹1,00,000</td><td class="mono">imran.s@oksbi</td><td>02-10-2026</td><td><span class="chip">Declined</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pg"><span>Showing the selected status</span><span>One request is for the whole balance, capped at ₹1,00,000</span></div>
+          </div>
+        </div>
+
+        <div class="card"><div class="body" style="display:flex;gap:12px;align-items:flex-start">
+          <span class="chip employee proposed">Employee</span>
+          <div style="font-size:13px"><b class="proposed">Meena R and Kavita Rao are not listed here.</b><br>Employees are paid through salary, so there is nothing to redeem. Their allowances and penalties go on a monthly statement — see <a href="09c-portal-pool-and-statements.html#statements">Employee statements</a>.</div>
+        </div></div>
+      </section>
+
+      <!-- ================= PANE: one redemption ================= -->
+      <section data-pane="redemption" class="stack hide">
+        <div class="inline-act" style="align-items:center">
+          <a class="btn sm" href="#redemptions" data-tab="redemptions">&larr; Back to redemptions</a>
+          <span class="mut" style="font-size:12px">Mock: show this redemption as</span>
+          <div class="seg"><button class="on" data-show="rd:topay">To pay</button><button data-show="rd:awaiting">Paid, awaiting technician</button><button data-show="rd:settled">Settled</button><button data-show="rd:declined">Declined</button></div>
+        </div>
+
+        <div class="two">
+          <div class="stack">
+            <div class="card">
+              <header style="flex-direction:column;align-items:flex-start;gap:4px">
+                <div class="inline-act" style="align-items:center">
+                  <span class="chip warn" data-swap="rd:topay">To pay</span>
+                  <span class="chip info hide" data-swap="rd:awaiting">Awaiting technician</span>
+                  <span class="chip ok hide" data-swap="rd:settled">Settled</span>
+                  <span class="chip hide" data-swap="rd:declined">Declined</span>
+                  <span class="code">RDM-0041</span>
+                </div>
+                <div class="big" style="margin:2px 0 0">₹3,200</div>
+                <div style="font-size:13.5px"><a class="nm" href="09a-portal-technicians.html#technicians">Ravi Teja</a> <span class="code">TCH-4021</span> <span class="mut">· +91 98000 00001</span></div>
+              </header>
+              <div class="body" style="display:flex;flex-direction:column;align-items:center;gap:14px">
+                <div data-swap="rd:topay" style="display:flex;flex-direction:column;align-items:center;gap:10px">
+                  <div class="qr" data-qr aria-label="UPI QR code to pay ₹3,200 to Ravi Teja, ravi.teja@okhdfc"></div>
+                  <p style="margin:0;max-width:340px;text-align:center;font-size:13px;color:var(--ink-2)">Scan with any UPI app. Check the name it shows is <b style="color:var(--ink)">Ravi Teja</b> before you pay.</p>
+                  <span class="mut" style="font-size:11px">Mock QR — not scannable</span>
+                </div>
+                <dl class="kv" style="width:100%;grid-template-columns:auto 1fr;font-size:13px">
+                  <dt>UPI ID</dt><dd class="mono">ravi.teja@okhdfc</dd>
+                  <dt>Reference</dt><dd class="mono">RDM-0041</dd>
+                  <dt>Requested</dt><dd>15-10-2026 09:48</dd>
+                </dl>
+              </div>
+            </div>
+            <div class="card"><div class="body">
+              <ol class="timeline" style="font-size:13px">
+                <li><span>Requested by Ravi Teja</span><span class="right mut">15-10-2026 09:48</span></li>
+                <li class="hide" data-swap="rd:awaiting rd:settled"><span>Marked as paid by Anil Reddy</span><span class="right mut">15-10-2026 11:40</span></li>
+                <li class="hide" data-swap="rd:settled"><span>Received · confirmed by Ravi Teja</span><span class="right mut">15-10-2026 12:05</span></li>
+                <li class="hide" data-swap="rd:declined"><span>Declined by Anil Reddy</span><span class="right mut">15-10-2026 11:10</span></li>
+              </ol>
+            </div></div>
+          </div>
+
+          <div class="stack">
+            <!-- claim form -->
+            <div class="card" data-swap="rd:topay">
+              <header><h2>Mark as paid</h2></header>
+              <div class="body">
+                <div class="field"><label>Payment screenshot <span class="neg">*</span></label>
+                  <button class="btn" type="button">&#128247; Payment screenshot</button></div>
+                <div class="field"><label>UTR / reference (optional)</label><input class="in" placeholder="e.g. 412345678901"></div>
+                <button class="btn pri" data-show="rd:awaiting" data-toast="Marked as paid">Mark as paid</button>
+              </div>
+            </div>
+            <div data-swap="rd:topay"><button class="btn" data-open="dlgDecline">Decline</button>
+              <span class="hint-s" style="margin-top:6px">Only before it is marked as paid — the money may already have moved after that.</span></div>
+
+            <!-- after the claim -->
+            <div class="card hide" data-swap="rd:awaiting rd:settled">
+              <div class="body stack">
+                <b>Paid by Anil Reddy · 15-10-2026 11:40</b>
+                <span class="mono" style="font-size:12px;color:var(--ink-2)">UTR 412345678901</span>
+                <div class="shot">Payment<br>screenshot</div>
+                <span class="hide" style="font-size:13px;color:var(--ink-2)" data-swap="rd:awaiting" id="wait">Waiting for Ravi Teja to confirm</span>
+                <span class="hide pos" style="font-size:13px;font-weight:500" data-swap="rd:settled">Received · 15-10-2026 12:05</span>
+              </div>
+            </div>
+            <div class="mockbar blk hide" data-swap="rd:awaiting">No “Confirm received” button exists on this page for the payer, here or on the staff side — only Ravi Teja confirms, in the app.</div>
+
+            <div class="card hide" data-swap="rd:declined"><div class="body" style="font-size:13px">Declined by Anil Reddy: Wrong UPI ID on file — Ravi to re-add it.</div></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="signoff">
+        <h2>Wording added by the mock — needs sign-off</h2>
+        <ul>
+          <li>Seg labels on UPI changes: <code>Pending · Approved · Rejected · All</code> are the doc's; the <b>Search…</b> placeholders, the footer lines "Pending first, oldest first" / "Click a technician to decide on their profile" / "Showing the selected status" / "One request is for the whole balance, capped at ₹1,00,000" (root AGENTS) and "(shown instead when…)" annotation are mock-only.</li>
+          <li>Technician-profile <span class="proposed">Payouts</span> card on the profile: heading, <code>Not redeemable</code> chip, "Can redeem — requests appear under Redemptions.", "Download this month's statement". The "Why" line reuses the server message for <code>EMPLOYEE_CANNOT_REDEEM</code>.</li>
+          <li>Footnote under Redemptions: "<b>Meena R and Kavita Rao are not listed here.</b>" and the sentence after it.</li>
+          <li>Redemption page: "Back to redemptions"; decline example reason; timeline lines "Marked as paid by …", "Received · confirmed by …", "Declined by …" (the staff page's own event labels are not in the doc).</li>
+          <li>Reject dialog confirm button "Reject"; profile header lines (Phone, Region, Joined, Rating, UPI ID) are the staff page's labels.</li>
+        </ul>
+        <p style="margin:8px 0 0">Reused from the staff screens: UPI ID change requested / Now / Asked for / Approve change / Reject, Redemption table columns, QR line, Mark as paid form, Decline dialog. Doc §5.9: UPI changes caption, columns, statuses, empty / filtered empty / error, "Back to UPI changes".</p>
+      </div>
+      <div class="sp-b"></div>
+    </main>
+  </div>
+</div>
+
+<!-- reject UPI change -->
+<div class="scrim" id="dlgReject">
+  <div class="dlg sm" role="dialog" aria-modal="true" aria-labelledby="rjT">
+    <header><h3 id="rjT">Reject the change to imrans@paytm?</h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p class="mut" style="margin:0 0 12px">Imran Shaikh keeps imran.s@oksbi and reads your reason.</p>
+      <div class="field"><label>Reason <span class="neg">*</span></label><textarea class="in" placeholder=""></textarea><span class="hint">Say why, so they can fix it · 3–160 characters</span></div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn dng" data-close data-show="up:rejected" data-toast="Change rejected">Reject</button></footer>
+  </div>
+</div>
+
+<!-- decline redemption -->
+<div class="scrim" id="dlgDecline">
+  <div class="dlg sm" role="dialog" aria-modal="true" aria-labelledby="dcT">
+    <header><h3 id="dcT">Decline ₹3,200 to Ravi Teja?</h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p class="mut" style="margin:0 0 12px">Ravi Teja reads your reason, and the amount goes back to their balance.</p>
+      <div class="field"><label>Reason <span class="neg">*</span></label><textarea class="in"></textarea></div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn dng" data-close data-show="rd:declined" data-toast="RDM-0041 declined">Decline</button></footer>
+  </div>
+</div>
+
+<div class="state-switch" role="group" aria-label="Mock: list state">
+  <button data-state="loading">Loading</button><button data-state="empty">Empty</button><button data-state="error">Error</button><button data-state="data" class="on">Data</button>
+</div>
+<div class="toast" id="toast" role="status"></div>
+</body>
+</html>

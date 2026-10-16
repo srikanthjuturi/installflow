@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Franchise structure - explainer for tasks 01-04</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+.topnav{background:var(--brand-500);color:#fff;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px}
+.topnav b{font-size:15px}.topnav a{color:#dfe1ff}.topnav a:hover{color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.scroll{overflow-x:auto}
+.proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+h2.sec{font-size:17px;margin:8px 0 0}
+p{margin:0}
+table.t td,table.t th{font-size:13px;vertical-align:top}
+.ok{color:var(--ok);font-weight:700}.no{color:var(--ink-3)}.rd{color:var(--info);font-weight:600}
+svg text{font-family:"IBM Plex Sans",sans-serif}
+.res{border-radius:10px;padding:12px 14px;margin-top:12px;font-size:13.5px}
+.res.home{background:var(--info-bg)}.res.sec{background:var(--ok-bg)}.res.sky{background:var(--warn-bg)}.res.bad{background:var(--danger-bg)}
+.yes{color:var(--ok);font-weight:700}.nope{color:var(--danger);font-weight:700}
+.ill{font-style:italic;color:var(--ink-3)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
+code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-3);padding:0 4px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="topnav"><b>Franchise structure - tasks 01-04</b>
+<a href="index.html">Index</a><a href="#structure">Structure</a><a href="#routing">Routing demo</a><a href="#carve">Carve-out</a><a href="#access">Roles and access</a></div>
+
+<div class="wrap">
+<div class="note"><b>Mocks:</b> <a href="../franchisee/01-franchisee-schema-and-backfill.md">01</a> (schema and home franchisee), <a href="../franchisee/02-franchise-roles-and-principal.md">02</a> (roles and principal), <a href="../franchisee/03-franchisee-management-api.md">03</a> (management API and carve-out), <a href="../franchisee/04-ticket-routing-and-eligibility.md">04</a> (routing and eligibility), under <a href="../franchisee/00-index.md">00-index.md</a>. Pincodes and names are the worked examples in those docs; technicians marked <span class="ill">illustrative</span> are not in the docs.</div>
+
+<h2 class="sec" id="structure">1. Company, home franchisee, external franchisees</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">Every company has exactly one <b>home</b> franchisee (internal, created with the company, never deleted, never made external - F1). It stores <b>no pincode rows</b>: it owns every active pincode nobody else owns (F4), so a ticket can never be without a franchisee. Other franchisees own <b>ranges</b> that never overlap (F3).</p>
+<div class="scroll">
+<svg viewBox="0 0 900 400" width="100%" style="min-width:760px" role="img" aria-label="Company, home franchisee and two franchisees, with a pincode strip">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8b909d"/></marker></defs>
+  <rect x="300" y="8" width="300" height="52" rx="10" fill="#2c2f74"/>
+  <text x="450" y="30" text-anchor="middle" fill="#fff" font-size="15" font-weight="600">Acme Appliances</text>
+  <text x="450" y="48" text-anchor="middle" fill="#c4c6ee" font-size="11.5">the company (tenant)</text>
+  <path d="M450 60V84H150V108" fill="none" stroke="#8b909d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <path d="M450 60V108" fill="none" stroke="#8b909d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <path d="M450 60V84H750V108" fill="none" stroke="#8b909d" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="20" y="108" width="260" height="128" rx="10" fill="#e9f1fb" stroke="#215fa6" stroke-width="1.6" stroke-dasharray="6 4"/>
+  <text x="34" y="132" font-size="14" font-weight="700" fill="#215fa6">Acme Appliances - HOME</text>
+  <text x="34" y="152" font-size="12" fill="#171a21">internal - is_home = true</text>
+  <text x="34" y="172" font-size="12" fill="#171a21">The catch-all (F4).</text>
+  <text x="34" y="190" font-size="12" fill="#171a21">Owns every pincode nobody else claims.</text>
+  <text x="34" y="212" font-size="12" font-weight="600" fill="#cf3446">franchisee_pincodes rows: none</text>
+  <text x="34" y="228" font-size="11" fill="#565c68">cannot be deleted, deactivated or made external</text>
+  <rect x="320" y="108" width="260" height="128" rx="10" fill="#e6f5ec" stroke="#1a8a4d" stroke-width="1.6"/>
+  <text x="334" y="132" font-size="14" font-weight="700" fill="#1a8a4d">Acme Secunderabad</text>
+  <text x="334" y="152" font-size="12" fill="#171a21">internal</text>
+  <text x="334" y="172" font-size="12" fill="#171a21">pincode ranges:</text>
+  <text x="334" y="192" font-size="12.5" font-family="IBM Plex Mono" fill="#171a21">500003-500015, 500025</text>
+  <text x="334" y="214" font-size="11" fill="#565c68">stored as one row per existing, active code</text>
+  <rect x="620" y="108" width="260" height="128" rx="10" fill="#fbf1de" stroke="#b9770a" stroke-width="1.6"/>
+  <text x="634" y="132" font-size="14" font-weight="700" fill="#b9770a">SkyFix Services</text>
+  <text x="634" y="152" font-size="12" fill="#171a21">external - a separate business</text>
+  <text x="634" y="172" font-size="12" fill="#171a21">pincode ranges:</text>
+  <text x="634" y="192" font-size="12.5" font-family="IBM Plex Mono" fill="#171a21">500030-500040</text>
+  <text x="634" y="214" font-size="11" fill="#565c68">its admin: Priya (franchisee_admin)</text>
+  <text x="20" y="266" font-size="12" font-weight="600" fill="#565c68">Who owns each pincode (500001 - 500050)</text>
+  <g transform="translate(20,276)">
+    <rect x="0" y="0" width="32" height="30" fill="#bcd5f1"/>
+    <rect x="32" y="0" width="208" height="30" fill="#9ed6b4"/>
+    <rect x="240" y="0" width="144" height="30" fill="#bcd5f1"/>
+    <rect x="384" y="0" width="16" height="30" fill="#9ed6b4"/>
+    <rect x="400" y="0" width="64" height="30" fill="#bcd5f1"/>
+    <rect x="464" y="0" width="176" height="30" fill="#f1d28d"/>
+    <rect x="640" y="0" width="160" height="30" fill="#bcd5f1"/>
+    <text x="16" y="19" text-anchor="middle" font-size="10.5">home</text>
+    <text x="136" y="19" text-anchor="middle" font-size="11">Secunderabad 500003-15</text>
+    <text x="312" y="19" text-anchor="middle" font-size="11">home (gap)</text>
+    <text x="432" y="19" text-anchor="middle" font-size="10">home</text>
+    <text x="552" y="19" text-anchor="middle" font-size="11">SkyFix 500030-500040</text>
+    <text x="720" y="19" text-anchor="middle" font-size="11">home 500041-500050</text>
+    <text x="0" y="46" font-size="10.5" fill="#565c68">500001</text>
+    <text x="388" y="46" text-anchor="middle" font-size="10.5" fill="#565c68">500025</text>
+    <text x="800" y="46" text-anchor="end" font-size="10.5" fill="#565c68">500050</text>
+  </g>
+  <text x="20" y="352" font-size="11.5" fill="#565c68">Acme Secunderabad also owns the single code 500025 (green notch). Saving a range that includes a code another franchisee owns is refused: 409 FRANCHISEE_PINCODE_TAKEN, naming the codes and owners (F3).</text>
+  <text x="20" y="372" font-size="11.5" fill="#565c68">Backfill (task 01): on the day it ships, every existing company has only its home franchisee and every technician, ticket, ledger row, redemption and invite is stamped with it.</text>
+</svg>
+</div>
+<div class="legend" style="margin-top:6px"><span><i style="background:#bcd5f1"></i>home (catch-all, no rows)</span><span><i style="background:#9ed6b4"></i>Acme Secunderabad</span><span><i style="background:#f1d28d"></i>SkyFix Services</span></div>
+</div></div>
+
+<div class="two">
+<div class="card"><header><h2>Rows stored</h2><span class="sub">task 01 tables</span></header><div class="scroll"><table class="t">
+<thead><tr><th>franchisees</th><th>kind</th><th>code</th><th>is_home</th></tr></thead>
+<tbody><tr><td>Acme Appliances</td><td>internal</td><td class="mono">HOME</td><td>true</td></tr>
+<tr><td>Acme Secunderabad</td><td>internal</td><td class="ill">derived</td><td>false</td></tr>
+<tr><td>SkyFix Services</td><td>external</td><td class="ill">derived</td><td>false</td></tr></tbody></table>
+<table class="t"><thead><tr><th>franchisee_pincodes</th><th>pincode</th></tr></thead>
+<tbody><tr><td>Acme Secunderabad</td><td class="mono">500003 ... 500015, 500025</td></tr>
+<tr><td>SkyFix Services</td><td class="mono">500030 ... 500040 (codes that exist)</td></tr>
+<tr><td>Acme Appliances (home)</td><td><span class="no">no rows, ever</span></td></tr></tbody></table></div></div>
+<div class="card"><header><h2>What the backfill stamps</h2><span class="sub">task 01 worked example, 12 technicians / 340 tickets</span></header><div class="scroll"><table class="t">
+<thead><tr><th>Table</th><th>franchisee_id</th></tr></thead>
+<tbody>
+<tr><td>technician_profiles (all 12)</td><td>home - and technician_type = <b>freelancer</b></td></tr>
+<tr><td>tickets (all 340)</td><td>home</td></tr>
+<tr><td>ledger_entries (95), redemptions (2)</td><td>home</td></tr>
+<tr><td>memberships</td><td>NULL (only franchise roles carry one)</td></tr>
+<tr><td>franchisee_pincodes</td><td>none</td></tr></tbody></table>
+<p style="padding:10px 16px;font-size:12.5px;color:var(--ink-3)">The home is named after the company (verbatim) with code <span class="mono">HOME</span> (01, section 3.4). Every screen reads as it did yesterday.</p></div></div>
+</div>
+
+<h2 class="sec" id="routing">2. Routing demo - who owns this pincode, who may take the job</h2>
+<div class="card" id="demo"><div class="body">
+<p style="margin-bottom:12px">At intake the ticket is stamped from the pincode (<code>franchisee_for_pincode</code>: owner row, else home). Task 04 then adds one predicate - <code>technician.franchisee_id = ticket.franchisee_id</code> - to all five places that decide who may take a job: pool query, <code>technicians_covering</code>, the guarded UPDATE in accept, the assign guard, and the pool socket.</p>
+<div class="row2">
+<div class="field"><label for="pin">Ticket pincode</label>
+<select id="pin" class="in">
+<option value="500001">500001</option><option value="500003">500003</option><option value="500012">500012</option>
+<option value="500020">500020 (between the ranges)</option><option value="500025">500025 (single code)</option>
+<option value="500032" selected>500032</option><option value="500034">500034</option><option value="500040">500040 (end of range)</option>
+<option value="500050">500050</option><option value="999999">999999 (six digits, not in the master)</option></select>
+<span class="hint">Ranges: Secunderabad 500003-500015 and 500025; SkyFix 500030-500040; everything else is home.</span></div>
+<div class="field"><label>What if a carve-out left a stale row behind?</label>
+<label class="chk"><input type="checkbox" id="stale"> Sita still lists 500032 in her coverage (she was trimmed in the carve-out below)</label>
+<span class="hint">The franchisee predicate refuses her anyway - "even if a stale row survived" (04 section 1).</span></div>
+</div>
+<div id="owner"></div>
+<div class="scroll" style="margin-top:12px"><table class="t">
+<thead><tr><th>Technician</th><th>Franchisee</th><th>Coverage</th><th>Covers pincode?</th><th>Same franchisee?</th><th>Offered the job?</th></tr></thead>
+<tbody id="techs"></tbody></table></div>
+<p style="margin-top:10px;font-size:12.5px;color:var(--ink-3)">Ravi and Sita are from the carve-out example (03). Suresh is named in 02 as a home technician; Meena is SkyFix's employee in 06. Their coverage rows are <span class="ill">illustrative</span>. A pincode with no eligible technician just waits in the pool; staff still escalate and assign it (tickets stay company work, F7).</p>
+</div></div>
+
+<h2 class="sec" id="carve">3. The carve-out - giving SkyFix 500030-500040</h2>
+<div class="card" data-scope><div class="body">
+<p style="margin-bottom:10px">The 03 worked example. Ravi covers 500031 + 500032; Sita covers 500032 + 500050. Ticket <span class="mono">ACM-INST-0412</span> (500033, Slot Pending, nobody assigned) and <span class="mono">ACM-INST-0398</span> (500034, Assigned to Ravi) are open. The National Head saves <code>500030 - 500040</code> for SkyFix.</p>
+<div class="seg" data-tabs style="margin-bottom:12px"><button class="on" data-tab="before">1. Before</button><button data-tab="preview">2. Dry-run preview</button><button data-tab="after">3. After apply</button></div>
+
+<div data-pane="before">
+<div class="two">
+<div class="scroll"><table class="t"><thead><tr><th>Technician</th><th>Franchisee</th><th>Coverage</th></tr></thead><tbody>
+<tr><td>Ravi</td><td>Acme Appliances (home)</td><td class="mono">500031, 500032</td></tr>
+<tr><td>Sita</td><td>Acme Appliances (home)</td><td class="mono">500032, 500050</td></tr></tbody></table></div>
+<div class="scroll"><table class="t"><thead><tr><th>Ticket</th><th>Pincode</th><th>Status</th><th>Stamped</th></tr></thead><tbody>
+<tr><td class="mono">ACM-INST-0412</td><td>500033</td><td><span class="chip new">Slot Pending</span> unassigned</td><td>home</td></tr>
+<tr><td class="mono">ACM-INST-0398</td><td>500034</td><td><span class="chip assigned">Assigned</span> to Ravi</td><td>home</td></tr></tbody></table></div>
+</div></div>
+
+<div data-pane="preview" class="hide">
+<div class="pill-info" style="margin-bottom:10px"><code>PUT /franchisees/{skyfix}/pincodes?dryRun=true</code> with <code>{"pincodeRanges": "500030 - 500040"}</code> answers 200 "Preview - nothing was saved". Nothing is written, no lock is taken.</div>
+<div class="scroll"><table class="t"><thead><tr><th>What</th><th>Result</th><th>Rule</th></tr></thead><tbody>
+<tr><td>Pincodes</td><td>11 numbers in the range, 9 exist and are active: <code>resolvedCount: 9</code>, <code>unknownCount: 2</code>, <code>pincodeRanges: "500030-500040"</code></td><td>F2</td></tr>
+<tr><td>Ravi</td><td><span class="chip ok">moves</span> to SkyFix - his whole coverage is inside</td><td>F6</td></tr>
+<tr><td>Sita</td><td><span class="chip warn">trimmed</span> - loses 500032, keeps 500050, stays with Acme (home)</td><td>F6: keeps at least one</td></tr>
+<tr><td class="mono">ACM-INST-0412</td><td><span class="chip info">re-stamped</span> to SkyFix (open, unassigned, pincode inside)</td><td>F6</td></tr>
+<tr><td class="mono">ACM-INST-0398</td><td><span class="chip">unchanged</span> - assigned, keeps Ravi and Acme (home). <code>assignedTicketsKept: 1</code></td><td>F6</td></tr>
+</tbody></table></div>
+<p style="margin-top:8px;font-size:12.5px;color:var(--ink-3)">Beyond F6's list, an <span class="mono">Escalated</span> ticket with nobody assigned is re-stamped too, and live invites follow the technicians' rules (both are the writer's decisions in 03, reported to the index owner).</p>
+<div style="margin-top:10px"><button class="btn pri" data-toast="Apply is the same body with dryRun=false - one transaction">Apply (dryRun=false)</button></div>
+</div>
+
+<div data-pane="after" class="hide">
+<div class="two">
+<div class="scroll"><table class="t"><thead><tr><th>Technician</th><th>Franchisee</th><th>Coverage</th></tr></thead><tbody>
+<tr><td>Ravi</td><td><span class="chip warn">SkyFix Services</span></td><td class="mono">500031, 500032</td></tr>
+<tr><td>Sita</td><td>Acme Appliances (home)</td><td class="mono">500050 <span class="chip">lost 500032</span></td></tr></tbody></table></div>
+<div class="scroll"><table class="t"><thead><tr><th>Ticket</th><th>Status</th><th>Stamped</th></tr></thead><tbody>
+<tr><td class="mono">ACM-INST-0412</td><td><span class="chip new">Slot Pending</span></td><td><span class="chip warn">SkyFix Services</span></td></tr>
+<tr><td class="mono">ACM-INST-0398</td><td><span class="chip assigned">Assigned</span> to Ravi</td><td>home (kept)</td></tr></tbody></table></div>
+</div>
+<ul style="margin:12px 0 0;padding-left:20px;display:grid;gap:4px;font-size:13px">
+<li>All of it in <b>one transaction</b>. One <span class="mono">franchisee_changed</span> event on <span class="mono">ACM-INST-0412</span>: <span class="proposed">"Acme Appliances to SkyFix Services - pincode 500033 reassigned"</span>.</li>
+<li>One <span class="mono">technician_moved</span> bell: <span class="proposed">"Pincodes reassigned to SkyFix Services" - "1 technician(s) moved - 1 lost pincodes - 1 open ticket(s) re-routed"</span>. No push to the moved technician.</li>
+<li><b>ACM-INST-0398 follows later:</b> when a manager reassigns it, its stamp is first re-routed to 500034's owner (SkyFix, event <span class="mono">franchisee_changed</span>), then only SkyFix technicians are eligible.</li>
+</ul>
+<div class="two" style="margin-top:12px">
+<div class="pill-info"><b>A month later:</b> the NH shrinks SkyFix to <code>500030-500035</code>. 500036-500040 go back to home with the same rules run the other way.</div>
+<div class="pill-err"><b>A race:</b> a second admin applying <code>500038-500045</code> to Acme Secunderabad at the same moment is refused with 409 <span class="mono">FRANCHISEE_PINCODE_TAKEN</span> naming "500038-500040 - SkyFix Services", whichever commits second.</div>
+</div>
+</div>
+</div></div>
+
+<h2 class="sec" id="access">4. Role and access matrix</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">Authority is <b>per franchisee</b>, a relationship between two rows, so rank cannot express it: the three franchise roles are appended <i>below</i> every staff role (ranks 8-10), which makes every existing staff floor refuse them automatically, and <code>core.franchise_scope</code> decides who manages which franchisee's technicians and money (F7 / F8).</p>
+<div class="scroll"><table class="t">
+<thead><tr><th>What</th><th>Company Admin / NH</th><th>Regional Head / Area Manager</th><th>Franchisee admin (own franchisee)</th><th>Facility admin</th><th>Facility operator</th><th>If refused</th></tr></thead>
+<tbody>
+<tr><td>See the Franchisees list and a franchisee's admins</td><td class="ok">yes</td><td class="ok">yes (<span class="mono">franchisees.view</span>)</td><td class="no">-</td><td class="no">-</td><td class="no">-</td><td>403</td></tr>
+<tr><td>Create / edit / deactivate a franchisee, set its pincode ranges, create its admin login</td><td class="ok">yes (<span class="mono">franchisees.manage</span>, NH and above)</td><td class="rd">read only</td><td class="no">-</td><td class="no">-</td><td class="no">-</td><td>403</td></tr>
+<tr><td>Work tickets: assign, reschedule, force-close, escalations, dashboard</td><td class="ok">yes</td><td class="ok">yes, by territory</td><td class="no">- (every write refused)</td><td class="no">-</td><td class="no">-</td><td>403 (rank floors)</td></tr>
+<tr><td>Read tickets</td><td class="ok">yes, by territory</td><td class="ok">yes, by territory</td><td class="rd">own franchisee's tickets, read-only</td><td class="rd">only tickets with a part request of their franchisee</td><td class="rd">same</td><td><b>404</b> outside (by ownership, not geography); attachments always 404</td></tr>
+<tr><td>Add / invite / edit / set type / remove a <b>home</b> technician</td><td class="ok">yes, as today</td><td class="ok">yes, as today (AM / RH)</td><td class="ok">yes, if home's own admin</td><td class="no">-</td><td class="no">-</td><td>403</td></tr>
+<tr><td>Same, for a <b>non-home</b> technician</td><td class="rd">sees, cannot change</td><td class="rd">sees, cannot change</td><td class="ok">own franchisee only</td><td class="no">- (they work parts, not people)</td><td class="no">-</td><td>staff: <b>403</b> "Managed by SkyFix Services"; another franchisee's admin: <b>404</b></td></tr>
+<tr><td>Approve a technician's UPI change</td><td class="ok">home: AM, then RH, NH, Admin chain</td><td class="ok">home chain (their turn)</td><td class="ok">non-home: only own admin</td><td class="no">-</td><td class="no">-</td><td>staff on non-home: 403</td></tr>
+<tr><td>Pay a redemption</td><td class="ok">home: National Head, else Admin</td><td class="no">-</td><td class="ok">own technicians</td><td class="no">-</td><td class="no">-</td><td>staff claim / decline on non-home: <b>404</b>; Admin / NH may read it (<span class="mono">canAct: false</span>)</td></tr>
+<tr><td>Reverse a penalty</td><td class="ok">any franchisee</td><td class="rd">home tickets only; "cannot see SkyFix's money"</td><td class="ok">own franchisee</td><td class="no">-</td><td class="no">-</td><td>403 / hidden from the ticket page</td></tr>
+<tr><td>Pool and ledger</td><td class="rd">home entries; non-home read-only</td><td class="rd">may read any pool's <i>balance</i> (funds escalation bonuses); entries closed</td><td class="ok">own pool</td><td class="no">-</td><td class="no">-</td><td>other franchisee: 404</td></tr>
+<tr><td>Travel and speed settings; employee statements</td><td class="rd">home only (<span class="mono">settings.edit</span> + NH floor); non-home read-only</td><td class="no">-</td><td class="ok">own (<span class="mono">franchise.settings</span>, <span class="mono">franchise.statements</span>)</td><td class="no">-</td><td class="no">-</td><td>404 for anyone else</td></tr>
+<tr><td>Spare-part requests: approve, reject (also an approved request), issue, return</td><td class="no proposed">- (no fallback, home included)</td><td class="no">-</td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td><td>403 "Missing feature: parts.handle"; another franchisee's request 404</td></tr>
+<tr class="proposed"><td>Raise a spare-part request (the technician)</td><td colspan="5" class="no">Refused when the technician's franchisee has no active facility admin or operator. The app hides or disables <i>Need a spare part</i> with "Your franchisee has no parts desk yet."</td><td>409 <span class="mono">NO_FACILITY</span></td></tr>
+<tr><td>Parts catalogue</td><td class="ok">yes (<span class="mono">parts.catalogue</span>)</td><td class="no">-</td><td class="no">-</td><td class="no">-</td><td class="no">-</td><td>403</td></tr>
+<tr><td>Facility users</td><td class="rd proposed">creates facility users for the <b>home</b> franchisee only</td><td class="no">-</td><td class="ok">creates facility admins and operators</td><td class="ok">creates operators only</td><td class="no">-</td><td>403 "You can only add roles below your own"</td></tr>
+<tr class="proposed"><td>Deactivate a franchisee admin</td><td class="ok">yes (NH and above), except the last active admin of a non-home franchisee</td><td class="rd">read only</td><td class="no">-</td><td class="no">-</td><td class="no">-</td><td>409 <span class="mono">FRANCHISEE_LAST_ADMIN</span>: "Add another admin first &mdash; a franchisee can't be left without one." The home franchisee is exempt: company Admin / NH act for it.</td></tr>
+<tr><td>Feature Access for franchise roles</td><td class="ok">Admin / NH only</td><td class="no">-</td><td class="no">403 (any edit)</td><td class="no">-</td><td class="no">-</td><td>403</td></tr>
+<tr><td>Create a franchise login from Users and roles</td><td colspan="5" class="no">Nobody - refused with 400 for every role (it would mint a franchise login with no franchisee). Logins come from the Franchisees screen (admins) and the portal (facility users).</td><td>400</td></tr>
+</tbody></table></div>
+<div class="legend" style="margin-top:8px"><span><b class="ok">yes</b> allowed</span><span><b class="rd">blue</b> allowed with a limit</span><span><b class="no">-</b> refused</span></div>
+</div></div>
+
+<div class="two">
+<div class="card"><header><h2>404 or 403?</h2></header><div class="body" style="display:grid;gap:8px;font-size:13px">
+<div><b>404 - the caller must not learn it exists.</b> Another company's row, for anyone. Another franchisee's technician, ledger row, redemption, request or ticket, for a franchise principal (the franchise wall is a second wall inside the company). A guessed ticket id outside a franchisee's ownership. Request attachments, always.</div>
+<div><b>403 - they can already see it, they just cannot change it.</b> A staff write on a visible non-home technician (including <span class="mono">PUT /technicians/{id}/base-location</span>): <span class="proposed">"Managed by SkyFix Services - only its franchisee admin can change this technician"</span>. A missing feature key or rank floor. Also a read of a money screen that is not theirs: a 403, not a fake empty answer.</div>
+<div><b>422 or 400 - not a wall:</b> <span class="mono">PINCODE_OUTSIDE_FRANCHISEE</span> is always 422. Staff are told who owns the codes (<span class="proposed">"Outside Acme Home: 500032, 500033 (SkyFix Services). Pick pincodes Acme Home owns."</span>); a franchise caller is not: <span class="proposed">"Outside your franchisee: 500032, 500033. Pick pincodes it owns."</span></div>
+</div></div>
+<div class="card"><header><h2>Feature keys (seeded once, by task 02)</h2></header><div class="scroll"><table class="t">
+<thead><tr><th>Key</th><th>Default holders</th></tr></thead><tbody>
+<tr><td class="mono">franchisees.manage</td><td>admin, national_head</td></tr>
+<tr><td class="mono">franchisees.view</td><td>admin, national_head, regional_head, area_manager</td></tr>
+<tr><td class="mono">franchise.technicians</td><td>franchisee_admin</td></tr>
+<tr><td class="mono">franchise.payouts</td><td>franchisee_admin</td></tr>
+<tr><td class="mono">franchise.pool</td><td>franchisee_admin</td></tr>
+<tr><td class="mono">franchise.settings</td><td>franchisee_admin</td></tr>
+<tr><td class="mono">franchise.statements</td><td>franchisee_admin</td></tr>
+<tr><td class="mono">franchise.tickets</td><td>franchisee_admin, facility_admin, facility_operator</td></tr>
+<tr><td class="mono">franchise.facility_users</td><td>franchisee_admin, facility_admin</td></tr>
+<tr><td class="mono">parts.handle</td><td>franchisee_admin, facility_admin, facility_operator</td></tr>
+<tr><td class="mono">parts.catalogue</td><td>admin, national_head</td></tr></tbody></table></div></div>
+</div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script>
+(function(){
+  var NAMES={home:"Acme Appliances (home)",sec:"Acme Secunderabad",sky:"SkyFix Services"};
+  function owner(code){
+    var n=parseInt(code,10);
+    if(n>=500030&&n<=500040) return "sky";
+    if((n>=500003&&n<=500015)||n===500025) return "sec";
+    return "home";
+  }
+  var MASTER_MISSING={"999999":true};
+  var TECHS=[
+    {name:"Ravi",f:"sky",cov:["500031","500032"],real:true},
+    {name:"Meena (employee)",f:"sky",cov:["500033","500034"],real:false},
+    {name:"Sita",f:"home",cov:["500050"],real:true,stale:"500032"},
+    {name:"Suresh",f:"home",cov:["500020","500050"],real:false}
+  ];
+  function render(){
+    var pin=document.getElementById("pin").value;
+    var stale=document.getElementById("stale").checked;
+    var out=document.getElementById("owner");
+    var rows=document.getElementById("techs");
+    rows.innerHTML="";
+    if(MASTER_MISSING[pin]){
+      out.innerHTML='<div class="res bad"><b>Refused at intake.</b> "'+pin+'" passes the six-digit shape check but is not in the pincode master. A ticket outside the master would fail silently and completely later (no technician would match), so intake refuses it - on every channel, not just the browser form.</div>';
+      rows.innerHTML='<tr><td colspan="6" class="no">No ticket, so nobody is offered anything.</td></tr>';
+      return;
+    }
+    var o=owner(pin);
+    var why={home:"No franchisee owns this code, so the home franchisee (the catch-all) does.",sec:"Inside Acme Secunderabad's ranges.",sky:"Inside SkyFix Services' range 500030-500040."}[o];
+    out.innerHTML='<div class="res '+o+'"><b>Stamped: '+NAMES[o]+'.</b> '+why+'</div>';
+    var any=false;
+    TECHS.forEach(function(t){
+      var cov=t.cov.slice();
+      if(stale&&t.stale) cov.push(t.stale);
+      var covers=cov.indexOf(pin)>=0;
+      var same=t.f===o;
+      var offered=covers&&same;
+      if(offered) any=true;
+      var tr=document.createElement("tr");
+      tr.innerHTML='<td>'+t.name+(t.real?'':' <span class="ill">illustrative</span>')+'</td>'+
+        '<td>'+NAMES[t.f]+'</td>'+
+        '<td class="mono">'+cov.join(", ")+(stale&&t.stale?' <span class="chip dng">stale row</span>':'')+'</td>'+
+        '<td>'+(covers?'<span class="yes">yes</span>':'<span class="no">no</span>')+'</td>'+
+        '<td>'+(same?'<span class="yes">yes</span>':'<span class="nope">no</span>')+'</td>'+
+        '<td>'+(offered?'<span class="chip ok">offered / may accept</span>':(covers&&!same?'<span class="chip dng">blocked by franchisee predicate</span>':'<span class="chip">not offered</span>'))+'</td>';
+      rows.appendChild(tr);
+    });
+    if(!any){
+      var tr=document.createElement("tr");
+      tr.innerHTML='<td colspan="6" class="no">Nobody eligible: the ticket waits in the pool. Company staff can still escalate it and assign a technician of this franchisee (assign guard, place 4).</td>';
+      rows.appendChild(tr);
+    }
+  }
+  document.getElementById("pin").addEventListener("change",render);
+  document.getElementById("stale").addEventListener("change",render);
+  render();
+})();
+</script>
+</body>
+</html>

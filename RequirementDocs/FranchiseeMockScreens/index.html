@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Franchisee programme - mock index</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+.topnav{background:var(--brand-500);color:#fff;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px}
+.topnav b{font-size:15px}.topnav a{color:#dfe1ff}.topnav a:hover{color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.scroll{overflow-x:auto}
+.proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+h2.sec{font-size:17px;margin:6px 0 0}
+p{margin:0}
+.lay{display:inline-block;border-radius:6px;padding:1px 8px;font-size:11.5px;font-weight:600}
+.lay.api{background:var(--info-bg);color:var(--info)}
+.lay.web{background:var(--ok-bg);color:var(--ok)}
+.lay.mobile{background:var(--warn-bg);color:var(--warn)}
+.lay.all{background:var(--surface-3);color:var(--ink-2)}
+table.t td{font-size:13px;vertical-align:top}
+table.t td.n{font-weight:700;font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.links a{display:block;margin-bottom:3px;white-space:nowrap}
+.tl{display:flex;gap:0;overflow-x:auto;padding:6px 2px 14px}
+.tl .st{flex:0 0 168px;position:relative;padding-top:26px;padding-right:10px}
+.tl .st::before{content:"";position:absolute;top:9px;left:0;right:0;height:3px;background:var(--brand-200)}
+.tl .st::after{content:"";position:absolute;top:2px;left:0;width:16px;height:16px;border-radius:50%;background:var(--brand-500);border:3px solid #fff;box-shadow:0 0 0 1px var(--brand-500)}
+.tl .st.client::after{background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.tl h3{margin:0 0 2px;font-size:13.5px}
+.tl .tk{font-size:12px;color:var(--ink-2)}
+.tl .mg{font-size:11.5px;margin-top:4px;font-family:"IBM Plex Mono",monospace;color:var(--brand-400);word-break:break-all}
+.tl .gt{font-size:11.5px;margin-top:4px;color:var(--ink-3)}
+.gates{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.gate{background:#fff;border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:10px;padding:10px 12px;font-size:13px}
+.gate b{display:block;margin-bottom:3px}
+@media(max-width:900px){.gates{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="topnav"><b>Franchisee programme - mock set</b>
+<a href="#decisions">Decisions</a><a href="#tasks">Tasks</a><a href="#releases">Release order</a><a href="#gates">Release gates</a><a href="#howto">How to use</a></div>
+
+<div class="wrap">
+<div class="note"><b>Mocks the whole programme.</b> Index of every mock for <a href="../franchisee/00-index.md">00-index.md</a> and its 19 task docs (00-18), built from <a href="../franchisee/16-rollout-and-docs.md">16-rollout-and-docs.md</a> for the release order. Where a task doc and the index disagree, the index wins.</div>
+
+<div class="card" id="howto">
+<header><h2>How to use these mocks</h2></header>
+<div class="body">
+<ul style="margin:0;padding-left:20px;display:grid;gap:5px">
+<li><b>Static and click-through only.</b> No framework, no build, no server: open any file by double-click. Nothing is saved and nothing calls the API.</li>
+<li><b>Screens</b> (tasks 07, 08, 09, 13, 14, 15) show layout and states. <b>Explainers</b> (backend tasks 00-06, 10-12, 16) show the rules with small interactive demos, because those tasks have no screen.</li>
+<li><span class="proposed">&nbsp;A dashed outline&nbsp;</span> marks wording that is <b>PROPOSED</b> and needs owner sign-off (index section 7) before the client task is built.</li>
+<li>The owner has settled ten of the open questions and the mocks show the settled behaviour; five remain open (below, and in full on the <a href="backend-00-16-test-and-rollout.html#open">test and rollout page</a>). Figures in the demos come from the worked examples in the task docs.</li>
+</ul>
+</div></div>
+
+<h2 class="sec" id="decisions">Owner decisions</h2>
+<div class="card"><div class="body" style="display:grid;gap:10px;font-size:13px">
+<div><b>Settled (10), shown in the mocks:</b> speed clock starts at the later of accept and slot start &middot; an approved part request can be cancelled (rejected with a reason) &middot; the last active admin of a non-home franchisee cannot be deactivated &middot; home parts have no Admin / NH fallback, and a franchisee with no parts desk cannot raise requests &middot; type changes refused with open jobs or a redeemable balance &middot; vendor price hidden from franchise users &middot; no speed money on force-close &middot; staff see both travel and speed on any ticket in scope, never a non-home base's coordinates or pool &middot; a technician may self-set the base and the admin can correct it &middot; no travel estimate on the offer.</div>
+<div><b>Still open (5):</b></div>
+<ul style="margin:0;padding-left:20px;display:grid;gap:3px">
+<li><span class="mono">PINCODE_OUTSIDE_FRANCHISEE</span> status code: 422 (current) or 400</li>
+<li>Facility admin and facility operator share part powers (the admin also manages operators)</li>
+<li>A franchisee admin sees its tickets read-only</li>
+<li>Employee force-close payout is ignored, not refused</li>
+<li>A reversal lands in the month it is written, on statements</li>
+</ul>
+</div></div>
+
+<h2 class="sec" id="tasks">The 17 tasks</h2>
+<div class="card"><div class="scroll">
+<table class="t">
+<thead><tr><th>#</th><th>Task</th><th>Layer</th><th>Depends on</th><th>Screens?</th><th>Mock</th><th>Doc</th></tr></thead>
+<tbody>
+<tr><td class="n">00</td><td>Prerequisites and test harness - merge pincode coordinates; pytest / vitest / jest-expo; CI</td><td><span class="lay all">all</span></td><td>-</td><td>No</td><td class="links"><a href="backend-00-16-test-and-rollout.html">Explainer: tests and rollout</a></td><td class="links"><a href="../franchisee/00-prerequisites-and-test-harness.md">00-prerequisites-and-test-harness.md</a></td></tr>
+<tr><td class="n">01</td><td>Franchisee schema, home franchisee and the backfill</td><td><span class="lay api">api</span></td><td>00</td><td>No</td><td class="links"><a href="backend-01-04-franchise-structure.html">Explainer: franchise structure</a></td><td class="links"><a href="../franchisee/01-franchisee-schema-and-backfill.md">01-franchisee-schema-and-backfill.md</a></td></tr>
+<tr><td class="n">02</td><td>Franchise roles, feature keys, principal and scope helpers</td><td><span class="lay api">api</span></td><td>01</td><td>No</td><td class="links"><a href="backend-01-04-franchise-structure.html#access">Explainer: role and access matrix</a></td><td class="links"><a href="../franchisee/02-franchise-roles-and-principal.md">02-franchise-roles-and-principal.md</a></td></tr>
+<tr><td class="n">03</td><td>Franchisee management API - ranges, overlap, carve-out, admin login</td><td><span class="lay api">api</span></td><td>02</td><td>No</td><td class="links"><a href="backend-01-04-franchise-structure.html#carve">Explainer: carve-out before / after</a></td><td class="links"><a href="../franchisee/03-franchisee-management-api.md">03-franchisee-management-api.md</a></td></tr>
+<tr><td class="n">04</td><td>Ticket routing and eligibility</td><td><span class="lay api">api</span></td><td>03</td><td>No</td><td class="links"><a href="backend-01-04-franchise-structure.html#routing">Explainer: routing demo</a></td><td class="links"><a href="../franchisee/04-ticket-routing-and-eligibility.md">04-ticket-routing-and-eligibility.md</a></td></tr>
+<tr><td class="n">05</td><td>Technician operations and their money move to the franchisee</td><td><span class="lay api">api</span></td><td>04</td><td>No</td><td class="links"><a href="backend-05-06-money-and-employees.html">Explainer: money and employees</a></td><td class="links"><a href="../franchisee/05-technician-ops-move-to-franchisee.md">05-technician-ops-move-to-franchisee.md</a></td></tr>
+<tr><td class="n">06</td><td>Employees - no per-job payout, no redeem, monthly statement</td><td><span class="lay api">api</span></td><td>05</td><td>No</td><td class="links"><a href="backend-05-06-money-and-employees.html#ledger">Explainer: freelancer vs employee ledger</a></td><td class="links"><a href="../franchisee/06-employees.md">06-employees.md</a></td></tr>
+<tr><td class="n">07</td><td>Mobile forward-compatibility release</td><td><span class="lay mobile">mobile</span></td><td>06</td><td>Yes</td><td class="links"><a class="todo" href="07-mobile-compat-states.html">07-mobile-compat-states</a></td><td class="links"><a href="../franchisee/07-mobile-forward-compat-release.md">07-mobile-forward-compat-release.md</a></td></tr>
+<tr><td class="n">08</td><td>Console Franchisees screen</td><td><span class="lay web">web</span></td><td>03</td><td>Yes</td><td class="links"><a class="todo" href="08a-franchisees-list.html">08a-franchisees-list</a><a class="todo" href="08b-franchisee-detail.html">08b-franchisee-detail</a><a class="todo" href="08c-technicians-franchisee-columns.html">08c-technicians-franchisee-columns</a></td><td class="links"><a href="../franchisee/08-console-franchisees-screen.md">08-console-franchisees-screen.md</a></td></tr>
+<tr><td class="n">09</td><td>Console franchise portal (<code>/franchise/*</code>)</td><td><span class="lay web">web</span></td><td>05, 06, 08</td><td>Yes</td><td class="links"><a class="todo" href="09a-portal-technicians.html">09a-portal-technicians</a><a class="todo" href="09b-portal-upi-and-redemptions.html">09b-portal-upi-and-redemptions</a><a class="todo" href="09c-portal-pool-and-statements.html">09c-portal-pool-and-statements</a><a class="todo" href="09d-portal-tickets-readonly.html">09d-portal-tickets-readonly</a><a class="todo" href="09e-staff-console-changes.html">09e-staff-console-changes</a></td><td class="links"><a href="../franchisee/09-console-franchise-portal.md">09-console-franchise-portal.md</a></td></tr>
+<tr><td class="n">10</td><td>Travel allowance (backend) - base location, rules, accept snapshot, <code>travel</code> ledger</td><td><span class="lay api">api</span></td><td>07</td><td>No</td><td class="links"><a href="backend-10-11-allowance-calculators.html">Explainer: travel calculator</a></td><td class="links"><a href="../franchisee/10-travel-allowance-backend.md">10-travel-allowance-backend.md</a></td></tr>
+<tr><td class="n">11</td><td>Speed allowance (backend) - matrix, clock, pool kinds, cap</td><td><span class="lay api">api</span></td><td>10</td><td>No</td><td class="links"><a href="backend-10-11-allowance-calculators.html#speed">Explainer: speed calculator</a></td><td class="links"><a href="../franchisee/11-speed-allowance-backend.md">11-speed-allowance-backend.md</a></td></tr>
+<tr><td class="n">12</td><td>Spare parts (backend) - catalogue, requests, <code>Awaiting Part</code></td><td><span class="lay api">api</span></td><td>07</td><td>No</td><td class="links"><a href="backend-12-spare-part-state-machine.html">Explainer: state machine</a></td><td class="links"><a href="../franchisee/12-spare-parts-backend.md">12-spare-parts-backend.md</a></td></tr>
+<tr><td class="n">13</td><td>Console allowances and parts - settings, map pin, catalogue, facility queue, ticket panels</td><td><span class="lay web">web</span></td><td>10, 11, 12</td><td>Yes</td><td class="links"><a class="todo" href="13a-travel-settings.html">13a-travel-settings</a><a class="todo" href="13b-speed-matrix.html">13b-speed-matrix</a><a class="todo" href="13c-base-location-map.html">13c-base-location-map</a><a class="todo" href="13d-parts-catalogue.html">13d-parts-catalogue</a><a class="todo" href="13e-facility-queue-and-users.html">13e-facility-queue-and-users</a><a class="todo" href="13f-ticket-panels-and-statuses.html">13f-ticket-panels-and-statuses</a></td><td class="links"><a href="../franchisee/13-console-allowances-and-parts.md">13-console-allowances-and-parts.md</a></td></tr>
+<tr><td class="n">14</td><td>Mobile base location - Home card, Profile, onboarding step, pincode / GPS / OSM pin</td><td><span class="lay mobile">mobile</span></td><td>10</td><td>Yes</td><td class="links"><a class="todo" href="14a-base-location-entry-points.html">14a-base-location-entry-points</a><a class="todo" href="14b-base-location-methods.html">14b-base-location-methods</a></td><td class="links"><a href="../franchisee/14-mobile-base-location.md">14-mobile-base-location.md</a></td></tr>
+<tr><td class="n">15</td><td>Mobile spare parts and allowances</td><td><span class="lay mobile">mobile</span></td><td>12, 14</td><td>Yes</td><td class="links"><a class="todo" href="15a-part-request-flow.html">15a-part-request-flow</a><a class="todo" href="15b-allowances-on-job-and-earnings.html">15b-allowances-on-job-and-earnings</a></td><td class="links"><a href="../franchisee/15-mobile-spare-parts-and-allowances.md">15-mobile-spare-parts-and-allowances.md</a></td></tr>
+<tr><td class="n">16</td><td>Rollout, seeds, scripts and the AGENTS.md updates</td><td><span class="lay all">all</span></td><td>all (00-15)</td><td>No</td><td class="links"><a href="backend-00-16-test-and-rollout.html#releases">Explainer: release plan</a></td><td class="links"><a href="../franchisee/16-rollout-and-docs.md">16-rollout-and-docs.md</a></td></tr>
+<tr><td class="n">17</td><td>Technician transfer - move a technician between franchisees</td><td><span class="lay web">api + web</span></td><td>05, 06, 08, 09</td><td>Yes</td><td class="links"><a href="17-technician-transfer.html">Technician transfer</a></td><td class="links"><a href="../franchisee/17-technician-transfer.md">17-technician-transfer.md</a></td></tr>
+<tr><td class="n">18</td><td>Hand an unassigned ticket to another franchisee</td><td><span class="lay web">api + web</span></td><td>04, 05, 09</td><td>Yes</td><td class="links"><a href="18-hand-ticket-to-franchisee.html">Hand ticket to franchisee</a></td><td class="links"><a href="../franchisee/18-hand-ticket-to-franchisee.md">18-hand-ticket-to-franchisee.md</a></td></tr>
+
+</tbody></table></div></div>
+
+<div class="note">The backend explainers are five pages: <a href="backend-01-04-franchise-structure.html">01-04 franchise structure</a> &middot; <a href="backend-05-06-money-and-employees.html">05-06 money and employees</a> &middot; <a href="backend-10-11-allowance-calculators.html">10-11 allowance calculators</a> &middot; <a href="backend-12-spare-part-state-machine.html">12 spare-part state machine</a> &middot; <a href="backend-00-16-test-and-rollout.html">00 and 16 test and rollout</a>.</div>
+
+<h2 class="sec" id="releases">Release order R0 - R8</h2>
+<div class="card"><div class="body">
+<div class="tl">
+<div class="st"><h3>R0 Prerequisites</h3><div class="tk">Task 00</div><div class="mg">f9c2d8a3e17b</div><div class="gt">Owner pushes the coordinates branch</div></div>
+<div class="st"><h3>R1 Franchisees exist</h3><div class="tk">Tasks 01, 02, 03, 04 (API)</div><div class="mg">3b7e1f0a9c41 then 5d2a8c6e0b13</div><div class="gt">Publish API immediately. Nothing visible changes.</div></div>
+<div class="st"><h3>R2 Ops and money move</h3><div class="tk">Tasks 05, 06 (API) together</div><div class="mg">7c4f2e9a1d58</div><div class="gt">Publish API immediately</div></div>
+<div class="st client"><h3>R3 The two console screens</h3><div class="tk">Tasks 08 + 09 in one deploy</div><div class="mg">no migration</div><div class="gt">Never 08 without 09</div></div>
+<div class="st client"><h3>R4 Forward-compat</h3><div class="tk">Task 07 on Play + console ledger kinds / status</div><div class="mg">no migration</div><div class="gt">Gate OUT: 90% of active devices on the build; blocks R5-R7</div></div>
+<div class="st"><h3>R5 Travel allowance</h3><div class="tk">Task 10 (API) + 13 travel + 14 (Play, WebView)</div><div class="mg">9e1b5d3c7a26</div><div class="gt">Needs R4 gate OUT</div></div>
+<div class="st"><h3>R6 Speed allowance</h3><div class="tk">Task 11 (API) + 13 speed</div><div class="mg">b4a8e2f6c903</div><div class="gt">Needs R4 gate OUT and console ledger commit live</div></div>
+<div class="st"><h3>R7 Spare parts</h3><div class="tk">Task 12 (API) + 13 parts</div><div class="mg">d6c3a9f1e874</div><div class="gt">Needs R4 gate OUT</div></div>
+<div class="st client"><h3>R8 App parts + docs</h3><div class="tk">Task 15 (Play) + AGENTS.md pass</div><div class="mg">no migration</div><div class="gt">Needs R7 live</div></div>
+</div>
+<p style="font-size:12.5px;color:var(--ink-3)">Dot colour: blue = API / database release, orange = client release (console or Play). R4 may be built in parallel with R2-R3 because the adoption wait is the longest lead time (16, W6). Full per-release table: <a href="backend-00-16-test-and-rollout.html#releases">test and rollout page</a>.</p>
+</div></div>
+
+<h2 class="sec" id="gates">Release gates</h2>
+<p style="font-size:12.5px;color:var(--ink-3)">00-index.md section 4 lists six lettered gates (a, b, b2, c, d, e), shown here in full.</p>
+<div class="gates">
+<div class="gate"><b>(a) Mobile before API money</b>Task 07 is on Play (production track) before Tasks 10-12 are published. Index 6a sharpens it: and at least 90% of active technicians are on that build.</div>
+<div class="gate"><b>(b) Prod migrated first</b>Each migration runs on <span class="mono">RelianceProdDB</span> (by the owner) before the API that needs it is published.</div>
+<div class="gate"><b>(b2) Tasks 01-03 together</b>Published together, immediately after prod is migrated to <span class="mono">5d2a8c6e0b13</span>: once the five <span class="mono">franchisee_id</span> columns are NOT NULL, the old API cannot raise tickets, add technicians, close jobs or take redemptions.</div>
+<div class="gate"><b>(c) Copy signed off</b>The PROPOSED copy of a client task is signed off before that task is built.</div>
+<div class="gate"><b>(d) 08 never without 09</b>Once an Admin can create a franchisee-admin login, that person can sign in; without the portal they would land in the staff shell.</div>
+<div class="gate"><b>(e) Console learns the new kinds</b>The console's ledger kind labels ship no later than the API writing <span class="mono">travel</span> / <span class="mono">speed_*</span> (it renders an unknown kind as NaN).</div>
+</div>
+</div>
+</body>
+</html>

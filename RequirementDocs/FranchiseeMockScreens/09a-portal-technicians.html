@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Appliances · Technicians (mock 09a)</title>
+<link rel="stylesheet" href="_shared/console.css">
+<link rel="stylesheet" href="_shared/portal-09.css">
+<script src="_shared/mock.js" defer></script>
+<script src="_shared/portal-09.js" defer></script>
+<style>.tw table.t{min-width:1150px}.who-c>div:last-child{min-width:150px}</style>
+</head>
+<body data-brand="Acme Appliances">
+<div class="app" data-scope data-swapscope>
+
+  <!-- ============ FRANCHISE PORTAL RAIL (FranchiseSidebar) ============ -->
+  <aside class="rail" aria-label="Franchise portal">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<span class="fr">SkyFix Services</span></div></div>
+    <a href="#technicians" data-tab="technicians" data-also="tech404" class="on"><i class="ic"></i>Technicians</a>
+    <a href="09b-portal-upi-and-redemptions.html#upi"><i class="ic"></i>UPI changes<span class="n">1</span></a>
+    <a href="09b-portal-upi-and-redemptions.html#redemptions"><i class="ic"></i>Redemptions<span class="n">1</span></a>
+    <a href="09c-portal-pool-and-statements.html#pool"><i class="ic"></i>Penalty &amp; bonus pool</a>
+    <a href="09c-portal-pool-and-statements.html#statements"><i class="ic"></i>Employee statements</a>
+    <a href="09d-portal-tickets-readonly.html#tickets"><i class="ic"></i>Tickets</a>
+    <div class="who"><b>Anil Reddy</b>Franchisee Admin<br><a href="#">Account</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn sm menu" data-menu aria-label="Open menu">&#9776;</button>
+      <div class="ttl" data-ttl="technicians"><h1>Technicians</h1><span class="sub">SkyFix Services's technicians</span></div>
+      <div class="ttl hide" data-ttl="tech404"><h1>Technician profile</h1><span class="sub">Category · pincode · bandwidth</span></div>
+      <span class="mb"><b>Acme Appliances</b>SkyFix Services</span>
+      <span class="sp"></span>
+      <button class="bell" aria-label="Notifications, 2 unread" data-toast="Notifications · Recent events for SkyFix Services"><i></i><span class="n">2</span></button>
+      <button class="btn sm signout" data-toast="Signed out">Sign out</button>
+      <div class="avatar" title="Anil Reddy">AR</div>
+    </header>
+
+    <main class="page">
+      <div class="note"><b>Mock of Task 09 §5.5–5.6, §5.9</b> — franchise portal shell (<code>FranchiseShell</code> + <code>FranchiseSidebar</code>, company brand tile, franchisee name beneath) and the reused staff Technicians screens through the workspace adapter (§5.2): list, add/edit form, invite. Wording marked <span class="proposed">like this</span> is added by the mock — see the box at the bottom. Use the bar at the bottom to flip loading / empty / error.</div>
+
+      <!-- ================= PANE: technicians list ================= -->
+      <section data-pane="technicians" class="stack">
+        <div class="mockbar blk"><b>Signed in as</b> Anil Reddy, franchisee admin · <b>Franchisee</b> SkyFix Services (external, pincodes 500030–500040) · No Franchisee column or filter here — every row is the same franchisee (§5.4).
+          <span class="sp"></span><a href="#tech404" data-tab="tech404">Try an Acme Secunderabad technician's id &rarr;</a></div>
+
+        <div class="card">
+          <div class="toolbar">
+            <input class="in search" placeholder="Search name, mobile or code" aria-label="Search technicians">
+            <select class="in" style="width:140px" aria-label="Type"><option>Type: All</option><option>Employee</option><option>Freelancer</option></select>
+            <select class="in" style="width:150px" aria-label="Status"><option>Status: All</option><option>Active</option><option>Inactive</option><option>Suspended</option><option>Invited</option></select>
+            <select class="in" style="width:140px" aria-label="Region"><option>Region: All</option><option>South</option></select>
+            <span class="sp"></span>
+            <button class="btn" data-open="dlgInvite">Invite technician</button>
+            <button class="btn pri" data-open="dlgTech" data-mode="add">Add technician</button>
+          </div>
+
+          <!-- loading -->
+          <div data-view="loading" class="hide" aria-busy="true">
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+          </div>
+
+          <!-- empty -->
+          <div data-view="empty" class="hide empty">
+            <div class="ic2">&#9776;</div>
+            <b>No technicians yet</b>
+            <p>Add a technician, or invite one by mobile number and let them register themselves.</p>
+            <button class="btn pri" data-open="dlgTech" data-mode="add">Add technician</button>
+            <button class="btn" data-open="dlgInvite">Invite technician</button>
+          </div>
+
+          <!-- error -->
+          <div data-view="error" class="hide empty err">
+            <div class="ic2 bad">!</div>
+            <b>Couldn't load technicians</b>
+            <p role="alert">Something went wrong. Try again.</p>
+            <button class="btn" data-toast="Couldn't load technicians · Something went wrong. Try again.">&#8635; Retry</button>
+          </div>
+
+          <!-- data -->
+          <div data-view="data">
+            <div class="tw">
+              <table class="t">
+                <thead><tr>
+                  <th>Technician</th>
+                  <th>Type</th>
+                  <th>Categories</th>
+                  <th>Pincodes</th>
+                  <th>Availability</th>
+                  <th>Bandwidth</th>
+                  <th class="proposed">Base location</th>
+                  <th class="proposed">UPI</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr></thead>
+                <tbody>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">RT</div><div><a class="nm" href="#">Ravi Teja</a><span class="hint-s"><span class="code">TCH-4021</span> · +91 98000 00001</span></div></div></td>
+                    <td><span class="chip freelancer">Freelancer</span></td>
+                    <td>Television, Air conditioner</td>
+                    <td>500030, 500032 <span class="mut">+4</span></td>
+                    <td><span class="chip ok">Online</span></td>
+                    <td>2 of 4 today</td>
+                    <td><span class="chip ok proposed">Pincode</span><div class="mut proposed" style="font-size:11.5px;margin-top:3px">Ravi Teja · 12-10-2026</div></td>
+                    <td><span class="chip ok proposed">On file</span></td>
+                    <td><span class="chip ok">Active</span></td>
+                    <td><div class="inline-act"><button class="link" data-open="dlgTech" data-mode="edit" data-who="Ravi Teja">Edit</button><button class="link" data-toast="App link sent · WhatsApp to +91 98000 00001">Send app link</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">IS</div><div><a class="nm" href="09b-portal-upi-and-redemptions.html#upi-profile">Imran Shaikh</a><span class="hint-s"><span class="code">TCH-4027</span> · +91 98000 00003</span></div></div></td>
+                    <td><span class="chip freelancer">Freelancer</span></td>
+                    <td>Washing machine</td>
+                    <td>500036 <span class="mut">+4</span></td>
+                    <td><span class="chip">Offline</span></td>
+                    <td>0 of 3 today</td>
+                    <td><span class="chip ok proposed">Set by admin</span><div class="mut proposed" style="font-size:11.5px;margin-top:3px">Anil Reddy · 15-10-2026</div></td>
+                    <td><span class="chip warn proposed">Change pending</span></td>
+                    <td><span class="chip ok">Active</span></td>
+                    <td><div class="inline-act"><button class="link" data-open="dlgTech" data-mode="edit" data-who="Imran Shaikh">Edit</button><button class="link" data-toast="App link sent · WhatsApp to +91 98000 00003">Send app link</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">MR</div><div><a class="nm" href="09c-portal-pool-and-statements.html#statements">Meena R</a><span class="hint-s"><span class="code">TCH-4033</span> · +91 98000 00002</span></div></div></td>
+                    <td><span class="chip employee">Employee</span></td>
+                    <td>Television</td>
+                    <td>500030 <span class="mut">+4</span></td>
+                    <td><span class="chip ok">Online</span></td>
+                    <td>No limit</td>
+                    <td><span class="chip warn proposed">Not set</span></td>
+                    <td><span class="chip proposed">Not added</span></td>
+                    <td><span class="chip ok">Active</span></td>
+                    <td><div class="inline-act"><button class="link" data-open="dlgTech" data-mode="edit" data-who="Meena R">Edit</button><button class="link" data-toast="App link sent · WhatsApp to +91 98000 00002">Send app link</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">KR</div><div><a class="nm" href="#">Kavita Rao</a><span class="hint-s"><span class="code">TCH-4040</span> · +91 98000 00004</span></div></div></td>
+                    <td><span class="chip employee">Employee</span></td>
+                    <td>Air conditioner</td>
+                    <td>500037 <span class="mut">+3</span></td>
+                    <td><span class="chip ok">Online</span></td>
+                    <td>1 of 5 today</td>
+                    <td><span class="chip ok proposed">GPS</span><div class="mut proposed" style="font-size:11.5px;margin-top:3px">Kavita Rao · 15-10-2026</div></td>
+                    <td><span class="chip proposed">Not added</span></td>
+                    <td><span class="chip ok">Active</span></td>
+                    <td><div class="inline-act"><button class="link" data-open="dlgTech" data-mode="edit" data-who="Kavita Rao">Edit</button><button class="link" data-toast="App link sent · WhatsApp to +91 98000 00004">Send app link</button></div></td>
+                  </tr>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">&#9742;</div><div><span class="nm mut">Invited · no name yet</span><span class="hint-s">+91 98000 00005 · invited 14-10-2026</span></div></div></td>
+                    <td><span class="chip freelancer">Freelancer</span></td>
+                    <td class="mut">—</td>
+                    <td>500038 <span class="mut">+2</span></td>
+                    <td class="mut">—</td>
+                    <td class="mut">—</td>
+                    <td class="mut">—</td>
+                    <td class="mut">—</td>
+                    <td><span class="chip warn">Invited</span></td>
+                    <td><div class="inline-act"><button class="link" data-toast="Invite resent · WhatsApp to +91 98000 00005">Resend</button><button class="link dng" data-toast="Invite cancelled · The link stops working.">Cancel invite</button></div></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pg"><span>Showing 1–5 of 5</span><span>Page 1 of 1</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PANE: someone else's technician (404) ================= -->
+      <section data-pane="tech404" class="stack hide">
+        <div class="mockbar blk"><b>URL</b> <span class="mono">/franchise/technicians/7d3a…e1</span> — an id belonging to Acme Secunderabad. The API answers 404, so nothing of theirs reaches the page (index §5.1, second wall).</div>
+        <div class="card"><div class="empty err">
+          <div class="ic2 bad">!</div>
+          <b>Couldn't load this technician</b>
+          <p role="alert">Technician not found</p>
+          <a class="btn" href="#technicians" data-tab="technicians">&larr; Back to technicians</a>
+        </div></div>
+      </section>
+
+      <!-- ================= signoff ================= -->
+      <div class="signoff">
+        <h2>Wording added by the mock — needs sign-off</h2>
+        <ul>
+          <li><b>Base location</b> and <b>UPI</b> column headers, and their cell values: <code>Pincode</code>, <code>GPS</code>, <code>Map</code>, <code>Set by admin</code> (the source chip, ruling R9) with a small line <code>{who} &middot; {date}</code> beneath it, <code>Not set</code>, <code>On file</code>, <code>Change pending</code>, <code>Not added</code>. Task 09 lists no such columns (Task 13 §855 names a "No base" column as a follow-up) — shown because the brief asked for them. Source phrases come from Task 13's Base location panel.</li>
+          <li><code>Invited</code> status chip, <code>Invited · no name yet</code>, <code>invited 14-10-2026</code>, row links <code>Resend</code> / <code>Cancel invite</code> / <code>Send app link</code> (staff screen's existing verbs).</li>
+          <li>Toast texts for resend, cancel invite and app link; search placeholder, "Showing 1–5 of 5"; filter "All" labels.</li>
+          <li>Dialog helper lines: photo hint, UPI ID hint, Jobs-per-day hint, the "Filled in for you" Region hint, section headings Type / Payout account / Coverage / Availability.</li>
+          <li>Edit-dialog line "Franchisee · SkyFix Services" (Task 08 §349 requires a read-only Franchisee line but gives no string beyond the label).</li>
+          <li>The 404 body "Technician not found" (API message, not signed off) and the "Back to technicians" label under it.</li>
+        </ul>
+        <p style="margin:8px 0 0">Already-approved staff wording reused unchanged: Invite technician dialog, Add technician form labels, categories hint, Type field (Task 08), Region / Service pincodes, "No technicians yet" empty state, "Couldn't load technicians" error.</p>
+      </div>
+      <div class="sp-b"></div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= DIALOG: add / edit technician (TechnicianFormDialog) ================= -->
+<div class="scrim" id="dlgTech" data-mode="add">
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="dlgTechT">
+    <header><h3 id="dlgTechT"><span class="only-add">Add technician</span><span class="only-edit">Edit <span class="who-name">Ravi Teja</span></span></h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p class="mut" style="margin:0 0 14px"><span class="only-add">Jobs are offered on category and pincode, so both are required.</span><span class="only-edit">TCH-4021 · jobs are offered on category and pincode, so both stay required.</span></p>
+
+      <div class="sec" style="border:0;margin:0;padding:0"><h4>Identity</h4>
+        <div class="who-c" style="margin-bottom:12px"><div class="photo">+</div><div><b>Profile photo</b><span class="hint-s proposed">Click to choose a photo.</span></div></div>
+        <div class="row2">
+          <div class="field"><label>Full name <span class="neg">*</span></label><input class="in" placeholder="Full name" value=""></div>
+          <div class="field"><label>Mobile number <span class="neg only-add">*</span></label><input class="in" placeholder="+91 " value="">
+            <span class="hint only-edit">The number they sign in with. It can't be changed here.</span></div>
+        </div>
+        <div class="only-edit field"><label>Franchisee</label><input class="in" value="SkyFix Services" disabled><span class="hint proposed">Run by SkyFix Services. Pincode changes that move a technician are made on the Franchisees screen by the company.</span></div>
+      </div>
+
+      <div class="sec"><h4>Type</h4>
+        <div class="typecards" role="radiogroup" aria-label="Type">
+          <label><input type="radio" name="ttype" checked><span><b>Freelancer</b>Paid for each job they close.</span></label>
+          <label><input type="radio" name="ttype"><span><b>Employee</b>On salary: no per-job payout and no redemptions. Allowances and penalties still apply.</span></label>
+        </div>
+        <span class="hint" style="display:block;margin-top:6px">A change applies to jobs accepted after it.</span>
+      </div>
+
+      <div class="sec"><h4>Payout account</h4>
+        <div class="row2">
+          <div class="field"><label>UPI ID</label><input class="in" placeholder="name@bank"><span class="hint proposed">Where this technician is paid when they redeem.</span></div>
+          <div class="field"><label>Name on the UPI account</label><input class="in" placeholder="As their bank shows it"></div>
+        </div>
+      </div>
+
+      <div class="sec"><h4>Coverage</h4>
+        <div class="row2">
+          <div class="field"><label>Region <span class="neg">*</span></label>
+            <select class="in"><option>South</option></select>
+            <span class="hint proposed">Filled in for you: all of SkyFix Services's pincodes are in South.</span></div>
+          <div class="field"><label>Service pincodes <span class="neg">*</span></label>
+            <div class="pins"><span class="chip">500032 — Ranga Reddy &times;</span><span class="chip">500033 — Ranga Reddy &times;</span><span class="ph">Search a pincode or a place</span></div>
+            <div class="opts" aria-label="Pincode search results (only SkyFix Services's codes)">
+              <div>500030 — Ranga Reddy</div><div>500031 — Hyderabad</div><div>500034 — Hyderabad</div>
+            </div>
+            <span class="hint">Pincodes SkyFix Services runs, in South. Search by code or district.</span>
+          </div>
+        </div>
+        <div class="field" style="margin-top:4px"><label class="mut" style="font-weight:500">Mock note — a search that matches nothing shows:</label>
+          <div class="opts"><div class="dim">No pincode SkyFix Services runs matches that</div></div></div>
+      </div>
+
+      <div class="sec"><h4>Categories <span class="neg">*</span></h4>
+        <p class="hint" style="margin:0 0 6px;font-size:11.5px;color:var(--ink-3)">Pick the main sub-categories this technician works on. Ticking one covers everything nested under it, including sub-categories added later.</p>
+        <div class="cat-grp">Electronics</div>
+        <div class="cat-list"><label class="chk"><input type="checkbox" checked> Television</label></div>
+        <div class="cat-grp">Home appliances</div>
+        <div class="cat-list"><label class="chk"><input type="checkbox" checked> Air conditioner</label><label class="chk"><input type="checkbox"> Washing machine</label><label class="chk"><input type="checkbox"> Refrigerator</label></div>
+      </div>
+
+      <div class="sec"><h4>Availability</h4>
+        <div class="row2">
+          <div class="field"><label>Jobs per day</label><input class="in" placeholder="No limit"><span class="hint proposed">Leave empty for no limit.</span></div>
+          <div class="field only-edit"><label>Status</label><select class="in"><option>Active</option><option>Inactive</option><option>Suspended</option></select></div>
+        </div>
+      </div>
+    </div>
+    <footer>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn pri" data-close data-toast="Technician saved · SkyFix Services">
+        <span class="only-add">Add technician</span><span class="only-edit">Save changes</span></button>
+    </footer>
+  </div>
+</div>
+
+<!-- ================= DIALOG: invite technician (TechnicianInviteDialog) ================= -->
+<div class="scrim" id="dlgInvite">
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgInvT">
+    <header><h3 id="dlgInvT">Invite technician</h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p class="mut" style="margin:0 0 14px">A WhatsApp invite goes to this number with a link to the technician app. They fill in their own name, photo and categories — you set where they work.</p>
+      <div class="field"><label>Mobile number <span class="neg">*</span></label><input class="in" placeholder="+91 98765 43210"><span class="hint">Must be on WhatsApp. Include the country code.</span></div>
+      <div class="field"><label>Type</label>
+        <div class="typecards">
+          <label><input type="radio" name="itype" checked><span><b>Freelancer</b>Paid for each job they close.</span></label>
+          <label><input type="radio" name="itype"><span><b>Employee</b>On salary: no per-job payout and no redemptions. Allowances and penalties still apply.</span></label>
+        </div>
+        <span class="hint">A change applies to jobs accepted after it.</span>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Region <span class="neg">*</span></label><select class="in"><option>South</option></select></div>
+        <div class="field"><label>Service pincodes <span class="neg">*</span></label>
+          <div class="pins"><span class="ph">Search a pincode or a place</span></div>
+          <div class="opts"><div>500030 — Ranga Reddy</div><div>500031 — Hyderabad</div><div>500032 — Ranga Reddy</div></div>
+          <span class="hint">Pincodes SkyFix Services runs, in South. Search by code or district.</span></div>
+      </div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn pri" data-close data-toast="Invite sent · WhatsApp to +91 98765 43210">Send invite</button></footer>
+  </div>
+</div>
+
+<div class="state-switch" role="group" aria-label="Mock: list state">
+  <button data-state="loading">Loading</button><button data-state="empty">Empty</button><button data-state="error">Error</button><button data-state="data" class="on">Data</button>
+</div>
+<div class="toast" id="toast" role="status"></div>
+</body>
+</html>

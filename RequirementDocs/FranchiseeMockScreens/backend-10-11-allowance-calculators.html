@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Allowance calculators - explainer for tasks 10-11</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+.topnav{background:var(--brand-500);color:#fff;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px}
+.topnav b{font-size:15px}.topnav a{color:#dfe1ff}.topnav a:hover{color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.scroll{overflow-x:auto}
+.proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+h2.sec{font-size:17px;margin:8px 0 0}
+p{margin:0}
+table.t td,table.t th{font-size:13px;vertical-align:top}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.row4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:900px){.two,.row4{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.two,.row4{grid-template-columns:1fr}}
+code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-3);padding:0 4px;border-radius:4px}
+pre.json{background:#171a21;color:#e6e8ef;border-radius:10px;padding:14px 16px;overflow:auto;font:12.5px/1.55 "IBM Plex Mono",monospace;margin:0}
+pre.json .k{color:#9cc4ff}.pre .s,pre.json .s{color:#a5e3b4}.pre .n,pre.json .n{color:#ffcf8b}.pre .z,pre.json .z{color:#c9a7ff}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.field{margin-bottom:10px}
+.steps td.num,.steps th.num{text-align:right;font-variant-numeric:tabular-nums}
+.big{font-size:26px;font-weight:600}
+.out{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px}
+.ledgerrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:13px}
+.ledgerrow.none{background:var(--surface-3);color:var(--ink-3)}
+.ledgerrow .amt{margin-left:auto;font-weight:700}
+.ok{color:var(--ok)}.dim{color:var(--ink-3)}
+.event{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-2);border:1px dashed var(--accent);border-radius:8px;padding:8px 10px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="topnav"><b>Allowance calculators - tasks 10-11</b>
+<a href="index.html">Index</a><a href="#snapshot">Accept snapshot</a><a href="#travel">Travel</a><a href="#speed">Speed</a><a href="#closure">What closure writes</a></div>
+
+<div class="wrap">
+<div class="note"><b>Mocks:</b> <a href="../franchisee/10-travel-allowance-backend.md">10-travel-allowance-backend.md</a> and <a href="../franchisee/11-speed-allowance-backend.md">11-speed-allowance-backend.md</a>, under <a href="../franchisee/00-index.md">00-index.md</a> (the snapshot is index section 3.5; where the docs differ the index wins). The calculators run the documented formulas in the browser; nothing is saved. Both ship only after the mobile build is on Play (gate a).</div>
+
+<h2 class="sec" id="snapshot">1. The accept-time snapshot</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">When a technician accepts (or a manager assigns), everything that depends on <i>that technician</i> is frozen into <code>tickets.accept_snapshot</code> in the same guarded UPDATE: their franchisee, their type, the travel allowance from their base, and the speed terms. A base moved or a rate raised later never restates the accepted job; releasing or reassigning clears it and the next accept stamps it afresh. Old tickets read as NULL, which means "nothing to pay".</p>
+<pre class="json" id="snap"></pre>
+<div class="scroll" style="margin-top:10px"><table class="t"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+<tr><td class="mono">travel.reason</td><td><code>null</code>, <code>no_base_location</code> or <code>no_customer_point</code>. A missing point is 0 km with a reason - the job is still accepted (TA2, TA8).</td></tr>
+<tr><td class="mono">travel.basePoint.source</td><td><code>pincode</code> | <code>gps</code> | <code>map</code> | <code>manual</code>. The customer point's source is <code>ticket</code> (a picked map result) or <code>pincode</code> (its centre).</td></tr>
+<tr><td class="mono">speed</td><td><code>null</code> when no rule matched. Otherwise the matched row (model wins, else the deepest category node) with both thresholds and amounts.</td></tr>
+<tr><td class="mono">technicianType</td><td>Frozen here, so changing a technician's type later affects only jobs accepted afterwards (T1).</td></tr>
+</tbody></table></div>
+</div></div>
+
+<h2 class="sec" id="travel">2. Travel allowance calculator</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">Distance is <b>one way</b>, base to customer, straight line &times; road factor (TA1). Partial steps are dropped. <code>amount = min(max, floor(max(0, km &minus; free) / step) &times; rate)</code> - computed in integer tenths of a kilometre, so the km shown is the km paid for (W1).</p>
+<div class="chips" style="margin-bottom:12px">
+<button class="btn sm" data-tp="index">Index snapshot</button><button class="btn sm" data-tp="t10">Task 10 example (27 km)</button><button class="btn sm" data-tp="far">120 km away</button><button class="btn sm" data-tp="nobase">No base location</button><button class="btn sm" data-tp="off">Defaults (off)</button></div>
+<div class="two">
+<div>
+<div class="row2">
+<div class="field"><label>Technician type</label><select class="in" id="tr_type"><option value="freelancer">freelancer (free 20 km by default)</option><option value="employee">employee (free 30 km by default)</option></select></div>
+<div class="field"><label>Base point source</label><select class="in" id="tr_src"><option>pincode</option><option>gps</option><option>map</option><option>manual</option></select></div>
+</div>
+<div class="row2">
+<div class="field"><label>Base latitude</label><input class="in" id="tr_blat" type="number" step="0.0001" value="17.44"></div>
+<div class="field"><label>Base longitude</label><input class="in" id="tr_blng" type="number" step="0.0001" value="78.35"></div>
+<div class="field"><label>Customer latitude</label><input class="in" id="tr_clat" type="number" step="0.0001" value="17.41"></div>
+<div class="field"><label>Customer longitude</label><input class="in" id="tr_clng" type="number" step="0.0001" value="78.55"></div>
+</div>
+<div class="field"><label>Or type the straight-line km (overrides the four points)</label><input class="in" id="tr_over" type="number" step="0.1" placeholder="e.g. 27.0"><span class="hint">Straight line uses a spherical earth, radius 6,371,000 m, as <code>metres_between</code> does.</span></div>
+<div class="row2">
+<label class="chk"><input type="checkbox" id="tr_nobase"> Technician has no base location</label>
+<label class="chk"><input type="checkbox" id="tr_nocust"> Ticket has no map point and its pincode has no centre</label>
+</div>
+</div>
+<div>
+<div class="row3">
+<div class="field"><label>Free km</label><input class="in" id="tr_free" type="number" min="0" max="500" value="20"></div>
+<div class="field"><label>Step km</label><input class="in" id="tr_step" type="number" min="1" max="50" value="2"></div>
+<div class="field"><label>Road factor %</label><input class="in" id="tr_pct" type="number" min="100" max="300" value="130"></div>
+<div class="field"><label>Rupees per step</label><input class="in" id="tr_rate" type="number" min="0" value="10"></div>
+<div class="field"><label>Max rupees per job</label><input class="in" id="tr_max" type="number" min="0" value="300"></div>
+</div>
+<div id="tr_warn"></div>
+</div>
+</div>
+<div class="out" style="margin-top:6px">
+<div class="scroll"><table class="t steps" id="tr_steps"><thead><tr><th>Step</th><th class="num">Value</th></tr></thead><tbody></tbody></table></div>
+<div style="margin-top:10px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="dim">Payable</span><span class="big" id="tr_amt"></span><span id="tr_reason"></span></div>
+<div id="tr_rows"></div>
+<div id="tr_fc" style="margin-top:10px;font-size:13px"></div>
+<div style="margin-top:10px"><div class="dim" style="font-size:12px;margin-bottom:4px">accept_snapshot.travel this would freeze</div><pre class="json" id="snaplive"></pre></div>
+</div>
+<p style="margin-top:10px;font-size:12.5px;color:var(--ink-3)">The index snapshot shows 21.6 km straight because the doc's coordinates are rounded to two decimals; the "Index snapshot" preset types 21.6 directly. A rate above zero with a cap of zero is refused on the settings form (W2) - turning travel off means rate 0.</p>
+</div></div>
+
+<h2 class="sec" id="speed">3. Speed outcome calculator</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">Clock: <b>starts at the later of the latest <code>assigned</code> event and the confirmed slot start</b> &rarr; the <code>completed</code> event, minus time in <code>Awaiting Part</code>; a reschedule does not reset it (S3). A job accepted days before its slot is therefore not penalised for the wait: the clock only starts when the slot does. If the slot starts after completion the clock reads 0 h (clamped). Duration &le; <i>reward within</i> pays a reward; &gt; <i>penalty after</i> charges a penalty; in between, nothing (S4). Comparison uses exact seconds, never the rounded figure (W4).</p>
+<div class="chips" style="margin-bottom:12px">
+<button class="btn sm" data-sp="f">Accepted Mon, slot Thu 10:00 - reward</button><button class="btn sm" data-sp="a">23 h working - nothing</button><button class="btn sm" data-sp="b">9 h - reward</button><button class="btn sm" data-sp="c">Exactly 24 h - nothing</button><button class="btn sm" data-sp="d">24 h 1 min - penalty</button><button class="btn sm" data-sp="e">Penalty, cap nearly used</button></div>
+<div class="two">
+<div>
+<div class="row2">
+<div class="field"><label>Accepted (latest assigned event)</label><input class="in" id="sp_a" type="datetime-local"></div>
+<div class="field"><label>Slot start (confirmed; blank = none)</label><input class="in" id="sp_s" type="datetime-local"></div>
+<div class="field"><label>Completed (technician pressed Complete)</label><input class="in" id="sp_c" type="datetime-local"></div>
+<div class="field"><label>Awaiting Part from (1)</label><input class="in" id="sp_w1s" type="datetime-local"></div>
+<div class="field"><label>Awaiting Part until (1)</label><input class="in" id="sp_w1e" type="datetime-local"></div>
+<div class="field"><label>Awaiting Part from (2, optional)</label><input class="in" id="sp_w2s" type="datetime-local"></div>
+<div class="field"><label>Awaiting Part until (2, optional)</label><input class="in" id="sp_w2e" type="datetime-local"></div>
+</div>
+<div class="pill-info proposed" id="sp_clock" style="margin-top:8px"></div>
+<span class="hint">Times are IST wall-clock here; the API stores UTC instants. Overlapping waits are merged and clipped to the window.</span>
+</div>
+<div>
+<div class="row2">
+<div class="field"><label>Reward within (hours, 1-720)</label><input class="in" id="sp_rh" type="number" min="1" max="720" value="12"></div>
+<div class="field"><label>Penalty after (hours, 1-720)</label><input class="in" id="sp_ph" type="number" min="1" max="720" value="24"></div>
+<div class="field"><label>Reward (whole rupees, 0-10,000)</label><input class="in" id="sp_rp" type="number" min="0" max="10000" value="200"></div>
+<div class="field"><label>Penalty (whole rupees, 0-10,000)</label><input class="in" id="sp_pp" type="number" min="0" max="10000" value="150"></div>
+<div class="field"><label>Monthly cap remaining (rupees; blank = uncapped)</label><input class="in" id="sp_cap" type="number" min="0" placeholder="blank"></div>
+<div class="field"><label>How the job closes</label><select class="in" id="sp_close"><option value="cust">Customer confirms</option><option value="force">Manager force-closes</option></select></div>
+</div>
+<div id="sp_warn"></div>
+</div>
+</div>
+<div class="out" style="margin-top:6px">
+<div class="row4">
+<div><div class="dim">Elapsed since clock start</div><div class="big" id="sp_el">-</div></div>
+<div><div class="dim">Minus Awaiting Part</div><div class="big" id="sp_wt">-</div></div>
+<div><div class="dim">Working hours</div><div class="big" id="sp_wk">-</div><div class="dim" id="sp_ex" style="font-size:12px"></div></div>
+<div><div class="dim">Outcome</div><div class="big" id="sp_oc">-</div></div>
+</div>
+<div id="sp_rows"></div>
+<div id="sp_ev"></div>
+</div>
+</div></div>
+
+<h2 class="sec" id="closure">4. What the customer's confirmation writes</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">One transaction on customer closure: the ticket closes, then the payout (freelancers only), the travel row, then the speed settlement - all or nothing. The rows below follow the two calculators above.</p>
+<div class="row3">
+<div class="field"><label>Technician type</label><select class="in" id="cl_type"><option value="freelancer">freelancer</option><option value="employee">employee</option></select></div>
+<div class="field"><label>Product's technician payout (rupees)</label><input class="in" id="cl_pay" type="number" min="0" value="450"></div>
+</div>
+<div id="cl_rows"></div>
+<ul style="margin:12px 0 0;padding-left:20px;display:grid;gap:3px;font-size:12.5px;color:var(--ink-2)">
+<li>Every row carries <code>franchisee_id</code> = the technician's franchisee at write time. <code>travel</code> is <b>not</b> a pool kind; <code>speed_reward</code> and <code>speed_penalty</code> are, and a speed penalty counts against the monthly cancellation cap and is reversible like a penalty.</li>
+<li>Zero amounts write no row (the ledger CHECK is amount &gt; 0); a speed settlement still records its measurement as a <code>speed_settled</code> event, with no rupee amounts, hidden from vendors.</li>
+<li>Force-close writes <b>no speed money</b> (S5, planner default); travel is the manager's number, pre-filled with the frozen amount and capped at the frozen maximum; <code>0</code> writes no row.</li>
+</ul>
+</div></div>
+</div>
+
+<script>
+(function(){
+  function $(id){return document.getElementById(id);}
+  function rs(p){return "₹"+(p/100).toLocaleString("en-IN");}
+  function f1(x){return (Math.round(x*10)/10).toFixed(1);}
+
+  /* ---------- snapshot JSON ---------- */
+  var snap={acceptedAt:"2026-10-15T05:30:00Z",technicianId:"…",franchiseeId:"…",technicianType:"freelancer",
+    travel:{basePoint:{lat:17.44,lng:78.35,source:"pincode"},customerPoint:{lat:17.41,lng:78.55,source:"pincode"},
+      straightKm:21.6,roadFactorPct:130,km:28.1,freeKm:20,stepKm:2,paisePerStep:1000,maxPaisePerJob:30000,amountPaise:4000,reason:null},
+    speed:{ruleId:"…",matchedOn:"node",matchedId:"…",rewardWithinHours:12,penaltyAfterHours:24,rewardPaise:20000,penaltyPaise:15000}};
+  function hl(o){
+    var s=JSON.stringify(o,null,2).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    return s.replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(null)\b|(-?\d+\.?\d*)/g,function(m,str,colon,nul,num){
+      if(str)return colon?'<span class="k">'+str+'</span>'+colon:'<span class="s">'+str+'</span>';
+      if(nul)return '<span class="z">null</span>';
+      if(num!==undefined&&num!=="")return '<span class="n">'+num+'</span>';
+      return m;});
+  }
+  $("snap").innerHTML=hl(snap);
+
+  /* ---------- travel ---------- */
+  var travelOut={paise:0,km:0,reason:null,cap:0};
+  function metres(la1,lo1,la2,lo2){
+    var R=6371000,r=Math.PI/180;
+    var dphi=(la2-la1)*r,dl=(lo2-lo1)*r;
+    var a=Math.sin(dphi/2)*Math.sin(dphi/2)+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dl/2)*Math.sin(dl/2);
+    return 2*R*Math.asin(Math.sqrt(a));
+  }
+  function num(id){var v=parseFloat($(id).value);return isNaN(v)?0:v;}
+  function travel(){
+    var free=Math.round(num("tr_free")),step=Math.max(1,Math.round(num("tr_step"))),pct=Math.round(num("tr_pct"));
+    var rate=Math.round(num("tr_rate")*100),cap=Math.round(num("tr_max")*100);
+    var warn=[];
+    if(rate>0&&cap===0)warn.push("422 - a rate above zero with a cap of zero would pay nothing on every job. Set a maximum, or set the rate to 0 to turn travel off (W2).");
+    if(pct<100||pct>300)warn.push("Road factor must be 100-300 %.");
+    if(free<0||free>500)warn.push("Free km must be 0-500.");
+    if(step<1||step>50)warn.push("Step km must be 1-50.");
+    $("tr_warn").innerHTML=warn.length?'<div class="pill-err">'+warn.join("<br>")+"</div>":(rate===0&&cap===0?'<div class="pill-warn">Rate and maximum are both 0: travel allowance is <b>off</b> until a franchisee admin configures it (TA4 default).</div>':"");
+    var nobase=$("tr_nobase").checked,nocust=$("tr_nocust").checked;
+    var reason=nobase?"no_base_location":(nocust?"no_customer_point":null);
+    var m=0,straightKm=0,km=0;
+    var ov=$("tr_over").value;
+    if(!reason){
+      m=ov!==""?parseFloat(ov)*1000:metres(num("tr_blat"),num("tr_blng"),num("tr_clat"),num("tr_clng"));
+      straightKm=Math.floor(m/100+0.5)/10;
+      km=Math.floor(m*pct/10000+0.5)/10;
+    }
+    var tenths=Math.floor(km*10+0.5);
+    var beyond=Math.max(0,tenths-free*10);
+    var steps=Math.floor(beyond/(step*10));
+    var raw=steps*rate;
+    var amt=Math.min(cap,raw);
+    var tb=$("tr_steps").querySelector("tbody");
+    function r(a,b){return "<tr><td>"+a+"</td><td class='num'>"+b+"</td></tr>";}
+    if(reason){
+      tb.innerHTML=r("Straight line, base to customer","0 km ("+reason+")")+r("Result","0 km, so nothing is payable")+r("Rates still recorded","free "+free+" km, step "+step+" km, "+rs(rate)+" per step, cap "+rs(cap));
+    }else{
+      tb.innerHTML=r("Straight line, base to customer",f1(straightKm)+" km")+
+        r("&times; road factor "+pct+" % (one way)",f1(km)+" km")+
+        r("&minus; free distance "+free+" km",f1(Math.max(0,km-free))+" km beyond")+
+        r("&divide; step "+step+" km, partial steps dropped",steps+" step"+(steps===1?"":"s"))+
+        r("&times; "+rs(rate)+" per step",rs(raw))+
+        r("Cap: max "+rs(cap)+" per job","min("+rs(cap)+", "+rs(raw)+") = <b>"+rs(amt)+"</b>");
+    }
+    $("tr_amt").textContent=rs(amt);
+    $("tr_reason").innerHTML=reason?'<span class="chip warn">reason: '+reason+" - job still accepted</span>":(amt>0?'<span class="chip ok">paid on customer closure</span>':'<span class="chip">nothing to pay</span>');
+    travelOut={paise:warn.length&&rate>0&&cap===0?0:amt,km:km,reason:reason,cap:cap};
+    var rows=$("tr_rows");
+    rows.innerHTML=amt>0&&!(rate>0&&cap===0)?'<div class="ledgerrow"><span class="chip info">travel</span><span>Travel allowance · '+f1(km)+' km</span><span class="dim">franchisee_id = SkyFix, not a pool kind</span><span class="amt">'+rs(amt)+'</span></div>':'<div class="ledgerrow none">No <code>travel</code> row is written (amount must be above 0).</div>';
+    $("tr_fc").innerHTML="<b>If a manager force-closes instead:</b> the form pre-fills <b>"+rs(amt)+"</b> (the frozen amount) and accepts up to <b>"+rs(cap)+"</b> (the frozen maximum), clamped silently; 0 or blank writes no row."+(reason?" The cap is recorded even though the distance could not be measured.":"");
+    $("snaplive").innerHTML=hl({travel:snapWith().travel});
+    closure();
+  }
+  function snapWith(){
+    var o=JSON.parse(JSON.stringify(snap));
+    var nobase=$("tr_nobase").checked,nocust=$("tr_nocust").checked;
+    var ov=$("tr_over").value;
+    o.technicianType=$("tr_type").value;
+    var free=Math.round(num("tr_free")),step=Math.max(1,Math.round(num("tr_step"))),pct=Math.round(num("tr_pct"));
+    var rate=Math.round(num("tr_rate")*100),cap=Math.round(num("tr_max")*100);
+    var reason=nobase?"no_base_location":(nocust?"no_customer_point":null);
+    var m=0;if(!reason)m=ov!==""?parseFloat(ov)*1000:metres(num("tr_blat"),num("tr_blng"),num("tr_clat"),num("tr_clng"));
+    var km=reason?0:Math.floor(m*pct/10000+0.5)/10;
+    var tenths=Math.floor(km*10+0.5);var steps=Math.floor(Math.max(0,tenths-free*10)/(step*10));
+    o.travel={basePoint:nobase?null:{lat:num("tr_blat"),lng:num("tr_blng"),source:$("tr_src").value},
+      customerPoint:nocust?null:{lat:num("tr_clat"),lng:num("tr_clng"),source:"pincode"},
+      straightKm:reason?0:Math.floor(m/100+0.5)/10,roadFactorPct:pct,km:km,freeKm:free,stepKm:step,paisePerStep:rate,maxPaisePerJob:cap,
+      amountPaise:Math.min(cap,steps*rate),reason:reason};
+    return o;
+  }
+  var TP={
+    index:{over:"21.6",free:20,step:2,pct:130,rate:10,max:300,nobase:false,type:"freelancer"},
+    t10:{over:"27.0",free:20,step:2,pct:130,rate:10,max:300,nobase:false,type:"freelancer"},
+    far:{over:"120",free:20,step:2,pct:130,rate:10,max:300,nobase:false,type:"freelancer"},
+    nobase:{over:"27.0",free:20,step:2,pct:130,rate:10,max:300,nobase:true,type:"freelancer"},
+    off:{over:"27.0",free:20,step:1,pct:130,rate:0,max:0,nobase:false,type:"freelancer"}
+  };
+  function applyTP(k){
+    var p=TP[k];
+    $("tr_over").value=p.over;$("tr_free").value=p.free;$("tr_step").value=p.step;$("tr_pct").value=p.pct;
+    $("tr_rate").value=p.rate;$("tr_max").value=p.max;$("tr_nobase").checked=p.nobase;$("tr_nocust").checked=false;$("tr_type").value=p.type;
+    travel();
+  }
+  document.addEventListener("click",function(e){var b=e.target.closest("[data-tp]");if(b)applyTP(b.getAttribute("data-tp"));});
+  ["tr_blat","tr_blng","tr_clat","tr_clng","tr_over","tr_free","tr_step","tr_pct","tr_rate","tr_max","tr_nobase","tr_nocust","tr_src"].forEach(function(id){$(id).addEventListener("input",travel);$(id).addEventListener("change",travel);});
+  $("tr_type").addEventListener("change",function(){$("tr_free").value=this.value==="employee"?30:20;travel();});
+
+  /* ---------- speed ---------- */
+  var speedOut={row:null,note:null};
+  function ms(id){var v=$(id).value;if(!v)return null;var t=Date.parse(v+":00Z");return isNaN(t)?null:t;}
+  function merge(iv,a,c){
+    var cl=[];iv.forEach(function(p){if(p[0]==null)return;var s=Math.max(p[0],a),e=Math.min(p[1]==null?c:p[1],c);if(e>s)cl.push([s,e]);});
+    cl.sort(function(x,y){return x[0]-y[0];});
+    var out=[];cl.forEach(function(p){if(out.length&&p[0]<=out[out.length-1][1])out[out.length-1][1]=Math.max(out[out.length-1][1],p[1]);else out.push(p.slice());});
+    return out;
+  }
+  function dur(msv){var m=Math.round(msv/1000);var h=Math.floor(m/3600),mi=Math.floor((m%3600)/60),s=m%60;return h+" h "+mi+" min"+(s?" "+s+" s":"");}
+  function speed(){
+    var a0=ms("sp_a"),sl=ms("sp_s"),c=ms("sp_c");
+    var a=a0==null?null:(sl==null?a0:Math.max(a0,sl));
+    function ist(t){var d=new Date(t),D=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],z=function(n){return (n<10?"0":"")+n;};return D[d.getUTCDay()]+" "+z(d.getUTCDate())+"-"+z(d.getUTCMonth()+1)+"-"+d.getUTCFullYear()+" "+z(d.getUTCHours())+":"+z(d.getUTCMinutes());}
+    $("sp_clock").innerHTML=a==null?"Clock starts at: enter the accepted time.":"Clock starts at <b>"+ist(a)+"</b> ("+(sl!=null&&sl>a0?"the slot start is later than the accept":"the accept is the later of the two, or no slot is set")+")."+(c!=null&&c<=a?" Completed is not after the clock start: clamped to 0 h.":"");
+    var RH=Math.round(num("sp_rh")),PH=Math.round(num("sp_ph")),RP=Math.round(num("sp_rp")*100),PP=Math.round(num("sp_pp")*100);
+    var capv=$("sp_cap").value,rem=capv===""?null:Math.max(0,Math.round(parseFloat(capv)*100));
+    var force=$("sp_close").value==="force";
+    var warn=[];
+    if(PH<RH)warn.push("422 - penalty after must be at least reward within (the matrix CHECK).");
+    if(RH<1||PH>720||RH>720||PH<1)warn.push("Hours must be whole numbers from 1 to 720.");
+    if(RP>1000000||PP>1000000)warn.push("Amounts are capped at ₹10,000.");
+    $("sp_warn").innerHTML=warn.length?'<div class="pill-err">'+warn.join("<br>")+"</div>":"";
+    speedOut={row:null,note:null,force:force};
+    var rows=$("sp_rows"),ev=$("sp_ev");
+    if(a==null||c==null){["sp_el","sp_wt","sp_wk","sp_oc"].forEach(function(i){$(i).textContent="-";});$("sp_ex").textContent="";rows.innerHTML="";ev.innerHTML="";closure();return;}
+    var elapsed=Math.max(0,c-a);
+    var iv=[[ms("sp_w1s"),ms("sp_w1e")],[ms("sp_w2s"),ms("sp_w2e")]];
+    var mg=c>a?merge(iv,a,c):[];var wait=0;mg.forEach(function(p){wait+=p[1]-p[0];});
+    var working=Math.max(0,elapsed-wait);
+    var H=3600000;
+    $("sp_el").textContent=f1(elapsed/H)+" h";$("sp_wt").textContent=f1(wait/H)+" h";$("sp_wk").textContent=f1(working/H)+" h";
+    $("sp_ex").textContent="exact: "+dur(working);
+    var outcome=null;
+    if(working<=RH*H)outcome="reward";else if(working>PH*H)outcome="penalty";
+    $("sp_oc").innerHTML=outcome==="reward"?'<span class="ok">Reward</span>':(outcome==="penalty"?'<span style="color:var(--danger)">Penalty</span>':'<span class="dim">Nothing</span>');
+    if(c<=a){rows.innerHTML='<div class="ledgerrow none">Completed is not after the clock start (accepted, or the slot start if later): the clock reads 0 h and nothing is measured.</div>';ev.innerHTML="";closure();return;}
+    if(force){
+      rows.innerHTML='<div class="ledgerrow none">Force-closed: <b>no speed money</b> and no speed_settled event (S5). The measurement is only taken on customer closure.</div>';
+      ev.innerHTML="";closure();return;
+    }
+    var wk=f1(working/H),wtxt=wait>0?" ("+f1(elapsed/H)+" h since the clock started, "+f1(wait/H)+" h waiting for parts)":"";
+    var dash=" — ",row=null,note;
+    if(outcome==null){
+      note="Finished in "+wk+" working hours"+wtxt+" · between "+RH+" h and "+PH+" h"+dash+"no speed reward or penalty";
+      rows.innerHTML='<div class="ledgerrow none">No speed row. Between the two thresholds nothing is paid or charged.</div>';
+    }else if(outcome==="reward"){
+      if(RP>0){row={kind:"speed_reward",amt:RP,reason:"Speed reward · finished in "+wk+" h (within "+RH+" h)"};note="Finished in "+wk+" working hours"+wtxt+" · within "+RH+" h"+dash+"speed reward paid";}
+      else note="Finished in "+wk+" working hours"+wtxt+" · within "+RH+" h"+dash+"this rule pays no reward";
+    }else{
+      var charge=PP===0?0:(rem==null?PP:Math.min(PP,rem));
+      var why=" · over "+PH+" h"+dash;
+      if(PP===0)note="Took "+wk+" working hours"+wtxt+why+"this rule charges no penalty";
+      else if(charge===PP)note="Took "+wk+" working hours"+wtxt+why+"speed penalty charged";
+      else if(charge>0)note="Took "+wk+" working hours"+wtxt+why+"speed penalty partly charged: monthly cap";
+      else note="Took "+wk+" working hours"+wtxt+why+"speed penalty not charged: monthly cap already reached";
+      if(charge>0)row={kind:"speed_penalty",amt:charge,reason:"Speed penalty · took "+wk+" h (over "+PH+" h)"+(charge<PP?" · capped at the monthly limit":"")};
+    }
+    if(outcome!=null){
+      rows.innerHTML=row?'<div class="ledgerrow"><span class="chip '+(row.kind==="speed_reward"?"ok":"dng")+'">'+row.kind+'</span><span>'+row.reason+'</span><span class="dim">franchisee_id = SkyFix, pool kind</span><span class="amt">'+(row.kind==="speed_penalty"?"−":"+")+rs(row.amt)+"</span></div>":'<div class="ledgerrow none">No speed row (a zero amount, or the monthly cap is used up).</div>';
+    }
+    ev.innerHTML='<div class="event"><b>speed_settled</b> (actor: system) <span class="proposed">'+note+"</span></div>";
+    speedOut={row:row,note:note,force:false};
+    closure();
+  }
+  function setDT(id,s){$(id).value=s||"";}
+  var SP={
+    f:{a:"2026-10-12T11:00",s:"2026-10-15T10:00",c:"2026-10-15T13:00",w1s:"",w1e:"",cap:""},
+    a:{a:"2026-10-12T11:00",c:"2026-10-13T13:00",w1s:"2026-10-12T15:00",w1e:"2026-10-12T18:00",cap:""},
+    b:{a:"2026-10-12T11:00",c:"2026-10-12T23:00",w1s:"2026-10-12T15:00",w1e:"2026-10-12T18:00",cap:""},
+    c:{a:"2026-10-12T11:00",c:"2026-10-13T14:00",w1s:"2026-10-12T15:00",w1e:"2026-10-12T18:00",cap:""},
+    d:{a:"2026-10-12T11:00",c:"2026-10-13T14:01",w1s:"2026-10-12T15:00",w1e:"2026-10-12T18:00",cap:""},
+    e:{a:"2026-10-12T11:00",c:"2026-10-13T14:01",w1s:"2026-10-12T15:00",w1e:"2026-10-12T18:00",cap:"100"}
+  };
+  function applySP(k){
+    var p=SP[k];setDT("sp_a",p.a);setDT("sp_s",p.s||"");setDT("sp_c",p.c);setDT("sp_w1s",p.w1s);setDT("sp_w1e",p.w1e);setDT("sp_w2s","");setDT("sp_w2e","");
+    $("sp_cap").value=p.cap;$("sp_rh").value=12;$("sp_ph").value=24;$("sp_rp").value=200;$("sp_pp").value=150;$("sp_close").value="cust";
+    speed();
+  }
+  document.addEventListener("click",function(e){var b=e.target.closest("[data-sp]");if(b)applySP(b.getAttribute("data-sp"));});
+  ["sp_a","sp_s","sp_c","sp_w1s","sp_w1e","sp_w2s","sp_w2e","sp_rh","sp_ph","sp_rp","sp_pp","sp_cap","sp_close"].forEach(function(id){$(id).addEventListener("input",speed);$(id).addEventListener("change",speed);});
+
+  /* ---------- closure ---------- */
+  function closure(){
+    var type=$("cl_type").value,pay=Math.round(num("cl_pay")*100);
+    var h="";
+    function row(kind,reason,amt,sign,tag){return '<div class="ledgerrow"><span class="chip '+tag+'">'+kind+'</span><span>'+reason+'</span><span class="amt">'+sign+rs(amt)+"</span></div>";}
+    function none(txt){return '<div class="ledgerrow none">'+txt+"</div>";}
+    h+=type==="freelancer"&&pay>0?row("payout","Payout · the product's technician payout",pay,"+","brand"):none(type==="employee"?"payout - none: employees get no per-job payout (T2). The ticket still carries the product's price.":"payout - none (amount is 0)");
+    h+=travelOut.paise>0?row("travel","Travel allowance · "+f1(travelOut.km)+" km",travelOut.paise,"+","info"):none("travel - none ("+(travelOut.reason?travelOut.reason:"amount is 0")+")");
+    if(speedOut.force)h+=none("speed - none: force-close writes no speed money.");
+    else if(speedOut.row)h+=row(speedOut.row.kind,speedOut.row.reason,speedOut.row.amt,speedOut.row.kind==="speed_penalty"?"−":"+",speedOut.row.kind==="speed_reward"?"ok":"dng");
+    else h+=none("speed - none (no outcome, a zero amount, or the cap is used up)");
+    $("cl_rows").innerHTML=h;
+  }
+  $("cl_type").addEventListener("change",closure);$("cl_pay").addEventListener("input",closure);
+
+  applyTP("t10");applySP("f");
+})();
+</script>
+</body>
+</html>
