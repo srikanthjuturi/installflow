@@ -25,6 +25,10 @@ class AppError(HTTPException):
 
     Keep codes SCREAMING_SNAKE and stable — they are an API surface, and
     renaming one breaks a client the way renaming a field would.
+
+    `errors` is an optional list of extra lines (which pincode is taken, owned
+    by whom) that the envelope's `errors` array echoes. Leave it off and the
+    handler falls back to `[detail]` exactly as it always has.
     """
 
     def __init__(
@@ -33,9 +37,11 @@ class AppError(HTTPException):
         code: str,
         detail: str,
         headers: dict[str, str] | None = None,
+        errors: list[str] | None = None,
     ) -> None:
         super().__init__(status_code=status_code, detail=detail, headers=headers)
         self.code = code
+        self.errors = errors
 
 
 def _error_body(
@@ -121,7 +127,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body(
-                exc.status_code, detail, [detail], getattr(exc, "code", None)
+                exc.status_code,
+                detail,
+                getattr(exc, "errors", None) or [detail],
+                getattr(exc, "code", None),
             ),
             headers=getattr(exc, "headers", None),
         )

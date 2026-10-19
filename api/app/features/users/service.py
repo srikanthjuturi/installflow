@@ -700,7 +700,13 @@ async def reissue_password(
     # roles — but a membership id is a client-supplied value and the failure
     # would be silent: a technician has no email, so the send would go nowhere
     # while their phone sign-in kept working against a password nobody wanted.
-    if user.role == TECHNICIAN or user.role in VENDOR_ROLES:
+    # Franchise roles are refused too: their reissue is the franchisees slice's
+    # route 13, which also knows the franchisee for the last-admin rule (R3).
+    if (
+        user.role == TECHNICIAN
+        or user.role in VENDOR_ROLES
+        or user.role in FRANCHISE_ROLES
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This account does not sign in with a password here",

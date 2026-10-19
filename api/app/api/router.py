@@ -12,6 +12,7 @@ from app.features.credits.platform_router import router as platform_router
 from app.features.credits.router import router as credits_router
 from app.features.earnings.router import router as earnings_router
 from app.features.geo.router import router as geo_router
+from app.features.franchisees.router import router as franchisees_router
 from app.features.jobs.router import router as jobs_router
 from app.features.jobs.ws import router as jobs_stream_router
 from app.features.ledger.router import router as ledger_router
@@ -48,6 +49,8 @@ api_router.include_router(vendors_router)
 # Before /vendors is irrelevant — different prefix — but grouped with it so the
 # vendor surface reads as one thing.
 api_router.include_router(vendor_users_router)
+# Who runs the technicians, and which pincodes each one routes.
+api_router.include_router(franchisees_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)

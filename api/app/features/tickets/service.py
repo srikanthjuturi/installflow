@@ -1619,6 +1619,9 @@ _EVENT_TITLES = {
     # Reads after the "Technician cancelled" / "Nobody turned up" row whose
     # charge it gives back; the note names the amount and the technician.
     "penalty_reversed": "Penalty reversed",
+    # Written by the franchisees carve-out (03 §4.5), not by a transition of
+    # this slice's own — the note names both franchisees and the pincode.
+    "franchisee_changed": "Moved to another franchisee",
 }
 
 #: Kinds whose wording depends on WHO caused them, keyed `(kind, actor_kind)`.

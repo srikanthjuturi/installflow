@@ -9,7 +9,7 @@ with no database.
 import uuid
 from collections.abc import Iterable, Mapping
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.company import Company
@@ -129,3 +129,18 @@ def franchisee_pincodes_subquery(
         )
     claimed = select(FranchiseePincode.pincode).where(FranchiseePincode.company_id == company_id)
     return select(Pincode.code).where(Pincode.is_active.is_(True), Pincode.code.not_in(claimed))
+
+
+async def lock_routing(db: AsyncSession, company_id: uuid.UUID, *, exclusive: bool) -> None:
+    """The routing lock, one call: EXCLUSIVE for a caller about to WRITE the
+    pincode map (Task 03's saves, the company deactivation), SHARED for the
+    readers (Task 04's ticket pool routing) — so a pool read never lands between
+    two halves of a carve-out. `pg_advisory_xact_lock` releases at COMMIT or
+    ROLLBACK, so the caller keeps its transaction (this never commits), exactly
+    the contract of `revoke_refresh_tokens` and `notify`.
+    """
+    fn = "pg_advisory_xact_lock" if exclusive else "pg_advisory_xact_lock_shared"
+    await db.execute(
+        text(f"select {fn}(hashtextextended(:key, 0))"),
+        {"key": f"franchise-routing:{company_id}"},
+    )
