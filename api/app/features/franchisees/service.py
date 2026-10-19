@@ -1123,8 +1123,10 @@ async def _apply(
     #    and frames — a ticket accepted between the read and this write keeps
     #    its franchisee, which is exactly F6's "assigned keep theirs".
     moves_by_target: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
+    froms_by_target: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     for _tid, _fid, to_fid in plan.moves:
         moves_by_target[to_fid].append(_tid)
+        froms_by_target[to_fid].add(_fid)
     returned: list[Any] = []
     for target, ids in moves_by_target.items():
         if not ids:
@@ -1135,6 +1137,10 @@ async def _apply(
                 .where(
                     Ticket.company_id == company_id,
                     Ticket.id.in_(ids),
+                    # Structural pin beside the company filter: only a ticket
+                    # still stamped a losing franchisee is re-stamped, so the
+                    # write is scoped even if the id list were ever built wrong.
+                    Ticket.franchisee_id.in_(froms_by_target[target]),
                     Ticket.deleted_at.is_(None),
                     Ticket.technician_id.is_(None),
                     Ticket.status.in_(OPEN_TICKET_STATUSES),
