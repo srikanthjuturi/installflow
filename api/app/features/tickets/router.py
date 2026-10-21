@@ -156,8 +156,15 @@ CanForceClose = Annotated[Principal, Depends(require_feature("jobs.force_close")
 #: Paired with `AreaManagerUp`, because it returns pool money (hard rule 2).
 #: Together with `_load`'s territory scoping that is the whole of "the ticket's
 #: AM, else its RH, else a NH, else an Admin — or anyone senior".
+#:
+#: And with `require_staff_principal` (Task 05 §4.10): the penalty money is a
+#: franchisee's (F12), and a franchisee manages its own pool on its OWN door
+#: — `features/ledger`'s `/franchise` twin — never through the ticket page,
+#: which reads it read-only (§4.11).
 CanReversePenalty = Annotated[
-    Principal, Depends(require_feature("penalties.reverse"))
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("penalties.reverse")),
 ]
 
 

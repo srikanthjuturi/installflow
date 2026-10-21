@@ -18,6 +18,7 @@ from app.core.deps import (
     Principal,
     require_feature,
     require_min_rank,
+    require_staff_principal,
 )
 from app.core.schemas import (
     ApiEnvelope,
@@ -56,10 +57,32 @@ from app.features.technicians.schemas import (
 router = APIRouter(prefix="/technicians", tags=["technicians"])
 
 Db = Annotated[AsyncSession, Depends(get_db)]
-CanView = Annotated[Principal, Depends(require_feature("technicians.view"))]
-CanCreate = Annotated[Principal, Depends(require_feature("technicians.create"))]
-CanInvite = Annotated[Principal, Depends(require_feature("technicians.invite"))]
-CanEdit = Annotated[Principal, Depends(require_feature("technicians.edit"))]
+#: Staff console guards. Task 05 adds `require_staff_principal` everywhere a
+#: feature key is checked: these routes manage PEOPLE and MONEY, and since this
+#: task a franchisee admin reaches those facts through its OWN `/franchise`
+#: twins — a feature override must not be able to hand a company's roster to
+#: the wrong family (`require_staff_principal` refuses franchise, vendor and
+#: technician principals alike).
+CanView = Annotated[
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("technicians.view")),
+]
+CanCreate = Annotated[
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("technicians.create")),
+]
+CanInvite = Annotated[
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("technicians.invite")),
+]
+CanEdit = Annotated[
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("technicians.edit")),
+]
 
 
 @router.get("/me", response_model=ApiEnvelope[TechnicianSessionOut])
@@ -280,6 +303,8 @@ async def list_technicians(
     districtId: Annotated[uuid.UUID | None, Query()] = None,
     onboardingMode: Annotated[str | None, Query()] = None,
     onDay: Annotated[datetime.datetime | None, Query()] = None,
+    franchiseeId: Annotated[uuid.UUID | None, Query()] = None,
+    technicianType: Annotated[str | None, Query()] = None,
 ) -> PaginatedEnvelope[TechnicianRowOut]:
     """Registered technicians and open invites in one list.
 
@@ -292,6 +317,10 @@ async def list_technicians(
     slot, so the capacity it shows is capacity on the day the work happens; a
     Friday job otherwise reports Monday's load and the manager picks somebody
     the assign call then refuses at cap.
+
+    `franchiseeId`/`technicianType` narrow the roster by franchisee and pay type
+    (Task 05). An unknown type answers an empty page, never a 422 — a filter in
+    a shareable query string may be stale.
     """
     rows, total = await service.list_technicians(
         db,
@@ -306,6 +335,8 @@ async def list_technicians(
         district_id=districtId,
         onboarding_mode=onboardingMode,
         on_day=onDay,
+        franchisee_id=franchiseeId,
+        technician_type=technicianType,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 

@@ -137,6 +137,17 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
     #: since moved franchisee. Never updated afterwards — a technician moving
     #: franchisee later does not move money already written.
     franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: What the technician WAS when the money moved — `employee` or `freelancer`
+    #: (models/technician.TECHNICIAN_TYPES). Stamped on the row at write time
+    #: beside `franchisee_id` (Task 05 §3.3, the same pattern Task 01 used),
+    #: because the type can change later (T1) and two questions are answered
+    #: against the OLD type: "which of this person's money is redeemable by
+    #: UPI" (freelancer money — Task 06) and "which goes on the salary
+    #: statement" (employee money). The current profile type cannot answer
+    #: either for an old row. A reversal copies the penalty's, in that pool and
+    #: in that stream. No server default: a writer that forgets it must fail on
+    #: NOT NULL, not silently file salary money as redeemable.
+    technician_type: Mapped[str] = mapped_column(String(16), nullable=False)
 
     __table_args__ = (
         CheckConstraint(
@@ -154,6 +165,12 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
         # place that could produce a zero — a technician whose monthly cap is
         # already spent — writes nothing instead, and says so where it decides.
         CheckConstraint("amount_paise > 0", name="amount_paise"),
+        # The technician's type at write time — the same vocabulary
+        # `technician_profiles.technician_type` holds. BARE name, matching the
+        # profile's and invite's.
+        CheckConstraint(
+            "technician_type IN ('employee', 'freelancer')", name="technician_type"
+        ),
         # The ledger list: one company's entries, newest first.
         Index("ix_ledger_entries_company_created", "company_id", "created_at"),
         # Two jobs at once, which is why it is one index and not two: the

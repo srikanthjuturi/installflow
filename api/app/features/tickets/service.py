@@ -24,7 +24,6 @@ from typing import NamedTuple
 from fastapi import HTTPException, status as http_status
 from sqlalchemy import Select, and_, case, func, or_, select, update
 from sqlalchemy import false as sql_false
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -46,7 +45,15 @@ from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.core.vendor_credits import standing as vendor_standing
 from app.core.deps import Principal
 from app.core.errors import AppError
-from app.core.franchise import franchisee_for_pincode, restamp_ticket
+from app.core.franchise import (
+    franchisee_for_pincode,
+    home_franchisee_id,
+    lock_routing,
+    restamp_ticket,
+)
+from app.core.employment import job_technician_type, pays_per_job
+from app.core.franchise_money import may_reverse, may_see_money
+from app.core.penalty_reversal import REVERSIBLE_KINDS, reverse as reverse_ledger_penalty
 from app.core.job_passes import technicians_who_passed
 from app.core.ledger import (
     cap_remaining,
@@ -84,7 +91,6 @@ from app.core.slots import (
     IST,
     bookable_slots,
     clock,
-    clock_range,
     day_label,
     offered_slots,
     reschedule_slots,
@@ -129,7 +135,11 @@ from app.models.franchisee import Franchisee
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
-from app.models.role import AREA_MANAGER, FACILITY_ROLES, REGIONAL_HEAD, VENDOR_USER
+from app.models.role import (
+    FACILITY_ROLES,
+    FRANCHISEE_ADMIN,
+    VENDOR_USER,
+)
 from app.models.territory import Pincode
 from app.models.technician import (
     ACTIVE,
@@ -781,6 +791,9 @@ async def _hydrate(
     * `franchiseeId`/`franchiseeName` are withheld from a **vendor** — who runs
       the company's technicians is not the vendor's business — and carried for
       staff and franchise callers.
+    * `technicianType` is null for a **vendor** too (Task 06): how a technician
+      is paid is the same kind of not-their-business as the payout figure, and
+      the force-close payout field is what the console hides with it.
     """
     if not rows:
         return []
@@ -836,13 +849,20 @@ async def _hydrate(
     # A technician's name is not on their profile — it is on the User the
     # membership points at, so this is a two-hop join rather than a lookup.
     # The photo rides along on the same join: it lives on the same row, so
-    # showing a face beside the name costs no extra query.
+    # showing a face beside the name costs no extra query. Task 06 sends the
+    # profile's TYPE on the same row — the one IN query §4.3 asks for — so the
+    # force-close form learns it for a page in the query it already needed.
     tech_ids = {t.technician_id for t in rows if t.technician_id}
     tech_people = (
         {
-            r[0]: (r[1], r[2])
+            r[0]: (r[1], r[2], r[3])
             for r in await db.execute(
-                select(TechnicianProfile.id, User.full_name, User.profile_image_url)
+                select(
+                    TechnicianProfile.id,
+                    User.full_name,
+                    User.profile_image_url,
+                    TechnicianProfile.technician_type,
+                )
                 .join(Membership, Membership.id == TechnicianProfile.membership_id)
                 .join(User, User.id == Membership.user_id)
                 .where(TechnicianProfile.id.in_(tech_ids))
@@ -905,10 +925,20 @@ async def _hydrate(
                 slaState=sla_state(t, warn_at_pct=warn_at_pct, now=now),
                 status=t.status,
                 technicianId=t.technician_id,
-                technicianName=tech_people.get(t.technician_id, (None, None))[0]
+                technicianName=tech_people.get(t.technician_id, (None, None, None))[0]
                 if t.technician_id
                 else None,
-                technicianPhotoUrl=tech_people.get(t.technician_id, (None, None))[1]
+                technicianPhotoUrl=tech_people.get(t.technician_id, (None, None, None))[1]
+                if t.technician_id
+                else None,
+                # Task 06 §4.3. Who is assigned and how they are paid. Null for
+                # a vendor principal (see the docstring bullets) and when
+                # nobody is assigned — never a guess from either absence.
+                technicianType=(
+                    None
+                    if principal.is_vendor
+                    else tech_people.get(t.technician_id, (None, None, None))[2]
+                )
                 if t.technician_id
                 else None,
                 bonusPaise=t.bonus_paise,
@@ -1496,35 +1526,53 @@ async def get_ticket(
 ) -> TicketDetailOut:
     row = await _load(db, principal, ticket_id)
     base = (await _hydrate(db, principal, [row]))[0]
+    # Money is per franchisee now (F12), so every read of it also asks WHOSE:
+    # `may_see_money` (core.franchise_money) is both the list filter and the
+    # withheld-fact test, resolved against the company's home once.
+    home_id = (
+        await home_franchisee_id(db, principal.company_id)
+        if principal.company_id is not None
+        else None
+    )
     # What was actually paid, from the ledger rather than from a column — the
     # ledger is where money lives, and a second copy on the ticket is the copy
     # that drifts. One row at most per ticket, so `scalar` is the whole query.
     #
     # Not fetched for a vendor: it is the same withheld fact as the payout, one
     # step later, and asking for it would be a query run purely to throw away.
-    # Not fetched for a vendor: it is the same withheld fact as the payout, one
-    # step later, and asking for it would be a query run purely to throw away.
     # A franchisee admin DOES get it — technicians' money is theirs (F7);
     # facility roles do not, until Task 12 gives them the parts ledger that
-    # explains why they are looking.
+    # explains why they are looking. A payout of another franchisee's money is
+    # hidden by the same wall — §4.11.
     credited = None
     penalties: list[TicketPenaltyOut] = []
     reviewer: PenaltyReviewerOut | None = None
     if not principal.is_vendor and principal.role not in FACILITY_ROLES:
-        credited = await db.scalar(
-            select(LedgerEntry.amount_paise).where(
-                LedgerEntry.company_id == principal.company_id,
-                LedgerEntry.ticket_id == row.id,
-                LedgerEntry.kind == "payout",
+        payout = (
+            await db.execute(
+                select(
+                    LedgerEntry.amount_paise, LedgerEntry.franchisee_id
+                ).where(
+                    LedgerEntry.company_id == principal.company_id,
+                    LedgerEntry.ticket_id == row.id,
+                    LedgerEntry.kind == "payout",
+                )
             )
-        )
+        ).first()
+        if payout is not None and home_id is not None and may_see_money(
+            role=principal.role,
+            principal_franchisee_id=principal.franchisee_id,
+            money_franchisee_id=payout.franchisee_id,
+            home_id=home_id,
+        ):
+            credited = payout.amount_paise
         # What technicians were charged on this ticket, and whether it was
-        # given back. Staff only, for the payout's reason: a vendor is not a
-        # party to what a technician pays. The reviewer is resolved only when
-        # there is something to review — it is up to four queries.
-        penalties = await _penalties(db, row)
+        # given back, filtered to the franchisee money this caller may see
+        # (§4.11). The reviewer is resolved only when something survivable is
+        # left to review — it is up to four queries.
+        penalties = await _penalties(db, row, principal, home_id)
         if penalties:
-            reviewer = await _penalty_reviewer(db, row)
+            reviewer = await _penalty_reviewer(db, row, home_id)
     return TicketDetailOut(
         **base.model_dump(),
         technicianCreditedPaise=credited,
@@ -1534,13 +1582,24 @@ async def get_ticket(
     )
 
 
-async def _penalties(db: AsyncSession, row: Ticket) -> list[TicketPenaltyOut]:
+async def _penalties(
+    db: AsyncSession,
+    row: Ticket,
+    principal: Principal,
+    home_id: uuid.UUID | None,
+) -> list[TicketPenaltyOut]:
     """Every penalty charged on this ticket, oldest first, each with its reversal.
 
     One query for the pair — a penalty LEFT JOINed to the reversal that names
     it, which `uq_ledger_entries_reverses` makes a probe — then two small name
     lookups. The technician is read off the ledger row, not the ticket: a
     cancellation clears `technician_id`, which is exactly when a penalty exists.
+
+    Task 05 §4.11 keeps only the rows this caller may SEE
+    (`core.franchise_money.may_see_money`): an Area Manager reading another
+    franchisee's ticket sees no penalties at all — the money wall, the pincodes
+    never answered this — and the row still says so on the wire by NOT being
+    there rather than by a field pretending.
     """
     reversal = aliased(LedgerEntry)
     pairs = (
@@ -1561,6 +1620,20 @@ async def _penalties(db: AsyncSession, row: Ticket) -> list[TicketPenaltyOut]:
             .order_by(LedgerEntry.created_at, LedgerEntry.id)
         )
     ).all()
+    if not pairs:
+        return []
+    if home_id is None:  # a company without home rows: show nothing, fail closed
+        return []
+    pairs = [
+        (p, r)
+        for p, r in pairs
+        if may_see_money(
+            role=principal.role,
+            principal_franchisee_id=principal.franchisee_id,
+            money_franchisee_id=p.franchisee_id,
+            home_id=home_id,
+        )
+    ]
     if not pairs:
         return []
 
@@ -1599,13 +1672,29 @@ async def _penalties(db: AsyncSession, row: Ticket) -> list[TicketPenaltyOut]:
                 (managers.get(r.created_by) or "—") if r is not None else None
             ),
             reversalReason=r.reason if r is not None else None,
+            # Whose pool it was collected into, and whether THIS reader may
+            # give it back (§4.11): the REVERSE column, so an Admin/NH sees
+            # their button on every franchisee and an RH/AM on home's only.
+            # Deliberately False for a franchise principal even on its OWN —
+            # Door 1 is staff-only by `require_staff_principal`; its reversal
+            # door is Door 2 (§4.12), never the ticket page.
+            franchiseeId=p.franchisee_id,
+            canReverse=(
+                may_reverse(
+                    role=principal.role,
+                    principal_franchisee_id=principal.franchisee_id,
+                    penalty_franchisee_id=p.franchisee_id,
+                    home_id=home_id,
+                )
+                and not principal.is_franchise
+            ),
         )
         for p, r in pairs
     ]
 
 
 async def _penalty_reviewer(
-    db: AsyncSession, row: Ticket
+    db: AsyncSession, row: Ticket, home_id: uuid.UUID | None
 ) -> PenaltyReviewerOut | None:
     """The person responsible for this ticket's penalties — AM, RH, NH, Admin.
 
@@ -1614,7 +1703,38 @@ async def _penalty_reviewer(
     already say so. The two answers agree by construction — if no AM covers the
     state, no AM can even see this ticket, so the RH named here is also the
     lowest rank able to press the button.
+
+    Task 05 §4.11: a NON-home ticket's penalties are that franchisee's own
+    admins' to review (R3 — company staff have no fallback for managing its
+    money), so the console is told the franchisee's first active admin by name
+    instead of a chain that cannot act on it.
     """
+    if (
+        home_id is not None
+        and row.franchisee_id is not None
+        and row.franchisee_id != home_id
+    ):
+        uid, name = (
+            await db.execute(
+                select(User.id, User.full_name)
+                .join(Membership, Membership.user_id == User.id)
+                .where(
+                    Membership.company_id == row.company_id,
+                    Membership.franchisee_id == row.franchisee_id,
+                    # The role is on the USER the membership points at —
+                    # `membership.role` does not exist, and naming it blows up
+                    # the query the ticket page builds.
+                    User.role == FRANCHISEE_ADMIN,
+                    Membership.is_active.is_(True),
+                    User.full_name.is_not(None),
+                )
+                .order_by(User.full_name, User.id)
+                .limit(1)
+            )
+        ).first() or (None, None)
+        if uid is None:
+            return None
+        return PenaltyReviewerOut(name=name, role=FRANCHISEE_ADMIN)
     user = await nearest_manager_for(
         db,
         company_id=row.company_id,
@@ -3428,7 +3548,7 @@ async def reverse_penalty(
     *,
     reason: str,
 ) -> TicketDetailOut:
-    """Give a penalty back — all of it, once, with a reason.
+    """Give a penalty back — all of it, once, with a reason (Door 1, staff).
 
     `record_no_show`'s shape, pointed the other way: that one takes a band off
     a technician on a manager's word, this one returns it on a manager's word.
@@ -3436,17 +3556,18 @@ async def reverse_penalty(
     **Who.** The router's rank floor (Area Manager) and `_load`'s territory
     scoping, together — the ticket's AM, its RH, any NH, any Admin. That IS the
     chain "the AM, else the RH, else the NH, else the Admin" with seniors able
-    to act too: an AM who does not cover this ticket cannot even load it.
+    to act too: an AM who does not cover this ticket cannot even load it. Task
+    05 §4.10 adds the franchisee wall on top: money is per franchisee (F12),
+    so the penalty's own `franchisee_id` must also be one this caller may
+    REVERSE — today, an AM/RH on home's penalties and Admin/NH on every
+    franchisee's — and one they may not touch reads 404, the same answer the
+    filtered `penalties` list on the page gave them (§4.11).
 
-    **What.** A NEW `reversal` row naming the penalty (`models/ledger.py` —
-    nothing in that table is ever edited), for the full amount. Every sum that
-    reads penalties already treats a reversed one as never charged: the cap
-    (`charged_this_month`), the pool, and the technician's own earnings.
-
-    **Once.** The technician's profile row is locked, as the cancel path locks
-    it, so a reversal and a new charge against the same monthly cap cannot
-    interleave. A second reversal of the same penalty is a 409 — checked here
-    in words, and guaranteed by `uq_ledger_entries_reverses` for the race.
+    **How.** `core.penalty_reversal.reverse` — the one body Door 2 (the
+    franchisee's own Pool screen, `§4.12`) shares. It owns the reason check,
+    the profile lock, the once-only 409, the event wording (`₹… penalty to
+    {name} reversed · {reason}`, byte-for-byte today's) and the outbound push
+    after the commit, so the two doors cannot drift.
     """
     row = await _load(db, principal, ticket_id)
     penalty = await db.scalar(
@@ -3454,106 +3575,35 @@ async def reverse_penalty(
             LedgerEntry.id == entry_id,
             LedgerEntry.company_id == principal.company_id,
             LedgerEntry.ticket_id == row.id,
-            LedgerEntry.kind == "penalty",
+            LedgerEntry.kind.in_(REVERSIBLE_KINDS),
         )
     )
     if penalty is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Penalty not found"
         )
-    text = reason.strip()
-    if len(text) < 3:
+    # The wall applies to COMPANY staff too, not only franchise principals:
+    # the role already decides reach — an AM/RH may reverse the home's money
+    # only, an Admin/NH any franchisee's, a franchise admin its own (Door 2 is
+    # that admin's route, never this one). Gating on `franchisee_id is not
+    # None` skipped the check for every company principal and let a company AM
+    # give back a franchisee's pool money.
+    if not may_reverse(
+        role=principal.role,
+        principal_franchisee_id=principal.franchisee_id,
+        penalty_franchisee_id=penalty.franchisee_id,
+        home_id=await home_franchisee_id(db, principal.company_id),
+    ):
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Say why the penalty is being reversed",
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Penalty not found"
         )
-
-    profile = await db.scalar(
-        select(TechnicianProfile).where(
-            TechnicianProfile.id == penalty.technician_id,
-            TechnicianProfile.company_id == principal.company_id,
-        )
-    )
-    if profile is None:  # RESTRICT on the FK makes this unreachable today
-        raise _not_found()
-    await db.refresh(profile, with_for_update=True)
-
-    already = await db.scalar(
-        select(LedgerEntry.id).where(
-            LedgerEntry.company_id == principal.company_id,
-            LedgerEntry.reverses_id == penalty.id,
-        )
-    )
-    if already is not None:
-        raise _refused(
-            "PENALTY_ALREADY_REVERSED",
-            "This penalty has already been reversed. Reload the page to see "
-            "who reversed it.",
-        )
-
-    amount = penalty.amount_paise
-    name = await _technician_name(db, profile)
-    db.add(
-        ledger_entry(
-            company_id=principal.company_id,
-            technician_id=penalty.technician_id,
-            ticket_id=row.id,
-            kind="reversal",
-            amount_paise=amount,
-            # The manager's own words — the kind already says it is a reversal.
-            reason=text[:160],
-            by_user=principal.user_id,
-            reverses_id=penalty.id,
-            # A reversal gives money back out of the pool that collected the
-            # penalty (F12) — the PENALTY's franchisee, not the technician's
-            # current one, in case they moved franchisee in between.
-            franchisee_id=penalty.franchisee_id,
-        )
-    )
-    db.add(
-        record_event(
-            row,
-            "penalty_reversed",
-            actor_kind="staff",
-            actor_label=principal.user.full_name or "—",
-            note=f"₹{amount // 100:,} penalty to {name} reversed · {text}",
-            by_user=principal.user_id,
-        )
-    )
-    await publish_ticket_changed(db, row)
-    # The technician's Earnings screen refetches on this frame, so the penalty
-    # disappears from their phone without a pull-to-refresh.
-    await publish_job_changed(
+    await reverse_ledger_penalty(
         db,
-        company_id=principal.company_id,
-        technician_id=penalty.technician_id,
-        ticket_id=row.id,
-    )
-    try:
-        await db.commit()
-    except IntegrityError:
-        # Two managers inside the same instant. The partial unique index kept
-        # the money right; this keeps the sentence right.
-        await db.rollback()
-        raise _refused(
-            "PENALTY_ALREADY_REVERSED",
-            "This penalty has already been reversed. Reload the page to see "
-            "who reversed it.",
-        ) from None
-
-    # Outbound, after the commit — a push cannot be rolled back.
-    #
-    # `type: "job"` WITHOUT a ticket id, deliberately. The app refreshes its
-    # earnings on any `job` push it receives, which is the point; but it routes
-    # a TAP to `/job/:id` only when an id is present, and the technician who
-    # cancelled no longer holds this job, so that screen would 404. With no id
-    # the tap simply opens the app.
-    await send_to_technician(
-        db,
-        company_id=principal.company_id,
-        technician_id=penalty.technician_id,
-        message=PushText("penalty.reversed", code=row.code, amount=f"₹{amount // 100:,}"),
-        data={"type": "job"},
+        penalty=penalty,
+        ticket=row,
+        reason=reason,
+        actor_user_id=principal.user_id,
+        actor_label=principal.user.full_name or "—",
     )
     return await get_ticket(db, principal, ticket_id)
 
@@ -3884,6 +3934,18 @@ async def force_close_ticket(
 
     reason = body.reason.strip()
     notes = body.notes.strip()
+    # Task 06: for an EMPLOYEE's job the payout field is IGNORED, not refused —
+    # T2, there is no per-job payout to make, and every already-deployed
+    # console prefills this field with the full payout (`ForceCloseRequest`),
+    # so refusing it would 422 every force-closure of an employee's job until
+    # the console is redeployed. Same shape as the clamp below: a value the
+    # server overrules rather than an error, with the trail saying so.
+    kind_of = await job_technician_type(
+        db, company_id=principal.company_id, technician_id=technician_id
+    )
+    employee_job = technician_id is not None and not pays_per_job(kind_of)
+    if employee_job and (body.technicianPayoutPaise or 0) > 0:
+        notes = f"{notes} · no per-job payout: employee"
     db.add(
         record_event(
             row,
@@ -3919,7 +3981,12 @@ async def force_close_ticket(
     # because the console prefills this field FROM that payout — a value above
     # it is a typo in a number nobody was asked to invent, not an attack, and
     # refusing the whole force-closure over it would leave the ticket open.
-    credited = min(body.technicianPayoutPaise or 0, row.technician_payout_paise)
+    # Nothing at all for an employee — above.
+    credited = (
+        0
+        if employee_job
+        else min(body.technicianPayoutPaise or 0, row.technician_payout_paise)
+    )
     if technician_id is not None and credited > 0:
         model_name = await db.scalar(
             select(ProductModel.name).where(

@@ -278,6 +278,12 @@ class NotificationRaised:
     `audience` is the third half, for the same reason as `pincode`: it IS who
     hears the row (`models.notification.AUDIENCES`), and without it the socket
     would ring every territory manager about money only a payer can act on.
+
+    `franchisee_id` is the fourth (Task 05): the franchisee the row is ABOUT,
+    which is what lets a franchisee admin's portal hear their own franchisee's
+    bell and keeps it deaf to every other. Without it an `audience =
+    'franchisee_admin'` row could only be refused everywhere — the socket could
+    not tell a row it should hear from a company-wide row it must not.
     """
 
     company_id: uuid.UUID
@@ -285,6 +291,7 @@ class NotificationRaised:
     vendor_id: uuid.UUID | None = None
     notification_id: uuid.UUID | None = None
     audience: str | None = None
+    franchisee_id: uuid.UUID | None = None
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -297,6 +304,9 @@ class NotificationRaised:
                     str(self.notification_id) if self.notification_id else None
                 ),
                 "audience": self.audience,
+                "franchisee_id": (
+                    str(self.franchisee_id) if self.franchisee_id else None
+                ),
             },
             separators=(",", ":"),
         )
@@ -313,12 +323,14 @@ class NotificationRaised:
             # rather than to a discarded payload.
             row_id = raw.get("notification_id")
             audience = raw.get("audience")
+            franchisee = raw.get("franchisee_id")
             return NotificationRaised(
                 company_id=uuid.UUID(str(raw["company_id"])),
                 pincode=str(code) if code else None,
                 vendor_id=uuid.UUID(str(vendor)) if vendor else None,
                 notification_id=uuid.UUID(str(row_id)) if row_id else None,
                 audience=str(audience) if audience else None,
+                franchisee_id=uuid.UUID(str(franchisee)) if franchisee else None,
             )
         except (KeyError, ValueError, TypeError):
             log.warning("realtime: discarding malformed payload %r", raw)
@@ -402,12 +414,16 @@ async def publish_notification(
     vendor_id: uuid.UUID | None = None,
     notification_id: uuid.UUID | None = None,
     audience: str | None = None,
+    franchisee_id: uuid.UUID | None = None,
 ) -> None:
     """Tell every console whose territory covers this that the bell moved.
 
     `vendor_id` additionally rings the named vendor's portal. It widens the
     audience; it never narrows the staff one. `audience` is the one that does
     narrow it — pass the row's own, see `core.notifications.notify`.
+    `franchisee_id` completes that pairing for a `'franchisee_admin'` row (and
+    for a `payers` row of one franchisee's money): pass the row's own, or the
+    franchisee portal cannot tell its bell from the row it must stay deaf to.
 
     `notification_id` is what web push needs to find the row again and to
     deduplicate across workers. Pass it — `notify()` flushes so the id exists
@@ -424,6 +440,7 @@ async def publish_notification(
                 vendor_id=vendor_id,
                 notification_id=notification_id,
                 audience=audience,
+                franchisee_id=franchisee_id,
             ).as_payload(),
         },
     )

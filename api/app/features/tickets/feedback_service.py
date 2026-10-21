@@ -16,6 +16,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.employment import job_technician_type, pays_per_job
 from app.core.ledger import entry as ledger_entry, payout_reason
 from app.core.notifications import notify
 from app.core.push import send_to_technician
@@ -166,24 +167,34 @@ async def record_feedback(
         # read that changed the row, and `Closed` is terminal, so there is no
         # second closure to double-pay. (`complete` needs its `already_paid`
         # check because a bonus is paid at a NON-terminal step that can repeat.)
-        model_name = await db.scalar(
-            select(ProductModel.name).where(
-                ProductModel.company_id == row.company_id,
-                ProductModel.id == row.model_id,
-            )
+        #
+        # T2, Task 06: unless they are an employee. Their money is salary,
+        # moved by payroll, and a `payout` row here would put the same job's
+        # pay in both channels. No new event and no refusal — the ledger's
+        # silence IS the fact, and the ticket page renders it as
+        # `technicianCreditedPaise: null`, which the console already draws.
+        kind_of = await job_technician_type(
+            db, company_id=row.company_id, technician_id=row.technician_id
         )
-        db.add(
-            ledger_entry(
-                company_id=row.company_id,
-                technician_id=row.technician_id,
-                ticket_id=row.id,
-                kind="payout",
-                amount_paise=row.technician_payout_paise,
-                reason=payout_reason(
-                    service_type=row.service_type, model_name=model_name or "—"
-                ),
+        if pays_per_job(kind_of):
+            model_name = await db.scalar(
+                select(ProductModel.name).where(
+                    ProductModel.company_id == row.company_id,
+                    ProductModel.id == row.model_id,
+                )
             )
-        )
+            db.add(
+                ledger_entry(
+                    company_id=row.company_id,
+                    technician_id=row.technician_id,
+                    ticket_id=row.id,
+                    kind="payout",
+                    amount_paise=row.technician_payout_paise,
+                    reason=payout_reason(
+                        service_type=row.service_type, model_name=model_name or "—"
+                    ),
+                )
+            )
 
     if confirmed:
         # And the other half of the same money: the vendor asked for this visit,

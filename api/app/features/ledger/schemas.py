@@ -7,7 +7,10 @@ two surfaces end up disagreeing about a rounding.
 """
 
 import datetime
+import typing as t
 import uuid
+
+from pydantic import Field
 
 from app.core.schemas import AppModel
 
@@ -19,6 +22,9 @@ class LedgerPoolOut(AppModel):
     so `balancePaise` is not a stored figure but the difference of the two
     below it, computed on every read. A stored balance is a number that can
     disagree with the rows it claims to summarise, and eventually does.
+
+    There is one pool PER FRANCHISEE (F12) since Task 05, so the answer names
+    which one it is.
     """
 
     #: Unspent penalty money — what a bonus is drawn against. **Can go
@@ -36,6 +42,10 @@ class LedgerPoolOut(AppModel):
     cancellations: int
     bonusesPaidPaise: int
     pickups: int
+    #: Whose pool this is (Task 05 §4.12) — every money read names its
+    #: franchisee.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
 
 
 class LedgerEntryOut(AppModel):
@@ -63,3 +73,19 @@ class LedgerEntryOut(AppModel):
     #: read off that row, for the tag the console draws beside the charge.
     #: Always false on the other kinds.
     reversed: bool = False
+    #: The pool the money belongs to, and the stream it came from — stamped on
+    #: every row since Task 05 (F12, §3.3), read straight off the entry.
+    franchiseeId: uuid.UUID
+    technicianType: t.Literal["employee", "freelancer"]
+
+
+class ReverseRequest(AppModel):
+    """Giving a penalty back, for a reason the technician and any reader sees.
+
+    The same shape both doors ask for — `§4.10`'s ticket route and this
+    franchisee's own Pool door — because it is one body around one act
+    (`core.penalty_reversal`). Rule 4 duplicates it here rather than having a
+    feature import a feature.
+    """
+
+    reason: str = Field(min_length=3, max_length=160)

@@ -191,6 +191,12 @@ class TicketOut(AppModel):
     #: until they upload one — the client falls back to initials, never to a
     #: broken image.
     technicianPhotoUrl: str | None = None
+    #: How they are paid (Task 06 §4.3): their CURRENT profile type, so the
+    #: force-close form can hide the payout field for an employee before
+    #: sending a number the server would only throw away. Null for a vendor
+    #: principal — not a party to how a technician is paid, the same rule that
+    #: nulls `technicianPayoutPaise` — and when nobody is assigned.
+    technicianType: Literal["employee", "freelancer"] | None = None
 
     #: What a manager attached to a re-notification after nobody accepted, in
     #: PAISE. Null means no bonus was ever funded — a different claim from ₹0,
@@ -325,6 +331,14 @@ class TicketPenaltyOut(AppModel):
     reversedAt: datetime.datetime | None = None
     reversedByName: str | None = None
     reversalReason: str | None = None
+    #: Whose pool this was collected into (F12) — money is per franchisee since
+    #: Task 05, and a staff member reading a mixed view needs the label.
+    franchiseeId: uuid.UUID
+    #: May THIS caller give it back (`core.franchise_money.may_reverse`, the
+    #: REVERSE column): Admin/NH on every franchisee, RH/AM on home's only.
+    #: False for a franchise principal — the ticket door is staff-only
+    #: (`require_staff_principal`); its reversal door is its own pool screen.
+    canReverse: bool = False
 
 
 class PenaltyReviewerOut(AppModel):

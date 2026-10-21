@@ -74,7 +74,9 @@ among them — renaming signs everyone out, or drops the language they chose), t
 `vendor_price_paise`, both NOT NULL — and a ticket STAMPS both at intake, so a repricing never
 restates what an old job was worth. On closure the technician's half becomes a `payout` entry in
 `ledger_entries`, which is where the Earnings screen's `earned` comes from and why `net` is now a
-real number: `earned + bonuses − penalties`.
+real number: `earned + bonuses − penalties`. **An EMPLOYEE's closure writes none** (Task 06): an
+employee is salaried — no per-job payout, no UPI redeem — and their bonuses and penalties add up
+on a monthly statement CSV instead (`api/AGENTS.md` → Employee statements).
 
 **Neither party ever sees the other's figure**, and it is enforced server-side in three places:
 `masters.get_tree` nulls `technicianPayoutPaise` for a vendor principal (a vendor calls it on every
@@ -101,8 +103,9 @@ person closing it knows which.
 **A technician cashes out by REDEEMING, paid by UPI with no gateway.** The balance is everything
 ever credited (`payouts + bonuses − penalties`) less every redemption not declined, and one request
 is for all of it, capped at ₹1,00,000 — UPI's per-transaction limit. The server builds the
-`upi://pay?…` string and both clients draw the QR from it; the payer — the company's **National
-Head, or its Admin when it has none** — scans it on their own phone. Because nothing in this system
+`upi://pay?…` string and both clients draw the QR from it; the payer — for a home technician the
+company's **National Head, or its Admin when it has none; for a franchisee's technician, that
+franchisee's own admin** — scans it on their own phone. Because nothing in this system
 can see the money, two people's word is recorded and never confused: the payer **claims** "I paid"
 with a screenshot (UTR optional), and **only the technician confirms** it arrived. That confirmation
 is the one thing that makes a redemption paid; no endpoint lets anybody else say so. The payer may
@@ -116,7 +119,9 @@ both; either way it saves only after a one-time code sent to their REGISTERED nu
 (`otp_codes.purpose = 'payout_account'`, destination read from the account, never the request).
 Once one is on file the technician can only **request a change**, carrying the new UPI ID and name;
 it rings the **Area Manager for their area, else the Regional Head, else a National Head, else an
-Admin** (`core.coverage.upi_reviewer`, a role-addressed `notifications.audience`), and any manager
+Admin** (`core.coverage.upi_reviewer`, a role-addressed `notifications.audience`) — except for a
+franchisee's own technician, whose change rings **that franchisee's admin** and whom no staff role
+can approve — and any manager
 who can edit the technician approves it on their profile — **no code**, the manager is the check.
 The console's add/edit form still sets it directly, for the same reason. Joining no longer asks.
 Why: it is where money lands, and redirecting it is exactly what a borrowed phone would try.

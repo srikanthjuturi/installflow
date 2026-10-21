@@ -39,12 +39,15 @@ from sqlalchemy import ColumnElement, Date, and_, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.franchise import home_franchisee_id
 from app.core.scope import ALL_INDIA_ROLES
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
+from app.models.franchisee import Franchisee
 from app.models.membership import Membership
 from app.models.role import (
     ADMIN,
     AREA_MANAGER,
+    FRANCHISEE_ADMIN,
     NATIONAL_HEAD,
     REGIONAL_HEAD,
     VENDOR_ROLES,
@@ -533,24 +536,67 @@ async def nearest_manager_for(
 
 async def upi_reviewer(
     db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
-) -> tuple[str, str | None]:
-    """Who is asked to approve a technician's UPI change: `(role, pincode)`.
+) -> tuple[str, str | None, uuid.UUID]:
+    """Who is asked to approve a technician's UPI change: `(role, pincode,
+    franchisee_id)`.
 
-    The Area Manager whose states cover one of the technician's service
+    A NON-home technician's franchisee runs their money (Task 05, F7), so their
+    own franchisee admin is the answer — no walk, no territory, no
+    `franchisee_admin` at the home. The home keeps today's chain unchanged (F8):
+    the Area Manager whose states cover one of the technician's service
     pincodes; if none does, the Regional Head of one of their regions; then a
     National Head; then an Admin — the chain the business states, and the one
     `nearest_manager_for` already walks for a single pincode. Here it is over
     the technician's WHOLE coverage, because a technician is not one pincode.
+    The third element is the home's id there, always — every chain rung is a
+    staff role of the company.
 
     The pincode comes back with the two territory roles so the notification can
     carry it: that is what narrows an `area_manager`-addressed row to the AM
     whose state holds it, rather than to every AM in the company. It is the
     lowest-numbered covered pincode — deterministic, so a retry asks the same
-    person. National Heads and Admins cover everything, so they get None.
+    person. National Heads and Admins cover everything, so they get None — and
+    so does a franchisee admin, for the same reason: there is no territory test
+    on a franchise bell, whose row carries the franchisee id instead
+    (`core.audience`).
+
+    **A home request is not addressed to home's franchisee admins, on purpose**
+    (Decision, docstring): the chain stays exact for the home (F8) — its
+    franchisee admins can still DECIDE the change in the portal, but no bell
+    row is addressed to them, or a home company's AM would stop being the one
+    whose bell rings.
 
     Active on both the membership and the user, as everywhere: a manager who
-    has left is not somebody who can be asked.
+    has left is not somebody who can be asked. A non-home franchisee has no
+    fallback by ruling R3 — safe, because Task 03 refuses to deactivate its
+    last active admin (`FRANCHISEE_LAST_ADMIN`), so there is always somebody to
+    ring (a franchisee with no admin also has no technicians to ask for
+    anything, F9).
     """
+    row = (
+        await db.execute(
+            select(TechnicianProfile.franchisee_id, Franchisee.is_home)
+            .join(
+                Franchisee,
+                (Franchisee.company_id == TechnicianProfile.company_id)
+                & (Franchisee.id == TechnicianProfile.franchisee_id),
+            )
+            .where(
+                TechnicianProfile.company_id == company_id,
+                TechnicianProfile.id == technician_id,
+            )
+        )
+    ).first()
+    home_id: uuid.UUID
+    if row is None:
+        # No profile — today's callers never reach this path with a live
+        # technician; the walk below still returns, addressed company-level.
+        home_id = await home_franchisee_id(db, company_id)
+    elif row.is_home:
+        home_id = row.franchisee_id
+    else:
+        return FRANCHISEE_ADMIN, None, row.franchisee_id
+
     pincodes = select(TechnicianPincode.pincode).where(
         TechnicianPincode.company_id == company_id,
         TechnicianPincode.technician_id == technician_id,
@@ -577,7 +623,7 @@ async def upi_reviewer(
         .limit(1)
     )
     if by_state is not None:
-        return AREA_MANAGER, by_state
+        return AREA_MANAGER, by_state, home_id
 
     by_region = await db.scalar(
         active(
@@ -592,23 +638,39 @@ async def upi_reviewer(
         .limit(1)
     )
     if by_region is not None:
-        return REGIONAL_HEAD, by_region
+        return REGIONAL_HEAD, by_region, home_id
 
     head = await db.scalar(
         active(
             select(Membership.id).join(User, User.id == Membership.user_id)
         ).where(User.role == NATIONAL_HEAD).limit(1)
     )
-    return (NATIONAL_HEAD, None) if head is not None else (ADMIN, None)
+    return ((NATIONAL_HEAD, None, home_id) if head is not None
+            else (ADMIN, None, home_id))
 
 
-async def payer_role(db: AsyncSession, *, company_id: uuid.UUID) -> str:
-    """Who pays a technician their balance: National Head, else Admin.
+async def payer_role(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID | None = None,
+) -> str:
+    """Who pays a technician their balance: National Head, else Admin — unless
+    the technician's franchisee is NOT the home, when their own franchisee
+    admin (F7).
 
     The role, not a person. A company may have several National Heads and any
     of them may pay, so the bell goes to all of them; the Admins hear it only
     when there is no National Head to — the business's own fallback, and the
     reason this is a query rather than a constant.
+
+    `franchisee_id` is the REDEMPTION's franchisee: a non-home one pays nobody
+    but its own admin, and company staff are never asked (owner ruling R3) —
+    safe, because a non-home franchisee always has at least one active admin
+    (Task 03 refuses to deactivate its last, 409 `FRANCHISEE_LAST_ADMIN`).
+    Callers asking about the COMPANY payer — `_visible`'s `is_payer`, the
+    socket's `payer` flag, `users_notified_by`'s `payers` branch — pass no
+    kwarg, which is today's behaviour unchanged.
 
     Asked at READ time, every time, like the rest of the notification audience:
     a company that appoints its first National Head moves every redemption's
@@ -618,6 +680,29 @@ async def payer_role(db: AsyncSession, *, company_id: uuid.UUID) -> str:
     Active and not deleted on both rows — a National Head who has left is not
     somebody who can pay, and counting them would silence the Admins for good.
     """
+    if franchisee_id is not None:
+        is_home = await db.scalar(
+            select(Franchisee.is_home).where(
+                Franchisee.company_id == company_id,
+                Franchisee.id == franchisee_id,
+            )
+        )
+        return NATIONAL_HEAD if is_home else FRANCHISEE_ADMIN
+
+    has_head = await db.scalar(
+        select(Membership.id)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            Membership.company_id == company_id,
+            Membership.is_active.is_(True),
+            Membership.deleted_at.is_(None),
+            User.role == NATIONAL_HEAD,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    return NATIONAL_HEAD if has_head is not None else ADMIN
     has_head = await db.scalar(
         select(Membership.id)
         .join(User, User.id == Membership.user_id)
@@ -641,6 +726,7 @@ async def users_notified_by(
     pincode: str | None,
     vendor_id: uuid.UUID | None = None,
     audience: str | None = None,
+    franchisee_id: uuid.UUID | None = None,
 ) -> list[uuid.UUID]:
     """Whose browsers should be pushed about this notification.
 
@@ -660,7 +746,7 @@ async def users_notified_by(
     rule is ever added it belongs in both, and this note is where whoever adds
     it should look.**
 
-    Four branches, mirroring `_visible` clause for clause:
+    Five branches, mirroring `_visible` clause for clause:
 
     * **Admin and national head** hear everything in the company. They are the
       `ALL_INDIA_ROLES` for whom `visible_pincodes` returns None. A superadmin
@@ -674,13 +760,22 @@ async def users_notified_by(
       audience; it never narrows the staff one — unless the row is also
       addressed `'vendor'`, which is the one audience that does narrow away
       from staff entirely.
+    * **A franchisee's own admins** hear a row ABOUT their franchisee —
+      `franchisee_id` set. For `payers` rows it is OR'd beside the company
+      payer (how the home's admins hear home redemptions, F8); for an
+      unaddressed row it is appended to the territory branches (how they hear
+      `technician_joined`); for `audience='franchisee_admin'` it is the ONLY
+      clause, a non-home redemption's bell. No `franchisee_id` on the row means
+      no franchise ears — every staff event stays staff-only.
 
-    And one rule ahead of all four: **a row with an `audience`** reaches that
-    audience and nobody else. `'payers'` is the users holding `payer_role`; a
-    ROLE key (`area_manager`, `regional_head`, `national_head`, `admin`) is that
-    role alone — still inside its territory for the two territory roles, which
-    is what the row's pincode is for. Either replaces the territory branches
-    rather than adding to them, exactly as `_visible` does.
+    And one rule ahead of all five: **a row with an `audience`** reaches that
+    audience and nobody else. `'payers'` is the users holding `payer_role`
+    (plus the row's franchisee admins when it carries a `franchisee_id`); a
+    ROLE key (`area_manager`, `regional_head`, `national_head`, `admin`,
+    `franchisee_admin`) is that role alone — still inside its territory for the
+    two territory roles, which is what the row's pincode is for. Either replaces
+    the territory branches rather than adding to them, exactly as `_visible`
+    does.
 
     Note what the `EXISTS` clauses do to a company-wide row (`pincode IS NULL`):
     an area manager with no states assigned hears nothing at all, not even that.
@@ -718,7 +813,15 @@ async def users_notified_by(
         # An ADDRESSED row. Unknown audiences reach nobody — failing closed, as
         # `_visible` does, rather than falling through to the whole company.
         if audience == "payers":
-            who = [User.role == await payer_role(db, company_id=company_id)]
+            payer = User.role == await payer_role(db, company_id=company_id)
+            if franchisee_id is not None:
+                # The row is about a franchisee's money: its own admins hear
+                # it too — the ONLY way a home franchisee's admins hear a home
+                # redemption, since 'payers' names staff otherwise (F8).
+                who = [payer | ((User.role == FRANCHISEE_ADMIN)
+                                & (Membership.franchisee_id == franchisee_id))]
+            else:
+                who = [payer]
         elif audience == "billing":
             # Whoever can recharge the company's credits — both, never a fallback.
             who = [User.role.in_((ADMIN, NATIONAL_HEAD))]
@@ -728,6 +831,13 @@ async def users_notified_by(
             who = [(User.role == REGIONAL_HEAD) & covers_region.exists()]
         elif audience in (NATIONAL_HEAD, ADMIN):
             who = [User.role == audience]
+        elif audience == FRANCHISEE_ADMIN:
+            # The row is addressed to ONE franchisee's admins; no id says who,
+            # so fail closed rather than ring every franchisee in the company.
+            if franchisee_id is None:
+                return []
+            who = [(User.role == FRANCHISEE_ADMIN)
+                   & (Membership.franchisee_id == franchisee_id)]
         elif audience == "vendor":
             # The named vendor's own people, and no staff at all — the one
             # audience that points outward. Without an id there is nobody to
@@ -745,6 +855,12 @@ async def users_notified_by(
         ]
         if vendor_id is not None:
             who.append(User.role.in_(VENDOR_ROLES) & (Membership.vendor_id == vendor_id))
+        if franchisee_id is not None:
+            # A row ABOUT a franchisee (Task 04/05 writers stamp it): its admins
+            # hear it on top of today's territory list — how they hear
+            # `technician_joined` for a technician they own.
+            who.append((User.role == FRANCHISEE_ADMIN)
+                       & (Membership.franchisee_id == franchisee_id))
 
     return list(
         await db.scalars(

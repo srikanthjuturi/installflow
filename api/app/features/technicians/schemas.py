@@ -29,6 +29,9 @@ OnboardingMode = Literal["invite", "direct"]
 RegisteredBy = Literal["self", "manager"]
 TechnicianStatus = Literal["active", "inactive", "suspended"]
 InviteStatus = Literal["pending", "sent", "failed", "registered", "cancelled", "expired"]
+#: How this technician is paid — whose stream their money rows carry (F12).
+#: Task 10 reads it at job accept and stamps the ledger from it.
+TechnicianType = Literal["employee", "freelancer"]
 
 
 # ── requests ──────────────────────────────────────────────────────────────────
@@ -57,6 +60,12 @@ class TechnicianCreateRequest(BaseModel):
     #: The name on that account. Optional even with a UPI ID — a manager may
     #: not know it — and a redemption falls back to the technician's own name.
     upiName: OptionalUpiName = None
+    #: How they are paid: salary ("employee") or per job ("freelancer"). Task 01
+    #: defaulted every row to freelancer; the choice is now the caller's, and
+    #: changing it later is refused while the technician holds an open job
+    #: (`core.franchise_money.type_change_refusal`) — T1 stamps the type a job
+    #: is ACCEPTED under, so a mid-job switch would restate accepted work.
+    technicianType: TechnicianType = "freelancer"
 
 
 class TechnicianUpdateRequest(BaseModel):
@@ -79,6 +88,10 @@ class TechnicianUpdateRequest(BaseModel):
     #: Clearable the same way, and tested for presence the same way.
     upiName: OptionalUpiName = None
     status: TechnicianStatus | None = None
+    #: Omitted leaves it alone; sent, it is refused with 409
+    #: `TECHNICIAN_HAS_OPEN_JOBS` while the technician still holds an open job.
+    #: Not editable here: re-typing the technician is Task 03's carve-out.
+    technicianType: TechnicianType | None = None
 
 
 class InviteCreateRequest(BaseModel):
@@ -93,6 +106,9 @@ class InviteCreateRequest(BaseModel):
     pincodes: list[Pincode] = Field(min_length=1, max_length=50)
     #: See `TechnicianCreateRequest.dailyJobCap` — normally absent.
     dailyJobCap: DailyJobCap | None = None
+    #: See `TechnicianCreateRequest.technicianType` — carried so the invite row
+    #: and the profile it becomes say the same thing about pay.
+    technicianType: TechnicianType = "freelancer"
 
 
 # ── responses ─────────────────────────────────────────────────────────────────
@@ -131,6 +147,16 @@ class TechnicianOut(AppModel):
     profileImageUrl: str | None
     isActive: bool
     status: TechnicianStatus
+
+    #: Who manages and pays this technician (F8): the franchisee their profile
+    #: is stamped with. `canManage` is the caller's own answer (`franchise_scope`'s
+    #: MANAGE column) — a staff member reading another franchisee's technician
+    #: sees it and can change nothing, so screens can gate the buttons off it.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
+    franchiseeIsHome: bool
+    technicianType: TechnicianType
+    canManage: bool
 
     regionId: uuid.UUID
     regionName: str
@@ -178,6 +204,12 @@ class TechnicianInviteOut(AppModel):
     id: uuid.UUID
     phone: str
     status: InviteStatus
+    #: The franchisee the invite is joined to (F8) — the same stamp the profile
+    #: will carry when this phone registers. No `franchiseeIsHome`: an invite
+    #: has no money to hide, and the console does not render a field it cannot use.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
+    technicianType: TechnicianType
     regionId: uuid.UUID
     regionName: str
     #: Who sent the link — the tracking half of the invite path.
@@ -241,6 +273,14 @@ class TechnicianSessionOut(AppModel):
     name: str
     phone: str
     profileImageUrl: str | None
+    #: How they are paid (`models/technician.TECHNICIAN_TYPES`, Task 06 §4.6).
+    #: The app branches its money screens on this — the redeem card disappears
+    #: for an employee (T4), the earnings net is relabelled, and the pool offer
+    #: is read with no rupee figure on the lock screen (§4.7). Sent on both
+    #: sign-in and `/technicians/me` because one builder fills it; a screen
+    #: that learns the type only after "me" is a screen that shows the wrong
+    #: money button for one refresh.
+    technicianType: Literal["employee", "freelancer"]
     regionName: str
     #: Display-only, e.g. "Priya Deshmukh · Twincore Technologies" — who
     #: onboarded them. Already carries the company, but glued to a person's
@@ -405,6 +445,24 @@ class PayoutAccountOut(AppModel):
     #: waiting; rejected shows its reason until the next request; approved or
     #: withdrawn shows nothing.
     change: UpiChangeOut | None = None
+
+
+class UpiChangeRowOut(UpiChangeOut):
+    """A change request on the franchisee's waiting/approved/rejected lists.
+
+    The portal renders it inside a technician's name, so the row carries who it
+    is about — the staff profile page reached it from the profile instead.
+    """
+
+    technicianId: uuid.UUID
+    technicianName: str
+    technicianCode: str
+
+
+class UpiChangeCountOut(AppModel):
+    """The badge on the franchisee's Payouts tab: changes waiting on them."""
+
+    pending: int
 
 
 class DistrictTechnicianCount(AppModel):

@@ -1,19 +1,23 @@
-"""Reading the penalty pool.
+"""Reading the penalty pool — one pool per franchisee (F12, Task 05 §4.12).
 
-Read-only, and that is not a stage it is passing through. Nothing here writes:
-a ledger entry is created by the act it records — a cancellation in
-`jobs.service.cancel`, a completed bonused job in `jobs.service.complete`, a
-penalty given back in `tickets.service.reverse_penalty` — and it commits in
-that act's own transaction. An endpoint that could post an entry
+Writes: `POST /franchise/ledger/{entryId}/reverse` is the ONE write here, the
+franchisee's own Door 2 for giving a penalty back — everything else still
+writes nothing. An entry is otherwise created by the act it records — a
+cancellation in `jobs.service.cancel`, a completed bonused job in
+`jobs.service.complete`, a penalty given back in `core.penalty_reversal` — and
+it commits in that act's own transaction. An endpoint that could post an entry
 on its own would be a way to move money without anything happening.
 
-## Scoped by company only
+## Scoped by company and franchisee
 
 Unlike tickets and technicians, this is NOT narrowed by territory. The pool is
-one balance for the whole company — §7 collects every cancellation into it and
-funds every bonus out of it — so a per-region view would show a share of a
-number that is not divisible. The `earnings.view` feature is admin and national
-head by default, which is the audience that reads a whole-company figure.
+ONE BALANCE PER FRANCHISEE — §7 collects every cancellation into it and funds
+every bonus out of it — so a per-region view would show a share of a number
+that is not divisible. The `earnings.view` feature is admin and national head
+by default, which is the audience that reads a whole-company figure; a
+franchisee's own admin reads its own through the `/franchise` twins
+(`franchise.pool`), and every pool read here names the franchisee it is about
+(`core.franchise_money.pool_franchisee` decides which).
 """
 
 import uuid
@@ -21,10 +25,14 @@ import uuid
 from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.ledger import pool as pool_totals
+from app.core.deps import Principal
+from app.core.errors import AppError
+from app.core.ledger import pool
+from app.core.penalty_reversal import REVERSIBLE_KINDS, reverse
 from app.core.schemas import ListParams
 from app.db.repository import paginate
 from app.features.ledger.schemas import LedgerEntryOut, LedgerPoolOut
+from app.models.franchisee import Franchisee
 from app.models.ledger import POOL_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
@@ -32,11 +40,33 @@ from app.models.ticket import Ticket
 from app.models.user import User
 
 
-async def get_pool(db: AsyncSession, *, company_id: uuid.UUID) -> LedgerPoolOut:
-    return LedgerPoolOut(**await pool_totals(db, company_id=company_id))
+async def get_pool(
+    db: AsyncSession, *, company_id: uuid.UUID, franchisee_id: uuid.UUID
+) -> LedgerPoolOut:
+    """One franchisee's pool — `franchisee_id` is not optional here.
+
+    The caller (`core.franchise_money.pool_franchisee`) decided WHICH pool the
+    read is about; the name rides along so the console can title the screen
+    with it rather than remembering what it asked for.
+    """
+    return LedgerPoolOut(
+        **await pool(db, company_id=company_id, franchisee_id=franchisee_id),
+        franchiseeId=franchisee_id,
+        franchiseeName=(
+            await db.scalar(
+                select(Franchisee.name).where(
+                    Franchisee.company_id == company_id,
+                    Franchisee.id == franchisee_id,
+                )
+            )
+            or ""
+        ),
+    )
 
 
-def _entries_query(*, company_id: uuid.UUID, kind: str | None) -> Select:
+def _entries_query(
+    *, company_id: uuid.UUID, franchisee_id: uuid.UUID, kind: str | None
+) -> Select:
     """Newest first, which is the only order a ledger is read in.
 
     Ordered by `created_at` and then `id`: two entries written in one
@@ -55,9 +85,14 @@ def _entries_query(*, company_id: uuid.UUID, kind: str | None) -> Select:
 
     Technician earnings are `features/earnings`, which reads the same table from
     the other end and deliberately does NOT filter by kind.
+
+    Task 05 §4.12: and to ONE franchisee's rows — every entry is stamped
+    (F12), so the balance the screen leads with and the rows under it finally
+    cannot disagree about whose money they describe.
     """
     stmt = select(LedgerEntry).where(
         LedgerEntry.company_id == company_id,
+        LedgerEntry.franchisee_id == franchisee_id,
         LedgerEntry.kind.in_(POOL_KINDS),
     )
     if kind is not None:
@@ -70,6 +105,7 @@ async def list_entries(
     params: ListParams,
     *,
     company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
     kind: str | None = None,
 ) -> tuple[list[LedgerEntryOut], int]:
     """One page of the ledger, with the two names each row shows.
@@ -80,7 +116,7 @@ async def list_entries(
     repeat.
     """
     rows, total = await paginate(
-        db, _entries_query(company_id=company_id, kind=kind),
+        db, _entries_query(company_id=company_id, franchisee_id=franchisee_id, kind=kind),
         page=params.page, limit=params.limit,
     )
     if not rows:
@@ -134,6 +170,81 @@ async def list_entries(
             ticketCode=codes.get(e.ticket_id) or "—",
             reason=e.reason,
             reversed=e.id in reversed_ids,
+            # The stamps Task 05 put on every row (F12) — which pool the
+            # money belongs to, and the stream it came from.
+            franchiseeId=e.franchisee_id,
+            technicianType=e.technician_type,
         )
         for e in rows
     ], total
+
+
+def _not_found() -> AppError:
+    # 404, never 403: a penalty not visible to this door does not exist to it.
+    return AppError(404, "NOT_FOUND", "Penalty not found")
+
+
+async def reverse_entry(
+    db: AsyncSession, principal: Principal, entry_id: uuid.UUID, reason: str
+) -> LedgerEntryOut:
+    """Door 2 — the franchisee's own admin gives one of its penalties back.
+
+    Reachable only from `POST /franchise/ledger/{entryId}/reverse`, so the
+    authorisation is exactly the stamp: the penalty must carry the
+    principal's own `franchisee_id`, be one whose kind can be reversed, and be
+    this company's — any miss is 404 "Penalty not found", never 403. How the
+    reversal is written, the event, the push and the once-only guarantee are
+    all `core.penalty_reversal.reverse` — the ONE body both doors share
+    (§4.10/§4.12); Door 1's territory check does not apply here, F13 having
+    kept the franchise principal out of tickets altogether.
+    """
+    assert principal.company_id is not None and principal.franchisee_id is not None
+    penalty = await db.scalar(
+        select(LedgerEntry).where(
+            LedgerEntry.company_id == principal.company_id,
+            LedgerEntry.id == entry_id,
+            LedgerEntry.kind.in_(REVERSIBLE_KINDS),
+            LedgerEntry.franchisee_id == principal.franchisee_id,
+        )
+    )
+    if penalty is None:
+        raise _not_found()
+    ticket = await db.scalar(
+        select(Ticket).where(
+            Ticket.company_id == principal.company_id,
+            Ticket.id == penalty.ticket_id,
+        )
+    )
+    if ticket is None:
+        # RESTRICT on the FK makes this unreachable; refuse rather than guess.
+        raise _not_found()
+    reversal = await reverse(
+        db,
+        penalty=penalty,
+        ticket=ticket,
+        reason=reason,
+        actor_user_id=principal.user_id,
+        actor_label=(principal.user.full_name or "").strip() or "—",
+    )
+    # Same two lookups `list_entries` makes, for one row.
+    code = await db.scalar(select(Ticket.code).where(Ticket.id == reversal.ticket_id))
+    name = await db.scalar(
+        select(User.full_name)
+        .join(Membership, Membership.user_id == User.id)
+        .join(TechnicianProfile, TechnicianProfile.membership_id == Membership.id)
+        .where(TechnicianProfile.id == reversal.technician_id)
+    )
+    return LedgerEntryOut(
+        id=reversal.id,
+        at=reversal.created_at,
+        kind=reversal.kind,
+        amountPaise=reversal.amount_paise,
+        technicianId=reversal.technician_id,
+        technicianName=name or "—",
+        ticketId=reversal.ticket_id,
+        ticketCode=code or "—",
+        reason=reversal.reason,
+        reversed=False,
+        franchiseeId=reversal.franchisee_id,
+        technicianType=reversal.technician_type,
+    )

@@ -1201,21 +1201,56 @@ async def _apply(
         if not m and not t:
             continue
         k = len(moves_by_target.get(target, []))
+        title = f"Pincodes reassigned to {plan.names.get(target, '—')}"
+        detail = (
+            f"{m} technician(s) moved · {t} lost pincodes"
+            f" · {k} open ticket(s) re-routed"
+        )
         raised = await notify(
             db,
             company_id=company_id,
             kind="technician_moved",
-            title=f"Pincodes reassigned to {plan.names.get(target, '—')}",
-            detail=(
-                f"{m} technician(s) moved · {t} lost pincodes"
-                f" · {k} open ticket(s) re-routed"
-            ),
+            title=title,
+            detail=detail,
             to=f"/franchisees/{target}",
             pincode=None,
         )
         await publish_notification(
             db, company_id=company_id, pincode=None, notification_id=raised.id
         )
+
+        # Task 03 hook (05 §4.8): the franchisee portals hear the same story —
+        # one row per affected NON-home franchisee of this pass, addressed to
+        # its OWN admins with step 8's title and detail and published with the
+        # same addressing. Targets and sources alike: a franchisee whose
+        # technicians were handed over or trimmed is told as plainly as one
+        # that received them (08's confirm copy promises they are told).
+        # Home is skipped — step 8's row is already company-wide and reaches
+        # its staff, and it must never reach a franchisee reader either.
+        affected: set[uuid.UUID] = {
+            c.from_id for c in plan.moved.get(target, [])
+        } | {c.from_id for c, _losing in plan.trimmed.get(target, [])}
+        affected.add(target)
+        for fid in sorted(affected - {home_id}):
+            ring = await notify(
+                db,
+                company_id=company_id,
+                kind="technician_moved",
+                title=title,
+                detail=detail,
+                to="/technicians",
+                pincode=None,
+                audience="franchisee_admin",
+                franchisee_id=fid,
+            )
+            await publish_notification(
+                db,
+                company_id=company_id,
+                pincode=None,
+                notification_id=ring.id,
+                audience="franchisee_admin",
+                franchisee_id=fid,
+            )
 
     # 9. Realtime frames, inside the transaction (they fire on commit).
     moved_ids = [c.id for lst in plan.moved.values() for c in lst]

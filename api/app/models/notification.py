@@ -195,6 +195,15 @@ NOTIFICATION_KINDS = (
 #: to the other — either may recharge, so both hear about the balance and the
 #: outcome of a recharge whichever of them asked.
 #:
+#: `franchisee_admin` — the franchisee admins of the row's `franchisee_id` and
+#: nobody else, staff included. A non-home technician's redemption or UPI
+#: change is THEIR franchisee admin's work, not the company payer's (Task 05,
+#: F7/F8), so a company-wide or territory row would ring the wrong people.
+#: It requires `franchisee_id` to be set (`franchisee_audience` CHECK) — the
+#: audience says which KIND of reader, the id says which one, exactly the
+#: pairing `vendor` makes. `payers` additionally reaches them when the row's
+#: franchisee is theirs — see `core.audience`.
+#:
 #: `vendor` — the named vendor's own people and NOBODY on staff. The only
 #: audience that narrows AWAY from staff rather than within them, and it exists
 #: because `vendor_id` alone does not: a row carrying a vendor id and no
@@ -215,6 +224,7 @@ AUDIENCES = (
     "admin",
     "billing",
     "vendor",
+    "franchisee_admin",
 )
 
 
@@ -254,13 +264,21 @@ class Notification(Base, IdMixin, AuditMixin):
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     #: NARROWS the staff audience to one role, where `vendor_id` widens it.
-    #: NULL for every row but a redemption's. See `AUDIENCES`.
+    #: NULL for every row but a redemption's and a UPI change's. See `AUDIENCES`.
     #:
-    #: ⚠ Three places decide who hears a row, and all three read this:
+    #: ⚠ FOUR places decide who hears a row, and all four read this:
     #: `notifications.service._visible` (the feed and the count),
-    #: `core.coverage.users_notified_by` (web push) and the console socket's
-    #: `_Visibility.hears_notification`. A fourth reader must too.
+    #: `core.coverage.users_notified_by` (web push), the console socket's
+    #: `_Visibility.hears_notification` and `core.audience.hears` (the pure
+    #: spec those two delegate to). A fifth reader must too.
     audience: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: The franchisee the row is ABOUT, for rows addressed to its admins
+    #: (`audience='franchisee_admin'`) and for `payers` rows of a specific
+    #: franchisee's money. NULL for the staff-only events — and NULL is also
+    #: what keeps every company-wide row out of a franchise reader's feed,
+    #: whichever audience it carries. NOT set on its own: the CHECK pairs it
+    #: with `audience`. COMPOSITE FK — see __table_args__.
+    franchisee_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     __table_args__ = (
         # Built FROM the tuple above rather than spelled out beside it. It was
@@ -306,6 +324,25 @@ class Notification(Base, IdMixin, AuditMixin):
         ),
         # The vendor portal's feed. Postgres makes no index for a foreign key.
         Index("ix_notifications_company_vendor", "company_id", "vendor_id"),
+        # The franchisee portal's feed (Task 05), and the covering index the
+        # composite FK below needs — Postgres makes none, so deleting a
+        # franchisee would otherwise scan the table.
+        Index("ix_notifications_company_franchisee", "company_id", "franchisee_id"),
+        # Composite, like every parent link here: a notification must not be
+        # able to name another company's franchisee. CASCADE — a removed
+        # franchisee's notifications have nobody left to read them.
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_notifications_company_franchisee",
+            ondelete="CASCADE",
+        ),
+        # An addressed franchise row must say which franchisee — the audience
+        # says which KIND of reader, and without the id the row is unanswerable.
+        CheckConstraint(
+            "audience IS DISTINCT FROM 'franchisee_admin' OR franchisee_id IS NOT NULL",
+            name="franchisee_audience",
+        ),
     )
 
 

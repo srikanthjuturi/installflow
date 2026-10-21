@@ -99,6 +99,17 @@ class StaffRedemptionOut(RedemptionOut):
     technicianId: uuid.UUID
     technicianName: str
     technicianCode: str
+    #: Whose money this redemption is (F12) — the payout queue is per
+    #: franchisee since Task 05, and a staff payer reading another
+    #: franchisee's queue needs its name on the row.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
+    #: May THIS caller press claim/decline on it. False only for a staff payer
+    #: reading another franchisee's rows — the wall is that only the
+    #: franchisee's own admin pays its money (R3), which `_load_for_staff`
+    #: enforces by 404 on the write doors. A row is read-only there, on screen
+    #: as it is in the service.
+    canAct: bool
 
 
 class StaffRedemptionDetailOut(RedemptionDetailOut):
@@ -107,17 +118,24 @@ class StaffRedemptionDetailOut(RedemptionDetailOut):
     technicianCode: str
     #: So the payer can ring them — the other side of this is a person.
     technicianPhone: str | None
+    #: See `StaffRedemptionOut.canAct`.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
+    canAct: bool
 
 
 class RedeemableOut(AppModel):
     """The technician's redeem card: what they may ask for, and what is open."""
 
-    #: Everything ever owed (payouts + bonuses − penalties) less every
-    #: redemption not declined. May be negative.
+    #: Everything ever owed (payouts + bonuses − penalties, the FREELANCER
+    #: stream only — Task 06) less every redemption not declined. May be
+    #: negative.
     availablePaise: int
     #: What a request made now would be for: the available balance, floored at
     #: zero and capped at the UPI per-transaction limit. Zero means "nothing to
     #: redeem", and the app sends this figure back to prove what it showed.
+    #: Forced to 0 for an employee (T4) — every installed build's `RedeemCard`
+    #: hides itself at ≤ 0, so the button greys out with no app change.
     redeemablePaise: int
     #: Where it would be paid, or null — the card says to add one.
     upiId: str | None
@@ -125,6 +143,15 @@ class RedeemableOut(AppModel):
     payerLabel: str
     #: The one open redemption, if any. While one is open no other can be made.
     open: RedemptionOut | None
+    #: What the technician IS (`models/technician.TECHNICIAN_TYPES`, Task 06).
+    #: Task 07 reads it to relabel the money screens; nothing on this card
+    #: should have to be guessed from the balance being 0 — a freelancer with
+    #: nothing to redeem and an employee look identical in the old fields.
+    technicianType: Literal["employee", "freelancer"]
+    #: Whether THIS technician may ask at all (T4). Redundant with
+    #: `technicianType` for the app, but stated so the card can branch on the
+    #: meaning instead of the value.
+    canRedeem: bool
 
 
 class RedeemRequest(AppModel):

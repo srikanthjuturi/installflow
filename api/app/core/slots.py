@@ -18,11 +18,11 @@ import uuid
 from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.coverage import CAP_EXEMPT_STATUSES
 from app.core.tickets import (
     SLOT_LEAD_MINUTES,
     SLOT_TIMEZONE_OFFSET_MINUTES,
     SLOT_WINDOWS,
+    TERMINAL_STATUSES,
 )
 from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
@@ -205,7 +205,13 @@ async def bookable_slots(
                 # a slot.)
                 Ticket.id != row.id,
                 Ticket.deleted_at.is_(None),
-                Ticket.status.not_in(CAP_EXEMPT_STATUSES),
+                # Only jobs the person will still be doing can collide with a
+                # window on offer. A Closed or Force-Closed job is over — often
+                # closed BEFORE its slot even runs (a cancel the manager closed
+                # out ahead of the visit) — and its dead window must not eat a
+                # live one off the list forever. The cap below still counts the
+                # whole day's work, closed included, matching `has_cap_room`.
+                Ticket.status.not_in(TERMINAL_STATUSES),
                 Ticket.slot_start.is_not(None),
             )
         )

@@ -99,7 +99,11 @@ ticket was raised.
 `vendor_price_paise`, `tickets` stamps both at intake, and closure writes a third `LEDGER_KINDS`
 value, `payout`. Two writers, and they shipped with the kind (hard rule 8): `feedback_service` on a
 customer-confirmed closure credits the full amount, `force_close_ticket` credits what the manager
-entered, clamped to the ticket's price and writing no row at zero.
+entered, clamped to the ticket's price and writing no row at zero. **An employee's closure writes
+none (Task 06, T2)** — they are salaried, so `core.employment.job_technician_type` +
+`pays_per_job` gate both writers and a force close appends `· no per-job payout: employee` to the
+event note; bonuses, penalties and reversals still flow exactly as for a freelancer (T3). See
+**Employee statements** below.
 
 ⚠ **Both price columns are NULLABLE, and an unpriced model IS a state now** — it is a product a
 vendor submitted and nobody has approved. That reverses what this section used to say, and it did
@@ -122,6 +126,17 @@ Three things about it are load-bearing:
   restrict to `POOL_KINDS`; `features/earnings` reads the same table unfiltered, because the
   technician's own list is all three kinds. Left unfiltered, the console's pool screen would list
   wages under a balance they are not part of.
+- **The pool is one PER franchisee** (Task 05, F12): every penalty/bonus/reversal row is stamped
+  with its technician's `franchisee_id` inside the write, and `core.ledger.pool` now REQUIRES a
+  franchisee id — `pool_arithmetic` derives
+  `balance = collected − bonuses` from the grouped totals of exactly that franchisee's rows, and
+  the console prints `collected − bonuses = balance` against ONE franchisee's figures. There is
+  deliberately no "all franchisees" total. A read resolves whose pool from the caller via
+  `core.franchise_money.pool_franchisee`: a franchisee principal gets its own wall-pinned one;
+  staff name `?franchiseeId=` when they want another (Admin/NH for the ledger entries — an AM or
+  RH may read the BALANCE of any franchisee but cannot open its rows — home when absent, 404
+  "Franchisee not found" unknown). On `/franchise/ledger/pool` the franchisee sees its own,
+  stamped on every row (`franchiseeId`, `technicianType`).
 - **`net = earned + bonuses − penalties`**, in one grouped query in `earnings.summary`, so the
   three tiles and the hero figure cannot come from different reads. It may be negative.
 
@@ -137,6 +152,19 @@ two people's word, kept apart:
   (`core.coverage.payer_role`) — **claims** "I paid" with a screenshot (required, a private
   `attachment/<company>/` blob) and a UTR (optional). A claim can repeat; the row holds the latest,
   the events hold every one.
+  **For a HOME technician's redemption, that is the whole story** (F8, unchanged). A NON-home
+  technician's redemption is money of THEIR franchisee: `redemptions.franchisee_id` is stamped at
+  request, it rings `audience='franchisee_admin'` and that franchisee's own admin pays it
+  (`franchise.payouts`, R3's no-fallback ruling) — the company's payer hears nothing of it and
+  cannot claim it (a claim attempt is a 404 through the scoped loader, never a 403). Both read the
+  same rows and both are told who may act: staff shape rows read `canAct` (false for any staff
+  caller on another franchisee's rows) and `payerLabel` names the audience — "National Head" or
+  "Franchisee Admin" (`redemption_audience(is_home=…)`).
+- **The wall and the doors are one pair.** Staff keep their two list/detail/
+  claim/decline routes with `require_staff_principal` (Task 05); the franchisee's own admin has
+  the `/franchise/redemptions…` twin — list (`_payer_scope`, own rows only — a company-wide row
+  never reaches it), `/count`, detail and claim/decline. There is deliberately NO confirm
+  endpoint on either door: the technician confirming is the one thing that pays, unchanged.
 - The **technician confirms** it arrived. **`confirmed_at IS NOT NULL` is what "paid" means**, not
   a status value, and there is no endpoint that marks a redemption paid any other way — an admin
   confirming would be inventing a fact. "Not yet" writes a `denied` event and rings the payers; it
@@ -157,6 +185,48 @@ two people's word, kept apart:
   refuse it; Google Pay decodes it, which hides the bug from anybody testing on GPay alone. Test a
   change to `build_upi_uri` on BHIM or PhonePe.
 
+**Employees cannot redeem (Task 06, T4) — and the balance they would have redeemed is the
+FREELANCER stream only.** `POST /redemptions/me` answers 409 `EMPLOYEE_CANNOT_REDEEM`
+("Employees are paid through salary, so there is nothing to redeem.") before the open-redemption
+guard, because a person who cannot be paid by UPI has no business in the queue at all;
+`GET` still answers 200 with `canRedeem: false` + `technicianType` so the app hides the redeem
+sheet instead of discovering the refusal. Behind both:
+`core.ledger.redeemable_balance = credited(company, technician) − reserved`, where `credited`
+now filters to rows stamped `technician_type = 'freelancer'` — every ledger row says which stream
+it moved under at write time (Task 05 §3.3), so one table answers "redeemable" and "salary
+statement" from the same rows, and a technician who switched types mid-life has their money in
+exactly the stream it was earned under.
+
+## Employee statements — one CSV file per employee per month (Task 06)
+
+`GET /franchise/statements/{technicianId}?month=2026-10` for the franchisee's own admin
+(`require_franchise_principal` + the `franchise.statements` feature), and the home staff twin
+`GET /ledger/statements/{technicianId}` (`earnings.view` + a **National-Head floor** — money on
+home employees is the company's least-shared read). Both share `core/statements.py` and return
+the FILE, not an envelope: success is the raw CSV with a UTF-8 BOM, an attachment
+`Content-Disposition` filename `statement-<franchisee>-<technician>-<yyyy>-<mm>.csv`, and any
+failure uses the ordinary envelope — the console reads it with `apiGetBlob`. The month is
+`?month=2026-10` (422 `BAD_MONTH` otherwise, and for one that has not started). What it holds:
+
+- **The month is WRITTEN, never restated.** Rows land in the month the money moved, a reversal
+  is a line of the month it was GIVEN BACK (its `Reverses` column naming the penalty and the
+  date it carried), and a re-download is byte-identical — that is what lets payroll trust it.
+  (The technician's Earnings screen reads the same rows as "never charged"; the statement reads
+  them as a written line that later got a credit. Different questions, both honest.)
+- **Kind-generic.** Rows are selected with `kind <> 'payout'` (T2), `KIND_LINES` rules each
+  kind's sign and title, every ruled kind still gets a total line at zero when the month has
+  none, and an unruled kind is LISTED — its own row with *"unrecognised item — not in the net"*
+  beside each amount — but is kept OUT of the net and logged. Hidden money is worse than
+  unsummed money, and `test_statements`' coverage gate fails the build when Task 10/11 add a
+  kind without teaching the statement about it.
+- **The wall is two clauses, either suffices:** the technician is an employee OF THAT franchisee,
+  or they carry employee-stream ledger rows in the month. Everything else is 404 "Statement not
+  found" — including a freelancer (never an employee, nothing to state) and another
+  franchisee's people, the same way every money read walls.
+- **Every cell goes through `csv_safe`** — a leading `= + - @` or tab gets an apostrophe the
+  spreadsheet hides, because payroll opens this file in one. Amounts are plain two-decimal
+  rupees, no thousand separators and no currency column to argue with.
+
 **A UPI ID is added once, then changed by request** (`b7d2c9e41f60`). The technician adds it on
 `POST /technicians/me/payout-account/code` → `POST /technicians/me/payout-account`, with the name
 on the account (`technician_profiles.upi_name`) and a code to their own registered number
@@ -167,7 +237,14 @@ addressed to `core.coverage.upi_reviewer`'s role — the AM whose states cover o
 technician's pincodes, else the RH of one of their regions, else a National Head, else an Admin —
 and `POST /technicians/{id}/upi-change/approve|reject` decides it (`technicians.edit` + an
 Area-Manager floor, territory-scoped through `_load`; any manager who can edit the technician may
-act, whoever's bell rang). The old free `PATCH …/payout-account` now answers 409 `UPDATE_APP`;
+act, whoever's bell rang). **Task 05 splits it by whose technician it is (F7/F8):** a NON-home
+technician's reviewer is its own franchisee's admin — `reviewer_role='franchisee_admin'`, the bell
+carrying `audience='franchisee_admin'` + the row's `franchisee_id` — decided on the `/franchise`
+twin's `POST /franchise/technicians/{id}/upi-change/approve|reject`, queued on
+`GET /franchise/upi-changes?state=pending` and counted on its `/count` (R3's no-fallback ruling:
+no staff role decides it, and only an admin of THAT franchisee can). The home keeps the
+AM → RH → NH → Admin chain above. `GET /technicians/me/payout-account` names it for the app:
+`reviewerLabel: "Franchisee Admin"`. The old free `PATCH …/payout-account` now answers 409 `UPDATE_APP`;
 joining ignores a `upiId` if an old build sends one; the console's add/edit still sets it directly,
 no code — a manager IS the check. A redemption's payee name is `upi_name`, falling back to the
 technician's own. Each redemption still freezes the address it was asked with.
@@ -609,6 +686,17 @@ it got its own `jobs.force_close` rather than either locking out every manager t
 or handing technicians an override that skips the customer. Where the decision spends money or
 ends a job, pair the feature with `require_min_rank` — a feature grant is overridable per company
 on Feature Access, and the floor is what makes "Area Manager and above" stick.
+
+**Every staff door that a franchisee may open for its OWN affairs carries a `/franchise` TWIN in
+the same slice** (Task 05): `features/technicians/franchise_router.py` (roster, UPI changes),
+`features/redemptions/franchise_router.py`, `features/ledger/franchise_router.py` and, for its
+read-only picker master data, `features/franchise_portal/` — all `prefix="/franchise"`. A twin
+ALWAYS carries `require_franchise_principal` + a `franchise.*` feature key (never a staff floor —
+`require_min_rank` refuses franchise roles) and pins every query to `principal.franchisee_id` in
+the service itself; the staff route beside it ALWAYS carries `require_staff_principal`, which is
+what keeps the twin's audience off the console door (`require_min_rank` does not do that job —
+franchise roles are ranks 8–10, ABOVE the staff floors). Same URLs as Task 09's screens, one
+guard per door, no route ever reachable with the wrong principal.
 
 ### 3. An area manager may only act inside their own states.
 
@@ -1603,6 +1691,21 @@ vendor account whose membership names no vendor gets `[]` from `get_tree` and fr
   `core.coverage.users_notified_by` (web push — the relay passes `row.audience`) and the console
   socket's `_Visibility.hears_notification` (the `NotificationRaised` frame carries `audience`).
   An audience any of them does not know reaches nobody.
+  **Four readers since Task 05 — and now there is a REFERENCE COPY.** `core/audience.py` is the
+  pure rule in its memory shape (`hears(Reader, *, pincode, vendor_id, audience, franchisee_id)`,
+  unit-tested in §6's `test_audience.py`); the SQL feed keeps its own mirror clause for clause, the
+  coverage mirror does the same for push, and the socket delegates to `hears` outright — so the
+  next audience branch is written ONCE, then mirrored twice, never three times.
+  **`'franchisee_admin'` is the branch it joins, with the row's `franchisee_id` as its fourth
+  fact** (`notifications.franchisee_id`, whose franchisee the row is ABOUT — the pairing the
+  `vendor`/`audience` one makes for vendors, made here as an explicit CHECK because a Postgres
+  FK pair cannot say "audience is franchisee_admin ⇒ id is not null… or is vendor"). Only an
+  admin (or facility role, Task 12) of THAT franchisee hears such a row; a reader with
+  `franchisee_id=None` — or a row with `franchisee_id=None` reaching a franchise reader — hears
+  nothing, which is Task 02's closed leak restated in `hears` itself. `payers` rows of one
+  franchisee's money ALSO reach that franchisee's admin through the franchise branch. An admin
+  hearing a bell addressed `audience=franchisee_admin` still cannot act on a staff door — the
+  doors themselves stay guarded by rank/feature, exactly like every other audience.
 - The two decision kinds carry `vendor_id`, which **widens and never narrows**, so they land in
   staff feeds too with a `to` pointing at the portal. `assigned` already ships the same compromise.
   Two mitigations: the wording — *"43 inch LED (Samsung) approved"* is true on a manager's screen
@@ -1729,6 +1832,29 @@ ticket by territory. An AM who does not cover the ticket's state cannot load it;
 that state, no AM can, so the RH is automatically the lowest rank able to act — the chain falls out
 of rules that already existed. `TicketDetailOut.penaltyReviewer` NAMES the responsible person via
 `core.coverage.nearest_manager_for(require_phone=False, include_admin=True)`; it limits nobody.
+⚠ **Since Task 05, that `nearest_manager_for` chain answers a HOME ticket only.** On a non-home
+franchisee's ticket the reviewer is that franchisee's own admin (`penaltyReviewer.role =
+'franchisee_admin'`), because its penalties sit in its pool — but the REVERSING door stays staff
+(see below).
+⚠ **The staff door is staff-only since Task 05**, and the penalty's own franchisee decides who
+may give it back: the route carries `require_staff_principal` beside `penalties.reverse` and the
+service refuses with **404 "Penalty not found"** when
+`core.franchise_money.may_reverse(role, principal_franchisee_id, penalty.franchisee_id, home_id)`
+is false — an AM or RH may reverse a HOME penalty (and only inside their territory, as above),
+an Admin/NH any franchisee's, a franchise principal never here (its door is below, and the
+filtered `penalties` list on the read already hid the row, so 404 answers it honestly).
+
+**Two doors, one body.** Task 05 §4.10/§4.12 pulled the whole write into
+**`core/penalty_reversal.py`** — the reason-length check, the profile-row lock, the once-only 409,
+the reversal row (which copies BOTH of the penalty's stamps, `franchisee_id` AND
+`technician_type`, so a technician who changed either since the charge cannot move the money),
+the `penalty_reversed` ticket event and its wording (`₹… penalty to {name} reversed · {reason}`,
+`actor_kind='staff'` whichever door rang it), the frame publishes and the post-commit push — so
+the ticket page (staff, Door 1: `POST /tickets/{id}/penalties/{entryId}/reverse`) and the
+franchisee's own Pool screen (Door 2:
+`POST /franchise/ledger/{entryId}/reverse`, `franchise.pool`, own rows only) cannot drift. The
+franchisee's door loads its penalty THROUGH its own stamp — a guessed or foreign `entryId` is a
+404 — and `REVERSIBLE_KINDS` is the list both pass (`("penalty",)` today; Task 06 may widen it).
 
 **A reversal is a new row, never an edit.** `ledger_entries.kind = 'reversal'` with `reverses_id`
 naming the penalty — the table's own rule ("a correction is a NEW entry"). The penalty keeps saying

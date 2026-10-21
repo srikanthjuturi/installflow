@@ -23,14 +23,21 @@ A guessed id is a 404 on both sides.
 import datetime
 import uuid
 
-from sqlalchemy import Select, func, or_, select, update
+from sqlalchemy import Select, false as sql_false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.brand import company_name
 from app.core.coverage import payer_role
+from app.core.franchise_scope import STAFF_ALL_INDIA
+from app.core.franchise_money import (
+    money_context,
+    pool_franchisee,
+    redemption_audience,
+)
 from app.core.deps import Principal
 from app.core.errors import AppError
-from app.core.ledger import credited
+from app.core.employment import may_redeem, redeem_refusal
+from app.core.ledger import redeemable_balance, reserved
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
@@ -52,6 +59,7 @@ from app.features.redemptions.schemas import (
 )
 from app.integrations.blob import signed_url
 from app.models.company import Company
+from app.models.franchisee import Franchisee
 from app.models.membership import Membership
 from app.models.redemption import UPI_MAX_PAISE, Redemption, RedemptionEvent
 from app.models.role import ROLE_LABELS
@@ -112,41 +120,41 @@ def state_of(row: Redemption) -> str:
 
 
 # ── the balance ──────────────────────────────────────────────────────────────
-
-
-async def reserved(
-    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
-) -> int:
-    """Every redemption not declined — paid, being paid, or waiting to be.
-
-    An open one counts from the moment it is asked for, not from when it is
-    confirmed: the money is spoken for, and counting it only once settled would
-    let a technician ask for the same balance twice while the first request sat
-    in somebody's queue.
-    """
-    total = await db.scalar(
-        select(func.coalesce(func.sum(Redemption.amount_paise), 0)).where(
-            Redemption.company_id == company_id,
-            Redemption.technician_id == technician_id,
-            Redemption.declined_at.is_(None),
-        )
-    )
-    return int(total or 0)
-
-
-async def balance(
-    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
-) -> int:
-    """What this technician is owed and has not yet asked for. May be negative."""
-    owed = await credited(db, company_id=company_id, technician_id=technician_id)
-    return owed - await reserved(
-        db, company_id=company_id, technician_id=technician_id
-    )
+#
+# `reserved()` and the redeemable balance Moved to `core.ledger` (Task 06
+# §4.4): `technicians.service` asks the same figure for the freelancer→
+# employee guard, and slices never import each other (rule 4). `redeemable()`
+# stays — flooring and the UPI cap are what a REQUEST may be for, a redemption
+# question and not a ledger one.
 
 
 def redeemable(available: int) -> int:
     """What one request may be for: the balance, floored at 0, capped at UPI's limit."""
     return min(max(available, 0), UPI_MAX_PAISE)
+
+
+async def _audience_for(
+    db: AsyncSession, company_id: uuid.UUID, franchisee_id: uuid.UUID | None
+) -> str:
+    """Whose bell a redemption rings — from the ROW, not the caller.
+
+    Home's money → `payers`, the company payer as always. A non-home
+    franchisee's redemption is NOT the company payer's to pay (R3), so its
+    bell is addressed to that franchisee's own admins (`franchisee_admin`),
+    and the row's `franchisee_id` is what routes it. Read off the franchisee
+    row so a stamp in the data decides, never a guess.
+    """
+    is_home = False
+    if franchisee_id is not None:
+        is_home = bool(
+            await db.scalar(
+                select(Franchisee.is_home).where(
+                    Franchisee.company_id == company_id,
+                    Franchisee.id == franchisee_id,
+                )
+            )
+        )
+    return redemption_audience(is_home=is_home)
 
 
 # ── shaping ──────────────────────────────────────────────────────────────────
@@ -254,22 +262,35 @@ def _open(stmt: Select) -> Select:
 
 
 async def summary(db: AsyncSession, profile: TechnicianProfile) -> RedeemableOut:
-    available = await balance(
+    # T4: who is asking decides what the figures mean. An employee's
+    # `redeemablePaise` is forced to 0 — `RedeemCard` already hides itself at
+    # ≤ 0, so every installed build greys the button out with no app change —
+    # while `availablePaise` stays the TRUE freelancer-stream balance
+    # (`balance` reads that stream only): usually 0, never a faked figure, so
+    # the screen can never show somebody a sum that does not exist.
+    available = await redeemable_balance(
         db, company_id=profile.company_id, technician_id=profile.id
     )
+    may = may_redeem(profile.technician_type)
     open_row = await db.scalar(_open(_mine(profile)))
     open_out = None
     if open_row is not None:
         open_out = RedemptionOut(
             **_fields(open_row, _denied_at(await _events(db, open_row)))
         )
-    role = await payer_role(db, company_id=profile.company_id)
+    # Task 05 §4.7: WHO pays depends on whose technician this is — the home
+    # payer today, the franchisee's own admin otherwise.
+    role = await payer_role(
+        db, company_id=profile.company_id, franchisee_id=profile.franchisee_id
+    )
     return RedeemableOut(
         availablePaise=available,
-        redeemablePaise=redeemable(available),
+        redeemablePaise=redeemable(available) if may else 0,
         upiId=profile.upi_id,
         payerLabel=ROLE_LABELS.get(role, role),
         open=open_out,
+        technicianType=profile.technician_type,
+        canRedeem=may,
     )
 
 
@@ -342,6 +363,12 @@ async def request(
     otherwise both compute the same balance and both insert; the partial unique
     index would stop the second, but as an IntegrityError rather than the
     sentence below. With the lock the second waits, then finds the first.
+
+    The type refusal answers FIRST — before `REDEMPTION_OPEN` and before any
+    balance arithmetic — so an employee whose profile still carries an old open
+    redemption is told the true reason (they cannot ask for another at all),
+    not a misleading story about one. `locked`, not `profile`: the same row,
+    and the type the lock re-read is what the refusal is judged against.
     """
     company_id = profile.company_id
     locked = await db.scalar(
@@ -354,6 +381,10 @@ async def request(
     )
     assert locked is not None
 
+    refusal = redeem_refusal(locked.technician_type)
+    if refusal:
+        raise _refused(*refusal)  # 409 EMPLOYEE_CANNOT_REDEEM — see `employment`
+
     if await db.scalar(_open(_mine(profile))) is not None:
         raise _refused(
             "REDEMPTION_OPEN",
@@ -363,7 +394,9 @@ async def request(
     if not locked.upi_id:
         raise _refused("NO_UPI_ID", "Add a UPI ID before you redeem.")
 
-    available = await balance(db, company_id=company_id, technician_id=profile.id)
+    available = await redeemable_balance(
+        db, company_id=company_id, technician_id=profile.id
+    )
     amount = redeemable(available)
     if amount <= 0:
         raise _refused("NOTHING_TO_REDEEM", "There is nothing to redeem yet.")
@@ -408,6 +441,10 @@ async def request(
         )
     )
 
+    # Task 05 §4.7: addressed to whoever actually pays it — the home payer,
+    # or this franchisee's own admins (R3) — with the row stamped so the
+    # bell reaches only them (`core.audience.hears`, one spec, four readers).
+    audience = await _audience_for(db, company_id, row.franchisee_id)
     raised = await notify(
         db,
         company_id=company_id,
@@ -415,14 +452,16 @@ async def request(
         title=f"{technician} requested {_rupees(amount)}",
         detail=f"{code} · {locked.upi_id}",
         to=f"/redemptions/{row.id}",
-        audience="payers",
+        audience=audience,
+        franchisee_id=row.franchisee_id,
     )
     await publish_notification(
         db,
         company_id=company_id,
         pincode=None,
         notification_id=raised.id,
-        audience="payers",
+        audience=audience,
+        franchisee_id=row.franchisee_id,
     )
     await db.commit()
     await db.refresh(row)
@@ -509,6 +548,9 @@ async def confirm(
             created_by=principal.user_id,
         )
     )
+    # Not-yet rings whoever marked it paid — same addressing as the request
+    # bell, resolved from the row (§4.7).
+    audience = await _audience_for(db, row.company_id, row.franchisee_id)
     raised = await notify(
         db,
         company_id=row.company_id,
@@ -516,14 +558,16 @@ async def confirm(
         title=f"{label} hasn't received {_rupees(row.amount_paise)}",
         detail=f"{row.code} · marked paid {claimed_on.day} {claimed_on:%b}",
         to=f"/redemptions/{row.id}",
-        audience="payers",
+        audience=audience,
+        franchisee_id=row.franchisee_id,
     )
     await publish_notification(
         db,
         company_id=row.company_id,
         pincode=None,
         notification_id=raised.id,
-        audience="payers",
+        audience=audience,
+        franchisee_id=row.franchisee_id,
     )
     await db.commit()
     await db.refresh(row)
@@ -552,6 +596,38 @@ def _staff_base(company_id: uuid.UUID) -> Select:
     )
 
 
+def _payer_scope(
+    stmt: Select,
+    principal: Principal,
+    home_id: uuid.UUID | None,
+    *,
+    requested: uuid.UUID | None,
+    known: set[uuid.UUID],
+) -> Select:
+    """Narrow the queue to the franchisee it is ABOUT — the money wall, §4.7.
+
+    A franchise principal reads its OWN rows and nothing else (a foreign
+    `franchiseeId` is not theirs to pick — the wall is structural). Staff
+    honour the requested franchisee only in Admin/NH hands and only when it
+    is one of THIS company's (`known`), defaulting to home; that is
+    `pool_franchisee`, the same resolver `core.ledger.pool` requires. An
+    unknown id covers nothing — an empty page, never somebody else's money.
+    """
+    if principal.is_franchise:
+        assert principal.franchisee_id is not None
+        return stmt.where(Redemption.franchisee_id == principal.franchisee_id)
+    scoped = pool_franchisee(
+        is_franchise=False,
+        own=None,
+        requested=requested if principal.role in STAFF_ALL_INDIA else None,
+        home_id=home_id,
+        known=known,
+    )
+    if scoped is None:
+        return stmt.where(sql_false())
+    return stmt.where(Redemption.franchisee_id == scoped)
+
+
 def _in_state(stmt: Select, state: str) -> Select:
     if state == "to_pay":
         return stmt.where(
@@ -572,14 +648,23 @@ async def list_page(
     params: ListParams,
     *,
     state: str | None,
+    franchisee_id: uuid.UUID | None = None,
 ) -> tuple[list[StaffRedemptionOut], int]:
     """The payer's queue.
 
     "To pay" reads OLDEST first — it is a queue, and the one waiting longest is
     the one to pay next. Everything else reads newest first, as history does.
+
+    Task 05 §4.7: one pool per franchisee — the queue is the caller's franchisee
+    (franchise principal) or, for staff, home unless a known `franchiseeId`
+    narrows it.
     """
     assert principal.company_id is not None
+    home_id, known = await money_context(db, principal.company_id)
     stmt = _staff_base(principal.company_id)
+    stmt = _payer_scope(
+        stmt, principal, home_id, requested=franchisee_id, known=known
+    )
     if state is not None:
         stmt = _in_state(stmt, state)
     if params.search and params.search.strip():
@@ -610,6 +695,18 @@ async def list_page(
         await db.execute(stmt.order_by(*order).offset(params.offset).limit(params.limit))
     ).all()
 
+    # The franchisee's name on the row, one query for the page.
+    fids = {row.franchisee_id for row, *_ in rows}
+    franchisees: dict[uuid.UUID, str] = {}
+    if fids:
+        labels = await db.execute(
+            select(Franchisee.id, Franchisee.name).where(
+                Franchisee.company_id == principal.company_id,
+                Franchisee.id.in_(fids),
+            )
+        )
+        franchisees = {fid: fname for fid, fname in labels}
+
     out = []
     for row, tech_code, name, _phone in rows:
         denied = (
@@ -621,32 +718,48 @@ async def list_page(
                 technicianId=row.technician_id,
                 technicianName=name or row.payee_name,
                 technicianCode=tech_code,
+                franchiseeId=row.franchisee_id,
+                franchiseeName=franchisees.get(row.franchisee_id, ""),
+                # The write doors stay staff-HOME-ONLY (`_load_for_staff`
+                # honours no franchiseeId), so another franchisee's row reads
+                # as someone else's to act on even when Admin/NH may read it.
+                canAct=not principal.is_franchise and row.franchisee_id == home_id,
             )
         )
     return out, total
 
 
-async def count_to_pay(db: AsyncSession, principal: Principal) -> int:
+async def count_to_pay(
+    db: AsyncSession, principal: Principal, *, franchisee_id: uuid.UUID | None = None
+) -> int:
+    """The rail badge, for the caller's own pool (§4.7 — see `list_page`)."""
     assert principal.company_id is not None
-    return (
-        await db.scalar(
-            select(func.count()).where(
-                Redemption.company_id == principal.company_id,
-                Redemption.claimed_at.is_(None),
-                Redemption.declined_at.is_(None),
-            )
-        )
-    ) or 0
+    home_id, known = await money_context(db, principal.company_id)
+    stmt = select(func.count()).where(
+        Redemption.company_id == principal.company_id,
+        Redemption.claimed_at.is_(None),
+        Redemption.declined_at.is_(None),
+    )
+    stmt = _payer_scope(stmt, principal, home_id, requested=franchisee_id, known=known)
+    return (await db.scalar(stmt.select_from(Redemption))) or 0
 
 
 async def staff_detail(
-    db: AsyncSession, principal: Principal, redemption_id: uuid.UUID
+    db: AsyncSession,
+    principal: Principal,
+    redemption_id: uuid.UUID,
+    *,
+    franchisee_id: uuid.UUID | None = None,
 ) -> StaffRedemptionDetailOut:
     assert principal.company_id is not None
+    home_id, known = await money_context(db, principal.company_id)
+    stmt = _staff_base(principal.company_id)
+    stmt = _payer_scope(
+        stmt, principal, home_id, requested=franchisee_id, known=known
+    )
     found = (
         await db.execute(
-            _staff_base(principal.company_id)
-            .where(Redemption.id == redemption_id)
+            stmt.where(Redemption.id == redemption_id)
             # The read-back after `claim` / `decline` — see `my_detail`.
             .execution_options(populate_existing=True)
         )
@@ -656,6 +769,12 @@ async def staff_detail(
     row, tech_code, name, phone = found
     events = await _events(db, row)
     state = state_of(row)
+    fname = await db.scalar(
+        select(Franchisee.name).where(
+            Franchisee.company_id == principal.company_id,
+            Franchisee.id == row.franchisee_id,
+        )
+    )
     return StaffRedemptionDetailOut(
         **_fields(row, _denied_at(events)),
         # Until it is settled or declined. Kept after a claim on purpose: a
@@ -668,15 +787,44 @@ async def staff_detail(
         technicianName=name or row.payee_name,
         technicianCode=tech_code,
         technicianPhone=phone,
+        # Same wall the list states — see `StaffRedemptionOut.canAct`.
+        franchiseeId=row.franchisee_id,
+        franchiseeName=fname or "",
+        canAct=not principal.is_franchise and row.franchisee_id == home_id,
     )
 
 
 async def _load_for_staff(
-    db: AsyncSession, principal: Principal, redemption_id: uuid.UUID
+    db: AsyncSession,
+    principal: Principal,
+    redemption_id: uuid.UUID,
+    *,
+    requested: uuid.UUID | None = None,
 ) -> Redemption:
+    """The write-side loader, and thus the wall on claiming or declining.
+
+    A redemption is paid by whoever it belongs to: the franchisee's own
+    admin (R3) — the franchise router reaches here, and only its own rows
+    answer. A staff payer keeps the HOME pool alone: offering another
+    franchisee's rows on the write door would reinstate exactly the fallback
+    R3 removed, so `requested` is deliberately never passed on these calls
+    and a foreign id is a 404, never a 403.
+    """
+    assert principal.company_id is not None
+    home_id, known = await money_context(db, principal.company_id)
+    scoped = pool_franchisee(
+        is_franchise=principal.is_franchise,
+        own=principal.franchisee_id,
+        requested=requested,
+        home_id=home_id,
+        known=known,
+    )
+    if scoped is None:
+        raise _not_found()
     row = await db.scalar(
         select(Redemption).where(
             Redemption.company_id == principal.company_id,
+            Redemption.franchisee_id == scoped,
             Redemption.id == redemption_id,
         )
     )

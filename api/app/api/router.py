@@ -11,19 +11,29 @@ from app.features.companies.router import router as companies_router
 from app.features.credits.platform_router import router as platform_router
 from app.features.credits.router import router as credits_router
 from app.features.earnings.router import router as earnings_router
+from app.features.franchise_portal.router import router as franchise_portal_router
 from app.features.geo.router import router as geo_router
 from app.features.franchisees.router import router as franchisees_router
 from app.features.jobs.router import router as jobs_router
 from app.features.jobs.ws import router as jobs_stream_router
 from app.features.ledger.router import router as ledger_router
+from app.features.ledger.franchise_router import (
+    router as ledger_franchise_router,
+)
 from app.features.masters.router import router as masters_router
 from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
 from app.features.redemptions.router import router as redemptions_router
+from app.features.redemptions.franchise_router import (
+    router as redemptions_franchise_router,
+)
 from app.features.search.router import router as search_router
 from app.features.settings.router import router as settings_router
 from app.features.technicians.router import router as technicians_router
+from app.features.technicians.franchise_router import (
+    router as technicians_franchise_router,
+)
 from app.features.tickets.router import router as tickets_router
 from app.features.tickets.ws import router as tickets_stream_router
 from app.features.territory.router import router as territory_router
@@ -79,9 +89,24 @@ api_router.include_router(search_router)
 api_router.include_router(earnings_router)
 # A technician cashing out, paid by UPI: the payer claims, the technician
 # confirms, and nothing else can say a redemption is paid.
+#
+# Each money/employee slice carries a `/franchise` twin beside its staff router
+# (Task 05) — the franchisee's OWN door on the same rows. The twins are
+# different prefixes from their staff routers, so nothing can shadow anything;
+# the shadowing rule still holds within a twin, whose own literal `/count`
+# routes sit before their `/{id}` routes. Twins carry a FranchisePrincipal
+# guard; the staff routers carry `require_staff_principal`.
+api_router.include_router(redemptions_franchise_router)
 api_router.include_router(redemptions_router)
+api_router.include_router(ledger_franchise_router)
 api_router.include_router(ledger_router)
+# The franchisee portal's read-only master data — what Tasks 05/06's screens
+# are filled from (05 §4.6), through the franchisee wall like every twin.
+api_router.include_router(franchise_portal_router)
 api_router.include_router(settings_router)
+# Task 05's own employees slice — the technician roster twin is registered
+# beside its staff router above, where the roster itself lives.
+api_router.include_router(technicians_franchise_router)
 # What a company pays for tickets with. The company's side (`/credits`) claims a
 # recharge; the superadmin's (`/platform`) holds the rules and confirms it —
 # the only door through which credits are bought.

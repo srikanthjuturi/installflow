@@ -5,11 +5,14 @@ technician-facing route uses) AND `TechnicianPrincipal`, which also resolves
 the profile that is the whole scope of their queries. There is no path from
 here to anybody else's money.
 
-**The payer** carries `redemptions.pay` AND a National Head rank floor. The
-feature is what the console reads to draw the rail entry; the floor is what
-makes "National Head and above" survive somebody handing the feature to a
-Regional Head on Feature Access. This spends company money, so it gets both
-(hard rule 2 again, and the reasoning `jobs.force_close` set out).
+**The payer** carries `redemptions.pay` AND a National Head rank floor AND
+`require_staff_principal` (Task 05). The feature is what the console reads to
+draw the rail entry; the floor is what makes "National Head and above" survive
+somebody handing the feature to a Regional Head on Feature Access; the staff
+test is what keeps a franchisee principal — who now holds its own
+`/franchise/redemptions` twins — from reaching this door by a feature
+override. This spends company money, so it gets all three (hard rule 2, the
+reasoning `jobs.force_close` set out, and §4.7's franchisee wall on top).
 
 **There is deliberately no route that marks a redemption paid.** The payer
 claims, the technician confirms, and those are two different doors held by two
@@ -31,6 +34,7 @@ from app.core.deps import (
     TechnicianPrincipal,
     require_feature,
     require_min_rank,
+    require_staff_principal,
 )
 from app.core.schemas import (
     ApiEnvelope,
@@ -65,7 +69,11 @@ Params = Annotated[ListParams, Depends(list_params)]
 #: The technician's own — see the module docstring.
 TechnicianRoute = [Depends(require_feature("pool.view"))]
 
-CanPay = Annotated[Principal, Depends(require_feature("redemptions.pay"))]
+CanPay = Annotated[
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("redemptions.pay")),
+]
 PayerRoute = [Depends(require_min_rank(NATIONAL_HEAD))]
 
 
@@ -157,16 +165,23 @@ async def list_redemptions(
     principal: CanPay,
     params: Params,
     state: Annotated[str | None, Query()] = None,
+    franchiseeId: Annotated[uuid.UUID | None, Query()] = None,
 ) -> PaginatedEnvelope[StaffRedemptionOut]:
     """The queue. `state` is `to_pay`, `awaiting`, `settled` or `declined`.
 
     An unknown state is an empty page rather than a 422 — a stale bookmark
     should show nothing, not break the screen (`canonical_filter`).
+
+    `franchiseeId` (Task 05) narrows the queue to that franchisee's pool —
+    honoured for Admin/NH only, defaulting to home; the rows of another
+    franchisee read but never act (`canAct: false`, and claim refuses 404).
     """
     wanted = canonical_filter(state, REDEMPTION_STATES)
     if wanted is False:
         return paginated([], page=params.page, limit=params.limit, total=0)
-    rows, total = await service.list_page(db, principal, params, state=wanted)
+    rows, total = await service.list_page(
+        db, principal, params, state=wanted, franchisee_id=franchiseeId
+    )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
 
@@ -174,10 +189,19 @@ async def list_redemptions(
     "/count", response_model=ApiEnvelope[RedemptionCountOut], dependencies=PayerRoute
 )
 async def count_redemptions(
-    db: Db, principal: CanPay
+    db: Db,
+    principal: CanPay,
+    franchiseeId: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ApiEnvelope[RedemptionCountOut]:
-    """How many nobody has paid yet — the rail badge."""
-    return envelope(RedemptionCountOut(toPay=await service.count_to_pay(db, principal)))
+    """How many nobody has paid yet — the rail badge.
+
+    Same pool rule as the list: home, or a known `franchiseeId` in
+    Admin/NH hands."""
+    return envelope(
+        RedemptionCountOut(
+            toPay=await service.count_to_pay(db, principal, franchisee_id=franchiseeId)
+        )
+    )
 
 
 @router.get(
@@ -186,9 +210,15 @@ async def count_redemptions(
     dependencies=PayerRoute,
 )
 async def get_redemption(
-    db: Db, principal: CanPay, redemption_id: uuid.UUID
+    db: Db,
+    principal: CanPay,
+    redemption_id: uuid.UUID,
+    franchiseeId: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ApiEnvelope[StaffRedemptionDetailOut]:
-    return envelope(await service.staff_detail(db, principal, redemption_id))
+    """One redemption in the pool the `franchiseeId` names — as the list does."""
+    return envelope(
+        await service.staff_detail(db, principal, redemption_id, franchisee_id=franchiseeId)
+    )
 
 
 @router.post(

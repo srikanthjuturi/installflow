@@ -131,6 +131,10 @@ class NotificationRelay:
                 pincode=row.pincode,
                 vendor_id=row.vendor_id,
                 audience=row.audience,
+                # The row's franchisee, when it is about one (Task 05) — the
+                # same facts `notifications.service._visible` will read off
+                # the row, so the push mirrors the feed.
+                franchisee_id=row.franchisee_id,
             )
             if not user_ids:
                 return

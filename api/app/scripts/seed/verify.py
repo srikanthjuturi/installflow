@@ -45,6 +45,7 @@ async def run(db: AsyncSession, *, company_id: uuid.UUID) -> list[Problem]:
     for check in (
         _events_are_in_time_order,
         _closed_tickets_were_paid,
+        _employees_were_not_paid,
         _earnings_match_the_ledger,
         _nobody_passed_the_monthly_cap,
         _live_tickets_still_have_a_future,
@@ -99,7 +100,22 @@ async def _closed_tickets_were_paid(
     date: the payout row is written in the same transaction as the closure, so
     a ticket that is Closed with no payout means the ledger and the ticket
     disagree about whether work happened.
+
+    Employees are the exception BY DESIGN (T2, Task 06): their closed job has
+    no payout — salary is paid through the statement — so a freelancer-only
+    join on `technician_type` drops their tickets out instead of flagging them.
+    An employee-stream payout row is `_employees_were_not_paid`'s answer, not
+    this check's.
     """
+    # Freelancers only — an employee's silence in the ledger is correctness.
+    freelancers = (
+        select(TechnicianProfile.id)
+        .where(
+            TechnicianProfile.company_id == company_id,
+            TechnicianProfile.technician_type == "freelancer",
+        )
+        .scalar_subquery()
+    )
     paid = (
         select(LedgerEntry.ticket_id)
         .where(LedgerEntry.company_id == company_id, LedgerEntry.kind == "payout")
@@ -110,12 +126,40 @@ async def _closed_tickets_were_paid(
             Ticket.company_id == company_id,
             Ticket.status == "Closed",
             Ticket.technician_id.is_not(None),
+            Ticket.technician_id.in_(freelancers),
             Ticket.id.not_in(paid),
         )
     )
     return [
         Problem("closed tickets were paid", f"ticket {tid} is Closed with no payout row")
         for tid in unpaid
+    ]
+
+
+async def _employees_were_not_paid(
+    db: AsyncSession, company_id: uuid.UUID
+) -> list[Problem]:
+    """No employee stream may carry a `payout` row — the invariant T2 writes.
+
+    Every writer that stamps a payout (`record_feedback`, `force_close_ticket`)
+    now gates on the technician's type, but a future writer forgetting the gate
+    is exactly the kind of thing the seed exists to catch: salary money paid
+    twice — once by payroll, silently by the ledger — is a payroll document
+    nobody can reconcile against a ledger row nobody filed.
+    """
+    rows = await db.scalars(
+        select(LedgerEntry.technician_id).where(
+            LedgerEntry.company_id == company_id,
+            LedgerEntry.kind == "payout",
+            LedgerEntry.technician_type == "employee",
+        )
+    )
+    return [
+        Problem(
+            "employees were not paid",
+            f"technician {tid} has an employee-stream payout row",
+        )
+        for tid in set(rows)
     ]
 
 

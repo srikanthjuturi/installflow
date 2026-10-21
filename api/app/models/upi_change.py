@@ -12,12 +12,15 @@ name, and a manager applies it — no code, because the manager is the check.
 
 ## Who is asked
 
-The Area Manager whose states cover the technician's service pincodes; if none
-does, the Regional Head of that region; then a National Head; then an Admin
-(`core.coverage.upi_reviewer`). Resolved when the request is made and kept in
-`reviewer_role`, so the technician's screen can say who it went to. Any manager
-who can edit the technician may DECIDE it — the chain decides whose bell rings,
-not who is allowed to act, so a reviewer who has left never strands a request.
+The franchisee's own admin when the technician's franchisee is not the company's
+home — that is who manages their money (Task 05, F7); the home franchisee keeps
+today's chain, unchanged (F8): the Area Manager whose states cover the
+technician's service pincodes; if none does, the Regional Head of that region;
+then a National Head; then an Admin (`core.coverage.upi_reviewer`). Resolved
+when the request is made and kept in `reviewer_role`, so the technician's screen
+can say who it went to. Any manager who can edit the technician may DECIDE it —
+the chain decides whose bell rings, not who is allowed to act, so a reviewer who
+has left never strands a request.
 
 ## One pending request per technician
 
@@ -69,8 +72,9 @@ class UpiChangeRequest(Base, IdMixin, AuditMixin):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'pending'")
     )
-    #: Whose bell rang — `area_manager`, `regional_head`, `national_head` or
-    #: `admin`. The technician's screen reads it; authorisation does not.
+    #: Whose bell rang — `area_manager`, `regional_head`, `national_head`,
+    #: `admin`, or the technician's own franchisee's `franchisee_admin`. The
+    #: technician's screen reads it; authorisation does not.
     reviewer_role: Mapped[str] = mapped_column(String(24), nullable=False)
 
     decided_at: Mapped[datetime.datetime | None] = mapped_column(
@@ -89,7 +93,7 @@ class UpiChangeRequest(Base, IdMixin, AuditMixin):
         ),
         CheckConstraint(
             "reviewer_role IN ('area_manager', 'regional_head', 'national_head', "
-            "'admin')",
+            "'admin', 'franchisee_admin')",
             name="reviewer_role",
         ),
         # The same backstop `technician_profiles.upi_id` carries; the real rule

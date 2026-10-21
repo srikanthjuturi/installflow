@@ -152,6 +152,11 @@ TENANT_LINKS = [
     # A notification can also be addressed to a VENDOR. One naming another
     # company's vendor would put a stranger's customer on their portal.
     ("notifications", "vendor_id", "vendors"),
+    # A notification addressed to a FRANCHISEE (Task 05): whose admin the bell
+    # rings. One naming another company's franchisee would put a bell about a
+    # stranger's money on their portal — a redemption row named in its title
+    # they can then try to open.
+    ("notifications", "franchisee_id", "franchisees"),
     # Where a phone gets pushed to. A row pointing at another company's
     # technician would deliver one tenant's customer address to the other's
     # lock screen — and unlike a leaked list, nobody would ever see it happen.

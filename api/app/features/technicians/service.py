@@ -32,9 +32,17 @@ from app.core.coverage import jobs_held_by_technician, upi_reviewer
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.franchise import assert_pincodes_in_franchisee, home_franchisee_id
+from app.core.franchise_money import may_see_money, type_change_refusal
+from app.core.franchise_scope import (
+    MANAGE,
+    can_manage_technician,
+    decide_can_manage,
+    decide_managed_franchisees,
+)
+from app.core.ledger import redeemable_balance
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
-from app.core.schemas import ListParams
+from app.core.schemas import ListParams, canonical_filter
 from app.core.scope import (
     ALL_INDIA_ROLES,
     Scope,
@@ -68,7 +76,9 @@ from app.features.technicians.schemas import (
     PayoutAccountRequest,
     PayoutAccountVerifyRequest,
     UpiChangeOut,
+    UpiChangeCountOut,
     UpiChangeRequestIn,
+    UpiChangeRowOut,
     UpiRejectRequest,
     DistrictBreakdownOut,
     DistrictTechnicianCount,
@@ -90,6 +100,7 @@ from app.models.product import ProductNode
 from app.models.role import AREA_MANAGER, ROLE_LABELS, FRANCHISEE_ADMIN, TECHNICIAN
 from app.models.ticket import Ticket
 from app.models.upi_change import UpiChangeRequest
+from app.models.franchisee import Franchisee
 from app.models.technician import (
     ACTIVE,
     CANCELLED,
@@ -102,6 +113,7 @@ from app.models.technician import (
     REG_MANAGER,
     REGISTERED,
     SENT,
+    TYPE_EMPLOYEE,
     TYPE_FREELANCER,
     TechnicianInvite,
     TechnicianInvitePincode,
@@ -115,6 +127,7 @@ from app.models.territory import (
     Pincode,
     PincodeDistrict,
     Region,
+    State,
 )
 from app.models.user import User
 
@@ -149,16 +162,51 @@ def app_link() -> str:
 
 
 async def resolve_region(
-    session: AsyncSession, principal: Principal, region_id: uuid.UUID | None
+    session: AsyncSession,
+    principal: Principal,
+    region_id: uuid.UUID | None,
+    pincodes: list[str] | None = None,
 ) -> Region:
     """Which region this technician works in.
 
     An area manager holds exactly one, so they never have to pick. A regional
     head with one region is likewise filled in. Anyone else must say.
+
+    A franchise principal skips the "own regions" check — a franchisee admin
+    holds no `membership_regions`, so the test would refuse everybody. The
+    region is either the one they picked or, when they sent none, DERIVED from
+    the coverage being assigned (`pincodes`): exactly one region holding every
+    code, else the caller must say. A franchisee's codes may span two regions,
+    and that is the screen's question, never a guessed fact.
     """
     _own_id, own = await own_scope(
         session, user_id=principal.user_id, company_id=principal.company_id
     )
+
+    if principal.is_franchise:
+        if region_id is not None:
+            region = await session.scalar(select(Region).where(Region.id == region_id))
+            if region is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown region"
+                )
+            return region
+        regions = {
+            row[0] for row in await session.execute(
+                select(func.distinct(State.region_id))
+                .join(Pincode, Pincode.state_id == State.id)
+                .where(Pincode.code.in_(pincodes or []))
+            )
+        }
+        if len(regions) == 1:
+            got = regions.pop()
+            region = await session.scalar(select(Region).where(Region.id == got))
+            if region is not None:
+                return region
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Select the region this technician will work in",
+        )
 
     if region_id is None:
         if len(own.regions) == 1:
@@ -306,13 +354,18 @@ def _visible_technicians(stmt, principal: Principal, own_id, own: Scope):
     return technician_scope(stmt, principal, own_id, own)
 
 
-def _visible_invites(stmt, principal: Principal, own: Scope):
+def _visible_invites(stmt, principal: Principal, own: Scope, home_id: uuid.UUID | None):
+    """The invite half of the wall (F8): every staff role reads only the HOME's
+    invites — Task 05 moved a franchisee's own invites to its admins alone.
+    `home_id` is resolved by the caller (one query per list, not per call)."""
     if principal.is_franchise:
         # Same rule as the roster above: the franchisee admin sees the invites
         # FOR their franchisee, the facility roles see none (F7).
         if principal.role == FRANCHISEE_ADMIN:
             return stmt.where(TechnicianInvite.franchisee_id == principal.franchisee_id)
         return stmt.where(sql_false())
+    if home_id is not None:
+        stmt = stmt.where(TechnicianInvite.franchisee_id == home_id)
     if principal.role in ALL_INDIA_ROLES:
         return stmt
     mine = TechnicianInvite.invited_by_user_id == principal.user_id
@@ -388,6 +441,8 @@ async def _technicians_out(
     session: AsyncSession,
     triples: list[tuple[TechnicianProfile, Membership, User]],
     *,
+    principal: Principal,
+    home_id: uuid.UUID | None,
     on_day: datetime | None = None,
 ) -> list[TechnicianOut]:
     """Batch-hydrate profiles into responses — one query per collection, never N+1.
@@ -398,6 +453,11 @@ async def _technicians_out(
     cosmetic — a shortlist for a Friday job that reports Monday's load offers a
     technician the assignment call then refuses at cap, which reads as the
     console and the API disagreeing about the same person.
+
+    `principal` and `home_id` answer two per-caller questions the rows cannot:
+    `canManage` (the MANAGE wall — who may edit this franchisee's technician)
+    and whether the caller may see this franchisee's money, which blanks the
+    UPI fields it may not (`franchise_money.may_see_money`).
     """
     if not triples:
         return []
@@ -450,9 +510,36 @@ async def _technicians_out(
             )
         )
 
+    # The franchisee wall, decided ONCE for the page: the matrix is pure, so
+    # folding it out of the row loop keeps the N+1 out of the answer too.
+    managed = decide_managed_franchisees(
+        role=principal.role,
+        principal_franchisee_id=principal.franchisee_id,
+        home_id=home_id,
+        purpose=MANAGE,
+    )
+    # Every page's franchisee, named — one IN query, like every other
+    # collection here. (id, name, is_home): nothing more is needed, so no
+    # identity-map fetch that could return deleted rows by accident.
+    franchisees: dict[uuid.UUID, tuple[str, bool]] = {}
+    for fid, fname, fhome in await session.execute(
+        select(Franchisee.id, Franchisee.name, Franchisee.is_home).where(
+            Franchisee.id.in_({p.franchisee_id for p, _m, _u in triples}),
+            Franchisee.company_id == principal.company_id,
+        )
+    ):
+        franchisees[fid] = (fname, bool(fhome))
+
     out: list[TechnicianOut] = []
     for profile, membership, user in triples:
         appointer = appointers.get(profile.appointed_by_user_id)
+        fname, fhome = franchisees.get(profile.franchisee_id, ("", False))
+        sees_money = may_see_money(
+            role=principal.role,
+            principal_franchisee_id=principal.franchisee_id,
+            money_franchisee_id=profile.franchisee_id,
+            home_id=home_id,
+        )
         out.append(
             TechnicianOut(
                 id=profile.id,
@@ -464,14 +551,24 @@ async def _technicians_out(
                 profileImageUrl=user.profile_image_url,
                 isActive=membership.is_active and user.is_active,
                 status=profile.status,
+                # Franchisee columns (F8). A missing Franchisee row is a corrupt
+                # stamp — reported as an empty name rather than a fake guess.
+                franchiseeId=profile.franchisee_id,
+                franchiseeName=fname,
+                franchiseeIsHome=fhome,
+                technicianType=profile.technician_type,
+                canManage=decide_can_manage(managed, profile.franchisee_id),
                 regionId=profile.region_id,
                 regionName=regions[profile.region_id].name,
                 subcategories=subs.get(profile.id, []),
                 pincodes=pins.get(profile.id, []),
                 dailyJobCap=profile.daily_job_cap,
-                upiId=profile.upi_id,
-                upiName=profile.upi_name,
-                upiChangePending=profile.id in changing,
+                # A caller who may not see this franchisee's money sees neither
+                # the UPI ID nor that a change is waiting — a fake null would
+                # still leak whether money is moving.
+                upiId=profile.upi_id if sees_money else None,
+                upiName=profile.upi_name if sees_money else None,
+                upiChangePending=(profile.id in changing) if sees_money else False,
                 bwUsed=used_today.get(profile.id, 0),
                 acceptingWork=profile.accepting_work,
                 online=is_online(profile),
@@ -519,11 +616,25 @@ async def _invites_out(
         .order_by(TechnicianInvitePincode.pincode)
     ):
         coverage[invite_id].append(code)
+    # The invites' franchisee names — one IN query, as the profile half does.
+    # A company's invites stamp one franchisee at intake (F8); the console shows
+    # which, the same way the roster does.
+    franchisees: dict[uuid.UUID, str] = {}
+    for fid, fname in await session.execute(
+        select(Franchisee.id, Franchisee.name).where(
+            Franchisee.id.in_({i.franchisee_id for i in invites}),
+            Franchisee.company_id.in_({i.company_id for i in invites}),
+        )
+    ):
+        franchisees[fid] = fname
     return [
         TechnicianInviteOut(
             id=i.id,
             phone=i.phone,
             status=i.status,
+            franchiseeId=i.franchisee_id,
+            franchiseeName=franchisees.get(i.franchisee_id, ""),
+            technicianType=i.technician_type,
             regionId=i.region_id,
             regionName=regions[i.region_id].name,
             invitedByName=(
@@ -701,6 +812,8 @@ async def list_technicians(
     district_id: uuid.UUID | None = None,
     onboarding_mode: str | None = None,
     on_day: datetime | None = None,
+    franchisee_id: uuid.UUID | None = None,
+    technician_type: str | None = None,
 ) -> tuple[list, int]:
     """One page of the Technicians screen — registered technicians and open invites.
 
@@ -717,12 +830,19 @@ async def list_technicians(
     happens; leaving it out means today. Deliberately not a filter: a technician
     who is full that day should still be listed and shown as full, because "why
     is nobody available" is a question the screen has to be able to answer.
+
+    `franchisee_id` narrows to one franchisee's roster (Task 05: the home's staff
+    list passes a franchisee's id to see its people; a franchise principal's own
+    scope already pins theirs, so a foreign id here just selects nothing). An
+    unknown `technicianType` selects nothing too — a shareable query string is
+    never allowed to 422 the whole list.
     """
     own_id, own = await own_scope(
         session, user_id=principal.user_id, company_id=principal.company_id
     )
     company_id = principal.company_id
     term = f"%{params.search.lower()}%" if params.search else None
+    tech_type = canonical_filter(technician_type, (TYPE_EMPLOYEE, TYPE_FREELANCER))
 
     tech_keys = (
         select(
@@ -741,6 +861,14 @@ async def list_technicians(
     tech_keys = _visible_technicians(tech_keys, principal, own_id, own)
     if tech_status:
         tech_keys = tech_keys.where(TechnicianProfile.status == tech_status)
+    if franchisee_id:
+        tech_keys = tech_keys.where(TechnicianProfile.franchisee_id == franchisee_id)
+    if tech_type is False:
+        # Asked for a type that does not exist. Empty, not 422 — same rule as
+        # every other canonical filter in this API.
+        tech_keys = tech_keys.where(sql_false())
+    elif tech_type:
+        tech_keys = tech_keys.where(TechnicianProfile.technician_type == tech_type)
     if region_id:
         tech_keys = tech_keys.where(TechnicianProfile.region_id == region_id)
     if onboarding_mode:
@@ -816,16 +944,23 @@ async def list_technicians(
         # list the same person twice.
         TechnicianInvite.status != REGISTERED,
     )
-    invite_keys = _visible_invites(invite_keys, principal, own)
+    invite_keys = _visible_invites(
+        invite_keys,
+        principal,
+        own,
+        home_id=await home_franchisee_id(session, company_id) if not principal.is_franchise else None,
+    )
     if invite_status:
         invite_keys = invite_keys.where(TechnicianInvite.status == invite_status)
     if region_id:
         invite_keys = invite_keys.where(TechnicianInvite.region_id == region_id)
+    if franchisee_id:
+        invite_keys = invite_keys.where(TechnicianInvite.franchisee_id == franchisee_id)
     if term:
         invite_keys = invite_keys.where(func.lower(TechnicianInvite.phone).like(term))
 
-    # An invite has no status, subcategory, pincode, district or mode of the
-    # technician kind — filtering on one is implicitly "registered only".
+    # An invite has no status, subcategory, pincode, district, type or mode of
+    # the technician kind — filtering on one is implicitly "registered only".
     #
     # An invite DOES carry pincodes (`technician_invite_pincodes`), so a
     # district filter could in principle include unregistered invites. It
@@ -839,6 +974,7 @@ async def list_technicians(
         or pincode
         or district_id
         or onboarding_mode
+        or tech_type is not None
     ):
         combined = tech_keys.subquery()
     elif view == "invites" or invite_status:
@@ -886,7 +1022,11 @@ async def list_technicians(
 
     by_id: dict[uuid.UUID, object] = {}
     for row in await _technicians_out(
-        session, [tuple(t) for t in triples], on_day=on_day
+        session,
+        [tuple(t) for t in triples],
+        principal=principal,
+        home_id=await home_franchisee_id(session, company_id),
+        on_day=on_day,
     ):
         by_id[row.id] = row
     for row in await _invites_out(session, invites):
@@ -929,7 +1069,43 @@ async def get_technician(
     session: AsyncSession, principal: Principal, technician_id: uuid.UUID
 ) -> TechnicianOut:
     triple = await _load(session, principal, technician_id)
-    return (await _technicians_out(session, [triple]))[0]
+    return (
+        await _technicians_out(
+            session,
+            [triple],
+            principal=principal,
+            home_id=await home_franchisee_id(session, principal.company_id),
+        )
+    )[0]
+
+
+async def _load_managed(
+    session: AsyncSession, principal: Principal, technician_id: uuid.UUID
+):
+    """`_load`, then the franchisee wall for anything that CHANGES the technician.
+
+    The distinction is Task 05's: another franchisee's technician may be
+    VISIBLE (a staff roster shows who works where) and still not be MANAGEABLE
+    (`franchise_scope.can_manage_technician`) — so a write answers 403 naming
+    the franchisee, while the read stays open. A franchise principal never
+    reaches the wall: `_load` has already 404'd anybody else's technician, and
+    its own are always theirs.
+    """
+    profile, membership, user = await _load(session, principal, technician_id)
+    if not await can_manage_technician(session, principal, profile):
+        name = await session.scalar(
+            select(Franchisee.name).where(
+                Franchisee.company_id == principal.company_id,
+                Franchisee.id == profile.franchisee_id,
+            )
+        )
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            "FRANCHISEE_NOT_MANAGED",
+            f"Managed by {name or 'another franchisee'} — only its franchisee "
+            "admin can change this technician",
+        )
+    return profile, membership, user
 
 
 async def get_me(session: AsyncSession, principal: Principal) -> TechnicianSessionOut:
@@ -1223,10 +1399,13 @@ async def request_upi_change(
 ) -> PayoutAccountOut:
     """The technician proposing a new UPI ID. A manager applies it; no code.
 
-    Addressed along the chain `core.coverage.upi_reviewer` resolves — the AM
-    for their area, else the RH, else a National Head, else an Admin — and the
-    bell is role-addressed to exactly that (`notifications.audience`), carrying
-    the pincode that keeps an AM-addressed row to the AM whose state holds it.
+    Addressed along the chain `core.coverage.upi_reviewer` resolves (F8/F7) —
+    their OWN franchisee admin for a non-home technician, and the AM for their
+    area, else the RH, else a National Head, else an Admin for a home one — and
+    the bell is role-addressed to exactly that (`notifications.audience`),
+    carrying the pincode that keeps an AM-addressed row to the AM whose state
+    holds it and the `franchisee_id` that keeps a franchisee-addressed row to
+    that franchisee.
     """
     profile = await _own_profile(session, principal)
     if not profile.upi_id:
@@ -1246,7 +1425,7 @@ async def request_upi_change(
             "You already have a change waiting. Withdraw it to ask for a different one.",
         )
 
-    role, pincode = await upi_reviewer(
+    role, pincode, franchisee_id = await upi_reviewer(
         session, company_id=profile.company_id, technician_id=profile.id
     )
     name = (principal.user.full_name or "").strip() or profile.code
@@ -1273,6 +1452,7 @@ async def request_upi_change(
         to=f"/technicians/{profile.id}",
         pincode=pincode,
         audience=role,
+        franchisee_id=franchisee_id,
     )
     await publish_notification(
         session,
@@ -1280,6 +1460,7 @@ async def request_upi_change(
         pincode=pincode,
         notification_id=raised.id,
         audience=role,
+        franchisee_id=franchisee_id,
     )
     await session.commit()
     return await get_payout_account(session, principal)
@@ -1325,8 +1506,13 @@ async def get_upi_change(
 
     Through `_load`, so it is the same territory rule as the profile page it
     renders on: a technician outside your area reads 404, not an empty panel.
+
+    Through `_load_managed`, not `_load` (**Decision (writer)**): a change is
+    waiting on a decision only its manager can make, so a staff member who
+    cannot manage this franchisee is told that (403) rather than shown a fake
+    null that reads "nobody has asked".
     """
-    profile, _m, _u = await _load(session, principal, technician_id)
+    profile, _m, _u = await _load_managed(session, principal, technician_id)
     row = await _latest_change(session, profile, pending_only=True)
     return _change_out(row) if row is not None else None
 
@@ -1339,7 +1525,7 @@ async def _decide(
     approve: bool,
     reason: str | None = None,
 ) -> UpiChangeOut:
-    profile, _m, _u = await _load(session, principal, technician_id)
+    profile, _m, _u = await _load_managed(session, principal, technician_id)
     pending = await _latest_change(session, profile, pending_only=True)
     if pending is None:
         raise AppError(
@@ -1445,6 +1631,9 @@ async def technician_session(
         name=user.full_name or "",
         phone=user.phone or "",
         profileImageUrl=user.profile_image_url,
+        # Task 06 §4.6: the app branches its money screens on this — one
+        # builder, so `/technicians/me` and the sign-in response cannot drift.
+        technicianType=profile.technician_type,
         regionName=region.name if region else "—",
         onboardedBy=onboarded_by,
         companyName=brand.company_name(company.name if company else None),
@@ -1691,14 +1880,19 @@ async def _own_membership_id(
 async def create_technician(
     session: AsyncSession, principal: Principal, body: TechnicianCreateRequest
 ) -> TechnicianCreatedOut:
-    region = await resolve_region(session, principal, body.regionId)
+    region = await resolve_region(session, principal, body.regionId, body.pincodes)
     await check_pincodes_exist(session, region.id, body.pincodes)
     await check_pincodes_in_own_area(session, principal, body.pincodes)
     # The franchisee the new profile will be stamped with, computed ONCE: the
     # range check judges these pincodes against it, and the stamp below must be
-    # the same answer. Task 01 stamps staff-added technicians with the home
-    # (F8); choosing another franchisee from the request is Task 05.
-    stamp_as = await home_franchisee_id(session, principal.company_id)
+    # the same answer. A franchisee's own admin adds into THEIR franchisee
+    # (F7) — the caller, never the request (no franchiseeId on any body); staff
+    # stamp the home (F8), as always.
+    stamp_as = (
+        principal.franchisee_id
+        if principal.is_franchise
+        else await home_franchisee_id(session, principal.company_id)
+    )
     # Coverage must lie inside that franchisee (F4) — refused BEFORE anything is
     # written, after the two checks above so a manager outside their area still
     # sees that 403 first. A franchise principal is not told who owns another
@@ -1718,7 +1912,10 @@ async def create_technician(
     # design — two technicians on the same street is the normal case.
 
     own_id = await _own_membership_id(session, principal)
-    manager_id = body.managerId or own_id
+    # A franchisee's own admin is their technicians' manager (F7): body.managerId
+    # is ignored there — it could name a company staff membership, which is
+    # nobody a SkyFix technician reports to.
+    manager_id = own_id if principal.is_franchise else (body.managerId or own_id)
 
     user = await reuse_or_create_user(
         session,
@@ -1748,15 +1945,16 @@ async def create_technician(
     )
     now = _now()
     if profile is None:
-        # Staff-added technicians belong to the home franchisee (F8) — choosing
-        # another franchisee or type from the request is Task 05.
+        # Task 01's constants replaced with real answers: whose franchisee owns
+        # this person (F8/F7) and how they are paid (T1), both decided by the
+        # caller — never taken from the body.
         profile = TechnicianProfile(
             membership_id=membership.id,
             company_id=principal.company_id,
             code=await next_code(session, principal.company_id),
             region_id=region.id,
             franchisee_id=stamp_as,
-            technician_type=TYPE_FREELANCER,
+            technician_type=body.technicianType,
             daily_job_cap=body.dailyJobCap,
             upi_id=body.upiId,
             upi_name=body.upiName if body.upiId else None,
@@ -1771,11 +1969,16 @@ async def create_technician(
         )
         session.add(profile)
     else:
+        # A removed technician brought back: re-stamped BOTH — whoever re-adds
+        # them now manages and pays them. They hold no open jobs (the removal
+        # refused otherwise), so neither needs the type-change guard.
         profile.region_id = region.id
         profile.daily_job_cap = body.dailyJobCap
         profile.upi_id = body.upiId
         profile.upi_name = body.upiName if body.upiId else None
         profile.status = ACTIVE
+        profile.franchisee_id = stamp_as
+        profile.technician_type = body.technicianType
         profile.updated_by = principal.user_id
     await session.flush()
 
@@ -1794,7 +1997,10 @@ async def create_technician(
     # now covers may not, because anybody senior to him can add one there.
     #
     # Territory does the addressing, exactly as in `onboarding.register` — see
-    # the note there for why no explicit recipient is needed.
+    # the note there for why no explicit recipient is needed. Unaddressed, but
+    # STAMPED with the franchisee: staff hear it by pincode as always, AND that
+    # franchisee's admins hear their own roster growing (`core.audience`.
+    # hears, case 6).
     anchor = body.pincodes[0] if body.pincodes else None
     raised = await notify(
         session,
@@ -1804,12 +2010,14 @@ async def create_technician(
         detail=f"{profile.code} · covers {coverage_summary(body.pincodes)}",
         to=f"/technicians/{profile.id}",
         pincode=anchor,
+        franchisee_id=profile.franchisee_id,
     )
     await publish_notification(
         session,
         company_id=principal.company_id,
         pincode=anchor,
         notification_id=raised.id,
+        franchisee_id=profile.franchisee_id,
     )
 
     await session.commit()
@@ -1830,10 +2038,10 @@ async def update_technician(
     technician_id: uuid.UUID,
     body: TechnicianUpdateRequest,
 ) -> TechnicianOut:
-    profile, membership, user = await _load(session, principal, technician_id)
+    profile, membership, user = await _load_managed(session, principal, technician_id)
 
     if body.regionId is not None:
-        region = await resolve_region(session, principal, body.regionId)
+        region = await resolve_region(session, principal, body.regionId, body.pincodes)
         profile.region_id = region.id
         await set_membership_region(
             session,
@@ -1904,6 +2112,30 @@ async def update_technician(
             profile.upi_name = None
     if "upiName" in body.model_fields_set and profile.upi_id is not None:
         profile.upi_name = body.upiName
+    if body.technicianType is not None and body.technicianType != profile.technician_type:
+        # How they are paid, changing — refused while a job is open (R5): T1
+        # reads the type AT job-accept to route money (F12), so a mid-job
+        # switch would restate work somebody already agreed to do under the
+        # other arrangement. `franchisee_id` is deliberately absent from this
+        # body — moving a technician is Task 03's carve-out, not a payload.
+        #
+        # Task 06 adds the balance: a freelancer with unredeemed money cannot
+        # become an employee (T4 takes redemption away, and no month boundary
+        # can express paying it through salary) — see `type_change_refusal`.
+        # The figure is asked in the OLD type's stream, which is what
+        # `redeemable_balance` already answers; an employee→freelancer switch
+        # needs no balance at all, its clause cannot fire.
+        refusal = type_change_refusal(
+            old=profile.technician_type,
+            new=body.technicianType,
+            open_jobs=await _open_job_count(session, profile),
+            freelancer_balance_paise=await redeemable_balance(
+                session, company_id=profile.company_id, technician_id=profile.id
+            ),
+        )
+        if refusal:
+            raise AppError(status.HTTP_409_CONFLICT, *refusal)
+        profile.technician_type = body.technicianType
     if body.status is not None:
         profile.status = body.status
 
@@ -1911,6 +2143,25 @@ async def update_technician(
     user.updated_by = principal.user_id
     await session.commit()
     return await get_technician(session, principal, technician_id)
+
+
+async def _open_job_count(session: AsyncSession, profile: TechnicianProfile) -> int:
+    """How many non-terminal tickets this technician is still holding.
+
+    Public to the module: both the delete guard and the type-change guard (R5)
+    ask the same question and must never answer differently.
+    """
+    return (
+        await session.scalar(
+            select(func.count())
+            .select_from(Ticket)
+            .where(
+                Ticket.company_id == profile.company_id,
+                Ticket.technician_id == profile.id,
+                Ticket.status.not_in(TERMINAL_STATUSES),
+            )
+        )
+    ) or 0
 
 
 async def _refuse_if_open_jobs(
@@ -1921,15 +2172,7 @@ async def _refuse_if_open_jobs(
     Same shape as `vendors.delete_vendor`'s "still supplies N models" guard —
     refuse with a count rather than deleting out from under live work.
     """
-    open_count = await session.scalar(
-        select(func.count())
-        .select_from(Ticket)
-        .where(
-            Ticket.company_id == profile.company_id,
-            Ticket.technician_id == profile.id,
-            Ticket.status.not_in(TERMINAL_STATUSES),
-        )
-    )
+    open_count = await _open_job_count(session, profile)
     if open_count:
         raise AppError(
             status.HTTP_409_CONFLICT,
@@ -1973,8 +2216,10 @@ async def delete_technician(
     session: AsyncSession, principal: Principal, technician_id: uuid.UUID
 ) -> None:
     """A manager removing a technician. Territory-scoped and Area-Manager-and-
-    above, per the route's own dependencies."""
-    profile, membership, user = await _load(session, principal, technician_id)
+    above, per the route's own dependencies — and franchisee-walled through
+    `_load_managed`: a staff member may see another franchisee's technician and
+    still not fire them (F7)."""
+    profile, membership, user = await _load_managed(session, principal, technician_id)
     await _remove_technician(
         session,
         profile=profile,
@@ -2086,8 +2331,11 @@ async def resend_app_link(
     somebody outside their territory is a 404, never a message. Offered on
     every registered technician, not only the directly added ones — somebody
     who self-registered and then changed phones needs the app just as much.
+
+    Franchisee-walled like every other write (Task 05 `_load_managed`): it
+    reaches a phone, so only somebody who may change the technician sends it.
     """
-    _profile, _membership, user = await _load(session, principal, technician_id)
+    _profile, _membership, user = await _load_managed(session, principal, technician_id)
     return await send_app_link(session, principal.company_id, user.phone)
 
 
@@ -2126,7 +2374,7 @@ async def _send_and_record(session: AsyncSession, invite: TechnicianInvite) -> N
 async def create_invite(
     session: AsyncSession, principal: Principal, body: InviteCreateRequest
 ) -> TechnicianInviteOut:
-    region = await resolve_region(session, principal, body.regionId)
+    region = await resolve_region(session, principal, body.regionId, body.pincodes)
     # Validated before anything is written, so a bad pincode never leaves a
     # half-sent invite behind. Both checks: real and in the chosen region, and
     # inside the sender's own states when an area manager is sending.
@@ -2135,8 +2383,13 @@ async def create_invite(
     # The invite's franchisee, computed ONCE for the same reason
     # `create_technician` does: the range check judges against exactly the id
     # the invite below is stamped with (F4 — a registering technician gets these
-    # codes, so they must be this franchisee's to hand out).
-    stamp_as = await home_franchisee_id(session, principal.company_id)
+    # codes, so they must be this franchisee's to hand out). A franchisee's
+    # own admin invites into their franchisee; staff into the home.
+    stamp_as = (
+        principal.franchisee_id
+        if principal.is_franchise
+        else await home_franchisee_id(session, principal.company_id)
+    )
     await assert_pincodes_in_franchisee(
         session,
         principal.company_id,
@@ -2177,10 +2430,12 @@ async def create_invite(
         phone=body.phone,
         region_id=region.id,
         franchisee_id=stamp_as,
-        technician_type=TYPE_FREELANCER,
+        technician_type=body.technicianType,
         invited_by_user_id=principal.user_id,
         invited_by_membership_id=own_id,
-        manager_membership_id=body.managerId or own_id,
+        # A franchisee's own admin is their invite's manager, never the caller's
+        # body — same reasoning as `create_technician`.
+        manager_membership_id=own_id if principal.is_franchise else (body.managerId or own_id),
         daily_job_cap=body.dailyJobCap,
         status=PENDING,
         # 256 bits. Stored in clear because the console shows a copyable link
@@ -2212,7 +2467,16 @@ async def _load_invite(
         TechnicianInvite.id == invite_id,
         TechnicianInvite.company_id == principal.company_id,
     )
-    stmt = _visible_invites(stmt, principal, own)
+    stmt = _visible_invites(
+        stmt,
+        principal,
+        own,
+        home_id=(
+            None
+            if principal.is_franchise
+            else await home_franchisee_id(session, principal.company_id)
+        ),
+    )
     invite = await session.scalar(stmt)
     if invite is None:
         raise _not_found("Invite")
@@ -2266,3 +2530,112 @@ async def cancel_invite(
     invite.status = CANCELLED
     invite.updated_by = principal.user_id
     await session.commit()
+
+
+# ── a franchisee's UPI-change queues — the portal's Payouts lists ─────────────
+
+
+def _assert_franchise(principal: Principal) -> None:
+    """These lists exist only on the franchisee portal (Task 05 §4.5): staff
+    reach the same facts per technician through the profile page."""
+    if not principal.is_franchise:
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            "FRANCHISEE_ONLY",
+            "Available on franchisee accounts only",
+        )
+
+
+async def list_upi_changes(
+    session: AsyncSession,
+    principal: Principal,
+    params: ListParams,
+    *,
+    state: str | None = None,
+) -> tuple[list[UpiChangeRowOut], int]:
+    """One page of this franchisee's UPI change requests, with the total.
+
+    Franchise principals only. Pending sorts OLDEST first — the queue a person
+    works down — while decided ones and the unfiltered list sort newest first,
+    because what just happened is what a review wants to see. `id` breaks the
+    ties, the reason `notifications._NEWEST_FIRST` documents.
+    """
+    _assert_franchise(principal)
+    state_filter = canonical_filter(state, ("pending", "approved", "rejected"))
+
+    stmt = (
+        select(
+            UpiChangeRequest,
+            User.full_name,
+            TechnicianProfile.code,
+        )
+        .join(TechnicianProfile, TechnicianProfile.id == UpiChangeRequest.technician_id)
+        .join(Membership, Membership.id == TechnicianProfile.membership_id)
+        .join(User, User.id == Membership.user_id)
+        .where(
+            UpiChangeRequest.company_id == principal.company_id,
+            TechnicianProfile.franchisee_id == principal.franchisee_id,
+        )
+    )
+    if state_filter is False:
+        stmt = stmt.where(sql_false())
+    elif state_filter:
+        stmt = stmt.where(UpiChangeRequest.status == state_filter)
+
+    if state_filter == "pending":
+        stmt = stmt.order_by(
+            UpiChangeRequest.created_at.asc(), UpiChangeRequest.id.asc()
+        )
+    else:
+        stmt = stmt.order_by(
+            UpiChangeRequest.created_at.desc(), UpiChangeRequest.id.desc()
+        )
+
+    total = (
+        await session.scalar(
+            select(func.count())
+            .select_from(
+                stmt.with_only_columns(UpiChangeRequest.id).order_by(None).subquery()
+            )
+        )
+    ) or 0
+
+    page = (
+        await session.execute(
+            stmt.limit(params.limit).offset(params.offset)
+        )
+    ).all()
+    rows = list(page)
+
+    return [
+        UpiChangeRowOut(
+            **_change_out(row).model_dump(),
+            technicianId=row.technician_id,
+            technicianName=name or "",
+            technicianCode=code or "",
+        )
+        for row, name, code in rows
+    ], int(total)
+
+
+async def count_pending_upi_changes(
+    session: AsyncSession, principal: Principal
+) -> UpiChangeCountOut:
+    """The badge on the franchisee's Payouts tab."""
+    _assert_franchise(principal)
+    pending = (
+        await session.scalar(
+            select(func.count())
+            .select_from(UpiChangeRequest)
+            .join(
+                TechnicianProfile,
+                TechnicianProfile.id == UpiChangeRequest.technician_id,
+            )
+            .where(
+                UpiChangeRequest.company_id == principal.company_id,
+                TechnicianProfile.franchisee_id == principal.franchisee_id,
+                UpiChangeRequest.status == "pending",
+            )
+        )
+    ) or 0
+    return UpiChangeCountOut(pending=pending)

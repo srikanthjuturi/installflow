@@ -420,12 +420,17 @@ async def register(
         # which is company-wide — and a technician nobody can offer work to is
         # exactly the anomaly everyone should see.
         pincode=assigned[0] if assigned else None,
+        # Task 05 §4.5: stamped with the franchisee too — staff hear it by
+        # pincode as always, AND that franchisee's admins hear their roster
+        # growing (`core.audience.hears`, case 6).
+        franchisee_id=invite.franchisee_id,
     )
     await publish_notification(
         session,
         company_id=invite.company_id,
         pincode=assigned[0] if assigned else None,
         notification_id=raised.id,
+        franchisee_id=invite.franchisee_id,
     )
 
     # sign_in commits, so the whole registration lands in one transaction.
