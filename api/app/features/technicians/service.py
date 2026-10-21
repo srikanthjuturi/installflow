@@ -31,7 +31,7 @@ from app.core.config import settings
 from app.core.coverage import jobs_held_by_technician, upi_reviewer
 from app.core.deps import Principal
 from app.core.errors import AppError
-from app.core.franchise import home_franchisee_id
+from app.core.franchise import assert_pincodes_in_franchisee, home_franchisee_id
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
 from app.core.schemas import ListParams
@@ -1694,6 +1694,22 @@ async def create_technician(
     region = await resolve_region(session, principal, body.regionId)
     await check_pincodes_exist(session, region.id, body.pincodes)
     await check_pincodes_in_own_area(session, principal, body.pincodes)
+    # The franchisee the new profile will be stamped with, computed ONCE: the
+    # range check judges these pincodes against it, and the stamp below must be
+    # the same answer. Task 01 stamps staff-added technicians with the home
+    # (F8); choosing another franchisee from the request is Task 05.
+    stamp_as = await home_franchisee_id(session, principal.company_id)
+    # Coverage must lie inside that franchisee (F4) — refused BEFORE anything is
+    # written, after the two checks above so a manager outside their area still
+    # sees that 403 first. A franchise principal is not told who owns another
+    # franchisee's codes; staff are, because that is how they go and fix it.
+    await assert_pincodes_in_franchisee(
+        session,
+        principal.company_id,
+        stamp_as,
+        body.pincodes,
+        name_owners=not principal.is_franchise,
+    )
     subcategory_ids = await validate_subcategories(
         session, principal.company_id, body.subcategoryIds
     )
@@ -1739,7 +1755,7 @@ async def create_technician(
             company_id=principal.company_id,
             code=await next_code(session, principal.company_id),
             region_id=region.id,
-            franchisee_id=await home_franchisee_id(session, principal.company_id),
+            franchisee_id=stamp_as,
             technician_type=TYPE_FREELANCER,
             daily_job_cap=body.dailyJobCap,
             upi_id=body.upiId,
@@ -1837,6 +1853,17 @@ async def update_technician(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="A technician needs at least one pincode",
             )
+        # Coverage must lie inside the franchisee this technician belongs to (F4)
+        # — refusing rather than silently trimming, so the manager's screen keeps
+        # telling them the truth about who covers what. Same ordering as
+        # `create_technician`: the 403 about their own area comes first.
+        await assert_pincodes_in_franchisee(
+            session,
+            principal.company_id,
+            profile.franchisee_id,
+            body.pincodes,
+            name_owners=not principal.is_franchise,
+        )
         await set_coverage(
             session,
             profile=profile,
@@ -2105,6 +2132,18 @@ async def create_invite(
     # inside the sender's own states when an area manager is sending.
     await check_pincodes_exist(session, region.id, body.pincodes)
     await check_pincodes_in_own_area(session, principal, body.pincodes)
+    # The invite's franchisee, computed ONCE for the same reason
+    # `create_technician` does: the range check judges against exactly the id
+    # the invite below is stamped with (F4 — a registering technician gets these
+    # codes, so they must be this franchisee's to hand out).
+    stamp_as = await home_franchisee_id(session, principal.company_id)
+    await assert_pincodes_in_franchisee(
+        session,
+        principal.company_id,
+        stamp_as,
+        body.pincodes,
+        name_owners=not principal.is_franchise,
+    )
 
     existing_tech = await session.scalar(
         select(User.id).where(
@@ -2137,7 +2176,7 @@ async def create_invite(
         company_id=principal.company_id,
         phone=body.phone,
         region_id=region.id,
-        franchisee_id=await home_franchisee_id(session, principal.company_id),
+        franchisee_id=stamp_as,
         technician_type=TYPE_FREELANCER,
         invited_by_user_id=principal.user_id,
         invited_by_membership_id=own_id,

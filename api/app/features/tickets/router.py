@@ -83,6 +83,11 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("jobs.view"))]
+#: Read-only ticket access for the franchise portal (F13) beside staff and vendors' `jobs.view`.
+#: Who sees WHICH tickets is `service.scoped()`'s, not this key's.
+CanReadTickets = Annotated[
+    Principal, Depends(require_any_feature("jobs.view", "franchise.tickets"))
+]
 CanCreate = Annotated[Principal, Depends(require_feature("jobs.create"))]
 IsVendor = Depends(require_vendor_principal)
 
@@ -159,7 +164,7 @@ CanReversePenalty = Annotated[
 @router.get("", response_model=PaginatedEnvelope[TicketOut])
 async def list_tickets(
     db: Db,
-    principal: CanView,
+    principal: CanReadTickets,
     params: Annotated[ListParams, Depends(list_params)],
     status: Annotated[str | None, Query()] = None,
     slaState: Annotated[str | None, Query()] = None,
@@ -742,13 +747,18 @@ async def force_close_ticket(
     response_model=ApiEnvelope[list[TicketAttachmentOut]],
 )
 async def get_ticket_attachments(
-    ticket_id: uuid.UUID, db: Db, principal: CanView
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
 ) -> ApiEnvelope[list[TicketAttachmentOut]]:
     """The evidence a manager attached when force-closing this ticket.
 
     `jobs.view`, not `jobs.force_close`: whoever may look at the ticket may see
     why it was ended. Making the justification harder to read than the closure
     itself would defeat the point of collecting it.
+
+    The guard is `CanReadTickets` only so a franchise principal can be turned
+    away IN WORDS by the service (404) instead of at the door with a 403 that
+    would leak nothing but confuse the portal; the panel stays staff/vendor
+    shaped otherwise.
     """
     return envelope(await service.list_attachments(db, principal, ticket_id))
 
@@ -827,13 +837,14 @@ async def check_ticket_serial(
     "/{ticket_id}/proof", response_model=ApiEnvelope[list[TicketProofOut]]
 )
 async def get_ticket_proof(
-    ticket_id: uuid.UUID, db: Db, principal: CanView
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
 ) -> ApiEnvelope[list[TicketProofOut]]:
     """What the technician photographed on site.
 
     Who sees it is decided by the same visibility rule as the ticket itself:
     staff by territory, a vendor by ownership, a vendor user only for tickets
-    they raised. A technician gets 404 here — they read their own work through
+    they raised, and (F13) a franchise principal for tickets stamped its
+    franchisee. A technician gets 404 here — they read their own work through
     `/jobs/{id}/proof`.
 
     This exists because of escalation. When a customer says the job was not
@@ -847,8 +858,14 @@ async def get_ticket_proof(
 
 @router.get("/{ticket_id}", response_model=ApiEnvelope[TicketDetailOut])
 async def get_ticket(
-    ticket_id: uuid.UUID, db: Db, principal: CanView
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
 ) -> ApiEnvelope[TicketDetailOut]:
+    """One ticket, by id — read-only for a franchise principal (F13).
+
+    Outside a franchise caller's stamp, `service.scoped()` turns the fetch into
+    a 404 in SQL; a guessed id from another franchisee reads exactly like one
+    that does not exist.
+    """
     return envelope(await service.get_ticket(db, principal, ticket_id))
 
 

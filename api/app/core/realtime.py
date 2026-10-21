@@ -102,6 +102,10 @@ class PoolChanged:
     company_id: uuid.UUID
     pincode: str
     node_path_ids: tuple[uuid.UUID, ...]
+    #: The ticket's franchisee (Task 04). None from a publisher that predates it,
+    #: or a frame for "anyone" — matched by everyone, because this socket rings
+    #: too often rather than too rarely (see `franchise_routing.pool_frame_matches`).
+    franchisee_id: uuid.UUID | None = None
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -110,6 +114,9 @@ class PoolChanged:
                 "company_id": str(self.company_id),
                 "pincode": self.pincode,
                 "node_path_ids": [str(n) for n in self.node_path_ids],
+                "franchisee_id": str(self.franchisee_id)
+                if self.franchisee_id
+                else None,
             },
             separators=(",", ":"),
         )
@@ -122,10 +129,12 @@ class PoolChanged:
             path = raw["node_path_ids"]
             if not isinstance(path, list):
                 raise TypeError("node_path_ids must be a list")
+            franchisee = raw.get("franchisee_id")
             return PoolChanged(
                 company_id=uuid.UUID(str(raw["company_id"])),
                 pincode=str(raw["pincode"]),
                 node_path_ids=tuple(uuid.UUID(str(n)) for n in path),
+                franchisee_id=uuid.UUID(str(franchisee)) if franchisee else None,
             )
         except (KeyError, ValueError, TypeError):
             # A malformed payload is a bug on the publishing side, not something
@@ -183,12 +192,14 @@ class JobChanged:
 class TicketChanged:
     """A ticket moved, for the CONSOLE and the vendor portal.
 
-    Carries the three facts the console's visibility rule is written in terms
+    Carries the four facts the console's visibility rule is written in terms
     of, and nothing else:
 
-      pincode     staff see by territory
-      vendor_id   a vendor sees the tickets raised against it
-      created_by  a vendor USER sees only the ones they raised themselves
+      pincode        staff see by territory
+      vendor_id      a vendor sees the tickets raised against it
+      created_by     a vendor USER sees only the ones they raised themselves
+      franchisee_id  a franchisee principal sees its OWN franchisee's tickets
+                     (Task 04, F13); None from a publisher that predates it
 
     Deliberately no status, no customer, no code. The subscriber decides
     whether this viewer may know the ticket changed, and then the viewer
@@ -202,6 +213,9 @@ class TicketChanged:
     pincode: str
     vendor_id: uuid.UUID
     created_by: uuid.UUID | None
+    #: The ticket's franchisee (Task 04). Optional, like `created_by` above — an
+    #: old frame without it still parses.
+    franchisee_id: uuid.UUID | None = None
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -212,6 +226,9 @@ class TicketChanged:
                 "pincode": self.pincode,
                 "vendor_id": str(self.vendor_id),
                 "created_by": str(self.created_by) if self.created_by else None,
+                "franchisee_id": str(self.franchisee_id)
+                if self.franchisee_id
+                else None,
             },
             separators=(",", ":"),
         )
@@ -222,12 +239,14 @@ class TicketChanged:
             return None
         try:
             raised_by = raw.get("created_by")
+            franchisee = raw.get("franchisee_id")
             return TicketChanged(
                 company_id=uuid.UUID(str(raw["company_id"])),
                 ticket_id=uuid.UUID(str(raw["ticket_id"])),
                 pincode=str(raw["pincode"]),
                 vendor_id=uuid.UUID(str(raw["vendor_id"])),
                 created_by=uuid.UUID(str(raised_by)) if raised_by else None,
+                franchisee_id=uuid.UUID(str(franchisee)) if franchisee else None,
             )
         except (KeyError, ValueError, TypeError):
             log.warning("realtime: discarding malformed payload %r", raw)
@@ -430,6 +449,10 @@ async def publish_ticket_changed(db: AsyncSession, row: Any) -> None:
                 pincode=row.pincode,
                 vendor_id=row.vendor_id,
                 created_by=row.created_by,
+                # `getattr`, not an attribute read: `publish_ticket_changed` is
+                # typed loosely on purpose and a row type without the stamped
+                # column must not crash the console channel.
+                franchisee_id=getattr(row, "franchisee_id", None),
             ).as_payload(),
         },
     )
@@ -464,6 +487,7 @@ async def publish_pool_changed(
     company_id: uuid.UUID,
     pincode: str,
     node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
+    franchisee_id: uuid.UUID | None = None,
 ) -> None:
     """Ring the doorbell **when this transaction commits**.
 
@@ -472,13 +496,21 @@ async def publish_pool_changed(
     fails to save must not notify. Callers put this next to the write it
     describes and let their existing commit carry both.
 
+    `franchisee_id` is optional so a frame can still be published for "anyone" —
+    an old payload without the key parses — but every pool change Task 04's
+    callers make names the ticket's stamped franchisee, so the pool socket can
+    stop ringing for the technicians who are no longer offered the job.
+
     `pg_notify(...)` rather than `NOTIFY channel, 'payload'` because the payload
     is then a bind parameter — a literal would be string-built SQL wrapped
     around customer-adjacent data, and the first pincode with an apostrophe in
     it would be an injection rather than a bug.
     """
     event = PoolChanged(
-        company_id=company_id, pincode=pincode, node_path_ids=tuple(node_path_ids)
+        company_id=company_id,
+        pincode=pincode,
+        node_path_ids=tuple(node_path_ids),
+        franchisee_id=franchisee_id,
     )
     await db.execute(
         text("SELECT pg_notify(:channel, :payload)"),

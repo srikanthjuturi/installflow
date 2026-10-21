@@ -247,42 +247,48 @@ async def _hydrate(
     non_home = [r.id for r in rows if not r.is_home]
 
     tech_counts = dict(
-        await db.execute(
-            select(TechnicianProfile.franchisee_id, func.count())
-            .join(Membership, Membership.id == TechnicianProfile.membership_id)
-            .where(
-                TechnicianProfile.company_id == company_id,
-                Membership.deleted_at.is_(None),
-                TechnicianProfile.franchisee_id.in_(ids),
+        (
+            await db.execute(
+                select(TechnicianProfile.franchisee_id, func.count())
+                .join(Membership, Membership.id == TechnicianProfile.membership_id)
+                .where(
+                    TechnicianProfile.company_id == company_id,
+                    Membership.deleted_at.is_(None),
+                    TechnicianProfile.franchisee_id.in_(ids),
+                )
+                .group_by(TechnicianProfile.franchisee_id)
             )
-            .group_by(TechnicianProfile.franchisee_id)
-        )
+        ).all()
     )
     invite_counts = dict(
-        await db.execute(
-            select(TechnicianInvite.franchisee_id, func.count())
-            .where(
-                TechnicianInvite.company_id == company_id,
-                TechnicianInvite.status.in_(LIVE_INVITE_STATUSES),
-                TechnicianInvite.franchisee_id.in_(ids),
+        (
+            await db.execute(
+                select(TechnicianInvite.franchisee_id, func.count())
+                .where(
+                    TechnicianInvite.company_id == company_id,
+                    TechnicianInvite.status.in_(LIVE_INVITE_STATUSES),
+                    TechnicianInvite.franchisee_id.in_(ids),
+                )
+                .group_by(TechnicianInvite.franchisee_id)
             )
-            .group_by(TechnicianInvite.franchisee_id)
-        )
+        ).all()
     )
     admin_counts = dict(
-        await db.execute(
-            select(Membership.franchisee_id, func.count())
-            .join(User, User.id == Membership.user_id)
-            .where(
-                Membership.company_id == company_id,
-                Membership.deleted_at.is_(None),
-                Membership.is_active.is_(True),
-                User.deleted_at.is_(None),
-                User.role == FRANCHISEE_ADMIN,
-                Membership.franchisee_id.in_(ids),
+        (
+            await db.execute(
+                select(Membership.franchisee_id, func.count())
+                .join(User, User.id == Membership.user_id)
+                .where(
+                    Membership.company_id == company_id,
+                    Membership.deleted_at.is_(None),
+                    Membership.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                    User.role == FRANCHISEE_ADMIN,
+                    Membership.franchisee_id.in_(ids),
+                )
+                .group_by(Membership.franchisee_id)
             )
-            .group_by(Membership.franchisee_id)
-        )
+        ).all()
     )
     owned: dict[uuid.UUID, set[str]] = defaultdict(set)
     if non_home:
@@ -842,9 +848,7 @@ async def _plan(
             candidate_stmt = candidate_stmt.where(TechnicianProfile.franchisee_id == other)
         else:
             candidate_stmt = candidate_stmt.where(TechnicianProfile.franchisee_id != other)
-        tech_ids = [
-            r.id for r in (await db.execute(candidate_stmt.distinct())).scalars()
-        ]
+        tech_ids = list((await db.execute(candidate_stmt.distinct())).scalars())
         if tech_ids:
             rows = (
                 await db.execute(
@@ -1154,6 +1158,11 @@ async def _apply(
                     Ticket.company_id,
                     Ticket.vendor_id,
                     Ticket.created_by,
+                    # The NEW stamp, RETURNed so the ticket frame below (and the
+                    # console socket it feeds) carries who the ticket belongs to
+                    # NOW — the old franchisee's portal learns on its next
+                    # refetch.
+                    Ticket.franchisee_id,
                 )
             )
         ).all()
@@ -1214,10 +1223,27 @@ async def _apply(
         moved_ids.extend(c[0].id for c in cand_list)
     for tid in moved_ids[:50]:
         await publish_technician_changed(db, company_id=company_id, technician_id=tid)
-    pools = {(r.pincode, tuple(r.node_path_ids or [])) for r in returned}
-    for pincode, node_path_ids in pools:
+    # One pool frame per distinct (pincode, path, franchisee) — and per
+    # re-stamped ticket TWO of the latter: a frame for the OLD franchisee, whose
+    # technicians were being offered the ticket a second ago and must now stop
+    # ringing for it, and one for the NEW one, whose technicians must start.
+    # Only the new one when the stamp did not actually change (the ticket
+    # returned to its own pool).
+    pools: set[tuple[str, tuple[uuid.UUID, ...], uuid.UUID]] = set()
+    for r in returned:
+        path = tuple(r.node_path_ids or [])
+        new = to_of.get(r.id, r.franchisee_id)
+        pools.add((r.pincode, path, new))
+        old = from_of.get(r.id)
+        if old is not None and old != new:
+            pools.add((r.pincode, path, old))
+    for pincode, node_path_ids, franchisee_id in pools:
         await publish_pool_changed(
-            db, company_id=company_id, pincode=pincode, node_path_ids=node_path_ids
+            db,
+            company_id=company_id,
+            pincode=pincode,
+            node_path_ids=list(node_path_ids),
+            franchisee_id=franchisee_id,
         )
     for r in returned[:25]:
         await publish_ticket_changed(db, r)

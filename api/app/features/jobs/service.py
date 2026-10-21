@@ -40,6 +40,8 @@ from app.core.config import settings
 from app.core.coverage import has_cap_room, nearest_manager_for, still_offerable
 from app.core.errors import AppError
 from app.core.escalation import escalate, whatsapp_the_area_manager
+from app.core.franchise import restamp_ticket
+from app.core.franchise_routing import accept_miss_reason
 from app.core.job_passes import passed_as_offered
 from app.core.ledger import (
     cap_remaining,
@@ -174,9 +176,9 @@ def pool_query(
     `accepting_work` toggle, and the cap. It does NOT drop `status` — a
     SUSPENDED technician sees nothing through any flag here, because that is
     somebody else's decision about them rather than their own. Coverage,
-    certification and company still apply too, so this never widens what a
-    technician may see — only what they may be TOLD about a ticket that was
-    already theirs to see.
+    certification, company and franchisee still apply too, so this never widens
+    what a technician may see — only what they may be TOLD about a ticket that
+    was already theirs to see.
 
     ## Two kinds of offerable job, and the window differs
 
@@ -267,6 +269,19 @@ def pool_query(
         )
         .exists()
     )
+    # The ticket's franchisee runs this job (F7): only its technicians are offered it. Correlated on the
+    # outer Ticket and read live, so a technician moved by a carve-out a second ago is judged by where
+    # they are now. Always applied — no flag relaxes it, for `status`'s reason: it is somebody else's
+    # decision about this technician, not their own toggle.
+    in_franchisee = (
+        select(TechnicianProfile.id)
+        .where(
+            TechnicianProfile.company_id == company_id,
+            TechnicianProfile.id == technician_id,
+            TechnicianProfile.franchisee_id == Ticket.franchisee_id,
+        )
+        .exists()
+    )
 
     now = _now()
     conditions = [
@@ -280,6 +295,7 @@ def pool_query(
         covers_pincode,
         certified_for,
         is_active,
+        in_franchisee,
     ]
     if open_only:
         conditions += [
@@ -869,6 +885,16 @@ async def accept(
             # would end the transaction over their cap. Settled in the WHERE
             # clause, Postgres serialises them and the second matches nothing.
             has_cap_room(company_id=company_id, technician_id=profile.id),
+            # Re-tested here, not only in the pool read above, for the cap's reason: a carve-out can re-stamp
+            # this ticket (or move this technician) between that read and this write. Read inside the
+            # statement, so Postgres judges both sides as they are when the row is locked.
+            Ticket.franchisee_id
+            == select(TechnicianProfile.franchisee_id)
+            .where(
+                TechnicianProfile.company_id == company_id,
+                TechnicianProfile.id == profile.id,
+            )
+            .scalar_subquery(),
         )
         .values(technician_id=profile.id, status="Assigned")
     )
@@ -879,21 +905,43 @@ async def accept(
         # would send them back to a pool with nothing in it for them either.
         #
         # Read the ticket rather than re-running the cap: if it is still open,
-        # the cap is the only clause left that can have failed.
-        still_open = await db.scalar(
-            select(Ticket.id).where(
+        # the cap is the only clause left that can have failed — until Task 04
+        # added a third: the ticket's franchisee is no longer this technician's
+        # (a carve-out re-stamped it in the instant between the pool read and
+        # this write), so the job left this pool. That answers 404, exactly
+        # what `pool_query` would now say — never a false DAILY_CAP_REACHED
+        # for a race this rare.
+        still = await db.execute(
+            select(Ticket.id, Ticket.franchisee_id).where(
                 Ticket.id == ticket_id,
                 Ticket.company_id == company_id,
                 Ticket.status.in_(("New", "Slot Pending")),
                 Ticket.technician_id.is_(None),
             )
         )
-        if still_open is not None:
-            day = _ist_day_label(offered.slot_start)
-            raise JobRefused(
-                "DAILY_CAP_REACHED",
-                f"You already have {profile.daily_job_cap} jobs on {day} — that is "
-                "your daily limit. Raise it under Availability & bandwidth.",
+        row = still.first()
+        if row is not None:
+            # The technician's CURRENT franchisee, read live — a carve-out may
+            # have moved them too, in the same instant.
+            current = await db.scalar(
+                select(TechnicianProfile.franchisee_id).where(
+                    TechnicianProfile.company_id == company_id,
+                    TechnicianProfile.id == profile.id,
+                )
+            )
+            reason = accept_miss_reason(
+                still_open=True, same_franchisee=current == row.franchisee_id
+            )
+            if reason == "cap":
+                day = _ist_day_label(offered.slot_start)
+                raise JobRefused(
+                    "DAILY_CAP_REACHED",
+                    f"You already have {profile.daily_job_cap} jobs on {day} — that is "
+                    "your daily limit. Raise it under Availability & bandwidth.",
+                )
+            assert reason == "moved"
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
             )
         raise JobRefused(
             "JOB_ALREADY_TAKEN", "Another technician accepted this job first"
@@ -938,6 +986,9 @@ async def accept(
         company_id=company_id,
         pincode=offered.pincode,
         node_path_ids=offered.node_path_ids,
+        # The franchisee whose technicians were being shown it, so their sockets
+        # stop ringing for a job that just left their pool.
+        franchisee_id=offered.franchisee_id,
     )
     await publish_ticket_changed(db, offered)
     await db.commit()
@@ -2047,6 +2098,13 @@ async def cancel(
     row.status = back_to
     row.technician_id = None
 
+    # The stamp catches up at release (§4.1(c)): the ticket is going back to a
+    # pool, and its pincode may have been carved out while somebody held it —
+    # F6 kept the old stamp on assigned work. Re-routing now means SkyFix's
+    # technicians, not Acme Home's, see it. No-op (and no event) when the owner
+    # has not changed.
+    await restamp_ticket(db, row, actor_kind="system", actor_label="Pincode routing")
+
     name = await _technician_name(db, profile)
     db.add(
         _event(
@@ -2095,12 +2153,14 @@ async def cancel(
         )
     if not escalated:
         # Still in the pool, so the pool changed. `escalate` publishes its own
-        # frames when it fires.
+        # frames when it fires. The franchisee as it stands AFTER the re-stamp
+        # above — that is whose phones must ring.
         await publish_pool_changed(
             db,
             company_id=company_id,
             pincode=row.pincode,
             node_path_ids=row.node_path_ids,
+            franchisee_id=row.franchisee_id,
         )
         await publish_ticket_changed(db, row)
     await db.commit()
@@ -2120,6 +2180,7 @@ async def cancel(
             city=row.city,
             node_path_ids=row.node_path_ids,
             slot_start=row.slot_start,
+            franchisee_id=row.franchisee_id,
         )
     return PenaltyBandOut(amountPaise=charge, label=label, escalates=escalates)
 

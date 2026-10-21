@@ -182,12 +182,13 @@ async def escalate(
     )
     # It has just LEFT the pool, and every eligible technician is still being
     # shown the card. The same doorbell that announces a new job announces one
-    # that is gone.
+    # that is gone — this franchisee's, whose technicians were the ones shown it.
     await publish_pool_changed(
         db,
         company_id=row.company_id,
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
+        franchisee_id=row.franchisee_id,
     )
     await publish_ticket_changed(db, row)
     return True

@@ -12,6 +12,13 @@ vendor learning that a ticket id exists is a vendor learning about another
 vendor's customer. So the vendor test here is exact, and matches `scoped()`
 line for line.
 
+The franchise test (F13, Task 04) is EXACT for the same reason: a franchisee's
+console hearing that another franchisee's ticket moved is a console ringing for
+work it can read nothing of — `franchise_hears_ticket` demands the ticket's
+stamped franchisee EQUAL the viewer's, and stays silent when either side is
+unknown or the viewer is facility staff (Task 12 widens, as `service.scoped()`
+does).
+
 Staff are filtered by territory for the same reason, just a weaker one — an area
 manager has no business knowing the ids of tickets outside their states, even
 though fetching one would 404.
@@ -42,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.coverage import payer_role
 from app.core.database import AsyncSessionLocal
 from app.core.deps import Principal
+from app.core.franchise_routing import franchise_hears_ticket
 from app.core.realtime import (
     NotificationRaised,
     TechnicianChanged,
@@ -52,6 +60,7 @@ from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import (
     ADMIN,
+    FACILITY_ROLES,
     FRANCHISE_ROLES,
     NATIONAL_HEAD,
     ROLE_RANKS,
@@ -80,6 +89,8 @@ class _Visibility:
         "pincodes",
         "vendor_id",
         "franchise",
+        "franchisee_id",
+        "facility",
         "user_id",
         "vendor_user",
         "payer",
@@ -92,6 +103,13 @@ class _Visibility:
         self.pincodes: set[str] = set()
         self.vendor_id: uuid.UUID | None = None
         self.franchise = False
+        #: The viewer's OWN franchisee, when `franchise` — the id a ticket frame
+        #: must equal to be heard (`franchise_hears_ticket`). None means corrupt
+        #: membership, and nothing is heard, exactly as `scoped()` refuses.
+        self.franchisee_id: uuid.UUID | None = None
+        #: A facility role of that franchise — fail closed until Task 12 gives
+        #: facility staff a part-request table to gate on, as `scoped()` does.
+        self.facility = False
         self.user_id: uuid.UUID | None = None
         self.vendor_user = False
         #: For rows addressed to a role — see `hears_notification`.
@@ -120,12 +138,15 @@ class _Visibility:
             self._at = time.monotonic()
             return
         if principal.is_franchise:
-            # Franchise principals hear nothing yet — the REST rule this must
-            # mirror (`service.scoped`) says nothing either, and a franchise
-            # principal who reaches the staff branch below would otherwise fall
-            # into the all-india/pincodes default and hear every company-wide
-            # row. Task 04 (F13) replaces this with ownership.
+            # Ownership (F13, Task 04), mirroring the REST rule: a ticket frame
+            # is heard when its stamped franchisee IS the viewer's, and a
+            # facility role hears nothing until Task 12. Anything unset fails
+            # closed; nothing here falls through to the staff branch, whose
+            # all-india/pincodes defaults would make a franchise viewer hear
+            # every company-wide row.
             self.franchise = True
+            self.franchisee_id = principal.franchisee_id
+            self.facility = principal.role in FACILITY_ROLES
             self._at = time.monotonic()
             return
 
@@ -174,7 +195,9 @@ class _Visibility:
 
         A franchise principal hears nothing, before any of it — without this
         they would reach the staff territory branch and every company-wide row
-        (a null pincode) would reach them. Task 05 opens this deliberately.
+        (a null pincode) would reach them. Ticket FRAMES for a franchise viewer
+        are handled by `may_hear` (Task 04); the NOTIFICATION audiences that
+        could name them are Task 05's to add, deliberately.
         """
         if self.franchise:
             return False
@@ -201,7 +224,14 @@ class _Visibility:
 
     def may_hear(self, event: TicketChanged) -> bool:
         if self.franchise:
-            return False
+            # EXACT, not biased — this socket may not over-ring the way the
+            # pool socket may (see the module docstring). Either side unknown,
+            # ids differing, or a facility viewer: silence.
+            return franchise_hears_ticket(
+                viewer_franchisee=self.franchisee_id,
+                facility=self.facility,
+                event_franchisee=event.franchisee_id,
+            )
         if self.vendor_id is not None:
             if event.vendor_id != self.vendor_id:
                 return False

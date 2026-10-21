@@ -28,6 +28,7 @@ import jwt
 
 from app.core import brand
 from app.core.config import settings
+from app.core.franchise import assert_pincodes_in_franchisee
 from app.core.notifications import notify
 from app.core.realtime import publish_notification
 from app.core.schemas import ListParams
@@ -312,6 +313,14 @@ async def register(
     # widen it — which is what the old "is this inside your manager's area?"
     # check existed to police.
     assigned = await tech_service.invite_pincodes(session, invite.id)
+    # Still this franchisee's to hand out? A carve-out (Task 03) moves or trims
+    # live invites, but data can drift; judged BEFORE anything is written, so a
+    # refusal here leaves no partial record — the technician is told the code and
+    # asked to check with whoever invited them, rather than registering into a
+    # franchisee that cannot route the work.
+    await assert_pincodes_in_franchisee(
+        session, invite.company_id, invite.franchisee_id, assigned, name_owners=False
+    )
 
     actor = invite.invited_by_user_id
 

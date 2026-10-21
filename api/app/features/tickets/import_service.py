@@ -107,7 +107,7 @@ from app.core.vendor_credits import assert_within_limit as assert_vendor_within_
 from app.core.vendor_credits import quote as quote_vendor_credit
 from app.core.deps import Principal
 from app.core.errors import AppError
-from app.core.franchise import franchisees_for_pincodes
+from app.core.franchise import franchisees_for_pincodes, lock_routing
 from app.core.product_tree import APPROVED, PENDING, REJECTED
 from app.core.realtime import publish_pool_changed, publish_ticket_changed
 from app.core.rules import resolve_rules
@@ -1684,6 +1684,11 @@ async def _commit(
 
     # Every pincode the file lands on, in ONE query — the same reason `codes`
     # above is allocated as a block rather than per row.
+    #
+    # A carve-out (Task 03) holds this exclusively while it moves pincodes and re-stamps open tickets; a
+    # sheet raised in that instant must see the NEW owner, or it lands with a franchisee whose technicians
+    # no longer cover it. Shared, so intakes never wait for each other.
+    await lock_routing(db, principal.company_id, exclusive=False)
     routes = await franchisees_for_pincodes(
         db, principal.company_id, {r.body.pincode for r in ready if r.body is not None}
     )
@@ -1805,19 +1810,21 @@ async def _commit(
 
     # ── realtime, deduped ────────────────────────────────────────────────
     #
-    # One pool frame per distinct (pincode, path): a technician's app needs to
-    # know the pool moved, not how many times. Per-ticket console frames are
+    # One pool frame per distinct (pincode, path, franchisee): a technician's
+    # app needs to know the pool moved, not how many times. Per-ticket console
+    # frames are
     # capped — 500 `pg_notify` calls would swamp every open console, and the
     # uploader is looking at this response rather than the board.
     buckets = {
-        (t.pincode, tuple(t.node_path_ids)) for t in tickets
+        (t.pincode, tuple(t.node_path_ids), t.franchisee_id) for t in tickets
     }
-    for pincode, path in buckets:
+    for pincode, path, franchisee_id in buckets:
         await publish_pool_changed(
             db,
             company_id=principal.company_id,
             pincode=pincode,
             node_path_ids=list(path),
+            franchisee_id=franchisee_id,
         )
     if len(tickets) <= MAX_PER_TICKET_FRAMES:
         for ticket in tickets:

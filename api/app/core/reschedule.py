@@ -272,6 +272,8 @@ async def move_slot(
             company_id=row.company_id,
             pincode=row.pincode,
             node_path_ids=row.node_path_ids,
+            # The ticket's stamped franchisee — whose pool it re-enters.
+            franchisee_id=row.franchisee_id,
         )
     return to
 

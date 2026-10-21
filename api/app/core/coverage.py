@@ -2,7 +2,7 @@
 
 `jobs.service.pool_query` asks "which tickets may THIS technician be offered".
 This asks the other direction: given a ticket that has just entered the pool,
-who should hear about it. Same two facts, read the other way round.
+who should hear about it. Same three facts, read the other way round.
 
 In `core` because both the jobs slice and the tickets slice put tickets into the
 pool — `publish_pool_changed` is called from each — and slices never import each
@@ -13,18 +13,23 @@ copy, or the second one drifts.
 ## It must agree with `pool_query`, and that is the whole risk
 
 A technician pushed about a job the pool will not show them opens the app to
-nothing. The two predicates that decide it — covers the pincode, certified
-anywhere on the job's catalogue path — are duplicated here rather than shared,
-because the two queries are shaped differently: one correlates against `Ticket`
-columns, this one against literals. If a THIRD condition is ever added to pool
+nothing. The three predicates that decide it — covers the pincode, certified
+anywhere on the job's catalogue path, and in the ticket's franchisee — are
+duplicated here rather than shared, because the two queries are shaped
+differently: one correlates against `Ticket`
+columns, this one against literals. If a FOURTH condition is ever added to pool
 eligibility, it belongs in both, and this note is where whoever adds it should
 look.
 
 Certification covers a whole SUBTREE, so both sides test membership of the
 ticket's stamped `node_path_ids` rather than equality with one id. There are
-four copies of that test in all — here, `pool_query`, the guarded UPDATE in
-`accept`, and the assign guard — and they agree because they are all one array
-containment against the same column.
+five places that test job eligibility in all — here, `pool_query`, the guarded
+UPDATE in
+`accept`, the assign guard, and the pool socket — and they agree because they
+are all one array
+containment against the same column. Task 04 added the franchisee to all five;
+this module's copy is the keyword `franchisee_id`, required on purpose (see
+`technicians_covering`).
 """
 
 import datetime
@@ -118,11 +123,20 @@ async def technicians_covering(
     db: AsyncSession,
     *,
     company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
     pincode: str,
     node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
     slot_start: datetime.datetime | None = None,
 ) -> list[uuid.UUID]:
     """Technician profile ids eligible to be offered this job.
+
+    `franchisee_id` is the ticket's `franchisee_id`, as stamped — REQUIRED, so
+    a caller that forgets it fails loudly instead of ringing company-wide (the
+    keyword the type checker finds, where a default of `None` would have been a
+    silent widening). The franchisee runs the job (F7): its technicians, and
+    only its technicians, see the job, are pushed about it, and take it. Read
+    from what the caller passes rather than joined on the outer statement, since
+    this takes literals, not a ticket row.
 
     `node_path_ids` is the ticket's stamped catalogue path — the node it names
     and every ancestor. Certification is descendant-aware, so a technician
@@ -176,6 +190,7 @@ async def technicians_covering(
 
     conditions = [
         TechnicianProfile.company_id == company_id,
+        TechnicianProfile.franchisee_id == franchisee_id,  # the ticket's franchisee (§5.5)
         # `status`, not a soft-delete column — this table has none.
         # A suspended technician keeps their coverage rows, so
         # filtering on coverage alone would still reach them.

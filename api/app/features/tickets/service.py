@@ -46,7 +46,7 @@ from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.core.vendor_credits import standing as vendor_standing
 from app.core.deps import Principal
 from app.core.errors import AppError
-from app.core.franchise import franchisee_for_pincode
+from app.core.franchise import franchisee_for_pincode, restamp_ticket
 from app.core.job_passes import technicians_who_passed
 from app.core.ledger import (
     cap_remaining,
@@ -125,10 +125,11 @@ from app.features.tickets.schemas import (
     TimelineEventOut,
 )
 from app.models.company import Company
+from app.models.franchisee import Franchisee
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
-from app.models.role import AREA_MANAGER, REGIONAL_HEAD, VENDOR_USER
+from app.models.role import AREA_MANAGER, FACILITY_ROLES, REGIONAL_HEAD, VENDOR_USER
 from app.models.territory import Pincode
 from app.models.technician import (
     ACTIVE,
@@ -301,14 +302,19 @@ def _apply_visibility(stmt: Select, pincodes: Select | None | list) -> Select:
 async def scoped(db: AsyncSession, stmt: Select, principal: Principal) -> Select:
     """Narrow a ticket query to what this caller may see.
 
-    Two entirely different rules, because staff and vendors look at the work
-    from opposite ends:
+    Three entirely different rules, because staff, vendors and franchisees look
+    at the work from opposite ends:
 
     * **Staff** see by GEOGRAPHY — their territory's pincodes, or everything for
       an all-India role.
     * **A vendor** sees by OWNERSHIP — the tickets raised against it, whoever in
       the vendor typed them. A **vendor user** sees only the ones they raised
       themselves.
+    * **A franchisee principal** sees by OWNERSHIP too (F13) — `franchisee_id`
+      equals theirs, whoever's pincode the ticket now sits in. A
+      `franchisee_admin` sees the ledger's money (technicians' pay is theirs,
+      F7); **facility roles fail closed** until Task 12 gives them a
+      part-request table to gate on.
 
     Always in addition to the `company_id` filter the caller has already
     applied, never instead of it. And always applied to fetch-by-id too, so a
@@ -327,10 +333,17 @@ async def scoped(db: AsyncSession, stmt: Select, principal: Principal) -> Select
         return stmt
 
     if principal.is_franchise:
-        # Franchise ticket visibility is Task 04 (F13), by ownership —
-        # `tickets.franchisee_id == principal.franchisee_id`, never by pincodes.
-        # Until then it fails closed: a guessed ticket id reads 404.
-        return stmt.where(sql_false())
+        # By OWNERSHIP, like a vendor — never through `visible_pincodes` (Task 02 §4.3): after a
+        # carve-out an assigned ticket keeps its franchisee while its pincode moved, and the ledger
+        # follows the stamp, so the stamp is what a franchisee "has".
+        if principal.franchisee_id is None:
+            return stmt.where(sql_false())  # corrupt membership: nothing, never everything
+        stmt = stmt.where(Ticket.franchisee_id == principal.franchisee_id)
+        if principal.role in FACILITY_ROLES:
+            # F13: facility staff see only tickets with a part request. `spare_part_requests` arrives
+            # in Task 12, which replaces this line with an EXISTS on its own franchisee's requests.
+            return stmt.where(sql_false())
+        return stmt
 
     return _apply_visibility(stmt, await _visible_pincodes(db, principal))
 
@@ -753,11 +766,21 @@ async def _hydrate(
 ) -> list[TicketOut]:
     """Resolve names for a page of tickets — one query per relation, never N+1.
 
-    Takes the principal for ONE reason: `technicianPayoutPaise` is withheld from
-    a vendor. It is the only field on this shape whose value depends on who is
+    Takes the principal for ONE reason: a few fields' values depend on who is
     asking, and putting that decision here rather than at the four call sites is
     what stops one of them forgetting — `scoped()` already settles WHICH tickets
-    a caller sees, and this settles which COLUMNS.
+    a caller sees, and this settles which COLUMNS:
+
+    * `technicianPayoutPaise` is withheld from a **vendor** (their ticket, not
+      our payroll) and from **facility roles** (they handle parts, not pay —
+      Task 12 owns their real visibility; F7 gives it to a franchisee admin,
+      whose technicians' money this is).
+    * `vendorPricePaise` is withheld from a **franchise principal** (R6,
+      settled 2026-10-15): an external franchisee is a separate business, and
+      neither party sees the other's figure.
+    * `franchiseeId`/`franchiseeName` are withheld from a **vendor** — who runs
+      the company's technicians is not the vendor's business — and carried for
+      staff and franchise callers.
     """
     if not rows:
         return []
@@ -770,6 +793,16 @@ async def _hydrate(
             )
         )
     }
+    franchisee_names = {
+        r[0]: r[1]
+        for r in await db.execute(
+            select(Franchisee.id, Franchisee.name).where(
+                Franchisee.id.in_({t.franchisee_id for t in rows})
+            )
+        )
+    }
+    hide_franchisee = principal.is_vendor  # one flag, so the id and name stay in step
+
     # The model's name and the brand it carries, in one join. Read live, like the
     # name: nothing about a product is stamped on a ticket but its two prices.
     model_names: dict[uuid.UUID, str] = {}
@@ -884,15 +917,29 @@ async def _hydrate(
                 bonusBandsPaise=list(
                     snapshot_value(t.rules_snapshot, "bonus_bands_paise")
                 ),
-                # Their own price — the vendor is the one paying it.
-                vendorPricePaise=t.vendor_price_paise,
+                # Their own price — the vendor is the one paying it. A franchise
+                # principal gets `null`: what the company bills is the other
+                # side of the franchise ledger's, never theirs to read (R6).
+                vendorPricePaise=(
+                    None if principal.is_franchise else t.vendor_price_paise
+                ),
+                franchiseeId=(
+                    None if hide_franchisee else t.franchisee_id
+                ),
+                franchiseeName=(
+                    None if hide_franchisee else franchisee_names.get(t.franchisee_id)
+                ),
                 # THE masking point for the technician's rate on a ticket.
                 # Withheld from a vendor: what we pay a technician is not part
                 # of what the vendor bought, and the margin between the two
-                # columns is nobody's business but the company's. Staff always
-                # get it. See the field's note in `schemas.py`.
+                # columns is nobody's business but the company's. Also withheld
+                # from facility roles (parts are their work, pay is not) — Task
+                # 12 widens what they see, never this. Staff and a franchise
+                # admin always get it. See the field's note in `schemas.py`.
                 technicianPayoutPaise=(
-                    None if principal.is_vendor else t.technician_payout_paise
+                    None
+                    if principal.is_vendor or principal.role in FACILITY_ROLES
+                    else t.technician_payout_paise
                 ),
                 slotRequestStatus=t.slot_request_status,
                 slotRequestError=t.slot_request_error,
@@ -1455,10 +1502,15 @@ async def get_ticket(
     #
     # Not fetched for a vendor: it is the same withheld fact as the payout, one
     # step later, and asking for it would be a query run purely to throw away.
+    # Not fetched for a vendor: it is the same withheld fact as the payout, one
+    # step later, and asking for it would be a query run purely to throw away.
+    # A franchisee admin DOES get it — technicians' money is theirs (F7);
+    # facility roles do not, until Task 12 gives them the parts ledger that
+    # explains why they are looking.
     credited = None
     penalties: list[TicketPenaltyOut] = []
     reviewer: PenaltyReviewerOut | None = None
-    if not principal.is_vendor:
+    if not principal.is_vendor and principal.role not in FACILITY_ROLES:
         credited = await db.scalar(
             select(LedgerEntry.amount_paise).where(
                 LedgerEntry.company_id == principal.company_id,
@@ -2017,6 +2069,11 @@ async def create_ticket(
             "The expected date has already passed — pick today or later."
         )
 
+    # A carve-out (Task 03) holds this exclusively while it moves pincodes and re-stamps open tickets; a
+    # ticket raised in that instant must see the NEW owner, or it lands with a franchisee whose technicians
+    # no longer cover it. Shared, so intakes never wait for each other.
+    await lock_routing(db, principal.company_id, exclusive=False)
+
     row = Ticket(
         company_id=principal.company_id,
         code=await next_code(db, principal.company_id),
@@ -2171,6 +2228,8 @@ async def create_ticket(
         company_id=row.company_id,
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
+        # The owner the intake read above routed it to — whose phones ring first.
+        franchisee_id=row.franchisee_id,
     )
     # A new ticket is movement the console should see appear.
     await publish_ticket_changed(db, row)
@@ -2294,7 +2353,20 @@ async def correct_serial(
     then correct it to anything at all. It is open to the vendor by design,
     which is exactly who the intake check is for — so the same guard runs here,
     against the model the ticket was stamped with.
+
+    ## Defence in depth for the franchise portal (F13)
+
+    This endpoint is guarded by `jobs.view` alone, which a Feature Access
+    override could in principle hand a franchise admin alongside
+    `franchise.tickets` — and a franchise principal's ticket access is READ-ONLY
+    by design. Refused here in words as well as by the rank floors every other
+    write carries.
     """
+    if principal.is_franchise:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Tickets are read-only on this account",
+        )
     row = await _load(db, principal, ticket_id)
 
     was = row.serial_number
@@ -2402,7 +2474,16 @@ async def check_serial(
     caller can already see, it tests ONE model — the ticket's own — and it is
     exact-match, not the prefix search `masters.lookup_serial` guards. A vendor
     asking about its own product's serials is asking about a list it manages.
+
+    Read-only on a franchise principal, for the same defence-in-depth reason
+    `correct_serial` is — this one is a write-adjacent check on the same
+    correction dialog the real write sits behind.
     """
+    if principal.is_franchise:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Tickets are read-only on this account",
+        )
     row = await _load(db, principal, ticket_id)
     model = await _ticket_model(db, row)
     refusal = None if model is None else await _serial_refusal(db, model, serial)
@@ -2678,6 +2759,19 @@ async def list_escalations(
     return await _hydrate(db, principal, rows), total
 
 
+async def _franchisee_name(
+    db: AsyncSession, company_id: uuid.UUID, franchisee_id: uuid.UUID
+) -> str:
+    """The franchisee's name, for a refusal that names which master to fix.
+    `—` if it has gone away (soft-deleted) between the stamp and the sentence."""
+    name = await db.scalar(
+        select(Franchisee.name).where(
+            Franchisee.company_id == company_id, Franchisee.id == franchisee_id
+        )
+    )
+    return name or "—"
+
+
 async def _load_assignable_technician(
     db: AsyncSession, principal: Principal, row: Ticket, technician_id: uuid.UUID
 ) -> TechnicianProfile:
@@ -2686,7 +2780,9 @@ async def _load_assignable_technician(
     The eligibility rules are `jobs.service.pool_query`'s, minus the two a
     manager is allowed to overrule:
 
-    * **Coverage and certification are enforced.** Sending somebody to a pincode
+    * **Franchisee, coverage and certification are enforced.** The job belongs
+      to a franchisee (F7) — a technician of another one is not theirs to send,
+      whatever the pincode. Sending somebody to a pincode
       they do not work, or to a product they are not certified on, is not an
       override — it is a job that will fail on arrival.
     * **`status == ACTIVE` is enforced.** Suspension is somebody else's decision
@@ -2718,6 +2814,13 @@ async def _load_assignable_technician(
         raise _refused(
             "TECHNICIAN_SUSPENDED",
             "This technician is not active and cannot be assigned work.",
+        )
+
+    if profile.franchisee_id != row.franchisee_id:
+        raise _refused(
+            "TECHNICIAN_INELIGIBLE",
+            f"{profile.code} works for another franchisee. This job belongs to "
+            f"{await _franchisee_name(db, row.company_id, row.franchisee_id)} — choose one of its technicians.",
         )
 
     covers = await db.scalar(
@@ -2797,6 +2900,21 @@ async def assign_technician(
     # chased for a time by `sweep_silent_slots`, and once they answer,
     # `confirm_slot` keeps the assignment rather than releasing it.
 
+    # Re-route BEFORE checking who is eligible (§4.2 (4) step 1): a ticket held
+    # through a carve-out may still be stamped with a franchisee that no longer
+    # owns its pincode, and against that stamp nobody would be eligible — every
+    # covering technician works for the new owner. Catching the stamp up first
+    # makes the honest set of technicians eligible, and writes the
+    # `franchisee_changed` event this refusal's timeline wants to sit before
+    # "assigned". Rolled back with the request if a refusal below raises.
+    await restamp_ticket(
+        db,
+        row,
+        actor_kind="staff",
+        actor_label=principal.user.full_name or "—",
+        by_user=principal.user_id,
+    )
+
     profile = await _load_assignable_technician(db, principal, row, technician_id)
     if profile.id == row.technician_id:
         # Re-assigning somebody to their own job is a no-op the trail should not
@@ -2825,6 +2943,17 @@ async def assign_technician(
             has_cap_room(
                 company_id=principal.company_id, technician_id=profile.id
             ),
+            # The franchisee is re-tested inside the statement, for the cap's
+            # reason: `assign_technician` re-stamped above, but a carve-out can
+            # move the ticket (or this technician) in the instant between that
+            # read and this write. Judged by Postgres as the row is locked.
+            Ticket.franchisee_id
+            == select(TechnicianProfile.franchisee_id)
+            .where(
+                TechnicianProfile.company_id == principal.company_id,
+                TechnicianProfile.id == profile.id,
+            )
+            .scalar_subquery(),
         )
         .values(technician_id=profile.id, status="Assigned")
     )
@@ -2840,6 +2969,10 @@ async def assign_technician(
                 Ticket.technician_id.is_(None)
                 if previous is None
                 else Ticket.technician_id == previous,
+                # And still stamped as the re-stamp above left it: a carve-out
+                # that re-stamped since reads as ALREADY_ASSIGNED ("Reload the
+                # page and try again") — never as a false DAILY_CAP_REACHED.
+                Ticket.franchisee_id == row.franchisee_id,
             )
         )
         if unchanged is not None:
@@ -2903,6 +3036,11 @@ async def assign_technician(
         company_id=row.company_id,
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
+        # One frame only, for the ticket's franchisee as the re-stamp above left
+        # it (§4.2 (5)): an assignment removes the job from no pool — nobody
+        # valid was being shown it under the old stamp — so the old franchisee
+        # gets no frame, unlike the carve-out's.
+        franchisee_id=row.franchisee_id,
     )
     await publish_job_changed(
         db,
@@ -3057,6 +3195,7 @@ async def add_bonus_and_renotify(
         company_id=row.company_id,
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
+        franchisee_id=row.franchisee_id,
     )
     await publish_ticket_changed(db, row)
     await db.commit()
@@ -3069,6 +3208,7 @@ async def add_bonus_and_renotify(
     audience = await technicians_covering(
         db,
         company_id=row.company_id,
+        franchisee_id=row.franchisee_id,
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
         slot_start=row.slot_start,
@@ -3222,6 +3362,13 @@ async def record_no_show(
         )
     row.status = "Escalated"
     row.technician_id = None
+
+    # The stamp catches up at release (§4.1(c)), exactly as `jobs.cancel` does:
+    # the job just left its technician, and its pincode may have been carved out
+    # while somebody held it — F6 kept the old stamp on assigned work. Escalated
+    # or not, whoever this ticket is handed to next must come from the pincode's
+    # CURRENT owner. No-op (and no event) when the owner has not changed.
+    await restamp_ticket(db, row, actor_kind="system", actor_label="Pincode routing")
 
     name = await _technician_name(db, profile)
     db.add(
@@ -3596,6 +3743,7 @@ async def reschedule(
             pincode=row.pincode,
             city=row.city,
             node_path_ids=row.node_path_ids,
+            franchisee_id=row.franchisee_id,
             payout_paise=row.technician_payout_paise,
             slot_start=row.slot_start,
         )
@@ -3860,8 +4008,12 @@ async def list_attachments(
 
     The console renders this panel only for ops, but that is presentation. Hard
     rule 8 — hiding UI is never authorization — so the refusal lives here.
+
+    A franchise principal is refused the same way (F13 is READ-ONLY access that
+    deliberately stops BEFORE this panel — these files are the office's internal
+    justification, not the franchisee's work record).
     """
-    if principal.vendor_id is not None:
+    if principal.vendor_id is not None or principal.is_franchise:
         raise _not_found()
 
     row = await _load(db, principal, ticket_id)
@@ -3918,6 +4070,8 @@ async def push_pool_job(db: AsyncSession, row: Ticket) -> None:
         pincode=row.pincode,
         city=row.city,
         node_path_ids=row.node_path_ids,
+        # The job belongs to this franchisee (F7), so its phones are the audience.
+        franchisee_id=row.franchisee_id,
         # What it pays. The brief asked for it and it is the right call: an
         # offer somebody has to open the app to price is one they price by
         # opening the app, and first-accept-wins makes that a real cost to them.

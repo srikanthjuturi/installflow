@@ -280,6 +280,7 @@ async def announce_pool_job(
     pincode: str,
     city: str,
     node_path_ids: list[uuid.UUID],
+    franchisee_id: uuid.UUID,
     payout_paise: int | None = None,
     slot_start: datetime.datetime | None = None,
 ) -> int:
@@ -293,6 +294,11 @@ async def announce_pool_job(
     Call it AFTER the commit. Not from the accept path either — that removes a
     job from the pool, and announcing one somebody has just taken is the exact
     notification that teaches people to ignore notifications.
+
+    `franchisee_id` is the ticket's stamped franchisee (Task 04) — who the job
+    BELONGS to, and therefore whose phones this rings. Required on purpose, like
+    `technicians_covering`'s: a caller that forgets it would reach for a push
+    that silently went company-wide.
 
     Audience is `technicians_covering`, which is `pool_query` read backwards: it
     excludes anyone offline, suspended, or already full for that day.
@@ -313,6 +319,7 @@ async def announce_pool_job(
     technician_ids = await technicians_covering(
         db,
         company_id=company_id,
+        franchisee_id=franchisee_id,
         pincode=pincode,
         node_path_ids=node_path_ids,
         slot_start=slot_start,

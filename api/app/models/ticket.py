@@ -56,6 +56,9 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: Who runs the technicians for this job — stamped at intake from the
     #: pincode (core.franchise), moved only by a carve-out while the ticket is
     #: unassigned (F6, Task 03). Assigned work keeps it. COMPOSITE FK.
+    #:
+    #: Re-stamp through `core.franchise.restamp_ticket` whenever `pincode`
+    #: changes. Today nothing changes a ticket's pincode.
     franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     #: The catalogue node this job sits under. Renamed from `subcategory_id`
     #: when the product tree merged into one recursive table; the values never

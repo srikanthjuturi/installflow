@@ -9,12 +9,16 @@ with no database.
 import uuid
 from collections.abc import Iterable, Mapping
 
-from sqlalchemy import Select, select, text
+from sqlalchemy import Select, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AppError
+from app.core.franchise_routing import codes_outside, needs_restamp, outside_message
 from app.models.company import Company
 from app.models.franchisee import HOME_CODE, KIND_INTERNAL, MAX_NAME, Franchisee, FranchiseePincode
 from app.models.territory import Pincode
+from app.models.ticket import Ticket
+from app.models.ticket_event import TicketEvent
 
 
 def home_franchisee_fields(company_name: str) -> dict:
@@ -144,3 +148,120 @@ async def lock_routing(db: AsyncSession, company_id: uuid.UUID, *, exclusive: bo
         text(f"select {fn}(hashtextextended(:key, 0))"),
         {"key": f"franchise-routing:{company_id}"},
     )
+
+
+async def _franchisee_names(
+    db: AsyncSession, company_id: uuid.UUID, ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """One indexed read for every name a message will name. Missing/removed ids
+    get no entry (`outside_message` falls back to an unnamed group)."""
+    wanted = {i for i in ids if i is not None}
+    if not wanted:
+        return {}
+    rows = await db.execute(
+        select(Franchisee.id, Franchisee.name).where(
+            Franchisee.company_id == company_id, Franchisee.id.in_(wanted)
+        )
+    )
+    return dict(rows.all())
+
+
+async def restamp_ticket(
+    db: AsyncSession,
+    row: Ticket,
+    *,
+    actor_kind: str,
+    actor_label: str | None,
+    by_user: uuid.UUID | None = None,
+) -> tuple[uuid.UUID, uuid.UUID] | None:
+    """Point `row.franchisee_id` at the CURRENT owner of `row.pincode`. Returns (old, new), or None
+    when it already does.
+
+    For a ticket being RE-ROUTED: released by its technician (cancel, confirmed no-show) or handed to a
+    new one by a manager. A carve-out (Task 03) deliberately leaves assigned tickets where they were
+    (F6); this is where they catch up, at the one moment the old stamp would otherwise strand them —
+    offered to a franchisee whose technicians no longer cover the pincode.
+
+    Takes lock_routing(shared). Writes in the caller's transaction:
+      UPDATE tickets SET franchisee_id = :new WHERE company_id = :c AND id = :id AND franchisee_id = :old
+    plus one TicketEvent(kind='franchisee_changed', from_status=None, to_status=None,
+      note=f"{old_name} → {new_name} · pincode {pincode} belongs to {new_name}")
+    and sets row.franchisee_id. Never commits.
+    """
+    await lock_routing(db, row.company_id, exclusive=False)
+    owner = await franchisee_for_pincode(db, row.company_id, row.pincode)
+    old = row.franchisee_id
+    if not needs_restamp(old, owner):
+        return None
+
+    names = await _franchisee_names(db, row.company_id, (old, owner))
+    old_name = names.get(old, "—")
+    new_name = names.get(owner, "—")
+    await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.company_id == row.company_id,
+            Ticket.id == row.id,
+            Ticket.franchisee_id == old,
+        )
+        .values(franchisee_id=owner)
+    )
+    db.add(
+        TicketEvent(
+            company_id=row.company_id,
+            ticket_id=row.id,
+            kind="franchisee_changed",
+            actor_kind=actor_kind,
+            actor_label=actor_label,
+            note=f"{old_name} → {new_name} · pincode {row.pincode} belongs to {new_name}",
+            from_status=None,
+            to_status=None,
+            created_by=by_user,
+        )
+    )
+    row.franchisee_id = owner
+    return old, owner
+
+
+async def assert_pincodes_in_franchisee(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    pincodes: Iterable[str],
+    *,
+    name_owners: bool,
+) -> None:
+    """Refuse coverage outside this franchisee (F4: the home owns every code no other franchisee owns).
+
+    Takes lock_routing(shared) — a carve-out in flight is waited for, then judged after.
+    routes = franchisees_for_pincodes(db, company_id, pincodes)          # Task 01, owner else home
+    outside = codes_outside(pincodes, routes, franchisee_id)            # pure, franchise_routing
+    if outside: raise AppError(422, "PINCODE_OUTSIDE_FRANCHISEE", outside_message(...))
+
+    name_owners=True (staff): "Outside Acme Home: 500032, 500033 (SkyFix Services). Pick pincodes
+      Acme Home owns."
+    name_owners=False (a franchise principal, or the technician themselves at registration): "Outside
+      your franchisee: 500032, 500033. Pick pincodes it owns." — one franchisee's admin is not told who
+      owns another's codes.
+    At most 20 codes then "and N more".
+
+    Deliberately does NOT filter `is_active`: api/AGENTS.md "Exactly one read filters `is_active`" —
+    editing a technician whose coverage predates a switch-off must still work. A switched-off code nobody
+    owns routes to home, as it always did."""
+    wanted = set(pincodes)
+    if not wanted:
+        return
+    await lock_routing(db, company_id, exclusive=False)
+    routes: Mapping[str, uuid.UUID] = await franchisees_for_pincodes(db, company_id, wanted)
+    outside = codes_outside(wanted, routes, franchisee_id)
+    if not outside:
+        return
+    names = await _franchisee_names(
+        db, company_id, (franchisee_id, *(routes.get(p) for p in outside))
+    )
+    detail = outside_message(
+        names.get(franchisee_id, "this franchisee"),
+        outside,
+        owner_names=names if name_owners else None,
+    )
+    raise AppError(422, "PINCODE_OUTSIDE_FRANCHISEE", detail)

@@ -209,7 +209,22 @@ class TicketOut(AppModel):
     #: What the vendor is charged for this job, in paise. Stamped at intake.
     #: Everyone who can see the ticket sees this, the vendor included — it is
     #: their own price, and there is nothing to hide from the person paying it.
-    vendorPricePaise: int
+    #:
+    #: **NULL for a franchise principal** (owner ruling R6, settled 2026-10-15):
+    #: `_hydrate` never populates it for one. An external franchisee is a
+    #: separate business, and this merely extends the standing rule that
+    #: neither party sees the other's figure — a franchisee admin can read a
+    #: ticket, but not what the company bills for it. Staff get the number.
+    vendorPricePaise: int | None = None
+
+    #: Which franchisee runs this job — the stamped `tickets.franchisee_id`, the
+    #: one fact a staff reader and a franchise reader both want on the card.
+    #: Shown to staff and franchise callers; **withheld from vendors** (`null`):
+    #: who runs the company's technicians is not the vendor's business, the same
+    #: rule that hides the payout from them.
+    franchiseeId: uuid.UUID | None = None
+    #: The batched name that goes with `franchiseeId`. Null whenever the id is.
+    franchiseeName: str | None = None
 
     #: What the technician is paid for this job, in paise. Stamped at intake.
     #:

@@ -238,8 +238,6 @@ async def active_admin_count(
     return await db.scalar(
         login_base(company_id, franchisee_id, [FRANCHISEE_ADMIN])
         .with_only_columns(func.count())
-        .select_from(Membership)
-        .join(User, User.id == Membership.user_id)
         .where(Membership.is_active.is_(True), User.is_active.is_(True))
         .order_by(None)
     ) or 0
