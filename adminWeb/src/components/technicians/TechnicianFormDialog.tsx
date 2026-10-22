@@ -35,10 +35,14 @@ import {
 } from "./technicianType";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useCertifiableNodeOptions } from "@/hooks/useProductMaster";
-import { useCreateTechnician, useUpdateTechnician } from "@/hooks/useTechnicians";
+import {
+  useCertifiableSubcategories,
+  useCreateTechnician,
+  useUpdateTechnician,
+} from "@/hooks/useTechnicians";
 import { useFranchiseeOptions } from "@/hooks/useFranchisees";
 import { useFeatureAccess } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { cn } from "@/lib/utils";
 import type { Technician } from "@/types/technician";
 import type { NodeOption } from "@/types/product";
@@ -104,8 +108,12 @@ function TechnicianForm({
   onDone: () => void;
 }) {
   const isEdit = technician !== undefined;
+  // Task 09 — the certifiable list is workspace-shaped: ops reads the product
+  // master (`masters.view`, a franchisee is not granted it), the portal reads
+  // the same options response its rail already fetches. One hook, so the form
+  // carries no branch.
   const { options: nodeOptions, isLoading: loadingCategories } =
-    useCertifiableNodeOptions();
+    useCertifiableSubcategories();
   const create = useCreateTechnician();
   const update = useUpdateTechnician();
   const pending = create.isPending || update.isPending;
@@ -113,9 +121,14 @@ function TechnicianForm({
   // The CoverageFields hint names the franchisee carve-out only when there is
   // another franchisee to carve against — one (home-only) means nothing a
   // manager picks here can be refused, so the sentence would only confuse.
+  // Task 09 — ops-only, and the portal knows the answer its own way: a
+  // franchisee's admin picks only pincodes their franchisee runs, so no
+  // `/franchisees` call is made (they hold none of its feature set either,
+  // and an ungated fetch would just 403).
   const { has } = useFeatureAccess();
+  const { workspace } = useWorkspace();
   const { data: franchiseeOptions } = useFranchiseeOptions({
-    enabled: has("franchisees.view"),
+    enabled: workspace === "ops" && has("franchisees.view"),
   });
   const hasOtherFranchisees = (franchiseeOptions?.length ?? 0) > 1;
 

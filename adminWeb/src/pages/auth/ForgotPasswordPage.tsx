@@ -136,8 +136,9 @@ export default function ForgotPasswordPage() {
                 // `signInBackend` has run, so the store already knows which
                 // surface this account belongs to. One path, not two — the same
                 // call LoginPage makes.
-                const { superadmin, portal } = useSession.getState();
-                navigate(landingPath({ superadmin, portal }), {
+                const { superadmin, portal, franchise } =
+                  useSession.getState();
+                navigate(landingPath({ superadmin, portal, franchise }), {
                   replace: true,
                 });
               }}

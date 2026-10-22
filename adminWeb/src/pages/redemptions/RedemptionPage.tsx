@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ArrowLeft, TriangleAlert } from "lucide-react";
-import { Link, useLocation, useParams } from "react-router";
+import { ArrowLeft, Building2, TriangleAlert } from "lucide-react";
+import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { ClaimPaymentForm } from "@/components/redemptions/ClaimPaymentForm";
 import { DeclineRedemptionDialog } from "@/components/redemptions/DeclineRedemptionDialog";
 import { RedemptionBadge } from "@/components/redemptions/RedemptionBadge";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { Notice } from "@/components/shared/Notice";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { QrCode } from "@/components/shared/QrCode";
@@ -19,6 +20,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavOrigin, readNavOrigin } from "@/hooks/useNavOrigin";
 import { useRedemption } from "@/hooks/useRedemptions";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { FRANCHISEE_PARAM } from "@/components/shared/FranchiseePicker";
 import type { RedemptionDetail, RedemptionEvent } from "@/types/redemption";
 import { formatDateTime } from "@/utils/datetime";
 import { moneyPaise } from "@/utils/money";
@@ -39,10 +42,22 @@ import { moneyPaise } from "@/utils/money";
 export default function RedemptionPage() {
   const { id = "" } = useParams();
   const location = useLocation();
-  const { data, isLoading, isError, error, refetch } = useRedemption(id);
+  // The pool this row was read from travels in the URL exactly as the queue
+  // left it (§5.10): the staff payer who narrowed to a non-home franchisee
+  // reads THAT redemption, and a pasted link lands in the pool it was pasted
+  // from.
+  const [searchParams] = useSearchParams();
+  const franchiseeId = searchParams.get(FRANCHISEE_PARAM);
+  const { data, isLoading, isError, error, refetch } = useRedemption(
+    id,
+    franchiseeId
+  );
 
   const origin = readNavOrigin(location.state);
-  const backHref = origin?.backTo ?? "/redemptions";
+  // Task 09 — the queue this page answers to is the shell's: the portal mounts
+  // the same page under `/franchise/redemptions`, so Back goes there.
+  const { paths } = useWorkspace();
+  const backHref = origin?.backTo ?? paths.redemptions;
   const backText = origin?.backLabel ?? "Back to redemptions";
 
   return (
@@ -92,11 +107,29 @@ function Body({
   // The technician's profile is one more hop; hand it this page's own trail so
   // Back from there returns here, then to the queue (hard rule 11).
   const toTechnician = useNavOrigin("Back to redemption", origin);
+  // Task 09 — the profile link lands on the shell's roster.
+  const { paths, workspace } = useWorkspace();
+  // The row's own act-permission (F8: a non-home franchisee's redemption is
+  // paid by ITS admin). It is a STAFF rule — the server computes it as
+  // `not principal.is_franchise and row.franchisee_id == home_id`, so on the
+  // portal's own rows it reads false although the franchisee admin's write
+  // door is exactly the one that works. Only the ops console obeys it.
+  const canAct = workspace === "ops" ? r.canAct : true;
   // The claim form, before anybody has said they paid — and again only once
   // the technician has said "not yet". Straight after a claim it would sit
   // under "Waiting for…" inviting the payer to pay a second time.
+  //
+  // §5.10 — `canAct` stands between the two buttons and the door: for staff
+  // reading another pool the acts vanish rather than sit behind a 404.
   const canClaim =
-    r.state === "to_pay" || (r.state === "awaiting" && r.deniedAt !== null);
+    canAct &&
+    (r.state === "to_pay" || (r.state === "awaiting" && r.deniedAt !== null));
+
+  // A row the reader cannot act on is named, not silent — "no button, no
+  // explanation" reads as a bug rather than a boundary, which is why the
+  // banner stands where the Mark as paid card would. Only a staff reader on a
+  // non-home pool ever sees it.
+  const showManagedBy = workspace === "ops" && !canAct;
 
   return (
     <div className="grid items-start gap-3.5 lg:grid-cols-2">
@@ -112,7 +145,7 @@ function Body({
             </CardTitle>
             <CardDescription className="text-sm text-ink-2">
               <Link
-                to={`/technicians/${r.technicianId}`}
+                to={paths.technician(r.technicianId)}
                 state={toTechnician}
                 className="font-medium text-ink hover:underline"
               >
@@ -173,6 +206,16 @@ function Body({
       </div>
 
       <div className="flex flex-col gap-3.5">
+        {/* §5.10 PROPOSED copy, used as given. It names WHO works the money and
+            what this reader can still do, in one sentence — the queue's own
+            words, not a generic "you don't have permission". */}
+        {showManagedBy ? (
+          <Notice tone="warn" icon={Building2} title={`Managed by ${r.franchiseeName}.`}>
+            Its own franchisee admin pays this one; you can read it. No Mark as
+            paid, no Decline.
+          </Notice>
+        ) : null}
+
         {r.deniedAt ? (
           <p
             role="status"
@@ -239,8 +282,9 @@ function Body({
         ) : null}
 
         {/* Only before a claim — the server refuses it afterwards, because the
-            money may already have moved. */}
-        {r.state === "to_pay" ? (
+            money may already have moved. And only a payer of THIS pool: see
+            `canAct`. */}
+        {r.state === "to_pay" && canAct ? (
           <Button
             type="button"
             variant="outline"

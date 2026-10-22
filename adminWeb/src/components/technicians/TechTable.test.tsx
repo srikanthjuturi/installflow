@@ -5,6 +5,8 @@ import type {
   FranchiseeOption,
 } from "@/types/franchisee";
 import type { Technician, TechnicianRow } from "@/types/technician";
+import { WorkspaceProvider } from "@/hooks/useWorkspace";
+import { FRANCHISE_WORKSPACE } from "@/services/workspace";
 import { TechTable } from "./TechTable";
 
 function tech(overrides: Partial<Technician> = {}): Technician {
@@ -73,39 +75,55 @@ function renderTable(
     canManageInvites: boolean;
     canEditTechnician: boolean;
     canSendAppLink: boolean;
-  }> = {}
+  }> = {},
+  workspace: "ops" | "franchise" = "ops"
 ) {
+  /* Task 09 — the franchise cases must see the portal shell's answer, exactly
+     as FranchiseShell provides it (the staff shell mounts no provider, which
+     is why the ops cases need none). */
+  function wrapper({ children }: { children?: React.ReactNode }) {
+    return (
+      <MemoryRouter>
+        {workspace === "franchise" ? (
+          <WorkspaceProvider value={FRANCHISE_WORKSPACE}>
+            {children}
+          </WorkspaceProvider>
+        ) : (
+          children
+        )}
+      </MemoryRouter>
+    );
+  }
   return render(
-    <MemoryRouter>
-      <TechTable
-        rows={rows}
-        meta={{
-          page: 1,
-          limit: 20,
-          totalRecords: rows.length,
-          totalPages: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-        }}
-        params={{}}
-        onParams={vi.fn()}
-        regions={[]}
-        districts={[]}
-        franchisees={franchisees}
-        isLoading={false}
-        error={null}
-        onRetry={vi.fn()}
-        canManageInvites={canProps.canManageInvites ?? true}
-        canEditTechnician={canProps.canEditTechnician ?? true}
-        onEditTechnician={vi.fn()}
-        canSendAppLink={canProps.canSendAppLink ?? true}
-        onSendAppLink={vi.fn()}
-        onDeleteTechnician={vi.fn()}
-        onResend={vi.fn()}
-        onCancel={vi.fn()}
-        onCopyLink={vi.fn()}
-      />
-    </MemoryRouter>
+    <TechTable
+      rows={rows}
+      meta={{
+        page: 1,
+        limit: 20,
+        totalRecords: rows.length,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      }}
+      params={{}}
+      onParams={vi.fn()}
+      regions={[]}
+      districts={[]}
+      franchisees={franchisees}
+      isLoading={false}
+      error={null}
+      onRetry={vi.fn()}
+      canManageInvites={canProps.canManageInvites ?? true}
+      canEditTechnician={canProps.canEditTechnician ?? true}
+      onEditTechnician={vi.fn()}
+      canSendAppLink={canProps.canSendAppLink ?? true}
+      onSendAppLink={vi.fn()}
+      onDeleteTechnician={vi.fn()}
+      onResend={vi.fn()}
+      onCancel={vi.fn()}
+      onCopyLink={vi.fn()}
+    />,
+    { wrapper }
   );
 }
 
@@ -148,5 +166,36 @@ describe("TechTable", () => {
       ]
     );
     expect(screen.getAllByLabelText("Franchisee").length).toBeGreaterThan(0);
+  });
+
+  /* Task 09 §5.4 — the same table in the portal shell: rows link to the
+     /franchise twins and every column that names a franchisee disappears,
+     because all of them are the same franchisee (the rail says it). */
+  describe("in the franchise workspace", () => {
+    afterEach(cleanup);
+
+    it("links the name to the portal route", () => {
+      renderTable([tech()], [option()], {}, "franchise");
+      const link = screen.getByRole("link", { name: "Ravi Kumar" });
+      expect(link.getAttribute("href")).toBe("/franchise/technicians/t-1");
+    });
+
+    it("drops the Franchisee column (and its filter)", () => {
+      // Two franchisees HANDED IN anyway — the table, not the caller, decides.
+      renderTable(
+        [tech()],
+        [option(), option({ id: "f-2", name: "Breeze", code: "FR1", kind: "external", isHome: false })],
+        {},
+        "franchise"
+      );
+      expect(screen.queryAllByText("Franchisee")).toHaveLength(0);
+    });
+
+    it("keeps the row writes the caller may still perform", () => {
+      renderTable([tech()], [option()], {}, "franchise");
+      expect(
+        screen.getAllByRole("button", { name: /^Edit/ }).length
+      ).toBeGreaterThan(0);
+    });
   });
 });

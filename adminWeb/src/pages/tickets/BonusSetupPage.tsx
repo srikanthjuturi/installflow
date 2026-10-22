@@ -88,7 +88,12 @@ export default function BonusSetupPage() {
   // the API does not refuse a bonus that overdraws it, because a manager
   // choosing to commit more than the cancellations have funded is a decision
   // and not a mistake — and the balance can be read back either way.
-  const pool = useLedgerPool();
+  //
+  // Task 09 (F12) — one pool per franchisee, so the ticket's OWN franchisee id
+  // travels: a bonus funded on a SkyFix job is drawn from SkyFix's pool, and
+  // asking the home pool would read a balance the bonus never touches. Null
+  // (the home pool) until the ticket has arrived.
+  const pool = useLedgerPool(ticket?.franchiseeId);
   const addBonus = useAddBonus();
 
   // Null until a manager actually picks, so the opening band follows the

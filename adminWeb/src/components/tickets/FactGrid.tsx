@@ -32,7 +32,7 @@ export function FactGrid({ ticket }: { ticket: TicketDetail }) {
     ["Expected date", formatDate(ticket.expectedDate)],
     ["Created", formatDateTime(ticket.createdAt)],
     ["Confirmed slot", formatSlot(ticket.slotStart, ticket.slotEnd)],
-    ["Billed to vendor", moneyPaise(ticket.vendorPricePaise)],
+    ["Billed to vendor", ticket.vendorPricePaise === null ? EMPTY : moneyPaise(ticket.vendorPricePaise)],
   ];
 
   if (ticket.technicianPayoutPaise !== null) {

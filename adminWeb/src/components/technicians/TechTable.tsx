@@ -14,6 +14,7 @@ import {
   withFilter,
   withSearch,
 } from "@/hooks/useListParams";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIncrementalOptions } from "@/hooks/useIncrementalOptions";
 import { formatPhone } from "@/utils/phone";
 import type { ListParams, PaginationMeta } from "@/types/api";
@@ -69,6 +70,8 @@ interface TechTableProps {
   /**
    * The company's franchisees, for the Franchisee filter (Task 08 §5.8). Every
    * one, active and not — a paused franchisee's technicians still appear here.
+   * Ops-only: the portal's rows are all the same franchisee (§5.4), so the
+   * caller there passes `[]` and both the column and the filter disappear.
    */
   franchisees: FranchiseeOption[];
   isLoading: boolean;
@@ -118,6 +121,14 @@ export function TechTable({
   busyInviteId,
 }: TechTableProps) {
   const navigate = useNavigate();
+  /**
+   * Task 09 — routes, not props. Rows link to the technician's profile, and
+   * which profile route that is is the SHELL's answer: the adapter carries
+   * both. Nothing here branches on `kind` except for the Franchisee column
+   * (every portal row is the same franchisee, so the column is noise).
+   */
+  const { workspace: ws, paths } = useWorkspace();
+  const isOps = ws === "ops";
 
   /**
    * The district filter's options: searched, and revealed a page at a time.
@@ -166,7 +177,7 @@ export function TechTable({
               {/* A real link so the row is keyboard reachable and opens in a
                   new tab — the row click is a convenience on top. */}
               <Link
-                to={`/technicians/${t.id}`}
+                to={paths.technician(t.id)}
                 onClick={(e) => e.stopPropagation()}
                 className="font-medium hover:text-brand-400"
               >
@@ -191,22 +202,27 @@ export function TechTable({
     },
     /* Task 08: who runs them. Both rows — a registered technician and an open
        invite — carry the answer, because an invite already belongs to a
-       franchisee too. */
-    {
-      id: "franchisee",
-      header: "Franchisee",
-      cell: (t) => (
-        <div className="flex flex-wrap items-center gap-1.25 leading-tight">
-          <div>{t.franchiseeName}</div>
-          {/* "Home" rides in words, as on the Franchisees screen. */}
-          {t.franchiseeIsHome ? (
-            <span className="inline-block rounded-full border border-line bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
-              Home
-            </span>
-          ) : null}
-        </div>
-      ),
-    },
+       franchisee too. Ops-only: in the portal the column is noise — every row
+       is the same franchisee (its own), so the rail's second line says it. */
+    ...(isOps
+      ? ([
+          {
+            id: "franchisee",
+            header: "Franchisee",
+            cell: (t: TechnicianRow) => (
+              <div className="flex flex-wrap items-center gap-1.25 leading-tight">
+                <div>{t.franchiseeName}</div>
+                {/* "Home" rides in words, as on the Franchisees screen. */}
+                {t.franchiseeIsHome ? (
+                  <span className="inline-block rounded-full border border-line bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
+                    Home
+                  </span>
+                ) : null}
+              </div>
+            ),
+          },
+        ] satisfies Column<TechnicianRow>[])
+      : []),
     {
       id: "type",
       header: "Type",
@@ -231,11 +247,15 @@ export function TechTable({
           NONE
         ),
     },
-    {
-      id: "region",
-      header: "Region",
-      cell: (t) => t.regionName,
-    },
+    ...(isOps
+      ? ([
+          {
+            id: "region",
+            header: "Region",
+            cell: (t: TechnicianRow) => t.regionName,
+          },
+        ] satisfies Column<TechnicianRow>[])
+      : []),
     {
       id: "availability",
       header: "Availability",
@@ -266,48 +286,55 @@ export function TechTable({
           NONE
         ),
     },
-    {
-      id: "jobs",
-      header: "Jobs",
-      align: "right",
-      cell: (t) =>
-        t.registered && t.jobsCompleted !== null ? (
-          <span className="tabular-nums">{t.jobsCompleted}</span>
-        ) : (
-          NONE
-        ),
-    },
-    {
-      id: "cancels",
-      header: "Cancels",
-      align: "right",
-      cell: (t) =>
-        t.registered && t.jobsCancelled !== null ? (
-          <CancelCount cancels={t.jobsCancelled} />
-        ) : (
-          NONE
-        ),
-    },
-    {
-      id: "appointedBy",
-      header: "Appointed by",
-      cell: (t) => {
-        const name = t.registered
-          ? t.onboarding.appointedByName
-          : t.invitedByName;
-        // The role is the half that carries meaning: an Area Manager onboarding
-        // into their own pincodes and a National Head reaching across the
-        // country are different acts, and a bare name hides which.
-        const role = t.registered ? t.onboarding.appointedByRoleLabel : null;
-        if (!name) return <span className="text-xs text-ink-2">{NONE}</span>;
-        return (
-          <div className="min-w-0">
-            <div className="text-xs text-ink-2">{name}</div>
-            {role ? <div className="text-[11px] text-ink-3">{role}</div> : null}
-          </div>
-        );
-      },
-    },
+    /* Jobs · Cancels · Appointed by — ops-only, per mock 09a: the portal list
+       is the franchisee's own team, and its three counting columns are the
+       staff dispatch question, not the portal's. */
+    ...(isOps
+      ? ([
+          {
+            id: "jobs",
+            header: "Jobs",
+            align: "right" as const,
+            cell: (t: TechnicianRow) =>
+              t.registered && t.jobsCompleted !== null ? (
+                <span className="tabular-nums">{t.jobsCompleted}</span>
+              ) : (
+                NONE
+              ),
+          },
+          {
+            id: "cancels",
+            header: "Cancels",
+            align: "right" as const,
+            cell: (t: TechnicianRow) =>
+              t.registered && t.jobsCancelled !== null ? (
+                <CancelCount cancels={t.jobsCancelled} />
+              ) : (
+                NONE
+              ),
+          },
+          {
+            id: "appointedBy",
+            header: "Appointed by",
+            cell: (t: TechnicianRow) => {
+              const name = t.registered
+                ? t.onboarding.appointedByName
+                : t.invitedByName;
+              // The role is the half that carries meaning: an Area Manager onboarding
+              // into their own pincodes and a National Head reaching across the
+              // country are different acts, and a bare name hides which.
+              const role = t.registered ? t.onboarding.appointedByRoleLabel : null;
+              if (!name) return <span className="text-xs text-ink-2">{NONE}</span>;
+              return (
+                <div className="min-w-0">
+                  <div className="text-xs text-ink-2">{name}</div>
+                  {role ? <div className="text-[11px] text-ink-3">{role}</div> : null}
+                </div>
+              );
+            },
+          },
+        ] satisfies Column<TechnicianRow>[])
+      : []),
     {
       id: "status",
       header: "Status",
@@ -432,9 +459,15 @@ export function TechTable({
    * The defs own the label and the options — the toolbar renders from them.
    * What they do not own is the matching: the value goes into `params.filters`
    * and the server narrows the result set, so `match` is never called.
+   *
+   * Ops-only filters (Onboarding, Franchisee, District) stay behind `isOps` —
+   * mock 09a offers the portal three: search, Type, Status, Region. The portal
+   * never loses the rows, only the filter that would have narrowed them; the
+   * server accepts the same filter set on both doors.
    */
-  const filters: TypedFilterDef<TechnicianRow>[] = [
-    {
+  const filters: TypedFilterDef<TechnicianRow>[] = [];
+  if (isOps) {
+    filters.push({
       id: "onboarding",
       label: "Onboarding",
       variant: "select",
@@ -445,11 +478,12 @@ export function TechTable({
       value: filterValue(params, "onboarding"),
       onChange: (v) => setFilter("onboarding", v),
       match: () => true,
-    },
-    {
-      id: "status",
-      label: "Status",
-      variant: "select",
+    });
+  }
+  filters.push({
+    id: "status",
+    label: "Status",
+    variant: "select",
       options: [
         { value: "active", label: "Active" },
         { value: "inactive", label: "Inactive" },
@@ -458,15 +492,16 @@ export function TechTable({
       value: filterValue(params, "status"),
       onChange: (v) => setFilter("status", v),
       match: () => true,
-    },
-  ];
+    });
 
   // The Franchisee filter — a combobox when the company has grown past ten
   // franchisees (the search-and-load pattern the district filter needs), a
   // plain select before that. Rendered at all only when there is more than one:
   // one is not a choice (the same test the Region filter uses), and hidden —
   // with no value auto-filled — is where "single-option" ends (hard rule 10).
-  if (franchisees.length > 1) {
+  // Ops-only: in the portal the answer to "which franchisee" is the rail's
+  // second line, and a filter of one is no filter.
+  if (isOps && franchisees.length > 1) {
     filters.push(
       franchisees.length > 10
         ? {
@@ -537,7 +572,9 @@ export function TechTable({
   // A combobox, not a select: a national head covers all 754 districts, and
   // five names belong to two states each — so the list has to be typed at, and
   // each option has to name its state or the two Bilaspurs are the same row.
-  if (districts.length > 1) {
+  // Ops-only: the portal's pincodes are all its own, and mock 09a offers no
+  // district filter there.
+  if (isOps && districts.length > 1) {
     filters.push({
       id: "districtId",
       label: "District",
@@ -563,16 +600,19 @@ export function TechTable({
       error={error}
       onRetry={onRetry}
       search={{
-        placeholder: "Search by name, mobile, ID or pincode…",
+        placeholder: isOps
+          ? "Search by name, mobile, ID or pincode…"
+          : "Search name, mobile or code",
         value: params.search ?? "",
         onChange: setSearch,
       }}
       filters={filters}
       toolbarActions={toolbarActions}
       server={{ meta, params, onParams }}
-      onRowClick={(t) => t.registered && navigate(`/technicians/${t.id}`)}
-      // Bumped from 90rem with the Franchisee and Type columns.
-      minWidth="96rem"
+      onRowClick={(t) => t.registered && navigate(paths.technician(t.id))}
+      // Bumped from 90rem with the Franchisee and Type columns; the portal
+      // drops five of them (§5.4) and fits again.
+      minWidth={isOps ? "96rem" : "72rem"}
       emptyIcon={Users}
       emptyTitle="No technicians yet"
       emptyDescription="Add a technician, or invite one by mobile number and let them register themselves."

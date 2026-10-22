@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowLeftRight,
   BadgeCheck,
   BadgeIndianRupee,
   BadgeX,
@@ -199,6 +200,15 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: UserPlus,
     wrap: "bg-success-bg text-success",
     label: "Technician joined",
+  },
+  // Task 05's stored kind, which a franchisee admin receives (index §3.3 —
+  // the wire value). A technician's territory changed, so somebody's coverage
+  // of them changed hands. Info rather than warn: nothing is broken and
+  // nothing is being asked — it is the news, worded as it lands (§5.9).
+  technician_moved: {
+    icon: ArrowLeftRight,
+    wrap: "bg-info-bg text-info",
+    label: "Technician moved",
   },
 };
 

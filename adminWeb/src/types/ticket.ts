@@ -178,6 +178,22 @@ export interface Ticket {
   technicianPhotoUrl: string | null;
 
   /**
+   * The ticket's OWN franchisee context, as the server scopes it (Task 05).
+   *
+   * `franchiseeId` / `franchiseeName` — whose pincodes this ticket was raised
+   * under, with null meaning the technician is an internal (home) one. Withheld
+   * from a vendor principal: whose technicians a vendor's jobs fall to is an
+   * operational fact, not the vendor's business.
+   *
+   * `technicianType` — `"employee"` (paid through salary, no per-job payout)
+   * or `"freelancer"`. Staff screens use it for the force-close payout box
+   * (§5.10): an employee's closure pays nothing per job.
+   */
+  franchiseeId: string | null;
+  franchiseeName: string | null;
+  technicianType: "employee" | "freelancer" | null;
+
+  /**
    * PAISE. What a manager attached to a re-notification after nobody accepted.
    *
    * Null means no bonus was ever funded, which is a different claim from ₹0 —
@@ -202,8 +218,14 @@ export interface Ticket {
    *
    * Everyone who can see the ticket sees this, the vendor included: it is their
    * own price, and there is nothing to hide from the party paying it.
+   *
+   * `number | null` since Task 04 nulls it for a franchise principal too (index
+   * §6, owner ruling 2026-10-15 R6): how much the vendor is billed is a staff
+   * and vendor fact, not the franchisee's — they see their technician's side of
+   * the money, which is what the pool screens are about. `null` is rendered as
+   * `—`, the same typographic answer the payout gap gets.
    */
-  vendorPricePaise: number;
+  vendorPricePaise: number | null;
   /**
    * PAISE. What the technician is paid, stamped at intake.
    *
@@ -352,6 +374,18 @@ export interface TicketPenalty {
   reversedAt: string | null;
   reversedByName: string | null;
   reversalReason: string | null;
+  /**
+   * May THIS caller give it back — the server answers per ROW, not per
+   * caller (Task 05's `TicketPenaltyOut.canReverse`). Admin/NH on every
+   * franchisee; RH/AM on the home franchisee's rows only; always false for a
+   * franchise principal — the ticket's reverse door is staff-only.
+   *
+   * A row reading false is not a hidden button: the renderer says WHO works
+   * the money instead (`Managed by …`), because "no button, no explanation"
+   * reads as a bug rather than a boundary. Never gate this in the client with
+   * a feature key — a feature key knows your role, not whose row you sit on.
+   */
+  canReverse: boolean;
 }
 
 export interface PenaltyReviewer {

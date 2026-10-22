@@ -2,10 +2,7 @@ import * as React from "react";
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { useMe } from "@/hooks/useAuth";
-import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
-import { useInfinitePincodes } from "@/hooks/useGeo";
 import {
   Select,
   SelectContent,
@@ -14,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useCoverageOptions } from "@/hooks/useTechnicians";
 
 /**
  * Where a technician works: a region, and the pincodes inside it.
@@ -32,6 +30,15 @@ import {
  *
  * Controlled, like `settings/ScopeField` — the caller owns the values and this
  * owns the behaviour, so a form does not have to re-derive any of the above.
+ *
+ * Task 09 — its two data sources moved behind `useCoverageOptions(query,
+ * regionId)`, which reads the workspace adapter so this markup is shared with
+ * the franchise portal unchanged: ops reads the staff territory reads (the
+ * region catalogue from `/regions`, pincodes from `/geo/pincodes`), the portal
+ * reads the options and pincodes doors of §4.2, its `search` is
+ * `/franchise/pincodes`, and `franchisee` — null here — is the subject of its
+ * hint copy (§5.9). `boundedByStates` is false there by construction: no
+ * portal role covers states.
  */
 export function CoverageFields({
   regionId,
@@ -61,9 +68,17 @@ export function CoverageFields({
   /** Layout is the caller's business — side by side, stacked, whatever fits. */
   className?: string;
 }) {
-  const { regions, isLoading: loadingRegions } = useAssignableRegions();
-  const { data: me } = useMe();
   const [query, setQuery] = React.useState("");
+  // One hook, six answers (§5.4) — this component no longer knows which
+  // endpoints stand behind it.
+  const {
+    regions,
+    loadingRegions,
+    search,
+    boundedByStates,
+    ownStates,
+    franchisee,
+  } = useCoverageOptions(query, regionId);
 
   // One region on offer is not a choice — fill it in (hard rule 10). It also
   // unblocks the pincode field, which is otherwise waiting on an answer the
@@ -72,27 +87,6 @@ export function CoverageFields({
     regions.map((r) => r.id),
     regionId,
     onRegionId
-  );
-
-  // An area manager covers states, not a whole region, so his search is
-  // narrowed to them — offering codes the server will 403 is a picker that
-  // invites a refusal. `settings/ScopeField` narrows for the same reason.
-  //
-  // One state is filterable server-side; several are not (the endpoint takes a
-  // single stateId), so the region filter stands and the extra states are
-  // dropped client-side. The server remains the authority either way.
-  // Memoised: a fresh [] each render would re-key every memo below it.
-  const ownStates = React.useMemo(() => me?.states ?? [], [me?.states]);
-  const boundedByStates = me?.role === "area_manager" && ownStates.length > 0;
-  const singleState =
-    boundedByStates && ownStates.length === 1 ? ownStates[0].id : undefined;
-
-  const search = useInfinitePincodes(
-    query,
-    singleState
-      ? { stateId: singleState }
-      : { regionId: regionId || undefined },
-    Boolean(regionId)
   );
 
   const stateNames = React.useMemo(
@@ -187,7 +181,12 @@ export function CoverageFields({
           disabled={!regionId}
           emptyMessage={
             query
-              ? "No pincode matches that in this region"
+              ? // §5.9 — the portal's empty names the franchisee, since every
+                // pincode in this list is already one its franchisee runs; a
+                // miss means the code is outside their whole coverage.
+                franchisee
+                ? `No pincode ${franchisee} runs matches that`
+                : "No pincode matches that in this region"
               : "Type to search pincodes"
           }
           placeholder={
@@ -214,7 +213,9 @@ export function CoverageFields({
                 ? `Pincodes in ${regionName}, inside ${ownStates
                     .map((s) => s.name)
                     .join(", ")}.`
-                : `Pincodes in ${regionName}. Search by code or district.`}
+                : franchisee
+                  ? `Pincodes ${franchisee} runs, in ${regionName}. Search by code or district.`
+                  : `Pincodes in ${regionName}. Search by code or district.`}
             {regionId && hasOtherFranchisees
               ? " Pincodes another franchisee owns are refused."
               : null}

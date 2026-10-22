@@ -10,16 +10,16 @@ import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
-import { useAssignableRegions } from "@/hooks/useCompanyUsers";
 import { useFranchiseeOptions } from "@/hooks/useFranchisees";
-import { useDistricts } from "@/hooks/useGeo";
 import {
   useCancelInvite,
   useInviteTechnician,
   useResendInvite,
   useSendAppLink,
+  useTechnicianFilterOptions,
   useTechnicians,
 } from "@/hooks/useTechnicians";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useUrlSeededListParams } from "@/hooks/useListParams";
 import type { Technician, TechnicianRow } from "@/types/technician";
 import { copyToClipboard } from "@/utils/clipboard";
@@ -40,19 +40,25 @@ export default function TechnicianListPage() {
   const sendAppLink = useSendAppLink();
 
   const { has } = useFeatureAccess();
-  const canCreate = has("technicians.create");
-  const canInvite = has("technicians.invite");
-  const canEdit = has("technicians.edit");
-  const { regions } = useAssignableRegions();
-  // Scoped by the server to the caller's own territory, so the dropdown can
-  // never offer a district whose technicians they would not be shown.
-  const { data: districts } = useDistricts({ mine: true });
+  // Task 09 — the buttons gate on the WORKSPACE's keys: `technicians.*` in the
+  // staff console, the single `franchise.technicians` in the portal (§5.2),
+  // so a reused page hands `has` the key its adapter names.
+  const { workspace, features } = useWorkspace();
+  const canCreate = has(features.createTechnician);
+  const canInvite = has(features.inviteTechnician);
+  const canEdit = has(features.editTechnician);
+  // The Region/District filter sources per workspace — ops reads the staff
+  // territory tables, the portal reads its options endpoint and offers no
+  // districts (§5.4).
+  const { regions, districts } = useTechnicianFilterOptions();
 
   // The Franchisee filter's options. Only for a caller who can see the
   // franchisees screen at all — otherwise the request would 403 and toast, and
-  // the filter it feeds is not coming anyway.
+  // the filter it feeds is not coming anyway. Task 09 — ops-only twice over:
+  // the portal's rows all name the same franchisee, so its column and filter
+  // are not drawn and no `/franchisees` read is made.
   const { data: franchiseeOptions } = useFranchiseeOptions({
-    enabled: has("franchisees.view"),
+    enabled: workspace === "ops" && has("franchisees.view"),
   });
 
   // The query the server answers. Search, filters and page all live in one
@@ -134,8 +140,8 @@ export default function TechnicianListPage() {
         params={params}
         onParams={setParams}
         regions={regions}
-        districts={districts ?? []}
-        franchisees={franchiseeOptions ?? []}
+        districts={districts}
+        franchisees={workspace === "ops" ? (franchiseeOptions ?? []) : []}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

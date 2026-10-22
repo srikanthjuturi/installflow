@@ -1,5 +1,6 @@
 import { Bell } from "lucide-react";
 import { useLocation } from "react-router";
+import { SHELL_PATHS, surfaceOf } from "@/lib/surface";
 import { LinkButton } from "./LinkButton";
 import { useNavOrigin } from "@/hooks/useNavOrigin";
 import { useUnreadNotificationCount } from "@/hooks/useNotifications";
@@ -13,9 +14,9 @@ import { useSession } from "@/store/session";
  * switcher and no search box — and copying twenty lines into it would be the
  * copy that drifts the first time the badge changes.
  *
- * Reads `portal` from the session itself rather than taking it as a prop,
- * unlike `AddressFields`: there is no staff-versus-vendor ambiguity in that
- * boolean, and `Topbar` was already reading it here.
+ * Reads the surface flags from the session itself rather than taking one as a
+ * prop, unlike `AddressFields` — `Topbar` was already reading them here, and
+ * the route it links to is every shell's business, not a caller's.
  *
  * The audience is settled in SQL — the API scopes a vendor's feed to
  * notifications carrying their own `vendor_id` — so this component needs to
@@ -23,11 +24,16 @@ import { useSession } from "@/store/session";
  */
 export function NotificationBell() {
   const { data: unread = 0 } = useUnreadNotificationCount();
-  // The two surfaces have separate route trees; the bell is the same
-  // component in both.
+  // The surfaces have separate route trees; the bell is the same component in
+  // all of them, and each shell's bell, account page and password form come
+  // off one table (`SHELL_PATHS`) rather than a ternary per consumer — a
+  // sixth surface is then a new row, not a missed `else`.
+  const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
 
-  const notificationsPath = portal ? "/portal/notifications" : "/notifications";
+  const notificationsPath =
+    SHELL_PATHS[surfaceOf({ superadmin, portal, franchise })].notifications;
   // The bell is on every screen, so the feed has no parent to go back to and
   // has to be TOLD where it was opened from — filters and page included, which
   // is why this carries the query string. The label is the flat word: the feed

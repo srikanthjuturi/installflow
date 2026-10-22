@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { formatDate } from "@/utils/datetime";
 import type { Ticket } from "@/types/ticket";
@@ -58,6 +59,9 @@ export function JobHistoryTable({
   onRetry?: () => void;
 }) {
   const navigate = useNavigate();
+  // Task 09 — the ticket route is the shell's answer, not a constant: the
+  // portal mounts this same table against `/franchise/tickets/…`.
+  const { paths } = useWorkspace();
   const origin = useNavOrigin(backLabel, backState);
   // Nothing to see all of: a link to an empty list is a dead end, and while the
   // peek is still loading we do not yet know which case this is.
@@ -73,7 +77,7 @@ export function JobHistoryTable({
         /* The row is clickable, but the code stays a real link so it is
            reachable by keyboard and opens in a new tab. */
         <Link
-          to={`/tickets/${t.id}`}
+          to={paths.ticket(t.id)}
           state={origin}
           onClick={(e) => e.stopPropagation()}
           className="font-mono text-xs font-semibold text-brand-400 hover:text-brand-500"
@@ -136,7 +140,7 @@ export function JobHistoryTable({
         isLoading={isLoading}
         error={error}
         onRetry={onRetry}
-        onRowClick={(t) => navigate(`/tickets/${t.id}`, { state: origin })}
+        onRowClick={(t) => navigate(paths.ticket(t.id), { state: origin })}
         pagination={false}
         defaultSort={{ columnId: "date", dir: "desc" }}
         minWidth="32.5rem"

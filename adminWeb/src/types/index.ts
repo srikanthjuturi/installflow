@@ -59,8 +59,21 @@ export interface LedgerEntry {
   /**
    * `reversal` is a penalty a manager gave back: the technician's credit, the
    * pool's money out. Its `reason` is the manager's own words.
+   *
+   * Task 09 — widened and ends on `(string & {})` so an unknown kind still
+   * renders rather than crashing the label lookup: the pool screen today only
+   * ever receives the first three, but the API's own kinds table grows (Task
+   * 13's speed rewards carry the next two). `LedgerTable`'s lookups fall back
+   * to the raw kind on the neutral tone; labels for the speed kinds and the
+   * `speed_penalty` reversal are Task 13's copy to write.
    */
-  kind: "penalty" | "bonus" | "reversal";
+  kind:
+    | "penalty"
+    | "bonus"
+    | "reversal"
+    | "speed_reward"
+    | "speed_penalty"
+    | (string & {});
   /** PAISE, always positive. `kind` carries the direction. */
   amountPaise: number;
   technicianId: string;
@@ -75,6 +88,17 @@ export interface LedgerEntry {
    * changes — the `reversal` entry is the record — so this is only the tag.
    */
   reversed: boolean;
+  /**
+   * Whose pool the money sits in (Task 05, F12) — stamped on every row, so a
+   * staff reader using the Franchisee selector knows which ledger each row
+   * came from even after it is read. There is deliberately NO `canAct` here:
+   * the staff ledger has no row action (owner ruling — reverse happens on the
+   * ticket page), so the per-row permission the redemptions rows carry would
+   * gate nothing.
+   */
+  franchiseeId: string;
+  /** How the technician in question is paid — payroll vs. UPI, on the row. */
+  technicianType: "employee" | "freelancer";
 }
 
 /* `Vendor` moved to `types/vendor.ts` when vendors became real. It used to

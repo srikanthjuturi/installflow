@@ -1,4 +1,5 @@
 import { PageMeta } from "@/components/shared/PageMeta";
+import { SHELL_PATHS, surfaceOf } from "@/lib/surface";
 import { AccountCard } from "@/components/account/AccountCard";
 import { useCurrentUser, useSignOut } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
@@ -9,6 +10,8 @@ export default function AccountPage() {
   const memberships = useSession((s) => s.memberships);
   const activeCompanyId = useSession((s) => s.activeCompanyId);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
+  const superadmin = useSession((s) => s.superadmin);
   const signOut = useSignOut();
 
   return (
@@ -24,7 +27,9 @@ export default function AccountPage() {
           user={user}
           memberships={memberships}
           activeCompanyId={activeCompanyId}
-          changePasswordTo={portal ? "/portal/password" : "/account/password"}
+          changePasswordTo={
+            SHELL_PATHS[surfaceOf({ superadmin, portal, franchise })].password
+          }
           onSignOut={async () => {
             await signOut();
             window.location.assign("/login");

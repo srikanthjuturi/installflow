@@ -33,10 +33,13 @@ export type NotificationKind =
   | "recharge"
   | "vendor_credit"
   | "vendor_payment"
-  | "vendor_credit_request";
+  | "vendor_credit_request"
+  // Task 05 — "technician moved territory", addressed to the two franchisee
+  // admins whose coverage changed and (widened audience) to every staff feed.
+  | "technician_moved";
 
 /**
- * The same twenty-four, in the order the filter offers them — loudest first.
+ * The same twenty-five, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
  * The tail is the things that merely HAPPENED — a product was decided, a job
@@ -88,6 +91,9 @@ export const NOTIFICATION_KINDS = [
   "rescheduled",
   "job_started",
   "technician_joined",
+  // Pure news — nothing is being asked and nothing went wrong — so it joins
+  // the `technician_joined` row at the bottom.
+  "technician_moved",
 ] as const satisfies readonly NotificationKind[];
 
 export interface OpsNotification {
