@@ -39,20 +39,26 @@ const REVIEWER_ROLE: Record<PenaltyReviewer["role"], string> = {
  * The reviewer line names who is responsible — the ticket's Area Manager, else
  * its Regional Head, else a National Head, else an Admin. It does not limit
  * who may act: anyone at that rank or above who can see this ticket may, and
- * the server is what enforces it. `canReverse` only decides whether to draw
- * the button for THIS viewer.
+ * the server is what enforces it.
+ *
+ * §5.10 — whether to draw the button is the ROW's own `canReverse` (Task 05's
+ * `TicketPenaltyOut.canReverse`), not this viewer's: Admin/NH may reverse any
+ * franchisee's charge; RH/AM only the home franchisee's. A row reading false
+ * does not hide silently — it says WHO works the money (`Managed by …`),
+ * because an unexplained gap reads as a rendering bug, not a boundary. The
+ * button and the label never both appear: the mock draws one standing in for
+ * the other.
  *
  * Net-new copy — neither prototype has a reversal anywhere — **approved as
  * written on 2026-09-11.** A NEW string added here needs the same sign-off;
- * there is nothing in the design artifact to copy from.
+ * there is nothing in the design artifact to copy from (this page's
+ * `Managed by` wording is §5.10 PROPOSED, used as given).
  */
 export function PenaltiesPanel({
   ticket,
-  canReverse,
   onReverse,
 }: {
   ticket: TicketDetail;
-  canReverse: boolean;
   onReverse: (penalty: TicketPenalty) => void;
 }) {
   if (ticket.penalties.length === 0) return null;
@@ -106,7 +112,7 @@ export function PenaltiesPanel({
                       {p.reversalReason ? ` · ${p.reversalReason}` : ""}
                     </span>
                   </p>
-                ) : canReverse ? (
+                ) : p.canReverse ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -122,6 +128,14 @@ export function PenaltiesPanel({
                       {p.technicianName}
                     </span>
                   </Button>
+                ) : /* §5.10 PROPOSED — the row names whose money it is instead
+                       of a button the reader cannot press. Nothing when the
+                       server names no franchisee: there is no one to name and
+                       no act to explain away. */
+                  ticket.franchiseeName ? (
+                  <p className="mt-2 text-xs text-ink-3">
+                    Managed by {ticket.franchiseeName}
+                  </p>
                 ) : null}
               </li>
             );

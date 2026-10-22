@@ -205,6 +205,11 @@ export default function ForceClosePage() {
                   }
                 : null
             }
+            /* The form's answer to the same question, and the server is
+               stricter than this read: it re-resolves the type itself and
+               credits nothing for an employee no matter what was sent (the
+               trail records "no per-job payout: employee"). */
+            technicianType={ticket.technicianType}
             /* Always present, both of them: every ticket carries a vendor, and
                `vendorPricePaise` is NOT NULL and shown to everyone who can see
                the ticket — the vendor included, because it is their own price

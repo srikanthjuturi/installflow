@@ -168,14 +168,18 @@ export default function TicketDetailPage({
     canAct && has("jobs.reschedule") && !!ticket && isTimeChoosable(ticket);
 
   /* Giving a penalty back. `isOps`, not `canAct`: a ticket closed since the
-     charge is still one whose charge can be unfair. The key is its own —
-     `penalties.reverse`, the four staff roles by default — and the server adds
-     the Area-Manager floor and the territory, which is what makes it "the
-     ticket's AM, else its RH, else a NH, else an Admin, or anyone senior".
+     charge is still one whose charge can be unfair.
+
+     Task 09 §5.10 — WHO may reverse is no longer a client gate. The server
+     answers per ROW (`TicketPenaltyOut.canReverse`): Admin/NH on every
+     franchisee, RH/AM on home's only, false for a franchise principal — whose
+     ticket page is not this one anyway. A feature key here knew the viewer's
+     role and nothing about WHOSE money the charge sits in, which is the whole
+     question's second half; the row's flag draws the button only where the
+     door would open.
 
      `reversing` outlives `reverseOpen` on purpose: clearing the penalty the
      moment the dialog starts to close would blank its sentence mid-animation. */
-  const canReversePenalty = isOps && has("penalties.reverse");
 
   /* Correcting what the technician typed, when the order was right. `isOps`,
      not `canAct`, like the order correction beside it: a settled ticket's
@@ -351,11 +355,13 @@ export default function TicketDetailPage({
               }
             />
             {/* Beside the technician panel it concerns. Ops-only; it renders
-                nothing on a ticket nobody was ever charged on. */}
+                nothing on a ticket nobody was ever charged on. The Reverse
+                button is the row's own decision (`canReverse`, §5.10) — no
+                viewer-level prop is passed, because the viewer's key said less
+                than the row's flag does. */}
             {isOps ? (
               <PenaltiesPanel
                 ticket={ticket}
-                canReverse={canReversePenalty}
                 onReverse={(penalty) => {
                   setReversing(penalty);
                   setReverseOpen(true);

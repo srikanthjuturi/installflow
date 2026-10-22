@@ -25,7 +25,7 @@ import {
 } from "@/services/companyUsers";
 
 /** Roles whose reach is the whole country — they hand out any region. */
-const ALL_INDIA_ROLES = new Set(["superadmin", "admin", "national_head"]);
+export const ALL_INDIA_ROLES = new Set(["superadmin", "admin", "national_head"]);
 
 export const companyUserKeys = {
   all: ["company-users"] as const,
@@ -51,11 +51,12 @@ export function useRoles() {
 }
 
 /** The regions of India. Reference data — cached like the role catalog. */
-export function useRegions() {
+export function useRegions({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["regions"],
     queryFn: listRegions,
     staleTime: 60 * 60_000,
+    enabled,
   });
 }
 
@@ -68,14 +69,18 @@ export function useRegions() {
  * same thing: an empty list while the catalog is still arriving would render
  * selected regions as raw ids and read as "you have no regions".
  */
-export function useAssignableRegions(): {
+export function useAssignableRegions({
+  enabled = true,
+}: { enabled?: boolean } = {}): {
   regions: Region[];
   isLoading: boolean;
   isError: boolean;
 } {
-  const catalog = useRegions();
+  // Staff-only by consumers: the portal's coverage and filter hooks pass
+  // `enabled: false` rather than fire a staff endpoint and toast 403 on it.
+  const catalog = useRegions({ enabled });
   const me = useMe();
-  const loading = catalog.isPending || me.isPending;
+  const loading = enabled && (catalog.isPending || me.isPending);
   const failed = catalog.isError || me.isError;
 
   if (loading || failed || !catalog.data || !me.data) {

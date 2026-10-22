@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { EMPTY } from "@/utils/datetime";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Paperclip, TriangleAlert, X } from "lucide-react";
@@ -108,9 +109,17 @@ interface ForceCloseFormProps {
    * technician attend, so there is nobody to pay and the field is not shown.
    */
   technician: { name: string; payoutPaise: number } | null;
+  /**
+   * How the assigned technician is paid (§5.10, Task 06): an EMPLOYEE is
+   * salaried, so a force-closure credits no per-job payout — the field is
+   * replaced by one line saying so. Null when nobody holds the job.
+   */
+  technicianType: "employee" | "freelancer" | null;
   /** The vendor that asked for the visit, and the price this ticket stamped for
-   *  them at intake. Always present — every ticket has both. */
-  vendor: { name: string; pricePaise: number };
+   *  them at intake. The price is `number | null` since Task 04 nulls it for a
+   * franchise principal (who never reaches this staff-only page, but the type
+   * follows the wire). */
+  vendor: { name: string; pricePaise: number | null };
   /**
    * The trail to hand back to the ticket that Cancel returns to, so abandoning
    * a force-close does not also lose the queue or the ledger behind it.
@@ -123,6 +132,7 @@ export function ForceCloseForm({
   onSubmit,
   isSubmitting,
   technician,
+  technicianType,
   vendor,
   cancelState,
 }: ForceCloseFormProps) {
@@ -148,8 +158,10 @@ export function ForceCloseForm({
       // Prefilled with the full price, for the mirror of the payout's reason:
       // the common case is a visit that happened and a customer who went quiet,
       // and the vendor owes for that. Editable down to nothing for the case
-      // where nobody attended.
-      vendorCharge: String(vendor.pricePaise / 100),
+      // where nobody attended. Null (Task 04 withholds it from a franchise
+      // principal) prefills empty — a gap, never ₹0.
+      vendorCharge:
+        vendor.pricePaise === null ? "" : String(vendor.pricePaise / 100),
     },
   });
 
@@ -296,10 +308,16 @@ export function ForceCloseForm({
               ) : null}
             </Field>
 
-            {/* Only when somebody actually holds the job. A ticket whose
-                customer never confirmed a slot has no technician, so there is
-                nobody to pay and asking would be a question with no answer. */}
-            {technician ? (
+            {/* Only when somebody FREELANCED the job: a ticket whose customer
+                never confirmed a slot has no technician, and a ticket an
+                EMPLOYEE held is paid through salary — §5.10's one line stands
+                where the box would be, as the answer rather than as a greyed
+                field still asking for a number it would throw away. */}
+            {technician && technicianType === "employee" ? (
+              <p className="flex items-start gap-2.5 rounded-md bg-info-bg px-3.5 py-3 text-[13px] leading-relaxed text-info">
+                Employees are paid through salary — no per-job payout.
+              </p>
+            ) : technician ? (
               <Field data-invalid={err("technicianPayout") ? true : undefined}>
                 <FieldLabel htmlFor="force-close-payout">
                   Credit {technician.name} (₹)
@@ -362,7 +380,7 @@ export function ForceCloseForm({
                 </FieldDescription>
               ) : (
                 <FieldDescription id="force-close-vendor-charge-hint">
-                  This job is priced at {moneyPaise(vendor.pricePaise)} to them.
+                  This job is priced at {vendor.pricePaise === null ? EMPTY : moneyPaise(vendor.pricePaise)} to them.
                   Clear it to bill nothing — which is right when nobody attended.
                 </FieldDescription>
               )}

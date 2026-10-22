@@ -6,6 +6,7 @@ import { Notice } from "@/components/shared/Notice";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicianDialog";
+import { DownloadStatementCard } from "@/components/technicians/DownloadStatementCard";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { UpiChangePanel } from "@/components/technicians/UpiChangePanel";
@@ -19,10 +20,12 @@ import {
 } from "@/components/technicians/TechProfileHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useFeatureAccess } from "@/hooks/useAuth";
+import { useFeatureAccess, useMe } from "@/hooks/useAuth";
+import { ALL_INDIA_ROLES } from "@/hooks/useCompanyUsers";
 import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useTechnician } from "@/hooks/useTechnicians";
 import { useTechnicianJobs } from "@/hooks/useTickets";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
 
 export default function TechnicianProfilePage() {
@@ -38,18 +41,35 @@ export default function TechnicianProfilePage() {
   const feature = useFeatureAccess();
 
   /* Three ways in — the roster, a ledger row, the topbar search — and only the
-     first one is `/technicians`. The search has been handing this page an
+     first one is the roster itself. The search has been handing this page an
      origin since it was built; the page was throwing it away and sending
      everybody to the roster regardless. The roster stays the fallback: it is
-     where a pasted link, which carries no state, most plausibly belongs. */
+     where a pasted link, which carries no state, most plausibly belongs.
+     Task 09 — the fallback is the WORKSPACE's roster; the portal's version of
+     this page falls back to its own. */
+  const { workspace, paths, features } = useWorkspace();
+  const me = useMe();
   const origin = readNavOrigin(location.state);
-  const backHref = origin?.backTo ?? "/technicians";
+  const backHref = origin?.backTo ?? paths.technicians;
   const backText = origin?.backLabel ?? "Back to technicians";
 
   const { data: tech, isLoading, isError, error, refetch } = useTechnician(id);
   // After the read: `canManage` is the server's word on whether this staff role
   // may manage this specific technician (F8), so the button needs both.
-  const canEdit = feature.has("technicians.edit") && (tech?.canManage ?? false);
+  const canEdit = feature.has(features.editTechnician) && (tech?.canManage ?? false);
+
+  /* §5.10 — the Download statement card's gate, all three halves of the
+     endpoint's own rule (`home-franchisee employee` + rank National Head and
+     above + `earnings.view`), so nobody is offered a click the server would
+     refuse. Fail closed: while `/auth/me` has not landed, no card. */
+  const canDownloadStatement =
+    workspace === "ops" &&
+    !!tech &&
+    tech.technicianType === "employee" &&
+    tech.franchiseeIsHome &&
+    !!me.data &&
+    ALL_INDIA_ROLES.has(me.data.role) &&
+    feature.has(features.viewPool);
   /* Beside the profile read, not behind it: the two are independent, and
      waiting for the record before asking for the jobs would put a second
      round trip in front of the table for no reason. */
@@ -152,7 +172,16 @@ export default function TechnicianProfilePage() {
 
             {/* First on the page when there is one: it is the work item the
                 bell sent a manager here for. */}
-            {tech ? <UpiChangePanel tech={tech} canDecide={canEdit} /> : null}
+            {/* Task 09 — deciding a UPI change is its own key per workspace:
+                staff ride `technicians.edit` unchanged, the portal gates on
+                `franchise.payouts`, which a facility-role admin lacks even
+                though they may edit the roster. */}
+            {tech ? (
+              <UpiChangePanel
+                tech={tech}
+                canDecide={feature.has(features.decideUpi) && tech.canManage}
+              />
+            ) : null}
 
             {isLoading || !tech ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -171,6 +200,15 @@ export default function TechnicianProfilePage() {
               <TechOnboardingCard tech={tech} />
             )}
 
+            {/* §5.10 — after the onboarding card, before the job history: a
+                payroll action belongs with the person, not under their work.
+                Rendered only for the gate above; a skeleton for it would be a
+                card whose gate is not yet known, blinking in for most readers
+                who will never see one. */}
+            {tech && canDownloadStatement ? (
+              <DownloadStatementCard tech={tech} />
+            ) : null}
+
             {/* The skeleton is the real table, row for row — never a spinner.
                 Its own query rather than a field on the technician: the ticket
                 list already scopes by territory and pages in SQL, so this is
@@ -182,7 +220,7 @@ export default function TechnicianProfilePage() {
             <JobHistoryTable
               jobs={jobs.data?.rows}
               total={jobs.data?.pagination.totalRecords}
-              seeAllTo={`/technicians/${id}/tickets`}
+              seeAllTo={paths.technicianTickets(id)}
               backLabel={
                 tech ? `Back to ${tech.name}` : "Back to technician"
               }
