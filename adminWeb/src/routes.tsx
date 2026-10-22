@@ -66,6 +66,8 @@ const AssignTechnicianPage = lazy(
 const BonusSetupPage = lazy(() => import("@/pages/tickets/BonusSetupPage"));
 const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
 const VendorsPage = lazy(() => import("@/pages/masters/VendorsPage"));
+const FranchiseesPage = lazy(() => import("@/pages/franchisees/FranchiseesPage"));
+const FranchiseePage = lazy(() => import("@/pages/franchisees/FranchiseePage"));
 const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
 const TerritoryPage = lazy(() => import("@/pages/masters/TerritoryPage"));
 const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
@@ -365,6 +367,10 @@ export const routes: RouteObject[] = [
               },
               { path: "ledger", element: <LedgerPage /> },
               { path: "vendors", element: <VendorsPage /> },
+              // Task 08 — view via `franchisees.view` off the nav table; the
+              // writes are per-button on `franchisees.manage` (§5.7).
+              { path: "franchisees", element: <FranchiseesPage /> },
+              { path: "franchisees/:id", element: <FranchiseePage /> },
               { path: "categories", element: <CategoriesPage /> },
               { path: "territory", element: <TerritoryPage /> },
               { path: "settings/rules", element: <RulesConfigPage /> },

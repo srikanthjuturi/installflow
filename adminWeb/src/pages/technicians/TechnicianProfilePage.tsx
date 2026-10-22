@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Building2, Pencil, Trash2 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { Notice } from "@/components/shared/Notice";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicianDialog";
@@ -30,7 +31,11 @@ export default function TechnicianProfilePage() {
   const navigate = useNavigate();
   const [isEditOpen, setEditOpen] = useState(false);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
-  const canEdit = useFeatureAccess().has("technicians.edit");
+  /* Task 08 — the franchisee check rides on the role check: the server says
+     `canManage` (F8), and when it is false no staff role touches this record.
+     The edit dialog stays reachable — its franchisee line is read-only and its
+     save would be refused — but nothing offers it. */
+  const feature = useFeatureAccess();
 
   /* Three ways in — the roster, a ledger row, the topbar search — and only the
      first one is `/technicians`. The search has been handing this page an
@@ -42,6 +47,9 @@ export default function TechnicianProfilePage() {
   const backText = origin?.backLabel ?? "Back to technicians";
 
   const { data: tech, isLoading, isError, error, refetch } = useTechnician(id);
+  // After the read: `canManage` is the server's word on whether this staff role
+  // may manage this specific technician (F8), so the button needs both.
+  const canEdit = feature.has("technicians.edit") && (tech?.canManage ?? false);
   /* Beside the profile read, not behind it: the two are independent, and
      waiting for the record before asking for the jobs would put a second
      round trip in front of the table for no reason. */
@@ -133,6 +141,15 @@ export default function TechnicianProfilePage() {
           )}
 
           <div className="flex flex-col gap-3.5">
+            {/* Task 08 — the reader just lost an explanation for the missing
+                Edit button, so say why before they go looking: the server (F8)
+                has already said whose admin it is. */}
+            {tech && !tech.canManage ? (
+              <Notice tone="warn" icon={Building2} title={`Run by ${tech.franchiseeName}.`}>
+                Their franchisee admin manages this technician.
+              </Notice>
+            ) : null}
+
             {/* First on the page when there is one: it is the work item the
                 bell sent a manager here for. */}
             {tech ? <UpiChangePanel tech={tech} canDecide={canEdit} /> : null}

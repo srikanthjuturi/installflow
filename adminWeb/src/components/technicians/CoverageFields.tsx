@@ -40,6 +40,7 @@ export function CoverageFields({
   onPincodes,
   regionError,
   pincodeError,
+  hasOtherFranchisees,
   className,
 }: {
   regionId: string;
@@ -48,6 +49,15 @@ export function CoverageFields({
   onPincodes: (next: string[]) => void;
   regionError?: string;
   pincodeError?: string;
+  /**
+   * Task 08 — the hint gains a sentence when the company has more than one
+   * franchisee: a code another franchisee owns is refused by the server with a
+   * 422 `PINCODE_OUTSIDE_FRANCHISEE` naming it. With only the home franchisee
+   * there is nothing to collide with, so the sentence would only confuse. The
+   * callers pass the option-list length — the same `useFranchiseeOptions`
+   * result the list page already holds.
+   */
+  hasOtherFranchisees?: boolean;
   /** Layout is the caller's business — side by side, stacked, whatever fits. */
   className?: string;
 }) {
@@ -205,6 +215,9 @@ export function CoverageFields({
                     .map((s) => s.name)
                     .join(", ")}.`
                 : `Pincodes in ${regionName}. Search by code or district.`}
+            {regionId && hasOtherFranchisees
+              ? " Pincodes another franchisee owns are refused."
+              : null}
           </FieldDescription>
         )}
       </Field>

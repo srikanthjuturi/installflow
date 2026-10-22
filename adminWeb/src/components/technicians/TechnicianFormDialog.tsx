@@ -28,10 +28,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CoverageFields } from "./CoverageFields";
+import { TechnicianTypeField } from "./TechnicianTypeField";
+import {
+  TYPE_WORD_TO_WIRE,
+  wireTypeToWord,
+} from "./technicianType";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useCertifiableNodeOptions } from "@/hooks/useProductMaster";
 import { useCreateTechnician, useUpdateTechnician } from "@/hooks/useTechnicians";
+import { useFranchiseeOptions } from "@/hooks/useFranchisees";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import type { Technician } from "@/types/technician";
 import type { NodeOption } from "@/types/product";
@@ -103,6 +110,15 @@ function TechnicianForm({
   const update = useUpdateTechnician();
   const pending = create.isPending || update.isPending;
 
+  // The CoverageFields hint names the franchisee carve-out only when there is
+  // another franchisee to carve against — one (home-only) means nothing a
+  // manager picks here can be refused, so the sentence would only confuse.
+  const { has } = useFeatureAccess();
+  const { data: franchiseeOptions } = useFranchiseeOptions({
+    enabled: has("franchisees.view"),
+  });
+  const hasOtherFranchisees = (franchiseeOptions?.length ?? 0) > 1;
+
   const {
     control,
     register,
@@ -126,6 +142,11 @@ function TechnicianForm({
       upiId: technician?.upiId ?? "",
       upiName: technician?.upiName ?? "",
       status: technician?.status ?? "active",
+      // The WORD is the form's value — the wire takes lowercase at submit, the
+      // same single conversion the invite body makes in the list page.
+      technicianType: technician
+        ? wireTypeToWord(technician.technicianType)
+        : "Freelancer",
     },
   });
 
@@ -158,6 +179,9 @@ function TechnicianForm({
           subcategoryIds: values.subcategoryIds,
           pincodes: values.pincodes,
           status: values.status,
+          // The type is changed here on the same terms as in the app: the job
+          // already accepted is priced the way it was accepted.
+          technicianType: TYPE_WORD_TO_WIRE[values.technicianType],
         },
         {
           onSuccess: (saved) => {
@@ -191,6 +215,7 @@ function TechnicianForm({
         upiId: values.upiId.trim() || null,
         upiName: values.upiName.trim() || null,
         profileImageUrl: values.photo ?? null,
+        technicianType: TYPE_WORD_TO_WIRE[values.technicianType],
       },
       {
         onSuccess: (saved) => {
@@ -344,6 +369,47 @@ function TechnicianForm({
               )}
             </div>
 
+            {/* Task 08 — how they are paid, and whose ledger the work lands
+                in. The franchisee is read-only on EDIT, and not shown at
+                intake: a staff-created technician always lands on the home
+                franchisee, so the line would only ever say one thing. It is
+                not an editable box here — moving a technician between
+                franchisees is a pincode carve-out (Pincodes dialog) that
+                previews and re-stamps, never a form field. */}
+            <div className={isEdit ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
+              <Field data-invalid={err("technicianType") ? true : undefined}>
+                <Controller
+                  name="technicianType"
+                  control={control}
+                  render={({ field }) => (
+                    <TechnicianTypeField
+                      value={field.value}
+                      onChange={field.onChange}
+                      error={err("technicianType")}
+                      errorId="tech-type-error"
+                    />
+                  )}
+                />
+              </Field>
+              {isEdit ? (
+                <Field>
+                  <FieldLabel htmlFor="tech-franchisee">Franchisee</FieldLabel>
+                  <Input
+                    id="tech-franchisee"
+                    readOnly
+                    disabled
+                    value={technician.franchiseeName}
+                    aria-describedby="tech-franchisee-hint"
+                  />
+                  <FieldDescription id="tech-franchisee-hint">
+                    Not changed here — the pincodes decide where a technician
+                    sits, and moving them is a carve-out on the Franchisees
+                    screen.
+                  </FieldDescription>
+                </Field>
+              ) : null}
+            </div>
+
             {/* Optional on both add and edit. A manager usually does not have
                 this when onboarding somebody, and blocking the whole record
                 over a detail only the technician knows would be the wrong
@@ -437,6 +503,7 @@ function TechnicianForm({
                     onPincodes={pins.onChange}
                     regionError={err("regionId")}
                     pincodeError={err("pincodes")}
+                    hasOtherFranchisees={hasOtherFranchisees}
                   />
                 )}
               />

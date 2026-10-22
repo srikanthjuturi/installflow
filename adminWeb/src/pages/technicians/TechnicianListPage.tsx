@@ -5,11 +5,13 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicianDialog";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { TechnicianInviteDialog } from "@/components/technicians/TechnicianInviteDialog";
+import { TYPE_WORD_TO_WIRE } from "@/components/technicians/technicianType";
 import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { useAssignableRegions } from "@/hooks/useCompanyUsers";
+import { useFranchiseeOptions } from "@/hooks/useFranchisees";
 import { useDistricts } from "@/hooks/useGeo";
 import {
   useCancelInvite,
@@ -46,13 +48,25 @@ export default function TechnicianListPage() {
   // never offer a district whose technicians they would not be shown.
   const { data: districts } = useDistricts({ mine: true });
 
+  // The Franchisee filter's options. Only for a caller who can see the
+  // franchisees screen at all — otherwise the request would 403 and toast, and
+  // the filter it feeds is not coming anyway.
+  const { data: franchiseeOptions } = useFranchiseeOptions({
+    enabled: has("franchisees.view"),
+  });
+
   // The query the server answers. Search, filters and page all live in one
   // object so the table can hand back a whole new intent in one call. The
   // table already strips "All" — it is a control value, not a filter — so
   // nothing here has to know which values are sentinels.
   // Seeded from the URL so the territory panel's "8 technicians in
-  // Visakhapatnam" lands here already filtered to that district.
-  const [params, setParams] = useUrlSeededListParams({}, ["districtId"]);
+  // Visakhapatnam" lands here already filtered to that district — and, since
+  // Task 08, so a franchisee page's "View technicians" lands filtered to that
+  // franchisee (`?franchiseeId=…`).
+  const [params, setParams] = useUrlSeededListParams(
+    {},
+    ["districtId", "franchiseeId", "technicianType"]
+  );
 
   const { data, isLoading, isError, error, refetch } = useTechnicians(params);
 
@@ -90,6 +104,7 @@ export default function TechnicianListPage() {
               phone: toE164(values.phone),
               regionId: values.regionId || null,
               pincodes: values.pincodes,
+              technicianType: TYPE_WORD_TO_WIRE[values.technicianType],
             },
             {
               onSuccess: (created) => {
@@ -120,6 +135,7 @@ export default function TechnicianListPage() {
         onParams={setParams}
         regions={regions}
         districts={districts ?? []}
+        franchisees={franchiseeOptions ?? []}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

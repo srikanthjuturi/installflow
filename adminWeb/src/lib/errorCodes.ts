@@ -45,3 +45,36 @@ export const DISTRICT_EXISTS = "DISTRICT_EXISTS";
 
 export const PINCODE_CODES: readonly string[] = [PINCODE_EXISTS];
 export const DISTRICT_CODES: readonly string[] = [DISTRICT_EXISTS];
+
+/* ── franchisees ─────────────────────────────────────────────────────────── */
+/* Mirrors `api/app/features/franchisees` (Task 03), the way the GST codes
+   mirror `core/gst.py`. One 409/422 from the screen can mean several
+   different things and each needs its own words on screen. */
+
+/**
+ * Another franchisee already owns pincode(s) in this commit's ranges — the
+ * 409 names them, `errors[]` reads "500032 — SkyFix Services", and the dialogs
+ * returns to edit phase and refetches the preview to show who took what.
+ */
+export const FRANCHISEE_PINCODE_TAKEN = "FRANCHISEE_PINCODE_TAKEN";
+/** On the home franchisee: its kind, its pincodes and its deactivation are not
+ *  things there is anything to change — "home" IS the rule. */
+export const FRANCHISEE_HOME_IMMUTABLE = "FRANCHISEE_HOME_IMMUTABLE";
+/** Deactivating is refused while the franchisee still has technicians. */
+export const FRANCHISEE_HAS_TECHNICIANS = "FRANCHISEE_HAS_TECHNICIANS";
+/** On a create/update of a technician and on direct onboarding: someone else's
+ *  pincodes are refused (422). */
+export const PINCODE_OUTSIDE_FRANCHISEE = "PINCODE_OUTSIDE_FRANCHISEE";
+
+/**
+ * The only active admin of a non-home franchisee cannot be deactivated — add
+ * another one first (owner ruling 2026-10-15, R3). The home is exempt.
+ */
+export const FRANCHISEE_LAST_ADMIN = "FRANCHISEE_LAST_ADMIN";
+
+export const FRANCHISEE_CODES: readonly string[] = [
+  FRANCHISEE_PINCODE_TAKEN,
+  FRANCHISEE_HOME_IMMUTABLE,
+  FRANCHISEE_HAS_TECHNICIANS,
+  FRANCHISEE_LAST_ADMIN,
+];

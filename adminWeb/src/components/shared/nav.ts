@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   Boxes,
+  Building2,
   Coins,
   HandCoins,
   IndianRupee,
@@ -154,6 +155,17 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Users,
         match: ["/technicians/"],
         feature: "technicians.view",
+      },
+      // Net-new — no prototype has franchisees. Awaiting sign-off (index §7).
+      {
+        label: "Franchisees",
+        to: "/franchisees",
+        icon: Building2,
+        match: ["/franchisees/"],
+        // view, not manage: an Area Manager reads who runs which pincodes. The
+        // writes are gated per button on `franchisees.manage` and refused by
+        // the API.
+        feature: "franchisees.view",
       },
       {
         label: "Penalty & Bonus",

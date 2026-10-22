@@ -98,6 +98,13 @@ export const inviteSchema = z.object({
    * can offer a job to, and nothing on their phone would let them fix it.
    */
   pincodes: z.array(z.string()).min(1, "Add at least one pincode"),
+  /**
+   * Task 08. The WORD is the form's value — the same contract the type field
+   * uses on the Add form — and the wire takes the lowercase, converted at
+   * submit in the list page. "Freelancer" is the default for the same reason
+   * the Add form defaults there: the type was invented as that word.
+   */
+  technicianType: z.enum(["Freelancer", "Employee"]),
 });
 
 export type InviteFormValues = z.infer<typeof inviteSchema>;
@@ -106,4 +113,5 @@ export const EMPTY_INVITE: InviteFormValues = {
   phone: "",
   regionId: "",
   pincodes: [],
+  technicianType: "Freelancer",
 };

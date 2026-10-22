@@ -22,9 +22,12 @@ import type {
   TechnicianInvite,
   TechnicianRow,
 } from "@/types/technician";
+import { TECHNICIAN_TYPES } from "@/types/technician";
+import type { FranchiseeOption } from "@/types/franchisee";
 import { AvailabilityPill } from "./AvailabilityPill";
 import { BandwidthBar, CancelCount } from "./BandwidthBar";
 import { OnboardingStatusCell } from "./OnboardingStatusCell";
+import { wireTypeToWord } from "./technicianType";
 import {
   INVITE_STATUSES,
   STATUS_LABEL,
@@ -63,6 +66,11 @@ interface TechTableProps {
   regions: { id: string; name: string }[];
   /** Districts the caller covers, for the district filter. */
   districts: { id: string; name: string; stateName: string }[];
+  /**
+   * The company's franchisees, for the Franchisee filter (Task 08 §5.8). Every
+   * one, active and not — a paused franchisee's technicians still appear here.
+   */
+  franchisees: FranchiseeOption[];
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -92,6 +100,7 @@ export function TechTable({
   onParams,
   regions,
   districts,
+  franchisees,
   isLoading,
   error,
   onRetry,
@@ -179,6 +188,32 @@ export function TechTable({
             </div>
           </div>
         ),
+    },
+    /* Task 08: who runs them. Both rows — a registered technician and an open
+       invite — carry the answer, because an invite already belongs to a
+       franchisee too. */
+    {
+      id: "franchisee",
+      header: "Franchisee",
+      cell: (t) => (
+        <div className="flex flex-wrap items-center gap-1.25 leading-tight">
+          <div>{t.franchiseeName}</div>
+          {/* "Home" rides in words, as on the Franchisees screen. */}
+          {t.franchiseeIsHome ? (
+            <span className="inline-block rounded-full border border-line bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
+              Home
+            </span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: "type",
+      header: "Type",
+      cell: (t) =>
+        /* The wire value, capitalised for the column — the words the copy table
+           uses. Never colour alone: it is a word, always. */
+        <span className="text-[13px]">{wireTypeToWord(t.technicianType)}</span>,
     },
     {
       id: "cats",
@@ -299,8 +334,13 @@ export function TechTable({
               {/* The app link again — what a technician needs when the first
                   message never arrived, or when they change phones. Beside
                   Edit rather than in a menu, matching the invite row's
-                  Resend: it is the one other thing done to a row here. */}
-              {canSendAppLink ? (
+                  Resend: it is the one other thing done to a row here.
+
+                  `t.canManage` is the server's F8 opinion — a technician a
+                  non-home franchisee runs is THAT franchisee's admin's to
+                  manage, and staff verbs refuse with 403. Hiding them here
+                  keeps the row honest without waiting for the request. */}
+              {canSendAppLink && t.canManage ? (
                 <Button
                   type="button"
                   variant="link"
@@ -315,7 +355,7 @@ export function TechTable({
               ) : null}
               {/* A button, not a link: it opens a dialog rather than
                   navigating, and the row click already goes to the profile. */}
-              {canEditTechnician ? (
+              {canEditTechnician && t.canManage ? (
                 <Button
                   type="button"
                   variant="link"
@@ -327,7 +367,7 @@ export function TechTable({
                   <span className="sr-only"> {t.name}</span>
                 </Button>
               ) : null}
-              {canEditTechnician ? (
+              {canEditTechnician && t.canManage ? (
                 <Button
                   type="button"
                   variant="link"
@@ -342,7 +382,7 @@ export function TechTable({
             </div>
           );
         }
-        if (!canManageInvites || !isResendable(t.status)) return null;
+        if (!canManageInvites || !t.canManage || !isResendable(t.status)) return null;
         const busy = busyInviteId === t.id;
         return (
           <div
@@ -421,6 +461,57 @@ export function TechTable({
     },
   ];
 
+  // The Franchisee filter — a combobox when the company has grown past ten
+  // franchisees (the search-and-load pattern the district filter needs), a
+  // plain select before that. Rendered at all only when there is more than one:
+  // one is not a choice (the same test the Region filter uses), and hidden —
+  // with no value auto-filled — is where "single-option" ends (hard rule 10).
+  if (franchisees.length > 1) {
+    filters.push(
+      franchisees.length > 10
+        ? {
+            id: "franchiseeId",
+            label: "Franchisee",
+            variant: "combobox",
+            options: franchisees.map((f) => ({
+              value: f.id,
+              label: f.name,
+              hint: f.code,
+            })),
+            value: filterValue(params, "franchiseeId"),
+            onChange: (v) => setFilter("franchiseeId", v),
+            match: () => true,
+          }
+        : {
+            id: "franchiseeId",
+            label: "Franchisee",
+            variant: "select",
+            options: franchisees.map((f) => ({
+              value: f.id,
+              label: f.name,
+            })),
+            value: filterValue(params, "franchiseeId"),
+            onChange: (v) => setFilter("franchiseeId", v),
+            match: () => true,
+          }
+    );
+  }
+
+  // The Type filter is static — exempt from hard rule 10, which is about
+  // options that depend on the caller; every company has both kinds.
+  filters.push({
+    id: "technicianType",
+    label: "Type",
+    variant: "select",
+    options: TECHNICIAN_TYPES.map((t) => ({
+      value: t,
+      label: wireTypeToWord(t),
+    })),
+    value: filterValue(params, "technicianType"),
+    onChange: (v) => setFilter("technicianType", v),
+    match: () => true,
+  });
+
   // A manager who holds one region has nothing to choose between.
   if (regions.length > 1) {
     filters.push({
@@ -464,7 +555,7 @@ export function TechTable({
   return (
     <DataTable
       errorTitle="Couldn't load technicians"
-      caption="Technicians and open invites, with their categories, service pincodes, region, bandwidth, availability and who appointed them"
+      caption="Technicians and open invites, with their franchisee, type, categories, service pincodes, region, bandwidth, availability and who appointed them"
       data={rows}
       columns={columns}
       getRowId={(t) => t.id}
@@ -480,7 +571,8 @@ export function TechTable({
       toolbarActions={toolbarActions}
       server={{ meta, params, onParams }}
       onRowClick={(t) => t.registered && navigate(`/technicians/${t.id}`)}
-      minWidth="90rem"
+      // Bumped from 90rem with the Franchisee and Type columns.
+      minWidth="96rem"
       emptyIcon={Users}
       emptyTitle="No technicians yet"
       emptyDescription="Add a technician, or invite one by mobile number and let them register themselves."

@@ -4,12 +4,28 @@ import { formatPhone } from "@/utils/phone";
 import type { Technician } from "@/types/technician";
 import { BandwidthBar, CancelCount, TechStatusPill } from "./BandwidthBar";
 import { AvailabilityPill } from "@/components/technicians/AvailabilityPill";
+import { wireTypeToWord } from "./technicianType";
 
 /* ------------------------------------------------------------------ identity */
 
 export function TechProfileHeader({ tech }: { tech: Technician }) {
   const facts: Array<[string, React.ReactNode]> = [
     ["Phone", formatPhone(tech.phone)],
+    /* Task 08 — who runs them and how they are paid. The Home badge is the
+       same one the roster renders: the catch-all franchisee must stay
+       recognisable, or its numbers read as a normal external's. */
+    [
+      "Franchisee",
+      <span className="flex items-center gap-1.5">
+        {tech.franchiseeName}
+        {tech.franchiseeIsHome ? (
+          <span className="rounded-full border border-line bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
+            Home
+          </span>
+        ) : null}
+      </span>,
+    ],
+    ["Type", wireTypeToWord(tech.technicianType)],
     ["Region", tech.regionName],
     [
       "Joined",

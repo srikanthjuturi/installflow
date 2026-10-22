@@ -22,6 +22,20 @@ export type InviteStatus =
   | "cancelled"
   | "expired";
 
+/**
+ * How they are paid — the second fact Task 05 puts on every technician row
+ * (T1). Lowercase on the wire; the forms hold the WORD ("Freelancer"/"Employee")
+ * and convert at submit, per ChoiceCards' rule.
+ *
+ * An employee gets no per-job payout and can't redeem earnings; allowances and
+ * penalties still apply. A change applies to the jobs accepted AFTER it, so it
+ * is never backdated — the server refuses one that would rewrite a balance.
+ */
+export type TechnicianType = "employee" | "freelancer";
+
+export const TECHNICIAN_TYPES = ["employee", "freelancer"] as const satisfies
+  readonly TechnicianType[];
+
 export interface SubcategoryRef {
   id: string;
   name: string;
@@ -104,6 +118,22 @@ export interface Technician {
   onTimePct: number | null;
 
   onboarding: TechnicianOnboarding;
+
+  /* ── Task 05 fields: who the row belongs to, how they are paid ─────────── */
+
+  franchiseeId: string;
+  franchiseeName: string;
+  /** True on the home franchisee — the catch-all every unclaimed pincode is. */
+  franchiseeIsHome: boolean;
+  technicianType: TechnicianType;
+  /**
+   * From the server (`franchise_scope.can_manage_technician` for the CALLER),
+   * never recomputed in the browser (F8). False hides every row write — Edit,
+   * Remove, Send app link, UPI decides — because the franchisee admin manages
+   * this one; a false row also nulls its money fields server-side.
+   */
+  canManage: boolean;
+
   createdAt: string;
 }
 
@@ -126,6 +156,15 @@ export interface TechnicianInvite {
   sentAt: string | null;
   registeredAt: string | null;
   expiresAt: string;
+
+  /* ── Task 05 fields, same as a registered row ──────────────────────────── */
+
+  franchiseeId: string;
+  franchiseeName: string;
+  franchiseeIsHome: boolean;
+  technicianType: TechnicianType;
+  canManage: boolean;
+
   createdAt: string;
 }
 
@@ -168,6 +207,10 @@ export interface CreateTechnicianInput {
   upiId?: string | null;
   /** The name on that account. Optional even with a UPI ID. */
   upiName?: string | null;
+  /** Omitted takes the API's default, freelancer. Staff creates always land on
+   *  the HOME franchisee; a 422 `PINCODE_OUTSIDE_FRANCHISEE` names the codes
+   *  another franchisee owns. */
+  technicianType?: TechnicianType;
 }
 
 export interface UpdateTechnicianInput {
@@ -190,6 +233,11 @@ export interface UpdateTechnicianInput {
   upiId?: string | null;
   upiName?: string | null;
   status?: TechnicianStatus;
+  /**
+   * Omitted leaves the type alone. The server refuses a change that would
+   * strand a balance or open jobs — the refusal's message names the reason.
+   */
+  technicianType?: TechnicianType;
 }
 
 /**
@@ -221,6 +269,8 @@ export interface InviteTechnicianInput {
   phone: string;
   regionId?: string | null;
   dailyJobCap?: number;
+  /** Omitted takes the API's default, freelancer. */
+  technicianType?: TechnicianType;
 }
 
 /** One district of a state, and how many technicians work in it. */
