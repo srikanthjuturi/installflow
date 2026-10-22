@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test harness and rollout - explainer for tasks 00 and 16</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+.topnav{background:var(--brand-500);color:#fff;padding:12px 24px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px}
+.topnav b{font-size:15px}.topnav a{color:#dfe1ff}.topnav a:hover{color:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:18px}
+.scroll{overflow-x:auto}
+.proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:4px}
+h2.sec{font-size:17px;margin:8px 0 0}
+p{margin:0}
+table.t td,table.t th{font-size:12.5px;vertical-align:top}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
+code{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--surface-3);padding:0 4px;border-radius:4px}
+pre.code{background:#171a21;color:#e6e8ef;border-radius:10px;padding:12px 14px;overflow:auto;font:12.5px/1.55 "IBM Plex Mono",monospace;margin:0}
+pre.code .c{color:#8b909d}
+.chain{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:6px 2px 12px}
+.node{flex:0 0 168px;border:1px solid var(--border);border-radius:12px;background:#fff;padding:10px 12px;cursor:pointer;font-size:12px;box-shadow:var(--shadow);text-align:left;font-family:inherit;color:inherit}
+.node:hover{border-color:var(--brand-400)}
+.node.on{border-color:var(--brand-500);background:var(--brand-100)}
+.node .rev{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:12.5px;color:var(--brand-500);display:block;word-break:break-all}
+.node .tk{display:block;margin-top:4px;font-weight:600}
+.node .rl{display:block;color:var(--ink-3);margin-top:2px}
+.node.origin{background:var(--surface-3);border-style:dashed;cursor:default;box-shadow:none}
+.link{flex:0 0 26px;align-self:center;text-align:center;color:var(--ink-3);font-size:18px}
+.detail{border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:12px 14px;font-size:13px}
+.detail h3{margin:0 0 6px;font-size:14px}
+.detail dl{display:grid;grid-template-columns:130px 1fr;gap:6px 14px;margin:0}
+.detail dt{color:var(--ink-3)}.detail dd{margin:0}
+.open li{padding:8px 0;border-bottom:1px solid var(--border-2);font-size:13px}
+.open li b{display:block}
+.open li .df{color:var(--ink-2);font-size:12.5px}
+.open{margin:0;padding-left:26px}
+.col3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:900px){.col3{grid-template-columns:1fr}}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:6px;padding:1px 7px;background:var(--surface-3);color:var(--ink-2)}
+.tag.warn{background:var(--warn-bg);color:var(--warn)}.tag.api{background:var(--info-bg);color:var(--info)}.tag.cli{background:var(--ok-bg);color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="topnav"><b>Test harness and rollout - tasks 00 and 16</b>
+<a href="index.html">Index</a><a href="#harness">Test harness</a><a href="#chain">Migration chain</a><a href="#releases">Release plan</a><a href="#open">Open decisions</a></div>
+
+<div class="wrap">
+<div class="note"><b>Mocks:</b> <a href="../franchisee/00-prerequisites-and-test-harness.md">00-prerequisites-and-test-harness.md</a> and <a href="../franchisee/16-rollout-and-docs.md">16-rollout-and-docs.md</a>, with the migration table of <a href="../franchisee/00-index.md">00-index.md</a> section 3.6. These two tasks write no feature code.</div>
+
+<h2 class="sec" id="harness">1. Task 00 - the test harness</h2>
+<div class="card" data-scope><div class="body">
+<p style="margin-bottom:10px">The repo had no tests at all; CI only compiled the API and linted the clients. <b>Owner ruling X1: API tests never touch a database</b> - pytest is for pure functions (parsers, calculators, state machines). Database behaviour is proven by each task's acceptance criteria and by <code>api/app/scripts/seed/verify.py</code>. Three runners, three separate configs:</p>
+<div class="seg" data-tabs style="margin-bottom:12px"><button class="on" data-tab="py">pytest - api</button><button data-tab="vt">vitest - adminWeb</button><button data-tab="jx">jest-expo - mobileapp</button></div>
+
+<div data-pane="py">
+<div class="two">
+<pre class="code">api/
+  <span class="c">requirements.txt</span>       <span class="c"># ships to Azure - NO pytest here</span>
+  requirements-dev.txt   <span class="c"># -r requirements.txt + pytest==8.*</span>
+  pytest.ini             <span class="c"># testpaths = tests/unit
+                         # addopts = -q --strict-markers
+                         # pythonpath = .</span>
+  tests/
+    __init__.py
+    unit/
+      __init__.py
+      conftest.py        <span class="c"># autouse guard + env placeholders</span>
+      test_coordinates.py
+      test_no_db_guard.py
+      <span class="c"># later tasks add:</span>
+      test_pincode_ranges.py  <span class="c"># 03</span>
+      test_carve_out.py       <span class="c"># 03</span>
+      test_company_code.py    <span class="c"># 03</span>
+      test_franchise_routing.py <span class="c"># 04</span>
+      test_travel.py          <span class="c"># 10</span>
+      test_speed.py           <span class="c"># 11</span></pre>
+<div style="display:grid;gap:8px;font-size:13px">
+<div><b>The guard.</b> An <code>autouse</code> fixture monkeypatches <code>create_async_engine</code> and <code>psycopg.connect</code> / <code>AsyncConnection.connect</code> to raise <code>RuntimeError("unit tests must not touch a database (00-index X1)")</code>. <code>test_no_db_guard.py</code> proves the wall exists.</div>
+<div><b>Env placeholders</b> (<code>POSTGRES_*</code>, <code>JWT_SECRET_KEY</code>) are set with <code>os.environ.setdefault</code> in the conftest <i>module body</i>, because <code>Settings()</code> is built at import time.</div>
+<div><b>Harness proof:</b> <code>test_coordinates.py</code> pins <code>metres_between</code>: same point 0; symmetry; Hyderabad to Bengaluru about 500 km (&plusmn;1 %); one degree of latitude about 111,195 m; <code>metres_label</code>.</div>
+<div><b>Rule for later tasks:</b> a tested module must import without a database; move a pure function to its own <code>app/core/</code> module if its neighbours pull in an engine.</div>
+<div><span class="tag cli">run</span> <code>cd api &amp;&amp; pip install -r requirements-dev.txt &amp;&amp; python -m pytest</code></div>
+</div></div></div>
+
+<div data-pane="vt" class="hide">
+<div class="two">
+<pre class="code">adminWeb/
+  vitest.config.ts   <span class="c"># mergeConfig(vite.config.ts) so the @/ alias works
+                     # test: environment jsdom,
+                     #   include src/**/*.test.{ts,tsx},
+                     #   setupFiles src/test/setup.ts</span>
+  src/test/setup.ts  <span class="c"># import '@testing-library/jest-dom/vitest'</span>
+  src/lib/&lt;existing-util&gt;.test.ts   <span class="c"># 3-5 cases pinning
+                                  # current behaviour</span>
+  package.json       <span class="c"># "test": "vitest run"
+                     # "test:watch": "vitest"</span></pre>
+<div style="display:grid;gap:8px;font-size:13px">
+<div><b>Install:</b> <code>vitest @vitest/coverage-v8 jsdom @testing-library/react @testing-library/jest-dom</code> as dev dependencies.</div>
+<div><b>Version trap:</b> adminWeb is on <b>Vite 8</b> and React 19.2. Pick the vitest major whose peer range includes <code>^8</code>; if none does yet, <b>stop and report</b> rather than downgrading Vite.</div>
+<div>No globals: import <code>describe / it / expect</code> explicitly (no tsconfig change). Test files stay linted; any ESLint complaint gets a scoped override for <code>**/*.test.{ts,tsx}</code>, never a global disable.</div>
+<div>adminWeb is Tailwind v4 / Vite 8; mobileapp is NativeWind 4 / Tailwind 3 - <b>do not share a test config</b>.</div>
+<div><span class="tag cli">run</span> <code>cd adminWeb &amp;&amp; npm test</code></div>
+</div></div></div>
+
+<div data-pane="jx" class="hide">
+<div class="two">
+<pre class="code">mobileapp/
+  jest.setup.ts      <span class="c"># i18n for tests (or mock expo-localization -> en)</span>
+  package.json       <span class="c"># "test": "jest"
+                     # "jest": {
+                     #   "preset": "jest-expo",
+                     #   "testMatch": ["**/__tests__/**/*.test.ts?(x)"],
+                     #   "moduleNameMapper": {"^@/(.*)$": "&lt;rootDir&gt;/src/$1"},
+                     #   "transformIgnorePatterns": [... + nativewind,
+                     #     react-native-css-interop, @expo-google-fonts/.*],
+                     #   "setupFilesAfterEnv": ["&lt;rootDir&gt;/jest.setup.ts"] }</span>
+  src/lib/__tests__/coordinates.test.ts</pre>
+<div style="display:grid;gap:8px;font-size:13px">
+<div><b>Install</b> through Expo's resolver so versions match SDK 54: <code>npx expo install jest-expo jest @types/jest -- --save-dev</code>, plus <code>@testing-library/react-native</code>. Dev dependencies only - <b>no native module</b>, so no new build.</div>
+<div><b>Harness proof:</b> the same four distance cases as the Python test, plus one asserting Hyderabad to Bengaluru equals the Python figure within <b>1 m</b> - the two haversines must agree.</div>
+<div>ESLint's "no English in components" rule gets a scoped override for <code>**/__tests__/**</code>. <code>npm run lint</code> must not run jest; <code>i18n:check</code> is unchanged.</div>
+<div><span class="tag cli">run</span> <code>cd mobileapp &amp;&amp; npm test</code></div>
+</div></div></div>
+
+<div class="pill-info" style="margin-top:12px"><b>CI:</b> in <code>.github/workflows/pr-check.yml</code> the api job is renamed "api - import check &amp; unit tests" and gains <code>pip install -r requirements-dev.txt</code> then <code>python -m pytest</code>; the <code>adminweb</code> and <code>mobileapp</code> jobs add <code>npm test</code> after <code>typecheck</code>. A deliberately failing test must fail the job (verified once on a throwaway branch).</div>
+<div class="scroll" style="margin-top:12px"><table class="t">
+<thead><tr><th>Task 00 also</th><th>Step</th></tr></thead><tbody>
+<tr><td>Merge the coordinates branch</td><td>Owner pushes the branch holding revision <code>f9c2d8a3e17b</code> (adds <code>pincodes.latitude / longitude</code>). Merge into <code>dev</code>. Check its <code>down_revision</code> is a revision already in the repo (expected <code>ea2fb2654b95</code>); if it points elsewhere the chain has forked - stop and ask the owner, never write a merge migration on a guess.</td></tr>
+<tr><td>Check the model</td><td><code>Pincode</code> in <code>territory.py</code> must declare both columns (<code>Float</code>, nullable); add them to the model if the branch only touched the migration. <code>python -m alembic heads</code> prints exactly one head.</td></tr>
+<tr><td>Production</td><td>Owner runs the migration and loads the coordinate <i>data</i> too; verify read-only: <code>SELECT count(*), count(latitude) FROM pincodes;</code> expect 19,496 total and about 19,195 with a point (G2: trust the data, missing means 0 km).</td></tr>
+</tbody></table></div>
+</div></div>
+
+<h2 class="sec" id="chain">2. The migration chain</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:10px">One linear chain, applied in this order, no branches. If tasks land out of order the implementer re-points <code>down_revision</code> to the current head and says so in the commit. Click a revision for what it needs and how to check it.</p>
+<div class="chain" id="chain">
+<div class="node origin"><span class="rev">ea2fb2654b95</span><span class="tk">today's repo head</span><span class="rl">a technician can pass a job offer</span></div><div class="link">&rarr;</div>
+<button class="node on" data-rev="0"><span class="rev">f9c2d8a3e17b</span><span class="tk">Task 00</span><span class="rl">R0 - owner's branch</span></button><div class="link">&rarr;</div>
+<button class="node" data-rev="1"><span class="rev">3b7e1f0a9c41</span><span class="tk">Task 01</span><span class="rl">R1</span></button><div class="link">&rarr;</div>
+<button class="node" data-rev="2"><span class="rev">5d2a8c6e0b13</span><span class="tk">Task 02</span><span class="rl">R1</span></button><div class="link">&rarr;</div>
+<button class="node" data-rev="3"><span class="rev">7c4f2e9a1d58</span><span class="tk">Task 05</span><span class="rl">R2</span></button><div class="link">&rarr;</div>
+<button class="node" data-rev="4"><span class="rev">9e1b5d3c7a26</span><span class="tk">Task 10</span><span class="rl">R5</span></button><div class="link">&rarr;</div>
+<button class="node" data-rev="5"><span class="rev">b4a8e2f6c903</span><span class="tk">Task 11</span><span class="rl">R6</span></button><div class="link">&rarr;</div>
+<button class="node" data-rev="6"><span class="rev">d6c3a9f1e874</span><span class="tk">Task 12</span><span class="rl">R7</span></button>
+</div>
+<div class="detail" id="detail"></div>
+<p style="margin-top:10px;font-size:12.5px;color:var(--ink-3)"><b>No migration:</b> tasks 03, 04, 06, 07, 08, 09, 13, 14, 15.</p>
+<pre class="code" style="margin-top:10px"><span class="c"># The owner's command - production, one revision at a time, NEVER "head" (W4)</span>
+$env:CONFIRM_PROD='yes-i-mean-it'; $env:POSTGRES_DB='RelianceProdDB'
+./.venv/Scripts/python.exe -m alembic current              <span class="c"># expect the PREVIOUS row of the chain</span>
+./.venv/Scripts/python.exe -m alembic upgrade &lt;revision&gt;   <span class="c"># the release's revision</span>
+./.venv/Scripts/python.exe -m alembic current
+Remove-Item Env:CONFIRM_PROD, Env:POSTGRES_DB</pre>
+<p style="margin-top:8px;font-size:12.5px;color:var(--ink-3)">On dev every revision is round-trip tested first (upgrade, downgrade to the previous, upgrade, ids compared). After every migration, on both databases: the covering-index query (every foreign key has one) and <code>python -m app.scripts.audit_tenancy</code> must be clean.</p>
+</div></div>
+
+<h2 class="sec" id="releases">3. Release plan R0 - R8</h2>
+<div class="card"><div class="scroll"><table class="t">
+<thead><tr><th>Release</th><th>Tasks</th><th>Gate before it starts</th><th>Prod migration</th><th>API / console / mobile</th></tr></thead><tbody>
+<tr><td><b>R0</b> Prerequisites</td><td>00</td><td>Owner has pushed the <code>f9c2d8a3e17b</code> branch; one head after the merge. Also confirm the production startup command (does it auto-migrate?).</td><td><code>f9c2d8a3e17b</code>, with the coordinate data loaded</td><td>API optional; nothing visible</td></tr>
+<tr><td><b>R1</b> Franchisees exist</td><td>01, 02, 03, 04</td><td>R0 done; gate (b2): all four merged and tagged together; dev round trips passed; API copy read by the owner; out of hours</td><td><code>3b7e1f0a9c41</code> then <code>5d2a8c6e0b13</code>, back to back</td><td><b>Publish the API immediately</b> (the old API cannot raise a ticket once the columns are NOT NULL). No non-home franchisee on prod until R3. Nothing visible changes.</td></tr>
+<tr><td><b>R2</b> Ops and money move; employees</td><td>05, 06 together</td><td>R1 live; both acceptance sets green on dev; round trip with ledger ids compared; CSV layout and server sentences read by the owner</td><td><code>7c4f2e9a1d58</code></td><td><b>Publish immediately</b> (<code>ledger_entries.technician_type</code> is NOT NULL, no default). Console unchanged.</td></tr>
+<tr><td><b>R3</b> The two console screens</td><td>08 + 09 (+ the staff commit of 09 section 5.10)</td><td>R2 live on prod; copy 08 and 09 signed off; lint, typecheck, test, build green</td><td>none</td><td>One console deploy, <b>both tasks together</b> (gate d). Prod can have franchisees from here.</td></tr>
+<tr><td><b>R4</b> Forward-compat</td><td>07 + console ledger kinds / <code>Awaiting Part</code> status (13 sections 5.1, 5.2 status half)</td><td>Task 06 on dev (07 does not need prod); copy 07 signed off; 07 criteria 1-12 on a dev build</td><td>none</td><td>Console commit to prod; owner re-seeds the Play reviewer, builds, submits to Play internal then Production at 100 %. <b>Gate OUT:</b> on the production track and at least 90 % of active devices on that versionCode - blocks R5, R6, R7.</td></tr>
+<tr><td><b>R5</b> Travel allowance</td><td>10 + 13 travel parts + 14</td><td>R4 gate OUT met; prod has the coordinate data; round trip done before any <code>travel</code> row exists; copy 13 (travel) and 14 signed off</td><td><code>9e1b5d3c7a26</code> (additive)</td><td>API promptly after (rates are 0, so nothing is paid on the day); console travel commits; <b>mobile after the API</b>, with <code>react-native-webview</code> (the one native module, X3). Tickets accepted before today never pay travel.</td></tr>
+<tr><td><b>R6</b> Speed allowance</td><td>11 + 13 speed parts</td><td>R4 gate OUT; gate (e): console ledger commit live on both console deploys; speed clock settled (starts at the later of accept and slot start, ruling R1)</td><td><code>b4a8e2f6c903</code> (additive)</td><td>API after the migration; speed screens after the API. Prod has 0 speed rules until a franchisee admin adds one.</td></tr>
+<tr><td><b>R7</b> Spare parts</td><td>12 + 13 parts screens</td><td>R4 gate OUT; <code>Awaiting Part</code> status half live on both consoles; the migration's BEFORE lists reconciled and round trip done with a part and a request seeded; push text (five languages) and bell copy signed off; P4 and D10 settled (an approved request may be cancelled; no Admin / NH fallback for home parts)</td><td><code>d6c3a9f1e874</code></td><td>API after the migration; parts screens <b>with</b> the API. No app can raise a request until R8.</td></tr>
+<tr><td><b>R8</b> App parts + docs</td><td>15 + the AGENTS.md pass</td><td>R7 live; R5's Task 14 build is the base; copy 15 signed off</td><td>none</td><td>Re-seed the Play reviewer; production EAS build, internal then Production. Reconcile the prose; tick the index sign-off checklist.</td></tr>
+</tbody></table></div></div>
+
+<div class="card"><header><h2>Release gates (00-index section 4)</h2></header><div class="body" style="display:grid;gap:6px;font-size:13px">
+<div><b>(a)</b> Task 07 on Play (production track) before Tasks 10-12 publish - and, per 6a, at least 90 % of active technicians on that build.</div>
+<div><b>(b)</b> Each migration runs on <span class="mono">RelianceProdDB</span> (by the owner) before the API that needs it is published.</div>
+<div><b>(b2)</b> Tasks 01-03 published together, immediately after prod is migrated to <span class="mono">5d2a8c6e0b13</span>.</div>
+<div><b>(c)</b> PROPOSED copy of a client task signed off before that task is built.</div>
+<div><b>(d)</b> Task 08 never reaches production without Task 09.</div>
+<div><b>(e)</b> Console ledger kind labels ship no later than the API writing <span class="mono">travel</span> / <span class="mono">speed_*</span>.</div>
+</div></div>
+
+<h2 class="sec" id="open">4. Owner decisions</h2>
+<div class="card"><div class="body">
+<p style="margin-bottom:6px;font-size:13px;color:var(--ink-2)">The owner has ruled on ten of the original questions; the mocks show the settled behaviour. Five remain open, each with a written default the code follows until the owner says otherwise (16, end of document).</p>
+
+<h3 style="margin:14px 0 6px;font-size:14px">Still open (5)</h3>
+<ol class="open">
+<li><b>Status code for an out-of-range pincode</b><span class="df"><code>PINCODE_OUTSIDE_FRANCHISEE</code>: 422 everywhere (reconciled); the owner may prefer 400 for the base-location case.</span></li>
+<li><b>Facility admin and operator share part powers</b><span class="df">They have the same part powers; the admin also manages operators (P6).</span></li>
+<li><b>Franchisee admin sees tickets read-only</b><span class="df">By ownership, never by territory; a franchisee admin reads its tickets and cannot write (F13).</span></li>
+<li><b>Employee force-close payout</b><span class="df">Ignored, not refused, when a manager force-closes an employee's job.</span></li>
+<li><b>Reversal month on statements</b><span class="df">A reversal lands in the month it is written, not the month of the penalty it reverses.</span></li>
+</ol>
+
+<h3 style="margin:18px 0 6px;font-size:14px">Settled by the owner (10) <span class="proposed" style="font-size:11px;font-weight:600;margin-left:6px">shown in the mocks</span></h3>
+<ol class="open">
+<li><b>R1 - Speed clock start</b><span class="df">The clock starts at the <b>later of</b> the accept and the confirmed slot start. Accepted Mon 11:00, slot Thu 10:00-12:00, completed Thu 13:00 is 3 working hours, so a reward. Minus <code>Awaiting Part</code> as before; if the slot starts after completion the clock reads 0. See <a href="backend-10-11-allowance-calculators.html#speed">the speed calculator</a>.</span></li>
+<li><b>R2 - An approved part that can never be supplied</b><span class="df">A facility may cancel an approved request: <code>approved &rarr; rejected</code>, reason required; the job returns to In Progress once nothing is requested or approved. See <a href="backend-12-spare-part-state-machine.html#machine">the state machine</a>.</span></li>
+<li><b>R3 - A non-home franchisee with no active admin</b><span class="df">No company fallback. Instead the last active admin of a non-home franchisee cannot be deactivated: 409 <code>FRANCHISEE_LAST_ADMIN</code>. The home franchisee is exempt.</span></li>
+<li><b>R4 - Home-franchisee part requests</b><span class="df">No Admin / NH fallback. Technicians of a franchisee with no active facility admin or operator cannot raise requests (409 <code>NO_FACILITY</code>) and the app says "Your franchisee has no parts desk yet." Company Admin / NH can create facility users for the home franchisee.</span></li>
+<li><b>R5 - Type-change rules</b><span class="df">Refused while the technician holds an open job (<code>TECHNICIAN_HAS_OPEN_JOBS</code>) and freelancer to employee refused while redeemable money remains (<code>TECHNICIAN_HAS_BALANCE</code>).</span></li>
+<li><b>R6 - <code>vendorPricePaise</code></b><span class="df">Withheld from franchise principals.</span></li>
+<li><b>R7 - Speed money on force-close</b><span class="df">None.</span></li>
+<li><b>R8 - What staff see of a non-home job</b><span class="df">Company staff see both the travel amount and the speed outcome on any ticket in their scope, non-home franchisees included; never the base's coordinates or the franchisee's pool. Facility staff and vendors see neither amount.</span></li>
+<li><b>R9 - Self-set base</b><span class="df">A technician may set their own base. The source (Pincode / GPS / Map / Set by admin), who set it and when are shown to the franchisee admin, who can correct it at any time. No approval, no cooldown.</span></li>
+<li><b>R10 - Travel estimate on the pool offer</b><span class="df">Not shown.</span></li>
+</ol>
+
+<h3 style="margin:18px 0 6px;font-size:14px">Written defaults the code follows (no decision asked)</h3>
+<ol class="open">
+<li><b>A second part while the job already waits</b><span class="df">Allowed (task 12 D1) vs P2's literal "only while In Progress".</span></li>
+<li><b>Carve-out details</b><span class="df">A technician left with zero coverage moves instead; <code>Escalated</code> with no technician is re-stamped too, beyond F6's list; no push to a moved technician.</span></li>
+<li><b>Ledger and redemption <code>franchisee_id</code></b><span class="df">The technician's at write time, not the ticket's; a reversal copies the penalty's.</span></li>
+<li><b>Home franchisee keeps today's rules</b><span class="df">For existing roles (F8); its name is the company's, code <code>HOME</code>.</span></li>
+<li><b>"Last active", not "Last sign-in"</b><span class="df">For franchise admins; derived from refresh tokens (03 to 08).</span></li>
+<li><b>Mobile adoption of at least 90 %</b><span class="df">Part of gate (a); and whether to keep the <code>X-App-Compat</code> header, which needs a server-side count nobody has built.</span></li>
+<li><b>Employee payout shown as "In salary"</b><span class="df">On pool, offer and job detail, by the technician's current type (task 07).</span></li>
+<li><b>Pincode-centre correction screen</b><span class="df">A possible later task (G2; e.g. 500032 is about 40 km off); it must re-copy pincode-sourced bases and never touch an accept snapshot.</span></li>
+<li><b>Existing bug, not in scope</b><span class="df">After a customer answers "not done", a second customer confirmation is impossible, so the job can only be force-closed. Worth its own ticket.</span></li>
+</ol>
+</div></div>
+</div>
+
+<script>
+(function(){
+  var R=[
+   {rev:"f9c2d8a3e17b",task:"00 - owner's branch",rel:"R0",adds:"pincodes.latitude and pincodes.longitude (double precision, nullable); 19,195 of 19,496 codes carry a point. RelianceDB is already here; the file is not yet in the repo.",needs:"ea2fb2654b95 on the target. If its file's down_revision names anything else, the chain has forked - stop. On prod: the coordinate data, not just the columns.",check:"SELECT count(*), count(latitude) FROM pincodes;  -- 19496 / about 19195"},
+   {rev:"3b7e1f0a9c41",task:"01 - every_company_has_franchisees",rel:"R1",adds:"franchisees and franchisee_pincodes; franchisee_id on technician_profiles, technician_invites, tickets, ledger_entries and redemptions (backfilled with each company's home, then NOT NULL); technician_type; memberships.franchisee_id; widens ck_ticket_events_kind (franchisee_changed) and ck_notifications_kind (technician_moved).",needs:"f9c2d8a3e17b. The API that writes the five NOT NULL columns (tasks 01-03) must be published in the same sitting (gate b2).",check:"One home per company; five zeros for NULL franchisee_id; technician_type only 'freelancer'; the two CHECKs name the new values."},
+   {rev:"5d2a8c6e0b13",task:"02 - franchise_roles_and_features",rel:"R1",adds:"Roles franchisee_admin (8), facility_admin (9), facility_operator (10); the eleven feature keys and their default holders. Idempotent reference data, no tables.",needs:"3b7e1f0a9c41.",check:"SELECT key, label, rank FROM roles WHERE rank >= 8;  -- three rows"},
+   {rev:"7c4f2e9a1d58",task:"05 - franchisee_admins_review_and_are_notified",rel:"R2",adds:"notifications.franchisee_id and the franchisee_admin audience; upi_change_requests.reviewer_role gains franchisee_admin; ledger_entries.technician_type NOT NULL with no default (backfilled from the technician).",needs:"5d2a8c6e0b13 and uq_franchisees_company_id_id. Publish the API in the same sitting - the R1 API cannot write a ledger row against the new NOT NULL.",check:"No ledger row with NULL technician_type; four constraints present; only 'freelancer' on the day."},
+   {rev:"9e1b5d3c7a26",task:"10 - travel_allowance",rel:"R5",adds:"franchisee_travel_rules (two rows per franchisee, rate 0 = off); tickets.accept_snapshot; the technician's base-location columns; ledger kind travel and the one-travel-row-per-ticket partial unique index.",needs:"7c4f2e9a1d58; coordinate data on the target; gate (a) met.",check:"Every franchisee has exactly 2 rules, all at 0 on the day; no accept_snapshot of JSON null."},
+   {rev:"b4a8e2f6c903",task:"11 - speed_allowance",rel:"R6",adds:"franchisee_speed_rules (empty = off); ledger kinds speed_reward and speed_penalty and their one-per-ticket index; event kind speed_settled.",needs:"9e1b5d3c7a26; its event list must equal the live ck_ticket_events_kind (with franchisee_changed); gates (a) and (e) met.",check:"The ledger CHECK includes both speed kinds; franchisee_speed_rules is empty on the day."},
+   {rev:"d6c3a9f1e874",task:"12 - spare_parts",rel:"R7",adds:"spare_parts and spare_part_requests; ticket status Awaiting Part; event kinds part_requested, part_approved, part_rejected, part_issued, part_returned; notification kinds part_requested, part_decided, part_issued and the facility audience.",needs:"b4a8e2f6c903; its BEFORE lists must include speed_settled, franchisee_admin and technician_moved; gate (a) and the console status commit live on both deploys.",check:"Both new tables empty; three partial unique indexes present; the four CHECKs list the new values and every earlier one."}
+  ];
+  function show(i){
+    var r=R[i];
+    document.querySelectorAll("#chain .node[data-rev]").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-rev")===String(i));});
+    document.getElementById("detail").innerHTML="<h3><span class='mono'>"+r.rev+"</span> - task "+r.task+" - "+r.rel+"</h3><dl><dt>Adds</dt><dd>"+r.adds+"</dd><dt>Needs before it runs</dt><dd>"+r.needs+"</dd><dt>Read-only check after</dt><dd>"+r.check.replace(/</g,"&lt;")+"</dd></dl>";
+  }
+  document.getElementById("chain").addEventListener("click",function(e){var b=e.target.closest("[data-rev]");if(b)show(parseInt(b.getAttribute("data-rev"),10));});
+  show(0);
+})();
+</script>
+</body>
+</html>

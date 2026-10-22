@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13b Speed matrix — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a{cursor:pointer}
+  .viewbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .viewbar .sp{flex:1}
+  .split{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.split{grid-template-columns:1fr}}
+  .tree,.tree ul{list-style:none;margin:0;padding:0}
+  .tree ul{margin-left:16px;border-left:1px solid var(--border-2)}
+  .tree li{margin:0}
+  .tr{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;font-size:13.5px;min-height:34px}
+  .tr:hover{background:var(--surface-2)}
+  .tr .nm{flex:1;min-width:0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+  .tr .nm small{color:var(--ink-3);font-size:11.5px}
+  .tr.inactive .nm{color:var(--ink-3);text-decoration:line-through}
+  .tr.model .nm:before{content:"▪";color:var(--ink-3)}
+  .tr.cat .nm{font-weight:600}
+  .taken{font-size:11.5px;color:var(--ink-3);font-style:italic}
+  .treewrap{padding:8px 10px 12px;max-height:520px;overflow:auto}
+  .hint-line{display:block;font-size:11.5px;color:var(--ink-3);margin-top:2px}
+  .hint-line.ov{color:var(--info)}.hint-line.off{color:var(--warn)}.hint-line.gone{color:var(--danger)}
+  tr.greyed td{opacity:.55}
+  .path{color:var(--ink-3);font-size:12px}
+  .typecards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tcard{border:1px solid var(--input);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-size:13px}
+  .tcard input{margin-top:3px}
+  .tcard.sel{border-color:var(--brand-400);background:var(--brand-100)}
+  .tcard.dis{opacity:.55;cursor:not-allowed}
+  .applies{display:flex;gap:10px;align-items:center;border:1px solid var(--input);border-radius:8px;padding:8px 11px;background:var(--surface-2);min-height:40px;font-size:13.5px}
+  .applies .nm{flex:1}
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .res{font-size:15px;font-weight:600;margin-top:10px}
+  .res.ok{color:var(--ok)}.res.dng{color:var(--danger)}.res.zero{color:var(--ink-2)}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  .pills{display:flex;gap:6px}
+  .pills button{border:1px solid var(--input);background:#fff;border-radius:99px;padding:4px 12px;font:500 12.5px "IBM Plex Sans";cursor:pointer;color:var(--ink-2)}
+  .pills button.on{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+  .skelrow{display:grid;gap:12px;padding:18px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small>Franchise portal · SkyFix Services</small></div></div>
+    <div class="grp">Work</div>
+    <a>Spare parts <span class="n">3</span></a><a>Tickets</a><a>Technicians</a><a>Employees</a><a>Employee statements</a>
+    <div class="grp">Settings</div>
+    <a class="on">Allowance rules</a><a>Facility users</a>
+    <div class="who">Meena R · Franchisee admin</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Allowance rules</h1><div class="sub">Travel and speed allowances for your technicians</div></div>
+      <span class="sp"></span><div class="avatar">MR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.4</b> (Allowance rules — speed matrix; contract §4.2; copy §5.10 “Speed”). Pick a type and a category or product, set the reward / penalty hours and rupees. Rules are real in this mock: add, edit, remove and the “try a duration” tester all work.</div>
+
+      <div class="viewbar">
+        <div class="seg" role="group" aria-label="What to show"><button onclick="location.href='13a-travel-settings.html'">Travel</button><button class="on">Speed</button></div>
+      </div>
+      <div class="pill-info">Finish fast, earn a reward; finish late, pay a penalty. The clock runs from accepting the job to pressing Complete, minus time waiting for a part. <span class="proposed">It starts at the later of accepting and the start of the customer’s confirmed time, so a job taken days ahead is not penalised for waiting.</span> A product’s rule beats its category’s, and the deepest category wins.</div>
+
+      <!-- DATA -->
+      <div data-view="data">
+        <div class="split">
+          <!-- left: price-free tree -->
+          <section class="card">
+            <header><div><h2>Choose what this rule applies to</h2><div class="sub">A category covers every product beneath it.</div></div></header>
+            <div class="toolbar"><label style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Technician type</label>
+              <div class="seg" id="treeType"><button class="on" data-t="freelancer">Freelancers</button><button data-t="employee">Employees</button></div></div>
+            <div class="treewrap"><ul class="tree" id="tree"></ul></div>
+          </section>
+
+          <!-- right: matrix -->
+          <section class="card">
+            <header><div><h2>Speed rules</h2><div class="sub">One row per type and category or product</div></div><span style="flex:1"></span>
+              <button class="btn pri" id="addBtn">Add rule</button></header>
+            <div class="toolbar">
+              <span style="font-size:12.5px;color:var(--ink-3)">Technician type:</span>
+              <div class="pills" id="filter"><button class="on" data-f="all">All</button><button data-f="employee">Employees</button><button data-f="freelancer">Freelancers</button></div>
+            </div>
+            <div id="tableHost" style="overflow:auto">
+              <table class="t"><thead><tr><th>Applies to</th><th>Type</th><th>Reward</th><th>Penalty</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+            </div>
+            <div class="empty hide" id="filtEmpty"><b>No speed rules yet</b>Add a rule for a category or a product. A job no rule matches earns and pays nothing for speed.</div>
+          </section>
+        </div>
+
+        <!-- tester -->
+        <section class="card" style="margin-top:16px">
+          <header><div><h2 class="proposed">Try a duration</h2><div class="sub proposed">Mock only — see what a finished job would earn or pay. Not saved.</div></div></header>
+          <div class="body">
+            <div class="row3">
+              <div class="field"><label class="proposed">Job is for</label><select class="in" id="tTarget"></select></div>
+              <div class="field"><label>Technician type</label>
+                <div class="seg" id="tType"><button class="on" data-t="freelancer">Freelancers</button><button data-t="employee">Employees</button></div></div>
+              <div class="field"><label class="proposed">Accepted at</label><input class="in" id="tAcc" type="datetime-local" value="2026-10-12T11:00"></div>
+            </div>
+            <div class="row3">
+              <div class="field"><label class="proposed">Customer’s time starts (optional)</label><input class="in" id="tSlot" type="datetime-local"></div>
+              <div class="field"><label class="proposed">Completed at</label><input class="in" id="tDone" type="datetime-local" value="2026-10-13T13:00"></div>
+              <div class="field"><label class="proposed">Hours waiting for a part</label><input class="in" id="tWait" value="3" inputmode="decimal"></div>
+            </div>
+            <div class="row3">
+              <div class="field"><label class="proposed">Clock starts at</label><input class="in" id="tStart" disabled></div>
+              <div class="field"><label class="proposed">Working hours</label><input class="in" id="tWork" disabled></div>
+              <div class="field"><label class="proposed">Rule used</label><div id="tRule" style="font-size:13.5px;padding-top:8px"></div></div>
+            </div>
+            <div class="hint proposed" style="font-size:12px;color:var(--ink-3);margin-bottom:4px">The clock starts at the later of the accept and the confirmed time’s start. If that is after completion, working hours read 0. Example: accepted Mon 11:00, time Thu 10:00 to 12:00, completed Thu 13:00 is 3 working hours.</div>
+            <div class="res" id="tRes"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- EMPTY -->
+      <div data-view="empty" class="hide">
+        <div class="card">
+          <div class="toolbar"><div class="pills"><button class="on">All</button><button>Employees</button><button>Freelancers</button></div><span class="sp"></span><button class="btn pri" data-add>Add rule</button></div>
+          <div class="empty"><b>No speed rules yet</b>Add a rule for a category or a product. A job no rule matches earns and pays nothing for speed.</div></div>
+      </div>
+      <!-- LOADING -->
+      <div data-view="loading" class="hide">
+        <div class="split"><div class="card skelrow"><div class="skel" style="width:60%"></div><div class="skel"></div><div class="skel" style="width:80%"></div><div class="skel"></div><div class="skel" style="width:50%"></div></div>
+          <div class="card skelrow"><div class="skel" style="width:30%"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
+      </div>
+      <!-- ERROR -->
+      <div data-view="error" class="hide">
+        <div class="card"><div class="empty"><b>Couldn’t load the speed rules</b>Something went wrong reaching the server.<div style="margin-top:12px"><button class="btn" data-toast="Retrying…">Retry</button></div></div></div>
+      </div>
+
+      <div class="notebox">
+        <h3>Wording added by the mock — needs sign-off</h3>
+        <ul>
+          <li>The whole “Try a duration” card (title, sub-line, “Job is for”, “Accepted at”, “Customer’s time starts (optional)”, “Completed at”, “Clock starts at”, “Hours waiting for a part”, “Working hours”, “Rule used”, and the outcome sentences “No rule matches — earns and pays nothing for speed”, “Switched off for this product — nothing is paid or charged”). The doc lists Task 11’s <code>/speed/effective</code> preview as out of scope (§8); this is the closest static stand-in.</li>
+          <li>Outcome lines reuse §5.10’s “Rewarded {amount}”, “Penalised −{amount}”, “Neither — between the two”.</li>
+          <li>The info-line sentence “It starts at the later of accepting and the start of the customer’s confirmed time, so a job taken days ahead is not penalised for waiting”, the tester’s explanatory line about the later-of rule with its Mon / Thu example, and “Enter the times.”.</li>
+          <li>The missing-target message “Choose category or product” under Applies to, error-state body text and Retry label.</li>
+          <li>The tree panel carries its own Freelancers / Employees segment so “Already has a rule” can be shown without opening the dialog (the real picker lives in a nested dialog and takes the type from the form — this mock shows both).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add / edit rule dialog -->
+<div class="scrim" id="dlgRule"><div class="dlg">
+  <header><h3 id="dlgTitle">Add speed rule</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd">
+    <div class="field"><label>Applies to</label>
+      <div class="applies"><span class="nm" id="dTarget" style="color:var(--ink-3)">Nothing chosen</span><button class="btn sm" id="dChoose" type="button">Choose category or product</button></div>
+      <div class="err" id="eTarget"></div></div>
+    <div class="field"><label>Technician type</label>
+      <div class="typecards" id="dType">
+        <label class="tcard sel" data-t="freelancer"><input type="radio" name="tt" checked> <span><b>Freelancers</b></span></label>
+        <label class="tcard" data-t="employee"><input type="radio" name="tt"> <span><b>Employees</b></span></label>
+      </div></div>
+    <div class="row2">
+      <div class="field"><label for="dRH">Reward if finished within (hours)</label><input class="in" id="dRH" value="12" inputmode="numeric"><div class="err" id="eRH"></div></div>
+      <div class="field"><label for="dRP">Reward (₹)</label><input class="in" id="dRP" value="200" inputmode="numeric"><div class="err" id="eRP"></div></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="dPH">Penalty if finished after (hours)</label><input class="in" id="dPH" value="24" inputmode="numeric"><div class="err" id="ePH"></div></div>
+      <div class="field"><label for="dPP">Penalty (₹)</label><input class="in" id="dPP" value="150" inputmode="numeric"><div class="err" id="ePP"></div></div>
+    </div>
+    <div class="hint" style="font-size:12px;color:var(--ink-3)">Between the two, nothing is paid or charged. Set both amounts to 0 to switch speed off for this product.</div>
+  </div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="dSave">Save rule</button></footer>
+</div></div>
+
+<!-- Nested picker -->
+<div class="scrim" id="dlgPick" style="z-index:60"><div class="dlg">
+  <header><h3>Choose what this rule applies to</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><div style="color:var(--ink-3);font-size:12.5px;margin-bottom:8px">A category covers every product beneath it.</div>
+    <div class="treewrap" style="padding:0"><ul class="tree" id="pickTree"></ul></div></div>
+</div></div>
+
+<!-- Remove confirm -->
+<div class="scrim" id="dlgDel"><div class="dlg sm">
+  <header><h3 id="delTitle">Remove the rule?</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><p style="margin:6px 0;color:var(--ink-2)">Jobs accepted from now on stop earning or paying for speed here. Jobs already accepted keep their rule.</p></div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn dng" id="delGo">Remove rule</button></footer>
+</div></div>
+
+<div class="state-switch"><button data-state="data" class="on">Data</button><button data-state="empty">Empty</button><button data-state="loading">Loading</button><button data-state="error">Error</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var inr = function(n){ return "₹" + Number(n).toLocaleString("en-IN"); };
+  var $ = function(id){ return document.getElementById(id); };
+  var TYPE = {freelancer:"Freelancers", employee:"Employees"};
+
+  // Price-free catalogue (Task 11 W16): nodes + models, no counts, no prices.
+  var nodes = [
+    {id:"el", parent:null, name:"Electronics", leaf:false, active:true},
+    {id:"tv", parent:"el", name:"Television", leaf:false, active:true},
+    {id:"atv", parent:"tv", name:"Android TV", leaf:true, active:true},
+    {id:"led", parent:"tv", name:"LED TV", leaf:true, active:true},
+    {id:"sb", parent:"el", name:"Soundbars", leaf:true, active:false},
+    {id:"ha", parent:null, name:"Home Appliances", leaf:false, active:true},
+    {id:"wm", parent:"ha", name:"Washing Machine", leaf:false, active:true},
+    {id:"fl", parent:"wm", name:"Front Load", leaf:true, active:true},
+    {id:"tl", parent:"wm", name:"Top Load", leaf:true, active:true}
+  ];
+  var models = [
+    {id:"m1", node:"atv", name:"Sunview 43\"", brand:"Sunview"},
+    {id:"m2", node:"atv", name:"Meridian 55\"", brand:"Meridian"},
+    {id:"m3", node:"led", name:"Sunview 32\"", brand:"Sunview"},
+    {id:"m4", node:"fl", name:"Acme FL-7 (7 kg)", brand:"Acme"}
+  ];
+  var rules = [
+    {id:1, type:"freelancer", kind:"node", target:"el", rh:24, rp:100, ph:48, pp:100},
+    {id:2, type:"freelancer", kind:"node", target:"tv", rh:12, rp:200, ph:24, pp:150},
+    {id:3, type:"freelancer", kind:"model", target:"m1", rh:12, rp:0, ph:24, pp:0},
+    {id:4, type:"employee", kind:"node", target:"wm", rh:8, rp:100, ph:16, pp:80},
+    {id:5, type:"freelancer", kind:"node", target:"sb", rh:6, rp:50, ph:12, pp:50}
+  ];
+  var nextId = 10, filter = "all", treeType = "freelancer", dlg = {mode:"add", type:"freelancer", kind:null, target:null, editing:null}, delId = null;
+
+  var node = function(id){ return nodes.filter(function(n){return n.id===id})[0]; };
+  var model = function(id){ return models.filter(function(m){return m.id===id})[0]; };
+  function pathOfNode(id){ var p=[], n=node(id); while(n){ p.unshift(n); n = n.parent ? node(n.parent) : null; } return p; }
+  function targetName(kind,id){ return kind==="node" ? node(id).name : model(id).name; }
+  function targetPath(kind,id){
+    var ns = kind==="node" ? pathOfNode(id).slice(0,-1) : pathOfNode(model(id).node);
+    return ns.map(function(n){return n.name});
+  }
+  function ancestorNodeIds(kind,id){ // nearest first, excluding the target itself
+    var start = kind==="node" ? node(id).parent : model(id).node, out=[], n = start ? node(start) : null;
+    while(n){ out.push(n.id); n = n.parent ? node(n.parent) : null; }
+    return out;
+  }
+  function ruleFor(type,kind,id){ return rules.filter(function(r){return r.type===type && r.kind===kind && r.target===id})[0]; }
+  function overrides(r){ // nearest ancestor rule of the same type
+    var anc = (r.kind==="model" ? [] : []).concat(ancestorNodeIds(r.kind,r.target));
+    for(var i=0;i<anc.length;i++){ var x = ruleFor(r.type,"node",anc[i]); if(x) return x; }
+    return null;
+  }
+  function overriddenBy(r){
+    return rules.filter(function(x){
+      if(x===r || x.type!==r.type) return false;
+      if(r.kind==="model") return false;
+      var anc = ancestorNodeIds(x.kind,x.target);
+      return anc.indexOf(r.target)>=0;
+    }).length;
+  }
+  function active(r){ if(r.kind==="node") return node(r.target).active; return true; }
+
+  // ---------- table ----------
+  function renderRows(){
+    var body = $("rows"); body.innerHTML = "";
+    var list = rules.filter(function(r){ return filter==="all" || r.type===filter; });
+    list.sort(function(a,b){ return (targetPath(a.kind,a.target).concat(targetName(a.kind,a.target)).join(" ")).localeCompare(targetPath(b.kind,b.target).concat(targetName(b.kind,b.target)).join(" ")); });
+    $("filtEmpty").classList.toggle("hide", list.length>0);
+    $("tableHost").classList.toggle("hide", list.length===0);
+    list.forEach(function(r){
+      var ov = overrides(r), by = overriddenBy(r), hints = [];
+      if(ov) hints.push('<span class="hint-line ov">Overrides '+targetName(ov.kind,ov.target)+'</span>');
+      if(by) hints.push('<span class="hint-line ov">'+by+(by===1?' deeper rule overrides this':' deeper rules override this')+'</span>');
+      if(r.rp===0 && r.pp===0) hints.push('<span class="hint-line off">Off for this product</span>');
+      if(!active(r)) hints.push('<span class="hint-line gone">No longer in the catalogue</span>');
+      var path = targetPath(r.kind,r.target).join(" › ");
+      var tr = document.createElement("tr"); if(!active(r)) tr.className="greyed";
+      tr.innerHTML = '<td><b>'+targetName(r.kind,r.target)+'</b>'+(r.kind==="model"?' <span class="chip">Product</span>':'')+(path?'<div class="path">'+path+'</div>':'')+hints.join("")+'</td>'+
+        '<td>'+TYPE[r.type]+'</td>'+
+        '<td>'+(r.rp>0?'Within '+r.rh+' h · '+inr(r.rp):'—')+'</td>'+
+        '<td>'+(r.pp>0?'After '+r.ph+' h · −'+inr(r.pp):'—')+'</td>'+
+        '<td style="text-align:right;white-space:nowrap"><button class="btn sm" data-edit="'+r.id+'">Edit rule</button> <button class="btn sm ghost" style="color:var(--danger)" data-del="'+r.id+'">Remove rule</button></td>';
+      body.appendChild(tr);
+    });
+  }
+
+  // ---------- tree ----------
+  function treeHTML(type, chooser){
+    function build(parentId){
+      var h = "";
+      nodes.filter(function(n){return n.parent===parentId}).sort(function(a,b){return a.name.localeCompare(b.name)}).forEach(function(n){
+        var taken = !!ruleFor(type,"node",n.id);
+        h += '<li><div class="tr cat'+(n.active?'':' inactive')+'"><span class="nm">'+n.name+(n.active?'':' <small>(inactive)</small>')+'</span>'+
+          (taken?'<span class="taken">Already has a rule</span>':'<button class="btn sm" data-choose="node:'+n.id+'">Choose</button>')+'</div>';
+        var kids = build(n.id), ms = "";
+        models.filter(function(m){return m.node===n.id}).sort(function(a,b){return a.name.localeCompare(b.name)}).forEach(function(m){
+          var t2 = !!ruleFor(type,"model",m.id);
+          ms += '<li><div class="tr model"><span class="nm">'+m.name+' <small>'+m.brand+'</small></span>'+
+            (t2?'<span class="taken">Already has a rule</span>':'<button class="btn sm" data-choose="model:'+m.id+'">Choose</button>')+'</div></li>';
+        });
+        if(kids || ms) h += '<ul>'+kids+ms+'</ul>';
+        h += '</li>';
+      });
+      return h;
+    }
+    return build(null);
+  }
+  function renderTrees(){ $("tree").innerHTML = treeHTML(treeType); if($("dlgPick").classList.contains("open")) $("pickTree").innerHTML = treeHTML(dlg.type); }
+
+  // ---------- dialog ----------
+  function clearErr(){ ["eTarget","eRH","eRP","ePH","ePP"].forEach(function(i){ $(i).textContent=""; }); ["dRH","dRP","dPH","dPP"].forEach(function(i){ $(i).classList.remove("bad"); }); }
+  function setType(t){
+    dlg.type = t;
+    document.querySelectorAll("#dType .tcard").forEach(function(c){ var on = c.getAttribute("data-t")===t; c.classList.toggle("sel",on); c.querySelector("input").checked=on; });
+  }
+  function showTarget(){
+    var el = $("dTarget");
+    if(dlg.target){ el.style.color="var(--ink)"; el.innerHTML = '<b>'+targetName(dlg.kind,dlg.target)+'</b> <span class="path">'+targetPath(dlg.kind,dlg.target).join(" › ")+'</span>'; $("dChoose").textContent = "Change"; }
+    else { el.style.color="var(--ink-3)"; el.textContent = "Nothing chosen"; $("dChoose").textContent = "Choose category or product"; }
+  }
+  function openDialog(mode, preset){
+    clearErr();
+    dlg = {mode:mode, type:"freelancer", kind:null, target:null, editing:null};
+    if(preset){ dlg.type = preset.type; dlg.kind = preset.kind; dlg.target = preset.target; }
+    var r = mode==="edit" ? preset : null;
+    $("dlgTitle").textContent = mode==="edit" ? "Edit speed rule" : "Add speed rule";
+    $("dRH").value = r?r.rh:12; $("dRP").value = r?r.rp:200; $("dPH").value = r?r.ph:24; $("dPP").value = r?r.pp:150;
+    if(mode==="edit") dlg.editing = r.id;
+    setType(dlg.type); showTarget();
+    var lock = mode==="edit";
+    $("dChoose").disabled = lock; $("dChoose").classList.toggle("dis", lock);
+    document.querySelectorAll("#dType .tcard").forEach(function(c){ c.classList.toggle("dis", lock); });
+    $("dlgRule").classList.add("open");
+  }
+  var wholeRupees = function(s){ return /^\d+$/.test(s); };
+  function save(){
+    clearErr(); var bad=false;
+    var rh=$("dRH").value.trim(), ph=$("dPH").value.trim(), rp=$("dRP").value.trim(), pp=$("dPP").value.trim();
+    function err(id,field,msg){ $(id).textContent=msg; $(field).classList.add("bad"); bad=true; }
+    if(!dlg.target){ $("eTarget").textContent="Choose category or product"; bad=true; }
+    var rhOk = /^\d+$/.test(rh) && +rh>=1 && +rh<=720, phOk = /^\d+$/.test(ph) && +ph>=1 && +ph<=720;
+    if(!rhOk) err("eRH","dRH","Between 1 and 720 hours");
+    if(!phOk) err("ePH","dPH","Between 1 and 720 hours");
+    if(rhOk && phOk && +ph < +rh) err("ePH","dPH","The penalty can’t start before the reward ends");
+    if(!wholeRupees(rp) || +rp>10000) err("eRP","dRP", wholeRupees(rp)?"Up to ₹10,000":"Enter a whole number of rupees");
+    if(!wholeRupees(pp) || +pp>10000) err("ePP","dPP", wholeRupees(pp)?"Up to ₹10,000":"Enter a whole number of rupees");
+    if(dlg.target && dlg.mode==="add"){
+      var dup = ruleFor(dlg.type,dlg.kind,dlg.target);
+      if(dup){ $("eTarget").textContent = "There is already a rule for "+targetName(dlg.kind,dlg.target)+" for "+TYPE[dlg.type]+". Edit that one instead."; bad=true; }
+    }
+    if(bad) return;
+    if(dlg.mode==="edit"){
+      var r = rules.filter(function(x){return x.id===dlg.editing})[0]; r.rh=+rh; r.ph=+ph; r.rp=+rp; r.pp=+pp;
+    } else rules.push({id:nextId++, type:dlg.type, kind:dlg.kind, target:dlg.target, rh:+rh, ph:+ph, rp:+rp, pp:+pp});
+    $("dlgRule").classList.remove("open"); toast("Rule saved"); refresh();
+  }
+  function toast(t){ var el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(function(){el.classList.remove("show")},2600); }
+
+  // ---------- tester ----------
+  function fillTargets(){
+    var sel = $("tTarget"), h = "";
+    function walk(pid, depth){
+      nodes.filter(function(n){return n.parent===pid}).forEach(function(n){
+        h += '<option value="node:'+n.id+'"'+(n.leaf?'':' disabled')+'>'+"  ".repeat(depth)+n.name+(n.leaf?'':'')+'</option>';
+        models.filter(function(m){return m.node===n.id}).forEach(function(m){ h += '<option value="model:'+m.id+'">'+"  ".repeat(depth+1)+'▪ '+m.name+'</option>'; });
+        walk(n.id, depth+1);
+      });
+    }
+    walk(null,0); sel.innerHTML = h; sel.value = "model:m2";
+  }
+  var tType = "freelancer";
+  function resolve(){
+    var v = $("tTarget").value.split(":"), kind=v[0], id=v[1];
+    if(kind==="model"){ var r = ruleFor(tType,"model",id); if(r) return r; kind="node"; id = model(id).node; }
+    var chain = [id].concat(ancestorNodeIds("node",id));
+    for(var i=0;i<chain.length;i++){ var x = ruleFor(tType,"node",chain[i]); if(x) return x; }
+    return null;
+  }
+  function test(){
+    var w = parseFloat($("tWait").value) || 0;
+    var res = $("tRes"), rule = resolve();
+    var a = Date.parse($("tAcc").value+":00Z"), sl = $("tSlot").value ? Date.parse($("tSlot").value+":00Z") : NaN, c = Date.parse($("tDone").value+":00Z");
+    if(isNaN(a) || isNaN(c)){ $("tWork").value=""; $("tStart").value=""; res.className="res zero"; res.textContent="Enter the times."; return; }
+    var st = (!isNaN(sl) && sl>a) ? sl : a, e = Math.max(0, (c-st)/3600000);
+    var D = new Date(st), DN=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], z=function(n){return (n<10?"0":"")+n;};
+    $("tStart").value = DN[D.getUTCDay()]+" "+z(D.getUTCDate())+"-"+z(D.getUTCMonth()+1)+"-"+D.getUTCFullYear()+" "+z(D.getUTCHours())+":"+z(D.getUTCMinutes());
+    var work = Math.max(0, Math.round((e-w)*10)/10); $("tWork").value = work+" h";
+    if(!rule){ $("tRule").textContent="—"; res.className="res zero"; res.textContent="No rule matches — earns and pays nothing for speed."; return; }
+    $("tRule").innerHTML = '<b>'+targetName(rule.kind,rule.target)+'</b> · '+(rule.kind==="model"?'Product':'Category')+' · '+TYPE[rule.type];
+    if(rule.rp===0 && rule.pp===0){ res.className="res zero"; res.textContent="Switched off for this product — nothing is paid or charged."; return; }
+    if(work <= rule.rh && rule.rp>0){ res.className="res ok"; res.textContent="Rewarded "+inr(rule.rp); }
+    else if(work > rule.ph && rule.pp>0){ res.className="res dng"; res.textContent="Penalised −"+inr(rule.pp); }
+    else { res.className="res zero"; res.textContent="Neither — between the two"; }
+  }
+
+  function refresh(){ renderRows(); renderTrees(); test(); }
+
+  document.addEventListener("click", function(e){
+    var t;
+    if((t = e.target.closest("#filter button"))){ document.querySelectorAll("#filter button").forEach(function(b){b.classList.toggle("on",b===t)}); filter = t.getAttribute("data-f"); renderRows(); }
+    else if((t = e.target.closest("#treeType button"))){ treeType = t.getAttribute("data-t"); renderTrees(); }
+    else if((t = e.target.closest("#tType button"))){ tType = t.getAttribute("data-t"); test(); }
+    else if(e.target.closest("#addBtn,[data-add]")) openDialog("add");
+    else if((t = e.target.closest("[data-edit]"))){ openDialog("edit", rules.filter(function(r){return r.id==t.getAttribute("data-edit")})[0]); }
+    else if((t = e.target.closest("[data-del]"))){ delId = +t.getAttribute("data-del"); var r = rules.filter(function(x){return x.id===delId})[0]; $("delTitle").textContent = "Remove the rule for "+targetName(r.kind,r.target)+" ("+TYPE[r.type]+")?"; $("dlgDel").classList.add("open"); }
+    else if(e.target.closest("#delGo")){ rules = rules.filter(function(r){return r.id!==delId}); $("dlgDel").classList.remove("open"); toast("Rule removed"); refresh(); }
+    else if((t = e.target.closest("#tree [data-choose]"))){ var p = t.getAttribute("data-choose").split(":"); openDialog("add"); dlg.type = treeType; setType(treeType); dlg.kind=p[0]; dlg.target=p[1]; showTarget(); }
+    else if(e.target.closest("#dChoose") && !$("dChoose").disabled){ $("pickTree").innerHTML = treeHTML(dlg.type); $("dlgPick").classList.add("open"); }
+    else if((t = e.target.closest("#pickTree [data-choose]"))){ var q = t.getAttribute("data-choose").split(":"); dlg.kind=q[0]; dlg.target=q[1]; $("eTarget").textContent=""; showTarget(); $("dlgPick").classList.remove("open"); }
+    else if((t = e.target.closest("#dType .tcard"))){ if(dlg.mode==="add"){ setType(t.getAttribute("data-t")); } e.preventDefault(); }
+    else if(e.target.closest("#dSave")) save();
+  });
+  ["tTarget","tAcc","tSlot","tDone","tWait"].forEach(function(i){ $(i).addEventListener("input", test); $(i).addEventListener("change", test); });
+
+  fillTargets(); refresh();
+})();
+</script>
+</body>
+</html>

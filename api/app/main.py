@@ -5,7 +5,12 @@ import sys
 import warnings
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import secrets
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -133,14 +138,53 @@ async def lifespan(app: FastAPI):
 # `/redoc` and `/openapi.json` hand out every route, parameter shape and the
 # `HTTPBearer` scheme to anyone who asks. Useful while building against the
 # API; not something the public internet needs.
-_docs_enabled = settings.ENVIRONMENT != "production"
+_is_production = settings.ENVIRONMENT == "production"
+# In production the docs exist only when explicitly switched on AND password
+# protected; everywhere else they are open, as before.
+_docs_gated = (
+    _is_production
+    and settings.DOCS_ENABLED_IN_PRODUCTION
+    and bool(settings.DOCS_USER)
+    and bool(settings.DOCS_PASSWORD)
+)
+_docs_open = not _is_production
 app = FastAPI(
     title=settings.PROJECT_TITLE,
     lifespan=lifespan,
-    docs_url="/docs" if _docs_enabled else None,
-    redoc_url="/redoc" if _docs_enabled else None,
-    openapi_url="/openapi.json" if _docs_enabled else None,
+    docs_url="/docs" if _docs_open else None,
+    redoc_url="/redoc" if _docs_open else None,
+    openapi_url="/openapi.json" if _docs_open else None,
 )
+
+if _docs_gated:
+    _basic = HTTPBasic(realm="API docs")
+
+    def _docs_login(creds: HTTPBasicCredentials = Depends(_basic)) -> None:
+        # compare_digest on both so neither field leaks through timing.
+        ok_user = secrets.compare_digest(
+            creds.username.encode(), settings.DOCS_USER.encode()
+        )
+        ok_pass = secrets.compare_digest(
+            creds.password.encode(), settings.DOCS_PASSWORD.encode()
+        )
+        if not (ok_user and ok_pass):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Unauthorized",
+                headers={"WWW-Authenticate": 'Basic realm="API docs"'},
+            )
+
+    @app.get("/openapi.json", include_in_schema=False)
+    async def _openapi(_: None = Depends(_docs_login)) -> JSONResponse:
+        return JSONResponse(app.openapi())
+
+    @app.get("/docs", include_in_schema=False)
+    async def _swagger(_: None = Depends(_docs_login)) -> HTMLResponse:
+        return get_swagger_ui_html(openapi_url="/openapi.json", title=f"{app.title} - docs")
+
+    @app.get("/redoc", include_in_schema=False)
+    async def _redoc(_: None = Depends(_docs_login)) -> HTMLResponse:
+        return get_redoc_html(openapi_url="/openapi.json", title=f"{app.title} - redoc")
 
 register_exception_handlers(app)
 

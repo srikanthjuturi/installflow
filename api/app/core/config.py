@@ -461,6 +461,13 @@ class Settings(BaseSettings):
     # Returns the code in the response body so the flow can be walked without
     # Meta credentials. Startup refuses to run with it on in production.
     OTP_DEV_ECHO: bool = True
+    # The interactive API docs are OFF in production by default. Setting
+    # DOCS_ENABLED_IN_PRODUCTION=true serves /docs, /redoc and /openapi.json
+    # behind HTTP Basic auth, and only when BOTH credentials below are set --
+    # a half-configured switch stays off rather than serving the schema open.
+    DOCS_ENABLED_IN_PRODUCTION: bool = False
+    DOCS_USER: str = ""
+    DOCS_PASSWORD: str = ""
     # Google Play's reviewers sign in with this number and this fixed code, and
     # nothing is ever sent — see app/core/play_review.py. Both empty means off.
     # The number must be an unreachable `+911…` one and the code OTP_LENGTH

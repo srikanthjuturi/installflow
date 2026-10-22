@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Appliances · Penalty and bonus pool, Employee statements (mock 09c)</title>
+<link rel="stylesheet" href="_shared/console.css">
+<link rel="stylesheet" href="_shared/portal-09.css">
+<script src="_shared/mock.js" defer></script>
+<script src="_shared/portal-09.js" defer></script>
+</head>
+<body data-brand="Acme Appliances">
+<div class="app" data-scope data-swapscope>
+
+  <aside class="rail" aria-label="Franchise portal">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<span class="fr">SkyFix Services</span></div></div>
+    <a href="09a-portal-technicians.html#technicians"><i class="ic"></i>Technicians</a>
+    <a href="09b-portal-upi-and-redemptions.html#upi"><i class="ic"></i>UPI changes<span class="n">1</span></a>
+    <a href="09b-portal-upi-and-redemptions.html#redemptions"><i class="ic"></i>Redemptions<span class="n">1</span></a>
+    <a href="#pool" data-tab="pool" class="on"><i class="ic"></i>Penalty &amp; bonus pool</a>
+    <a href="#statements" data-tab="statements"><i class="ic"></i>Employee statements</a>
+    <a href="09d-portal-tickets-readonly.html#tickets"><i class="ic"></i>Tickets</a>
+    <div class="who"><b>Anil Reddy</b>Franchisee Admin<br><a href="#">Account</a></div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn sm menu" data-menu aria-label="Open menu">&#9776;</button>
+      <div class="ttl" data-ttl="pool"><h1>Penalty &amp; bonus pool</h1><span class="sub">SkyFix Services's pool</span></div>
+      <div class="ttl hide" data-ttl="statements"><h1>Employee statements</h1><span class="sub">A month's allowances and penalties, per employee</span></div>
+      <span class="mb"><b>Acme Appliances</b>SkyFix Services</span>
+      <span class="sp"></span>
+      <button class="bell" aria-label="Notifications, 2 unread" data-toast="Notifications · Recent events for SkyFix Services"><i></i><span class="n">2</span></button>
+      <button class="btn sm signout" data-toast="Signed out">Sign out</button>
+      <div class="avatar" title="Anil Reddy">AR</div>
+    </header>
+
+    <main class="page">
+
+      <!-- ================= PANE: pool ================= -->
+      <section data-pane="pool" class="stack">
+        <div class="note"><b>Mock of Task 09 §4.3, §5.4 (<code>LedgerPage</code> + <code>LedgerTable</code> through the workspace adapter, <code>ReversePenaltyDialog</code>), F12.</b> This is SkyFix's own pool: <code>balance = penalties + speed penalties − reversals − bonuses − speed rewards</code>, scoped to this franchisee. A franchisee admin reverses a penalty here, from the pool row — the ticket page is read-only for them. Try <b>Reverse</b> on a row: the balance, the count and the ledger all move. Travel allowance never appears here (not a pool kind).</div>
+
+        <!-- summary -->
+        <div data-view="loading" class="hide" aria-busy="true">
+          <div class="pool-tiles">
+            <div class="card"><div class="skel" style="width:140px"></div><div class="skel" style="width:96px;height:26px;margin-top:12px"></div><div class="skel" style="width:120px;margin-top:10px"></div></div>
+            <div class="card"><div class="skel" style="width:140px"></div><div class="skel" style="width:96px;height:26px;margin-top:12px"></div><div class="skel" style="width:120px;margin-top:10px"></div></div>
+            <div class="card"><div class="skel" style="width:140px"></div><div class="skel" style="width:96px;height:26px;margin-top:12px"></div><div class="skel" style="width:120px;margin-top:10px"></div></div>
+          </div>
+          <div class="card" style="margin-top:16px"><div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div><div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
+        </div>
+
+        <div data-view="error" class="hide stack">
+          <div class="card"><div class="empty err"><div class="ic2 bad">!</div><b>Couldn't load the pool balance</b><p role="alert">Something went wrong. Try again.</p><button class="btn" data-toast="Couldn't load the pool balance · Something went wrong. Try again.">&#8635; Retry</button></div></div>
+          <div class="card"><div class="empty err"><div class="ic2 bad">!</div><b>Couldn't load the transaction ledger</b><p role="alert">Something went wrong. Try again.</p><button class="btn" data-toast="Couldn't load the transaction ledger · Something went wrong. Try again.">&#8635; Retry</button></div></div>
+        </div>
+
+        <div data-view="empty" class="hide stack">
+          <div class="pool-tiles">
+            <div class="card main"><div class="l" style="opacity:.8">Current pool balance</div><div class="v">₹0</div><div class="d">Available for escalation bonuses</div></div>
+            <div class="card"><div class="l neg">Penalties collected</div><div class="v">₹0</div><div class="d">across 0 cancellations (not reversed)</div></div>
+            <div class="card"><div class="l pos">Bonuses paid</div><div class="v">₹0</div><div class="d">across 0 escalation pickups</div></div>
+          </div>
+          <div class="card"><div class="empty"><div class="ic2">&#8377;</div><b>No transactions yet</b><p>Cancellation penalties collected and escalation bonuses paid will appear here.</p></div></div>
+        </div>
+
+        <div data-view="data" class="stack">
+          <div class="pool-tiles">
+            <div class="card main"><div class="l" style="opacity:.8">Current pool balance</div><div class="v" id="bal">₹1,600</div><div class="d">Available for escalation bonuses</div></div>
+            <div class="card"><div class="l neg">Penalties collected</div><div class="v" id="col">₹2,000</div><div class="d">across <span id="cnt">3 cancellations</span> (not reversed)</div></div>
+            <div class="card"><div class="l pos">Bonuses paid</div><div class="v">₹400</div><div class="d">across 1 escalation pickup</div></div>
+          </div>
+          <p class="formula"><b id="fCol">₹2,000</b> Penalties collected &minus; <b>₹400</b> Bonuses paid = <b id="fBal">₹1,600</b> Current pool balance</p>
+
+          <div class="card">
+            <div class="toolbar">
+              <select class="in" style="width:170px" aria-label="Type"><option>Type: All</option><option>Penalty</option><option>Bonus</option><option>Penalty reversed</option></select>
+              <span class="sp"></span>
+              <button class="btn sm" data-toast="Exported · acme-appliances-skyfix-services-ledger.csv">Export CSV</button>
+              <button class="btn sm" data-toast="Couldn't reverse the penalty · This penalty has already been reversed.">Mock: what a second Reverse says (409)</button>
+            </div>
+            <div class="tw">
+              <table class="t" id="ledger">
+                <thead><tr><th>Time</th><th>Type</th><th>Technician</th><th>Ticket</th><th>Reason</th><th class="num">Amount</th><th><span class="sr-only" style="position:absolute;left:-9999px">Actions</span></th></tr></thead>
+                <tbody>
+                  <tr data-rupees="500" data-tech="Ravi Teja">
+                    <td>12-10-2026 16:20</td><td><span class="chip dng">Penalty</span></td><td>Ravi Teja <span class="code">TCH-4021</span></td><td class="mono">SKY-INST-0412</td><td>Cancel 2–4h before slot</td><td class="num amt">+₹500</td>
+                    <td class="act"><button class="btn sm" data-open="dlgReverse" data-who="Ravi Teja" data-amt="₹500" data-reverse>&#8630; Reverse</button></td>
+                  </tr>
+                  <tr>
+                    <td>09-10-2026 11:05</td><td><span class="chip ok">Bonus</span></td><td>Imran Shaikh <span class="code">TCH-4027</span></td><td class="mono">SKY-INST-0405</td><td>Escalation pickup</td><td class="num">−₹400</td><td></td>
+                  </tr>
+                  <tr>
+                    <td>04-10-2026 10:30</td><td><span class="chip info">Penalty reversed</span></td><td>Meena R <span class="code">TCH-4033</span></td><td class="mono">SKY-INST-0398</td><td>Customer moved the visit</td><td class="num">−₹800</td><td></td>
+                  </tr>
+                  <tr>
+                    <td>03-10-2026 15:48</td><td><span class="chip dng">Penalty</span> <span style="font-size:11px;font-weight:600;color:var(--info)">(reversed)</span></td><td>Meena R <span class="code">TCH-4033</span></td><td class="mono">SKY-INST-0398</td><td>Cancel under 2h before slot</td><td class="num strike">+₹800</td><td><span class="mut" style="font-size:12px">Reversed</span></td>
+                  </tr>
+                  <tr data-rupees="1200" data-tech="Kavita Rao">
+                    <td>28-09-2026 13:12</td><td><span class="chip dng">Penalty</span></td><td>Kavita Rao <span class="code">TCH-4040</span></td><td class="mono">SKY-INST-0371</td><td>No-show</td><td class="num amt">+₹1,200</td>
+                    <td class="act"><button class="btn sm" data-open="dlgReverse" data-who="Kavita Rao" data-amt="₹1,200" data-reverse>&#8630; Reverse</button></td>
+                  </tr>
+                  <tr data-rupees="300" data-tech="Ravi Teja">
+                    <td>20-09-2026 09:44</td><td><span class="chip dng">Penalty</span></td><td>Ravi Teja <span class="code">TCH-4021</span></td><td class="mono">SKY-INST-0352</td><td>Cancel more than 4h before slot</td><td class="num amt">+₹300</td>
+                    <td class="act"><button class="btn sm" data-open="dlgReverse" data-who="Ravi Teja" data-amt="₹300" data-reverse>&#8630; Reverse</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pg"><span>Showing 1–6 of 6 · pool kinds only, SkyFix Services only</span><span>Newest first</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PANE: employee statements ================= -->
+      <section data-pane="statements" class="stack hide">
+        <div class="note"><b>Mock of Task 09 §4.4, §5.5 (<code>StatementMonthPicker</code>, <code>EmployeeStatementTable</code>, <code>statements.ts</code>) and Task 06 §4.9 (CSV layout).</b> Today is 15-10-2026, so the month defaults to the <b>previous IST month</b> — September 2026 (payroll runs after a month closes). One CSV per employee, named by the console, not the server. The table below the list previews what that file contains.</div>
+
+        <div class="card">
+          <header><h2>Employee statements</h2><span class="sub">Employees and their monthly statement</span></header>
+          <div class="toolbar">
+            <label for="month" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">Month</label>
+            <select class="in" id="month" style="width:200px">
+              <option>October 2026 (so far)</option>
+              <option selected>September 2026</option>
+              <option>August 2026</option>
+              <option>July 2026</option>
+              <option>June 2026</option>
+              <option>May 2026</option>
+              <option>April 2026</option>
+              <option>March 2026</option>
+              <option>February 2026</option>
+              <option>January 2026</option>
+              <option>December 2025</option>
+              <option>November 2025</option>
+            </select>
+            <span class="mut" style="font-size:12px">Newest first · last 12 months · IST calendar months</span>
+          </div>
+          <div style="padding:12px 16px 0"><div class="pill-info">Each statement lists the month's travel, speed rewards, penalties and bonuses for one employee, to add to their salary. Salary itself is not recorded here.</div></div>
+
+          <div data-view="loading" class="hide" aria-busy="true">
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+            <div class="skrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+          </div>
+          <div data-view="empty" class="hide empty"><div class="ic2">&#9776;</div><b>No employees yet</b><p>Technicians whose Type is Employee appear here. Change a technician's Type on their profile.</p>
+            <a class="btn" href="09a-portal-technicians.html#technicians">Go to Technicians</a></div>
+          <div data-view="error" class="hide empty err"><div class="ic2 bad">!</div><b>Couldn't load employees</b><p role="alert">Something went wrong. Try again.</p><button class="btn" data-toast="Couldn't load employees · Something went wrong. Try again.">&#8635; Retry</button></div>
+
+          <div data-view="data">
+            <div class="tw">
+              <table class="t">
+                <thead><tr><th>Employee</th><th>Mobile</th><th>Status</th><th>Download CSV</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">MR</div><div><span class="nm">Meena R</span><span class="hint-s code">TCH-4033</span></div></div></td>
+                    <td>+91 98000 00002</td><td><span class="chip ok">Active</span></td>
+                    <td><button class="btn sm" data-show="emp:meena" data-toast="Statement downloaded · Meena R, September 2026">&#8681; Download CSV</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">KR</div><div><span class="nm">Kavita Rao</span><span class="hint-s code">TCH-4040</span></div></div></td>
+                    <td>+91 98000 00004</td><td><span class="chip ok">Active</span></td>
+                    <td><button class="btn sm" data-show="emp:kavita" data-toast="Statement downloaded · Kavita Rao, September 2026">&#8681; Download CSV</button></td>
+                  </tr>
+                  <tr>
+                    <td><div class="who-c"><div class="avatar">PN</div><div><span class="nm">Pooja Nair</span><span class="hint-s code">TCH-4046</span></div></div></td>
+                    <td>+91 98000 00006</td><td><span class="chip">Inactive</span></td>
+                    <td><button class="btn sm" disabled>&#8681; Download CSV</button> <span class="hint-s proposed" style="display:inline">Spinner while a download runs</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pg"><span>Showing 1–3 of 3 employees</span><span>Page 1 of 1</span></div>
+          </div>
+        </div>
+
+        <!-- what the CSV contains -->
+        <div class="card" data-view="data">
+          <header>
+            <h2 class="proposed">What the CSV contains</h2>
+            <span class="sub" data-swap="emp:meena">Meena R · September 2026 — <span class="mono">acme-appliances-skyfix-services-tch-4033-2026-09.csv</span></span>
+            <span class="sub hide" data-swap="emp:kavita">Kavita Rao · September 2026 — <span class="mono">acme-appliances-skyfix-services-tch-4040-2026-09.csv</span></span>
+          </header>
+          <div class="body stack">
+            <div class="tw">
+              <table class="csv" data-swap="emp:meena" aria-label="Preview of Meena R's statement">
+                <tr class="hd"><td>Monthly statement</td><td>SkyFix Services</td><td colspan="5">September 2026</td></tr>
+                <tr><td>Employee</td><td>Meena R</td><td>TCH-4033</td><td colspan="4">+919800000002</td></tr>
+                <tr><td colspan="7">&nbsp;</td></tr>
+                <tr><th>Date (IST)</th><th>Ticket</th><th>Item</th><th>Details</th><th>Credit (₹)</th><th>Debit (₹)</th><th>Reverses</th></tr>
+                <tr><td>09 Sep 2026 14:05</td><td>SKY-INST-0341</td><td>Penalty</td><td>Cancel 2–4h before slot</td><td class="n"></td><td class="n">500.00</td><td></td></tr>
+                <tr><td>12 Sep 2026 18:40</td><td>SKY-INST-0346</td><td>Reassignment bonus</td><td>Escalation pickup</td><td class="n">400.00</td><td class="n"></td><td></td></tr>
+                <tr><td>18 Sep 2026 10:20</td><td>SKY-INST-0358</td><td>Travel allowance</td><td></td><td class="n">180.00</td><td class="n"></td><td></td></tr>
+                <tr><td>28 Sep 2026 11:02</td><td>SKY-INST-0341</td><td>Penalty reversed</td><td>Customer moved the visit</td><td class="n">500.00</td><td class="n"></td><td>SKY-INST-0341 penalty of 09 Sep 2026</td></tr>
+                <tr><td colspan="7">&nbsp;</td></tr>
+                <tr class="tot"><td>Totals</td><td></td><td></td><td></td><td class="n">Credit (₹)</td><td class="n">Debit (₹)</td><td></td></tr>
+                <tr><td>Reassignment bonus</td><td></td><td></td><td></td><td class="n">400.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Travel allowance</td><td></td><td></td><td></td><td class="n">180.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Speed reward</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Penalty reversed</td><td></td><td></td><td></td><td class="n">500.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Penalty</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">500.00</td><td></td></tr>
+                <tr><td>Speed penalty</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr class="tot"><td>Net for the month</td><td></td><td></td><td></td><td class="n">580.00</td><td></td><td></td></tr>
+              </table>
+
+              <table class="csv hide" data-swap="emp:kavita" aria-label="Preview of Kavita Rao's statement (no activity)">
+                <tr class="hd"><td>Monthly statement</td><td>SkyFix Services</td><td colspan="5">September 2026</td></tr>
+                <tr><td>Employee</td><td>Kavita Rao</td><td>TCH-4040</td><td colspan="4">+919800000004</td></tr>
+                <tr><td colspan="7">&nbsp;</td></tr>
+                <tr><th>Date (IST)</th><th>Ticket</th><th>Item</th><th>Details</th><th>Credit (₹)</th><th>Debit (₹)</th><th>Reverses</th></tr>
+                <tr><td colspan="7">&nbsp;</td></tr>
+                <tr class="tot"><td>Totals</td><td></td><td></td><td></td><td class="n">Credit (₹)</td><td class="n">Debit (₹)</td><td></td></tr>
+                <tr><td>Reassignment bonus</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Travel allowance</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Speed reward</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Penalty reversed</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Penalty</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr><td>Speed penalty</td><td></td><td></td><td></td><td class="n">0.00</td><td class="n">0.00</td><td></td></tr>
+                <tr class="tot"><td>Net for the month</td><td></td><td></td><td></td><td class="n">0.00</td><td></td><td></td></tr>
+              </table>
+            </div>
+            <div class="mockbar" style="line-height:1.5"><span><b>Rules shown:</b> UTF-8 with BOM so ₹ and non-Latin names open intact in Excel · dates in the file follow the API (<code>09 Sep 2026 14:05</code>, IST) · every kind has a totals line even at 0.00 · a reversed penalty is <b>not</b> hidden — it is a second line in the month it was written · an employee's per-job payout never appears (employees get none) · a month with no activity still downloads, all zeros (right-hand preview: Download CSV on Kavita Rao).</span></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="signoff">
+        <h2>Wording added by the mock — needs sign-off</h2>
+        <ul>
+          <li>Pool: ledger toolbar <span class="proposed">Type: All / Penalty / Bonus / Penalty reversed</span>, "Export CSV", the mock-only 409 button and its toast text <code>This penalty has already been reversed.</code> (server wording not in the doc), "Showing 1–6 of 6 · pool kinds only, SkyFix Services only", "Newest first", the "Reversed" cell. Penalty reasons use the existing band wording ("Cancel 2–4h before slot" etc.); amount sign follows the staff pool (+ penalties, − bonuses and reversals).</li>
+          <li>Statements: month list wording "Newest first · last 12 months · IST calendar months", "Showing 1–3 of 3 employees", "Go to Technicians" button on the empty state, "Spinner while a download runs" annotation, the third (inactive) employee row.</li>
+          <li><span class="proposed">What the CSV contains</span> card title and its file-name sub-line; the "Rules shown" bar is an explanation for developers, not UI copy. The CSV grid itself is Task 06 §4.9's layout (PROPOSED there); September rows are invented sample data, including a <code>Travel allowance</code> row with no Details text.</li>
+          <li>Reversal dialog texts are the staff dialog's, unchanged. Doc §5.9: "Reverse", "Penalty reversed · {amount} goes back to {technician}.", statements caption / columns / note / empty / error, "(so far)".</li>
+        </ul>
+      </div>
+      <div class="sp-b"></div>
+    </main>
+  </div>
+</div>
+
+<!-- reverse a penalty (staff ReversePenaltyDialog, unchanged copy) -->
+<div class="scrim" id="dlgReverse">
+  <div class="dlg sm" role="dialog" aria-modal="true" aria-labelledby="rvT">
+    <header><h3 id="rvT">Reverse this penalty?</h3><button class="x" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <p class="mut" style="margin:0 0 12px"><span class="who-name">Ravi Teja</span> gets the full <span class="amt-v">₹500</span> back. It comes off their penalties for the month and out of the penalty pool, and they are told on their phone.</p>
+      <div class="field"><label>Why is it being reversed? <span class="neg">*</span></label><input class="in" id="rvReason" maxlength="160" placeholder="Customer asked to cancel, confirmed by phone"><span class="hint">Required. It is kept with the money and on the ticket's trail.</span></div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="rvGo" data-close>Reverse <span class="amt-v">₹500</span> penalty</button></footer>
+  </div>
+</div>
+
+<div class="state-switch" role="group" aria-label="Mock: list state">
+  <button data-state="loading">Loading</button><button data-state="empty">Empty</button><button data-state="error">Error</button><button data-state="data" class="on">Data</button>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* Page-local: makes Reverse actually move the numbers. Mock only. */
+(function () {
+  var cur = null, bal = 1600, col = 2000, cnt = 3;
+  function inr(n) { return "₹" + n.toLocaleString("en-IN"); }
+  function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(function () { t.classList.remove("show"); }, 2800); }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-reverse]"); if (b) cur = b.closest("tr");
+    if (e.target.closest("#rvGo") && cur) {
+      var rupees = +cur.getAttribute("data-rupees"), tech = cur.getAttribute("data-tech");
+      var reason = document.getElementById("rvReason").value || "Reversed by the franchisee admin";
+      cur.querySelector(".amt").classList.add("strike");
+      cur.children[1].insertAdjacentHTML("beforeend", ' <span style="font-size:11px;font-weight:600;color:var(--info)">(reversed)</span>');
+      cur.querySelector(".act").innerHTML = '<span class="mut" style="font-size:12px">Reversed</span>';
+      var row = cur.parentNode.insertRow(0);
+      row.innerHTML = '<td>15-10-2026 11:52</td><td><span class="chip info">Penalty reversed</span></td><td>' + tech + '</td><td class="mono">' + cur.children[3].textContent + '</td><td>' + reason.replace(/</g, "&lt;") + '</td><td class="num">−' + inr(rupees) + '</td><td></td>';
+      bal -= rupees; col -= rupees; cnt -= 1;
+      document.getElementById("bal").textContent = inr(bal);
+      document.getElementById("fBal").textContent = inr(bal);
+      document.getElementById("col").textContent = inr(col);
+      document.getElementById("fCol").textContent = inr(col);
+      document.getElementById("cnt").textContent = cnt + (cnt === 1 ? " cancellation" : " cancellations");
+      toast("Penalty reversed · " + inr(rupees) + " goes back to " + tech + ".");
+      cur = null; document.getElementById("rvReason").value = "";
+    }
+  });
+})();
+</script>
+</body>
+</html>

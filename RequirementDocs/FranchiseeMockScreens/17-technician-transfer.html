@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Move a technician — mock 17</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a .ic{width:14px;height:14px;border:1.5px solid currentColor;border-radius:4px;opacity:.7;flex:none}
+  .rail a.on .ic{opacity:1}
+  .proposed{background:#fff2c9;outline:1px dashed #d8b800;outline-offset:1px;border-radius:3px}
+  .mockbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;border:1px dashed var(--ink-3);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--ink-2);background:#fff}
+  .mockbar b{font-weight:600;color:var(--ink)}
+  .mockbar .seg{flex-wrap:wrap}
+  .code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink-3)}
+  .mono-ink{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;color:var(--ink)}
+  .sm2{font-size:12px;color:var(--ink-2)}
+  .muted{color:var(--ink-3)}
+  .av{width:56px;height:56px;border-radius:50%;background:var(--brand-100);color:var(--brand-500);display:grid;place-items:center;font-weight:600;font-size:16px;flex:none}
+  .chip.home{background:#fff;border:1px solid var(--brand-300);color:var(--brand-500);margin-left:6px;font-size:10.5px;padding:1px 8px}
+  .toprow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .toprow .acts{display:flex;gap:8px;flex-wrap:wrap}
+  .btn.dngo{color:var(--danger)}
+  .cols{display:grid;grid-template-columns:1fr 1.7fr;gap:14px}
+  .stack{display:flex;flex-direction:column;gap:14px}
+  .stack-sm{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .head{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+  .head h2{margin:0;font-size:17px}
+  .notice{background:var(--info-bg);color:var(--info);border-radius:8px;padding:10px 12px;font-size:13px}
+  .pins{display:flex;flex-wrap:wrap;gap:6px}
+  .pin{display:inline-flex;align-items:center;border-radius:99px;padding:3px 11px;font:500 12.5px "IBM Plex Mono",monospace;background:var(--surface-3);color:var(--ink)}
+  .pin.stay{background:var(--ok-bg);color:var(--ok)}
+  .pin.off{background:var(--warn-bg);color:var(--warn);text-decoration:line-through}
+  .pin.add{background:var(--info-bg);color:var(--info)}
+  .grp-h{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin:12px 0 6px}
+  .covbox{border:1px solid var(--border);background:var(--surface-2);border-radius:10px;padding:4px 14px 14px}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpis .card{padding:0}
+  .hist-line{display:flex;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border-2);font-size:13.5px}
+  .hist-line:last-child{border-bottom:0}
+  .hist-line time{color:var(--ink-3);width:92px;flex:none;font-size:12.5px}
+  .hist-line .to{font-weight:600}
+  .hist-line q{color:var(--ink-2)}
+  .skrow{padding:14px 18px;display:grid;gap:10px}
+  .pick{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:8px}
+  .link{display:inline;background:none;border:0;padding:0;color:var(--brand-400);font:600 12.5px "IBM Plex Sans",sans-serif;cursor:pointer}
+  fieldset.sec{border:0;border-top:1px solid var(--border-2);margin:14px 0 0;padding:12px 0 0}
+  fieldset.sec legend{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:0 8px 0 0}
+  .signoff{border:1px dashed var(--ink-3);border-radius:12px;background:#fff;padding:14px 18px}
+  .signoff h2{margin:0 0 8px;font-size:14.5px}
+  .signoff ul{margin:0;padding-left:18px;display:grid;gap:5px;font-size:13px}
+  @media(max-width:900px){.cols,.kpis,.pick{grid-template-columns:1fr}.topbar{padding:0 14px}.page{padding:14px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><div class="mark">ACM</div><div>Acme Appliances<small>Operations console</small></div></div>
+    <div class="grp">Overview</div>
+    <a href="#"><i class="ic"></i>Dashboard</a>
+    <div class="grp">Tickets</div>
+    <a href="#"><i class="ic"></i>Ticket List</a>
+    <div class="grp">Operations</div>
+    <a href="#"><i class="ic"></i>Escalation Queue<span class="n">3</span></a>
+    <a href="#"><i class="ic"></i>Approvals<span class="n">2</span></a>
+    <a href="#"><i class="ic"></i>Redemptions</a>
+    <div class="grp">Master Data</div>
+    <a href="08c-technicians-franchisee-columns.html" class="on"><i class="ic"></i>Technicians</a>
+    <a href="08a-franchisees-list.html"><i class="ic"></i>Franchisees</a>
+    <a href="#"><i class="ic"></i>Penalty &amp; Bonus</a>
+    <a href="#"><i class="ic"></i>Vendors</a>
+    <a href="#"><i class="ic"></i>Territory</a>
+    <a href="#"><i class="ic"></i>Categories</a>
+    <div class="grp">Configuration</div>
+    <a href="#"><i class="ic"></i>Rules Config</a>
+    <a href="#"><i class="ic"></i>Users &amp; Roles</a>
+    <a href="#"><i class="ic"></i>Vendor Credit</a>
+    <a href="#"><i class="ic"></i>Credits</a>
+    <div class="who">Nisha Rao<br>National Head</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Technician profile</h1><div class="sub">Category &middot; pincode &middot; bandwidth</div></div>
+      <div class="sp"></div>
+      <div class="avatar">NR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mock of Task 17</b> (<code>17-technician-transfer.md</code>): the staff console's technician profile with the new <em>Move to another franchisee</em> action, the transfer dialog in every state (use the bar inside the dialog), and the transfer history line. Signed in as a National Head (<code>franchisees.manage</code>). Wording marked <span class="proposed">like this</span> is added by the mock &mdash; see the box at the bottom. Press <em>Move to another franchisee</em> to open the dialog.</div>
+
+      <div class="mockbar"><b>Mock: history card</b>
+        <span class="seg" id="histSeg"><button type="button" class="on" data-hist="empty">Never moved</button><button type="button" data-hist="rows">After the move</button><button type="button" data-hist="loading">Loading</button><button type="button" data-hist="error">Error</button></span>
+        <span class="sm2">Pressing <em>Move Ravi Kumar</em> in a clear dialog also switches this to <em>After the move</em> and updates the Franchisee line.</span>
+      </div>
+
+      <div class="toprow">
+        <a href="#" class="btn ghost sm">&larr; Back to technicians</a>
+        <div class="acts">
+          <button class="btn sm" type="button">&#9998; Edit details</button>
+          <button class="btn sm proposed" type="button" data-open="dlgMove" id="openMove">&#8644; Move to another franchisee</button>
+          <button class="btn sm dngo" type="button">&#128465; Remove</button>
+        </div>
+      </div>
+
+      <div class="cols">
+        <!-- left: profile header (TechProfileHeader) -->
+        <section class="card">
+          <div class="body">
+            <div class="head">
+              <div class="av">RK</div>
+              <div><h2>Ravi Kumar</h2><div class="code">TCH-4021</div><div style="margin-top:6px"><span class="chip ok">Active</span> <span class="chip ok">Online</span></div></div>
+            </div>
+            <dl class="kv" style="grid-template-columns:120px 1fr">
+              <dt>Mobile</dt><dd>+91 98480 14021</dd>
+              <dt>Franchisee</dt><dd id="frName">Acme Appliances<span class="chip home" id="frHome">Home</span></dd>
+              <dt>Type</dt><dd><span class="chip">Freelancer</span></dd>
+              <dt>Region</dt><dd>South</dd>
+              <dt>Categories</dt><dd>Television, Audio</dd>
+              <dt>Service pincodes</dt><dd><span class="mono-ink" id="pinList">500031, 500032, 500045</span></dd>
+              <dt>Daily limit</dt><dd>6 jobs</dd>
+              <dt>Base location</dt><dd><span class="chip ok">Pincode</span> <span class="sm2">Ravi Kumar &middot; 12-01-2026</span></dd>
+              <dt>UPI ID</dt><dd class="mono-ink">ravi.kumar@okaxis</dd>
+            </dl>
+          </div>
+        </section>
+
+        <!-- right -->
+        <div class="stack">
+          <div class="kpis">
+            <div class="card kpi"><div class="l">Jobs</div><div class="v">112</div></div>
+            <div class="card kpi"><div class="l">Cancellations</div><div class="v">2</div></div>
+            <div class="card kpi"><div class="l">Rating</div><div class="v">4.6</div></div>
+            <div class="card kpi"><div class="l">Open jobs</div><div class="v">0</div></div>
+          </div>
+
+          <!-- Transfer history -->
+          <section class="card" id="histCard">
+            <header><h2 class="proposed">Transfer history</h2><span class="sub proposed">Every time this technician changed franchisee</span></header>
+            <div data-hist-view="empty">
+              <div class="empty" style="padding:26px 16px"><span class="proposed" id="histEmpty">Never moved. Works for Acme Appliances since 12-01-2026.</span></div>
+            </div>
+            <div data-hist-view="rows" class="hide">
+              <div class="hist-line">
+                <time class="proposed">16-10-2026</time>
+                <div>
+                  <div class="proposed"><span>Acme Appliances</span> &rarr; <span class="to">SkyFix Services</span> &middot; by Nisha Rao</div>
+                  <div class="sm2 proposed" style="margin-top:3px"><q>Ravi moved east; SkyFix will run his area</q> &middot; 2 pincodes stayed &middot; 1 taken off (500045)</div>
+                </div>
+              </div>
+            </div>
+            <div data-hist-view="loading" class="hide" aria-busy="true">
+              <div class="skrow"><div class="skel" style="width:90%"></div><div class="skel" style="width:60%"></div></div>
+            </div>
+            <div data-hist-view="error" class="hide">
+              <div class="empty"><b>Couldn't load the transfer history</b><button class="btn" type="button" data-toast="Couldn't load the transfer history">Retry</button></div>
+            </div>
+          </section>
+
+          <!-- Same page on a technician run by someone else -->
+          <section class="card" style="border-style:dashed;box-shadow:none">
+            <header><h2>Same page on a SkyFix technician (Lakshmi Devi)</h2><span class="sub">context aid: Task 08's notice stays, Edit and Remove are hidden, the new action is not</span></header>
+            <div class="body stack-sm" style="margin-top:0">
+              <div class="notice">Run by SkyFix Services. Their franchisee admin manages this technician.</div>
+              <div class="acts" style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn sm proposed" type="button" data-toast="Opens the same dialog, from SkyFix Services">&#8644; Move to another franchisee</button>
+                <span class="sm2 muted">Edit details and Remove are not rendered because <code>canManage</code> is false; this action is guarded by <code>franchisees.manage</code> instead.</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section class="signoff">
+        <h2>Wording added by the mock &mdash; needs sign-off</h2>
+        <ul>
+          <li><span class="proposed">Move to another franchisee</span> (profile button) and the dialog title <span class="proposed">Move {name} to another franchisee</span>, intro, <em>keeps</em> line, <em>Move to</em> / <em>Why is {name} moving?</em> labels, placeholder and hint &mdash; Task 17 &sect;5.7.</li>
+          <li>Coverage block: <span class="proposed">Where they will work</span>, <span class="proposed">Stays ({n})</span>, <span class="proposed">Taken off ({n})</span> and its hint, <span class="proposed">Choose different pincodes instead</span> / <span class="proposed">Use their current pincodes again</span>.</li>
+          <li>Blocking sentences (open jobs, balance, unsettled redemption, nothing inside the range, target has no admin) and the three warnings (owes money, UPI change travels, base location kept). The server's wording for the first two follows the type-change sentences of Tasks 05/06 and is still to be settled.</li>
+          <li>Buttons and status: <span class="proposed">Move {name}</span>, <span class="proposed">Moving&hellip;</span>, <span class="proposed">Checking what would change&hellip;</span>, the toast <span class="proposed">{name} now works for {to}</span>.</li>
+          <li>History card: <span class="proposed">Transfer history</span>, its caption, the line <span class="proposed">{date} &middot; {from} &rarr; {to} &middot; by {who}</span>, the detail line, the empty sentence, and the generic <em>Retry</em> / error title.</li>
+          <li>Sample people, codes, amounts, pincodes and franchisees (Ravi Kumar, Priya, SkyFix Services, Acme Warangal, &#8377;1,240, RGT-RDM-0007) are invented data. Lakshmi Devi's card is a context aid; its caption is the mock's.</li>
+          <li>Not drawn here: the bell texts (<em>{name} joined {to}</em> / <em>{name} moved to {to}</em>) and the technician's push (<em>You now work with {franchisee}</em>) &mdash; see Task 17 &sect;4.8 and &sect;5.7.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- ======== The transfer dialog (TransferTechnicianDialog) ======== -->
+<div class="scrim" id="dlgMove">
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="mvT">
+    <header><h3 id="mvT" class="proposed">Move Ravi Kumar to another franchisee</h3><button class="x" type="button" data-close aria-label="Close">&times;</button></header>
+    <div class="bd">
+      <div class="mockbar" style="margin:6px 0 12px"><b>Mock: dialog state</b>
+        <span class="seg" id="stSeg">
+          <button type="button" class="on" data-st="idle">Idle</button>
+          <button type="button" data-st="checking">Checking</button>
+          <button type="button" data-st="clear">Clear</button>
+          <button type="button" data-st="warn">Clear + warnings</button>
+          <button type="button" data-st="jobs">Open job</button>
+          <button type="button" data-st="balance">Balance</button>
+          <button type="button" data-st="redemption">Redemption</button>
+          <button type="button" data-st="both">Job + balance</button>
+          <button type="button" data-st="range">Nothing inside range</button>
+          <button type="button" data-st="admin">No admin</button>
+          <button type="button" data-st="applying">Applying</button>
+        </span>
+      </div>
+
+      <p class="proposed" style="margin:0 0 6px;color:var(--ink-2);font-size:13px"><span class="fromName">Acme Appliances</span> is where Ravi Kumar works today. After the move they are offered <span class="toName">the new franchisee</span>'s jobs instead, and <span class="toName">the new franchisee</span> manages and pays them.</p>
+      <p class="proposed" style="margin:0 0 12px;color:var(--ink-3);font-size:12.5px">They keep their categories, daily limit, base location, UPI details, language and sign-in. Jobs and money already earned stay with <span class="fromName">Acme Appliances</span>.</p>
+
+      <div class="field">
+        <label for="mvTo">Move to</label>
+        <select class="in" id="mvTo">
+          <option value="">Choose a franchisee</option>
+          <option value="s">SkyFix Services</option>
+          <option value="w">Acme Warangal</option>
+          <option value="k" disabled>Acme Kakinada (inactive)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="mvWhy">Why is Ravi Kumar moving?</label>
+        <textarea class="in" id="mvWhy" placeholder="e.g. Moved to the east side of the city, which SkyFix now covers"></textarea>
+        <div class="hint proposed" id="mvWhyHint">Kept on their record. At least 5 characters.</div>
+        <div class="err hide" id="mvWhyErr" role="alert">Say why Ravi Kumar is being moved (at least 5 characters)</div>
+      </div>
+
+      <div id="mvChecking" class="hide" aria-busy="true">
+        <div class="skel" style="width:70%;margin:8px 0"></div><div class="skel" style="width:45%;margin:8px 0"></div>
+        <div class="sm2 proposed" style="margin-top:6px">Checking what would change&hellip;</div>
+      </div>
+
+      <section id="mvCov" class="covbox hide" aria-label="Where they will work">
+        <div class="grp-h proposed">Where they will work</div>
+        <div class="sm2 muted" style="margin:-2px 0 4px">Pincodes inside <span class="toName">SkyFix Services</span>'s area. <span id="mvCovNote"></span></div>
+        <div class="grp-h proposed" style="margin-top:8px"><span id="stayH">Stays (2)</span></div>
+        <div class="pins" id="stayPins"><span class="pin stay">500031</span><span class="pin stay">500032</span></div>
+        <div class="grp-h proposed"><span id="offH">Taken off (1)</span></div>
+        <div class="pins" id="offPins"><span class="pin off">500045</span></div>
+        <div class="sm2 proposed" style="margin-top:6px" id="offHint">Outside <span class="toName">SkyFix Services</span>'s area, so these come off their coverage.</div>
+        <div style="margin-top:10px"><button class="link proposed" type="button" id="customLink">Choose different pincodes instead</button></div>
+      </section>
+
+      <div id="mvCustom" class="hide covbox" style="margin-top:10px">
+        <div class="grp-h">Pick from <span class="toName">SkyFix Services</span>'s area</div>
+        <div class="field" style="margin-bottom:6px"><input class="in" placeholder="Search a pincode or a place" aria-label="Search pincodes"></div>
+        <div class="pick">
+          <label class="chk"><input type="checkbox" checked> 500033 &mdash; Ranga Reddy</label>
+          <label class="chk"><input type="checkbox"> 500034 &mdash; Hyderabad</label>
+          <label class="chk"><input type="checkbox"> 500035 &mdash; Hyderabad</label>
+          <label class="chk"><input type="checkbox"> 500036 &mdash; Ranga Reddy</label>
+        </div>
+        <div class="sm2 muted" style="margin-top:8px">Added (1): <span class="pin add">500033</span></div>
+      </div>
+
+      <div id="mvBlock" class="stack-sm">
+        <div class="pill-err proposed hide" role="alert" id="bJobs">Ravi Kumar still has 1 open job. Finish or reassign it first.</div>
+        <div class="pill-err proposed hide" role="alert" id="bBal">Ravi Kumar still has &#8377;1,240 waiting to be redeemed. Let them redeem it and be paid, then move them.</div>
+        <div class="pill-err proposed hide" role="alert" id="bRed">Ravi Kumar has a redemption (RGT-RDM-0007) that has not been settled. Settle it first.</div>
+        <div class="pill-err proposed hide" role="alert" id="bRange">None of Ravi Kumar's pincodes is inside SkyFix Services's area. Choose the pincodes SkyFix Services should serve.</div>
+        <div class="pill-err proposed hide" role="alert" id="bAdmin">Acme Warangal has no active admin yet. Add one first, or nobody can approve Ravi Kumar's UPI changes or pay their redemptions. <a href="08b-franchisee-detail.html">Open Acme Warangal</a></div>
+      </div>
+      <div id="mvWarn" class="stack-sm">
+        <div class="pill-ok proposed hide" id="wClear">Nothing is in the way. Ravi Kumar can move now.</div>
+        <div class="pill-warn proposed hide" id="wOwes">Ravi Kumar owes &#8377;500 from earlier penalties. It stays in their balance and comes off their next payouts, which SkyFix Services will pay.</div>
+        <div class="pill-warn proposed hide" id="wUpi">A UPI change is waiting. It moves with them, and SkyFix Services's reviewer is asked.</div>
+        <div class="pill-warn proposed hide" id="wBase">Their base location was set from pincode 500045, outside SkyFix Services's area. It is kept as it is.</div>
+      </div>
+      <div class="pill-err hide" role="alert" id="mvApplyErr" style="margin-top:10px"></div>
+    </div>
+    <footer>
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn pri proposed" type="button" id="mvBtn" data-close data-toast="Ravi Kumar now works for SkyFix Services" disabled>Move Ravi Kumar</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var state = "idle";
+  var moved = false;
+  var STATES = {
+    idle:       { to: "",  cov: false, checking: false, blocks: [], warns: [],               apply: false, custom: false },
+    checking:   { to: "s", cov: false, checking: true,  blocks: [], warns: [],               apply: false, custom: false },
+    clear:      { to: "s", cov: true,  checking: false, blocks: [], warns: ["wClear"],       apply: false, custom: false },
+    warn:       { to: "s", cov: true,  checking: false, blocks: [], warns: ["wClear", "wOwes", "wUpi", "wBase"], apply: false, custom: false },
+    jobs:       { to: "s", cov: true,  checking: false, blocks: ["bJobs"], warns: [],        apply: false, custom: false },
+    balance:    { to: "s", cov: true,  checking: false, blocks: ["bBal"], warns: [],         apply: false, custom: false },
+    redemption: { to: "s", cov: true,  checking: false, blocks: ["bRed"], warns: [],         apply: false, custom: false },
+    both:       { to: "s", cov: true,  checking: false, blocks: ["bJobs", "bBal"], warns: [], apply: false, custom: false },
+    range:      { to: "s", cov: "none", checking: false, blocks: ["bRange"], warns: [],      apply: false, custom: true },
+    admin:      { to: "w", cov: true,  checking: false, blocks: ["bAdmin"], warns: [],       apply: false, custom: false },
+    applying:   { to: "s", cov: true,  checking: false, blocks: [], warns: ["wClear"],       apply: true,  custom: false }
+  };
+  var ALL_BLOCKS = ["bJobs", "bBal", "bRed", "bRange", "bAdmin"];
+  var ALL_WARNS = ["wClear", "wOwes", "wUpi", "wBase"];
+
+  function show(id, on) { $(id).classList.toggle("hide", !on); }
+  function toText(code) { return code === "s" ? "SkyFix Services" : code === "w" ? "Acme Warangal" : "the new franchisee"; }
+
+  function refresh() {
+    var s = STATES[state];
+    var why = $("mvWhy").value.trim();
+    var whyBad = why.length > 0 && why.length < 5;
+    show("mvWhyErr", whyBad);
+    show("mvWhyHint", !whyBad);
+    var to = $("mvTo").value;
+    if (state !== "idle" && to === "") { to = s.to; }
+    var name = toText(to);
+    document.querySelectorAll(".toName").forEach(function (n) { n.textContent = name; });
+    // the pill sentences name the target
+    $("bRange").firstChild.nodeValue = "None of Ravi Kumar's pincodes is inside " + name + "'s area. Choose the pincodes " + name + " should serve.";
+    show("mvChecking", s.checking);
+    show("mvCov", !!s.cov);
+    show("mvCustom", !!s.custom);
+    ALL_BLOCKS.forEach(function (id) { show(id, s.blocks.indexOf(id) >= 0); });
+    ALL_WARNS.forEach(function (id) { show(id, s.warns.indexOf(id) >= 0); });
+    if (s.cov === "none") {
+      $("stayH").textContent = "Stays (0)";
+      $("stayPins").innerHTML = '<span class="sm2 muted">None of their pincodes is inside this area.</span>';
+      $("offH").textContent = "Taken off (1)";
+    } else {
+      $("stayH").textContent = "Stays (2)";
+      $("stayPins").innerHTML = '<span class="pin stay">500031</span><span class="pin stay">500032</span>';
+      $("offH").textContent = "Taken off (1)";
+    }
+    var btn = $("mvBtn");
+    btn.textContent = s.apply ? "Moving…" : "Move Ravi Kumar";
+    var ok = !s.apply && !s.checking && s.blocks.length === 0 && state !== "idle" && why.length >= 5;
+    btn.disabled = !ok;
+    ["mvTo", "mvWhy"].forEach(function (id) { $(id).disabled = s.apply; });
+    $("mvTo").value = to;
+    document.querySelectorAll("#stSeg button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-st") === state); });
+  }
+
+  function setState(st) { state = st; refresh(); }
+
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("#stSeg button");
+    if (b) { var st = b.getAttribute("data-st"); $("mvTo").value = STATES[st].to; setState(st); }
+    var l = e.target.closest("#customLink");
+    if (l) {
+      var open = $("mvCustom").classList.contains("hide");
+      show("mvCustom", open);
+      l.textContent = open ? "Use their current pincodes again" : "Choose different pincodes instead";
+    }
+    var h = e.target.closest("#histSeg button");
+    if (h) setHist(h.getAttribute("data-hist"));
+  });
+
+  $("mvWhy").addEventListener("input", refresh);
+  $("mvTo").addEventListener("change", function () {
+    // choosing a franchisee on the idle dialog starts the preview
+    if ($("mvTo").value === "") { setState("idle"); }
+    else if (state === "idle") { setState($("mvTo").value === "w" ? "admin" : "clear"); }
+    else { refresh(); }
+  });
+
+  function setHist(v) {
+    document.querySelectorAll("[data-hist-view]").forEach(function (n) { n.classList.toggle("hide", n.getAttribute("data-hist-view") !== v); });
+    document.querySelectorAll("#histSeg button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-hist") === v); });
+  }
+
+  // The click that closes the dialog and raises the toast is mock.js's; this only mirrors the result on the page.
+  $("mvBtn").addEventListener("click", function () {
+    if (moved) return;
+    moved = true;
+    $("frName").firstChild.nodeValue = "SkyFix Services";
+    var home = $("frHome"); if (home) home.classList.add("hide");
+    $("pinList").textContent = "500031, 500032";
+    setHist("rows");
+    document.querySelectorAll(".fromName").forEach(function (n) { n.textContent = "SkyFix Services"; });
+    state = "idle"; $("mvWhy").value = ""; $("mvTo").value = "";
+    refresh();
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>

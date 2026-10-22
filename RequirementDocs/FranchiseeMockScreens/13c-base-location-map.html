@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13c Base location map — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a{cursor:pointer}
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  .profile-head{display:flex;gap:16px;align-items:center;padding:18px}
+  .profile-head .big{width:56px;height:56px;border-radius:50%;background:var(--brand-100);color:var(--brand-500);display:grid;place-items:center;font-weight:700;font-size:18px}
+  .profile-head h2{margin:0;font-size:18px}
+  .two{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.two{grid-template-columns:1fr}}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .basebox{display:flex;flex-direction:column;gap:8px}
+  .basebox .what{font-weight:600;font-size:14px}
+  .basebox .coords{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink-2)}
+  .basebox .by{font-size:12.5px;color:var(--ink-3)}
+  .notset{background:var(--warn-bg);color:var(--warn);padding:10px 12px;border-radius:8px;font-size:13px;font-weight:500}
+
+  /* map */
+  .mapwrap{position:relative;border:1px solid var(--input);border-radius:10px;overflow:hidden;background:#efebe3;aspect-ratio:2/1;min-height:220px;max-height:360px;width:100%;touch-action:none;cursor:crosshair;user-select:none}
+  .mapwrap svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .pin{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:var(--brand-500);border:3px solid #fff;box-shadow:0 1px 4px rgb(0 0 0/.45);cursor:grab;z-index:3}
+  .pin:before{content:"";position:absolute;inset:-11px;border-radius:50%;border:2px solid rgb(44 47 116/.28)}
+  .pin.drag{cursor:grabbing}
+  .attrib{position:absolute;right:0;bottom:0;background:rgba(255,255,255,.82);font:11px/1.6 Arial,sans-serif;color:#333;padding:0 6px;z-index:4}
+  .attrib a{color:#0078a8}
+  .scalebar{position:absolute;left:10px;bottom:8px;font:10.5px Arial,sans-serif;color:#333;border:2px solid #333;border-top:0;padding:0 4px;width:70px;text-align:center;z-index:4;background:rgba(255,255,255,.6)}
+  .nomap{position:absolute;inset:0;z-index:5;display:none;background:repeating-linear-gradient(45deg,#e6e8ec,#e6e8ec 14px,#eef0f3 14px,#eef0f3 28px);align-items:center;justify-content:center;color:var(--ink-3);font-size:13px}
+  .nomap.show{display:flex}
+  .pincode-row{display:grid;grid-template-columns:200px auto 1fr;gap:10px;align-items:start}
+  @media(max-width:900px){.pincode-row{grid-template-columns:1fr}}
+  .msg{font-size:12.5px;margin-top:4px}
+  .msg.err{color:var(--danger)}.msg.ok{color:var(--ok)}.msg.mut{color:var(--ink-3)}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .tryrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--ink-3);margin:8px 0 12px}
+  .tryrow .btn{padding:2px 9px;font-size:11.5px}
+  .srcrow{display:flex;gap:10px;align-items:center;margin:10px 0 6px;font-size:13px;color:var(--ink-2)}
+  .skelrow{display:grid;gap:12px;padding:18px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small>Franchise portal · SkyFix Services</small></div></div>
+    <div class="grp">Work</div>
+    <a>Spare parts <span class="n">3</span></a><a>Tickets</a><a class="on">Technicians</a><a>Employees</a><a>Employee statements</a>
+    <div class="grp">Settings</div>
+    <a>Allowance rules</a><a>Facility users</a>
+    <div class="who">Meena R · Franchisee admin</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><h1>Ravi Kumar</h1><div class="sub"><a href="#">← Back to technicians</a></div></div>
+      <span class="sp"></span><div class="avatar">MR</div>
+    </div>
+
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.5</b> (Base-location pin — <code>BaseLocationPanel</code> + <code>BaseLocationDialog</code>; copy §5.10 “Base location”). The map is a drawn stand-in for OpenStreetMap tiles: drag the pin, click the map, press <i>Use centre</i> or type coordinates. Use the switcher at the bottom for the panel’s own states.</div>
+
+      <div class="card"><div class="profile-head">
+        <div class="big">RK</div>
+        <div style="flex:1"><h2>Ravi Kumar</h2><div style="color:var(--ink-3);font-size:13px">+91 98480 12345 · Joined 02-09-2026</div></div>
+        <div class="chips"><span class="chip brand">Freelancer</span><span class="chip ok">Active</span><span class="chip">SkyFix Services</span></div>
+      </div></div>
+
+      <div class="two">
+        <div style="display:grid;gap:16px">
+          <section class="card"><header><h2>Details</h2></header><div class="body">
+            <dl class="kv"><dt>Skills</dt><dd class="chips"><span class="chip">Television</span><span class="chip">Washing Machine</span></dd>
+              <dt>Coverage</dt><dd class="chips"><span class="chip">500032</span><span class="chip">500049</span><span class="chip">500081</span><span class="chip">500084</span></dd>
+              <dt>Daily job cap</dt><dd>No limit</dd>
+              <dt>Rating</dt><dd>4.6</dd>
+              <dt>Onboarding</dt><dd>Invited · registered by the technician</dd></dl>
+          </div></section>
+
+          <!-- BaseLocationPanel -->
+          <section class="card" id="panelCard">
+            <header><div><h2>Base location</h2><div class="sub">Where travel allowance is measured from.</div></div></header>
+            <div class="body" id="panelBody"></div>
+            <div class="body proposed" id="panelNote" style="padding-top:0;font-size:12.5px;color:var(--ink-3)">The technician can set this themselves in the app. You can correct it at any time: no approval, no waiting period.</div>
+          </section>
+        </div>
+
+        <section class="card"><header><h2>Recent jobs</h2></header>
+          <table class="t"><tbody>
+            <tr><td><b>RGT-INST-0412</b><div class="sub" style="color:var(--ink-3);font-size:12px">Sunview 43" Android TV</div></td><td><span class="chip part">Awaiting Part</span></td></tr>
+            <tr><td><b>RGT-INST-0405</b><div class="sub" style="color:var(--ink-3);font-size:12px">Acme FL-7 (7 kg)</div></td><td><span class="chip closed">Closed</span></td></tr>
+            <tr><td><b>RGT-INST-0398</b><div class="sub" style="color:var(--ink-3);font-size:12px">Meridian 55"</div></td><td><span class="chip closed">Closed</span></td></tr>
+          </tbody></table></section>
+      </div>
+
+      <div class="notebox">
+        <h3>Wording added by the mock — needs sign-off</h3>
+        <ul>
+          <li>“That pincode is outside SkyFix Services’ range.” — the doc names the code <code>PINCODE_OUTSIDE_FRANCHISEE</code> and says the server’s sentence is shown, but gives no sentence.</li>
+          <li>“We have no location for that pincode. Place the pin or type the coordinates.” — same, for <code>PINCODE_HAS_NO_LOCATION</code>.</li>
+          <li>“Enter a 6-digit pincode” (format check on the field), “Choose a point first” (Save with nothing set), the “Try:” shortcut row and the “Simulate tiles failing” button — mock scaffolding, dashed outline.</li>
+          <li>The Read-only variant’s annotation (“Managed by Acme Secunderabad — no button on a non-home technician for staff.”) explains the missing button; the server’s own 403 wording is “Managed by …”.</li>
+          <li>The panel now shows who set the base and when as “Set by {name} · {date}” (Ravi Kumar when the technician set it, Meena R after a correction), replacing §5.10’s “Set by the technician · {when}” and “Set by a manager · {when}”. The profile page chrome (Details, Recent jobs) is placeholder, not part of this task.</li>
+          <li>Ruling R9 wording: the source chips <i>Pincode</i>, <i>GPS</i>, <i>Map</i>, <i>Set by admin</i>; the button <i>Correct location</i> and the dialog title “Correct base location · {name}”; the dialog line “Ravi Kumar set this location from … Correcting it replaces it straight away for jobs accepted after you save. No approval is needed.”; the panel line “The technician can set this themselves in the app. You can correct it at any time: no approval, no waiting period.”; and, on the staff read-only variant, “Coordinates are shown only to the franchisee.” (staff never see a non-home base’s coordinates, ruling R8).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BaseLocationDialog -->
+<div class="scrim" id="dlgBase"><div class="dlg wide">
+  <header><div style="flex:1"><h3 id="bTitle">Base location · Ravi Kumar</h3><div style="color:var(--ink-3);font-size:12.5px;margin-top:2px">Click the map or drag the pin, start from a pincode’s centre, or type the coordinates.</div></div><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd">
+    <div class="pill-info proposed hide" id="corrNote" style="margin-bottom:12px">Ravi Kumar set this location from <span id="corrFrom">their phone</span>. Correcting it replaces it straight away for jobs accepted after you save. No approval is needed.</div>
+    <div class="pincode-row">
+      <div class="field" style="margin:0"><label for="bPin">Pincode</label><input class="in" id="bPin" value="500049" inputmode="numeric" maxlength="6"></div>
+      <div style="padding-top:22px"><button class="btn" id="bUse" type="button">Use centre</button></div>
+      <div id="bPinMsg" class="msg" style="padding-top:26px"></div>
+    </div>
+    <div class="tryrow"><span class="proposed">Try:</span>
+      <button class="btn" data-try="500049">500049 — works</button>
+      <button class="btn" data-try="560001">560001 — outside range</button>
+      <button class="btn" data-try="500090">500090 — no coordinates</button>
+      <button class="btn" data-try="500091">500091 — no coordinates (refused)</button>
+      <button class="btn" data-try="999999">999999 — unknown</button>
+      <button class="btn" data-try="500099">500099 — lookup fails</button>
+      <button class="btn" id="bLondon">Pin outside India</button>
+      <button class="btn" id="bTiles">Simulate tiles failing</button></div>
+
+    <div class="mapwrap" id="map" aria-label="Map — drag the pin to set the base location">
+      <svg viewBox="0 0 800 400" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <pattern id="blocks" width="26" height="20" patternUnits="userSpaceOnUse">
+            <rect x="2" y="2" width="9" height="7" fill="#e3dccf"/><rect x="13" y="3" width="10" height="6" fill="#e0d9cb"/>
+            <rect x="3" y="11" width="12" height="6" fill="#e2dbce"/><rect x="17" y="11" width="6" height="7" fill="#e4ddd0"/>
+          </pattern>
+        </defs>
+        <rect width="800" height="400" fill="#f2efe9"/>
+        <rect width="800" height="400" fill="url(#blocks)"/>
+        <!-- parks -->
+        <path d="M520 20 L690 12 L720 110 L560 135 Z" fill="#c8e1b0" stroke="#b3d098" stroke-width="1.5"/>
+        <path d="M40 250 L170 238 L190 330 L60 345 Z" fill="#cde6b8" stroke="#b3d098" stroke-width="1.5"/>
+        <path d="M250 20 L330 24 L322 70 L246 66 Z" fill="#cde6b8" stroke="#b3d098" stroke-width="1.5"/>
+        <!-- water -->
+        <path d="M600 250 C650 230 735 245 770 280 C790 320 740 360 690 355 C630 350 575 300 600 250 Z" fill="#aad3df" stroke="#8cbfd0" stroke-width="1.5"/>
+        <!-- minor streets -->
+        <g stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round">
+          <path d="M0 80 L800 70"/><path d="M0 150 L800 140"/><path d="M0 260 L520 250"/>
+          <path d="M120 0 L130 400"/><path d="M250 0 L262 400"/><path d="M520 0 L528 400"/><path d="M640 0 L650 230"/>
+          <path d="M400 120 L520 118"/><path d="M270 205 L400 200"/><path d="M405 280 L520 282"/>
+        </g>
+        <g stroke="#d6d1c6" stroke-width="6.5" fill="none" stroke-linecap="round" opacity=".55" style="mix-blend-mode:multiply">
+          <path d="M0 80 L800 70"/><path d="M0 150 L800 140"/><path d="M0 260 L520 250"/>
+        </g>
+        <g stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round">
+          <path d="M0 80 L800 70"/><path d="M0 150 L800 140"/><path d="M0 260 L520 250"/>
+        </g>
+        <!-- secondary: Kondapur Main Rd -->
+        <path d="M398 -10 L406 410" stroke="#c9ca8e" stroke-width="12" fill="none"/>
+        <path id="rKond" d="M398 -10 L406 410" stroke="#f7fabf" stroke-width="9" fill="none"/>
+        <!-- primary: Gachibowli - Miyapur road -->
+        <path d="M-20 40 C 120 110, 270 150, 430 235 S 700 340, 830 410" stroke="#e2a38d" stroke-width="15" fill="none"/>
+        <path id="rGach" d="M-20 40 C 120 110, 270 150, 430 235 S 700 340, 830 410" stroke="#fcd6a4" stroke-width="12" fill="none"/>
+        <!-- trunk: Outer Ring Road -->
+        <path d="M-20 340 C 180 300, 380 388, 830 292" stroke="#d49a8a" stroke-width="17" fill="none"/>
+        <path id="rOrr" d="M-20 340 C 180 300, 380 388, 830 292" stroke="#f9b29c" stroke-width="13" fill="none"/>
+        <!-- labels -->
+        <g font-family="Arial,sans-serif" font-size="11" fill="#555" stroke="#fff" stroke-width="3" paint-order="stroke" style="paint-order:stroke">
+          <text font-size="12"><textPath href="#rOrr" startOffset="52%" fill="#7a3b2b">Outer Ring Road</textPath></text>
+          <text font-size="12"><textPath href="#rGach" startOffset="10%" fill="#7a5a1e">Gachibowli – Miyapur Rd</textPath></text>
+          <text><textPath href="#rKond" startOffset="8%" fill="#555">Kondapur Main Rd</textPath></text>
+          <text x="590" y="75" fill="#3d7a2c" font-size="12" font-style="italic">Botanical Garden</text>
+          <text x="66" y="292" fill="#3d7a2c" font-style="italic">Kothaguda Park</text>
+          <text x="440" y="170" font-size="14" font-weight="bold" fill="#444">Kondapur</text>
+          <text x="180" y="120" font-size="14" font-weight="bold" fill="#444">Hitech City</text>
+          <text x="560" y="205" font-size="14" font-weight="bold" fill="#444">Gachibowli</text>
+          <text x="632" y="305" fill="#2f6f86" font-style="italic">Durgam Cheruvu</text>
+        </g>
+      </svg>
+      <div class="nomap" id="noMap">Map tiles unavailable</div>
+      <div class="pin" id="pin" role="slider" aria-label="Base location pin" tabindex="0"></div>
+      <div class="scalebar">500 m</div>
+      <div class="attrib"><a href="#" onclick="return false">© OpenStreetMap contributors</a></div>
+    </div>
+    <div class="pill-warn hide" id="bTilesMsg" style="margin-top:10px">The map couldn’t load. Type the coordinates instead.</div>
+
+    <div class="srcrow"><span>Source</span><span class="chip brand" id="bChip">Pincode 500049 (area centre)</span></div>
+
+    <div class="row2">
+      <div class="field"><label for="bLat">Latitude</label><input class="in" id="bLat" inputmode="decimal"><div class="msg err" id="bLatErr"></div></div>
+      <div class="field"><label for="bLng">Longitude</label><input class="in" id="bLng" inputmode="decimal"><div class="msg err" id="bLngErr"></div></div>
+    </div>
+  </div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="bSave">Save base location</button></footer>
+</div></div>
+
+<div class="state-switch" id="pv"><button data-pv="unset" class="on">Not set</button><button data-pv="pincode">Set (pincode)</button><button data-pv="gps">Set by technician (GPS)</button><button data-pv="admin">Corrected by admin</button><button data-pv="readonly">Read-only</button><button data-pv="loading">Loading</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  function toast(t){ var el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(function(){el.classList.remove("show")},3200); }
+
+  /* ---------- geography (mock) ---------- */
+  var K = 0.0000750;                        // degrees per map unit (800 x 400 units)
+  var PINS = {
+    "500049":{lat:17.44010,lng:78.34890,city:"Kondapur"},
+    "500032":{lat:17.44350,lng:78.37720,city:"Gachibowli"},
+    "560001":{lat:12.97160,lng:77.59460,city:"Bengaluru", outside:true},
+    "500090":{lat:null,lng:null,city:"Hyderabad"},
+    "500091":{lat:null,lng:null,city:"Hyderabad", refused:true},
+    "500099":{fail:true}
+  };
+  var inIndia = function(la,ln){ return la>=6 && la<=38 && ln>=68 && ln<=98; };
+  var r5 = function(n){ return Math.round(n*1e5)/1e5; };
+  var fmt = function(la,ln){ return la.toFixed(5)+", "+ln.toFixed(5); };
+
+  var map = $("map"), pin = $("pin");
+  var centre = {lat:17.44010,lng:78.34890};      // map centre (re-set when a value comes from outside)
+  var cur = {lat:17.44010,lng:78.34890, mode:"pincode", pincode:"500049"};
+  var tilesFail = false;
+
+  function toXY(lat,lng){ return {x:400+(lng-centre.lng)/K, y:200-(lat-centre.lat)/K}; }
+  function toLL(x,y){ return {lat:centre.lat-(y-200)*K, lng:centre.lng+(x-400)*K}; }
+  function place(){
+    var p = toXY(cur.lat,cur.lng);
+    pin.style.left = (p.x/800*100)+"%"; pin.style.top = (p.y/400*100)+"%";
+    pin.style.display = (p.x<-20||p.x>820||p.y<-20||p.y>420) ? "none" : "";
+  }
+  function chip(){
+    var c = $("bChip"), t = "";
+    if(cur.lat==null) t = "Not set";
+    else if(cur.mode==="pincode") t = "Pincode "+cur.pincode+" (area centre)";
+    else if(cur.mode==="map") t = "Pin on the map";
+    else t = "Typed coordinates";
+    c.textContent = t;
+  }
+  function fields(){ if(cur.lat!=null){ $("bLat").value = r5(cur.lat).toFixed(5); $("bLng").value = r5(cur.lng).toFixed(5); } else { $("bLat").value=""; $("bLng").value=""; } }
+  function clearMsgs(){ $("bLatErr").textContent=""; $("bLngErr").textContent=""; $("bLat").classList.remove("bad"); $("bLng").classList.remove("bad"); }
+  function pinMsg(text, cls){ var m=$("bPinMsg"); m.textContent=text||""; m.className="msg "+(cls||""); $("bPin").classList.toggle("bad", cls==="err"); }
+  function checkIndia(){
+    clearMsgs();
+    if(cur.lat!=null && !inIndia(cur.lat,cur.lng)){
+      $("bLatErr").textContent="That point is outside India."; $("bLngErr").textContent="That point is outside India.";
+      $("bLat").classList.add("bad"); $("bLng").classList.add("bad"); return false;
+    }
+    return true;
+  }
+  function refresh(){ place(); chip(); fields(); checkIndia(); }
+
+  /* ---------- Use centre ---------- */
+  function useCentre(){
+    var code = $("bPin").value.trim(); pinMsg("");
+    if(!/^\d{6}$/.test(code)){ pinMsg("Enter a 6-digit pincode","err"); return; }
+    var row = PINS[code];
+    if(!row){ pinMsg("We don’t service that pincode.","err"); return; }
+    if(row.fail){ pinMsg("Couldn’t check that pincode.","err"); cur.mode="pincode"; cur.pincode=code; chip(); return; }
+    cur.mode="pincode"; cur.pincode=code;
+    if(row.lat==null){ pinMsg("Saved as the pincode’s centre.","ok"); chip(); return; }   // pin stays; server returns the point
+    cur.lat=row.lat; cur.lng=row.lng; centre={lat:row.lat,lng:row.lng}; refresh();
+  }
+  $("bUse").addEventListener("click", useCentre);
+  $("bPin").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); useCentre(); } });
+  $("bPin").addEventListener("input", function(){ pinMsg(""); });
+  document.querySelectorAll("[data-try]").forEach(function(b){ b.addEventListener("click", function(){ $("bPin").value=b.getAttribute("data-try"); useCentre(); }); });
+
+  /* ---------- drag / click ---------- */
+  var dragging=false;
+  function fromEvent(e){
+    var r = map.getBoundingClientRect();
+    var x = Math.max(0,Math.min(800,(e.clientX-r.left)/r.width*800)), y = Math.max(0,Math.min(400,(e.clientY-r.top)/r.height*400));
+    var ll = toLL(x,y); cur.lat=ll.lat; cur.lng=ll.lng; cur.mode="map"; pinMsg("");
+    place(); chip(); fields(); checkIndia();
+  }
+  map.addEventListener("pointerdown", function(e){
+    if($("noMap").classList.contains("show")) return;
+    dragging=true; pin.classList.add("drag"); map.setPointerCapture(e.pointerId); fromEvent(e);
+  });
+  map.addEventListener("pointermove", function(e){ if(dragging) fromEvent(e); });
+  map.addEventListener("pointerup", function(e){ dragging=false; pin.classList.remove("drag"); try{map.releasePointerCapture(e.pointerId);}catch(_){} });
+  pin.addEventListener("keydown", function(e){
+    var d = {ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[e.key]; if(!d) return;
+    e.preventDefault(); cur.lng+=d[0]*K*6; cur.lat+=d[1]*K*6; cur.mode="map"; refresh();
+  });
+
+  /* ---------- typed coordinates ---------- */
+  function typed(){
+    var la=parseFloat($("bLat").value), ln=parseFloat($("bLng").value);
+    if(isNaN(la)||isNaN(ln)){ return; }
+    cur.lat=la; cur.lng=ln; cur.mode="manual"; pinMsg("");
+    if(inIndia(la,ln)) centre={lat:la,lng:ln};
+    place(); chip(); checkIndia();
+  }
+  $("bLat").addEventListener("input", typed); $("bLng").addEventListener("input", typed);
+  $("bLondon").addEventListener("click", function(){ cur.lat=51.50735; cur.lng=-0.12776; cur.mode="manual"; centre={lat:cur.lat,lng:cur.lng}; refresh(); });
+  $("bTiles").addEventListener("click", function(){
+    tilesFail=!tilesFail; $("noMap").classList.toggle("show",tilesFail); $("bTilesMsg").classList.toggle("hide",!tilesFail);
+    this.textContent = tilesFail ? "Restore tiles" : "Simulate tiles failing";
+  });
+
+  /* ---------- save ---------- */
+  var saved = null;   // {mode, text, lat, lng, when}
+  $("bSave").addEventListener("click", function(){
+    pinMsg("");
+    if(cur.mode==="pincode"){
+      var row = PINS[cur.pincode];
+      if(row && row.outside){ pinMsg("That pincode is outside SkyFix Services’ range.","err"); return; }
+      if(row && row.refused){ pinMsg("We have no location for that pincode. Place the pin or type the coordinates.","err"); return; }
+      if(row && row.fail){ /* lookup failure never blocks */ }
+    } else {
+      if(cur.lat==null){ pinMsg("Choose a point first","err"); return; }
+      if(!checkIndia()) return;
+    }
+    var row2 = PINS[cur.pincode];
+    var lat = cur.lat, lng = cur.lng;
+    if(cur.mode==="pincode" && cur.lat==null){ lat = 17.4412; lng = 78.3501; }   // the point the server returns
+    saved = {mode:cur.mode, pincode:cur.pincode, lat:r5(lat), lng:r5(lng)};
+    $("dlgBase").classList.remove("open");
+    toast("Base location saved — Jobs Ravi Kumar accepts from now on measure travel from here.");
+    setPanel("saved");
+  });
+
+  /* ---------- panel ---------- */
+  function setPanel(v){
+    var host = $("panelBody"), h = "";
+    document.querySelectorAll("#pv button").forEach(function(b){ b.classList.toggle("on", b.getAttribute("data-pv")===v || (v==="saved" && b.getAttribute("data-pv")==="pincode")); });
+    if(v==="loading"){ host.innerHTML='<div class="skelrow" style="padding:0"><div class="skel" style="width:50%"></div><div class="skel"></div><div class="skel" style="width:30%"></div></div>'; return; }
+    curView = v;
+    var chipH = function(t){ return '<div><span class="chip brand proposed">'+t+'</span></div>'; };
+    var btn = function(label){ return '<div><button class="btn '+(label==="Set base location"?"pri":"")+'" id="openBase" data-open="dlgBase">'+label+'</button></div>'; };
+    if(v==="unset") h = '<div class="basebox"><div class="notset">Not set — jobs this technician accepts pay no travel allowance.</div>'+btn("Set base location")+'</div>';
+    else if(v==="pincode") h = '<div class="basebox">'+chipH("Pincode")+'<div class="what">Pincode 500049 (area centre)</div><div class="coords">17.44010, 78.34890</div><div class="by">Set by Ravi Kumar · 12-10-2026</div>'+btn("Correct location")+'</div>';
+    else if(v==="gps") h = '<div class="basebox">'+chipH("GPS")+'<div class="what">Phone location</div><div class="coords">17.43882, 78.35407</div><div class="by">Set by Ravi Kumar · 15-10-2026</div>'+btn("Correct location")+'</div>';
+    else if(v==="admin") h = '<div class="basebox">'+chipH("Set by admin")+'<div class="what">Typed coordinates</div><div class="coords">17.44412, 78.36120</div><div class="by">Set by Meena R · 15-10-2026</div>'+btn("Correct location")+'</div>';
+    else if(v==="readonly") h = '<div class="basebox">'+chipH("Map")+'<div class="what">Pin on the map</div><div class="coords proposed" style="font-family:inherit;color:var(--ink-3)">Coordinates are shown only to the franchisee.</div><div class="by">Set by Ravi Kumar · 09-10-2026</div></div><div class="sub" style="margin-top:10px;color:var(--ink-3);font-size:12.5px"><span class="proposed">Managed by Acme Secunderabad — no button on a non-home technician for staff.</span></div>';
+    else if(v==="saved"){
+      var w = saved.mode==="pincode" ? "Pincode "+saved.pincode+" (area centre)" : saved.mode==="map" ? "Pin on the map" : "Typed coordinates";
+      var src = saved.mode==="pincode" ? "Pincode" : saved.mode==="map" ? "Map" : "Set by admin";
+      h = '<div class="basebox">'+chipH(src)+'<div class="what">'+w+'</div><div class="coords">'+fmt(saved.lat,saved.lng)+'</div><div class="by">Set by Meena R · 15-10-2026</div>'+btn("Correct location")+'</div>';
+    }
+    host.innerHTML = h;
+  }
+  document.getElementById("pv").addEventListener("click", function(e){ var b=e.target.closest("[data-pv]"); if(b) setPanel(b.getAttribute("data-pv")); });
+  var curView = "unset";
+  document.addEventListener("click", function(e){
+    if(e.target.closest("#openBase")){
+      clearMsgs(); pinMsg(""); refresh();
+      var fix = curView!=="unset" && curView!=="loading";
+      $("bTitle").textContent = (fix ? "Correct base location" : "Base location") + " · Ravi Kumar";
+      $("corrNote").classList.toggle("hide", !fix);
+      $("corrFrom").textContent = curView==="gps" ? "their phone" : curView==="pincode" ? "a pincode" : curView==="admin" ? "typed coordinates" : "the map";
+    }
+  });
+
+  setPanel("unset"); refresh();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13e Facility queue and users — mock</title>
+<link rel="stylesheet" href="_shared/console.css">
+<script src="_shared/mock.js" defer></script>
+<style>
+  .rail a{cursor:pointer}
+  .toast{white-space:pre-line}
+  .proposed{outline:1px dashed var(--accent);outline-offset:2px;border-radius:3px}
+  .notebox{background:#fff8d6;border:1px dashed #d8b800;color:#5b4b00;padding:12px 16px;border-radius:8px;font-size:12.5px}
+  .notebox h3{margin:0 0 6px;font-size:13px}.notebox ul{margin:0;padding-left:18px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap}
+  .pills button{border:1px solid var(--input);background:#fff;border-radius:99px;padding:4px 12px;font:500 12.5px "IBM Plex Sans";cursor:pointer;color:var(--ink-2)}
+  .pills button.on{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+  .pills .c{opacity:.75;margin-left:4px;font-size:11.5px}
+  .tag{display:inline-block;background:var(--surface-3);border-radius:4px;font-size:10.5px;font-weight:600;padding:1px 6px;color:var(--ink-2);margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+  .sm2{color:var(--ink-3);font-size:12px}
+  tr.click{cursor:pointer}
+  .codelink{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:12.5px;color:var(--brand-400)}
+  .trail{list-style:none;margin:0;padding:0}
+  .trail li{padding:7px 0 7px 18px;border-left:2px solid var(--border);position:relative;font-size:13px}
+  .trail li:before{content:"";position:absolute;left:-6px;top:12px;width:10px;height:10px;border-radius:50%;background:var(--brand-300);border:2px solid #fff}
+  .trail li.bad:before{background:var(--warn)}
+  .photo{width:100%;max-width:300px;aspect-ratio:4/3;border-radius:10px;background:linear-gradient(135deg,#d9dde5,#eef0f4);display:grid;place-items:center;color:var(--ink-3);font-size:12.5px;border:1px solid var(--border)}
+  .photo img{width:100%;height:100%;object-fit:cover;border-radius:10px}
+  .chk input{margin-top:3px}
+  .in.bad{border-color:var(--danger);background:var(--danger-bg)}
+  .err{color:var(--danger);font-size:11.5px;margin-top:4px;min-height:14px}
+  .tcard{border:1px solid var(--input);border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-size:13px}
+  .tcard.sel{border-color:var(--brand-400);background:var(--brand-100)}
+  .tcard small{display:block;color:var(--ink-3);font-size:12px}
+  .cards2{display:grid;gap:10px}
+  .dots{border:1px solid transparent;background:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--ink-2);font-size:18px;line-height:1}
+  .dots:hover{background:var(--surface-3);border-color:var(--border)}
+  .rowmenu{position:relative;display:inline-block}
+  .menu{position:absolute;right:0;top:100%;min-width:190px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:5px;z-index:30;display:none;text-align:left}
+  .menu.open{display:block}
+  .menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:7px;font:13px "IBM Plex Sans";cursor:pointer}
+  .menu button:hover{background:var(--surface-3)}
+  .tempbox{border:1px solid var(--warn);background:var(--warn-bg);border-radius:10px;padding:12px 14px;margin-top:8px}
+  .tempbox .pw{font-family:"IBM Plex Mono",monospace;font-size:16px;font-weight:600;letter-spacing:.04em;margin:6px 0}
+  .skelrow{display:grid;gap:12px;padding:18px}
+  .viewbar{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--ink-3)}
+  tr.off td{opacity:.6}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" data-tabs>
+    <div class="brand"><span class="mark">AC</span><div>Acme Appliances<small>Franchise portal · SkyFix Services</small></div></div>
+    <div class="grp">Work</div>
+    <a class="on" data-tab="queue">Spare parts <span class="n" id="railBadge">3</span></a><a>Tickets</a><a>Technicians</a><a>Employees</a>
+    <div class="grp">Settings</div>
+    <a>Allowance rules</a><a data-tab="users">Facility users</a>
+    <div class="who" id="who">Arjun Rao · Facility operator</div>
+  </aside>
+
+  <!-- ================= QUEUE PANE ================= -->
+  <div class="main" data-pane="queue">
+    <div class="topbar">
+      <div><h1>Spare parts</h1><div class="sub">Part requests from technicians</div></div>
+      <span class="sp"></span><div class="avatar">AR</div>
+    </div>
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.7</b> (Facility queue and request page; copy §5.10 “Requests”). Default view <i>On the desk</i> = requested + approved + issued. Click a row for the request page; approve / reject / issue / return all work and update the counts. An <b>Approved</b> row can still be rejected (with a reason), and the example row RGT-SPR-0011 shows one that was. State switcher at the bottom.</div>
+
+      <div data-view="data">
+        <section class="card">
+          <div class="toolbar">
+            <div class="pills" id="pills"></div>
+            <span class="sp"></span>
+            <input class="in search" id="q" style="max-width:320px" placeholder="Search by request, ticket, part or technician">
+          </div>
+          <div style="overflow:auto">
+            <table class="t"><thead><tr><th>Request</th><th>Part</th><th>Ticket</th><th>Technician</th><th>Place</th><th>Raised</th><th>Status</th></tr></thead><tbody id="qrows"></tbody></table>
+          </div>
+          <div class="empty hide" id="qEmpty"><b>No part requests</b>Requests technicians raise from a job appear here.</div>
+          <div class="pg"><span id="qCount"></span><span>Oldest waiting first within each status</span></div>
+        </section>
+      </div>
+
+      <div data-view="loading" class="hide">
+        <section class="card"><div class="toolbar"><div class="skel" style="width:360px"></div></div>
+          <div class="skelrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></section>
+      </div>
+      <div data-view="empty" class="hide"><section class="card"><div class="empty"><b>No part requests</b>Requests technicians raise from a job appear here.</div></section></div>
+      <div data-view="error" class="hide"><section class="card"><div class="empty"><b>Couldn’t load the part requests</b>Something went wrong reaching the server.<div style="margin-top:12px"><button class="btn" data-toast="Retrying…">Retry</button></div></div></section></div>
+      <div id="handled" class="hide"><section class="card"><div class="empty"><b>Spare parts</b>Spare parts for Acme Home are handled by its facility staff.<div class="proposed" style="margin-top:8px;font-size:12.5px">Company Admin and National Head do not work its requests. Add a facility admin under Facility users first.</div></div></section></div>
+    </div>
+  </div>
+
+  <!-- ================= USERS PANE ================= -->
+  <div class="main hide" data-pane="users">
+    <div class="topbar">
+      <div><h1>Facility users</h1><div class="sub">Who approves and logs spare parts</div></div>
+      <span class="sp"></span><div class="avatar" id="uAv">MR</div>
+    </div>
+    <div class="page">
+      <div class="note"><b>Mocks Task 13 §5.7</b> (Facility users page; contract §4.8; copy §5.10 “Facility users”). Mirrors the Vendor users page. Toggle the viewer to see a facility admin (operators only), the franchisee admin (both roles), or a company Admin / National Head looking at the <b>home</b> franchisee, where they can add its first facility admin.</div>
+
+      <div data-view="data">
+        <section class="card">
+          <div class="pill-info proposed hide" id="homeBanner" style="margin:12px 14px 0">Acme Home is the company&rsquo;s own franchisee. Company Admin and National Head create its facility users here; they do not work its part requests.</div>
+          <div class="toolbar">
+            <div class="viewbar"><span class="proposed">Viewing as:</span>
+              <div class="seg" id="viewer"><button class="on" data-v="fa">Franchisee admin</button><button data-v="fo">Facility admin</button><button data-v="ca" class="proposed">Company Admin / NH (home franchisee)</button></div></div>
+            <label class="chk proposed" style="margin-left:6px"><input type="checkbox" id="mailFail"> Simulate: email can’t be sent</label>
+            <span class="sp"></span>
+            <button class="btn pri" id="addUser">Add facility user</button>
+          </div>
+          <div style="overflow:auto">
+            <table class="t"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody id="urows"></tbody></table>
+          </div>
+        </section>
+      </div>
+      <div data-view="loading" class="hide"><section class="card"><div class="skelrow"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></section></div>
+      <div data-view="empty" class="hide"><section class="card"><div class="empty"><b>No facility users yet</b>Add the people who run your parts store. They sign in here and see only spare-part requests.<div style="margin-top:12px"><button class="btn pri" data-add>Add facility user</button></div></div></section></div>
+      <div data-view="error" class="hide"><section class="card"><div class="empty"><b>Couldn’t load the facility users</b>Something went wrong reaching the server.<div style="margin-top:12px"><button class="btn" data-toast="Retrying…">Retry</button></div></div></section></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Request page (detail) ===== -->
+<div class="scrim" id="dlgReq"><div class="dlg">
+  <header><div style="flex:1"><h3 id="rqCode" class="mono">RGT-SPR-0000</h3><div style="color:var(--ink-3);font-size:12.5px;margin-top:2px">Spare part request</div></div><span id="rqStatus"></span><button class="x" data-close aria-label="Close" style="margin-left:10px">×</button></header>
+  <div class="bd" id="rqBody"></div>
+  <footer id="rqActions"></footer>
+</div></div>
+
+<!-- Approve -->
+<div class="scrim" id="dlgApprove" style="z-index:60"><div class="dlg sm">
+  <header><h3 id="apTitle"></h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><p style="margin:4px 0 12px;color:var(--ink-2)" id="apSub"></p>
+    <label class="chk hide" id="apAddWrap"><input type="checkbox" id="apAdd"><span id="apAddLbl"></span></label></div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="apGo">Approve</button></footer>
+</div></div>
+
+<!-- Reject -->
+<div class="scrim" id="dlgReject" style="z-index:60"><div class="dlg sm">
+  <header><h3 id="rjTitle"></h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><p style="margin:4px 0 12px;color:var(--ink-2)" id="rjSub"></p>
+    <div class="field"><label for="rjReason">Reason</label><textarea class="in" id="rjReason" placeholder="Tell the technician why" maxlength="255"></textarea><div class="err" id="rjErr"></div></div></div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn dng" id="rjGo">Reject request</button></footer>
+</div></div>
+
+<!-- Issue -->
+<div class="scrim" id="dlgIssue" style="z-index:60"><div class="dlg sm">
+  <header><h3 id="isTitle"></h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><p style="margin:4px 0 12px;color:var(--ink-2)">Records that the new part has left the store.</p>
+    <div class="field"><label for="isNote">Note (optional)</label><textarea class="in" id="isNote" maxlength="500"></textarea></div></div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="isGo">Mark issued</button></footer>
+</div></div>
+
+<!-- Return -->
+<div class="scrim" id="dlgReturn" style="z-index:60"><div class="dlg sm">
+  <header><h3 id="rtTitle"></h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd">
+    <div class="field"><label for="rtNote">Note (optional)</label><textarea class="in" id="rtNote" maxlength="500"></textarea></div>
+    <div class="field"><label>Photo (optional)</label>
+      <div id="rtPick"><button class="btn" id="rtAdd" type="button">Add a photo</button><div class="hint" id="rtHint">JPG, PNG or WEBP · up to 8 MB</div></div>
+      <div id="rtPrev" class="hide"><div class="photo" style="max-width:220px"><img id="rtImg" alt=""></div><button class="btn sm" id="rtRm" type="button" style="margin-top:8px">Remove</button></div>
+      <input type="file" id="rtFile" accept="image/jpeg,image/png,image/webp" class="hide"></div>
+  </div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="rtGo">Log return</button></footer>
+</div></div>
+
+<!-- Add facility user -->
+<div class="scrim" id="dlgAdd"><div class="dlg sm">
+  <header><h3 id="addTitle">Add facility user</h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd" id="addBody"></div>
+  <footer id="addFoot"><button class="btn" data-close>Cancel</button><button class="btn pri" id="addGo">Add user</button></footer>
+</div></div>
+
+<!-- Reissue -->
+<div class="scrim" id="dlgReissue"><div class="dlg sm">
+  <header><h3 id="riTitle"></h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd" id="riBody"></div>
+  <footer id="riFoot"><button class="btn" data-close>Cancel</button><button class="btn pri" id="riGo">Email new password</button></footer>
+</div></div>
+
+<!-- Deactivate -->
+<div class="scrim" id="dlgDeact"><div class="dlg sm">
+  <header><h3 id="dcTitle"></h3><button class="x" data-close aria-label="Close">×</button></header>
+  <div class="bd"><p style="margin:6px 0;color:var(--ink-2)">They can no longer sign in. Their past approvals stay on record. You can activate them again.</p></div>
+  <footer><button class="btn" data-close>Cancel</button><button class="btn dng" id="dcGo">Deactivate</button></footer>
+</div></div>
+
+<div style="padding:0 24px 80px;grid-column:1/-1">
+  <div class="notebox">
+    <h3>Wording added by the mock — needs sign-off</h3>
+    <ul>
+      <li>Ruling R2 / R4 wording: the reject dialog sentence on an approved request (“The approval is cancelled; the job goes back to In Progress once nothing is requested or approved.”), the toast “The job goes back to In Progress once nothing else is requested or approved.”, the trail line “Rejected after approval by …”, and the example row RGT-SPR-0011 with its reason. The Reject label itself is unchanged.</li>
+      <li>Home franchisee (R4): the viewer “Company Admin / NH (home franchisee)”, the banner “Acme Home is the company’s own franchisee. Company Admin and National Head create its facility users here; they do not work its part requests.”, the empty state “Acme Home has no parts store yet / Add a facility admin so its technicians can raise spare-part requests.”, the button “Add facility admin”, and on the Spare parts card “Company Admin and National Head do not work its requests. Add a facility admin under Facility users first.”.</li>
+      <li>List error-state title “Couldn’t load the part requests” and facility-users “Couldn’t load the facility users”, the body “Something went wrong reaching the server.” and Retry label (doc has errorTitle only for the single request).</li>
+      <li>Facility-user form validation: “Enter a name”, “Enter a valid email”, “Enter the phone as +91…”, and the add-user “email didn’t send” panel (“Added, but the email didn’t send” / “Give them this temporary password:” / “Copy”). Task 08’s reissue panel heading is used verbatim for reissue.</li>
+      <li>Reject validation “Tell the technician why (at least 3 characters)” (the doc gives the 3–255 rule, not the sentence); “Cancel” / “Done” / “Close” footer buttons; “Choose a role” is not shown (a single role auto-selects; two roles default to Facility Operator).</li>
+      <li>“Oldest waiting first within each status” footer line, and the “n requests” count under the table.</li>
+      <li>Request-page labels Product / Place / Technician / Ticket / Note (the doc lists the facts but not their captions); trail verbs are §5.10’s.</li>
+      <li>The ops-console “handled elsewhere” state uses the server sentence from §4.7 with a bare “Spare parts” heading; mock scaffolding (dashed): “Viewing as”, “Simulate: email can’t be sent”, the bottom state switcher. The rail shows Facility users on the operator’s page only so the two screens can be reached from one file — a real operator cannot open it (acceptance 35).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="state-switch"><button data-state="data" class="on">Data</button><button data-state="loading">Loading</button><button data-state="empty">Empty</button><button data-state="error">Error</button><button data-x="handled">Admin / NH: no home queue</button></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]}); };
+  function toast(t){ var el=$("toast"); el.textContent=t; el.classList.add("show"); setTimeout(function(){el.classList.remove("show")},3200); }
+  function close(id){ $(id).classList.remove("open"); }
+  function open(id){ $(id).classList.add("open"); }
+  var ME = "Arjun Rao";
+
+  /* ============ part requests ============ */
+  var ORDER = ["requested","approved","issued","returned","rejected"];
+  var LABEL = {requested:"Requested",approved:"Approved",issued:"Issued",returned:"Returned",rejected:"Rejected"};
+  var CHIP  = {requested:"info",approved:"assigned",issued:"ok",returned:"",rejected:"warn"};
+  var R = [
+    {code:"RGT-SPR-0007",status:"requested",part:"HDMI cable",other:true,cat:"Television",ticket:"RGT-INST-0412",product:"Sunview 43\" Android TV",tech:"Ravi Kumar",phone:"+91 98480 12345",city:"Hyderabad",pin:"500081",age:130,raised:"15-10-2026 09:40",note:"HDMI port loose, need a replacement cable"},
+    {code:"RGT-SPR-0008",status:"requested",part:"Wall bracket",ticket:"RGT-INST-0419",product:"Meridian 55\"",tech:"Imran Sheikh",phone:"+91 98490 55512",city:"Hyderabad",pin:"500049",age:75,raised:"15-10-2026 10:35",note:""},
+    {code:"RGT-SPR-0010",status:"requested",part:"Door lock",ticket:"RGT-INST-0422",product:"Acme FL-7 (7 kg)",tech:"Lakshmi N",phone:"+91 98491 20034",city:"Hyderabad",pin:"500084",age:25,raised:"15-10-2026 11:25",note:"latch broken"},
+    {code:"RGT-SPR-0009",status:"approved",part:"Inlet hose clamp",ticket:"RGT-INST-0415",product:"Acme FL-7 (7 kg)",tech:"Ravi Kumar",phone:"+91 98480 12345",city:"Hyderabad",pin:"500032",age:300,raised:"15-10-2026 06:30",note:"clamp cracked",decidedBy:"Meena R",decidedAt:"15-10-2026 08:05"},
+    {code:"RGT-SPR-0006",status:"issued",part:"Door lock",ticket:"RGT-INST-0405",product:"Acme FL-7 (7 kg)",tech:"Suresh Babu",phone:"+91 98492 77601",city:"Hyderabad",pin:"500032",age:1500,raised:"14-10-2026 11:00",note:"",decidedBy:"Meena R",decidedAt:"14-10-2026 12:10",issuedBy:"Arjun Rao",issuedAt:"14-10-2026 15:40",issueNote:"box 3"},
+    {code:"RGT-SPR-0005",status:"issued",part:"Remote",ticket:"RGT-INST-0401",product:"Sunview 32\"",tech:"Imran Sheikh",phone:"+91 98490 55512",city:"Hyderabad",pin:"500049",age:2900,raised:"13-10-2026 10:20",note:"",decidedBy:"Meena R",decidedAt:"13-10-2026 11:00",issuedBy:"Arjun Rao",issuedAt:"13-10-2026 16:30",issueNote:""},
+    {code:"RGT-SPR-0004",status:"issued",part:"Control board FL-7",ticket:"RGT-INST-0399",product:"Acme FL-7 (7 kg)",tech:"Lakshmi N",phone:"+91 98491 20034",city:"Hyderabad",pin:"500084",age:4400,raised:"12-10-2026 09:10",note:"board burnt",decidedBy:"Meena R",decidedAt:"12-10-2026 09:45",issuedBy:"Arjun Rao",issuedAt:"12-10-2026 14:00",issueNote:"FL-7 board, shelf 2"},
+    {code:"RGT-SPR-0003",status:"returned",part:"Drain pump",ticket:"RGT-INST-0388",product:"Acme FL-7 (7 kg)",tech:"Ravi Kumar",phone:"+91 98480 12345",city:"Hyderabad",pin:"500032",age:7200,raised:"10-10-2026 08:00",note:"pump motor seized, impeller fine",decidedBy:"Meena R",decidedAt:"10-10-2026 09:00",issuedBy:"Arjun Rao",issuedAt:"11-10-2026 10:00",issueNote:"FL-7 pump, box 3",returnedBy:"Arjun Rao",returnedAt:"12-10-2026 17:20",photo:true,returnNote:"old pump, motor burnt"},
+    {code:"RGT-SPR-0001",status:"returned",part:"Drum bearing",ticket:"RGT-INST-0370",product:"Acme FL-7 (7 kg)",tech:"Suresh Babu",phone:"+91 98492 77601",city:"Hyderabad",pin:"500032",age:11500,raised:"07-10-2026 12:00",note:"",decidedBy:"Meena R",decidedAt:"07-10-2026 12:30",issuedBy:"Arjun Rao",issuedAt:"08-10-2026 11:00",issueNote:"",returnedBy:"Arjun Rao",returnedAt:"09-10-2026 16:00",photo:false},
+    {code:"RGT-SPR-0011",status:"rejected",part:"Door seal",ticket:"RGT-INST-0430",product:"Acme FL-7 (7 kg)",tech:"Lakshmi N",phone:"+91 98491 20034",city:"Hyderabad",pin:"500084",age:600,raised:"15-10-2026 02:00",note:"seal torn at the hinge side",wasApproved:true,approvedBy:"Meena R",approvedAt:"15-10-2026 03:10",decidedBy:"Arjun Rao",decidedAt:"15-10-2026 09:25",rejectReason:"Supplier has stopped making this seal; none can be supplied"},
+    {code:"RGT-SPR-0002",status:"rejected",part:"Power cord",ticket:"RGT-INST-0378",product:"Acme FL-7 (7 kg)",tech:"Imran Sheikh",phone:"+91 98490 55512",city:"Hyderabad",pin:"500049",age:9800,raised:"08-10-2026 15:00",note:"",decidedBy:"Meena R",decidedAt:"08-10-2026 15:40",rejectReason:"Customer’s own cord — ask them to buy one"}
+  ];
+  var cur = null, pill = "desk", query = "";
+  var rel = function(m){ return m<60 ? m+" min ago" : m<1440 ? Math.round(m/60)+" h ago" : Math.round(m/1440)+" d ago"; };
+  var DESK = ["requested","approved","issued"];
+
+  function counts(){ var c={}; ORDER.forEach(function(s){c[s]=0}); R.forEach(function(r){c[r.status]++}); return c; }
+  function renderPills(){
+    var c = counts(), desk = c.requested+c.approved+c.issued, h = "";
+    var P = [["desk","On the desk",desk],["requested","Requested",c.requested],["approved","Approved",c.approved],["issued","Issued",c.issued],["returned","Returned",c.returned],["rejected","Rejected",c.rejected],["all","All",R.length]];
+    P.forEach(function(p){ h += '<button data-pill="'+p[0]+'" class="'+(pill===p[0]?'on':'')+'">'+p[1]+'<span class="c">'+p[2]+'</span></button>'; });
+    $("pills").innerHTML = h; $("railBadge").textContent = c.requested; $("railBadge").style.display = c.requested ? "" : "none";
+  }
+  function renderRows(){
+    var list = R.filter(function(r){
+      if(pill==="desk" && DESK.indexOf(r.status)<0) return false;
+      if(pill!=="desk" && pill!=="all" && r.status!==pill) return false;
+      var q = query.toLowerCase(); if(q && (r.code+" "+r.ticket+" "+r.part+" "+r.tech).toLowerCase().indexOf(q)<0) return false;
+      return true;
+    });
+    list.sort(function(a,b){ var d = ORDER.indexOf(a.status)-ORDER.indexOf(b.status); return d || b.age-a.age; });
+    var h = "";
+    list.forEach(function(r){
+      h += '<tr class="click" data-open-req="'+r.code+'"><td><span class="codelink">'+r.code+'</span></td>'+
+        '<td>'+esc(r.part)+(r.other?'<span class="tag">Other</span>':'')+'</td>'+
+        '<td><b class="mono" style="font-size:12.5px">'+r.ticket+'</b><div class="sm2">'+esc(r.product)+'</div></td>'+
+        '<td>'+esc(r.tech)+'</td><td>'+esc(r.city)+' · '+r.pin+'</td><td>'+rel(r.age)+'</td>'+
+        '<td><span class="chip '+CHIP[r.status]+'">'+LABEL[r.status]+'</span></td></tr>';
+    });
+    $("qrows").innerHTML = h;
+    $("qEmpty").classList.toggle("hide", list.length>0);
+    $("qCount").textContent = list.length + (list.length===1?" request":" requests");
+  }
+  function refresh(){ renderPills(); renderRows(); if($("dlgReq").classList.contains("open") && cur) renderReq(); }
+
+  function actionsFor(r){ return {requested:["approve","reject"],approved:["issue","reject"],issued:["return"]}[r.status] || []; }
+  var ACT = {approve:["Approve","pri"],reject:["Reject","dng"],issue:["Mark issued","pri"],"return":["Log return","pri"]};
+
+  function trail(r){
+    var t = [{t:"Raised by "+r.tech+" · "+r.raised}];
+    if(r.status==="rejected" && r.wasApproved){ t.push({t:"Approved by "+r.approvedBy+" · "+r.approvedAt}); t.push({t:"Rejected after approval by "+r.decidedBy+" · "+r.decidedAt+" — "+r.rejectReason, bad:true}); }
+    else if(r.status==="rejected") t.push({t:"Rejected by "+r.decidedBy+" · "+r.decidedAt+" — "+r.rejectReason, bad:true});
+    else if(r.decidedBy) t.push({t:"Approved by "+r.decidedBy+" · "+r.decidedAt});
+    if(r.issuedBy) t.push({t:"Issued by "+r.issuedBy+" · "+r.issuedAt});
+    if(r.returnedBy) t.push({t:"Old part received by "+r.returnedBy+" · "+r.returnedAt});
+    return t;
+  }
+  function renderReq(){
+    var r = cur;
+    $("rqCode").textContent = r.code;
+    $("rqStatus").innerHTML = '<span class="chip '+CHIP[r.status]+'">'+LABEL[r.status]+'</span>';
+    var h = '<dl class="kv" style="margin:6px 0 14px"><dt>Part</dt><dd><b>'+esc(r.part)+'</b>'+(r.other?'<span class="tag">Other</span>':'')+'</dd>'+
+      '<dt>Product</dt><dd>'+esc(r.product)+'</dd><dt>Place</dt><dd>'+esc(r.city)+' · '+r.pin+'</dd>'+
+      '<dt>Technician</dt><dd>'+esc(r.tech)+' · <a href="tel:'+r.phone.replace(/\s/g,"")+'">'+r.phone+'</a></dd>'+
+      '<dt>Ticket</dt><dd><a href="#" onclick="return false" class="mono">'+r.ticket+'</a></dd>'+
+      (r.note?'<dt>Note</dt><dd>“'+esc(r.note)+'”</dd>':'')+
+      (r.issueNote?'<dt>Issue note</dt><dd>'+esc(r.issueNote)+'</dd>':'')+
+      (r.returnNote?'<dt>Return note</dt><dd>'+esc(r.returnNote)+'</dd>':'')+'</dl>';
+    h += '<ul class="trail">'; trail(r).forEach(function(x){ h += '<li class="'+(x.bad?'bad':'')+'">'+esc(x.t)+'</li>'; }); h += '</ul>';
+    if(r.photo){
+      h += '<div style="margin-top:14px"><div class="photo" id="rqPhoto">'+(r.photoUrl?'<img src="'+r.photoUrl+'" alt="">':'Photo on record')+'</div></div>';
+    }
+    $("rqBody").innerHTML = h;
+    var a = actionsFor(r), f = '<button class="btn" data-close>Close</button>';
+    a.forEach(function(x){ f += '<button class="btn '+ACT[x][1]+'" data-act="'+x+'">'+ACT[x][0]+'</button>'; });
+    $("rqActions").innerHTML = f;
+  }
+
+  document.addEventListener("click", function(e){
+    var t;
+    if((t=e.target.closest("[data-pill]"))){ pill=t.getAttribute("data-pill"); renderPills(); renderRows(); }
+    else if((t=e.target.closest("[data-open-req]"))){ cur = R.filter(function(r){return r.code===t.getAttribute("data-open-req")})[0]; renderReq(); open("dlgReq"); }
+    else if((t=e.target.closest("[data-act]"))){
+      var a = t.getAttribute("data-act"), r = cur;
+      if(a==="approve"){
+        $("apTitle").textContent = "Approve "+r.part+" for "+r.ticket+"?"; $("apSub").textContent = r.tech+" is told it’s approved.";
+        $("apAdd").checked = false; $("apAddWrap").classList.toggle("hide", !r.other);
+        $("apAddLbl").textContent = "Add “"+r.part+"” to "+r.cat+"’s parts list"; open("dlgApprove");
+      } else if(a==="reject"){ $("rjTitle").textContent = r.status==="approved" ? "Reject the approved "+r.part+"?" : "Reject "+r.part+"?"; $("rjSub").textContent = r.status==="approved" ? r.tech+" sees your reason. The approval is cancelled; the job goes back to In Progress once nothing is requested or approved." : r.tech+" sees your reason."; $("rjReason").value=""; $("rjErr").textContent=""; $("rjReason").classList.remove("bad"); open("dlgReject"); }
+      else if(a==="issue"){ $("isTitle").textContent = "Issue "+r.part+" to "+r.tech+"?"; $("isNote").value=""; open("dlgIssue"); }
+      else if(a==="return"){ $("rtTitle").textContent = "Log the old part back · "+r.part; $("rtNote").value=""; clearPhoto(); open("dlgReturn"); }
+    }
+    else if(e.target.closest("#apGo")){ cur.status="approved"; cur.decidedBy=ME; cur.decidedAt="15-10-2026 11:50"; close("dlgApprove"); toast("Request approved"); refresh(); }
+    else if(e.target.closest("#rjGo")){
+      var v = $("rjReason").value.trim();
+      if(v.length<3){ $("rjErr").textContent = v.length? "Tell the technician why (at least 3 characters)" : "Tell the technician why"; $("rjReason").classList.add("bad"); return; }
+      var was = cur.status==="approved";
+      if(was){ cur.approvedBy=cur.decidedBy; cur.approvedAt=cur.decidedAt; cur.wasApproved=true; }
+      cur.status="rejected"; cur.decidedBy=ME; cur.decidedAt="15-10-2026 11:50"; cur.rejectReason=v; close("dlgReject"); toast(was ? "Request rejected\nThe job goes back to In Progress once nothing else is requested or approved." : "Request rejected"); refresh();
+    }
+    else if(e.target.closest("#isGo")){ cur.status="issued"; cur.issuedBy=ME; cur.issuedAt="15-10-2026 11:52"; cur.issueNote=$("isNote").value.trim(); close("dlgIssue"); toast("Part issued"); refresh(); }
+    else if(e.target.closest("#rtGo")){ cur.status="returned"; cur.returnedBy=ME; cur.returnedAt="15-10-2026 11:55"; cur.returnNote=$("rtNote").value.trim(); cur.photo=!!photoUrl; cur.photoUrl=photoUrl; close("dlgReturn"); toast("Return logged"); refresh(); }
+    else if(e.target.closest("#rtAdd")) $("rtFile").click();
+    else if(e.target.closest("#rtRm")) clearPhoto();
+    else if((t=e.target.closest("[data-x=handled]"))){
+      document.querySelectorAll(".state-switch button").forEach(function(b){ b.classList.toggle("on", b===t); });
+      document.querySelectorAll("[data-view]").forEach(function(v){ v.classList.add("hide"); });
+      $("handled").classList.remove("hide");
+    }
+    else if(e.target.closest("[data-state]")){ $("handled").classList.add("hide"); document.querySelector("[data-x=handled]").classList.remove("on"); }
+    else if((t=e.target.closest("[data-tab]"))){ $("who").textContent = t.getAttribute("data-tab")==="users" ? whoUsers() : "Arjun Rao · Facility operator"; document.querySelectorAll(".menu.open").forEach(function(m){m.classList.remove("open")}); }
+  });
+  $("pills").addEventListener("click", function(){});
+  $("q").addEventListener("input", function(){ query=this.value; renderRows(); });
+  $("rjReason").addEventListener("input", function(){ $("rjErr").textContent=""; this.classList.remove("bad"); });
+
+  var photoUrl = null;
+  function clearPhoto(){ if(photoUrl) URL.revokeObjectURL(photoUrl); photoUrl=null; $("rtFile").value=""; $("rtPrev").classList.add("hide"); $("rtPick").classList.remove("hide"); $("rtHint").style.color=""; }
+  $("rtFile").addEventListener("change", function(){
+    var f = this.files[0]; if(!f) return;
+    if(["image/jpeg","image/png","image/webp"].indexOf(f.type)<0 || f.size>8*1024*1024){ $("rtHint").style.color="var(--danger)"; this.value=""; return; }
+    photoUrl = URL.createObjectURL(f); $("rtImg").src = photoUrl; $("rtPrev").classList.remove("hide"); $("rtPick").classList.add("hide");
+  });
+
+  /* ============ facility users ============ */
+  var U = [
+    {id:1,name:"Kavya N",email:"kavya.n@skyfix.example",phone:"+91 98480 31002",role:"admin",active:true,self:true},
+    {id:2,name:"Arjun Rao",email:"arjun.rao@skyfix.example",phone:"+91 98480 31003",role:"operator",active:true},
+    {id:3,name:"Rohit S",email:"rohit.s@skyfix.example",phone:"+91 98480 31004",role:"operator",active:false}
+  ];
+  var UH = [];   // home franchisee: no facility staff yet
+  var viewer = "fa", seq = 10, target = null;
+  var RL = {admin:"Facility Admin",operator:"Facility Operator"};
+  function whoUsers(){ return viewer==="fa" ? "Meena R · Franchisee admin" : viewer==="ca" ? "Anita D · Company admin" : "Kavya N · Facility admin"; }
+  function renderUsers(){
+    var h = "", home = viewer==="ca", L = home ? UH : U;
+    $("homeBanner").classList.toggle("hide", !home);
+    $("addUser").textContent = home ? "Add facility admin" : "Add facility user";
+    document.querySelector(".rail .brand small").textContent = home ? "Console · Acme Home (home franchisee)" : "Franchise portal · SkyFix Services";
+    if(!L.length) h = '<tr><td colspan="6"><div class="empty proposed" style="border:0"><b>Acme Home has no parts store yet</b>Add a facility admin so its technicians can raise spare-part requests.</div></td></tr>';
+    L.forEach(function(u){
+      var own = viewer==="fo" && u.self;
+      var canMenu = !own && (viewer==="fa" || viewer==="ca" || u.role==="operator");
+      h += '<tr class="'+(u.active?'':'off')+'"><td><b>'+esc(u.name)+'</b>'+(own?' <span class="chip brand">You</span>':'')+'</td><td>'+esc(u.email)+'</td><td>'+u.phone+'</td>'+
+        '<td><span class="chip '+(u.role==="admin"?'brand':'')+'">'+RL[u.role]+'</span></td>'+
+        '<td><span class="chip '+(u.active?'ok':'')+'">'+(u.active?'Active':'Deactivated')+'</span></td><td style="text-align:right">'+
+        (canMenu?'<span class="rowmenu"><button class="dots" data-umenu="'+u.id+'" aria-label="Actions">⋯</button><div class="menu" id="um'+u.id+'"><button data-reissue="'+u.id+'">Email a new password</button><button data-toggle="'+u.id+'">'+(u.active?'Deactivate':'Activate')+'</button></div></span>':'')+'</td></tr>';
+    });
+    $("urows").innerHTML = h;
+    $("who").textContent = document.querySelector('[data-pane="users"]').classList.contains("hide") ? $("who").textContent : whoUsers();
+    $("uAv").textContent = viewer==="fa" ? "MR" : viewer==="ca" ? "AD" : "KN";
+  }
+  function tempPw(){ return "Tm" + Math.random().toString(36).slice(2,6) + "-" + Math.floor(1000+Math.random()*9000); }
+  function tempBox(title, pw){
+    return '<div class="tempbox"><b>'+title+'</b><div class="pw" id="tpw">'+pw+'</div><button class="btn sm" type="button" data-copy>Copy</button></div>';
+  }
+
+  function openAdd(){
+    var only = viewer==="fo", homeAdmin = viewer==="ca";
+    $("addTitle").textContent = homeAdmin ? "Add facility admin" : "Add facility user";
+    var h = '<div class="field"><label for="uName">Full name</label><input class="in" id="uName"><div class="err" id="eName"></div></div>'+
+      '<div class="field"><label for="uEmail">Email</label><input class="in" id="uEmail" type="email"><div class="err" id="eEmail"></div></div>'+
+      '<div class="field"><label for="uPhone">Phone</label><input class="in" id="uPhone" placeholder="+91" inputmode="tel"><div class="err" id="ePhone"></div></div>'+
+      '<div class="field"><label>Role</label><div class="cards2" id="roleCards">'+
+        (homeAdmin?'<label class="tcard sel" data-role="admin"><input type="radio" name="rl" checked><span><b>Facility Admin</b><small>Facility Admin — approves, issues, logs returns, and adds and removes operators</small></span></label>':(only?'':'<label class="tcard" data-role="admin"><input type="radio" name="rl"><span><b>Facility Admin</b><small>Facility Admin — also adds and removes operators</small></span></label>'))+
+        (homeAdmin?'':'<label class="tcard'+(only?' sel':'')+'" data-role="operator"><input type="radio" name="rl"'+(only?' checked':'')+'><span><b>Facility Operator</b><small>Facility Operator — approves, issues and logs returns</small></span></label>')+
+      '</div><div class="err" id="eRole"></div></div>';
+    $("addBody").innerHTML = h;
+    $("addFoot").innerHTML = '<button class="btn" data-close>Cancel</button><button class="btn pri" id="addGo">Add user</button>';
+    roleSel = homeAdmin ? "admin" : "operator";   // two roles: Facility Operator is the safe default
+    document.querySelectorAll("#roleCards .tcard").forEach(function(c){ var on = c.getAttribute("data-role")===roleSel; c.classList.toggle("sel",on); c.querySelector("input").checked = on; });
+    open("dlgAdd");
+  }
+  var roleSel = "operator";
+  $("addUser").addEventListener("click", openAdd);
+  document.addEventListener("click", function(e){
+    var t;
+    if(e.target.closest("[data-add]")) openAdd();
+    else if((t=e.target.closest("#roleCards .tcard"))){ roleSel = t.getAttribute("data-role"); document.querySelectorAll("#roleCards .tcard").forEach(function(c){ var on=c===t; c.classList.toggle("sel",on); c.querySelector("input").checked=on; }); e.preventDefault(); }
+    else if(e.target.closest("#addGo")){
+      var n=$("uName").value.trim(), em=$("uEmail").value.trim(), ph=$("uPhone").value.replace(/\s/g,""), bad=false;
+      $("eName").textContent = n ? "" : (bad=true,"Enter a name");
+      $("eEmail").textContent = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em) ? "" : (bad=true,"Enter a valid email");
+      $("ePhone").textContent = /^\+\d{10,14}$/.test(ph) ? "" : (bad=true,"Enter the phone as +91…");
+      if(bad) return;
+      var u = {id:seq++,name:n,email:em,phone:ph.replace(/^(\+91)(\d{5})(\d+)$/,"$1 $2 $3"),role:roleSel,active:true}; (viewer==="ca"?UH:U).push(u); renderUsers();
+      if($("mailFail").checked){
+        $("addBody").innerHTML = '<p style="margin:4px 0;color:var(--ink-2)"><b>'+esc(n)+'</b> was added.</p>' + tempBox("Added, but the email didn’t send", tempPw()) + '<p class="sm2" style="margin-top:8px">Give them this temporary password:</p>';
+        $("addFoot").innerHTML = '<button class="btn pri" data-close>Done</button>';
+      } else { close("dlgAdd"); toast(n+" added\nWe emailed their temporary password."); }
+    }
+    else if((t=e.target.closest("[data-umenu]"))){
+      var m=$("um"+t.getAttribute("data-umenu")), was=m.classList.contains("open");
+      document.querySelectorAll(".menu.open").forEach(function(x){x.classList.remove("open")}); if(!was) m.classList.add("open");
+    }
+    else {
+      if(!e.target.closest(".menu")) document.querySelectorAll(".menu.open").forEach(function(x){x.classList.remove("open")});
+      if((t=e.target.closest("[data-reissue]"))){
+        target = (viewer==="ca"?UH:U).filter(function(u){return u.id==t.getAttribute("data-reissue")})[0];
+        $("riTitle").textContent = "Email "+target.name+" a new password?";
+        $("riBody").innerHTML = '<p style="margin:6px 0;color:var(--ink-2)">Their current password stops working and they are signed out everywhere.</p>';
+        $("riFoot").innerHTML = '<button class="btn" data-close>Cancel</button><button class="btn pri" id="riGo">Email new password</button>';
+        open("dlgReissue");
+      }
+      else if(e.target.closest("#riGo")){
+        if($("mailFail").checked){
+          $("riBody").innerHTML = tempBox("Password reset, but the email didn’t send", tempPw());
+          $("riFoot").innerHTML = '<button class="btn pri" data-close>Done</button>';
+        } else { close("dlgReissue"); toast("New password emailed to "+target.name); }
+      }
+      else if((t=e.target.closest("[data-toggle]"))){
+        target = (viewer==="ca"?UH:U).filter(function(u){return u.id==t.getAttribute("data-toggle")})[0];
+        if(target.active){ $("dcTitle").textContent = "Deactivate "+target.name+"?"; open("dlgDeact"); }
+        else { target.active=true; renderUsers(); toast(target.name+" activated"); }
+      }
+      else if(e.target.closest("#dcGo")){ target.active=false; close("dlgDeact"); renderUsers(); toast(target.name+" deactivated"); }
+      else if((t=e.target.closest("[data-copy]"))){ try{ navigator.clipboard.writeText($("tpw").textContent); }catch(_){} t.textContent="Copied"; }
+    }
+  });
+  $("viewer").addEventListener("click", function(e){ var b=e.target.closest("button"); if(!b) return; viewer=b.getAttribute("data-v"); renderUsers(); });
+
+  refresh(); renderUsers();
+})();
+</script>
+</body>
+</html>
