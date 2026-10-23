@@ -1,3 +1,8 @@
+// The server's status vocabulary → the app's lives in `features/jobs/stage.ts`
+// now, beside `jobActions` — Task 07. Anything unrecognised falls to
+// `inprogress` rather than throwing: a status added server-side should put the
+// job somewhere sensible, not blank the list.
+import { toJobStatus } from '@/features/jobs/stage';
 import { authedRequest } from '@/lib/api';
 import type { Job, JobStatus } from '@/types/domain';
 
@@ -143,35 +148,6 @@ export interface JobDto extends JobOfferDto {
   modelParameters?: ProductParameterDto[];
   /** Prose about the product, if any. Read as a sentence, not a spec. */
   modelNotes?: string | null;
-}
-
-/**
- * The server's status vocabulary → the app's.
- *
- * Two different alphabets on purpose. The API speaks the ticket's language,
- * which ops and the console share and which has nine words; the app has five
- * and only cares which SCREEN a job belongs on. Mapping here, once, is what
- * keeps every card and badge from having to know that `AI Review` and
- * `Escalated` both mean "still being worked".
- *
- * Anything unrecognised falls to `upcoming` rather than throwing: a status
- * added server-side should put the job somewhere sensible, not blank the list.
- */
-const STATUS_MAP: Record<string, JobStatus> = {
-  New: 'pool',
-  'Slot Pending': 'pool',
-  Assigned: 'upcoming',
-  'In Progress': 'inprogress',
-  'Awaiting Customer': 'inprogress',
-  'AI Review': 'inprogress',
-  Escalated: 'inprogress',
-  Closed: 'completed',
-  'Force-Closed': 'completed',
-  Cancelled: 'cancelled',
-};
-
-function toJobStatus(status: string): JobStatus {
-  return STATUS_MAP[status] ?? 'upcoming';
 }
 
 /**

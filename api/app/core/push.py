@@ -257,7 +257,9 @@ async def _post(messages: list[dict]) -> list[dict] | None:
     try:
         async with httpx.AsyncClient(timeout=20, verify=verify) as client:
             response = await client.post(EXPO_PUSH_URL, json=messages, headers=headers)
-    except httpx.HTTPError as exc:
+    # OSError too: a configured CA bundle missing on disk raises FileNotFoundError
+    # at client construction, which httpx.HTTPError does not cover.
+    except (httpx.HTTPError, OSError) as exc:
         log.warning("push: could not reach Expo: %s", exc)
         return None
 

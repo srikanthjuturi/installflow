@@ -109,9 +109,10 @@ function TechnicianForm({
 }) {
   const isEdit = technician !== undefined;
   // Task 09 — the certifiable list is workspace-shaped: ops reads the product
-  // master (`masters.view`, a franchisee is not granted it), the portal reads
-  // the same options response its rail already fetches. One hook, so the form
-  // carries no branch.
+  // master (`masters.view`, a franchisee is not granted it — the staff read is
+  // gated on the workspace inside the hook, so it cannot 403 here), the portal
+  // reads the same options response its rail already fetches. One hook, so the
+  // form carries no branch.
   const { options: nodeOptions, isLoading: loadingCategories } =
     useCertifiableSubcategories();
   const create = useCreateTechnician();

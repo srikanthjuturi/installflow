@@ -378,13 +378,15 @@ binding time.
 | Condition | Label | Role |
 |---|---|---|
 | completed | `Completed` | `statusCompleted` |
+| cancelled | `Cancelled` | `statusCancelled` |
+| server says `Awaiting Part` (Task 12) — checked before the generic in-progress line, even when the slot has closed | `Awaiting part` | `statusAwaitingPart` |
 | in progress | `In progress` | `statusInProgress` |
 | no agreed time | `Awaiting time` | `statusUpcoming` |
 | slot END has passed | `Slot closed` | `statusSlotClosed` |
 | ≤ 4h to slot start | `Starting soon` | `statusStartingSoon` |
 | otherwise | `Upcoming` | `statusUpcoming` |
 
-`jobBadge` in `ui/StatusBadge` is the one implementation; every card calls it. It reads
+`jobBadge` in `ui/jobBadge` (a pure file; `ui/StatusBadge` renders it) is the one implementation; every card calls it. It reads
 `slotStart`/`slotEnd` against the clock at RENDER, not `hoursToSlot`, which is frozen when the
 list is fetched. `Slot closed` is not in the prototype (it has no missed job); the words are the
 console's own for the same state.

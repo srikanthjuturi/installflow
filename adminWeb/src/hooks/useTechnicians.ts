@@ -278,19 +278,25 @@ export function useTechnicianOptions({ enabled = true }: { enabled?: boolean } =
 /** The certification checkbox list, per workspace (§5.3). */
 export function useCertifiableSubcategories() {
   const { workspace } = useWorkspace();
-  const staff = useCertifiableNodeOptions();
+  // Each underlying query is enabled on ITS OWN flag — the staff tree is
+  // `masters.view`, which a franchise role is deliberately NOT granted (the
+  // Task 09 writer decision behind `/franchise/technician-options`), so letting
+  // it run in the portal turned every dialog open into a 403 "Not allowed"
+  // toast. Both queries stay mounted; only the answers are chosen.
+  const ops = workspace === "ops";
+  const staff = useCertifiableNodeOptions(ops);
   const portal = useTechnicianOptions({ enabled: workspace === "franchise" });
 
   // The shape callers see is the same on either side: `{ options, isLoading }`
   // plus the rest of the underlying query, so `TechnicianFormDialog` reads one
   // thing and carries no branch.
   const options = useMemo(
-    () => (workspace === "ops" ? staff.options : toNodeOption(portal.data?.subcategories ?? [])),
-    [workspace, staff.options, portal.data]
+    () => (ops ? staff.options : toNodeOption(portal.data?.subcategories ?? [])),
+    [ops, staff.options, portal.data]
   );
   return {
     options,
-    isLoading: workspace === "ops" ? staff.isLoading : portal.isLoading,
+    isLoading: ops ? staff.isLoading : portal.isLoading,
   };
 }
 

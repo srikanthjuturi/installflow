@@ -440,7 +440,11 @@ async def _send(payload: dict, *, what: str) -> SendResult:
     try:
         async with httpx.AsyncClient(timeout=30, verify=verify) as client:
             response = await client.post(url, headers=headers, json=payload)
-    except httpx.HTTPError as exc:
+    # httpx validates a verify PATH at client construction, so a configured
+    # bundle that is missing on disk raises FileNotFoundError — an OSError,
+    # not an httpx.HTTPError — and it must fail the send like a refusal,
+    # never escape to the caller's transaction.
+    except (httpx.HTTPError, OSError) as exc:
         logger.warning("WhatsApp %s failed to reach Meta: %s", what, exc)
         return SendResult.failure(f"Could not reach WhatsApp: {exc}")
 

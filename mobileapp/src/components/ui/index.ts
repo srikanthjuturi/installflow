@@ -14,7 +14,8 @@ export {
   type SegmentedControlProps,
 } from './SegmentedControl';
 export { Sheet, type SheetProps } from './Sheet';
-export { jobBadge, StatusBadge, type StatusBadgeProps } from './StatusBadge';
+export { StatusBadge, type StatusBadgeProps } from './StatusBadge';
+export { jobBadge, type BadgeJob, STARTING_SOON_MS } from './jobBadge';
 export { StepDots, type StepDotsProps } from './StepDots';
 export { Switch, type SwitchProps } from './Switch';
 export { Text, type TextProps } from './Text';

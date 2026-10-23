@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 import { Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { Button, Text } from '@/components/ui';
+import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
 import type { Redeemable } from '@/features/redeem/api/redeem';
 import { useRedeemable } from '@/features/redeem/hooks/useRedeem';
 import { color } from '@/theme/semantic';
@@ -25,6 +26,9 @@ export function RedeemCard() {
   const router = useRouter();
   const { t } = useTranslation();
   const redeemable = useRedeemable();
+  // Task 06. An employee's job pay comes with their salary, so the card
+  // explains itself rather than promising an amount they will not be paid.
+  const employee = useIsEmployee();
 
   return (
     <View
@@ -46,7 +50,9 @@ export function RedeemCard() {
             color: color.textLabel,
           }}
         >
-          {t('redeem.card.available')}
+          {employee && !redeemable.data?.open
+            ? t('earnings.employee.title')
+            : t('redeem.card.available')}
         </Text>
         <Pressable
           onPress={() => router.push('/redeem')}
@@ -113,19 +119,21 @@ export function RedeemCard() {
           </Pressable>
         </View>
       ) : (
-        <Body data={redeemable.data} />
+        <Body data={redeemable.data} employee={employee} />
       )}
     </View>
   );
 }
 
-function Body({ data }: { data: Redeemable }) {
+function Body({ data, employee }: { data: Redeemable; employee: boolean }) {
   const router = useRouter();
   const { t } = useTranslation();
   const open = data.open;
 
   // One open at a time, so while there is one the card is ABOUT it — a second
-  // Redeem button would only answer "you already have one".
+  // Redeem button would only answer "you already have one". It runs before the
+  // employee branch: an employee with an open redemption (made while a
+  // freelancer) must still be able to View / Confirm it.
   if (open) {
     const awaiting = open.state === 'awaiting';
     return (
@@ -154,6 +162,26 @@ function Body({ data }: { data: Redeemable }) {
           onPress={() => router.push(`/redeem/${open.id}`)}
         />
       </>
+    );
+  }
+
+  // Task 06. No amount, no Redeem button, no Add UPI ID button — the job pay
+  // lands with the salary and there is nothing to ask for here. The payout
+  // account itself stays reachable from Profile → Payout account: a type can
+  // change back, and UPI-change approval is Task 05's flow, unaffected.
+  if (employee) {
+    return (
+      <Text
+        style={{
+          fontFamily: 'Roboto_400Regular',
+          fontSize: 13,
+          lineHeight: 19,
+          color: color.textSecondary,
+          marginTop: 2,
+        }}
+      >
+        {t('earnings.employee.body')}
+      </Text>
     );
   }
 

@@ -106,11 +106,19 @@ export const color = {
   /** Still theirs, never started, and the window has shut — the one state on
    *  Upcoming that needs doing something about rather than waiting for. */
   statusSlotClosed: { fg: palette.danger[500], bg: palette.danger[100] },
+  /** Waiting on a spare part (Task 12). Amber: waiting on somebody else, not on the technician. */
+  statusAwaitingPart: { fg: palette.secondary[600], bg: palette.secondary[100] },
 
   // ── money ───────────────────────────────────────────────────────────────
   credit: palette.success[500],
   debit: palette.danger[500],
   bonus: palette.secondary[600],
+  /** Ledger row tints — icon tile background + icon/amount colour. Earnings is the only reader. */
+  ledgerCredit: { fg: palette.success[500], bg: palette.success[100] },
+  ledgerBonus: { fg: palette.secondary[600], bg: palette.secondary[100] },
+  ledgerDebit: { fg: palette.danger[500], bg: palette.danger[100] },
+  /** A kind this build does not know. Neutral on purpose: it claims neither direction. */
+  ledgerOther: { fg: palette.neutral[600], bg: palette.neutral[100] },
   /** A filled rating star, and the hollow remainder beside it. Amber rather
    *  than the success green: a rating is a judgement, not a pass/fail. */
   ratingStar: palette.secondary[500],

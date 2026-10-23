@@ -84,6 +84,13 @@ export interface TechnicianSession {
    */
   upiName?: string | null;
   /**
+   * `employee` | `freelancer` — Task 06. Employees are paid by salary: no per-job payout and no
+   * Redeem. A string, not the union, because a newer API may send a third word; read it only
+   * through `isEmployee()`. Optional: a session persisted before the API sent it has no key, and
+   * absent means freelancer — today's behaviour.
+   */
+  technicianType?: string;
+  /**
    * Jobs already held for TODAY, counted the way the cap is enforced.
    *
    * Not derived from `/jobs/today`: that list drops closed jobs, so it reads
@@ -255,7 +262,7 @@ export interface Job {
   status: JobStatus;
   /**
    * The server's own status word — `Assigned`, `In Progress`, `Awaiting
-   * Customer`, `Closed`…
+   * Customer`, `Awaiting Part`, `Closed`…
    *
    * `status` above is the app's five-value vocabulary, which is what badges and
    * list filters want. It is deliberately coarser: `In Progress` and `Awaiting
@@ -338,11 +345,23 @@ export interface Technician {
  * installation — that is the approved prototype's own wording and it comes
  * from the server, which stored it when the money moved.
  */
-export type TransactionKind = 'payout' | 'bonus' | 'penalty';
+/** Every ledger kind THIS build knows how to draw. Mirrors the API's `LEDGER_KINDS` minus
+ *  `reversal`, which a technician is never sent (`core/ledger.shown_to_technician`). */
+export type LedgerKind =
+  | 'payout' | 'bonus' | 'penalty' | 'travel' | 'speed_reward' | 'speed_penalty';
+
+/** `other` is the app's own word for a kind a newer API sent and this build has never heard of.
+ *  The server never sends it. */
+export type TransactionKind = LedgerKind | 'other';
+
+/** Which way the money moved FOR THE TECHNICIAN. `unknown` for `other`: the server sends a
+ *  magnitude and the kind carries the direction, so an unknown kind has no knowable sign. */
+export type LedgerDirection = 'credit' | 'debit' | 'unknown';
 
 export interface Transaction {
   id: string;
   kind: TransactionKind;
+  direction: LedgerDirection;
   title: string;
   /**
    * When the money moved, and the job it was for — the two halves of the
@@ -352,7 +371,8 @@ export interface Transaction {
    */
   at: string;
   ticketCode: string;
-  /** Signed integer paise: credits positive, penalties negative. */
+  /** Signed paise: credit positive, debit negative. `unknown` → the positive magnitude, drawn
+   *  WITHOUT a sign (`formatLedgerAmount`). */
   amountPaise: number;
   /**
    * The job this money is about, when the technician can still open it — null
