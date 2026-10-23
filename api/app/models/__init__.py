@@ -4,7 +4,7 @@ from app.models.company import Company
 from app.models.company_rules import CompanyRules
 from app.models.credits import CreditEntry, CreditRecharge, PlatformSettings
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
-from app.models.franchisee import Franchisee, FranchiseePincode
+from app.models.franchisee import Franchisee, FranchiseePincode, FranchiseeTravelRule
 from app.models.job_pass import JobPass
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
@@ -58,6 +58,7 @@ __all__ = [
     "Feature",
     "Franchisee",
     "FranchiseePincode",
+    "FranchiseeTravelRule",
     "JobPass",
     "LedgerEntry",
     "Membership",

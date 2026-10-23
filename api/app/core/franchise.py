@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.core.franchise_routing import codes_outside, needs_restamp, outside_message
+from app.core.travel_rules import stamp_travel_rules
 from app.models.company import Company
 from app.models.franchisee import HOME_CODE, KIND_INTERNAL, MAX_NAME, Franchisee, FranchiseePincode
 from app.models.territory import Pincode
@@ -41,12 +42,19 @@ def route_pincodes(
 
 async def create_home_franchisee(db: AsyncSession, company: Company) -> Franchisee:
     """Write the company's home. Flushes, never commits — the caller owns the transaction, exactly as
-    `rules.load_rules` and `credits.grant_free` do inside `create_company`."""
+    `rules.load_rules` and `credits.grant_free` do inside `create_company`.
+
+    Task 10 stamps the home's two travel-rule rows here too (TA4), from the same
+    defaults every franchisee starts on — `load_travel_rule` would self-heal them
+    anyway, but a company born after the publish should simply have them."""
     row = Franchisee(
         company_id=company.id, created_by=company.created_by, **home_franchisee_fields(company.name)
     )
     db.add(row)
     await db.flush()
+    await stamp_travel_rules(
+        db, company_id=company.id, franchisee_id=row.id, by_user=company.created_by
+    )
     return row
 
 

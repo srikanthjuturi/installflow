@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.base_location import BaseLocationOut
 from app.core.images import ImageUrl
 from app.core.phone import Phone
 from app.core.schemas import AppModel
@@ -198,6 +199,15 @@ class TechnicianOut(AppModel):
     onboarding: OnboardingOut
     createdAt: datetime
 
+    # ── Task 10 (R9): the base at a glance — the "no base" badge and the
+    # source chip (*Pincode / GPS / Map / Set by admin*; `manual` reads "Set by
+    # admin"). All three null together when there is no base — null ≠ ₹0.
+    # COORDINATES deliberately not here: a coordinate pair is the base's whole
+    # content, and lists must not hand it to every row-reader (W13).
+    baseSource: str | None = None          # pincode | gps | map | manual
+    baseSetAt: datetime | None = None
+    baseSetBySelf: bool | None = None      # null = no base
+
 
 class TechnicianInviteOut(AppModel):
     registered: Literal[False] = False
@@ -234,6 +244,14 @@ TechnicianRowOut = TechnicianOut | TechnicianInviteOut
 
 class TechnicianDetailOut(TechnicianOut):
     """The profile page. Same shape today; kept apart so it can grow."""
+
+    # ── Task 10: the base, full shape — NON-NULL only for a caller who can
+    # manage this technician (its franchisee admin; a home manager on a home
+    # technician). A staff caller merely viewing a non-home technician gets
+    # null here and the three list fields above (W13: coordinates are not
+    # theirs to see). Self-set bases need no approval and no cooldown (R9);
+    # the source chip and the "set by" line are the visibility.
+    baseLocation: BaseLocationOut | None = None
 
 
 class AppLinkOutcome(AppModel):
@@ -321,6 +339,9 @@ class TechnicianSessionOut(AppModel):
     #: NOT derivable from `/jobs/today`: that list drops closed jobs, so the
     #: screen would show a smaller number than the server refuses on.
     jobsToday: int
+    # Task 14: the Home card says "set your base" until this is non-null, and
+    #: Profile → Base location reads it after.
+    baseLocation: BaseLocationOut | None = None
 
 
 class AvailabilityRequest(AppModel):

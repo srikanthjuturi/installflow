@@ -35,6 +35,12 @@ from app.core.rules import (
     resolve_rules_with_sources,
     validate_resolved,
 )
+from app.core.travel_rules import (
+    TravelRulesIn,
+    TravelRulesOut,
+    get_travel_rules,
+    put_travel_rules,
+)
 from app.models.company import Company
 from app.features.settings.schemas import (
     PaymentAccountIn,
@@ -453,6 +459,62 @@ async def update_payment_account(
     scanned.
     """
     row = await _company(db, principal.company_id)
+    row.upi_id = body.upiId
+    row.upi_name = body.upiName
+    row.updated_by = principal.user_id
+    await db.commit()
+    await db.refresh(row)
+    return PaymentAccountOut(
+        upiId=row.upi_id, upiName=row.upi_name, updatedAt=row.updated_at
+    )
+
+
+# ── travel-allowance rules (Task 10 §4.8) ─────────────────────────────────────
+#
+# On this screen beside Rules Config because it is the same question — the
+# numbers this company operates by — but per FRANCHISEE, not per company, and
+# stored in `franchisee_travel_rules` for the same reason a UPI address is not in
+# `company_rules`: it is never stamped onto a ticket's `rules_snapshot`. What
+# freezes it onto a job is `accept_snapshot`, written once at accept (TA5) —
+# which is also why nothing here validates across rows the way `RulesConfig`
+# does: each type's numbers stand alone, bounded by `TravelRuleIO`.
+
+
+async def get_travel(
+    db: AsyncSession, company_id: uuid.UUID, franchisee_id: uuid.UUID
+) -> TravelRulesOut:
+    """Both types' rows for one franchisee, self-healing a missing pair.
+
+    The self-heal flushes and deliberately does not commit, exactly as
+    `load_rules`'s does — the caller owns the transaction, and on a plain read
+    the repair being redone next time is harmless.
+    """
+    return await get_travel_rules(
+        db, company_id=company_id, franchisee_id=franchisee_id
+    )
+
+
+async def update_travel(
+    db: AsyncSession,
+    principal: Principal,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    body: TravelRulesIn,
+) -> TravelRulesOut:
+    """Write both types' rows and answer with what is now stored.
+
+    Same answer-from-the-row discipline as `update_rules`: the response is what
+    the next accept will read, not what the caller sent.
+    """
+    out = await put_travel_rules(
+        db,
+        company_id=company_id,
+        franchisee_id=franchisee_id,
+        body=body,
+        by_user=principal.user_id,
+    )
+    await db.commit()
+    return out
     row.upi_id = body.upiId
     row.upi_name = body.upiName
     row.updated_by = principal.user_id

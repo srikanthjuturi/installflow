@@ -30,6 +30,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.accept_snapshot import technician_type_of
 from app.models.technician import (
     TYPE_EMPLOYEE,
     TYPE_FREELANCER,
@@ -72,28 +73,31 @@ def redeem_refusal(technician_type: str | None) -> tuple[str, str] | None:
 
 
 async def job_technician_type(
-    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
+    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID,
+    snapshot: dict | None = None,
 ) -> str | None:
     """The type that governs per-job pay for a job this technician holds.
 
-    TODAY: their current `TechnicianProfile.technician_type` — `None` when
-    `technician_id` is `None`, so every caller's `is not None` test stays the
-    single guard it already is.
+    Task 10 (T1): the type FROZEN at accept — `accept_snapshot.technicianType`
+    — when the caller has one to hand (`snapshot=row.accept_snapshot`), so a
+    type switch mid-job cannot restate what a job already settled: the payout
+    and the pay channel are decided by the person who took the job, not the
+    person who closes it. A `None`/pre-Task-10 snapshot keeps this function's
+    original behaviour — the LIVE `TechnicianProfile.technician_type` — which
+    is exactly right for a ticket taken before snapshots existed.
 
-    Task 10 adds a keyword `snapshot: dict | None = None` and makes THIS body
-    prefer `accept_snapshot.technicianType` via
-    `core.accept_snapshot.technician_type_of`; the callers' only change is
-    passing `snapshot=row.accept_snapshot` (this function has no ticket of its
-    own to read it from — index §6 "T1 vs ordering").
+    `None` when `technician_id` is `None`, so every caller's `is not None`
+    test stays the single guard it already is.
     """
     if technician_id is None:
         return None
-    return await db.scalar(
+    live = await db.scalar(
         select(TechnicianProfile.technician_type).where(
             TechnicianProfile.company_id == company_id,
             TechnicianProfile.id == technician_id,
         )
     )
+    return technician_type_of(snapshot, fallback=live)
 
 
 __all__ = [

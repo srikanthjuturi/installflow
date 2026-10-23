@@ -356,6 +356,36 @@ class PenaltyReviewerOut(AppModel):
     role: str
 
 
+class TicketTravelOut(AppModel):
+    """The travel allowance frozen when this job was accepted. Company staff
+    (Area Manager and above, a non-home franchisee's ticket included — owner
+    ruling 2026-10-15, R8, so travel and Task 11's speed block behave
+    identically) and the franchisee admin only; never a vendor or facility staff
+    (Task 04's money block). Never the base's coordinates (W13)."""
+
+    technicianId: uuid.UUID
+    acceptedAt: datetime.datetime
+    technicianType: str
+    baseSource: str | None      # pincode | gps | map | manual | null (no base)
+    customerSource: str | None  # ticket | pincode | null
+    straightKm: float
+    roadFactorPct: int
+    km: float
+    freeKm: int
+    stepKm: int
+    paisePerStep: int
+    maxPaisePerJob: int
+    amountPaise: int
+    reason: str | None          # null | no_base_location | no_customer_point
+    #: The `travel` ledger row's amount, or null if none (open job, ₹0, or a
+    #: force-closure that paid nothing). Never 0 — the `technicianCreditedPaise`
+    #: rule.
+    creditedPaise: int | None
+    #: What the force-close form pre-fills and caps at (TA6, W5).
+    forceCloseDefaultPaise: int     # = amountPaise
+    forceCloseMaxPaise: int         # = maxPaisePerJob
+
+
 class TicketDetailOut(TicketOut):
     timeline: list[TimelineEventOut] = []
 
@@ -380,6 +410,9 @@ class TicketDetailOut(TicketOut):
     #: Withheld from a vendor, exactly as `technicianPayoutPaise` is — it is the
     #: same fact, one step later.
     technicianCreditedPaise: int | None = None
+
+    #: Null when no technician holds the job, or it was accepted before Task 10.
+    travel: TicketTravelOut | None = None
 
 
 class TicketProofOut(AppModel):
@@ -587,6 +620,15 @@ class ForceCloseRequest(AppModel):
     #: The ceiling is the ticket's own `vendor_price_paise`, enforced in the
     #: service where the ticket is in hand.
     vendorChargePaise: int | None = Field(default=None, ge=0)
+
+    #: Travel allowance to credit, in paise (TA6). The console pre-fills the
+    #: amount frozen at accept (`TicketDetailOut.travel.forceCloseDefaultPaise`);
+    #: the manager may change it. Capped at the frozen `maxPaisePerJob`,
+    #: silently, like the two fields above. `0` and omitted both write NO row
+    #: (W5) — a body that never mentioned this field came from a client that
+    #: never heard of it. Ignored when the ticket has no technician or no
+    #: snapshot for them.
+    travelPaise: int | None = Field(default=None, ge=0)
 
 
 class TicketAttachmentOut(AppModel):

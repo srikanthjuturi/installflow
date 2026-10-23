@@ -29,6 +29,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     ForeignKey,
+    Float,
     Index,
     Integer,
     Numeric,
@@ -331,6 +332,23 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
     #: technician's own name.
     upi_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
+    # ── where this technician starts from (Task 10, TA7) ─────────────────────
+    #: Copied onto the profile at set time, even for a pincode base (W7), so the
+    #: point is self-contained and a pincode-master edit never moves anybody.
+    #: Both or neither, inside India — the same box as `tickets` (models/ticket.py).
+    base_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    base_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Which pincode's centre this is, when source = 'pincode'. Null otherwise.
+    base_pincode: Mapped[str | None] = mapped_column(
+        String(6), ForeignKey("pincodes.code", ondelete="RESTRICT"), nullable=True
+    )
+    #: pincode | gps | map | manual — see W8 for who may send which.
+    base_source: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    base_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    base_set_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     # ── stats: NULL until the jobs slice measures them ───────────────────────
     #
     # All four nullable, and null means "not measured yet" — not zero. They
@@ -418,6 +436,34 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Index(
             "ix_technician_profiles_company_franchisee", "company_id", "franchisee_id"
         ),
+        # Task 10 — the base location's own integrity (bare names; the convention
+        # prefixes `ck_technician_profiles_`). Both-or-neither coordinates, and
+        # inside the India box every other coordinate pair in this codebase keeps.
+        CheckConstraint(
+            "(base_latitude IS NULL) = (base_longitude IS NULL) "
+            "AND (base_latitude IS NULL OR (base_latitude BETWEEN 6 AND 38 "
+            "AND base_longitude BETWEEN 68 AND 98))",
+            name="base_coordinates_both_or_neither",
+        ),
+        CheckConstraint(
+            "base_source IS NULL OR base_source IN ('pincode', 'gps', 'map', 'manual')",
+            name="base_source",
+        ),
+        # A point, its source and its time arrive together or not at all.
+        CheckConstraint(
+            "(base_latitude IS NULL) = (base_source IS NULL) "
+            "AND (base_source IS NULL) = (base_set_at IS NULL)",
+            name="base_complete",
+        ),
+        # The pincode is recorded exactly when it is the source.
+        CheckConstraint(
+            "(base_pincode IS NOT NULL) = (base_source IS NOT DISTINCT FROM 'pincode')",
+            name="base_pincode_iff_source",
+        ),
+        # Every FK needs a covering index. The plain FKs above do not get one
+        # from any constraint declared here.
+        Index("ix_technician_profiles_base_pincode", "base_pincode"),
+        Index("ix_technician_profiles_base_set_by", "base_set_by_user_id"),
     )
 
 

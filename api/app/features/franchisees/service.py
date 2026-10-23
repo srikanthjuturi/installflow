@@ -37,6 +37,7 @@ from app.core.company_code import derive, unique_code
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.franchise import home_franchisee_id, lock_routing
+from app.core.travel_rules import TravelRulesOut, get_travel_rules as read_travel_rules
 from app.core.franchise_logins import (
     FRANCHISEE_ADMIN,
     CreatedLogin,
@@ -67,6 +68,7 @@ from app.core.realtime import (
 )
 from app.core.schemas import ListParams, canonical_filter
 from app.core.tickets import TERMINAL_STATUSES
+from app.core.travel_rules import stamp_travel_rules
 from app.models.franchisee import Franchisee, FranchiseePincode, HOME_CODE, MAX_CODE
 from app.models.membership import Membership
 from app.models.redemption import Redemption
@@ -234,6 +236,23 @@ async def get_franchisee(
 ) -> FranchiseeOut:
     row = await _load(db, principal.company_id, franchisee_id)
     return (await _hydrate(db, principal.company_id, [row]))[0]
+
+
+async def get_travel_rules(
+    db: AsyncSession, principal: Principal, franchisee_id: uuid.UUID
+) -> TravelRulesOut:
+    """One franchisee's allowance rules, read-only (10 §4.8).
+
+    Task 13's per-franchisee view needs it for ANY franchisee — the home
+    franchisee's own rows are editable two slices away. The load is the same
+    `_load` wall the profile edit uses: a guessed id from another company is a
+    404, never a probe. The self-heal a missing pair triggers stays uncommitted,
+    exactly as the settings GET does.
+    """
+    row = await _load(db, principal.company_id, franchisee_id)
+    return await read_travel_rules(
+        db, company_id=row.company_id, franchisee_id=row.id
+    )
 
 
 async def _hydrate(
@@ -494,7 +513,9 @@ async def create_franchisee(
     )
     db.add(row)
     await db.flush()  # the id (hard rule 10) — the admin login hangs off it
-    # Task 10: stamp franchisee_travel_rules for both technician types (TRAVEL_DEFAULTS).
+    # Task 10 (TA4): stamp both technician types' travel rules from TRAVEL_DEFAULTS,
+    # in this same transaction.
+    await stamp_travel_rules(db, company_id=company_id, franchisee_id=row.id, by_user=principal.user_id)
 
     login: CreatedLogin | None = None
     if body.admin is not None:

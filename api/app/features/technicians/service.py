@@ -27,6 +27,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core import brand
+from app.core.base_location import (
+    MANAGER_SOURCES,
+    TECHNICIAN_SOURCES,
+    BaseLocationIn,
+    BaseLocationOut,
+    apply_base,
+    base_out,
+    resolve_base,
+    setter_label,
+)
 from app.core.config import settings
 from app.core.coverage import jobs_held_by_technician, upi_reviewer
 from app.core.deps import Principal
@@ -87,6 +97,7 @@ from app.features.technicians.schemas import (
     SubcategoryRef,
     TechnicianCreatedOut,
     TechnicianCreateRequest,
+    TechnicianDetailOut,
     TechnicianInviteOut,
     TechnicianOut,
     TechnicianSessionOut,
@@ -590,6 +601,16 @@ async def _technicians_out(
                     appointedAt=profile.appointed_at,
                     registeredAt=profile.registered_at,
                 ),
+                # Task 10 (R9): the chip's three facts. `baseSetBySelf` is a
+                # tri-state — null = no base, true = set themselves, false = a
+                # manager set it — which is what the "Set by admin" chip reads.
+                baseSource=profile.base_source,
+                baseSetAt=profile.base_set_at,
+                baseSetBySelf=(
+                    profile.base_set_by_user_id == user.id
+                    if profile.base_set_by_user_id is not None
+                    else None
+                ),
                 createdAt=profile.created_at,
             )
         )
@@ -1067,16 +1088,33 @@ async def _load(
 
 async def get_technician(
     session: AsyncSession, principal: Principal, technician_id: uuid.UUID
-) -> TechnicianOut:
+) -> TechnicianDetailOut:
     triple = await _load(session, principal, technician_id)
-    return (
-        await _technicians_out(
-            session,
-            [triple],
-            principal=principal,
-            home_id=await home_franchisee_id(session, principal.company_id),
-        )
-    )[0]
+    (out,) = await _technicians_out(
+        session,
+        [triple],
+        principal=principal,
+        home_id=await home_franchisee_id(session, principal.company_id),
+    )
+    # The row shape is the LIST class (`TechnicianOut`, no baseLocation field on
+    # it); the detail page re-validates it into its subclass, so the base lives
+    # on `TechnicianDetailOut` rather than bolted onto an instance that would
+    # reject the attribute.
+    detail = TechnicianDetailOut.model_validate(out, from_attributes=True)
+    # Task 10: the base's full shape, NON-NULL only for a caller who can manage
+    # this technician — its franchisee admin, or a home manager on a home
+    # technician. A staff caller merely viewing a non-home technician gets the
+    # three list fields and no coordinates (W13); the R9 lookup is one extra
+    # query, spent only when the base exists AND this caller may see it.
+    if out.canManage:
+        profile, membership, user = triple
+        base = base_out(profile, technician_user_id=user.id)
+        if base is not None:
+            base.setByName, base.setByRole = await setter_label(
+                session, profile.base_set_by_user_id
+            )
+            detail.baseLocation = base
+    return detail
 
 
 async def _load_managed(
@@ -1620,6 +1658,14 @@ async def technician_session(
     appointer = (
         await _appointers(session, [profile.appointed_by_user_id])
     ).get(profile.appointed_by_user_id)
+    # Task 10: the technician's own base, or null — the Home card reads it to
+    # say "set your base" until there is one. It is THEIRS, so the setter
+    # labels come too: a base a manager set is a fact they can act on.
+    base = base_out(profile, technician_user_id=user.id)
+    if base is not None:
+        base.setByName, base.setByRole = await setter_label(
+            session, profile.base_set_by_user_id
+        )
 
     onboarded_by = brand.company_name(company.name if company else None)
     if appointer and appointer.full_name:
@@ -1653,12 +1699,89 @@ async def technician_session(
                 session, company_id=profile.company_id, technician_ids=[profile.id]
             )
         )[profile.id],
+        baseLocation=base,
     )
 
 
+# ── base location (Task 10 §4.7) ─────────────────────────────────────────────
+
+
+async def get_my_base_location(
+    session: AsyncSession, principal: Principal
+) -> BaseLocationOut | None:
+    """Where a technician says they start from — or null, never invented."""
+    profile = await _own_profile(session, principal)
+    return base_out(profile, technician_user_id=principal.user_id)
+
+
+async def set_my_base_location(
+    session: AsyncSession, principal: Principal, body: BaseLocationIn
+) -> BaseLocationOut:
+    """The technician moving their OWN base. PUT, not POST — it replaces; no
+    DELETE — a base can be moved, not removed.
+
+    Range: their own franchisee (W9 — pincode bases only, for everybody). Source
+    gate `TECHNICIAN_SOURCES` (W8): a phone may report a pincode, its fix, or a
+    map pin — never `manual`, which is a console's knowledge, and no approval
+    and no cooldown (R9): the source chip and who set it is the visibility.
+
+    One saved base replaces the last, and a correction never touches an already
+    stamped `accept_snapshot` (R9) — the frozen basePoint keeps every PAID job's
+    record.
+    """
+    profile = await _own_profile(session, principal)
+    fix = await resolve_base(
+        session,
+        company_id=principal.company_id,
+        franchisee_id=profile.franchisee_id,
+        body=body,
+        allowed=TECHNICIAN_SOURCES,
+    )
+    now = _now()
+    apply_base(profile, fix, by_user_id=principal.user_id, now=now)
+    await session.commit()
+    # The technician IS the setter, so the labels resolve without the lookup —
+    # and the response is built here rather than off the committed row, which
+    # the commit has just expired.
+    return BaseLocationOut(
+        latitude=fix.latitude,
+        longitude=fix.longitude,
+        pincode=fix.pincode,
+        source=fix.source,
+        setAt=now,
+        setBySelf=True,
+        setByName=principal.user.full_name,
+        setByRole=ROLE_LABELS.get(principal.role, principal.role),
+    )
+
+
+async def set_base_location(
+    session: AsyncSession, principal: Principal, technician_id: uuid.UUID, body: BaseLocationIn
+) -> TechnicianDetailOut:
+    """A manager or a franchisee admin moving a technician's base.
+
+    Serves the STAFF door (`PUT /technicians/{id}/base-location`, home
+    franchisee's technicians only — F8) and its `/franchise` twin (their own):
+    both load through `_load_managed`, so an outside company or territory is a
+    404 and a visible-but-unmanageable technician a 403 — same loaders Task 05
+    built for the same wall. Source gate `MANAGER_SOURCES` (W8).
+    """
+    profile, membership, user = await _load_managed(session, principal, technician_id)
+    fix = await resolve_base(
+        session,
+        company_id=principal.company_id,
+        franchisee_id=profile.franchisee_id,
+        body=body,
+        allowed=MANAGER_SOURCES,
+    )
+    apply_base(profile, fix, by_user_id=principal.user_id, now=_now())
+    await session.commit()
+    # Rebuilt through the detail read, so the response and the profile page
+    # cannot disagree about what a base looks like once it exists.
+    return await get_technician(session, principal, technician_id)
+
+
 # ── write helpers ─────────────────────────────────────────────────────────────
-
-
 async def next_code(session: AsyncSession, company_id: uuid.UUID) -> str:
     """`TCH-4021`, from the company's counter row — see `app.core.sequences`.
 

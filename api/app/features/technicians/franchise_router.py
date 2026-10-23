@@ -25,6 +25,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.base_location import BaseLocationIn
 from app.core.database import get_db
 from app.core.deps import Principal, require_feature, require_franchise_principal
 from app.core.schemas import (
@@ -202,6 +203,29 @@ async def update_technician(
     """Edit one. A type change 409s `TECHNICIAN_HAS_OPEN_JOBS` while a job is open."""
     data = await service.update_technician(db, principal, technician_id, body)
     return envelope(data, message="Technician updated")
+
+
+@router.put(
+    "/technicians/{technician_id}/base-location",
+    response_model=ApiEnvelope[TechnicianDetailOut],
+)
+async def set_base_location(
+    technician_id: uuid.UUID,
+    body: BaseLocationIn,
+    db: Db,
+    principal: CanTech,
+) -> ApiEnvelope[TechnicianDetailOut]:
+    """Set or move one of your technicians' base, from their profile screen.
+
+    The franchisee twin of the staff route above it — the whole `MANAGER_SOURCES`
+    set (W8), the same place-not-shape refusals, and the same `_load` wall the
+    profile behind it uses, so a technician of another franchisee is 404, never
+    a leak.
+    """
+    return envelope(
+        await service.set_base_location(db, principal, technician_id, body),
+        message="Base location saved",
+    )
 
 
 @router.delete("/technicians/{technician_id}", response_model=ApiEnvelope[None])

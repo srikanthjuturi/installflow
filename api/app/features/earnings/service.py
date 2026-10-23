@@ -79,7 +79,11 @@ async def summary(
     )
     totals = {kind: int(amount) for kind, amount in rows}
     covered_from, covered_to = window_dates(window)
-    earned = totals.get("payout", 0)
+    # Travel FOLDS into earned (index §6a; W18): `travelPaise` is a breakdown of
+    # `earnedPaise`, never a fourth term beside it — folding it here is what
+    # keeps an old build's three tiles summing to `netPaise`.
+    travel = totals.get("travel", 0)
+    earned = totals.get("payout", 0) + travel
     bonuses = totals.get("bonus", 0)
     penalties = totals.get("penalty", 0)
     return EarningsSummaryOut(
@@ -93,6 +97,7 @@ async def summary(
         # return None for both this and `earned`, when nothing priced an install.
         netPaise=earned + bonuses - penalties,
         earnedPaise=earned,
+        travelPaise=travel,
         bonusesPaise=bonuses,
         penaltiesPaise=penalties,
         # Derived from the SAME window the sums were taken over, one line below
@@ -114,14 +119,21 @@ def _title(kind: str, reason: str) -> str:
     # next year must not retitle money already paid. See `ledger.payout_reason`.
     if kind == "payout":
         return reason
+    if kind == "travel":
+        return "Travel allowance"       # a FIXED string: the app maps titles to t() keys
+    # Task 11 adds speed_reward → "Speed reward", speed_penalty → "Speed penalty" here.
     if kind == "bonus":
         return "Reassignment bonus"
     # `record_no_show` writes the band label verbatim as its reason, while a
     # cancellation writes "Cancel <band>". Matching on that is a coupling worth
     # naming: if either writer changes its wording, change this with it.
-    if reason == CANCEL_PENALTY_BANDS[-1]:
-        return "No-show penalty"
-    return "Late cancellation penalty"
+    if kind == "penalty":
+        if reason == CANCEL_PENALTY_BANDS[-1]:
+            return "No-show penalty"
+        return "Late cancellation penalty"
+    # Any kind not named above returns its own `reason` rather than a charge
+    # title — the next new kind can never be mislabelled as a penalty.
+    return reason
 
 
 def _when(at: datetime.datetime, now: datetime.datetime) -> str:

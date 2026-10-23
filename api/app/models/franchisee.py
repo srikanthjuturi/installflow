@@ -14,6 +14,8 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
+    SmallInteger,
     String,
     UniqueConstraint,
     Uuid,
@@ -114,4 +116,54 @@ class FranchiseePincode(Base, IdMixin, AuditMixin):
         Index("ix_franchisee_pincodes_company_franchisee", "company_id", "franchisee_id"),
         # Covers the pincodes FK (the UNIQUE above leads with company_id, so it does not).
         Index("ix_franchisee_pincodes_pincode", "pincode"),
+    )
+
+
+class FranchiseeTravelRule(Base, IdMixin, AuditMixin):
+    """What one franchisee pays one technician type for travel (TA3).
+
+    Exactly two rows per franchisee — freelancer and employee — stamped at
+    creation from the defaults in `core.travel.TRAVEL_DEFAULTS` (TA4) and edited
+    on the franchise portal's Travel settings. No soft delete: the rows live and
+    die with the franchisee. Read ONCE per job, at accept, into
+    `tickets.accept_snapshot.travel`; nothing downstream joins this table.
+
+    The CHECK bounds copy `core.travel.TRAVEL_LIMITS` as literals —
+    `models/company_rules.py` ↔ `core.rules.LIMITS`'s shape, so the CHECKs, the
+    pydantic bounds and the tests read one table. Rate or cap of 0 means OFF
+    (TA4), and a rate above 0 with a ₹0 cap is refused by the request layer (W2).
+    """
+
+    __tablename__ = "franchisee_travel_rules"
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)  # COMPOSITE FK below
+    technician_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    free_km: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    step_km: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    paise_per_step: Mapped[int] = mapped_column(Integer, nullable=False)
+    road_factor_pct: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    max_paise_per_job: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_franchisee_travel_rules_company_franchisee",
+            ondelete="CASCADE",
+        ),
+        # The no-duplicate rule AND the covering index for the FK above (W14).
+        UniqueConstraint(
+            "company_id", "franchisee_id", "technician_type",
+            name="uq_franchisee_travel_rules_company_franchisee_type",
+        ),
+        # Bare names — the convention prefixes `ck_franchisee_travel_rules_`.
+        CheckConstraint("technician_type IN ('employee', 'freelancer')", name="technician_type"),
+        CheckConstraint("free_km BETWEEN 0 AND 500", name="free_km"),
+        CheckConstraint("step_km BETWEEN 1 AND 50", name="step_km"),
+        CheckConstraint("paise_per_step BETWEEN 0 AND 1000000", name="paise_per_step"),
+        CheckConstraint("road_factor_pct BETWEEN 100 AND 300", name="road_factor_pct"),
+        CheckConstraint("max_paise_per_job BETWEEN 0 AND 10000000", name="max_paise_per_job"),
     )

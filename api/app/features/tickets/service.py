@@ -51,6 +51,13 @@ from app.core.franchise import (
     lock_routing,
     restamp_ticket,
 )
+from app.core.accept_snapshot import (
+    build_accept_snapshot,
+    closure_travel_paise,
+    force_close_travel_paise,
+    technician_type_of,
+    travel_of,
+)
 from app.core.employment import job_technician_type, pays_per_job
 from app.core.franchise_money import may_reverse, may_see_money
 from app.core.penalty_reversal import REVERSIBLE_KINDS, reverse as reverse_ledger_penalty
@@ -60,6 +67,7 @@ from app.core.ledger import (
     charged_this_month,
     entry as ledger_entry,
     payout_reason,
+    travel_reason,
 )
 from app.core.push import announce_pool_job, send_to_technician
 from app.core.push_text import PushText, Slot
@@ -127,6 +135,7 @@ from app.features.tickets.schemas import (
     TicketDetailOut,
     TicketOut,
     TicketPenaltyOut,
+    TicketTravelOut,
     TicketProofOut,
     TimelineEventOut,
 )
@@ -934,10 +943,17 @@ async def _hydrate(
                 # Task 06 §4.3. Who is assigned and how they are paid. Null for
                 # a vendor principal (see the docstring bullets) and when
                 # nobody is assigned — never a guess from either absence.
+                # Task 10 (T1): the type FROZEN at accept wins over the live
+                # one, so a type switch mid-job cannot restate a job already
+                # settled on the screen either; a pre-Task-10 ticket has no
+                # snapshot and keeps the live value.
                 technicianType=(
                     None
                     if principal.is_vendor
-                    else tech_people.get(t.technician_id, (None, None, None))[2]
+                    else technician_type_of(
+                        t.accept_snapshot,
+                        fallback=tech_people.get(t.technician_id, (None, None, None))[2],
+                    )
                 )
                 if t.technician_id
                 else None,
@@ -1573,12 +1589,69 @@ async def get_ticket(
         penalties = await _penalties(db, row, principal, home_id)
         if penalties:
             reviewer = await _penalty_reviewer(db, row, home_id)
+        travel = await _ticket_travel(db, row)
     return TicketDetailOut(
         **base.model_dump(),
         technicianCreditedPaise=credited,
+        travel=travel,
         timeline=await _timeline(db, row),
         penalties=penalties,
         penaltyReviewer=reviewer,
+    )
+
+
+async def _ticket_travel(
+    db: AsyncSession, row: Ticket
+) -> TicketTravelOut | None:
+    """Task 10 (§4.4): the frozen travel block for ticket detail, or None.
+
+    Built from `travel_of(row.accept_snapshot)` only when it names the CURRENT
+    `row.technician_id` — the same naming test every other reader applies (W17).
+    Plus ONE ledger read for the amount actually paid (never 0 — the
+    `technicianCreditedPaise` rule). No base coordinates leave this method (W13):
+    only the base's SOURCE chip does.
+    """
+    view = travel_of(row.accept_snapshot)
+    if (
+        row.technician_id is None
+        or view is None
+        or view.technician_id != str(row.technician_id)
+    ):
+        return None
+    paid = await db.scalar(
+        select(LedgerEntry.amount_paise).where(
+            LedgerEntry.company_id == row.company_id,
+            LedgerEntry.ticket_id == row.id,
+            LedgerEntry.kind == "travel",
+        )
+    )
+    snap = row.accept_snapshot
+    # `acceptedAt` is stored as a UTC ISO string with a trailing `Z`
+    # (`assemble`); AppModel/pydantic accepts that shape for a datetime field.
+    # The rule figures come from the FROZEN block — a rule edited since does
+    # not restate a job somebody already accepted (TA5).
+    return TicketTravelOut(
+        technicianId=row.technician_id,
+        acceptedAt=snap["acceptedAt"],
+        # The type FROZEN at accept (T1) — what the payout followed, and what
+        # a reader of this block must judge the terms by.
+        technicianType=snap["technicianType"],
+        baseSource=view.base_source,
+        customerSource=view.customer_source,
+        straightKm=view.straight_km,
+        # The frozen block carries all four; a hand-edited partial snapshot
+        # must not 500 the read — an absent figure reads as 0.
+        roadFactorPct=view.raw.get("roadFactorPct") or 0,
+        km=view.km,
+        freeKm=view.raw.get("freeKm") or 0,
+        stepKm=view.raw.get("stepKm") or 0,
+        paisePerStep=view.raw.get("paisePerStep") or 0,
+        maxPaisePerJob=view.max_paise_per_job,
+        amountPaise=view.amount_paise,
+        reason=view.reason,
+        creditedPaise=(paid if paid is not None and paid > 0 else None),
+        forceCloseDefaultPaise=view.amount_paise,
+        forceCloseMaxPaise=view.max_paise_per_job,
     )
 
 
@@ -3043,6 +3116,11 @@ async def assign_technician(
 
     was = row.status
     previous = row.technician_id
+    # Task 10 (W3): the terms frozen at hand-over — built BEFORE the guarded
+    # UPDATE and written BY it, the same statement `jobs.service.accept` uses.
+    # A same-technician re-assign returned above and keeps its old snapshot;
+    # anything else stamps whoever is being appointed now.
+    snap = await build_accept_snapshot(db, row, profile, _now())
     result = await db.execute(
         update(Ticket)
         .where(
@@ -3075,7 +3153,7 @@ async def assign_technician(
             )
             .scalar_subquery(),
         )
-        .values(technician_id=profile.id, status="Assigned")
+        .values(technician_id=profile.id, status="Assigned", accept_snapshot=snap)
     )
     if result.rowcount == 0:
         # Two reasons, and the manager can act on only one. Read the ticket
@@ -3472,7 +3550,7 @@ async def record_no_show(
             Ticket.status == "Assigned",
             Ticket.technician_id == technician_id,
         )
-        .values(technician_id=None, status="Escalated")
+        .values(technician_id=None, status="Escalated", accept_snapshot=None)
     )
     if result.rowcount == 0:
         raise _refused(
@@ -3482,6 +3560,11 @@ async def record_no_show(
         )
     row.status = "Escalated"
     row.technician_id = None
+    # Task 10 (§4.3): the release clears the frozen terms too, as every path
+    # that clears the holder must — a stale snapshot naming a technician who
+    # never started is exactly the mismatch W17 refuses to pay on,
+    # and a re-accept must stamp fresh ones from the next holder.
+    row.accept_snapshot = None
 
     # The stamp catches up at release (§4.1(c)), exactly as `jobs.cancel` does:
     # the job just left its technician, and its pincode may have been carved out
@@ -3941,7 +4024,10 @@ async def force_close_ticket(
     # the console is redeployed. Same shape as the clamp below: a value the
     # server overrules rather than an error, with the trail saying so.
     kind_of = await job_technician_type(
-        db, company_id=principal.company_id, technician_id=technician_id
+        db,
+        company_id=principal.company_id,
+        technician_id=technician_id,
+        snapshot=row.accept_snapshot,
     )
     employee_job = technician_id is not None and not pays_per_job(kind_of)
     if employee_job and (body.technicianPayoutPaise or 0) > 0:
@@ -4004,6 +4090,30 @@ async def force_close_ticket(
                 reason=payout_reason(
                     service_type=row.service_type, model_name=model_name or "—"
                 ),
+                by_user=principal.user_id,
+            )
+        )
+
+    # Task 10 (TA6): travel at a force-closure is the manager's NUMBER, not the
+    # frozen estimate — a part-done job is priced by judgement, so it is only
+    # CAPPED at the snapshot's maxPaisePerJob, silently, the way the payout
+    # clamp above clamps at the job's price. Paid to the current holder only
+    # when the snapshot names them (W17) and to an employee as well (T3); a body
+    # that omitted the field or sent 0 writes NO row (W5) — a client that never
+    # heard of the field is not one proposing ₹0. On an old ticket with no
+    # snapshot there is no frozen cap and no row.
+    travel_paise = force_close_travel_paise(
+        row.accept_snapshot, technician_id=technician_id, requested=body.travelPaise
+    )
+    if technician_id is not None and travel_paise > 0:
+        db.add(
+            ledger_entry(
+                company_id=principal.company_id,
+                technician_id=technician_id,
+                ticket_id=row.id,
+                kind="travel",
+                amount_paise=travel_paise,
+                reason=travel_reason(km=None, force_closed=True),
                 by_user=principal.user_id,
             )
         )

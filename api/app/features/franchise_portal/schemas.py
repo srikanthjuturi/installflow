@@ -37,10 +37,11 @@ class FranchiseOptionsOut(AppModel):
 class FranchisePincodeOut(AppModel):
     """A pincode inside this franchisee, with where it is.
 
-    Rule 4 duplicates `features/geo`'s `PincodeOut` — minus `latitude` /
-    `longitude`, which this screen never draws — rather than a feature
+    Rule 4 duplicates `features/geo`'s `PincodeOut` rather than a feature
     importing a feature. Same field names, same order, same meaning; a change
-    to one is a change to the other, on purpose.
+    to one is a change to the other, on purpose — `latitude`/`longitude` joined
+    in Task 10 (§4.7): the console's *Use centre* moves its pin to the point a
+    pincode base will be copied from, so it needs the point too.
     """
 
     code: str
@@ -60,3 +61,8 @@ class FranchisePincodeOut(AppModel):
     isActive: bool
     #: 'import' | 'manual' — carried, not used; the portal never edits a row.
     source: str
+    #: The pincode's representative point, the same figures `PincodeOut` — a
+    #: pincode base copies them when a technician picks this code as their base.
+    #: Null for the ~300 codes without a point.
+    latitude: float | None = None
+    longitude: float | None = None

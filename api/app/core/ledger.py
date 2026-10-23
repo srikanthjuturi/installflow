@@ -220,12 +220,15 @@ async def credited(
     db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
 ) -> int:
     """What this technician has ever been owed in the FREELANCER stream:
-    payouts + bonuses − penalties.
+    payouts + travel + bonuses − penalties.
 
     All time, and on purpose — this is the other half of a balance, not a
     screen's period figure. The kinds are read by name, so a kind added later
-    moves nothing here until somebody decides which way it points (Tasks 10/11
-    fold theirs in; the statement's `KIND_LINES` is the other reader).
+    moves nothing here until somebody decides which way it points. Task 10
+    folds `travel` in beside `payout` (§4.4); the redemption balance reads
+    this, so a travel credit is redeemable the same way a payout is. Task 11
+    folds speed in the same way; the statement's `KIND_LINES` is the other
+    reader.
 
     `technician_type == TYPE_FREELANCER` is Task 06 (T4): the redeemable
     balance is the freelancer stream ONLY. Salary money (the employee stream)
@@ -251,7 +254,12 @@ async def credited(
         .group_by(LedgerEntry.kind)
     )
     totals = {kind: int(amount) for kind, amount in rows}
-    return totals.get("payout", 0) + totals.get("bonus", 0) - totals.get("penalty", 0)
+    return (
+        totals.get("payout", 0)
+        + totals.get("travel", 0)
+        + totals.get("bonus", 0)
+        - totals.get("penalty", 0)
+    )
 
 
 async def reserved(
@@ -345,6 +353,19 @@ def payout_reason(*, service_type: str, model_name: str) -> str:
     """
     label = _PAYOUT_LABELS.get(service_type, service_type)
     return f"{label} · {model_name}"[:160]
+
+
+def travel_reason(*, km: float | None, force_closed: bool = False) -> str:
+    """What a travel row says, decided when it was paid (the `payout_reason` rule).
+
+    A force-closure's reason does NOT quote km (Task 10): the amount is the
+    manager's, so a km figure beside it would imply an arithmetic that did not
+    happen. The frozen km is still on the ticket's `accept_snapshot`, where the
+    estimate it froze can be checked against the payment actually made.
+    """
+    if force_closed:
+        return "Travel allowance · set at force-closure"
+    return f"Travel allowance · {km:.1f} km"[:160]
 
 
 def entry(

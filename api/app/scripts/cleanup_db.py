@@ -85,6 +85,7 @@ COMPANY_TABLES: frozenset[str] = frozenset(
         "credit_entries",
         "credit_recharges",
         "franchisee_pincodes",
+        "franchisee_travel_rules",
         "franchisees",
         "job_passes",
         "ledger_entries",

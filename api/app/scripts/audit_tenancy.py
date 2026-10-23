@@ -211,6 +211,11 @@ TENANT_LINKS = [
     # Who owns a pincode. One pointing at another company's franchisee would
     # route one tenant's tickets to a second tenant's technicians.
     ("franchisee_pincodes", "franchisee_id", "franchisees"),
+    # Task 10: the allowance rules, exactly two rows per franchisee. A rule
+    # row stamped for another company's franchisee would be unreachable by the
+    # reader (every query filters company_id) and silently widen what an
+    # accept in THAT company freezes.
+    ("franchisee_travel_rules", "franchisee_id", "franchisees"),
     # A franchise login. Proves the LINK; whether one franchisee can read
     # another's rows inside a company is an application invariant
     # (core.franchise_scope, Task 02) this script cannot see.

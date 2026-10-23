@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.base_location import BaseLocationIn, BaseLocationOut
 from app.core.database import get_db
 from app.core.deps import (
     CompanyPrincipal,
@@ -96,6 +97,41 @@ async def get_my_technician_profile(
     their own record.
     """
     return envelope(await service.get_me(db, principal))
+
+
+@router.get(
+    "/me/base-location", response_model=ApiEnvelope[BaseLocationOut | None]
+)
+async def get_my_base_location(
+    db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[BaseLocationOut | None]:
+    """Where you start from, or null — the Profile screen and the Home card.
+
+    No feature guard, for the reason `/me` has none — a feature key would 403
+    every technician against their own record.
+    """
+    return envelope(await service.get_my_base_location(db, principal))
+
+
+@router.put(
+    "/me/base-location", response_model=ApiEnvelope[BaseLocationOut]
+)
+async def set_my_base_location(
+    db: Db, principal: CompanyPrincipal, body: BaseLocationIn
+) -> ApiEnvelope[BaseLocationOut]:
+    """Set or move your own base. PUT only — it replaces; no DELETE, because a
+    base can be moved, not removed.
+
+    A pincode must be inside your franchisee's range (W9), for everybody —
+    outside it, drop a map pin instead (422 `PINCODE_OUTSIDE_FRANCHISEE`). A
+    pin without coordinates is 400 `PINCODE_HAS_NO_LOCATION`, and a point
+    outside India is 400 `BASE_OUTSIDE_INDIA` — the place, not the shape. No
+    approval and no cooldown (R9); what you set shows on your console row.
+    """
+    return envelope(
+        await service.set_my_base_location(db, principal, body),
+        message="Base location saved",
+    )
 
 
 @router.patch("/me/availability", response_model=ApiEnvelope[AvailabilityOut])
@@ -410,6 +446,32 @@ async def update_technician(
 ) -> ApiEnvelope[TechnicianDetailOut]:
     data = await service.update_technician(db, principal, technician_id, body)
     return envelope(data, message="Technician updated")
+
+
+@router.put(
+    "/{technician_id}/base-location",
+    response_model=ApiEnvelope[TechnicianDetailOut],
+)
+async def set_base_location(
+    technician_id: uuid.UUID,
+    body: BaseLocationIn,
+    db: Db,
+    principal: CanEdit,
+) -> ApiEnvelope[TechnicianDetailOut]:
+    """Set or move a technician's base for them, from their profile screen.
+
+    The manager twin of `PUT /technicians/me/base-location`: a map pin or a
+    pincode, the whole `MANAGER_SOURCES` set (W8) — a technician's own edit
+    refuses "manual", the one source meaning somebody else recorded it. Same
+    place-not-shape refusals as the self-service put. Scope is the same `_load`
+    wall as the profile itself: 404 out of territory, 403 for a staff user
+    reaching into a franchisee whose people they do not manage — the franchisee
+    admin uses its own `/franchise/technicians/{id}/base-location` twin.
+    """
+    return envelope(
+        await service.set_base_location(db, principal, technician_id, body),
+        message="Base location saved",
+    )
 
 
 @router.delete(

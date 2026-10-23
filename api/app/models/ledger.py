@@ -90,7 +90,15 @@ from app.db.mixins import AuditMixin, IdMixin
 #:
 #: `reversal` is a penalty given back — see the module docstring. It arrived
 #: with its writer, `tickets.service.reverse_penalty`.
-LEDGER_KINDS = ("penalty", "bonus", "payout", "reversal")
+#:
+#: `travel` (Task 10) is the company — through the technician's franchisee —
+#: paying for distance travelled on a job, from outside the pool, exactly like
+#: `payout` is the company paying for work. It is written when the job settles:
+#: on the customer's confirmation, or on a manager's force-closure. Like a
+#: payout it reads "by name" in every technician-facing total (`core.ledger.
+#: credited`, `earnings.summary`) and reaches the pool readers by NOT being in
+#: `POOL_KINDS`, whose sum stays the penalty/bonus circuit.
+LEDGER_KINDS = ("penalty", "bonus", "payout", "reversal", "travel")
 
 #: The kinds that move the pool balance: penalties in, bonuses and reversals out.
 POOL_KINDS = ("penalty", "bonus", "reversal")
@@ -151,7 +159,7 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('penalty', 'bonus', 'payout', 'reversal')", name="kind"
+            "kind IN ('penalty', 'bonus', 'payout', 'reversal', 'travel')", name="kind"
         ),
         CheckConstraint(
             "(kind = 'reversal') = (reverses_id IS NOT NULL)",
@@ -227,5 +235,17 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
             "reverses_id",
             unique=True,
             postgresql_where=text("reverses_id IS NOT NULL"),
+        ),
+        # One travel credit per ticket (W6). Both writers settle a terminal
+        # transition, so a second row is unreachable by argument — this makes it
+        # unreachable by construction, as `uq_ledger_entries_reverses` does for
+        # reversals. Declared on the MODEL with its `postgresql_where` so
+        # autogenerate sees it rather than proposing to drop it.
+        Index(
+            "uq_ledger_entries_one_travel",
+            "company_id",
+            "ticket_id",
+            unique=True,
+            postgresql_where=text("kind = 'travel'"),
         ),
     )

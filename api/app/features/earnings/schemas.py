@@ -31,8 +31,12 @@ class EarningsSummaryOut(AppModel):
     #: cancellation and little work, which is a true thing to say; the phone
     #: renders the minus. The monthly penalty cap bounds how far it can go.
     netPaise: int
-    #: What the JOBS paid — `payout` entries, written at closure.
+    #: What the JOBS paid — `payout` + `travel` entries, written at closure.
     earnedPaise: int
+    #: Travel allowances credited in the period — `travel` entries, written at
+    #: closure. Employees get these too (T3). A BREAKDOWN of `earnedPaise`,
+    #: which already includes it — never add the two together (§8 trap 5).
+    travelPaise: int = 0
     #: Escalation bonuses credited to this technician in the period.
     bonusesPaise: int
     #: Real, and POSITIVE — a magnitude, not a debit. The screen colours it and
@@ -57,8 +61,9 @@ class TransactionOut(AppModel):
 
     id: uuid.UUID
     at: datetime.datetime
-    #: `payout` | `bonus` | `penalty`. The phone picks the icon and the sign
-    #: from this — `payout` and `bonus` are credits, `penalty` is a debit.
+    #: `payout` | `travel` | `bonus` | `penalty`. The phone picks the icon and
+    #: the sign from this — `payout`, `travel` and `bonus` are credits,
+    #: `penalty` is a debit.
     kind: str
     #: PAISE, always positive. See `models/ledger.py` on why no sign is stored.
     amountPaise: int

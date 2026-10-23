@@ -19,8 +19,11 @@ from app.core.deps import (
     require_any_feature,
     require_feature,
     require_min_rank,
+    require_staff_principal,
 )
+from app.core.franchise import home_franchisee_id
 from app.core.schemas import ApiEnvelope, envelope
+from app.core.travel_rules import TravelRulesIn, TravelRulesOut
 from app.features.settings import service
 from app.features.settings.schemas import (
     NodeRulesOut,
@@ -47,6 +50,17 @@ ReadRules = Annotated[
     Principal, Depends(require_any_feature("settings.view", "jobs.assign"))
 ]
 EditSettings = Annotated[Principal, Depends(require_feature("settings.edit"))]
+
+#: Task 10's travel-allowance PUT. `settings.edit` plus `require_staff_`
+#: `principal` — a franchisee admin edits their OWN rows through the
+#: `/franchise` twin, never here — with the National-Head floor added at the
+#: route, as the payment-account routes pair their key with `HeadRoute`:
+#: this row is money. See `franchise_router.py` for the twin.
+EditTravel = Annotated[
+    Principal,
+    Depends(require_staff_principal),
+    Depends(require_feature("settings.edit")),
+]
 
 #: Where vendors pay this company. Guarded like the money it moves rather
 #: than like a setting: `vendors.credit` plus a National-Head floor, the same
@@ -112,6 +126,53 @@ async def clear_node_rules(
     return envelope(
         await service.clear_node_rules(db, principal, node_id),
         message="Category rules reset",
+    )
+
+
+@router.get("/travel", response_model=ApiEnvelope[TravelRulesOut])
+async def get_travel_settings(principal: ReadRules, db: Db) -> ApiEnvelope[TravelRulesOut]:
+    """The home franchisee's allowance rules (F8 — staff manage Home only).
+
+    Same read guard shape as `GET /rules`, for the same reason: the escalation
+    queue and the assign sheet do not change these, but Task 05's assign
+    shortlist shows a technician's estimated travel next to their capacity, so
+    whoever picks needs the step table even without the screen that edits it.
+    """
+    assert principal.company_id is not None
+    return envelope(
+        await service.get_travel(
+            db,
+            principal.company_id,
+            await home_franchisee_id(db, principal.company_id),
+        )
+    )
+
+
+@router.put("/travel", response_model=ApiEnvelope[TravelRulesOut])
+async def put_travel_settings(
+    body: TravelRulesIn, principal: EditTravel, db: Db
+) -> ApiEnvelope[TravelRulesOut]:
+    """Save the home franchisee's allowance rules for both technician types.
+
+    Carries the National-Head floor as well as `settings.edit`, exactly as the
+    payment-account routes below pair a feature key with `HeadRoute` — it is
+    money, and a Feature Access override must not be able to hand it below the
+    managers the business named.
+
+    A rule change affects ONLY jobs accepted after it (TA5): every job already
+    accepted carries its own frozen copy in `accept_snapshot`, so a cheaper
+    rule never restates a job accepted under the expensive one.
+    """
+    assert principal.company_id is not None
+    return envelope(
+        await service.update_travel(
+            db,
+            principal,
+            principal.company_id,
+            await home_franchisee_id(db, principal.company_id),
+            body,
+        ),
+        message="Travel settings saved",
     )
 
 

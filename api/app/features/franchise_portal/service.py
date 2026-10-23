@@ -185,6 +185,9 @@ async def pincodes(
             "districtIds": [did for did, _name in districts[p.code]],
             "isActive": p.is_active,
             "source": p.source,
+            # Task 10 (§4.7): the point a pincode base copies, or None.
+            "latitude": p.latitude,
+            "longitude": p.longitude,
         }
         for p, s, r in rows
     ]

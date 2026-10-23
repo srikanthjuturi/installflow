@@ -340,6 +340,22 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: ticket ever raised.
     rules_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
+    #: What depended on the TECHNICIAN when they took this job — their franchisee,
+    #: their type, and the travel allowance from their base (index §3.5). Task 11
+    #: adds `speed`. Written by the guarded UPDATE in `jobs.service.accept` and
+    #: `tickets.service.assign_technician`; set back to NULL by every path that
+    #: clears `technician_id`, so a re-accept re-stamps (TA5).
+    #:
+    #: ⚠ `none_as_null=True` is load-bearing — see `models/product_node_rules.py`.
+    #: Without it, `.values(accept_snapshot=None)` writes the JSON value `null`,
+    #: `accept_snapshot IS NULL` is then false, and every verify query lies.
+    #:
+    #: Read it through `core.accept_snapshot.travel_of` / `speed_of`, never with a
+    #: bare subscript: tickets accepted before Task 10 have NULL here.
+    accept_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
     __table_args__ = (
         # Declared on the MODEL, not only in a migration, so the model is the
         # whole truth about the table and `--autogenerate` can see them.

@@ -28,6 +28,7 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
+from app.core.travel_rules import TravelRulesOut
 from app.models.role import AREA_MANAGER, NATIONAL_HEAD
 
 from app.features.franchisees import service
@@ -125,6 +126,20 @@ async def get_franchisee(
     principal: CanView,
 ) -> ApiEnvelope[FranchiseeOut]:
     return envelope(await service.get_franchisee(db, principal, franchiseeId))
+
+
+@router.get(
+    "/{franchiseeId}/travel-rules", response_model=ApiEnvelope[TravelRulesOut]
+)
+async def get_travel_rules(
+    franchiseeId: uuid.UUID, db: Db, principal: CanView
+) -> ApiEnvelope[TravelRulesOut]:
+    """One franchisee's allowance rules, read-only — Task 13's per-franchisee
+    view. The edit lives in the settings slice either side of this router;
+    here a manager simply reads what a franchisee is being paid by (10 §4.8).
+    Same `_load` wall as the profile above: another company's id is a 404.
+    """
+    return envelope(await service.get_travel_rules(db, principal, franchiseeId))
 
 
 @router.put("/{franchiseeId}", response_model=ApiEnvelope[FranchiseeOut])

@@ -25,6 +25,15 @@ from app.core.coordinates import Latitude, Longitude
 from app.core.schemas import AppModel
 
 
+class JobTravelOut(AppModel):
+    """The travel allowance this job pays, frozen when it was accepted."""
+
+    km: float
+    amountPaise: int
+    #: null | no_base_location | no_customer_point — the app says why it is ₹0.
+    reason: str | None
+
+
 class ProductParameterOut(AppModel):
     """One spec off the product — `RAM` / `8 GB`.
 
@@ -214,6 +223,13 @@ class JobOut(JobOfferOut):
     #: beside the point in that case — this is the fact the screen leads with,
     #: and the one a manager opens the ticket for.
     customerRefused: bool
+
+    #: The travel allowance frozen at accept — km, amount and the reason it is
+    #: ₹0 when it is. Null for a job accepted before travel allowances existed.
+    #: Not on JobOfferOut — see W4: the pool offer carries as little as it can,
+    #: and "the figure shown is the figure paid" needs the figure to appear at
+    #: the same moment the terms freeze.
+    travel: JobTravelOut | None = None
 
 
 class ProofArtifactIn(AppModel):

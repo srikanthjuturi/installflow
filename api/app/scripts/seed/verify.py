@@ -19,11 +19,16 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.accept_snapshot import travel_of
 from app.core.franchise import franchisees_for_pincodes
 from app.core.rules import load_rules
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES, TERMINAL_STATUSES
 from app.features.earnings import service as earnings_service
-from app.models.franchisee import Franchisee, FranchiseePincode
+from app.models.franchisee import (
+    Franchisee,
+    FranchiseePincode,
+    FranchiseeTravelRule,
+)
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
@@ -47,6 +52,8 @@ async def run(db: AsyncSession, *, company_id: uuid.UUID) -> list[Problem]:
         _closed_tickets_were_paid,
         _employees_were_not_paid,
         _earnings_match_the_ledger,
+        _travel_matches_the_snapshot,
+        _every_franchisee_has_travel_rules,
         _nobody_passed_the_monthly_cap,
         _live_tickets_still_have_a_future,
         _company_has_one_home,
@@ -200,17 +207,174 @@ async def _earnings_match_the_ledger(
                 )
             ).all()
         )
-        earned = int(totals.get("payout", 0) or 0)
+        # Travel FOLDS into earned (index §6a, W18) — a breakdown of the
+        # `payout` + `travel` ledger rows, never a fourth term beside them.
+        earned = int(totals.get("payout", 0) or 0) + int(totals.get("travel", 0) or 0)
         bonuses = int(totals.get("bonus", 0) or 0)
         penalties = int(totals.get("penalty", 0) or 0)
         expected_net = earned + bonuses - penalties
-        if figures.netPaise != expected_net:
+        if (
+            figures.netPaise != expected_net
+            or figures.earnedPaise != earned
+            or figures.travelPaise != int(totals.get("travel", 0) or 0)
+        ):
             problems.append(
                 Problem(
                     "earnings match the ledger",
                     f"technician {profile.code}: screen says net "
-                    f"{figures.netPaise} paise, ledger sums to {expected_net} "
-                    f"(payout {earned}, bonus {bonuses}, penalty {penalties})",
+                    f"{figures.netPaise}/earned {figures.earnedPaise}/travel "
+                    f"{figures.travelPaise} paise, ledger sums to net "
+                    f"{expected_net}, earned {earned} "
+                    f"(payout {int(totals.get('payout', 0) or 0)}, travel "
+                    f"{int(totals.get('travel', 0) or 0)}, bonus {bonuses}, "
+                    f"penalty {penalties})",
+                )
+            )
+    return problems
+
+
+async def _travel_matches_the_snapshot(
+    db: AsyncSession, company_id: uuid.UUID
+) -> list[Problem]:
+    """Every `travel` ledger row answers to the ticket's frozen snapshot.
+
+    Three invariants against the writers (`record_feedback`, which pays the
+    FROZEN amount, and `force_close_ticket`, which pays the manager's number
+    capped at the snapshot's max — W5's "omitted means none" included):
+
+    - no travel row while the ticket's snapshot is NULL — nothing else writes
+      this kind;
+    - no travel row exceeds its ticket's frozen `maxPaisePerJob`;
+    - a customer-closed ticket whose frozen amount is above ₹0 and whose
+      snapshot names its CURRENT holder carries exactly one travel row of
+      exactly that amount. Force-closed tickets are checked against the CAP
+      instead — the manager's number is deliberately a different figure —
+      and force-closes are told apart by the `force_closed` event the
+      writer records with them.
+    """
+    problems: list[Problem] = []
+    force_ids = set(
+        await db.scalars(
+            select(TicketEvent.ticket_id).where(
+                TicketEvent.company_id == company_id,
+                TicketEvent.kind == "force_closed",
+            )
+        )
+    )
+    tickets = {
+        t.id: t
+        for t in await db.scalars(
+            select(Ticket).where(Ticket.company_id == company_id)
+        )
+    }
+    rows = await db.execute(
+        select(LedgerEntry.ticket_id, LedgerEntry.amount_paise).where(
+            LedgerEntry.company_id == company_id,
+            LedgerEntry.kind == "travel",
+        )
+    )
+    per_ticket: dict[uuid.UUID, list[int]] = {}
+    for ticket_id, amount in rows:
+        ticket = tickets.get(ticket_id)
+        if ticket is None or travel_of(ticket.accept_snapshot) is None:
+            problems.append(
+                Problem(
+                    "travel matches the snapshot",
+                    f"ticket {ticket_id} has a {amount} paise travel row but "
+                    "no frozen snapshot",
+                )
+            )
+            continue
+        per_ticket.setdefault(ticket_id, []).append(amount)
+        max_paise = travel_of(ticket.accept_snapshot).max_paise_per_job
+        if amount > max_paise:
+            problems.append(
+                Problem(
+                    "travel matches the snapshot",
+                    f"ticket {ticket_id}: travel row {amount} paise exceeds "
+                    f"its frozen maximum {max_paise}",
+                )
+            )
+
+    for ticket in tickets.values():
+        if ticket.status != "Closed":
+            continue
+        view = travel_of(ticket.accept_snapshot)
+        if (
+            view is None
+            or view.amount_paise <= 0
+            or view.technician_id != str(ticket.technician_id)
+        ):
+            continue
+        rows = per_ticket.get(ticket.id, [])
+        if ticket.id in force_ids:
+            # The manager's number, not the frozen estimate — a row must simply
+            # EXIST in range (W5's none-at-all is allowed too) and the cap was
+            # checked above.
+            if len(rows) > 1:
+                problems.append(
+                    Problem(
+                        "travel matches the snapshot",
+                        f"ticket {ticket.id}: {len(rows)} travel rows, force "
+                        "closure pays one",
+                    )
+                )
+            continue
+        if len(rows) != 1 or rows[0] != view.amount_paise:
+            problems.append(
+                Problem(
+                    "travel matches the snapshot",
+                    f"ticket {ticket.id} is Closed: one travel row of "
+                    f"{view.amount_paise} paise expected, found "
+                    f"{rows or 'none'}",
+                )
+            )
+    return problems
+
+
+async def _every_franchisee_has_travel_rules(
+    db: AsyncSession, company_id: uuid.UUID
+) -> list[Problem]:
+    """Exactly two rule rows per franchisee, one per technician type (TA4).
+
+    `stamp_travel_rules` writes both at franchisee creation and every reader
+    self-heals a missing pair, so anything else here is a writer the seed did
+    not account for. A count of 2 that is really freelancer twice would pass a
+    count-only test, so the types are checked too.
+    """
+    franchisees = (
+        await db.scalars(
+            select(Franchisee.id).where(
+                Franchisee.company_id == company_id, Franchisee.deleted_at.is_(None)
+            )
+        )
+    ).all()
+    rows = await db.execute(
+        select(
+            FranchiseeTravelRule.franchisee_id,
+            FranchiseeTravelRule.technician_type,
+            func.count(),
+        )
+        .where(FranchiseeTravelRule.company_id == company_id)
+        .group_by(FranchiseeTravelRule.franchisee_id, FranchiseeTravelRule.technician_type)
+    )
+    by_franchisee: dict[uuid.UUID, dict[str, int]] = {}
+    for franchisee_id, ttype, count in rows:
+        by_franchisee.setdefault(franchisee_id, {})[ttype] = count
+    problems: list[Problem] = []
+    for fid in franchisees:
+        types = by_franchisee.get(fid, {})
+        wrong = {
+            t: c
+            for t, c in types.items()
+            if t not in ("freelancer", "employee") or c != 1
+        }
+        if wrong or set(types) != {"freelancer", "employee"}:
+            problems.append(
+                Problem(
+                    "every franchisee has travel rules",
+                    f"franchisee {fid} has {types or 'no'} rule rows — "
+                    "expected exactly one per type",
                 )
             )
     return problems

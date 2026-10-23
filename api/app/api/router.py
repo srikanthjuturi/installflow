@@ -29,6 +29,9 @@ from app.features.redemptions.franchise_router import (
     router as redemptions_franchise_router,
 )
 from app.features.search.router import router as search_router
+from app.features.settings.franchise_router import (
+    router as settings_franchise_router,
+)
 from app.features.settings.router import router as settings_router
 from app.features.technicians.router import router as technicians_router
 from app.features.technicians.franchise_router import (
@@ -104,6 +107,7 @@ api_router.include_router(ledger_router)
 # are filled from (05 §4.6), through the franchisee wall like every twin.
 api_router.include_router(franchise_portal_router)
 api_router.include_router(settings_router)
+api_router.include_router(settings_franchise_router)
 # Task 05's own employees slice — the technician roster twin is registered
 # beside its staff router above, where the roster itself lives.
 api_router.include_router(technicians_franchise_router)

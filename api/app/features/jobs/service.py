@@ -36,6 +36,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
+from app.core.accept_snapshot import build_accept_snapshot, travel_of
 from app.core.config import settings
 from app.core.coverage import has_cap_room, nearest_manager_for, still_offerable
 from app.core.errors import AppError
@@ -97,6 +98,7 @@ from app.features.auth.schemas import OtpRequestResponse
 from app.features.jobs.schemas import (
     JobOfferOut,
     JobOut,
+    JobTravelOut,
     PenaltyBandOut,
     ProductParameterOut,
     ProofArtifactIn,
@@ -448,6 +450,15 @@ def serial_mismatch(t: Ticket) -> bool:
     return t.observed_serial.strip().upper() != t.serial_number.strip().upper()
 
 
+def _job_travel(t: Ticket) -> JobTravelOut | None:
+    """The allowance frozen at accept, for the CURRENT holder (W17/W18) — the
+    same naming test every other reader of the snapshot applies."""
+    view = travel_of(t.accept_snapshot)
+    if view is None or view.technician_id != str(t.technician_id):
+        return None
+    return JobTravelOut(km=view.km, amountPaise=view.amount_paise, reason=view.reason)
+
+
 def _job_out(
     offer: JobOfferOut,
     t: Ticket,
@@ -506,6 +517,7 @@ def _job_out(
         customerRefused=(
             t.customer_confirmed_at is not None and t.status == "Escalated"
         ),
+        travel=_job_travel(t),
     )
 
 
@@ -869,6 +881,12 @@ async def accept(
     # trail, which says nothing about where the job came from.
     was = offered.status
 
+    # Task 10 (W3): the terms frozen at accept — built BEFORE the guarded
+    # UPDATE and written BY it, so the snapshot exists if and only if this
+    # technician won. A loser of the first-accept race wrote nothing; the two
+    # reads it needs (one rule row, at most one pincode centre) are cheap.
+    snap = await build_accept_snapshot(db, offered, profile, _now())
+
     result = await db.execute(
         update(Ticket)
         .where(
@@ -896,7 +914,7 @@ async def accept(
             )
             .scalar_subquery(),
         )
-        .values(technician_id=profile.id, status="Assigned")
+        .values(technician_id=profile.id, status="Assigned", accept_snapshot=snap)
     )
     if result.rowcount == 0:
         # Two very different reasons to have matched nothing, and a technician
@@ -2087,7 +2105,7 @@ async def cancel(
             Ticket.status == "Assigned",
             Ticket.technician_id == profile.id,
         )
-        .values(technician_id=None, status=back_to)
+        .values(technician_id=None, status=back_to, accept_snapshot=None)
     )
     if result.rowcount == 0:
         raise JobRefused(
@@ -2097,6 +2115,10 @@ async def cancel(
         )
     row.status = back_to
     row.technician_id = None
+    # Task 10 (§4.3): every path that clears the holder clears the frozen terms
+    # in the same statement — a re-accept of this job must stamp fresh ones from
+    # whoever takes it next, not inherit this technician's.
+    row.accept_snapshot = None
 
     # The stamp catches up at release (§4.1(c)): the ticket is going back to a
     # pool, and its pincode may have been carved out while somebody held it —
