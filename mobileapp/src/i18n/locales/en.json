@@ -96,7 +96,7 @@
     },
     "verify": {
       "title": "Confirm your number",
-      "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>. This is the last step.",
+      "codeSentTo": "Enter the 6-digit code sent to <bold>{{phone}}</bold>.",
       "create": "Create my account",
       "errors": {
         "sendFailed": "We could not send your code. Tap resend to try again.",
@@ -285,7 +285,10 @@
       "thisMonth": "Go to this month",
       "previous": "Previous month",
       "next": "Next month"
-    }
+    },
+    "inclTravel": "incl. {{amount}} travel",
+    "inclSpeed": "incl. {{amount}} speed",
+    "inclSpeedPenalty": "incl. {{amount}} speed"
   },
   "redeem": {
     "state": {
@@ -341,6 +344,55 @@
       "emptyBody": "Requests you send appear here."
     }
   },
+  "parts": {
+    "request": {
+      "noFacility": "Your franchise has no parts store set up yet, so a part can't be requested here. Ask your franchise admin.",
+      "title": "Request a spare part",
+      "intro": "Pick the part you need. The parts store approves it and hands it to you.",
+      "search": "Search parts",
+      "noMatch": "No part matches \"{{query}}\". Choose Other and type it.",
+      "noParts": "No parts are listed for this product yet. Choose Other and type the part.",
+      "other": "Other — not on the list",
+      "otherLabel": "Part name",
+      "otherPlaceholder": "What part do you need?",
+      "noteLabel": "Note for the store (optional)",
+      "notePlaceholder": "Size, model, what broke…",
+      "selectPart": "Select a part",
+      "typeName": "Type the part's name",
+      "submit": "Request part",
+      "sent": "Part requested",
+      "already": "Already requested — it's on the list.",
+      "failed": "Couldn't send your request. Try again.",
+      "notNow": "You can ask for a part only while the job is in progress."
+    },
+    "card": {
+      "title": "Spare parts",
+      "other": "Other"
+    },
+    "state": {
+      "requested": "Requested",
+      "approved": "Approved",
+      "issued": "Issued",
+      "returned": "Returned",
+      "rejected": "Not approved",
+      "cancelled": "Approval cancelled",
+      "unknown": "Updated"
+    },
+    "trail": {
+      "approved": "Approved {{when}}",
+      "rejected": "Not approved {{when}}: {{reason}}",
+      "rejectedAfterApproval": "Approved earlier, then cancelled {{when}}: {{reason}}",
+      "issued": "Issued to you {{when}}",
+      "issuedNote": "Store's note: {{note}}",
+      "returned": "Old part handed back {{when}}"
+    },
+    "hint": {
+      "requested": "Waiting for the parts store to approve it.",
+      "approved": "You'll be told when it's ready to collect.",
+      "issued": "Hand the old part back to the store."
+    },
+    "loadFailed": "Couldn't load your part requests."
+  },
   "payout": {
     "title": "Payout account",
     "saveFailed": "Couldn't save. Try again.",
@@ -376,6 +428,68 @@
     "scanner": {
       "notUpi": "That's not a UPI payment QR. Try another.",
       "fromScreenshot": "From a screenshot"
+    }
+  },
+  "baseLocation": {
+    "title": "Base location",
+    "intro": "Travel allowance is worked out from here to each customer. Set the place you usually start your day from.",
+    "changeNote": "A change applies to jobs you accept from now on.",
+    "current": {
+      "label": "Your base",
+      "pincode": "Pincode {{pincode}} (area centre)",
+      "gps": "Your location",
+      "map": "Pin on the map",
+      "byManager": "Set by your manager",
+      "set": "Set",
+      "setOn": "Set {{date}}",
+      "none": "Not set yet — jobs you accept pay no travel allowance."
+    },
+    "short": {
+      "gps": "Your location",
+      "map": "Map pin",
+      "manager": "By manager"
+    },
+    "pincode": {
+      "title": "My home pincode",
+      "body": "We use the centre of your pincode's area.",
+      "placeholder": "6-digit pincode",
+      "use": "Use {{pincode}}",
+      "typeSix": "Type your 6-digit pincode",
+      "outside": "That pincode is outside your service area. Drop a pin on the map or use your current location instead."
+    },
+    "gps": {
+      "title": "Use my current location",
+      "body": "Do this at home — we save where your phone is now.",
+      "finding": "Finding your location…",
+      "found": "Found you · {{accuracy}}",
+      "rough": "This fix is rough. Step outside for a better one, or save it anyway.",
+      "save": "Save this location",
+      "denied": "Location access is off. Allow it in Settings, or use your pincode or the map.",
+      "openSettings": "Open settings",
+      "failed": "Couldn't get a location fix. Step outside and try again, or use your pincode or the map."
+    },
+    "map": {
+      "title": "Drop a pin on the map",
+      "body": "For when you live outside your service area, or your pincode isn't accepted.",
+      "loading": "Loading the map…",
+      "hint": "Tap the map or drag the pin to your home.",
+      "save": "Save this pin",
+      "outside": "Move the pin inside India",
+      "failedTitle": "The map couldn't load",
+      "failedBody": "Check your connection and try again, or use your pincode or current location instead.",
+      "useLocation": "Use my current location instead",
+      "tilesFailed": "Some of the map didn't load. The pin still works."
+    },
+    "saved": "Base location saved",
+    "saveFailed": "Couldn't save your base location. Try again.",
+    "onboarding": {
+      "title": "Where do you start from?",
+      "body": "Jobs farther away pay a travel allowance, measured from your base. You can change it later in Profile.",
+      "skip": "Skip for now"
+    },
+    "home": {
+      "title": "Set your base location",
+      "body": "Until you do, jobs pay no travel allowance."
     }
   },
   "profile": {
@@ -605,7 +719,10 @@
       "noReason": "They gave no reason.",
       "managerReview": "A manager will review this. Do not return to site until they call.",
       "awaitingPart": "Waiting for a spare part. Once it has been issued to you, you can finish the job and complete it here.",
-      "unknownStage": "This job is at a stage this version of the app doesn't know. Update the app from the Play Store to see what to do next."
+      "unknownStage": "This job is at a stage this version of the app doesn't know. Update the app from the Play Store to see what to do next.",
+      "needPart": "Need a spare part",
+      "completeWaitingParts": "Waiting for parts",
+      "partsUnavailable": "Spare parts can't be requested for this job — your franchise has no parts store set up yet. Ask your franchise admin."
     },
     "cancel": {
       "title": "Cancel job",
@@ -637,6 +754,18 @@
       "askForCode": "Ask the customer for their code",
       "codeSent": "We have sent a 6-digit code to the customer on WhatsApp. Ask them to read it out — it confirms they agreed to the new time.",
       "newCodeCancels": "Sending a new code cancels the previous one."
+    },
+    "allowances": {
+      "title": "Allowances",
+      "travel": "{{km}} km · {{amount}} travel",
+      "travelNone": "{{km}} km · no travel allowance",
+      "travelNoBase": "No travel allowance — your base location wasn't set when you accepted.",
+      "setBase": "Set base location",
+      "travelNoCustomer": "No travel allowance — the customer's location isn't known.",
+      "speedReward": "Finish within {{hours}} h for {{amount}}",
+      "speedPenalty": "After {{hours}} h: −{{amount}}",
+      "speedNoteSlot": "Counted from your slot's start. Time waiting for a part doesn't count.",
+      "speedNoteAccept": "Counted from when you accepted. Time waiting for a part doesn't count."
     }
   },
   "dates": {
@@ -739,7 +868,11 @@
       "TECHNICIAN_HAS_OPEN_JOBS": "You still have open jobs. Finish them, or ask your manager to reassign them, first.",
       "RANGE_TOO_LONG": "Pick a shorter range of dates.",
       "UPDATE_APP": "Update the app to add or change your UPI ID.",
-      "PINCODE_OUTSIDE_FRANCHISEE": "Some of these pincodes are outside the area you were invited for. Ask the person who invited you to check them."
+      "PINCODE_OUTSIDE_FRANCHISEE": "Some of these pincodes are outside the area you were invited for. Ask the person who invited you to check them.",
+      "PINCODE_HAS_NO_LOCATION": "We don't have a map location for that pincode yet. Drop a pin on the map or use your current location instead.",
+      "BASE_OUTSIDE_INDIA": "That location is outside India. Check the pin and try again.",
+      "NO_FACILITY": "Your franchise has no parts store set up yet, so a part can't be requested here. Ask your franchise admin.",
+      "PART_REQUEST_NOT_IN_PROGRESS": "You can ask for a spare part only while the job is in progress."
     }
   },
   "server": {

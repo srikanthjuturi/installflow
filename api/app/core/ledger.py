@@ -46,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.tickets import SLOT_TIMEZONE_OFFSET_MINUTES
-from app.models.ledger import POOL_KINDS, LedgerEntry
+from app.models.ledger import CAPPED_KINDS, POOL_KINDS, LedgerEntry
 from app.models.redemption import Redemption
 from app.models.technician import (
     TYPE_FREELANCER,
@@ -256,9 +256,11 @@ async def credited(
     totals = {kind: int(amount) for kind, amount in rows}
     return (
         totals.get("payout", 0)
-        + totals.get("travel", 0)
+        + totals.get("travel", 0)                  # Task 10: travel is earned
         + totals.get("bonus", 0)
+        + totals.get("speed_reward", 0)            # Task 11: a fast finish is owed
         - totals.get("penalty", 0)
+        - totals.get("speed_penalty", 0)           # Task 11: a slow finish is a debit
     )
 
 
@@ -299,6 +301,49 @@ async def redeemable_balance(
     )
 
 
+async def open_redemption_exists(
+    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
+) -> bool:
+    """Is there a redemption neither confirmed nor declined?
+
+    Exactly the `uq_redemptions_one_open` predicate, so it can be true for at
+    most one row. Lives beside `redeemable_balance` for the same reason: two
+    slices ask (the redemption request, and Task 17's technician transfer, which
+    refuses to move somebody whose payment is still being settled — it is owed
+    by the OLD franchisee's payer, who could no longer see it after the move).
+    Slices never import each other (hard rule 4).
+    """
+    return (
+        await db.scalar(
+            select(Redemption.id)
+            .where(
+                Redemption.company_id == company_id,
+                Redemption.technician_id == technician_id,
+                Redemption.confirmed_at.is_(None),
+                Redemption.declined_at.is_(None),
+            )
+            .limit(1)
+        )
+    ) is not None
+
+
+async def open_redemption_code(
+    db: AsyncSession, *, company_id: uuid.UUID, technician_id: uuid.UUID
+) -> str | None:
+    """The code of that open redemption (`RGT-RDM-0007`), or None. The transfer's
+    refusal names it so the person knows which payment to settle."""
+    return await db.scalar(
+        select(Redemption.code)
+        .where(
+            Redemption.company_id == company_id,
+            Redemption.technician_id == technician_id,
+            Redemption.confirmed_at.is_(None),
+            Redemption.declined_at.is_(None),
+        )
+        .limit(1)
+    )
+
+
 async def charged_this_month(
     db: AsyncSession,
     *,
@@ -306,18 +351,22 @@ async def charged_this_month(
     technician_id: uuid.UUID,
     now: datetime.datetime | None = None,
 ) -> int:
-    """Penalties charged to this technician in the current IST month and not given back.
+    """Penalties of either kind charged to this technician in the current IST
+    month and not given back.
 
-    A reversed penalty frees its room under the cap. Keyed on when the PENALTY
-    was written, not the reversal: giving back a September charge in October
-    must make September right again, not hand October extra headroom.
+    Both capped kinds (S6, Task 11): a cancellation and a slow job draw down
+    the SAME `cancel_penalty_cap_paise`, so each preview and each charge has to
+    see the other. A reversed penalty frees its room under the cap. Keyed on
+    when the PENALTY was written, not the reversal: giving back a September
+    charge in October must make September right again, not hand October extra
+    headroom.
     """
     now = now or datetime.datetime.now(datetime.timezone.utc)
     total = await db.scalar(
         select(func.coalesce(func.sum(LedgerEntry.amount_paise), 0)).where(
             LedgerEntry.company_id == company_id,
             LedgerEntry.technician_id == technician_id,
-            LedgerEntry.kind == "penalty",
+            LedgerEntry.kind.in_(CAPPED_KINDS),
             LedgerEntry.created_at >= month_start(now),
             not_reversed(),
         )
@@ -330,6 +379,20 @@ def cap_remaining(*, cap_paise: int, already_charged: int) -> int | None:
     if cap_paise == 0:
         return None
     return max(0, cap_paise - already_charged)
+
+
+def capped_charge(amount_paise: int, remaining: int | None) -> int:
+    """What is actually charged: all of it when uncapped (`None`), else the
+    SMALLER of the band and what remains of the month's cap — 0 when nothing
+    remains, which the caller spells "write no row" (W8).
+
+    Pure, beside `cap_remaining`, and it exists because the same min() stood
+    inline in three places — `jobs.service._band_for`'s cancellation preview
+    and charge, `tickets.service.record_no_show`, and Task 11's speed
+    penalty — and three copies of one arithmetic is the copy that drifts when
+    the cap's meaning next changes.
+    """
+    return amount_paise if remaining is None else min(amount_paise, remaining)
 
 
 #: The one service type whose display name is not its stored name.
@@ -444,35 +507,66 @@ def entry(
     )
 
 
-def pool_arithmetic(totals: dict[str, tuple[int, int]]) -> dict[str, int]:
-    """PURE. The pool from grouped `{kind: (amount_paise, count)}` totals.
+def pool_arithmetic(totals: dict) -> dict[str, int]:
+    """PURE. The pool from grouped `{(kind, target kind): (amount_paise, count)}`
+    totals.
 
     §7 makes penalties and bonuses one fact — money in equals money out — so
     the balance is derived from the sums rather than stored. A stored balance
     is a number that can disagree with the rows it claims to summarise, and it
     eventually does.
 
+    The key is a PAIR since Task 11: a `reversal` row is pool-money OUT, but
+    it undoes one specific kind of charge, and the two nets are reported
+    separately (§4.7) — a speed penalty given back must net out of the
+    `speedPenalty*` breakdown and NOT out of `cancellations`. Everything that
+    is not a reversal carries `None` as its target kind. The tests from Task
+    05 (§6 cases 17–20) still pass a BARE string key, so a bare key is read as
+    `(kind, None)` — and a bare `reversal` as a reversal OF `penalty`, which
+    was the only kind that could be reversed before Task 11 and is what those
+    cases assume. `pool()` always passes pairs.
+
     `cancellations` and `pickups` are counts of the entries, not of tickets: a
     ticket cancelled twice is two penalties, which is exactly what the pool
-    collected. Kinds outside POOL_KINDS (a `payout`) are ignored — the pool is
-    the penalty/bonus circuit, and Task 11 extends this function rather than
-    letting a new kind change it silently.
+    collected. Kinds outside POOL_KINDS (a `payout`, `travel`) are ignored —
+    the pool is the money-in/money-out circuit, and Task 11 folded the two
+    speed kinds INTO it (S6) rather than beside it.
     """
-    penalties, charged = totals.get("penalty", (0, 0))
-    returned, reversals = totals.get("reversal", (0, 0))
-    bonuses, pickups = totals.get("bonus", (0, 0))
+    paired = {
+        (key, "penalty")
+        if key == "reversal"
+        else (key if isinstance(key, tuple) else (key, None)): value
+        for key, value in totals.items()
+    }
+    penalties, charged = paired.get(("penalty", None), (0, 0))
+    speed_penalties, speed_charged = paired.get(("speed_penalty", None), (0, 0))
+    restored, cancelled_back = paired.get(("reversal", "penalty"), (0, 0))
+    speed_restored, speed_backed = paired.get(("reversal", "speed_penalty"), (0, 0))
+    bonuses, pickups = paired.get(("bonus", None), (0, 0))
+    speed_rewards, speed_paid = paired.get(("speed_reward", None), (0, 0))
     # A reversal is money back OUT of the pool, and it is netted into what was
-    # "collected" rather than shown as a third figure: a penalty given back was
+    # "collected" rather than shown as a third figure: a charge given back was
     # never really collected, and the console prints `collected − bonuses =
-    # balance` only while that arithmetic holds. Same for the count — one full
-    # reversal per penalty, so this is the penalties that still stand.
-    collected = penalties - returned
+    # balance` only while that arithmetic holds. The nets are split by the
+    # TARGET kind so `cancellations` keeps counting cancellation/no-show
+    # penalties alone (W11) while the speed figures stand beside them.
+    cancel_net = penalties - restored
+    speed_net = speed_penalties - speed_restored
+    collected = cancel_net + speed_net
+    paid = bonuses + speed_rewards
     return {
-        "balancePaise": collected - bonuses,
+        "balancePaise": collected - paid,
         "penaltiesCollectedPaise": collected,
-        "cancellations": charged - reversals,
-        "bonusesPaidPaise": bonuses,
+        "cancellations": charged - cancelled_back,
+        "bonusesPaidPaise": paid,
         "pickups": pickups,
+        # Task 11's breakdown fields: the parts the two folded tiles above
+        # already include, so Task 13's pool card can show the split without
+        # anybody's arithmetic breaking in between.
+        "speedPenaltyPaise": speed_net,
+        "speedPenalties": speed_charged - speed_backed,
+        "speedRewardPaise": speed_rewards,
+        "speedRewards": speed_paid,
     }
 
 
@@ -486,7 +580,7 @@ async def pool(
     tiles (F12 — one pool per franchisee, Task 05 §4.12).
 
     §7 makes penalties and bonuses one fact — money in equals money out — so
-    this is one grouped query and `balance` is derived from the two sums rather
+    this is one grouped query and `balance` is derived from the sums rather
     than stored. `franchisee_id` is REQUIRED, not defaulted to a home lookup at
     this layer: which pool a read is about is decided by the caller
     (`core.franchise_money.pool_franchisee`), where the principal is in reach.
@@ -494,23 +588,33 @@ async def pool(
     There is deliberately no "all franchisees" total — every pool read names
     its franchisee, the way every money read always will (out of scope, §8).
     """
-    # Scoped to POOL_KINDS explicitly. Reading `totals.get("penalty")` and
-    # `("bonus")` out of the grouped result already made this safe when `payout`
-    # was added — a third kind simply went unread — but safe-by-accident is a
-    # property one refactor away from being lost, and a reader here should not
-    # have to check what else is in the table before trusting the balance.
+    # Scoped to POOL_KINDS explicitly: a new kind is unread until this line is
+    # told about it, which is the loud failure, not the silent one.
+    #
+    # A reversal is grouped by the KIND IT UNDID (§4.7): a LEFT JOIN an alias
+    # on `reverses_id`, and the alias's own `kind` rides in the group key. A
+    # speed penalty given back nets out of the speed column; a cancellation
+    # given back out of `cancellations`; neither touches the other (W11). The
+    # reversal row's `franchisee_id` is the PENALTY's (`core.ledger.entry`),
+    # so the pair still lands in exactly one pool — this one.
+    target = aliased(LedgerEntry)
     rows = await db.execute(
         select(
             LedgerEntry.kind,
+            target.kind,
             func.coalesce(func.sum(LedgerEntry.amount_paise), 0),
             func.count(),
         )
+        .outerjoin(target, target.id == LedgerEntry.reverses_id)
         .where(
             LedgerEntry.company_id == company_id,
             LedgerEntry.franchisee_id == franchisee_id,
             LedgerEntry.kind.in_(POOL_KINDS),
         )
-        .group_by(LedgerEntry.kind)
+        .group_by(LedgerEntry.kind, target.kind)
     )
-    totals = {kind: (int(amount), int(count)) for kind, amount, count in rows}
+    totals = {
+        (kind, target_kind): (int(amount), int(count))
+        for kind, target_kind, amount, count in rows
+    }
     return pool_arithmetic(totals)

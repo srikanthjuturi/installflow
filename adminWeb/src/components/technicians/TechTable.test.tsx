@@ -51,6 +51,9 @@ function tech(overrides: Partial<Technician> = {}): Technician {
     franchiseeIsHome: false,
     technicianType: "freelancer",
     canManage: true,
+    baseSource: null,
+    baseSetAt: null,
+    baseSetBySelf: null,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };
@@ -142,6 +145,20 @@ describe("TechTable", () => {
   it("shows the row writes once canManage is true, same can* props", () => {
     renderTable([tech()], [option()]);
     expect(screen.getAllByRole("button", { name: /^Edit/ }).length).toBeGreaterThan(0);
+  });
+
+  it("draws the base's source chip, never coordinates (Task 13, R9)", () => {
+    renderTable(
+      [tech({ baseSource: "gps", baseSetAt: "2026-10-15T05:30:00Z", baseSetBySelf: true })],
+      [option()]
+    );
+    expect(screen.getByText("GPS")).toBeInTheDocument();
+    expect(screen.queryByText("Not set")).not.toBeInTheDocument();
+  });
+
+  it("says Not set, in words, for a technician with no base", () => {
+    renderTable([tech()], [option()]);
+    expect(screen.getByText("Not set")).toBeInTheDocument();
   });
 
   it("keeps the Franchisee filter out when there is one franchisee", () => {

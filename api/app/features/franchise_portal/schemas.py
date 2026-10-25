@@ -2,6 +2,12 @@
 
 import uuid
 
+from app.core.facility_users import (  # noqa: F401  re-exported: the shapes of /franchise/facility-users
+    FacilityUserCreateRequest,
+    FacilityUserCreatedOut,
+    FacilityUserOut,
+    FacilityUserUpdateRequest,
+)
 from app.core.schemas import AppModel
 
 

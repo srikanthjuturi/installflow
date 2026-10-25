@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Building2, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Building2, Pencil, Trash2 } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Notice } from "@/components/shared/Notice";
@@ -9,7 +9,10 @@ import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicia
 import { DownloadStatementCard } from "@/components/technicians/DownloadStatementCard";
 import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
+import { TechTransferHistory } from "@/components/technicians/TechTransferHistory";
+import { TransferTechnicianDialog } from "@/components/technicians/TransferTechnicianDialog";
 import { UpiChangePanel } from "@/components/technicians/UpiChangePanel";
+import { BaseLocationPanel } from "@/components/technicians/BaseLocationPanel";
 import {
   TechOnboardingCard,
   TechOnboardingCardSkeleton,
@@ -34,6 +37,7 @@ export default function TechnicianProfilePage() {
   const navigate = useNavigate();
   const [isEditOpen, setEditOpen] = useState(false);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const [isMoveOpen, setMoveOpen] = useState(false);
   /* Task 08 — the franchisee check rides on the role check: the server says
      `canManage` (F8), and when it is false no staff role touches this record.
      The edit dialog stays reachable — its franchisee line is read-only and its
@@ -57,6 +61,11 @@ export default function TechnicianProfilePage() {
   // After the read: `canManage` is the server's word on whether this staff role
   // may manage this specific technician (F8), so the button needs both.
   const canEdit = feature.has(features.editTechnician) && (tech?.canManage ?? false);
+  /* Task 17 — moving a technician to another franchisee is Admin / National
+     Head's call (`franchisees.manage`) and is deliberately NOT gated on
+     `canManage`: it is the one action that reaches a technician whose franchisee
+     admin otherwise runs them. Staff console only — the portal has no such door. */
+  const canMove = workspace === "ops" && feature.has("franchisees.manage");
 
   /* §5.10 — the Download statement card's gate, all three halves of the
      endpoint's own rule (`home-franchisee employee` + rank National Head and
@@ -102,6 +111,14 @@ export default function TechnicianProfilePage() {
         />
       ) : null}
 
+      {tech && canMove ? (
+        <TransferTechnicianDialog
+          open={isMoveOpen}
+          onOpenChange={setMoveOpen}
+          technician={tech}
+        />
+      ) : null}
+
       <DeleteTechnicianDialog
         open={isDeleteOpen}
         onOpenChange={setDeleteOpen}
@@ -121,27 +138,42 @@ export default function TechnicianProfilePage() {
           {backText}
         </LinkButton>
 
-        {tech && canEdit ? (
+        {tech && (canEdit || canMove) ? (
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setEditOpen(true)}
-            >
-              <Pencil data-icon="inline-start" />
-              Edit details
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-danger"
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 data-icon="inline-start" />
-              Remove
-            </Button>
+            {canMove ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMoveOpen(true)}
+              >
+                <ArrowRightLeft data-icon="inline-start" />
+                Move to another franchisee
+              </Button>
+            ) : null}
+            {canEdit ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditOpen(true)}
+                >
+                  <Pencil data-icon="inline-start" />
+                  Edit details
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-danger"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 data-icon="inline-start" />
+                  Remove
+                </Button>
+              </>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -198,6 +230,21 @@ export default function TechnicianProfilePage() {
               <TechOnboardingCardSkeleton />
             ) : (
               <TechOnboardingCard tech={tech} />
+            )}
+
+            {/* Task 17 §5.3 — the history is for anyone who can see the
+                technician in the staff console; the portal never shows it. */}
+            {tech && workspace === "ops" ? <TechTransferHistory tech={tech} /> : null}
+
+            {/* Task 13 §5.5 — under the onboarding card. `canEdit` is the page's
+                own gate and already says the right thing on both surfaces
+                (staff: only a home technician they manage, F8; portal: their
+                own). A viewer who cannot manage still sees the source chip, not
+                the coordinates. */}
+            {isLoading || !tech ? (
+              <Skeleton className="h-32 rounded-xl" />
+            ) : (
+              <BaseLocationPanel tech={tech} canEdit={canEdit} />
             )}
 
             {/* §5.10 — after the onboarding card, before the job history: a

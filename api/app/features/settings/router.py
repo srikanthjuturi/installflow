@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import (
     Principal,
+    require_all,
     require_any_feature,
     require_feature,
     require_min_rank,
@@ -53,13 +54,18 @@ EditSettings = Annotated[Principal, Depends(require_feature("settings.edit"))]
 
 #: Task 10's travel-allowance PUT. `settings.edit` plus `require_staff_`
 #: `principal` — a franchisee admin edits their OWN rows through the
-#: `/franchise` twin, never here — with the National-Head floor added at the
-#: route, as the payment-account routes pair their key with `HeadRoute`:
-#: this row is money. See `franchise_router.py` for the twin.
+#: `/franchise` twin, never here — with the National-Head floor, as the
+#: payment-account routes pair their key with `HeadRoute`: this row is money.
+#: All three ride in ONE `require_all`, never stacked in the `Annotated`. See `franchise_router.py` for the twin.
 EditTravel = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("settings.edit")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("settings.edit"),
+            require_min_rank(NATIONAL_HEAD),
+        )
+    ),
 ]
 
 #: Where vendors pay this company. Guarded like the money it moves rather

@@ -84,8 +84,12 @@ async def summary(
     # keeps an old build's three tiles summing to `netPaise`.
     travel = totals.get("travel", 0)
     earned = totals.get("payout", 0) + travel
-    bonuses = totals.get("bonus", 0)
-    penalties = totals.get("penalty", 0)
+    # Task 11 (W10): speed FOLDS into the two tiles — the pool's money moves
+    # under the same signs, and W10's point is that a screen already on a phone
+    # keeps summing without being republished. The two breakdown fields below
+    # are the split for Task 15, additive back into the tiles.
+    bonuses = totals.get("bonus", 0) + totals.get("speed_reward", 0)
+    penalties = totals.get("penalty", 0) + totals.get("speed_penalty", 0)
     return EarningsSummaryOut(
         # The whole arithmetic of the screen, in one line and in one place.
         # Bonuses add, penalties subtract — `penalties` is a magnitude, because
@@ -100,6 +104,8 @@ async def summary(
         travelPaise=travel,
         bonusesPaise=bonuses,
         penaltiesPaise=penalties,
+        speedRewardPaise=totals.get("speed_reward", 0),
+        speedPenaltyPaise=totals.get("speed_penalty", 0),
         # Derived from the SAME window the sums were taken over, one line below
         # them, so the label and the figures cannot come apart.
         dateFrom=covered_from,
@@ -121,7 +127,14 @@ def _title(kind: str, reason: str) -> str:
         return reason
     if kind == "travel":
         return "Travel allowance"       # a FIXED string: the app maps titles to t() keys
-    # Task 11 adds speed_reward → "Speed reward", speed_penalty → "Speed penalty" here.
+    # Task 11 (W10): the two speed titles are FIXED strings — Task 07's
+    # `serverLabels.ts` already maps them (§4.8), so no band-label fallthrough
+    # must reach them first: a speed penalty titled "Late cancellation penalty"
+    # is a charge a technician will dispute before their own eyes.
+    if kind == "speed_reward":
+        return "Speed reward"
+    if kind == "speed_penalty":
+        return "Speed penalty"
     if kind == "bonus":
         return "Reassignment bonus"
     # `record_no_show` writes the band label verbatim as its reason, while a

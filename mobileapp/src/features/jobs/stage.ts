@@ -25,7 +25,16 @@ export type JobStage =
   | 'start' | 'awaitingTime' | 'complete' | 'awaitingCustomer' | 'awaitingPart'
   | 'escalated' | 'done' | 'none' | 'unknown';
 
-export interface JobActions { stage: JobStage; canCancel: boolean; canReschedule: boolean }
+export interface JobActions {
+  stage: JobStage;
+  canCancel: boolean;
+  canReschedule: boolean;
+  /**
+   * Task 12 D1. Decides whether to SHOW "Need a spare part"; the server's own
+   * `canRequest` (`GET /jobs/{id}/parts`) is the final word on submitting.
+   */
+  canRequestPart: boolean;
+}
 
 /**
  * What Job detail offers, from the server's own word. The one place that
@@ -37,15 +46,23 @@ export interface JobActions { stage: JobStage; canCancel: boolean; canReschedule
  * server's `SEGMENTS`, not this mapping.
  */
 export function jobActions(job: Pick<Job, 'serverStatus' | 'hoursToSlot'>): JobActions {
-  const nothing = { canCancel: false, canReschedule: false };
+  const nothing = { canCancel: false, canReschedule: false, canRequestPart: false };
   switch (job.serverStatus) {
     case 'Assigned':
       return job.hoursToSlot === null
-        ? { stage: 'awaitingTime', canCancel: true, canReschedule: false }
-        : { stage: 'start', canCancel: true, canReschedule: true };
-    case 'In Progress':       return { stage: 'complete', ...nothing };
+        ? { stage: 'awaitingTime', ...nothing, canCancel: true }
+        : { stage: 'start', ...nothing, canCancel: true, canReschedule: true };
+    case 'In Progress':       return { stage: 'complete', ...nothing, canRequestPart: true };
     case 'Awaiting Customer': return { stage: 'awaitingCustomer', ...nothing };
-    case 'Awaiting Part':     return { stage: 'awaitingPart', ...nothing };
+    // Task 12 D8: the revisit uses the existing reschedule, which needs a slot
+    // to move. D1: a second part may be asked for while waiting on the first.
+    case 'Awaiting Part':
+      return {
+        stage: 'awaitingPart',
+        ...nothing,
+        canReschedule: job.hoursToSlot !== null,
+        canRequestPart: true,
+      };
     case 'Escalated':
     case 'AI Review':         return { stage: 'escalated', ...nothing };
     case 'Closed':

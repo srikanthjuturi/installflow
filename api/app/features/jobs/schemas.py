@@ -19,10 +19,11 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from app.core.coordinates import Latitude, Longitude
 from app.core.schemas import AppModel
+from app.core.spare_parts import normalize_part_name
 
 
 class JobTravelOut(AppModel):
@@ -111,6 +112,22 @@ class JobOfferOut(AppModel):
     #: see on the card they are deciding from incentivises nobody, which is why
     #: it travels on the masked offer rather than waiting for acceptance.
     bonusPaise: int | None = None
+
+
+class JobSpeedOut(AppModel):
+    """§4.5's shape: what the rule offers, and when the clock starts."""
+
+    rewardWithinHours: int
+    penaltyAfterHours: int
+    rewardPaise: int
+    penaltyPaise: int
+    #: max(acceptedAt, the slot's start) — the instant the hours run from (R1).
+    #: Always known on a job this technician holds.
+    clockStartedAt: datetime.datetime
+    #: True when the SLOT is the later half and the clock runs from it rather
+    #: than from the accept — the note the app prints ("counted from Thursday's
+    #: slot") rather than a fact the phone re-derives from two datetimes.
+    clockFromSlot: bool
 
 
 class JobOut(JobOfferOut):
@@ -230,6 +247,105 @@ class JobOut(JobOfferOut):
     #: and "the figure shown is the figure paid" needs the figure to appear at
     #: the same moment the terms freeze.
     travel: JobTravelOut | None = None
+
+    #: Task 11 (§4.5): the speed terms frozen at accept, and when the hours
+    #: start running. The app shows "Finish within 12 h for a reward of ₹200"
+    #: from the first two pairs; `clockStartedAt` is the clock's own answer
+    #: (R1 — max of the accept and the slot's start), `clockFromSlot` says
+    #: WHICH half won, so the screen does not have to re-derive a rule the
+    #: server owns.
+    #:
+    #: On `JobOut` and deliberately NOT on `JobOfferOut` (W13, same reason as
+    #: `travel` above): the pool offer is a decision about a trip and a fee,
+    #: and the terms are the technician's money, which locks at the moment of
+    #: accept. Null for a job accepted before speed rules existed.
+    speed: JobSpeedOut | None = None
+
+    #: Task 12 (owner ruling 2026-10-15, R4): the ticket's franchisee has an
+    #: active facility admin or operator, so a part CAN be requested. False ->
+    #: the app hides/disables "Need a spare part" and says why. It is the
+    #: technician's own franchisee's fact — no other franchisee's data leaks —
+    #: and names no person. Independent of status. On `JobOut` and not the pool
+    #: offer: a part is requested from a job that is yours.
+    partsEnabled: bool = False
+
+
+# ── spare parts (Task 12, §4.4) ──────────────────────────────────────────────
+
+
+class JobCataloguePartOut(AppModel):
+    """One part the technician may ask for. No owner level, no vendor price."""
+
+    id: uuid.UUID
+    name: str
+
+
+class JobPartRequestOut(AppModel):
+    """One request as the technician sees it. No staff names (only the status
+    and the facility's own words), no money."""
+
+    id: uuid.UUID
+    code: str
+    partName: str
+    isOther: bool
+    note: str | None
+    status: str
+    createdAt: datetime.datetime
+    decidedAt: datetime.datetime | None
+    rejectReason: str | None
+    #: Owner ruling 2026-10-15 (R2): rejected, having been approved first.
+    rejectedAfterApproval: bool
+    issuedAt: datetime.datetime | None
+    issueNote: str | None
+    returnedAt: datetime.datetime | None
+
+
+class JobPartsOut(AppModel):
+    """`GET /jobs/{id}/parts` and the answer to `POST /jobs/{id}/part-requests`."""
+
+    ticketId: uuid.UUID
+    code: str
+    status: str
+    partsEnabled: bool
+    #: partsEnabled AND status in REQUESTABLE_STATUSES.
+    canRequest: bool
+    #: Empty when `canRequest` is false.
+    catalogue: list[JobCataloguePartOut]
+    requests: list[JobPartRequestOut]
+
+
+class PartRequestCreate(AppModel):
+    """Exactly one of `sparePartId` / `otherName`; the name normalised."""
+
+    sparePartId: uuid.UUID | None = None
+    otherName: str | None = None
+    note: str | None = None
+
+    @field_validator("otherName")
+    @classmethod
+    def _other_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        name = normalize_part_name(value)
+        if not 1 <= len(name) <= 120:
+            raise ValueError("The part name must be 1 to 120 characters")
+        return name
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        if len(text) > 500:
+            raise ValueError("The note can be at most 500 characters")
+        return text or None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "PartRequestCreate":
+        if (self.sparePartId is None) == (self.otherName is None):
+            raise ValueError("Send either sparePartId or otherName, not both and not neither")
+        return self
 
 
 class ProofArtifactIn(AppModel):

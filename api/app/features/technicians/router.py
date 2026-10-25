@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.deps import (
     CompanyPrincipal,
     Principal,
+    require_all,
     require_feature,
     require_min_rank,
     require_staff_principal,
@@ -30,8 +31,8 @@ from app.core.schemas import (
     paginated,
 )
 from app.features.auth.schemas import OtpRequestResponse
-from app.features.technicians import service
-from app.models.role import AREA_MANAGER
+from app.features.technicians import service, transfer_service
+from app.models.role import AREA_MANAGER, NATIONAL_HEAD
 from app.features.technicians.schemas import (
     AppLinkOutcome,
     AvailabilityOut,
@@ -52,6 +53,9 @@ from app.features.technicians.schemas import (
     TechnicianInviteOut,
     TechnicianRowOut,
     TechnicianSessionOut,
+    TechnicianTransferOut,
+    TechnicianTransferRequest,
+    TechnicianTransferRowOut,
     TechnicianUpdateRequest,
 )
 
@@ -66,23 +70,39 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 #: technician principals alike).
 CanView = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("technicians.view")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.view"),
+        )
+    ),
 ]
 CanCreate = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("technicians.create")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.create"),
+        )
+    ),
 ]
 CanInvite = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("technicians.invite")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.invite"),
+        )
+    ),
 ]
 CanEdit = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("technicians.edit")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.edit"),
+        )
+    ),
 ]
 
 
@@ -428,6 +448,70 @@ async def send_app_link(
     data = await service.resend_app_link(db, principal, technician_id)
     message = "App link sent" if data.appLinkStatus == "sent" else "App link not delivered"
     return envelope(data, message=message)
+
+
+# ── moving a technician between franchisees (Task 17) ─────────────────────────
+#
+# Every guard is in `dependencies=[...]` and NEVER stacked inside one `Annotated`
+# alias: FastAPI applies only the LAST `Depends` of an `Annotated`, so the stacked
+# `CanView`/`CanEdit` aliases above silently skip `require_staff_principal`.
+# Here `franchisees.manage` (Admin / NH by default), the National-Head floor (a
+# Feature Access override cannot lift it) and the staff-only door all actually
+# run. Declared after the literal `/invites…` routes and before `/{technician_id}`.
+
+
+@router.post(
+    "/{technician_id}/transfer",
+    response_model=ApiEnvelope[TechnicianTransferOut],
+    dependencies=[
+        Depends(require_feature("franchisees.manage")),
+        Depends(require_min_rank(NATIONAL_HEAD)),
+        Depends(require_staff_principal),
+    ],
+)
+async def transfer_technician(
+    technician_id: uuid.UUID,
+    body: TechnicianTransferRequest,
+    db: Db,
+    principal: CompanyPrincipal,
+    dryRun: Annotated[bool, Query()] = False,
+) -> ApiEnvelope[TechnicianTransferOut]:
+    """Move a technician to another franchisee, or preview the move (`?dryRun=true`).
+
+    `franchisees.manage` + a National-Head floor - NOT `_load_managed`, which
+    would 403 every non-home technician for an Admin/NH. A dry run answers 200
+    with the blockers as DATA and writes nothing; an apply raises the first one
+    (409 `TECHNICIAN_HAS_OPEN_JOBS` / `TECHNICIAN_HAS_BALANCE` /
+    `FRANCHISEE_HAS_NO_ADMIN`, code-less 409 for "already works for" and
+    "inactive", 422 `PINCODE_OUTSIDE_FRANCHISEE`, 422 for a missing reason or
+    coverage across two regions). Another company's technician or franchisee is
+    a 404. History stays where it was earned: no ticket, ledger entry or
+    redemption is touched.
+    """
+    data = await transfer_service.transfer_technician(
+        db, principal, technician_id, body, dry_run=dryRun
+    )
+    return envelope(
+        data, message="Preview — nothing was saved" if dryRun else "Technician moved"
+    )
+
+
+@router.get(
+    "/{technician_id}/transfers",
+    response_model=ApiEnvelope[list[TechnicianTransferRowOut]],
+    dependencies=[
+        Depends(require_feature("technicians.view")),
+        Depends(require_staff_principal),
+    ],
+)
+async def list_transfers(
+    technician_id: uuid.UUID, db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[list[TechnicianTransferRowOut]]:
+    """Every time this technician changed franchisee, newest first. Staff only
+    (D11): the reason is the company's note about a franchisee. The same `_load`
+    wall as the profile, so an Area Manager reads the history of technicians in
+    their scope and anything else is a 404."""
+    return envelope(await transfer_service.list_transfers(db, principal, technician_id))
 
 
 @router.get("/{technician_id}", response_model=ApiEnvelope[TechnicianDetailOut])

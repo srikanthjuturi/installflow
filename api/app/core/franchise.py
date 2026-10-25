@@ -13,7 +13,12 @@ from sqlalchemy import Select, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.core.franchise_routing import codes_outside, needs_restamp, outside_message
+from app.core.franchise_routing import (
+    codes_outside,
+    needs_restamp,
+    outside_message,
+    owner_names_by_pincode,
+)
 from app.core.travel_rules import stamp_travel_rules
 from app.models.company import Company
 from app.models.franchisee import HOME_CODE, KIND_INTERNAL, MAX_NAME, Franchisee, FranchiseePincode
@@ -181,6 +186,8 @@ async def restamp_ticket(
     actor_kind: str,
     actor_label: str | None,
     by_user: uuid.UUID | None = None,
+    release_override: bool = False,
+    note: str | None = None,
 ) -> tuple[uuid.UUID, uuid.UUID] | None:
     """Point `row.franchisee_id` at the CURRENT owner of `row.pincode`. Returns (old, new), or None
     when it already does.
@@ -190,21 +197,43 @@ async def restamp_ticket(
     (F6); this is where they catch up, at the one moment the old stamp would otherwise strand them —
     offered to a franchisee whose technicians no longer cover the pincode.
 
+    **A handed-over ticket is not re-routed (Task 18, H5).** While `row.routing_override` is true this
+    returns None at the top: a person chose the franchisee, and only a person (a second hand-over) or the
+    target's deactivation (`release_override=True`) undoes it. With `release_override` the flag is cleared
+    first, so the ticket goes back to its pincode's owner and is an ordinary ticket again; the event note
+    then carries `note` instead of the default sentence (e.g. "Acme Secunderabad was deactivated · handed ticket returned to ...").
+
     Takes lock_routing(shared). Writes in the caller's transaction:
       UPDATE tickets SET franchisee_id = :new WHERE company_id = :c AND id = :id AND franchisee_id = :old
     plus one TicketEvent(kind='franchisee_changed', from_status=None, to_status=None,
       note=f"{old_name} → {new_name} · pincode {pincode} belongs to {new_name}")
     and sets row.franchisee_id. Never commits.
     """
+    if row.routing_override and not release_override:
+        return None  # a person chose this franchisee
     await lock_routing(db, row.company_id, exclusive=False)
     owner = await franchisee_for_pincode(db, row.company_id, row.pincode)
     old = row.franchisee_id
-    if not needs_restamp(old, owner):
+    was_override = bool(row.routing_override)
+    if not was_override and not needs_restamp(old, owner):
+        return None
+    if was_override and old == owner:
+        # A carve-out since gave the target this very pincode: the flag is merely redundant.
+        # Clear it, move nothing, write no event.
+        await db.execute(
+            update(Ticket)
+            .where(Ticket.company_id == row.company_id, Ticket.id == row.id)
+            .values(routing_override=False)
+        )
+        row.routing_override = False
         return None
 
     names = await _franchisee_names(db, row.company_id, (old, owner))
     old_name = names.get(old, "—")
     new_name = names.get(owner, "—")
+    values: dict = {"franchisee_id": owner}
+    if was_override:
+        values["routing_override"] = False
     await db.execute(
         update(Ticket)
         .where(
@@ -212,8 +241,9 @@ async def restamp_ticket(
             Ticket.id == row.id,
             Ticket.franchisee_id == old,
         )
-        .values(franchisee_id=owner)
+        .values(**values)
     )
+    sentence = note or f"{old_name} → {new_name} · pincode {row.pincode} belongs to {new_name}"
     db.add(
         TicketEvent(
             company_id=row.company_id,
@@ -221,13 +251,15 @@ async def restamp_ticket(
             kind="franchisee_changed",
             actor_kind=actor_kind,
             actor_label=actor_label,
-            note=f"{old_name} → {new_name} · pincode {row.pincode} belongs to {new_name}",
+            note=sentence,
             from_status=None,
             to_status=None,
             created_by=by_user,
         )
     )
     row.franchisee_id = owner
+    if was_override:
+        row.routing_override = False
     return old, owner
 
 
@@ -270,6 +302,6 @@ async def assert_pincodes_in_franchisee(
     detail = outside_message(
         names.get(franchisee_id, "this franchisee"),
         outside,
-        owner_names=names if name_owners else None,
+        owner_names=owner_names_by_pincode(outside, routes, names) if name_owners else None,
     )
     raise AppError(422, "PINCODE_OUTSIDE_FRANCHISEE", detail)

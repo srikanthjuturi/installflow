@@ -92,7 +92,8 @@ def test_base_point_of_no_base() -> None:                     # snap test 6
 def test_assemble_keys_and_stamp() -> None:                   # snap test 7
     snap = assemble(now=STAMP, technician_id=TECH,
                     franchisee_id=uuid.uuid4(),
-                    technician_type="freelancer", travel=TRAVEL_BLOCK)
+                    technician_type="freelancer", travel=TRAVEL_BLOCK,
+                    speed=None)
     assert set(snap) == {"acceptedAt", "technicianId", "franchiseeId",
                          "technicianType", "travel", "speed"}
     assert snap["speed"] is None
@@ -102,6 +103,18 @@ def test_assemble_keys_and_stamp() -> None:                   # snap test 7
         snap["acceptedAt"].replace("Z", "+00:00")
     )
     assert parsed == STAMP
+
+
+def test_assemble_carries_the_frozen_speed_terms() -> None:   # snap test 7b (11 §4.3)
+    block = {"ruleId": str(uuid.uuid4()), "matchedOn": "node",
+             "matchedId": str(uuid.uuid4()), "rewardWithinHours": 12,
+             "penaltyAfterHours": 24, "rewardPaise": 20000,
+             "penaltyPaise": 15000}
+    snap = assemble(now=STAMP, technician_id=TECH,
+                    franchisee_id=uuid.uuid4(),
+                    technician_type="freelancer", travel=TRAVEL_BLOCK,
+                    speed=block)
+    assert snap["speed"] == block
 
 
 # ── travel_of reads anything without raising ────────────────────────────────
@@ -138,11 +151,14 @@ def test_travel_of_full_snapshot() -> None:                    # snap test 10
     assert view.raw is TRAVEL_BLOCK
 
 
-def test_speed_of() -> None:                                   # snap test 11
+def test_speed_of_unreadable() -> None:                        # snap test 11
+    # Superseded by Task 11's typed reader — §6 case 35 (test_speed.py) holds
+    # the full parametrised version; this keeps the "never raises" contract
+    # visible on the file the reader lives in.
     assert speed_of(None) is None
     assert speed_of({}) is None
     assert speed_of({"speed": None}) is None
-    assert speed_of({"speed": {"ruleId": "x"}}) == {"ruleId": "x"}
+    assert speed_of({"speed": {"ruleId": "x"}}) is None
 
 
 # ── technician_type_of ──────────────────────────────────────────────────────

@@ -148,6 +148,28 @@ export interface JobDto extends JobOfferDto {
   modelParameters?: ProductParameterDto[];
   /** Prose about the product, if any. Read as a sentence, not a spec. */
   modelNotes?: string | null;
+
+  /**
+   * The travel allowance frozen at accept (Task 10 §4.5). Null for a job
+   * accepted before it existed; absent from an older API. Never on the pool
+   * offer: there is no travel estimate before accept (owner ruling R10).
+   */
+  travel?: { km: number; amountPaise: number; reason: string | null } | null;
+  /** The speed terms frozen at accept (Task 11 §4.12). Null = no rule matched. */
+  speed?: {
+    rewardWithinHours: number;
+    penaltyAfterHours: number;
+    rewardPaise: number;
+    penaltyPaise: number;
+    clockStartedAt: string;
+    /** Absent from a server that predates the slot-start ruling (R1). */
+    clockFromSlot?: boolean;
+  } | null;
+  /**
+   * False when the job's franchise has no facility staff (Task 12, R4). Absent
+   * from an older API, which reads as enabled; see `Job.partsEnabled`.
+   */
+  partsEnabled?: boolean;
 }
 
 /**
@@ -250,6 +272,12 @@ export function toAcceptedJob(dto: JobDto): Job {
     // guard. An older API sending nothing reads as "none recorded".
     modelParameters: dto.modelParameters ?? [],
     modelNotes: dto.modelNotes ?? null,
+    // Null collapses "older API", "accepted before the rule existed" and "no
+    // rule matched" onto the same thing: no Allowances line.
+    travel: dto.travel ?? null,
+    speed: dto.speed ?? null,
+    // Null = the server did not say. Read as enabled; `NO_FACILITY` still guards.
+    partsEnabled: dto.partsEnabled ?? null,
   };
 }
 

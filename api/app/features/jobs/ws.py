@@ -143,8 +143,8 @@ class _Coverage:
         self._loaded_at = time.monotonic()
 
     def matches(self, event: PoolChanged) -> bool:
-        """Certified ANYWHERE on the job's path, covering its pincode, and in
-        the ticket's franchisee.
+        """Certified ANYWHERE on the job's path, covering its pincode (unless the
+        ticket was handed over, Task 18), and in the ticket's franchisee.
 
         The pure `pool_frame_matches` holds the rule and its reasoning; this
         stays the thin cache-shaped wrapper, so the socket and any future caller
@@ -163,6 +163,8 @@ class _Coverage:
             event_pincode=event.pincode,
             event_path=event.node_path_ids,
             event_franchisee=event.franchisee_id,
+            # A ticket handed to this franchisee waives the pincode test (Task 18).
+            event_override=event.routing_override,
         )
 
 

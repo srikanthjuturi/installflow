@@ -39,9 +39,29 @@ class LedgerPoolOut(AppModel):
     penaltiesCollectedPaise: int
     #: How many penalty entries still stand, not how many tickets — a job
     #: cancelled twice collected twice; a reversed penalty no longer counts.
+    #: Since Task 11 this counts ONLY cancellation/no-show penalties (W11);
+    #: standing speed penalties have their own two fields below.
     cancellations: int
+    #: Bonuses OUT, folding speed rewards in since Task 11 (W11) — so
+    #: `penaltiesCollectedPaise − bonusesPaidPaise = balancePaise` still reads
+    #: true on every console already deployed. The split is the two fields
+    #: below, additive into this and `penaltiesCollectedPaise`, never summed on
+    #: top of them.
     bonusesPaidPaise: int
     pickups: int
+
+    # ── Task 11's breakdown (§4.7, W11) — the speed kinds inside the two tiles ──
+
+    #: Standing speed penalties, NET of their reversals. Positive magnitude,
+    #: exactly as `penaltiesCollectedPaise` is.
+    speedPenaltyPaise: int
+    #: How many speed penalty entries still stand.
+    speedPenalties: int
+    #: Speed rewards PAID out of the pool (W7: a fast finish is paid even when
+    #: the pool is low) — a part of `bonusesPaidPaise`, never on top of it.
+    speedRewardPaise: int
+    #: How many speed reward entries there were.
+    speedRewards: int
     #: Whose pool this is (Task 05 §4.12) — every money read names its
     #: franchisee.
     franchiseeId: uuid.UUID
@@ -53,9 +73,11 @@ class LedgerEntryOut(AppModel):
 
     id: uuid.UUID
     at: datetime.datetime
-    #: `penalty` | `bonus` | `reversal`. The console renders its own label and
-    #: its own sign from this — see `models/ledger.py` on why no sign is stored.
-    #: A `reversal` is a penalty given back: the technician's `+`, the pool's out.
+    #: `penalty` | `bonus` | `reversal` | `speed_reward` | `speed_penalty` (the
+    #: kinds in `POOL_KINDS`). The console renders its own label and its own
+    #: sign from this — see `models/ledger.py` on why no sign is stored: to the
+    #: pool a charge is money IN, a bonus and a reward are out, and a
+    #: `reversal` returns whichever charge it names.
     kind: str
     #: PAISE, always positive. `kind` carries the direction.
     amountPaise: int

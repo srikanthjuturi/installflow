@@ -89,8 +89,8 @@ export interface StatementMonth {
  * A pincode inside this franchisee, with where it is — the coverage picker's
  * row. Field-for-field `FranchisePincodeOut` in
  * `api/app/features/franchise_portal/schemas.py`, which duplicates
- * `features/geo`'s `PincodeOut` minus the lat/long the portal never draws
- * rather than importing the feature. Same names, same meaning, change both.
+ * `features/geo`'s `PincodeOut` (lat/long joined in Task 10) rather than
+ * importing the feature. Same names, same meaning, change both.
  */
 export interface FranchisePincode {
   code: string;
@@ -106,4 +106,7 @@ export interface FranchisePincode {
   isActive: boolean;
   /** `'import' | 'manual'` — carried, not used; the portal never edits a row. */
   source: string;
+  /** The code's centre (Task 10 §4.7) — null until coordinates are loaded. */
+  latitude?: number | null;
+  longitude?: number | null;
 }

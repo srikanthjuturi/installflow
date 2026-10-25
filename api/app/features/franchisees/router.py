@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import (
     Principal,
+    require_all,
     require_feature,
     require_min_rank,
     require_staff_principal,
@@ -27,6 +28,11 @@ from app.core.schemas import (
     envelope,
     list_params,
     paginated,
+)
+from app.core.speed_rules import (
+    SpeedEffectiveOut,
+    SpeedRuleIn,
+    SpeedRuleOut,
 )
 from app.core.travel_rules import TravelRulesOut
 from app.models.role import AREA_MANAGER, NATIONAL_HEAD
@@ -51,15 +57,41 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 
 CanView = Annotated[
     Principal,
-    Depends(require_feature("franchisees.view")),
-    Depends(require_staff_principal),
-    Depends(require_min_rank(AREA_MANAGER)),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("franchisees.view"),
+            require_min_rank(AREA_MANAGER),
+        )
+    ),
 ]
 CanManage = Annotated[
     Principal,
-    Depends(require_feature("franchisees.manage")),
-    Depends(require_staff_principal),
-    Depends(require_min_rank(NATIONAL_HEAD)),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("franchisees.manage"),
+            require_min_rank(NATIONAL_HEAD),
+        )
+    ),
+]
+#: Task 11 (§4.10, W15): the staff door on ONE franchisee's speed matrix —
+#: writes on `settings.edit` (the key the `/franchise` PUT carries) floored at
+#: National Head, the same rank that owns every other company-wide pricing
+#: rule; the READS stay on the ordinary `franchisees.view` + Area Manager
+#: floor, because reading a matrix is reading a franchisee's terms like reading
+#: `/travel-rules` above. Whether the franchisee named is the one this principal
+#: may touch at all is `service._speed_matrix_guard` — rank is the router's half
+#: of the answer, the home wall is the service's.
+CanEditSpeed = Annotated[
+    Principal,
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("settings.edit"),
+            require_min_rank(NATIONAL_HEAD),
+        )
+    ),
 ]
 
 #: Duplicated from `data.emailStatus` for the same reason as `users/router`:
@@ -140,6 +172,84 @@ async def get_travel_rules(
     Same `_load` wall as the profile above: another company's id is a 404.
     """
     return envelope(await service.get_travel_rules(db, principal, franchiseeId))
+
+
+# ── Task 11 (§4.10, W15): the staff twin of /franchise/settings/speed* ──────
+
+
+@router.get(
+    "/{franchiseeId}/speed-rules",
+    response_model=ApiEnvelope[list[SpeedRuleOut]],
+)
+async def get_speed_rules(
+    franchiseeId: uuid.UUID,
+    db: Db,
+    principal: CanView,
+    technicianType: Annotated[str | None, Query()] = None,
+) -> ApiEnvelope[list[SpeedRuleOut]]:
+    """One franchisee's speed matrix, read-only — with the inheritance hints.
+
+    The `/franchise/settings/speed` GET from the manager's side: a manager
+    audits what a franchisee pays its fast (and its slow) technicians without
+    writing it. The catalogue door has no staff twin — the pickers are the
+    franchisee admin's editing tools, and a manager reading the RULES needs
+    no second copy of the product tree.
+    """
+    return envelope(
+        await service.list_speed_rules(db, principal, franchiseeId, technicianType)
+    )
+
+
+@router.get(
+    "/{franchiseeId}/speed-rules/effective",
+    response_model=ApiEnvelope[SpeedEffectiveOut],
+)
+async def get_effective_speed_rule(
+    franchiseeId: uuid.UUID,
+    db: Db,
+    principal: CanView,
+    technicianType: Annotated[str, Query()],
+    modelId: Annotated[uuid.UUID | None, Query()] = None,
+    nodeId: Annotated[uuid.UUID | None, Query()] = None,
+) -> ApiEnvelope[SpeedEffectiveOut]:
+    """The preview against ONE franchisee's matrix — the resolution an accept
+    will stamp, asked from the manager's side (S2)."""
+    return envelope(
+        await service.get_speed_rule_effective(
+            db, principal, franchiseeId,
+            technician_type=technicianType, model_id=modelId, node_id=nodeId,
+        )
+    )
+
+
+@router.put(
+    "/{franchiseeId}/speed-rules", response_model=ApiEnvelope[SpeedRuleOut]
+)
+async def put_speed_rule(
+    franchiseeId: uuid.UUID,
+    body: SpeedRuleIn,
+    db: Db,
+    principal: CanEditSpeed,
+) -> ApiEnvelope[SpeedRuleOut]:
+    """Save one row of the HOME franchisee's matrix — Task 11's staff-side of
+    the one write. Another franchisee's matrix is 403 from the service guard,
+    with a message naming whose admins DO have the key (W15)."""
+    return envelope(
+        await service.save_speed_rule(db, principal, franchiseeId, body),
+        message="Speed rule saved",
+    )
+
+
+@router.delete("/{franchiseeId}/speed-rules/{ruleId}")
+async def delete_speed_rule(
+    franchiseeId: uuid.UUID,
+    ruleId: uuid.UUID,
+    db: Db,
+    principal: CanEditSpeed,
+) -> ApiEnvelope[dict]:
+    """Remove one row of the HOME franchisee's matrix."""
+    await service.destroy_speed_rule(db, principal, franchiseeId, ruleId)
+    return envelope({"deleted": True}, message="Speed rule removed")
 
 
 @router.put("/{franchiseeId}", response_model=ApiEnvelope[FranchiseeOut])

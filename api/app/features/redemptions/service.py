@@ -378,6 +378,10 @@ async def request(
             TechnicianProfile.id == profile.id,
         )
         .with_for_update()
+        # Without it the identity map hands back the caller's object as it was
+        # loaded — a transfer that committed since would not show in
+        # `franchisee_id` / `technician_type`.
+        .execution_options(populate_existing=True)
     )
     assert locked is not None
 

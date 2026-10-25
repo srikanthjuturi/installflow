@@ -23,7 +23,7 @@ Every route carries **two** guards, and both are load-bearing:
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -42,6 +42,8 @@ from app.features.jobs.schemas import (
     CancelRequest,
     JobOfferOut,
     JobOut,
+    JobPartsOut,
+    PartRequestCreate,
     PenaltyBandOut,
     ProofImageOut,
     ProofSubmitRequest,
@@ -115,7 +117,9 @@ async def get_offer(
 #: thing the confirmation link exists to establish.
 SEGMENTS: dict[str, tuple[str, ...]] = {
     "upcoming": ("Assigned",),
-    "inprogress": ("In Progress", "Awaiting Customer", "AI Review", "Escalated"),
+    # `Awaiting Part` (Task 12): a started job waiting on the franchise's
+    # facility. Without it the job would appear in no tab.
+    "inprogress": ("In Progress", "Awaiting Part", "Awaiting Customer", "AI Review", "Escalated"),
     "completed": ("Closed", "Force-Closed"),
 }
 
@@ -448,6 +452,60 @@ async def reschedule_job(
         note=body.note,
     )
     return envelope(job, message="Time updated")
+
+
+@router.get(
+    "/{ticket_id}/parts",
+    response_model=ApiEnvelope[JobPartsOut],
+    dependencies=[CanSeePool],
+)
+async def list_job_parts(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID
+) -> ApiEnvelope[JobPartsOut]:
+    """The spare parts this job may ask for, and its requests so far (Task 12).
+
+    Any status: the history stays readable after closure. `catalogue` is empty
+    unless `canRequest`. 404 unless the job is this technician's — a 403 would
+    confirm the id exists.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    return envelope(
+        await service.get_job_parts(
+            db, ticket_id, company_id=principal.company_id, technician_id=profile.id
+        )
+    )
+
+
+@router.post(
+    "/{ticket_id}/part-requests",
+    response_model=ApiEnvelope[JobPartsOut],
+    status_code=201,
+    dependencies=[CanSeePool],
+)
+async def request_part(
+    db: Db,
+    me: TechnicianPrincipal,
+    ticket_id: uuid.UUID,
+    body: PartRequestCreate,
+    response: Response,
+) -> ApiEnvelope[JobPartsOut]:
+    """Ask the franchise's facility for a part; the job moves to `Awaiting Part`.
+
+    **409 `PART_REQUEST_NOT_IN_PROGRESS`** outside `In Progress`/`Awaiting Part`;
+    **409 `NO_FACILITY`** when the franchisee has no facility staff;
+    **404** for a part that is not on this job's list. A repeat of a request
+    still open is **200 "Already requested"** and writes nothing.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    out, created = await service.request_part(
+        db, ticket_id, company_id=principal.company_id, profile=profile, body=body
+    )
+    if not created:
+        response.status_code = 200
+        return envelope(out, message="Already requested")
+    return envelope(out, message="Part requested", status_code=201)
 
 
 @router.get(

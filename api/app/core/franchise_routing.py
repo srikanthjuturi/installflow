@@ -24,12 +24,20 @@ from typing import AbstractSet, Literal
 OUTSIDE_MESSAGE_LIMIT = 20
 
 
-def needs_restamp(current: uuid.UUID | None, owner: uuid.UUID) -> bool:
+def needs_restamp(
+    current: uuid.UUID | None, owner: uuid.UUID, *, routing_override: bool = False
+) -> bool:
     """PURE. A ticket's stamp no longer matches its pincode's owner.
 
     `current is None` counts as needing one: a ticket without a stamp (a row
     written before Task 01's column had a value) is not a ticket that matches.
+
+    **Never for a handed-over ticket** (Task 18, H5): `routing_override` means a
+    person chose the franchisee, so the pincode's owner is not the answer and only
+    a person (or the target's deactivation) undoes it.
     """
+    if routing_override:
+        return False
     return current != owner
 
 
@@ -43,6 +51,16 @@ def codes_outside(
     form or the Excel sheet listed them in.
     """
     return sorted({p for p in wanted if routes.get(p) != target})
+
+
+def owner_names_by_pincode(
+    outside: Sequence[str],
+    routes: Mapping[str, uuid.UUID],
+    names: Mapping[uuid.UUID, str],
+) -> dict[str, str]:
+    """PURE. `outside_message`'s `owner_names`: it looks owners up BY PINCODE,
+    but the names are read by franchisee id — this joins the two."""
+    return {c: names[routes[c]] for c in outside if c in routes and routes[c] in names}
 
 
 def outside_message(
@@ -106,6 +124,7 @@ def pool_frame_matches(
     event_pincode: str,
     event_path: Sequence[uuid.UUID],
     event_franchisee: uuid.UUID | None,
+    event_override: bool = False,
 ) -> bool:
     """PURE. Does a `pool.changed` frame concern this technician?
 
@@ -117,8 +136,14 @@ def pool_frame_matches(
     coverage test alone, because this socket is biased toward ringing too often
     rather than too rarely; a spurious ring costs one indexed query, a missed
     ring costs a technician the job.
+
+    `event_override` (Task 18): the ticket was HANDED to this franchisee, so the
+    pincode test is waived - the same sentence `pool_query` says. The waiver never
+    crosses the franchisee wall and never waives certification. An old payload
+    without the key is False and keeps today's behaviour.
     """
-    if event_pincode not in pincodes or nodes.isdisjoint(event_path):
+    covered = event_pincode in pincodes or event_override
+    if not covered or nodes.isdisjoint(event_path):
         return False
     return (
         event_franchisee is None

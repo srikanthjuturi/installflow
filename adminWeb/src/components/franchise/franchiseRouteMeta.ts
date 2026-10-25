@@ -41,6 +41,18 @@ const STATIC: Record<string, Meta> = {
     title: "Employee statements",
     subtitle: "A month's allowances and penalties, per employee",
   },
+  "/franchise/settings": {
+    title: "Allowance rules",
+    subtitle: "Travel and speed allowances for your technicians",
+  },
+  "/franchise/parts": {
+    title: "Spare parts",
+    subtitle: "Part requests from technicians",
+  },
+  "/franchise/facility-users": {
+    title: "Facility users",
+    subtitle: "Who approves and logs spare parts",
+  },
   "/franchise/tickets": {
     title: "Tickets",
     subtitle: `Tickets in ${FRANCHISEE_NAME_TOKEN}'s pincodes — read only`,
@@ -70,6 +82,13 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
   [
     /^\/franchise\/redemptions\/[^/]+$/,
     { title: "Redemption", subtitle: "Pay by UPI · record the proof" },
+  ],
+  // §5.10 names this page `{request code} · Spare part request`. The shell
+  // resolves a heading from the PATH alone and cannot know the code, so the
+  // topbar says what the page is and the code is the page's own first heading.
+  [
+    /^\/franchise\/parts\/requests\/[^/]+$/,
+    { title: "Spare part request", subtitle: "" },
   ],
   [
     /^\/franchise\/tickets\/[^/]+$/,

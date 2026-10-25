@@ -6,6 +6,7 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureAccess, useMe } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
+import { usePartRequestCounts } from "@/hooks/useParts";
 import { useRedemptionsBadge } from "@/hooks/useRedemptions";
 import { useUpiChangesBadge } from "@/hooks/useFranchise";
 import { cn } from "@/lib/utils";
@@ -29,8 +30,9 @@ import { activeFranchisePath, franchiseNav } from "./franchiseNav";
  *   * the header is the company's **`BrandMark`** tile, not a store icon — an
  *     external franchisee leases the company's name (F1/F11), so its own name
  *     stays the SECOND line and never replaces the brand;
- *   * it carries badges: the redemptions "to pay" count and the UPI changes
- *     waiting on this franchisee. Both read the portal's OWN doors, so they
+ *   * it carries badges: the redemptions "to pay" count, the UPI changes
+ *     waiting on this franchisee and (Task 13) the spare-part requests waiting
+ *     on its desk. All read the portal's OWN doors, so they
  *     must be called inside the shell's provider — which they are, because the
  *     shell renders this rail; badges with zero or not held are not drawn
  *     (same rule `AppShell`'s rail follows).
@@ -54,6 +56,10 @@ export function FranchiseSidebar({ collapsed = false }: { collapsed?: boolean })
     enabled: has("franchise.payouts"),
   });
   const upi = useUpiChangesBadge({ enabled: has("franchise.payouts") });
+  // The facility's desk: what is still `requested`. A rail badge is a backstop
+  // and never toasts (`usePartRequestCounts`); enabled on `parts.handle` so a
+  // role without it never calls a door its key cannot open.
+  const parts = usePartRequestCounts({ enabled: has("parts.handle") });
 
   return (
     <aside
@@ -130,7 +136,9 @@ export function FranchiseSidebar({ collapsed = false }: { collapsed?: boolean })
                   ? redemptions.data
                   : item.to === "/franchise/upi-changes"
                     ? upi.data
-                    : undefined) ?? 0;
+                    : item.to === "/franchise/parts"
+                      ? parts.data?.requested
+                      : undefined) ?? 0;
               return (
                 <NavLink
                   key={item.to}

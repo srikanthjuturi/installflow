@@ -717,6 +717,9 @@ def test_06_ravi_open_redemption_survives_the_switch():
 
     async def _t():
         async with AsyncSessionLocal() as db:
+            # An interrupted run's leftover job turns every flip below into
+            # 409 TECHNICIAN_HAS_OPEN_JOBS ahead of the balance check.
+            await clear_open_jobs(db, w)
             await clear_open_redemptions(db, w, await profx(db, w, "ravi"), "ravi")
             ravi = await profx(db, w, "ravi")
 
@@ -784,6 +787,9 @@ def test_07_balance_blocks_the_switch_a_debt_does_not():
 
     async def _t():
         async with AsyncSessionLocal() as db:
+            # Settle any leftover job BEFORE the money is counted: closing one
+            # pays the technician, and the flips need no open job anyway.
+            await clear_open_jobs(db, w)
             await redeem_all(db, w, "ravi")  # start the manufacture from 0
             ravi = await profx(db, w, "ravi")
             for i, amount in enumerate(_FORCE_PIECES):

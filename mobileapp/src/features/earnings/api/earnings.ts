@@ -40,6 +40,14 @@ interface SummaryDto {
   bonusesPaise: number;
   penaltiesPaise: number;
   /**
+   * The breakdown (Tasks 10/11): subsets of the three figures above, never
+   * extra terms. OPTIONAL — an API that predates them sends nothing, and the
+   * mapper turns that into "no line", not into a wrong number.
+   */
+  travelPaise?: number;
+  speedRewardPaise?: number;
+  speedPenaltyPaise?: number;
+  /**
    * OPTIONAL on the wire, and it has to be: a server that predates the date
    * range sends neither, and the screen's whole reason for reading them is to
    * notice exactly that. See `EarningsSummary.covered`.
@@ -72,6 +80,10 @@ export async function getEarningsSummary(
     earnedPaise: dto.earnedPaise,
     bonusesPaise: dto.bonusesPaise,
     penaltiesPaise: dto.penaltiesPaise,
+    // `?? null`: absent is "the server did not say", which is not zero.
+    travelPaise: dto.travelPaise ?? null,
+    speedRewardPaise: dto.speedRewardPaise ?? null,
+    speedPenaltyPaise: dto.speedPenaltyPaise ?? null,
     // Both or neither — half an answer is not a span, and treating one end as
     // a window would caption the money with a date the server never named.
     covered:

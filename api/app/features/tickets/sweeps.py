@@ -359,12 +359,18 @@ async def sweep_unaccepted(db: AsyncSession) -> int:
     # escalate straight back on the next five-minute tick, putting the row the
     # manager just cleared back in their own queue. That is exactly what the
     # grace exists to prevent for a bonus.
+    #
+    # And a third (Task 18): `franchisee_changed`. A ticket handed to another franchisee at 10:00 for
+    # an 11:00 slot would otherwise re-escalate on the next tick, straight back into the queue the
+    # manager just cleared. Side effect, accepted: a carve-out/release `franchisee_changed` gives its
+    # ticket the same grace - a ticket entering a new franchisee's pool deserves its own window, and
+    # `Escalated` rows are untouched by this sweep.
     republished = (
         select(func.max(TicketEvent.created_at))
         .where(
             TicketEvent.company_id == Ticket.company_id,
             TicketEvent.ticket_id == Ticket.id,
-            TicketEvent.kind.in_(("bonus_added", "rescheduled")),
+            TicketEvent.kind.in_(("bonus_added", "rescheduled", "franchisee_changed")),
         )
         .scalar_subquery()
     )

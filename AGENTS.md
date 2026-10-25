@@ -22,7 +22,10 @@ skill in `mobileapp/.claude/skills/`.
 
 The API is real for **auth, companies, users, territory, the product master, technician
 onboarding, ticket intake, the job pool, my jobs, proof capture, escalations, cancellation,
-force-closure, the penalty pool, earnings, redemptions, company credits, Rules configuration and the console dashboard**
+force-closure, the penalty pool, earnings, redemptions, company credits, Rules configuration and the console dashboard,
+and the franchisee programme — franchisees and their pincode territories, the franchise portal, employees and their
+statements, the travel and speed allowances, spare parts, moving a technician between franchisees and handing a ticket
+to another one**
 (`GET /tickets/summary` — counted, territory-scoped, and deliberately carrying no movement deltas,
 because nothing records what a count was yesterday). What is left on typed mock data behind a
 TanStack Query hook is **AI review**, so binding it stays a one-line change and we keep loading /
@@ -39,7 +42,7 @@ are unwired, as their own headers say.
 
 Nothing below the UI moved: the API still sends `aiFlagged`, `company_rules.ai_confidence_threshold`
 is still read and still written — the hidden field round-trips the server's own value rather than
-clearing it — and `AI Review` is still one of the nine ticket statuses. Everything comes back by
+clearing it — and `AI Review` is still one of the ticket statuses. Everything comes back by
 uncommenting; the copy is signed off, so deleting it would mean rebuilding it from the prototype
 bundle later.
 
@@ -76,7 +79,9 @@ restates what an old job was worth. On closure the technician's half becomes a `
 `ledger_entries`, which is where the Earnings screen's `earned` comes from and why `net` is now a
 real number: `earned + bonuses − penalties`. **An EMPLOYEE's closure writes none** (Task 06): an
 employee is salaried — no per-job payout, no UPI redeem — and their bonuses and penalties add up
-on a monthly statement CSV instead (`api/AGENTS.md` → Employee statements).
+on a monthly statement CSV instead (`api/AGENTS.md` → Employee statements). The price is still stamped on an
+employee's ticket (it is the product's price); which KIND of technician did the job is the type frozen when they
+accepted it, not the one they hold today.
 
 **Neither party ever sees the other's figure**, and it is enforced server-side in three places:
 `masters.get_tree` nulls `technicianPayoutPaise` for a vendor principal (a vendor calls it on every
@@ -90,10 +95,11 @@ and only the JS SDK supports the session tokens that make a whole search bill on
 keystroke. The consequence to remember is that **the server learns nothing unless the client tells
 it**, which is why counting searches needed an endpoint of its own rather than a middleware.
 
-**A payout is not pool money.** `ledger_entries` holds all three kinds, but the penalty pool is a
-closed circuit — `balance = penalties − bonuses` — funded by cancellations, while a payout is the
-company paying for work from outside it. `features/ledger` (the console's pool screen) filters to
-`POOL_KINDS`; `features/earnings` (the technician's own) deliberately does not.
+**A payout is not pool money.** `ledger_entries` holds every kind, but the penalty pool is a closed
+circuit — **one per franchisee**, `balance = penalties + speed penalties − reversals − bonuses − speed
+rewards`, scoped by `ledger_entries.franchisee_id` — funded by cancellations and slow jobs, while a payout (and
+a travel allowance) is the company paying for work from outside it. `features/ledger` (the console's pool
+screen) filters to `POOL_KINDS`; `features/earnings` (the technician's own) deliberately does not.
 
 What is still unpriced: nothing. What a **force-closure** pays is the manager's own number, entered
 on the force-close form and capped at the job's price — a technician who travelled and found nobody
@@ -104,8 +110,9 @@ person closing it knows which.
 ever credited (`payouts + bonuses − penalties`) less every redemption not declined, and one request
 is for all of it, capped at ₹1,00,000 — UPI's per-transaction limit. The server builds the
 `upi://pay?…` string and both clients draw the QR from it; the payer — for a home technician the
-company's **National Head, or its Admin when it has none; for a franchisee's technician, that
-franchisee's own admin** — scans it on their own phone. Because nothing in this system
+company's **National Head, or its Admin when it has none (and the home franchisee's own admins alongside);
+for a franchisee's technician, that franchisee's own admin** — scans it on their own phone. **An employee
+cannot redeem** (409 `EMPLOYEE_CANNOT_REDEEM`): their franchisee admin downloads a monthly statement instead. Because nothing in this system
 can see the money, two people's word is recorded and never confused: the payer **claims** "I paid"
 with a screenshot (UTR optional), and **only the technician confirms** it arrived. That confirmation
 is the one thing that makes a redemption paid; no endpoint lets anybody else say so. The payer may
@@ -188,7 +195,8 @@ the glossary and how to add a string: `mobileapp/src/i18n/README.md`.
 
 Expo SDK 54 · React Native 0.81 · React 19.1 · TypeScript (strict) · Expo Router ·
 NativeWind 4 (Tailwind 3) · TanStack Query · Zustand · React Hook Form + Zod ·
-react-native-svg · expo-camera · Roboto via `@expo-google-fonts/roboto` ·
+react-native-svg · react-native-webview (the OpenStreetMap base-location pin) · expo-camera ·
+Roboto via `@expo-google-fonts/roboto` ·
 i18next + react-i18next, with `intl-pluralrules` (Hermes has no `Intl.PluralRules`) and
 `expo-localization` for the phone's default language
 
@@ -197,10 +205,13 @@ only in `eas.json`'s `production` profile and in the adminWeb production deploy'
 `WEB_ENV_FILE_PROD` secret — and each side's `lib/analytics/config.ts` locks it a second time
 (`!__DEV__` / `import.meta.env.PROD`), so Expo Go, dev-client builds, `npm run dev`, the
 `preview` profile, the dev App Service build and deploy previews never send anything. Verifying it therefore means a production build.
+The console draws that pin with `leaflet` + `react-leaflet`, in a lazy chunk only the map dialog loads.
 Clarity (`@microsoft/react-native-clarity`) is a native module Expo Go lacks, so `clarity.ts`
 loads it only when that module is present. GA4 is the Measurement Protocol over plain `fetch`
 (`ga4.ts`), deliberately not Firebase. Do not add any *other* third-party native module
 (`react-native-mmkv`, `react-native-keyboard-controller`, Sentry) without flagging it first.
+`react-native-webview` was flagged and added for the base-location map (franchisee Task 14) — it is in Expo Go,
+but a production build needs the new binary; the module it replaces, `react-native-maps`, is not wanted.
 
 **A new Play Store release is offered by Google Play's own "Update available" sheet** — the
 FLEXIBLE in-app update, through our own local module `mobileapp/modules/play-update` (Kotlin, Play
@@ -260,6 +271,7 @@ The repo holds more than the app — the Python backend lands beside it later.
 RequirementDocs/        business flow + the approved prototypes
 mobileapp/              the Expo app — ALL technician-app work happens in here
 adminWeb/               the Reliance GreenTech ops console (React + Vite) — see adminWeb/AGENTS.md
+                        (staff, vendor portal `/portal/*`, franchise portal `/franchise/*`)
 api/                    the FastAPI backend — auth, tenancy, territory, product master,
                         technician onboarding. Jobs and money are still to come.
                         Has its OWN hard rules — see api/AGENTS.md, tenancy first.
@@ -323,9 +335,11 @@ app/                    routes only (Expo Router)
   (auth)/               invite · coverage · login
   (app)/(tabs)/         Home · Jobs · Earnings · Profile
   (app)/pool/           job pool · masked offer
-  (app)/job/[id]/       detail · cancel · proof/*
+  (app)/job/[id]/       detail · cancel · proof/* · parts
+  (app)/base-location/  where do you start from · map (the OpenStreetMap pin)
 src/
   features/<slice>/     screens/ components/ hooks/ types.ts
+                        (base-location/ and parts/ arrived with the franchisee programme)
   theme/                tokens.js ← SINGLE SOURCE · semantic.ts · spacing.ts · typography.ts
   i18n/                 locales/*.json ← every word on screen · index.ts · README.md
   components/           ui/ feedback/ layout/ icons/
@@ -359,6 +373,7 @@ cd api
 ./.venv/Scripts/python.exe -m alembic upgrade head
 ./.venv/Scripts/python.exe -m app.scripts.bootstrap      # the superadmin
 ./.venv/Scripts/python.exe -m pytest                     # unit tests — pure, no database
+                                                        # (first: pip install -r requirements-dev.txt)
 
 cd adminWeb
 npm run dev      # vite; the API must be up for anything to load
@@ -372,8 +387,14 @@ them — the file does. To run one command against production, override the vari
 editing a file, because an environment variable outranks a `.env` value:
 
 ```powershell
-$env:POSTGRES_DB='RelianceProdDB'; python -m alembic upgrade head
+$env:CONFIRM_PROD='yes-i-mean-it'; $env:POSTGRES_DB='RelianceProdDB'
+python -m alembic upgrade <revision>      # the release's revision, never "head"
+Remove-Item Env:CONFIRM_PROD, Env:POSTGRES_DB
 ```
+
+`alembic/env.py` refuses `RelianceProdDB` without `CONFIRM_PROD`, and the owner migrates production to an EXPLICIT
+revision before each publish — `main` may carry a later migration than the release needs (`api/AGENTS.md` →
+Environments).
 
 A schema change therefore has to be applied to **both**, and production must be migrated before
 the code that needs the new column is published. Full detail in `api/AGENTS.md` → Environments.
@@ -403,7 +424,9 @@ parent scans the whole child table).
 ### Testing onboarding without Meta credentials
 
 Leave `WHATSAPP_*` empty. Invites then record a retryable failure with a copyable link, and OTP
-codes come back in the response as `devCode` (and to the server log). `INVITE_LINK_BASE` defaults
+codes come back in the response as `devCode` (and to the server log). A franchisee-admin or facility login
+created on dev with a `@seed.example.com` address returns its temporary password in the response, the same way
+a vendor's does. `INVITE_LINK_BASE` defaults
 to `reliancegreentech://invite`, so a token opens straight into Expo Go:
 
 ```bash
@@ -446,6 +469,115 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - A vendor's **login is created with the vendor**, on the Vendors screen, by a National Head or
   above. It is required: only a vendor raises tickets, so a vendor without an account is a vendor
   nobody could ever raise a ticket against.
+- **Every company runs FRANCHISEES, and a franchisee runs the technicians.** A franchisee is `internal` (the
+  company itself, under another name) or `external` (a separate business leasing the company's name — SkyFix
+  running Acme's work in 500030–500040). Every company has exactly one **home** franchisee, created with it,
+  internal, and impossible to delete, deactivate or make external. Its name is the company's own, its code is
+  `HOME`, and it owns **every pincode nobody else claims** — which is why it stores no pincode rows at all and
+  why a ticket can never be without a franchisee.
+  ⚠ Not to be confused with the WHITE-LABEL brand: the brand on every screen is still the company. An external
+  franchisee's name appears only as the second line of its own portal's rail and in its file names; it never
+  replaces the company's tile.
+- **A franchisee is given PINCODE RANGES, and no two franchisees share a pincode.** `500001-500099, 500120` is
+  expanded against the geography master and only codes that exist and are active are stored. A range that
+  touches another franchisee's code is refused with 409 `FRANCHISEE_PINCODE_TAKEN`, naming the clashing codes
+  and their owners; `uq_franchisee_pincodes_company_pincode` is what settles the race.
+- **Giving a franchisee pincodes is a CARVE-OUT, and it moves people and unassigned work — never assigned
+  work.** A technician whose coverage lies entirely inside the new set moves to the new franchisee; one with
+  some coverage inside loses those pincodes (one who would be left with none moves instead). Open tickets
+  nobody holds are re-stamped, each with a `franchisee_changed` event. A job somebody already holds keeps its
+  technician AND its franchisee. The save previews all of it first (`dryRun=true`), and taking pincodes away
+  hands them back to home by the same rules.
+- **A ticket's franchisee is stamped at intake from its pincode, and only that franchisee's technicians are
+  offered it.** All three intake channels stamp it; all five eligibility places (pool, push audience, accept,
+  assign, the pool socket) test it, live, against where the technician is NOW. A technician cannot be given a
+  pincode outside their franchisee (422 `PINCODE_OUTSIDE_FRANCHISEE`).
+- **Staff can HAND an unassigned ticket to another franchisee** (Task 18) — reason required, and only while
+  nobody holds it. The pincode still belongs to its owner, so the service derives `tickets.routing_override`
+  (`target != owner of the pincode`; never sent by a client) and that flag waives **only the pincode-coverage
+  half** of eligibility: certification, the daily cap, availability and the franchisee test are never waived.
+  The flag survives acceptance on purpose and clears when the ticket is handed back to its pincode's owner.
+- **Tickets stay company work; technicians and their money are the franchisee's.** Admin, National Head,
+  Regional Head and Area Manager still escalate, reschedule, assign and force-close every ticket, the dashboard
+  included. The **franchisee admin** adds, invites and edits its technicians, sets their type and base,
+  approves their UPI changes, pays their redemptions, reverses their penalties, runs its pool, its travel and
+  speed settings and its facility staff, and downloads employee statements. It sees its franchisee's tickets
+  **read-only**. For the **home** franchisee nothing changed: the existing roles keep today's rules, and home
+  may also be given franchisee admins who act alongside them. Company staff can READ a non-home franchisee's
+  technicians but not change them (403 "Managed by …"), and Admin/NH can still reverse a penalty anywhere. The
+  last active admin of a NON-home franchisee cannot be deactivated or removed (409 `FRANCHISEE_LAST_ADMIN`) —
+  there is no company fallback for its UPI changes or redemptions.
+- **Franchise logins are a third family of roles, and rank never decides their authority.**
+  `franchisee_admin`, `facility_admin`, `facility_operator` (ranks 8–10, below every staff role) are created
+  on the Franchisees screen (franchisee admins), from the portal (facility users), and — for the **home**
+  franchisee only — by the company's Admin / National Head (its facility users), always with a generated,
+  emailed temporary password and never on Users & roles. They sign in to the same console and land in
+  `/franchise/*`, a restricted portal beside the vendor's. Test `FRANCHISE_ROLES`, never the number: a
+  franchisee admin outranks nobody and manages people a National Head may not. Another franchisee's technician,
+  ledger row or part request answers **404**, the same as another company's.
+- **A technician is an EMPLOYEE or a FREELANCER**, freelancer by default, set by whoever adds them and changed
+  by their franchisee admin. An employee gets **no per-job payout** and **cannot redeem** — their franchisee
+  admin downloads a monthly statement (CSV, IST calendar month) to add to salary; the salary itself is not
+  recorded here. Employees still earn travel, speed rewards and bonuses, and still pay penalties. The type that
+  counts is the one **frozen when the job was accepted**, and every ledger row stamps the type it was written
+  under, so a later change never re-labels old money. A freelancer with money still to redeem cannot be made an
+  employee (409 `TECHNICIAN_HAS_BALANCE`), nor can anyone with an open job (409 `TECHNICIAN_HAS_OPEN_JOBS`).
+- **A technician can be MOVED to another franchisee** (Task 17) by the company's Admin or National Head — refused
+  while they hold an open job, redeemable money or an unsettled redemption, and the move writes no ticket, ledger
+  or redemption row: history stays where it was earned. Coverage is re-fitted to the new range; every move is an
+  audit row in `technician_transfers`.
+- **What depends on the TECHNICIAN is frozen at ACCEPT; what depends only on the ticket is frozen at INTAKE.**
+  `tickets.rules_snapshot` (intake) holds the company's rules; `tickets.accept_snapshot` (accept) holds the
+  franchisee, the type, the travel figure and the speed terms. A re-accept after a release re-stamps it. A
+  ticket accepted before this existed has NULL there and pays neither allowance — read it through
+  `core.accept_snapshot`, never with a bare `[]`.
+- **Travel allowance is paid for distance beyond a free allowance, from the technician's BASE to the customer,
+  one way.** Straight line × a road factor (130 %), the customer point from the ticket's map pick else its
+  pincode's centre; no point → 0 km, recorded with the reason. Beyond the free distance (20 km freelancer, 30 km
+  employee) every whole step pays a rate, capped per job; **the defaults are ₹0, so it is off until a franchisee
+  configures it.** Paid as a `travel` ledger row on the customer's confirmation; on a force-closure the
+  manager's form starts at the frozen amount and may change it, capped. Never on a cancellation. `travel` is the
+  technician's money, not pool money.
+- **A technician's base is where they start from, and it is copied, not linked.** Set by the franchisee admin
+  (a pin on the console's OpenStreetMap) or by the technician (a home pincode inside their franchisee, GPS, or a
+  pin) — onboarding, Profile, or the Home card until set. No base at accept means ₹0 travel for that job, never
+  a refused accept. Company staff (Area Manager and above) see a job's travel AMOUNT **and** its speed outcome
+  on any ticket in scope, a non-home franchisee's included (owner ruling 2026-10-15) — but never the base's
+  coordinates: where a technician sleeps is not ticket data. A self-set base needs no approval and has no
+  cooldown; its source and who set it are shown to the franchisee admin (and home managers), who can correct it
+  at any time.
+- **Speed allowance rewards a fast job and charges a slow one**, per franchisee × type × category or product (a
+  product's row beats the deepest category's; nothing matching means nothing paid). The clock runs from the
+  **later of the accept and the slot's start** (no slot: the accept) to Complete, **minus time spent in
+  `Awaiting Part`**; a reschedule moves the slot, so the slot in force at completion counts, and a slot that
+  starts after completion is 0 hours. Within the reward hours → `speed_reward`; past the penalty hours →
+  `speed_penalty`; between → nothing. Measured at completion, written on the customer's confirmation, **never on
+  a force-closure**. Both are pool kinds: the reward is paid from the franchisee's pool like a bonus, the
+  penalty funds it, counts against the monthly cancellation cap, and is reversible like any penalty. An empty
+  matrix is off.
+- **A technician asks for a SPARE PART only after starting, and the job then waits in `Awaiting Part`.** The
+  list is the category's (inherited down the tree) plus the product's own, or *Other* with a typed name.
+  Complete is refused while any request is `requested` or `approved` (409 `PARTS_PENDING`); when every request
+  is issued, returned or rejected the job returns to `In Progress`. The franchisee's **facility** staff log
+  every step — approve or reject (an **approved** request may still be rejected, with a reason), *new part
+  issued*, *old part received back* — and the technician only raises. **Nobody in the staff console works the
+  queue, the home franchisee included:** a franchisee with no active facility admin or operator answers a
+  request with 409 `NO_FACILITY` and the app hides *Need a spare part* (`partsEnabled`); company Admin /
+  National Head add the home franchisee's facility users. No money and no stock counts: it is a log of who did
+  what, when. A revisit uses the ordinary reschedule, which now also moves a started job.
+- **`Awaiting Part` is a ticket status of its own, and it is NOT terminal.** It sits under *In progress* in the
+  app, holds the vendor's credit reservation, blocks deleting its technician, counts on its slot day against the
+  daily cap, and can be force-closed. Installed apps older than the franchisee forward-compatibility build
+  misread an unknown status — which is why that build shipped first.
+- **Every technician rupee carries the franchisee that paid it.** `ledger_entries.franchisee_id` is the
+  technician's franchisee when the row was written, except a `reversal`, which copies the penalty's so money
+  goes back to the pool that collected it. A technician moving franchisee never moves money already written.
+  Money between an external franchisee and the company (lease, revenue share) is not in this product; the
+  column is there so it can be reported later.
+- **Pincode centres are trusted as loaded.** `pincodes.latitude/longitude` came with `f9c2d8a3e17b` and are filled
+  by `import_pincode_coordinates` (RelianceDB holds a point for every one of the 19,496; production must be loaded
+  the same way before the travel allowance publishes against it). A missing point is 0 km, never a district
+  guess, and a wrong one is corrected in the master — not by special-casing a code.
 - **A vendor sells several BRANDS; a product carries exactly one.** The vendor is the company
   (Crestline Distributors); the brand is what is printed on the unit (*Meridian*, *Sunview*), and
   it is what every product and ticket screen shows. Brands staff add on the vendor form are approved
@@ -521,7 +653,9 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   refuses with 409 `NO_TIME_AGREED` until the customer picks from their link or a manager sets one
   with "Change the time", and the app shows a note in place of "Start job". Enforced on the server
   because installed builds predate the note. A technician never proposes a time themselves.
-- Assignment is **first-accept-wins**. Losing the race is a normal outcome, not an error.
+- Assignment is **first-accept-wins** — among the technicians of the **ticket's franchisee** only. Losing
+  the race is a normal outcome, not an error. ⚠ **A handed-over ticket is the one place a technician may be
+  eligible without covering the pincode** (`tickets.routing_override`, see the franchisee bullets below).
 - **Customer name, phone and address stay masked until the technician accepts.**
 - **Shortly before the slot, both sides are warned — separately.** The technician gets a push
   (`company_rules.slot_reminder_minutes`, 60 by default) and the customer gets a WhatsApp naming
@@ -536,6 +670,7 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   These are **defaults, not constants** — every one is a `company_rules` column a company edits on
   Configuration → Rules Config. The BOUNDARIES are not: where one band ends is a fact about the
   clock, and lives in `api/app/core/rules.py`.
+  A **speed penalty** (a job finished past its franchisee's slow limit) counts against the same monthly cap.
   The defaults are **in code** (`rules.DEFAULTS`), not seeded rows. A company's row is stamped from
   them inside `create_company`'s own transaction, and `load_rules` rebuilds a missing one on the
   next read — so `company_rules` holds a company's OVERRIDES, and emptying the table resets the
@@ -549,8 +684,10 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   Done from the ticket's page (the Penalty & Bonus list is Admin/NH only, so it could not be the
   place an AM does it). The ledger gains a `reversal` row — the penalty itself is never edited — and
   the technician's month total, the pool balance and their Earnings screen all read it as never
-  charged. The cancellation still counts against them; only the money comes back. Detail:
-  `api/AGENTS.md` → Reversing a penalty.
+  charged. The cancellation still counts against them; only the money comes back. A **speed penalty**
+  is reversible by the same people, and also by the technician's **franchisee admin** from the portal's
+  pool screen; a reversal returns the money to the pool that collected the penalty, even if the technician
+  has since moved franchisee. Detail: `api/AGENTS.md` → Reversing a penalty.
 - **A rule can also belong to a category, and the ticket is what remembers which.** A penalty that
   is right for a 32" TV is wrong for a rooftop solar install, so any node may override any rule in
   `product_node_rules`, every column nullable, null meaning inherit. They resolve
@@ -606,7 +743,8 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   no upper bound; the floor is 1, because a cap of 0 means "never offer me work", which is what
   going offline says. It is counted by **SLOT date in IST** — the day the work happens, not the day
   it was accepted — and `Closed` jobs still count, because the cap means "how many will I do that
-  day", not "how many are still open". Only `Cancelled` frees the slot back.
+  day", not "how many are still open". Only `Cancelled` frees the slot back — so a job waiting in
+  `Awaiting Part` still counts on its slot day, and a revisit counts on the day it is moved to.
 - **A ticket's history lives in `ticket_events`, not in its `status` column.** Both of the two
   facts above need a moment, not a state: the cancellation band is measured from the slot, and a
   closure has to be answerable for later. Overwriting `status` keeps neither. Write the event in the

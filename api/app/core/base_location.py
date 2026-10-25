@@ -171,14 +171,18 @@ async def resolve_base(
         )
         owned = franchisee_pincodes_subquery(
             company_id, franchisee_id, is_home=bool(is_home)
-        ).subquery()
-        row = await db.execute(
-            select(Pincode.latitude, Pincode.longitude)
-            .where(
-                Pincode.code == code,
-                # W9: an in-range pincode is the RANGE test — the subquery IS
-                # the answer for home and non-home alike.
-                owned.c.code == code,
+        )
+        row = (
+            await db.execute(
+                select(Pincode.latitude, Pincode.longitude)
+                .where(
+                    Pincode.code == code,
+                    # W9: an in-range pincode is the RANGE test — the subquery IS
+                    # the answer for home and non-home alike. `IN`, not a join on
+                    # a column name: its one column is `code` for home and
+                    # `pincode` for everybody else.
+                    Pincode.code.in_(owned),
+                )
             )
         ).one_or_none()
         if row is None:

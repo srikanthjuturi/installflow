@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowRightLeft,
   BellRing,
   CalendarClock,
   Check,
@@ -14,9 +15,11 @@ import {
   RotateCcw,
   RotateCw,
   Star,
+  Timer,
   Undo2,
   UserCheck,
   UserX,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -89,6 +92,24 @@ const EVENT: Record<TimelineEvent["kind"], { icon: LucideIcon; tint: string }> =
   // red `no_show` it answers: the charge above it stood corrected. `RotateCw`,
   // the opposite turn of `reopened`'s arrow, so the two never read alike.
   penalty_reversed: { icon: RotateCw, tint: "bg-ok-bg text-ok" },
+  // Task 11: the speed allowance was measured when the customer confirmed —
+  // a reading of the clock, not a verdict, so the neutral `info` tone.
+  speed_settled: { icon: Timer, tint: "bg-info-bg text-info" },
+  // Task 12: the spare-part trail, one icon for all five so it reads as one
+  // thread. Requested is a question (info); approved, issued and returned are
+  // steps forward (ok); not-approved — a cancelled approval included — is the
+  // amber of `released`: the technician is told no, which costs a revisit but
+  // is nobody's failure.
+  part_requested: { icon: Wrench, tint: "bg-info-bg text-info" },
+  part_approved: { icon: Wrench, tint: "bg-ok-bg text-ok" },
+  part_rejected: { icon: Wrench, tint: "bg-warn-bg text-warn" },
+  part_issued: { icon: Wrench, tint: "bg-ok-bg text-ok" },
+  part_returned: { icon: Wrench, tint: "bg-ok-bg text-ok" },
+  // Task 03/18: the ticket changed franchisee — a carve-out or a release
+  // re-stamp (system) or a manager's hand-over (Task 18). One icon for both,
+  // because they are the same fact; the note says which. Neutral `info`: it is
+  // a routing fact, not a verdict.
+  franchisee_changed: { icon: ArrowRightLeft, tint: "bg-info-bg text-info" },
 };
 
 /**

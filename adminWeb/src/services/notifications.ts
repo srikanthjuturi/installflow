@@ -36,10 +36,20 @@ export type NotificationKind =
   | "vendor_credit_request"
   // Task 05 — "technician moved territory", addressed to the two franchisee
   // admins whose coverage changed and (widened audience) to every staff feed.
-  | "technician_moved";
+  | "technician_moved"
+  // Task 12 — the spare-part trail. `part_requested` is addressed to the
+  // `facility` audience (franchise staff only, never company staff);
+  // `part_decided` (rejections, an approved cancelled included) and
+  // `part_issued` ring the ticket's territory staff.
+  | "part_requested"
+  | "part_decided"
+  | "part_issued"
+  // Task 18 — a manager handed an unassigned ticket to a franchisee.
+  // `audience='franchisee_admin'`: the receiving franchisee's admins only.
+  | "ticket_handed";
 
 /**
- * The same twenty-five, in the order the filter offers them — loudest first.
+ * The same twenty-nine, in the order the filter offers them — loudest first.
  *
  * Problems lead, because that is what somebody opening this screen came for.
  * The tail is the things that merely HAPPENED — a product was decided, a job
@@ -72,6 +82,11 @@ export const NOTIFICATION_KINDS = [
   // Work for one manager — a technician waiting on a new UPI ID — so it sits
   // with the other asks rather than with the news at the bottom.
   "upi_change",
+  // The spare-part trail, after the other asks: a part waiting on a facility's
+  // desk, and its two outcomes for the territory staff who raised the job.
+  "part_requested",
+  "part_decided",
+  "part_issued",
   // The company's own credits — tickets paused, or about to be — and the
   // outcome of a recharge. Work for whoever pays, so beside the other asks.
   "credits",
@@ -94,6 +109,9 @@ export const NOTIFICATION_KINDS = [
   // Pure news — nothing is being asked and nothing went wrong — so it joins
   // the `technician_joined` row at the bottom.
   "technician_moved",
+  // News to the franchisee admin it lands on: work arrived. At the bottom with
+  // the other arrivals.
+  "ticket_handed",
 ] as const satisfies readonly NotificationKind[];
 
 export interface OpsNotification {

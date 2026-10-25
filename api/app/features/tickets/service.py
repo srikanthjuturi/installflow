@@ -22,7 +22,7 @@ import uuid
 from typing import NamedTuple
 
 from fastapi import HTTPException, status as http_status
-from sqlalchemy import Select, and_, case, func, or_, select, update
+from sqlalchemy import Select, and_, case, exists, func, or_, select, update
 from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -35,6 +35,7 @@ from app.core.coverage import (
     nearest_manager_for,
     offer_deadline,
     still_offerable,
+    technicians_by_franchisee,
     technicians_covering,
 )
 from app.core.credits import balance as credit_balance
@@ -51,28 +52,42 @@ from app.core.franchise import (
     lock_routing,
     restamp_ticket,
 )
+from app.core.franchise_handover import (
+    blocker_message,
+    handover_blocker,
+    handover_note,
+    option_order,
+    override_for,
+    status_after,
+)
 from app.core.accept_snapshot import (
     build_accept_snapshot,
     closure_travel_paise,
     force_close_travel_paise,
+    speed_of,
     technician_type_of,
     travel_of,
 )
 from app.core.employment import job_technician_type, pays_per_job
 from app.core.franchise_money import may_reverse, may_see_money
-from app.core.penalty_reversal import REVERSIBLE_KINDS, reverse as reverse_ledger_penalty
+from app.core.part_request_out import part_request_outs
+from app.core.penalty_reversal import reverse as reverse_ledger_penalty
+from app.core.spare_parts import requests_for_ticket
 from app.core.job_passes import technicians_who_passed
 from app.core.ledger import (
     cap_remaining,
+    capped_charge,
     charged_this_month,
     entry as ledger_entry,
     payout_reason,
     travel_reason,
 )
+from app.core.notifications import notify
 from app.core.push import announce_pool_job, send_to_technician
 from app.core.push_text import PushText, Slot
 from app.core.realtime import (
     publish_job_changed,
+    publish_notification,
     publish_pool_changed,
     publish_ticket_changed,
 )
@@ -87,6 +102,8 @@ from app.core.scope import (
 from app.core.sequences import next_code as allocate_code
 from app.features.tickets.feedback_service import refresh_technician_stats
 from app.core.service_types import SERVICE_TYPES
+from app.core.speed import clock_start as speed_clock_start
+from app.core.speed_settle import load_clock
 from app.core.rules import (
     CANCEL_PENALTY_BANDS,
     interval_hours as _hours,
@@ -122,6 +139,9 @@ from app.integrations import blob, whatsapp
 from app.features.tickets.schemas import (
     AttentionOut,
     DashboardSummaryOut,
+    FranchiseeOptionOut,
+    FranchiseeOptionsOut,
+    HandToFranchiseeOut,
     IntakeStatusOut,
     ForceCloseRequest,
     FunnelOut,
@@ -135,13 +155,14 @@ from app.features.tickets.schemas import (
     TicketDetailOut,
     TicketOut,
     TicketPenaltyOut,
+    TicketSpeedOut,
     TicketTravelOut,
     TicketProofOut,
     TimelineEventOut,
 )
 from app.models.company import Company
 from app.models.franchisee import Franchisee
-from app.models.ledger import LedgerEntry
+from app.models.ledger import REVERSIBLE_KINDS, SPEED_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.role import (
@@ -156,6 +177,7 @@ from app.models.technician import (
     TechnicianPincode,
     TechnicianProfile,
 )
+from app.models.spare_part import SparePartRequest
 from app.models.ticket import Ticket, TicketAttachment, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
@@ -332,8 +354,8 @@ async def scoped(db: AsyncSession, stmt: Select, principal: Principal) -> Select
     * **A franchisee principal** sees by OWNERSHIP too (F13) — `franchisee_id`
       equals theirs, whoever's pincode the ticket now sits in. A
       `franchisee_admin` sees the ledger's money (technicians' pay is theirs,
-      F7); **facility roles fail closed** until Task 12 gives them a
-      part-request table to gate on.
+      F7); **facility roles** see only the tickets that have a part request of
+      their franchisee (Task 12, D17) — so a facility user with none sees nothing.
 
     Always in addition to the `company_id` filter the caller has already
     applied, never instead of it. And always applied to fetch-by-id too, so a
@@ -359,9 +381,16 @@ async def scoped(db: AsyncSession, stmt: Select, principal: Principal) -> Select
             return stmt.where(sql_false())  # corrupt membership: nothing, never everything
         stmt = stmt.where(Ticket.franchisee_id == principal.franchisee_id)
         if principal.role in FACILITY_ROLES:
-            # F13: facility staff see only tickets with a part request. `spare_part_requests` arrives
-            # in Task 12, which replaces this line with an EXISTS on its own franchisee's requests.
-            return stmt.where(sql_false())
+            # F13 / D17 (Task 12): facility staff see only tickets that have a part request of
+            # THEIR franchisee. Read-only — every write route refuses franchise roles on its
+            # feature key or rank floor.
+            return stmt.where(
+                exists().where(
+                    SparePartRequest.company_id == Ticket.company_id,
+                    SparePartRequest.ticket_id == Ticket.id,
+                    SparePartRequest.franchisee_id == principal.franchisee_id,
+                )
+            )
         return stmt
 
     return _apply_visibility(stmt, await _visible_pincodes(db, principal))
@@ -975,6 +1004,10 @@ async def _hydrate(
                 franchiseeName=(
                     None if hide_franchisee else franchisee_names.get(t.franchisee_id)
                 ),
+                # Task 18: with the franchisee, withheld from a vendor.
+                routingOverride=(
+                    None if hide_franchisee else bool(t.routing_override)
+                ),
                 # THE masking point for the technician's rate on a ticket.
                 # Withheld from a vendor: what we pay a technician is not part
                 # of what the vendor bought, and the margin between the two
@@ -1477,7 +1510,11 @@ async def dashboard_summary(
             tally(is_escalated_live).label("escalated"),
             tally(Ticket.status == "AI Review").label("ai"),
             tally(Ticket.status == "Slot Pending").label("slot_pending"),
-            tally(Ticket.status.in_(("Assigned", "In Progress"))).label("active"),
+            # `Awaiting Part` (Task 12): a job waiting on a spare part is held by
+            # somebody just as much as one in progress.
+            tally(
+                Ticket.status.in_(("Assigned", "In Progress", "Awaiting Part"))
+            ).label("active"),
             tally(closed_in_window).label("closed_week"),
         ).select_from(Ticket)
     )
@@ -1563,6 +1600,8 @@ async def get_ticket(
     credited = None
     penalties: list[TicketPenaltyOut] = []
     reviewer: PenaltyReviewerOut | None = None
+    travel: TicketTravelOut | None = None
+    speed: TicketSpeedOut | None = None
     if not principal.is_vendor and principal.role not in FACILITY_ROLES:
         payout = (
             await db.execute(
@@ -1590,11 +1629,35 @@ async def get_ticket(
         if penalties:
             reviewer = await _penalty_reviewer(db, row, home_id)
         travel = await _ticket_travel(db, row)
+        # Task 11 (§4.11): the speed block, built for the same audience and —
+        # unlike the payout and the penalties above — NOT filtered by
+        # `may_see_money`. Owner ruling 2026-10-15 (R8): travel and speed
+        # behave identically, and the outcome and amounts are TICKET data for
+        # the staff who reschedule and force-close this job; a non-home
+        # franchisee's pool stays behind that gate, this block never was the
+        # pool. (`travel` was only ever bound inside this branch too — a vendor
+        # would have hit a NameError had a vendor ever reached the read; both
+        # now default to None above, which is what a vendor's answer is.)
+        speed = await _ticket_speed(db, row)
+    # Task 12 (D16): the spare-part requests, for staff and franchise principals.
+    # A VENDOR gets `[]` — the way `penalties` is withheld: it is not a party to
+    # how the franchise stocks parts (it still sees the status word and the
+    # timeline). A franchise principal sees only its OWN franchisee's requests.
+    part_requests = []
+    if not principal.is_vendor:
+        reqs = await requests_for_ticket(
+            db, company_id=principal.company_id, ticket_id=row.id
+        )
+        if principal.is_franchise:
+            reqs = [r for r in reqs if r.franchisee_id == principal.franchisee_id]
+        part_requests = await part_request_outs(db, principal.company_id, reqs)
     return TicketDetailOut(
         **base.model_dump(),
         technicianCreditedPaise=credited,
         travel=travel,
-        timeline=await _timeline(db, row),
+        speed=speed,
+        partRequests=part_requests,
+        timeline=await _timeline(db, row, principal),
         penalties=penalties,
         penaltyReviewer=reviewer,
     )
@@ -1655,6 +1718,153 @@ async def _ticket_travel(
     )
 
 
+async def _ticket_speed(db: AsyncSession, row: Ticket) -> TicketSpeedOut | None:
+    """Task 11 (§4.11): the speed block for ticket detail, or None.
+
+    Same shape as `_ticket_travel` above: built from `speed_of(row.accept_snapshot)`
+    only when it names the CURRENT `row.technician_id` (W17) and read only
+    through that reader — never `snapshot["speed"][…]`, which §8 lists among
+    the traps. Nothing here is stored, so it cannot drift from what was
+    written; every field is either frozen snapshot data, an event, or the
+    ledger row the settlement left behind.
+
+    The clock is the same `load_clock` the settlement used, so what a reader
+    sees is what was JUDGED, not a second measurement; on a pending ticket a
+    smaller fallback reads just the latest `assigned` so the block still answers
+    "has the clock started, and from which half?" while the job is in flight.
+
+    `capped`: only a penalty can be capped, only a rule that charges
+    something, and then `pay < terms` is the whole story (W2 — a rule whose
+    `penaltyPaise` is 0 writes no row and is "this rule charges no penalty",
+    not "the cap ate it").
+    """
+    terms = speed_of(row.accept_snapshot)
+    if (
+        row.technician_id is None
+        or terms is None
+        or terms.matched_id is None
+        or str(row.accept_snapshot.get("technicianId")) != str(row.technician_id)
+    ):
+        return None
+
+    # The CURRENT name of whatever the terms named — the money came from the
+    # row as frozen, the name is display, so a live lookup the way
+    # `_ticket_travel` reads no source chip. "—" when the target is gone.
+    if terms.matched_on == "model":
+        name_query = select(ProductModel.name).where(
+            ProductModel.company_id == row.company_id,
+            ProductModel.id == terms.matched_id,
+        )
+    else:
+        name_query = select(ProductNode.name).where(
+            ProductNode.company_id == row.company_id,
+            ProductNode.id == terms.matched_id,
+        )
+    matched_name = (await db.scalar(name_query)) or "—"
+
+    # The ledger row, if a settlement ever wrote one (W9's partial unique makes
+    # "at most one" a database fact). Its kind is also the outcome's source of
+    # truth on a Closed ticket — a rule's amounts can be edited later, a
+    # ledger row cannot restated.
+    led = (
+        await db.execute(
+            select(LedgerEntry.id, LedgerEntry.kind, LedgerEntry.amount_paise).where(
+                LedgerEntry.company_id == row.company_id,
+                LedgerEntry.ticket_id == row.id,
+                LedgerEntry.kind.in_(SPEED_KINDS),
+            )
+        )
+    ).first()
+
+    # `assigned` matters on a pending ticket too — it is when the clock could
+    # have started — so it is read directly rather than through `load_clock`,
+    # which refuses to build a clock without a completion. Two queries keep the
+    # shapes apart rather than one clever query serving either.
+    assigned_at = await db.scalar(
+        select(TicketEvent.created_at)
+        .where(
+            TicketEvent.company_id == row.company_id,
+            TicketEvent.ticket_id == row.id,
+            TicketEvent.kind == "assigned",
+        )
+        .order_by(TicketEvent.seq.desc())
+        .limit(1)
+    )
+
+    clock_data = None
+    if row.status == "Closed" or row.status == "Force-Closed":
+        clock_data = await load_clock(
+            db, company_id=row.company_id, ticket_id=row.id, slot_start=row.slot_start
+        )
+        completed_at = clock_data.completed_at if clock_data else assigned_at
+    else:
+        completed_at = None
+
+    # Outcome: status first (S5/R7 — force-closed never pays), then the ledger
+    # row, then "the job simply isn't finished".
+    if row.status == "Force-Closed":
+        outcome = "force_closed"
+    elif row.status == "Closed":
+        outcome = {   # the ledger row is the truth; no row is W2's "not named"
+            "speed_reward": "reward",
+            "speed_penalty": "penalty",
+        }.get(led.kind, "none") if led is not None else "none"
+    else:
+        outcome = "pending"
+
+    reversed_given = False
+    if led is not None and led.kind == "speed_penalty":
+        reversed_given = (
+            await db.scalar(
+                select(LedgerEntry.id).where(
+                    LedgerEntry.company_id == row.company_id,
+                    LedgerEntry.reverses_id == led.id,
+                    LedgerEntry.kind == "reversal",
+                )
+            )
+            is not None
+        )
+
+    clock_start_at = (
+        clock_data.clock_start
+        if clock_data is not None
+        else (
+            speed_clock_start(assigned_at, row.slot_start)
+            if assigned_at is not None
+            else None
+        )
+    )
+    capped = (
+        outcome == "penalty"
+        and terms.penalty_paise > 0
+        and (led is None or led.amount_paise < terms.penalty_paise)
+    )
+
+    return TicketSpeedOut(
+        matchedOn=terms.matched_on,
+        matchedName=matched_name,
+        # Frozen at accept (S5) — a rule edited since restates nothing.
+        rewardWithinHours=terms.reward_within_hours,
+        penaltyAfterHours=terms.penalty_after_hours,
+        rewardPaise=terms.reward_paise,
+        penaltyPaise=terms.penalty_paise,
+        clockStartedAt=clock_start_at,
+        acceptedAt=assigned_at,
+        # The slot in force at completion is what the clock USED (W17); live
+        # slot for a pending job, `load_clock`'s answer once it is closed.
+        slotStart=(row.slot_start if clock_data is None else clock_data.slot_start),
+        completedAt=completed_at,
+        elapsedHours=(clock_data.elapsed_hours if clock_data else None),
+        partWaitHours=(clock_data.part_wait_hours if clock_data else None),
+        workingHours=(clock_data.working_hours if clock_data else None),
+        outcome=outcome,
+        ledgerEntryId=(led.id if led is not None else None),
+        paidPaise=(led.amount_paise if led is not None else None),
+        capped=capped,
+        reversed=reversed_given,
+    )
+
+
 async def _penalties(
     db: AsyncSession,
     row: Ticket,
@@ -1688,7 +1898,11 @@ async def _penalties(
             .where(
                 LedgerEntry.company_id == row.company_id,
                 LedgerEntry.ticket_id == row.id,
-                LedgerEntry.kind == "penalty",
+                # A reversal may name either capped kind (Task 11, §4.6), so
+                # the ticket page's penalties list shows a speed penalty too —
+                # with a `kind` label (Task 13) and a "Speed reward/penalty"
+                # reading rather than a silent absence.
+                LedgerEntry.kind.in_(REVERSIBLE_KINDS),
             )
             .order_by(LedgerEntry.created_at, LedgerEntry.id)
         )
@@ -1739,6 +1953,9 @@ async def _penalties(
             technicianName=technicians.get(p.technician_id) or "—",
             amountPaise=p.amount_paise,
             reason=p.reason,
+            # Task 11 (§4.6): the kind rides along so the console can label
+            # "Speed penalty"; the default keeps the old wire shape otherwise.
+            kind=p.kind,
             chargedAt=p.created_at,
             reversedAt=r.created_at if r is not None else None,
             reversedByName=(
@@ -1864,9 +2081,23 @@ _EVENT_TITLES = {
     # Reads after the "Technician cancelled" / "Nobody turned up" row whose
     # charge it gives back; the note names the amount and the technician.
     "penalty_reversed": "Penalty reversed",
+    # Task 11 (W12): the measurement record, hidden from vendor principals in
+    # `_timeline` (R8) — a technician's incentives are not a vendor's story.
+    # The note says how long the job took in working hours and which band it
+    # fell in, and carries no rupee amounts for the same reason.
+    "speed_settled": "Speed allowance measured",
     # Written by the franchisees carve-out (03 §4.5), not by a transition of
     # this slice's own — the note names both franchisees and the pincode.
     "franchisee_changed": "Moved to another franchisee",
+    # Task 12: the spare-part trail. Without these the timeline renders the raw
+    # key — the fault the note at the top of this table describes. A
+    # `part_rejected` whose note says `approved → rejected` reads differently
+    # (`_event_title`).
+    "part_requested": "Spare part requested",
+    "part_approved": "Spare part approved",
+    "part_rejected": "Spare part not approved",
+    "part_issued": "New part issued to technician",
+    "part_returned": "Old part received back",
 }
 
 #: Kinds whose wording depends on WHO caused them, keyed `(kind, actor_kind)`.
@@ -1901,12 +2132,18 @@ def _event_title(kind: str, actor_kind: str, note: str | None = None) -> str:
         and code_went_to_technician(note)
     ):
         return "Rescheduled — check the new time with the customer"
+    # Owner ruling 2026-10-15 (R2): a facility may cancel a part it had already
+    # approved, and the trail has to say so — the note carries the source.
+    if kind == "part_rejected" and "approved → rejected" in (note or ""):
+        return "Approved spare part cancelled"
     return _EVENT_TITLES_BY_ACTOR.get(
         (kind, actor_kind), _EVENT_TITLES.get(kind, kind)
     )
 
 
-async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
+async def _timeline(
+    db: AsyncSession, row: Ticket, principal: Principal
+) -> list[TimelineEventOut]:
     """The audit trail, read from `ticket_events` — oldest first.
 
     It used to be DERIVED from the ticket's current columns, which capped it at
@@ -1917,6 +2154,13 @@ async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
 
     Still only as long as what actually happened. Rows appear as the slices that
     cause them land.
+
+    Task 11 (R8): the `speed_settled` row is DROPPED for a vendor principal —
+    it is the record of how a technician's speed incentive was measured, and a
+    vendor is not a party to that. The row stays in the table (the trail is
+    append-only and nothing is ever deleted); it is the VENDOR's view that
+    leaves it out, the same withholding every money field on this response
+    applies.
     """
     events = await db.scalars(
         select(TicketEvent)
@@ -1938,6 +2182,7 @@ async def _timeline(db: AsyncSession, row: Ticket) -> list[TimelineEventOut]:
             note=e.note,
         )
         for e in events
+        if not (principal.is_vendor and e.kind == "speed_settled")
     ]
 
 
@@ -2977,7 +3222,11 @@ async def _load_assignable_technician(
       to a franchisee (F7) — a technician of another one is not theirs to send,
       whatever the pincode. Sending somebody to a pincode
       they do not work, or to a product they are not certified on, is not an
-      override — it is a job that will fail on arrival.
+      override — it is a job that will fail on arrival. Coverage is enforced
+      **unless the ticket was handed to this technician's franchisee**
+      (`routing_override`, Task 18): a pincode that franchisee does not own can
+      never be in its technicians' coverage, so a manager who handed the ticket
+      over could otherwise never assign it. Nothing else is waived.
     * **`status == ACTIVE` is enforced.** Suspension is somebody else's decision
       about this technician and is not a manager's to route around.
     * **The daily cap is enforced**, because the shortlist shows capacity and
@@ -3035,7 +3284,7 @@ async def _load_assignable_technician(
     )
     # Named individually. "Ineligible" leaves a manager guessing which of two
     # masters to go and fix, and both fixes are on different screens.
-    if covers is None:
+    if covers is None and not row.routing_override:
         raise _refused(
             "TECHNICIAN_INELIGIBLE",
             f"This technician does not cover {row.pincode}. Add it to their "
@@ -3239,6 +3488,7 @@ async def assign_technician(
         # valid was being shown it under the old stamp — so the old franchisee
         # gets no frame, unlike the carve-out's.
         franchisee_id=row.franchisee_id,
+        routing_override=row.routing_override,
     )
     await publish_job_changed(
         db,
@@ -3283,6 +3533,250 @@ async def _technician_name(
         .where(Membership.id == profile.membership_id)
     )
     return name or profile.code
+
+
+async def franchisee_options(
+    db: AsyncSession, principal: Principal, ticket_id: uuid.UUID
+) -> FranchiseeOptionsOut:
+    """The hand-over picker's data: every active franchisee with how many technicians could
+    take THIS ticket if it went there (Task 18, H7).
+
+    Loaded through `_load` - territory-scoped, 404 outside the manager's states. The counts are
+    ONE grouped query (`technicians_by_franchisee`), which counts every franchisee but the
+    pincode's owner with the pincode test waived, exactly as they would be judged afterwards.
+    When the ticket cannot be handed over at all, `options` is empty: the dialog never offers a
+    choice the server will refuse. Only staff reach this route, so no money rides on it.
+    """
+    row = await _load(db, principal, ticket_id)
+    owner = await franchisee_for_pincode(db, row.company_id, row.pincode)
+    offerable = offer_deadline(row) > _now()
+    blocker = handover_blocker(
+        status=row.status,
+        has_technician=row.technician_id is not None,
+        current=row.franchisee_id,
+        target=None,
+    )
+    options: list[FranchiseeOptionOut] = []
+    if blocker is None:
+        counts = await technicians_by_franchisee(
+            db,
+            company_id=row.company_id,
+            pincode=row.pincode,
+            pincode_owner_id=owner,
+            node_path_ids=row.node_path_ids,
+            slot_start=row.slot_start,
+        )
+        franchisees = await db.scalars(
+            select(Franchisee).where(
+                Franchisee.company_id == row.company_id,
+                Franchisee.deleted_at.is_(None),
+                Franchisee.is_active.is_(True),
+            )
+        )
+        built = [
+            FranchiseeOptionOut(
+                id=f.id,
+                name=f.name,
+                code=f.code,
+                isHome=f.is_home,
+                kind=f.kind,
+                isCurrent=f.id == row.franchisee_id,
+                ownsPincode=f.id == owner,
+                eligibleTechnicians=counts.get(f.id, (0, 0))[0],
+                onlineTechnicians=counts.get(f.id, (0, 0))[1],
+            )
+            for f in franchisees
+        ]
+        options = [FranchiseeOptionOut.model_validate(o) for o in option_order([o.model_dump() for o in built])]
+    return FranchiseeOptionsOut(
+        ticketId=row.id,
+        code=row.code,
+        pincode=row.pincode,
+        currentFranchiseeId=row.franchisee_id,
+        pincodeOwnerId=owner,
+        routingOverride=bool(row.routing_override),
+        canHandOver=blocker is None,
+        blocker=blocker,
+        slotOffered=offerable,
+        options=options,
+    )
+
+
+async def hand_to_franchisee(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    franchisee_id: uuid.UUID,
+    reason: str,
+) -> HandToFranchiseeOut:
+    """Hand an UNASSIGNED ticket to another franchisee, with a written reason (Task 18, R12).
+
+    One transaction: the stamp, the derived `routing_override`, the status exit for an escalated
+    ticket, one `franchisee_changed` event, one bell to the receiving franchisee's admins and the
+    pool frames for both franchisees. The push to the receiving technicians goes out AFTER the
+    commit - one about a rolled-back hand-over is worse than a late one.
+
+    The flag is DERIVED (`target != the pincode's owner`), never typed: handing a ticket back to
+    the owner clears it. It waives ONLY the pincode half of eligibility (see
+    `core.franchise_handover`). Not an assignment - nobody is assigned, charged or paid; the
+    ticket's prices and `rules_snapshot` are untouched (H6).
+    """
+    row = await _load(db, principal, ticket_id)
+    target = await db.scalar(
+        select(Franchisee).where(
+            Franchisee.company_id == principal.company_id,
+            Franchisee.id == franchisee_id,
+            Franchisee.deleted_at.is_(None),
+        )
+    )
+    if target is None:
+        # Another company's id reads the same - a 403 would confirm it exists.
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Franchisee not found"
+        )
+
+    blocker = handover_blocker(
+        status=row.status,
+        has_technician=row.technician_id is not None,
+        current=row.franchisee_id,
+        target=target.id,
+        target_active=target.is_active,
+    )
+    if blocker is not None:
+        raise _refused(
+            blocker,
+            blocker_message(
+                blocker,
+                code=row.code,
+                status=row.status,
+                franchisee_name=(
+                    target.name
+                    if blocker == "FRANCHISEE_INACTIVE"
+                    else await _franchisee_name(db, row.company_id, row.franchisee_id)
+                ),
+            ),
+        )
+
+    # Shared, never exclusive: a carve-out in flight is waited for and then judged after, so the
+    # owner read below sees the post-carve-out map. The write itself is guarded by its WHERE.
+    await lock_routing(db, principal.company_id, exclusive=False)
+    owner = await franchisee_for_pincode(db, principal.company_id, row.pincode)
+    override = override_for(target=target.id, owner=owner)
+
+    now = _now()
+    was = row.status
+    from_franchisee = row.franchisee_id
+    old_override = bool(row.routing_override)
+    back_to = status_after(
+        was, offerable=offer_deadline(row) > now, has_slot=row.slot_start is not None
+    )
+    from_name = await _franchisee_name(db, row.company_id, from_franchisee)
+
+    result = await db.execute(
+        update(Ticket)
+        .where(
+            Ticket.company_id == principal.company_id,
+            Ticket.id == ticket_id,
+            Ticket.technician_id.is_(None),
+            Ticket.status == was,  # the status we read
+            Ticket.franchisee_id == from_franchisee,  # the stamp we read
+        )
+        .values(franchisee_id=target.id, routing_override=override, status=back_to)
+    )
+    if result.rowcount == 0:
+        # Somebody accepted it, assigned it or moved it a second ago. Nothing else was written.
+        raise _refused(
+            "ALREADY_ASSIGNED",
+            "This ticket has already been updated. Reload the page and try again.",
+        )
+
+    row.franchisee_id = target.id
+    row.routing_override = override
+    row.status = back_to
+    back_in_pool = back_to != was
+    actor = principal.user.full_name or "—"
+    db.add(
+        record_event(
+            row,
+            "franchisee_changed",
+            actor_kind="staff",
+            actor_label=actor,
+            from_status=was if back_in_pool else None,
+            to_status=back_to if back_in_pool else None,
+            note=handover_note(from_name, target.name, reason, back_in_pool=back_in_pool),
+            by_user=principal.user_id,
+        )
+    )
+
+    # The receiving franchisee's admins. Staff are not belled about their own colleague's action,
+    # and the source franchisee is not belled either: the link would 404 for them.
+    raised = await notify(
+        db,
+        company_id=row.company_id,
+        kind="ticket_handed",
+        title=f"{row.code} handed to {target.name}",
+        detail=f"{principal.user.full_name or 'A manager'} moved it from {from_name}. {reason}",
+        to=f"/tickets/{row.id}",
+        ticket_id=row.id,
+        pincode=None,
+        audience="franchisee_admin",
+        franchisee_id=target.id,
+    )
+    await publish_notification(
+        db,
+        company_id=row.company_id,
+        pincode=None,
+        notification_id=raised.id,
+        audience="franchisee_admin",
+        franchisee_id=target.id,
+    )
+
+    # Inside the transaction (fires on commit): the OLD franchisee's sockets refetch and the card
+    # disappears; the NEW franchisee's start ringing.
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        node_path_ids=row.node_path_ids,
+        franchisee_id=from_franchisee,
+        routing_override=old_override,
+    )
+    await publish_pool_changed(
+        db,
+        company_id=row.company_id,
+        pincode=row.pincode,
+        node_path_ids=row.node_path_ids,
+        franchisee_id=target.id,
+        routing_override=override,
+    )
+    await publish_ticket_changed(db, row)
+    await db.commit()
+
+    # After the commit. Counted with the push's own predicate and job passes subtracted, so the
+    # number the manager is shown is the number of phones that rang (as a bonus counts it).
+    notified = 0
+    if row.status in ("New", "Slot Pending") and offer_deadline(row) > now:
+        audience = await technicians_covering(
+            db,
+            company_id=row.company_id,
+            franchisee_id=target.id,
+            routing_override=override,
+            pincode=row.pincode,
+            node_path_ids=row.node_path_ids,
+            slot_start=row.slot_start,
+        )
+        passed = await technicians_who_passed(
+            db, company_id=row.company_id, ticket_id=row.id
+        )
+        notified = len([t for t in audience if t not in passed])
+        await push_pool_job(db, row)
+
+    return HandToFranchiseeOut(
+        ticket=await get_ticket(db, principal, ticket_id),
+        notified=notified,
+        backInPool=was == "Escalated" and back_in_pool,
+    )
 
 
 async def add_bonus_and_renotify(
@@ -3394,6 +3888,7 @@ async def add_bonus_and_renotify(
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
         franchisee_id=row.franchisee_id,
+        routing_override=row.routing_override,
     )
     await publish_ticket_changed(db, row)
     await db.commit()
@@ -3407,6 +3902,7 @@ async def add_bonus_and_renotify(
         db,
         company_id=row.company_id,
         franchisee_id=row.franchisee_id,
+        routing_override=row.routing_override,
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
         slot_start=row.slot_start,
@@ -3539,7 +4035,10 @@ async def record_no_show(
     remaining = cap_remaining(
         cap_paise=rules.cancel_penalty_cap_paise, already_charged=already
     )
-    charge = band if remaining is None else min(band, remaining)
+    # Task 11: the inline min() became `capped_charge`, where the same
+    # arithmetic now lives for the speed penalty too — one copy, so a change to
+    # what "capped" means cannot miss this path. No behaviour change.
+    charge = capped_charge(band, remaining)
 
     technician_id = row.technician_id
     result = await db.execute(
@@ -3708,12 +4207,13 @@ async def reverse_penalty(
 
 #: The statuses a manager may move a slot FROM.
 #:
-#: `ASSIGNABLE_STATUSES` minus nothing and plus nothing — the same four, and not
-#: by coincidence: "somebody can still be sent to this" and "this can still be
-#: given a different time" are the same question about a ticket. Past `Assigned`
-#: the technician is on site with proof captured, and moving a visit that has
-#: already started is a different operation with different evidence attached.
-RESCHEDULABLE_STATUSES = ASSIGNABLE_STATUSES
+#: `ASSIGNABLE_STATUSES` PLUS `Awaiting Part` (Task 12, D8). "Can be sent" and
+#: "can be given a time" were the same question until a started job needed a
+#: second visit: a technician who found a part missing has to COME BACK, and the
+#: revisit time is the existing reschedule (P3). The status does not change —
+#: `core.reschedule.move_slot` keeps `Awaiting Part`. Reassign stays four: a
+#: started job with proof against one technician is not handed to another.
+RESCHEDULABLE_STATUSES = ASSIGNABLE_STATUSES + ("Awaiting Part",)
 
 
 def _reschedule_horizon() -> datetime.datetime:
@@ -3877,6 +4377,7 @@ async def reschedule(
             city=row.city,
             node_path_ids=row.node_path_ids,
             franchisee_id=row.franchisee_id,
+            routing_override=row.routing_override,
             payout_paise=row.technician_payout_paise,
             slot_start=row.slot_start,
         )
@@ -4118,6 +4619,12 @@ async def force_close_ticket(
             )
         )
 
+    # Task 11 (S5, R7): no speed money here — a force-closure is exactly the
+    # case where the clock's `completed` event has no `assigned` before it, so
+    # `speed_settle.settle_speed` cannot even measure it, and no writer may
+    # invent a figure instead. `feedback_service.record_feedback`, the customer
+    # path, is the ONE caller; this is deliberate, not an omission.
+
     # And what the VENDOR is billed. Clamped for the same reason and in the same
     # way as the payout above — the console prefills it from the ticket's own
     # stamped price, so a bigger number is a typo rather than an attack, and
@@ -4249,6 +4756,8 @@ async def push_pool_job(db: AsyncSession, row: Ticket) -> None:
         node_path_ids=row.node_path_ids,
         # The job belongs to this franchisee (F7), so its phones are the audience.
         franchisee_id=row.franchisee_id,
+        # A ticket handed to this franchisee waives the pincode test (Task 18).
+        routing_override=bool(row.routing_override),
         # What it pays. The brief asked for it and it is the right call: an
         # offer somebody has to open the app to price is one they price by
         # opening the app, and first-accept-wins makes that a real cost to them.

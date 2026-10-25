@@ -18,6 +18,7 @@
 
 import { apiDelete, apiGet, apiGetBlob, apiGetPage, apiPost, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
+import type { BaseLocation, BaseLocationInput } from "@/types/allowances";
 import type {
   AppLinkOutcome,
   CreatedTechnician,
@@ -49,6 +50,17 @@ export function listTechnicians(
 
 export function getTechnician(id: string): Promise<Technician> {
   return apiGet<Technician>(`/franchise/technicians/${id}`);
+}
+
+/** The portal twin of the staff call — own franchisee's technician, else 404. */
+export function setBaseLocation({
+  id,
+  body,
+}: {
+  id: string;
+  body: BaseLocationInput;
+}): Promise<BaseLocation> {
+  return apiPut<BaseLocation>(`/franchise/technicians/${id}/base-location`, body);
 }
 
 export function createTechnician(

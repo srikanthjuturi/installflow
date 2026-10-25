@@ -27,7 +27,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import BackgroundTasks, HTTPException  # noqa: E402
-from sqlalchemy import select, text, update  # noqa: E402
+from sqlalchemy import func, select, text, update  # noqa: E402
 
 from app.core.coverage import users_notified_by  # noqa: E402
 from app.core.database import AsyncSessionLocal  # noqa: E402
@@ -38,6 +38,7 @@ from app.core.deps import (  # noqa: E402
     require_staff_principal,
 )
 from app.core.errors import AppError  # noqa: E402
+from app.core.tickets import TERMINAL_STATUSES  # noqa: E402
 from app.core.franchise_money import money_context, pool_franchisee  # noqa: E402
 from app.core.ledger import pool as core_pool  # noqa: E402
 from app.core.ledger import redeemable_balance as core_ledger_balance  # noqa: E402
@@ -320,51 +321,115 @@ async def clear_open_redemptions(db, w, tech_profile, tech_key: str) -> None:
             )
 
 
-async def clear_open_jobs(db, w) -> None:
-    """Re-run hygiene: an INTERRUPTED run left tickets still Assigned to / In
-    Progress with the walk's technicians, and the product rightly refuses
-    everything that follows — a type flip over an open job is 409, and every
-    window the person holds eats one out of an offered reschedule list. Closing
-    them through the ordinary completion walk is the honest door, and it pays
-    the technician for the work (real rows, real money), which also keeps the
-    redemption tests' balance above zero."""
-    for which in ("ravi", "hema"):
-        prof = await profile(db, w, which)
+async def _force_close_leftover(db, w, row: Ticket) -> None:
+    """The manager's door for a job the customer's own can't settle (no token,
+    no slot, a part still on order, an escalation): the company Admin
+    force-closes it with the three things the product demands. Nothing is
+    credited and the vendor is billed nothing — a clean-up, not a payday."""
+    await tickets_service.force_close_ticket(
+        db, await p(db, "admin"), row.id,
+        ForceCloseRequest(
+            reason="Acceptance run - clearing a leftover job",
+            notes="Settled by the integration suite so the next run starts clean.",
+            attachments=[
+                ForceCloseAttachmentIn(
+                    blobName=f"attachment/{w.company_a_id}/acceptance/{row.id}/clear.png"
+                )
+            ],
+            technicianPayoutPaise=0,
+        ),
+    )
+
+
+async def clear_open_jobs(db, w, extra_technician_ids=()) -> None:
+    """Re-run hygiene: an INTERRUPTED run left tickets still held by the walk's
+    technicians, and the product rightly refuses everything that follows - a
+    type flip or a transfer over an open job is 409, and every window the person
+    holds eats one out of an offered reschedule list.
+
+    Settles EVERY non-terminal status (`core.tickets.TERMINAL_STATUSES` is the
+    complement) held by Ravi, Hema and Meena, plus any `extra_technician_ids`
+    (the technicians a module created), and only through the product's own doors:
+
+    * Assigned / In Progress -> the ordinary completion walk (proof, complete,
+      the customer's confirmation), which pays the technician for the work;
+    * Awaiting Customer -> the customer's confirmation (`record_feedback`);
+    * anything else (Awaiting Part, AI Review, Escalated or New with a
+      technician) or a walk the product refuses (a part still pending, no time
+      agreed) -> a manager's force-closure.
+    Never a raw UPDATE."""
+    ids = [w.ravi_id, w.hema_id, w.meena_id, *extra_technician_ids]
+    for _pass in range(3):
         open_ones = list(
             await db.scalars(
                 select(Ticket).where(
                     Ticket.company_id == w.company_a_id,
-                    Ticket.technician_id == prof.id,
-                    Ticket.status.in_(("Assigned", "In Progress")),
+                    Ticket.technician_id.in_(ids),
+                    Ticket.status.not_in(TERMINAL_STATUSES),
                     Ticket.deleted_at.is_(None),
                 )
             )
         )
+        if not open_ones:
+            return
         for row in open_ones:
+            await _settle_one(db, w, row)
+    left = await db.scalar(
+        select(func.count()).select_from(Ticket).where(
+            Ticket.company_id == w.company_a_id,
+            Ticket.technician_id.in_(ids),
+            Ticket.status.not_in(TERMINAL_STATUSES),
+            Ticket.deleted_at.is_(None),
+        )
+    )
+    assert left == 0, f"{left} open job(s) could not be settled"
+
+
+async def _settle_one(db, w, row: Ticket) -> None:
+    ticket_id, status = row.id, row.status
+    try:
+        if status in ("Assigned", "In Progress", "Awaiting Customer"):
             tech = await db.get(
                 TechnicianProfile, row.technician_id, populate_existing=True
             )
-            if row.status == "Assigned":
+            if status == "Assigned":
                 await jobs_service.submit_proof(
-                    db,
-                    row.id,
-                    company_id=w.company_a_id,
-                    profile=tech,
+                    db, ticket_id, company_id=w.company_a_id, profile=tech,
                     artifacts=seed_artifacts(w.company_a_id, row),
                     observed_serial=row.serial_number,
                     observed_serial_source="scanned",
                 )
                 await db.refresh(row)
-            await jobs_service.complete(
-                db, row.id, company_id=w.company_a_id, profile=tech
-            )
-            await db.refresh(row)
+            if row.status in ("Assigned", "In Progress"):
+                await jobs_service.complete(
+                    db, ticket_id, company_id=w.company_a_id, profile=tech
+                )
+                await db.refresh(row)
             assert row.feedback_token, "no feedback token after complete"
             await feedback_service.record_feedback(
                 db, row.feedback_token, confirmed=True, rating=5,
-                comment="Acceptance run — clearing a leftover job.",
+                comment="Acceptance run - clearing a leftover job.",
             )
-            await db.refresh(row)
+            return
+    except (AppError, HTTPException, AssertionError):
+        await db.rollback()
+    row = await db.get(Ticket, ticket_id, populate_existing=True)
+    if row.status not in TERMINAL_STATUSES:
+        await _force_close_leftover(db, w, row)
+
+
+def settle_open_jobs(extra_technician_ids=()) -> None:
+    """Module-teardown form of `clear_open_jobs` (a synchronous fixture
+    finalizer): its own session, the cast plus the technicians a module made."""
+    w = world()  # resolve (and cache) the World from this SYNC context, before
+    # the loop below starts — `world()` falls back to `asyncio.run(_b())` on a
+    # cold cache, and calling it again from inside `_go` would nest that call
+    # inside this function's own `asyncio.run(_go())`.
+
+    async def _go():
+        async with AsyncSessionLocal() as db:
+            await clear_open_jobs(db, w, extra_technician_ids)
+    asyncio.run(_go())
 
 
 async def drain_balance(db, w, which: str) -> None:
@@ -388,7 +453,7 @@ async def drain_balance(db, w, which: str) -> None:
     payer = {"ravi": "priya", "hema": "hari"}[which]
     await red_service.claim(
         db, await p(db, payer), out.id,
-        ClaimRequest(proof=_proof(w.company_a_id, out.id), utr=f"T05DRAIN{out.id}"),
+        ClaimRequest(proof=_proof(w.company_a_id, out.id), utr=f"T05DRAIN{out.id.hex[:27]}"),
     )
     await red_service.confirm(db, await p(db, which), prof, out.id, received=True)
 

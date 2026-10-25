@@ -31,12 +31,13 @@ import secrets
 import uuid
 
 from fastapi import BackgroundTasks, HTTPException, status as http_status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
-from app.core.accept_snapshot import build_accept_snapshot, travel_of
+from app.core.accept_snapshot import build_accept_snapshot, speed_of, travel_of
 from app.core.config import settings
 from app.core.coverage import has_cap_room, nearest_manager_for, still_offerable
 from app.core.errors import AppError
@@ -46,6 +47,7 @@ from app.core.franchise_routing import accept_miss_reason
 from app.core.job_passes import passed_as_offered
 from app.core.ledger import (
     cap_remaining,
+    capped_charge,
     charged_this_month,
     entry as ledger_entry,
 )
@@ -53,6 +55,7 @@ from app.core.notifications import notify
 from app.core.product_label import model_label, vendors_with_several_brands
 from app.core.push import announce_pool_job
 from app.core.realtime import (
+    publish_job_changed,
     publish_notification,
     publish_pool_changed,
     publish_ticket_changed,
@@ -72,6 +75,20 @@ from app.core.reschedule import (
     send_slot_moved,
 )
 from app.core.schemas import ListParams
+from app.core.spare_parts import (
+    REQUESTABLE_STATUSES,
+    catalogue_for,
+    facility_franchisees,
+    franchisee_has_facility,
+    has_open_requests,
+    lock_ticket,
+    normalize_part_name,
+    notify_facility,
+    part_name_key,
+    requests_for_ticket,
+    settle_job_status,
+)
+from app.core.sequences import next_code
 from app.core.slots import bookable_slots, reschedule_slots, when_label
 from app.core.tickets import (
     MAX_PRODUCT_PHOTOS,
@@ -96,9 +113,14 @@ from app.db.repository import paginate
 from app.features.auth.otp_service import consume_code, issue_code
 from app.features.auth.schemas import OtpRequestResponse
 from app.features.jobs.schemas import (
+    JobCataloguePartOut,
     JobOfferOut,
     JobOut,
+    JobPartRequestOut,
+    JobPartsOut,
+    JobSpeedOut,
     JobTravelOut,
+    PartRequestCreate,
     PenaltyBandOut,
     ProductParameterOut,
     ProofArtifactIn,
@@ -118,6 +140,7 @@ from app.models.technician import (
 )
 from app.models.job_pass import JobPass
 from app.models.ledger import LedgerEntry
+from app.models.spare_part import SparePart, SparePartRequest
 from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
@@ -177,7 +200,8 @@ def pool_query(
     What `False` drops is exactly two things: the technician's own
     `accepting_work` toggle, and the cap. It does NOT drop `status` — a
     SUSPENDED technician sees nothing through any flag here, because that is
-    somebody else's decision about them rather than their own. Coverage,
+    somebody else's decision about them rather than their own. Coverage
+    (**unless the ticket was handed to this franchisee, Task 18**),
     certification, company and franchisee still apply too, so this never widens
     what a technician may see — only what they may be TOLD about a ticket that
     was already theirs to see.
@@ -294,7 +318,10 @@ def pool_query(
         # `core.coverage`, so a manager can never put a job back into a pool
         # that this line would then hide from everybody.
         still_offerable(now),
-        covers_pincode,
+        # Coverage is waived for a ticket a PERSON handed to this franchisee (Task 18) - a pincode its
+        # franchisee does not own can never be in its technicians' coverage. The franchisee test
+        # below still applies in full, so this widens the pool to ONE franchisee, never to the company.
+        or_(Ticket.routing_override.is_(True), covers_pincode),
         certified_for,
         is_active,
         in_franchisee,
@@ -464,6 +491,7 @@ def _job_out(
     t: Ticket,
     models: dict[uuid.UUID, tuple[str, list[dict], str | None]],
     location_checks: dict[uuid.UUID, bool],
+    parts_enabled: bool = False,
 ) -> JobOut:
     """The offer, plus everything that unlocks once the job is this technician's.
 
@@ -518,6 +546,50 @@ def _job_out(
             t.customer_confirmed_at is not None and t.status == "Escalated"
         ),
         travel=_job_travel(t),
+        speed=_job_speed(t),
+        partsEnabled=parts_enabled,
+    )
+
+
+def _job_speed(t: Ticket) -> JobSpeedOut | None:
+    """Task 11 (§4.5): the frozen speed terms for the CURRENT holder, or None.
+
+    Same naming test as `_job_travel` (W17): the snapshot must name this
+    technician, or the terms belong to somebody else's accept and answer
+    nothing. The clock's start is R1 — max(acceptedAt, the slot's start) —
+    computed here rather than stored, from the two instants the reader already
+    has; `clockFromSlot` is which half won, so the app prints the truth the
+    server derived instead of re-deriving a rule it does not own.
+
+    Deliberately NOT on JobOfferOut (W13): the offer is a public card.
+    """
+    terms = speed_of(t.accept_snapshot)
+    if terms is None or t.technician_id is None:
+        return None
+    snap = t.accept_snapshot
+    if str(snap.get("technicianId")) != str(t.technician_id):
+        return None
+    # The accept instant is on the snapshot (`acceptedAt`, an ISO stamp with a
+    # trailing Z from `assemble`) — `tickets` has no `accepted_at` column, the
+    # snapshot IS the record of the accept. Read defensively: an ill-formed
+    # string means no answer rather than a 500 on a list read.
+    raw = snap.get("acceptedAt")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        accepted_at = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    from_slot = t.slot_start is not None and t.slot_start > accepted_at
+    return JobSpeedOut(
+        rewardWithinHours=terms.reward_within_hours,
+        penaltyAfterHours=terms.penalty_after_hours,
+        rewardPaise=terms.reward_paise,
+        penaltyPaise=terms.penalty_paise,
+        clockStartedAt=(
+            t.slot_start if from_slot else accepted_at
+        ),
+        clockFromSlot=from_slot,
     )
 
 
@@ -574,8 +646,10 @@ async def list_mine(
     tickets = list(rows)
     offers, models = await _hydrate(db, tickets)
     checks = await _location_checks(db, tickets)
+    desks = await facility_franchisees(db, company_id, {t.franchisee_id for t in tickets})
     return [
-        _job_out(o, t, models, checks) for o, t in zip(offers, tickets)
+        _job_out(o, t, models, checks, t.franchisee_id in desks)
+        for o, t in zip(offers, tickets)
     ], total
 
 
@@ -603,7 +677,13 @@ async def get_job(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
     offers, models = await _hydrate(db, [row])
-    return _job_out(offers[0], row, models, await _location_checks(db, [row]))
+    return _job_out(
+        offers[0],
+        row,
+        models,
+        await _location_checks(db, [row]),
+        await franchisee_has_facility(db, company_id, row.franchisee_id),
+    )
 
 
 async def list_today(
@@ -640,7 +720,11 @@ async def list_today(
     tickets = list(rows)
     offers, models = await _hydrate(db, tickets)
     checks = await _location_checks(db, tickets)
-    return [_job_out(o, t, models, checks) for o, t in zip(offers, tickets)]
+    desks = await facility_franchisees(db, company_id, {t.franchisee_id for t in tickets})
+    return [
+        _job_out(o, t, models, checks, t.franchisee_id in desks)
+        for o, t in zip(offers, tickets)
+    ]
 
 
 async def list_pool(
@@ -906,6 +990,12 @@ async def accept(
             # Re-tested here, not only in the pool read above, for the cap's reason: a carve-out can re-stamp
             # this ticket (or move this technician) between that read and this write. Read inside the
             # statement, so Postgres judges both sides as they are when the row is locked.
+            #
+            # ⚠ Deliberately NO coverage clause (Task 18): this statement has never tested the pincode -
+            # that lives in the `pool_query` read above, where a handed-over ticket's waiver is applied.
+            # Adding one "for symmetry" would re-strand every handed ticket at the last step. A
+            # technician who read the old card and taps accept AFTER a hand-over fails the franchisee
+            # clause here and gets `accept_miss_reason == "moved"` -> 404 "Job not found".
             Ticket.franchisee_id
             == select(TechnicianProfile.franchisee_id)
             .where(
@@ -1007,6 +1097,8 @@ async def accept(
         # The franchisee whose technicians were being shown it, so their sockets
         # stop ringing for a job that just left their pool.
         franchisee_id=offered.franchisee_id,
+        # The flag as it was in the pool it just LEFT (survives acceptance on purpose).
+        routing_override=offered.routing_override,
     )
     await publish_ticket_changed(db, offered)
     await db.commit()
@@ -1022,7 +1114,13 @@ async def accept(
 
     # Now it is theirs, so the masked fields are theirs to see.
     offers, models = await _hydrate(db, [row])
-    return _job_out(offers[0], row, models, await _location_checks(db, [row]))
+    return _job_out(
+        offers[0],
+        row,
+        models,
+        await _location_checks(db, [row]),
+        await franchisee_has_facility(db, company_id, row.franchisee_id),
+    )
 
 
 async def _announce_acceptance(
@@ -1670,6 +1768,14 @@ def _check_proof_complete(
         )
 
 
+def _parts_pending() -> AppError:
+    return JobRefused(
+        "PARTS_PENDING",
+        "This job is waiting for a spare part. You can complete it once the part "
+        "has been issued or the request is closed.",
+    )
+
+
 async def complete(
     db: AsyncSession,
     ticket_id: uuid.UUID,
@@ -1698,6 +1804,14 @@ async def complete(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
+    # Task 12 (§4.4): Complete is refused while any spare-part request is still
+    # open. Under the ticket lock, because the answer depends on a SET of rows a
+    # facility user may be changing right now (D4) — and re-read (`lock_ticket`
+    # refreshes `row`), since the status may have moved since the load above.
+    await lock_ticket(db, company_id, ticket_id)
+    if await has_open_requests(db, company_id=company_id, ticket_id=ticket_id):
+        raise _parts_pending()
+
     token = secrets.token_urlsafe(32)
     result = await db.execute(
         update(Ticket)
@@ -1714,6 +1828,11 @@ async def complete(
         )
     )
     if result.rowcount == 0:
+        if row.status == "Awaiting Part":
+            # The invariant (open request <=> Awaiting Part) makes this agree
+            # with the check above; it is here so a race cannot answer "already
+            # awaiting part".
+            raise _parts_pending()
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail=(
@@ -1980,7 +2099,9 @@ async def _band_for(
     remaining = cap_remaining(
         cap_paise=rules.cancel_penalty_cap_paise, already_charged=already
     )
-    charge = band if remaining is None else min(band, remaining)
+    # Task 11 §4.1: the three monthly-capped charges (cancellation, no-show and
+    # the speed penalty) share the one arithmetic line.
+    charge = capped_charge(band, remaining)
 
     # The same threshold the sweep escalates on, so "under four hours" means one
     # thing for this job across the product. From the ticket's own rules rather
@@ -2183,6 +2304,7 @@ async def cancel(
             pincode=row.pincode,
             node_path_ids=row.node_path_ids,
             franchisee_id=row.franchisee_id,
+            routing_override=row.routing_override,
         )
         await publish_ticket_changed(db, row)
     await db.commit()
@@ -2203,6 +2325,7 @@ async def cancel(
             node_path_ids=row.node_path_ids,
             slot_start=row.slot_start,
             franchisee_id=row.franchisee_id,
+            routing_override=row.routing_override,
         )
     return PenaltyBandOut(amountPaise=charge, label=label, escalates=escalates)
 
@@ -2224,12 +2347,14 @@ async def cancel(
 async def _load_reschedulable(
     db: AsyncSession, ticket_id: uuid.UUID, *, company_id: uuid.UUID, technician_id: uuid.UUID
 ) -> Ticket:
-    """This technician's own job, in the one status a slot may be moved from.
+    """This technician's own job, in a status a slot may be moved from.
 
-    `Assigned` only, for `cancel`'s reason: past it, proof has been captured and
-    the technician is on site, and moving a visit that has already started is a
-    different operation with different evidence attached. Before it they do not
-    hold the job at all.
+    `Assigned`, and (Task 12, D8) `Awaiting Part`. `Assigned` for `cancel`'s
+    reason: past it, proof has been captured and the technician is on site, and
+    moving a visit that has already started is a different operation with
+    different evidence attached. A waiting job is the one started job whose visit
+    MUST move, because the technician has to come back with the part — and it
+    stays `Awaiting Part` (`core.reschedule.move_slot`).
     """
     row = await db.scalar(
         mine_query(company_id=company_id, technician_id=technician_id).where(
@@ -2240,7 +2365,7 @@ async def _load_reschedulable(
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
-    if row.status != "Assigned":
+    if row.status not in ("Assigned", "Awaiting Part"):
         raise JobRefused(
             "JOB_NOT_RESCHEDULABLE",
             "This job can no longer be rescheduled.",
@@ -2252,6 +2377,199 @@ async def _load_reschedulable(
             "The customer is still choosing one.",
         )
     return row
+
+
+# ── spare parts (Task 12) ─────────────────────────────────────────────────────
+
+
+def _job_part_request_out(r: SparePartRequest) -> JobPartRequestOut:
+    return JobPartRequestOut(
+        id=r.id,
+        code=r.code,
+        partName=r.part_name,
+        isOther=r.spare_part_id is None,
+        note=r.note,
+        status=r.status,
+        createdAt=r.created_at,
+        decidedAt=r.decided_at,
+        rejectReason=r.reject_reason,
+        rejectedAfterApproval=r.status == "rejected" and r.rejected_from == "approved",
+        issuedAt=r.issued_at,
+        issueNote=r.issue_note,
+        returnedAt=r.returned_at,
+    )
+
+
+async def _job_parts(db: AsyncSession, row: Ticket) -> JobPartsOut:
+    """The parts screen's whole answer for one of this technician's jobs."""
+    enabled = await franchisee_has_facility(db, row.company_id, row.franchisee_id)
+    can_request = enabled and row.status in REQUESTABLE_STATUSES
+    catalogue = (
+        await catalogue_for(
+            db,
+            company_id=row.company_id,
+            node_path_ids=row.node_path_ids,
+            model_id=row.model_id,
+        )
+        if can_request
+        else []
+    )
+    requests = await requests_for_ticket(db, company_id=row.company_id, ticket_id=row.id)
+    return JobPartsOut(
+        ticketId=row.id,
+        code=row.code,
+        status=row.status,
+        partsEnabled=enabled,
+        canRequest=can_request,
+        catalogue=[JobCataloguePartOut(id=c.id, name=c.name) for c in catalogue],
+        requests=[_job_part_request_out(r) for r in requests],
+    )
+
+
+async def get_job_parts(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+) -> JobPartsOut:
+    """`GET /jobs/{id}/parts` — any status. 404 unless the job is theirs."""
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    return await _job_parts(db, row)
+
+
+async def request_part(
+    db: AsyncSession,
+    ticket_id: uuid.UUID,
+    *,
+    company_id: uuid.UUID,
+    profile: TechnicianProfile,
+    body: PartRequestCreate,
+) -> tuple[JobPartsOut, bool]:
+    """Raise a spare-part request on this technician's job. `(answer, created)`.
+
+    One transaction, in the order the spec fixes (§4.4): the job is loaded
+    through `mine_query` (404), locked `FOR NO KEY UPDATE` and re-read; the
+    status guard; the facility guard (R4 — nothing is ever written for a
+    franchisee nobody can answer); the part resolved against the ticket's own
+    merged list (404 for anything else, so another category's part reads like an
+    invented one); an idempotent repeat (D3); then the request, the
+    `part_requested` event, the status settle, and the facility's bell.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=profile.id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    locked = await lock_ticket(db, company_id, ticket_id)
+    if locked is None or locked.technician_id != profile.id:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+    row = locked
+
+    if row.status not in REQUESTABLE_STATUSES:
+        raise JobRefused(
+            "PART_REQUEST_NOT_IN_PROGRESS",
+            "You can ask for a spare part only while the job is in progress.",
+        )
+    if not await franchisee_has_facility(db, company_id, row.franchisee_id):
+        raise JobRefused(
+            "NO_FACILITY",
+            "This franchise has no spare-parts desk yet, so a part can't be "
+            "requested from here. Ask your franchise to set one up.",
+        )
+
+    if body.sparePartId is not None:
+        catalogue = await catalogue_for(
+            db, company_id=company_id, node_path_ids=row.node_path_ids, model_id=row.model_id
+        )
+        chosen = next((c for c in catalogue if c.id == body.sparePartId), None)
+        if chosen is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND, detail="Part not found"
+            )
+        part_id: uuid.UUID | None = chosen.id
+        other_name: str | None = None
+        part_name = chosen.name
+    else:
+        part_id = None
+        other_name = part_name = normalize_part_name(body.otherName or "")
+
+    async def _open_twin() -> SparePartRequest | None:
+        # The same lower(btrim()) the partial unique is built on, plus the inner
+        # collapse the writers apply to every stored name.
+        for r in await requests_for_ticket(db, company_id=company_id, ticket_id=ticket_id):
+            if r.status in ("requested", "approved") and part_name_key(r.part_name) == part_name_key(
+                part_name
+            ):
+                return r
+        return None
+
+    if await _open_twin() is not None:
+        return await _job_parts(db, row), False
+
+    technician = await _technician_name(db, profile)
+    try:
+        async with db.begin_nested():
+            code = await next_code(db, company_id, "spare_part_request")
+            request = SparePartRequest(
+                company_id=company_id,
+                code=code,
+                franchisee_id=row.franchisee_id,
+                ticket_id=row.id,
+                technician_id=profile.id,
+                spare_part_id=part_id,
+                other_name=other_name,
+                part_name=part_name,
+                note=body.note,
+                status="requested",
+            )
+            db.add(request)
+            await db.flush()
+    except IntegrityError:
+        # A race the lock did not cover (two app instances): the partial unique
+        # said no. Answer exactly as the idempotent repeat does.
+        if await _open_twin() is not None:
+            return await _job_parts(db, row), False
+        raise
+
+    label = f"Other: {part_name}" if part_id is None else part_name
+    trail = f"{request.code} · {label}" + (f" · {body.note}" if body.note else "")
+    db.add(
+        _event(
+            row,
+            "part_requested",
+            actor_kind="technician",
+            actor_label=technician,
+            note=trail,
+        )
+    )
+    # The request is flushed (above), so the recompute sees it — hard rule 10.
+    await settle_job_status(
+        db, row, actor_kind="technician", actor_label=technician, by_user=None
+    )
+    await notify_facility(db, request, row, technician_name=technician)
+    # Whether or not the status moved: a second device refetches, and so does
+    # the console's ticket page.
+    await publish_ticket_changed(db, row)
+    await publish_job_changed(
+        db, company_id=company_id, technician_id=profile.id, ticket_id=row.id
+    )
+    await db.commit()
+    return await _job_parts(db, row), True
 
 
 def _reschedule_horizon() -> datetime.datetime:

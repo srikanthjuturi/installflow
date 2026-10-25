@@ -11,6 +11,8 @@ import type {
   CorrectReadingInput,
   CorrectSerialInput,
   CreateTicketInput,
+  FranchiseeOptions,
+  HandToFranchiseeResult,
   SerialCheck,
   Ticket,
   TicketDetail,
@@ -213,6 +215,16 @@ export interface ForceCloseInput {
    * the two are different questions with different answers.
    */
   vendorChargePaise?: number;
+  /**
+   * PAISE of travel allowance to credit the technician (Task 10 W5, TA6).
+   *
+   * Pre-filled from the ticket's frozen `travel.forceCloseDefaultPaise` and
+   * capped by the API at the frozen `maxPaisePerJob`. `0` and omitted both
+   * write no ledger row — omit it when the form did not show the field, which
+   * is exactly "pay nothing" and not "keep the default". Speed money is never
+   * written on a force-closure (S5, R7), so there is no counterpart.
+   */
+  travelPaise?: number;
 }
 
 /**
@@ -341,6 +353,43 @@ export function rescheduleTicket({
   reason,
 }: RescheduleInput): Promise<TicketDetail> {
   return apiPost<TicketDetail>(`/tickets/${id}/reschedule`, { slotStart, reason });
+}
+
+/**
+ * Who could take this ticket if it were handed over (Task 18, H7): every active
+ * franchisee with how many of its technicians are eligible for THIS ticket and
+ * how many of those are online. `canHandOver: false` comes with no options —
+ * the dialog opens straight to the blocker sentence.
+ */
+export function getFranchiseeOptions(id: string): Promise<FranchiseeOptions> {
+  return apiGet<FranchiseeOptions>(`/tickets/${id}/franchisee-options`);
+}
+
+export interface HandToFranchiseeInput {
+  id: string;
+  franchiseeId: string;
+  /** Required, 3-255 characters — the only record of why it moved. */
+  reason: string;
+}
+
+/**
+ * Hand an UNASSIGNED ticket to another franchisee. The server derives
+ * `routingOverride` (the target is not the pincode's owner); this never sends it.
+ *
+ * **409** says which kind of no: `TICKET_ASSIGNED`, `TICKET_NOT_ASSIGNABLE`,
+ * `SAME_FRANCHISEE`, `FRANCHISEE_INACTIVE`, or `ALREADY_ASSIGNED` when somebody
+ * accepted, assigned or moved it first. Each carries a sentence the toaster
+ * shows; nothing here branches on the code.
+ */
+export function handToFranchisee({
+  id,
+  franchiseeId,
+  reason,
+}: HandToFranchiseeInput): Promise<HandToFranchiseeResult> {
+  return apiPost<HandToFranchiseeResult>(`/tickets/${id}/franchisee`, {
+    franchiseeId,
+    reason,
+  });
 }
 
 export interface RecordNoShowInput {

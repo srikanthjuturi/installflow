@@ -149,9 +149,13 @@ def test_case_9_unknown_audience_reaches_nobody(role: str) -> None:
     r = _reader(role, all_india=True, is_payer=True)
     assert not hears(r, pincode=None, vendor_id=None, audience="zzz",
                      franchisee_id=None)
-    # `facility` before Task 12 widens the rule — same silence.
+    # `facility` (Task 12) is addressed to a franchisee's franchise staff. A
+    # staff reader — company Admin / National Head included (owner ruling R4)
+    # — never hears it, with or without a franchisee on the row.
     assert not hears(r, pincode=None, vendor_id=None, audience="facility",
                      franchisee_id=None)
+    assert not hears(r, pincode=None, vendor_id=None, audience="facility",
+                     franchisee_id=_F)
 
 
 # 10. A CORRUPT membership — a franchise role with no franchisee — is silent,
@@ -170,3 +174,31 @@ def test_case_11_billing_rows() -> None:
     assert not hears(_fr_reader(_F), **row)
     # An NH who is not a territory reader is still inside the pair.
     assert hears(_reader(NATIONAL_HEAD, pincodes=frozenset()), **row)
+
+
+# 12. Task 12 / owner ruling R4: `facility` rows reach EVERY franchise role of the
+#     row's own franchisee — the parts desk and the franchisee admin — and nobody
+#     else: not another franchisee's staff, not company staff, not a corrupt
+#     membership. A facility role still hears nothing but `facility`.
+@pytest.mark.parametrize("role", [FRANCHISEE_ADMIN, "facility_admin", FACILITY_OPERATOR])
+def test_case_12_facility_rows(role: str) -> None:
+    row = dict(pincode="500032", vendor_id=None, audience="facility", franchisee_id=_F)
+    assert hears(_reader(role, franchisee_id=_F, pincodes=frozenset()), **row)
+    assert not hears(_reader(role, franchisee_id=_G, pincodes=frozenset()), **row)
+    assert not hears(_reader(role, franchisee_id=None, pincodes=frozenset()), **row)
+    # …and a facility row that names no franchisee is nobody's.
+    assert not hears(
+        _reader(role, franchisee_id=_F, pincodes=frozenset()),
+        pincode=None, vendor_id=None, audience="facility", franchisee_id=None,
+    )
+    for staff in (ADMIN, NATIONAL_HEAD, REGIONAL_HEAD, AREA_MANAGER):
+        assert not hears(_reader(staff, all_india=True, is_payer=True), **row)
+
+
+@pytest.mark.parametrize("audience", [None, "franchisee_admin", "payers"])
+def test_case_12b_facility_roles_hear_nothing_else(audience: str | None) -> None:
+    for role in ("facility_admin", FACILITY_OPERATOR):
+        assert not hears(
+            _reader(role, franchisee_id=_F, pincodes=frozenset()),
+            pincode=None, vendor_id=None, audience=audience, franchisee_id=_F,
+        )

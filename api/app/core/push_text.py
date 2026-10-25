@@ -209,6 +209,33 @@ MESSAGES: dict[str, dict[str, tuple[str, str]]] = {
         "kn": ("{code}: ದಂಡ ರದ್ದು", "{code} ಕೆಲಸಕ್ಕೆ ವಿಧಿಸಿದ್ದ {amount} ದಂಡವನ್ನು ರದ್ದುಪಡಿಸಲಾಗಿದೆ."),
         "ta": ("{code}: அபராதம் ரத்து", "{code} வேலைக்கான {amount} அபராதம் ரத்துசெய்யப்பட்டது."),
     },
+    # Task 17 (D9): a manager moved this technician to another franchisee. PROPOSED
+    # copy — English signed off with the dialog (§5.7), the four translations
+    # follow the app glossary and are queued for native review. `{franchisee}` is
+    # the new franchisee's name, shown as given. Sent with data={"type": "job"}
+    # and NO ticket id (the `penalty.reversed` shape): a tap just opens the app.
+    "technician.moved": {
+        "en": (
+            "You now work with {franchisee}",
+            "Your jobs, pay and pincodes now come from {franchisee}. Open the app to refresh.",
+        ),
+        "hi": (
+            "अब आप {franchisee} के साथ काम करते हैं",
+            "आपके काम, भुगतान और पिनकोड अब {franchisee} से आएँगे। रिफ़्रेश करने के लिए ऐप खोलें।",
+        ),
+        "te": (
+            "ఇప్పుడు మీరు {franchisee}తో పని చేస్తున్నారు",
+            "మీ పనులు, చెల్లింపులు, పిన్‌కోడ్‌లు ఇకపై {franchisee} నుండి వస్తాయి. రిఫ్రెష్ చేయడానికి యాప్ తెరవండి.",
+        ),
+        "kn": (
+            "ಈಗ ನೀವು {franchisee} ಜೊತೆ ಕೆಲಸ ಮಾಡುತ್ತೀರಿ",
+            "ನಿಮ್ಮ ಕೆಲಸಗಳು, ಪಾವತಿ ಮತ್ತು ಪಿನ್‌ಕೋಡ್‌ಗಳು ಇನ್ನು ಮುಂದೆ {franchisee} ಮೂಲಕ ಬರುತ್ತವೆ. ರಿಫ್ರೆಶ್ ಮಾಡಲು ಆಪ್ ತೆರೆಯಿರಿ.",
+        ),
+        "ta": (
+            "இப்போது நீங்கள் {franchisee} உடன் பணிபுரிகிறீர்கள்",
+            "உங்கள் வேலைகள், பணம் மற்றும் பின்கோடுகள் இனி {franchisee} மூலம் வரும். புதுப்பிக்க ஆப்பைத் திறக்கவும்.",
+        ),
+    },
     "job.forceClosed": {
         "en": (
             "{code} closed by the office",
@@ -305,6 +332,40 @@ MESSAGES: dict[str, dict[str, tuple[str, str]]] = {
         "te": ("UPI ID మార్పు ఆమోదం పొందలేదు", "మీ మేనేజర్ ఈ మార్పును ఆమోదించలేదు."),
         "kn": ("UPI ID ಬದಲಾವಣೆಗೆ ಒಪ್ಪಿಗೆ ಸಿಕ್ಕಿಲ್ಲ", "ನಿಮ್ಮ ಮ್ಯಾನೇಜರ್ ಈ ಬದಲಾವಣೆಗೆ ಒಪ್ಪಿಗೆ ನೀಡಿಲ್ಲ."),
         "ta": ("UPI ID மாற்றத்துக்கு ஒப்புதல் இல்லை", "உங்கள் மேனேஜர் இந்த மாற்றத்துக்கு ஒப்புதல் அளிக்கவில்லை."),
+    },
+    # Spare parts (Task 12, §4.9). PROPOSED copy, queued for native review with
+    # Task 15 — follows the app glossary (*Job* = काम/పని/ಕೆಲಸ/வேலை; *Spare part*
+    # = स्पेयर पार्ट / స్పేర్ పార్ట్ / ಸ್ಪೇರ್ ಪಾರ್ಟ್ / ஸ்பேர் பார்ட்). The part's name
+    # and the reason are shown as given.
+    "part.approved": {
+        "en": ("{code}: part approved", "{part} is approved. You'll be told when it's ready to collect."),
+        "hi": ("{code}: पार्ट मंज़ूर", "{part} मंज़ूर हो गया है। पार्ट तैयार होने पर आपको बताया जाएगा।"),
+        "te": ("{code}: పార్ట్ ఆమోదించారు", "{part} ఆమోదించారు. పార్ట్ సిద్ధమైనప్పుడు మీకు తెలియజేస్తారు."),
+        "kn": ("{code}: ಪಾರ್ಟ್ ಅನುಮೋದನೆ", "{part} ಅನುಮೋದಿಸಲಾಗಿದೆ. ಪಾರ್ಟ್ ಸಿದ್ಧವಾದಾಗ ನಿಮಗೆ ತಿಳಿಸಲಾಗುತ್ತದೆ."),
+        "ta": ("{code}: பார்ட் அனுமதிக்கப்பட்டது", "{part} அனுமதிக்கப்பட்டது. பார்ட் தயாரானதும் உங்களுக்குத் தெரிவிக்கப்படும்."),
+    },
+    # The facility's own words, shown as typed.
+    "part.rejected": {
+        "en": ("{code}: part not approved", "{part}: {reason}"),
+        "hi": ("{code}: पार्ट मंज़ूर नहीं", "{part}: {reason}"),
+        "te": ("{code}: పార్ట్ ఆమోదం పొందలేదు", "{part}: {reason}"),
+        "kn": ("{code}: ಪಾರ್ಟ್‌ಗೆ ಒಪ್ಪಿಗೆ ಸಿಕ್ಕಿಲ್ಲ", "{part}: {reason}"),
+        "ta": ("{code}: பார்ட்டுக்கு ஒப்புதல் இல்லை", "{part}: {reason}"),
+    },
+    # Owner ruling 2026-10-15 (R2): the part was approved, and now will not come.
+    "part.rejected_after_approval": {
+        "en": ("{code}: part approval cancelled", "{part} was approved earlier but can no longer be supplied: {reason}"),
+        "hi": ("{code}: पार्ट की मंज़ूरी रद्द", "{part} पहले मंज़ूर हुआ था, पर अब नहीं दिया जा सकता: {reason}"),
+        "te": ("{code}: పార్ట్ ఆమోదం రద్దు", "{part} ముందు ఆమోదించారు, కానీ ఇప్పుడు ఇవ్వలేము: {reason}"),
+        "kn": ("{code}: ಪಾರ್ಟ್ ಅನುಮೋದನೆ ರದ್ದು", "{part} ಮೊದಲು ಅನುಮೋದಿಸಲಾಗಿತ್ತು, ಆದರೆ ಈಗ ನೀಡಲಾಗುವುದಿಲ್ಲ: {reason}"),
+        "ta": ("{code}: பார்ட் அனுமதி ரத்து", "{part} முன்பு அனுமதிக்கப்பட்டது, ஆனால் இப்போது வழங்க இயலாது: {reason}"),
+    },
+    "part.issued": {
+        "en": ("{code}: part issued", "{part} has been issued to you. You can continue the job."),
+        "hi": ("{code}: पार्ट दिया गया", "{part} आपको दे दिया गया है। अब आप काम आगे बढ़ा सकते हैं।"),
+        "te": ("{code}: పార్ట్ ఇచ్చారు", "{part} మీకు ఇచ్చారు. ఇప్పుడు మీరు పని కొనసాగించవచ్చు."),
+        "kn": ("{code}: ಪಾರ್ಟ್ ನೀಡಲಾಗಿದೆ", "{part} ನಿಮಗೆ ನೀಡಲಾಗಿದೆ. ಈಗ ನೀವು ಕೆಲಸ ಮುಂದುವರಿಸಬಹುದು."),
+        "ta": ("{code}: பார்ட் வழங்கப்பட்டது", "{part} உங்களுக்கு வழங்கப்பட்டது. இப்போது வேலையைத் தொடரலாம்."),
     },
 }
 

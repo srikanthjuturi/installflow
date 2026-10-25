@@ -16,6 +16,7 @@
 
 import type { ListParams, Page } from "@/types/api";
 import type { LedgerEntry } from "@/types";
+import type { BaseLocation, BaseLocationInput } from "@/types/allowances";
 import type {
   Technician,
   TechnicianInvite,
@@ -54,6 +55,11 @@ export interface WorkspaceApi {
     resendInvite(id: string): Promise<TechnicianInvite>;
     cancelInvite(id: string): Promise<null>;
     sendAppLink(id: string): Promise<AppLinkOutcome>;
+    /** Task 13 §5.3 — move the base. `PUT …/base-location` on either door. */
+    setBaseLocation(input: {
+      id: string;
+      body: BaseLocationInput;
+    }): Promise<BaseLocation>;
     getUpiChange(id: string): Promise<UpiChange | null>;
     approveUpiChange(id: string): Promise<UpiChange>;
     rejectUpiChange(input: { id: string; reason: string }): Promise<UpiChange>;
@@ -135,6 +141,7 @@ export const OPS_WORKSPACE: WorkspaceAdapter = {
       resendInvite: staffTechnicians.resendInvite,
       cancelInvite: staffTechnicians.cancelInvite,
       sendAppLink: staffTechnicians.sendAppLink,
+      setBaseLocation: staffTechnicians.setBaseLocation,
       getUpiChange: staffTechnicians.getUpiChange,
       approveUpiChange: staffTechnicians.approveUpiChange,
       rejectUpiChange: staffTechnicians.rejectUpiChange,
@@ -182,6 +189,7 @@ export const FRANCHISE_WORKSPACE: WorkspaceAdapter = {
       resendInvite: franchise.resendInvite,
       cancelInvite: franchise.cancelInvite,
       sendAppLink: franchise.sendAppLink,
+      setBaseLocation: franchise.setBaseLocation,
       getUpiChange: franchise.getUpiChange,
       approveUpiChange: franchise.approveUpiChange,
       rejectUpiChange: franchise.rejectUpiChange,

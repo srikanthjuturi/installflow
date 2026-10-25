@@ -69,10 +69,15 @@ export default function BonusSetupPage() {
   // — so the count waits for the ticket rather than asking early and reporting
   // a number that is not the shortlist. `onDay` is the SLOT's day: a bonus is
   // only offered to technicians with room on the day the work happens.
+  //
+  // Task 18: a ticket handed to another franchisee waives the pincode half, so
+  // the count asks for that franchisee's technicians instead of the pincode's.
+  const handedOver = ticket?.routingOverride === true && !!ticket.franchiseeId;
   const eligible = useCandidateTechnicians(
     ticket?.subcategoryId,
-    ticket?.pincode,
-    ticket?.slotStart
+    handedOver ? undefined : ticket?.pincode,
+    ticket?.slotStart,
+    handedOver ? ticket?.franchiseeId : null
   );
   /* The chips come off the TICKET, not off Rules configuration.
      `bonus_bands_paise` is one of the rules a product category may override,

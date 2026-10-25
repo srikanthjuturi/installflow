@@ -189,6 +189,7 @@ async def escalate(
         pincode=row.pincode,
         node_path_ids=row.node_path_ids,
         franchisee_id=row.franchisee_id,
+        routing_override=row.routing_override,
     )
     await publish_ticket_changed(db, row)
     return True

@@ -5,7 +5,10 @@ import {
   FileSpreadsheet,
   IndianRupee,
   ListFilter,
+  Route,
+  UserCog,
   Users,
+  Wrench,
 } from "lucide-react";
 import { longestMatch } from "@/components/shared/navMatch";
 
@@ -36,9 +39,10 @@ export interface FranchiseNavItem {
 
 /**
  * The rail order IS the landing preference: `franchiseLanding` takes the first
- * held entry, so a franchisee admin (everything minus the parts keys Task 13
- * adds) lands on Technicians and a facility role (only `franchise.tickets`,
- * until Task 13's parts queue slots in above it) lands on Tickets.
+ * held entry, so a franchisee admin (whose first held entry is Technicians)
+ * lands there, and a facility role — which holds no money or roster key, only
+ * `parts.handle` and `franchise.tickets` — lands on Spare parts, which sits
+ * above Tickets for exactly that reason (Task 13 §5.7).
  *
  * `match` entries keep a detail route's rail light without claiming a sibling:
  * `/franchise/technicians/` covers the profile and its job history, and the
@@ -78,11 +82,36 @@ export const FRANCHISE_NAV: FranchiseNavItem[] = [
     feature: "franchise.statements",
   },
   {
+    label: "Allowance rules",
+    to: "/franchise/settings",
+    icon: Route,
+    feature: "franchise.settings",
+  },
+  // Franchise staff only (owner ruling 2026-10-15, R4): there is no staff-console
+  // twin. Above Tickets so a facility role lands on its desk, not on a read-only
+  // list. The request page rides the `match` prefix. The rail badge is
+  // `usePartRequestCounts().requested`.
+  {
+    label: "Spare parts",
+    to: "/franchise/parts",
+    icon: Wrench,
+    match: ["/franchise/parts/"],
+    feature: "parts.handle",
+  },
+  {
     label: "Tickets",
     to: "/franchise/tickets",
     icon: ListFilter,
     match: ["/franchise/tickets/"],
     feature: "franchise.tickets",
+  },
+  // Last: administration, not daily work. A franchisee admin and a facility
+  // admin hold the key; a facility operator does not.
+  {
+    label: "Facility users",
+    to: "/franchise/facility-users",
+    icon: UserCog,
+    feature: "franchise.facility_users",
   },
 ];
 
@@ -131,9 +160,9 @@ export function franchiseNav(has: (key?: string) => boolean): FranchiseNavItem[]
  * The fallback is the ACCOUNT page deliberately: it is in FRANCHISE_UNGATED, so
  * the guard can never redirect into a loop, however empty a company's override
  * has made this account's feature set — naming the bare `/franchise` here would
- * land the redirector in its own redirect. A facility role with only
- * `franchise.tickets` lands on `/franchise/tickets` (the fifth entry — see the
- * rail-order note above); Task 13's parts queue lands them there instead, with
+ * land the redirector in its own redirect. A facility role lands on
+ * `/franchise/parts` — the first entry it holds (see the rail-order note
+ * above); one that somehow lacks `parts.handle` falls through to Tickets, with
  * no change to this function.
  */
 export function franchiseLanding(

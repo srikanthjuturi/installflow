@@ -20,6 +20,22 @@ does not fill up with visits that can no longer happen.
 
 `cleanup_db` never deletes this company. Its phone numbers are unreachable
 `+911…` ones and its addresses `@seed.example.com`, like every other seed.
+
+**The reviewer is a FREELANCER of the company's HOME franchisee, and this script
+refuses to run otherwise** (franchisee programme, Task 16 §5.4). A reviewer
+signs in with a number Google was given once, and what they see must not change
+under them: a freelancer is paid per job and can redeem, the home franchisee is
+the one every pincode falls to. A reviewer who has been carved out into another
+franchisee — or made an employee — would see a different Home, Earnings and
+Redeem, and silently undoing somebody's carve-out is worse than stopping before
+a submission. For the same reason it also refuses when the company has ANY
+franchisee besides its home: this is a fixed demo, not a place to try one.
+
+It gives the reviewer a base location (a pincode centre, so Home shows no
+"set your base location" card), one spare-parts entry, a home facility operator
+(there is no staff fallback — without one *Need a spare part* is hidden) and one
+job waiting in *Awaiting part*. The company's travel and speed rules stay at
+their defaults: no money is configured in a demo tenant.
 """
 
 import argparse
@@ -41,29 +57,42 @@ from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
 from app.core import play_review  # noqa: E402
+from app.core.base_location import BaseLocationIn  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.core.deps import Principal  # noqa: E402
 from app.core.errors import AppError  # noqa: E402
+from app.core.facility_users import (  # noqa: E402
+    FacilityUserCreateRequest,
+    create_user as create_facility_user,
+)
+from app.core.franchise import home_franchisee_id  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.core.slots import bookable_slots  # noqa: E402
 from app.features.companies import service as companies_service  # noqa: E402
 from app.features.companies.schemas import CompanyCreateRequest  # noqa: E402
 from app.features.jobs import service as jobs_service  # noqa: E402
+from app.features.jobs.schemas import PartRequestCreate  # noqa: E402
 from app.features.masters import service as masters_service  # noqa: E402
 from app.features.masters.schemas import ModelCreateRequest, NodeCreateRequest  # noqa: E402
+from app.features.spare_parts import service as parts_service  # noqa: E402
+from app.features.spare_parts.schemas import SparePartCreate  # noqa: E402
 from app.features.technicians import service as technicians_service  # noqa: E402
 from app.features.technicians.schemas import TechnicianCreateRequest  # noqa: E402
 from app.features.tickets import feedback_service  # noqa: E402
 from app.features.tickets import service as tickets_service  # noqa: E402
 from app.features.tickets.schemas import ForceCloseRequest, TicketCreateRequest  # noqa: E402
 from app.features.vendors import service as vendors_service  # noqa: E402
-from app.features.vendors.schemas import VendorCreateRequest  # noqa: E402
+from app.features.vendors.schemas import VendorCreateRequest, VendorUpdateRequest  # noqa: E402
+from app.core.spare_parts import franchisee_has_facility  # noqa: E402
 from app.models.company import Company  # noqa: E402
+from app.models.franchisee import Franchisee  # noqa: E402
 from app.models.membership import Membership  # noqa: E402
 from app.models.product import ProductModel, ProductNode  # noqa: E402
+from app.models.spare_part import SparePart  # noqa: E402
 from app.models.role import ADMIN, ROLE_RANKS, TECHNICIAN  # noqa: E402
-from app.models.technician import TechnicianProfile  # noqa: E402
+from app.models.technician import TechnicianPincode, TechnicianProfile  # noqa: E402
+from app.models.territory import Pincode  # noqa: E402
 from app.models.ticket import Ticket  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.models.vendor import Vendor  # noqa: E402
@@ -78,6 +107,14 @@ from app.scripts.seed.guards import (  # noqa: E402
 )
 
 TAG = "PLAY-REVIEW"
+
+#: The demo vendor's credit line - the schema's ceiling (₹1 crore). A vendor is
+#: created with ₹5,000 of room and every ticket it raises RESERVES its price
+#: until it closes, so the default admits about three tickets and a re-run before
+#: a Play submission is refused with 409 VENDOR_OUT_OF_CREDITS partway through the
+#: top-up (found on dev: "limit ₹54,500, ₹54,750 reserved"). This is a fixed demo
+#: that nobody bills, so it is raised, on creation and on every later run.
+DEMO_CREDIT_LIMIT_PAISE = 1_000_000_000
 ADMIN_EMAIL = synthetic_email("admin.play-review")
 VENDOR_EMAIL = synthetic_email("vendor.play-review")
 VENDOR_NAME = "Crestline Demo Distributors"
@@ -95,6 +132,7 @@ FIRST_RUN: tuple[tuple[str, int], ...] = (
     ("pool_slot", 3),     # offered now, time agreed
     ("assigned", 2),      # the reviewer's own upcoming visits
     ("in_progress", 1),   # proof taken, "Complete the job" waiting
+    ("awaiting_part", 1),  # a spare part asked for, the job waiting on the facility
     ("closed", 4),        # history, and the payouts on the Earnings screen
 )
 #: What a later run adds: only what goes stale. The in-progress job is here too,
@@ -105,6 +143,7 @@ TOP_UP: tuple[tuple[str, int], ...] = (
     ("pool_slot", 3),
     ("assigned", 2),
     ("in_progress", 1),
+    ("awaiting_part", 1),
 )
 #: How far back the history is moved.
 HISTORY_DAYS = 20
@@ -262,10 +301,17 @@ async def _vendor(db: AsyncSession, company: Company, admin: Principal, created:
                 # photo wherever they happen to be, and with the check on it is
                 # refused and the proof flow cannot be finished.
                 locationCheckEnabled=False,
+                creditLimitPaise=DEMO_CREDIT_LIMIT_PAISE,
             ),
         )
         vendor = await db.get(Vendor, out.id)
         created.append("vendor")
+    elif vendor.credit_limit_paise < DEMO_CREDIT_LIMIT_PAISE:
+        await vendors_service.update_vendor(
+            db, admin, vendor.id, VendorUpdateRequest(creditLimitPaise=DEMO_CREDIT_LIMIT_PAISE)
+        )
+        await db.refresh(vendor)
+        created.append("credit line raised")
     user = await db.scalar(
         select(User)
         .join(Membership, Membership.user_id == User.id)
@@ -383,10 +429,131 @@ async def _technician(
         )
         existing = await db.get(TechnicianProfile, out.id)
         created.append(f"technician {TECHNICIAN_NAME}")
+    await _assert_home_freelancer(db, company, existing)
     workers = await lifecycle.load_workers(db, [existing])
     if not workers:
         raise SeedRefused(f"{TECHNICIAN_NAME} has no categories or pincodes.")
     return existing, workers[0].pincodes
+
+
+async def _assert_home_freelancer(
+    db: AsyncSession, company: Company, technician: TechnicianProfile
+) -> None:
+    """Refuse — never repair — a reviewer who is not a home-franchisee freelancer.
+
+    Checked on every run, new reviewer or existing, BEFORE any job is written:
+    a half-topped-up demo that then refuses is worse than one that stopped.
+    """
+    others = await db.scalar(
+        select(func.count(Franchisee.id)).where(
+            Franchisee.company_id == company.id,
+            Franchisee.is_home.is_(False),
+            Franchisee.deleted_at.is_(None),
+        )
+    )
+    if others:
+        raise SeedRefused(
+            f"{company.name} has {others} franchisee(s) besides its home. The review "
+            "company is a fixed demo and must keep only its home franchisee - "
+            "someone carved pincodes out of it. Remove the extra franchisee(s) "
+            "deliberately, then run this again."
+        )
+    home_id = await home_franchisee_id(db, company.id)
+    if technician.franchisee_id != home_id:
+        raise SeedRefused(
+            f"{TECHNICIAN_NAME} belongs to franchisee {technician.franchisee_id}, "
+            f"not the company's home ({home_id}). A reviewer must be a home-franchisee "
+            "freelancer; move them back (Technicians -> Move) instead of re-seeding."
+        )
+    if technician.technician_type != "freelancer":
+        raise SeedRefused(
+            f"{TECHNICIAN_NAME} is an {technician.technician_type}. A reviewer must be a "
+            "freelancer (per-job payout, Redeem) - change the type on their profile "
+            "instead of re-seeding."
+        )
+
+
+async def _ensure_base_location(
+    db: AsyncSession, admin: Principal, technician: TechnicianProfile, created: list[str]
+) -> None:
+    """A base, so Home shows no "set your base location" card to the reviewer.
+
+    The centre of the first of their pincodes that has one - a pincode base is
+    inside their franchisee by construction. Left alone once set.
+    """
+    if technician.base_latitude is not None:
+        return
+    centres = (
+        await db.execute(
+            select(TechnicianPincode.pincode, Pincode.latitude, Pincode.longitude)
+            .join(Pincode, Pincode.code == TechnicianPincode.pincode)
+            .where(
+                TechnicianPincode.technician_id == technician.id,
+                Pincode.latitude.is_not(None),
+                Pincode.longitude.is_not(None),
+            )
+            .order_by(TechnicianPincode.pincode)
+        )
+    ).all()
+    if not centres:
+        raise SeedRefused(
+            f"None of {TECHNICIAN_NAME}'s pincodes has a location - the pincode "
+            "coordinates (revision f9c2d8a3e17b) are not loaded here."
+        )
+    code, lat, lng = centres[0]
+    # Sent as a map point: the pincode branch of `core.base_location.resolve_base`
+    # is broken (it calls `.one_or_none()` on an un-awaited coroutine - found by
+    # Task 16, reported, not fixed). Use `BaseLocationIn(pincode=code)` once it is.
+    await technicians_service.set_base_location(
+        db,
+        admin,
+        technician.id,
+        BaseLocationIn(latitude=float(lat), longitude=float(lng), source="map"),
+    )
+    await db.refresh(technician)
+    created.append(f"base location {code}")
+
+
+async def _ensure_parts(
+    db: AsyncSession,
+    company: Company,
+    admin: Principal,
+    models: list[tuple[uuid.UUID, uuid.UUID]],
+    created: list[str],
+) -> None:
+    """One part on the first category, and a facility to answer requests for it.
+
+    The facility is a home operator: nobody in the staff shell works the parts
+    queue (owner ruling R4), so without one the reviewer's *Need a spare part*
+    is hidden and an *Awaiting part* job could never have been raised.
+    """
+    node_id = models[0][0]
+    listed = await db.scalar(
+        select(func.count(SparePart.id)).where(
+            SparePart.company_id == company.id,
+            SparePart.node_id == node_id,
+            SparePart.deleted_at.is_(None),
+        )
+    )
+    if not listed:
+        await parts_service.add_part(
+            db, admin, SparePartCreate(name="Power supply board"), node_id=node_id
+        )
+        created.append("spare part Power supply board")
+    home_id = await home_franchisee_id(db, company.id)
+    if not await franchisee_has_facility(db, company.id, home_id):
+        await create_facility_user(
+            db,
+            actor=admin,
+            franchisee_id=home_id,
+            body=FacilityUserCreateRequest(
+                fullName="Demo Facility Operator",
+                email=synthetic_email("facility.play-review"),
+                phone=synthetic_phone(900_000_012),
+                role="facility_operator",
+            ),
+        )
+        created.append("facility operator")
 
 
 # ── jobs ─────────────────────────────────────────────────────────────────────
@@ -459,6 +626,30 @@ async def _one(db: AsyncSession, ctx: Review, intent: str, *, index: int, rng: r
     if intent == "in_progress":
         return row
 
+    if intent == "awaiting_part":
+        # The category's own list when it has one, else the technician types a
+        # name - both paths a reviewer can take from the app.
+        listed = await db.scalar(
+            select(SparePart.id)
+            .where(
+                SparePart.company_id == company_id,
+                SparePart.node_id == row.node_id,
+                SparePart.deleted_at.is_(None),
+                SparePart.is_active.is_(True),
+            )
+            .limit(1)
+        )
+        body = (
+            PartRequestCreate(sparePartId=listed)
+            if listed
+            else PartRequestCreate(otherName="Drain pump")
+        )
+        await jobs_service.request_part(
+            db, row.id, company_id=company_id, profile=profile, body=body
+        )
+        await db.refresh(row)
+        return row
+
     await jobs_service.complete(db, row.id, company_id=company_id, profile=profile)
     await db.refresh(row)
     await feedback_service.record_feedback(
@@ -484,7 +675,7 @@ async def _clear_stale(db: AsyncSession, ctx: Review) -> int:
             select(Ticket.id).where(
                 Ticket.company_id == ctx.company.id,
                 Ticket.technician_id == ctx.technician.id,
-                Ticket.status.in_(("Assigned", "In Progress")),
+                Ticket.status.in_(("Assigned", "In Progress", "Awaiting Part")),
                 Ticket.slot_end.is_not(None),
                 Ticket.slot_end < now,
             )
@@ -552,6 +743,8 @@ async def main() -> int:
         vendor = await _vendor(db, company, admin, created)
         models = await _catalogue(db, company, admin, vendor, created)
         technician, pincodes = await _technician(db, company, admin, models, phone, created)
+        await _ensure_base_location(db, admin, technician, created)
+        await _ensure_parts(db, company, admin, models, created)
         ctx = Review(
             company=company,
             admin=admin,
@@ -617,7 +810,7 @@ async def main() -> int:
             select(func.count(Ticket.id)).where(
                 Ticket.company_id == company.id,
                 Ticket.technician_id == technician.id,
-                Ticket.status.in_(("Assigned", "In Progress")),
+                Ticket.status.in_(("Assigned", "In Progress", "Awaiting Part")),
             )
         )
 

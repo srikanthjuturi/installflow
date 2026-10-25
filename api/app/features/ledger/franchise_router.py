@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import Principal, require_feature, require_franchise_principal
+from app.core.deps import Principal, require_all, require_feature, require_franchise_principal
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -39,8 +39,12 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 #: like every `/franchise` door (Task 02's guard, Task 02's seeded key).
 CanSee = Annotated[
     Principal,
-    Depends(require_franchise_principal),
-    Depends(require_feature("franchise.pool")),
+    Depends(
+        require_all(
+            require_franchise_principal,
+            require_feature("franchise.pool"),
+        )
+    ),
 ]
 
 

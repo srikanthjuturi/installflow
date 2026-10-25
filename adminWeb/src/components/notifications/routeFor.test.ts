@@ -27,6 +27,21 @@ describe("routeFor — franchise", () => {
     );
   });
 
+  it("keeps a part request's stored portal route (Task 13, acceptance 33)", () => {
+    // Task 12 writes `/franchise/parts/requests/{id}` — already a portal route.
+    expect(routeFor("/franchise/parts/requests/9", "franchise")).toBe(
+      "/franchise/parts/requests/9"
+    );
+  });
+
+  it("maps a bare /parts/ route onto the portal desk — one way only (R4)", () => {
+    expect(routeFor("/parts/requests/9", "franchise")).toBe(
+      "/franchise/parts/requests/9"
+    );
+    // No staff reader maps INTO a parts route: ops keeps the server's route.
+    expect(routeFor("/parts/requests/9", "ops")).toBe("/parts/requests/9");
+  });
+
   it("falls back to the portal home for a route that is not the franchisee's", () => {
     // `/approvals` is the ops queue; a franchisee holds no copy of it.
     expect(routeFor("/approvals", "franchise")).toBe("/franchise");

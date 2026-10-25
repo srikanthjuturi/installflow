@@ -78,3 +78,33 @@ export const FRANCHISEE_CODES: readonly string[] = [
   FRANCHISEE_HAS_TECHNICIANS,
   FRANCHISEE_LAST_ADMIN,
 ];
+
+/* ── base location ───────────────────────────────────────────────────────── */
+/* Mirrors `api/app/core/base_location.py` (Task 10). `PINCODE_OUTSIDE_FRANCHISEE`
+   above is shared: it is the same 422 for a coverage pincode and a base one. */
+
+/** The pincode exists but has no centre on file, so a pincode base cannot be
+ *  built from it (400). Belongs on the pincode field. */
+export const PINCODE_HAS_NO_LOCATION = "PINCODE_HAS_NO_LOCATION";
+/** The point is outside India's box (400). Belongs on the coordinates. */
+export const BASE_OUTSIDE_INDIA = "BASE_OUTSIDE_INDIA";
+
+/** What the base-location dialog pins on its pincode field. */
+export const BASE_PINCODE_CODES: readonly string[] = [
+  PINCODE_OUTSIDE_FRANCHISEE,
+  PINCODE_HAS_NO_LOCATION,
+];
+/** What it pins on the latitude/longitude pair. */
+export const BASE_POINT_CODES: readonly string[] = [BASE_OUTSIDE_INDIA];
+
+/* ── moving a technician between franchisees ─────────────────────────────── */
+/* Mirrors `api/app/core/technician_transfer.py` (Task 17). `PINCODE_OUTSIDE_FRANCHISEE`
+   above is shared: the same 422 for "nothing of theirs is inside that area". */
+
+/** The technician still holds a live job (409) — finish or reassign it first. */
+export const TECHNICIAN_HAS_OPEN_JOBS = "TECHNICIAN_HAS_OPEN_JOBS";
+/** Redeemable money, or a redemption not yet settled (409). */
+export const TECHNICIAN_HAS_BALANCE = "TECHNICIAN_HAS_BALANCE";
+/** The target is not the home and has no active admin to approve UPI changes
+ *  or pay redemptions (409). */
+export const FRANCHISEE_HAS_NO_ADMIN = "FRANCHISEE_HAS_NO_ADMIN";

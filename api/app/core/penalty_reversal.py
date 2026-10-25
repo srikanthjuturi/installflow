@@ -41,18 +41,16 @@ from app.core.ledger import entry as ledger_entry
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
 from app.core.realtime import publish_job_changed, publish_ticket_changed
-from app.models.ledger import LedgerEntry
+from app.models.ledger import REVERSIBLE_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 
-#: What a reversal may name. One value today; Task 11 moves this tuple to
-#: `app/models/ledger.py` (adding "speed_penalty") and imports it from there —
-#: but every door already filters `kind IN REVERSIBLE_KINDS` through this
-#: module's name, so that move is one file then.
-REVERSIBLE_KINDS = ("penalty",)
-
+#: What a reversal may name. MOVED to `app/models.ledger` in Task 11 (one
+#: tuple, one home, beside the kinds it names) and re-imported there — the
+#: `from app.core.penalty_reversal import REVERSIBLE_KINDS` in
+#: `features/ledger/service.py` keeps working, but read it from the model.
 
 def _already_reverse() -> AppError:
     return AppError(
@@ -135,6 +133,12 @@ async def reverse(
 
     amount = penalty.amount_paise
     name = await _technician_name(db, profile)
+    # Task 11: a `speed_penalty` is reversed through the SAME door, and the
+    # trail has to say which kind came back — a speed penalty is the slow
+    # finish's charge, and "penalty" alone would read as a cancellation that
+    # never happened. (§4.6; the amounts are quoted here as Task 05 wrote them,
+    # on the one event that has always carried them.)
+    reversed_word = "speed penalty" if penalty.kind == "speed_penalty" else "penalty"
     reversal = ledger_entry(
         company_id=penalty.company_id,
         technician_id=penalty.technician_id,
@@ -159,7 +163,7 @@ async def reverse(
             kind="penalty_reversed",
             actor_kind="staff",
             actor_label=actor_label or "—",
-            note=f"₹{amount // 100:,} penalty to {name} reversed · {text}",
+            note=f"₹{amount // 100:,} {reversed_word} to {name} reversed · {text}",
             created_by=actor_user_id,
         )
     )

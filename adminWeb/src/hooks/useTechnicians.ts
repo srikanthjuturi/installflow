@@ -8,7 +8,10 @@ import {
 } from "@tanstack/react-query";
 import {
   getDistrictBreakdown,
+  getTransfers,
   listCandidateTechnicians,
+  previewTransfer,
+  transferTechnician,
 } from "@/services/technicians";
 import {
   getTechnicianOptions as getFranchiseTechnicianOptions,
@@ -23,6 +26,7 @@ import { franchiseKeys } from "./useFranchise";
 import { toNodeOption } from "@/types/franchise";
 import { PRESENCE_REFETCH_MS } from "./liveness";
 import type { ListParams } from "@/types/api";
+import type { TechnicianTransferInput } from "@/types/technician";
 
 export const technicianKeys = {
   all: ["technicians"] as const,
@@ -34,13 +38,30 @@ export const technicianKeys = {
    * shortlists, because the capacity column answers a different day for each.
    * Leaving it out would serve one from the other's cache.
    */
-  candidates: (subcategoryId: string, pincode: string, onDay?: string | null) =>
-    ["technicians", "candidates", subcategoryId, pincode, onDay ?? "today"] as const,
+  candidates: (
+    subcategoryId: string,
+    pincode: string,
+    onDay?: string | null,
+    franchiseeId?: string | null
+  ) =>
+    [
+      "technicians",
+      "candidates",
+      subcategoryId,
+      pincode,
+      onDay ?? "today",
+      franchiseeId ?? "",
+    ] as const,
   detail: (id: string) => ["technicians", "detail", id] as const,
   districts: (stateId: string) =>
     ["technicians", "districts", stateId] as const,
   /** Under the prefix, so every technician write — and the bell — refreshes it. */
   upiChange: (id: string) => ["technicians", "upi-change", id] as const,
+  /** Task 17 — the history card. Under the prefix, so a move refreshes it. */
+  transfers: (id: string) => ["technicians", "transfers", id] as const,
+  /** Task 17 — a preview of one move, keyed on exactly what it asked. */
+  transferPreview: (id: string, franchiseeId: string, pincodes: string) =>
+    ["technicians", "transfer-preview", id, franchiseeId, pincodes] as const,
 };
 
 /**
@@ -162,6 +183,21 @@ export const useDeleteTechnician = () => {
   );
 };
 
+/**
+ * Move a technician's base location (Task 13 §5.3). Through the workspace, so
+ * the staff console and the portal each reach their own door; invalidates the
+ * `technicians` prefix because the list's source chip and the profile's panel
+ * read the same record.
+ */
+export const useSetBaseLocation = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: Parameters<typeof api.technicians.setBaseLocation>[0]) =>
+      api.technicians.setBaseLocation(input),
+    "Couldn't save the base location"
+  );
+};
+
 export const useApproveUpiChange = () => {
   const { api } = useWorkspace();
   return useTechnicianMutation(
@@ -225,27 +261,36 @@ export function useSendAppLink() {
  * `slotStart` is optional and moves only the capacity column — see
  * `listCandidateTechnicians`. Pass the ticket's own slot wherever the answer
  * will be acted on, which is both assignment screens.
+ *
+ * Task 18: for a ticket HANDED to another franchisee pass `franchiseeId` and NO
+ * pincode — its pincode's owner is the franchisee that could not take it, and
+ * the receiving franchisee's technicians cover none of it, so a pincode filter
+ * would list nobody. The list is still narrowed to technicians the reader can
+ * see (an Area Manager sees her states); that is the existing rule.
  */
 export function useCandidateTechnicians(
   subcategoryId: string | undefined,
   pincode: string | undefined,
-  slotStart?: string | null
+  slotStart?: string | null,
+  franchiseeId?: string | null
 ) {
   return useQuery({
     queryKey: technicianKeys.candidates(
       subcategoryId ?? "",
       pincode ?? "",
-      slotStart
+      slotStart,
+      franchiseeId
     ),
     queryFn: () =>
       // Never runs unguarded — `enabled` below is the real check; the
       // fallbacks only satisfy the types.
       listCandidateTechnicians({
         subcategoryId: subcategoryId ?? "",
-        pincode: pincode ?? "",
+        ...(pincode ? { pincode } : {}),
+        ...(franchiseeId ? { franchiseeId } : {}),
         slotStart,
       }),
-    enabled: Boolean(subcategoryId && pincode),
+    enabled: Boolean(subcategoryId && (pincode || franchiseeId)),
   });
 }
 
@@ -430,4 +475,73 @@ export function useCoverageOptions(query: string, regionId: string) {
         ownStates,
         franchisee: (me.data?.franchisee?.name ?? null) as string | null,
       };
+}
+
+
+/* ═══════════════════════════════════════════════ Task 17 — moving a technician */
+
+/**
+ * What moving this technician to `franchiseeId` would do — a `useQuery` and not a
+ * mutation, for the reason `usePincodePreview` is one: the reply is display only,
+ * and the key (franchisee + pincodes) drops a stale answer for free.
+ *
+ * `pincodes` is the comma-joined, SORTED list the caller means to send, or "" to
+ * keep what is inside the range — the key and the request are one string, so the
+ * two cannot disagree. `reason` is deliberately not part of it: a preview never
+ * needs one, and typing must not re-ask the server.
+ *
+ * `placeholderData: keepPreviousData` keeps the last answer on screen while a
+ * changed pincode is re-checked; the dialog treats it as stale (`isFetching`)
+ * and refuses to confirm against it.
+ */
+export function useTransferPreview(
+  id: string,
+  franchiseeId: string,
+  pincodes: string,
+  { enabled = true }: { enabled?: boolean } = {}
+) {
+  return useQuery({
+    queryKey: technicianKeys.transferPreview(id, franchiseeId, pincodes),
+    queryFn: () =>
+      previewTransfer({
+        id,
+        body: {
+          franchiseeId,
+          ...(pincodes ? { pincodes: pincodes.split(",") } : {}),
+        },
+      }),
+    enabled: Boolean(id && franchiseeId) && enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+    gcTime: 60_000,
+    meta: { errorTitle: "Couldn't check that move" },
+  });
+}
+
+/**
+ * The move itself. Refreshes the whole `technicians` prefix (the profile, the
+ * roster's Franchisee column, the history) and the franchisees' technician
+ * counts. The prefix is written out because `useFranchisees` imports THIS file —
+ * importing its keys back would be a cycle.
+ */
+export function useTransferTechnician() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't move the technician" },
+    mutationFn: (input: { id: string; body: TechnicianTransferInput }) =>
+      transferTechnician(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+    },
+  });
+}
+
+/** The profile's Transfer history card — staff only, newest first. */
+export function useTechnicianTransfers(id: string, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: technicianKeys.transfers(id),
+    queryFn: () => getTransfers(id),
+    enabled: Boolean(id) && enabled,
+  });
 }

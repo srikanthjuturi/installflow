@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   ListFilter,
   Map,
+  Route,
   SlidersHorizontal,
   Tags,
   UserCog,
@@ -209,6 +210,15 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Rules Config",
         to: "/settings/rules",
         icon: SlidersHorizontal,
+        feature: "settings.view",
+      },
+      {
+        label: "Allowances",
+        to: "/settings/allowances",
+        icon: Route,
+        // Travel and speed rules for the HOME franchisee. Read with
+        // `settings.view`; editing is Admin / National Head with
+        // `settings.edit`, held by the page (and refused by the server).
         feature: "settings.view",
       },
       {

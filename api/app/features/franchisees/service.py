@@ -36,7 +36,12 @@ from app.core.carve_out import (
 from app.core.company_code import derive, unique_code
 from app.core.deps import Principal
 from app.core.errors import AppError
-from app.core.franchise import home_franchisee_id, lock_routing
+from app.core.franchise import (
+    franchisee_for_pincode,
+    home_franchisee_id,
+    lock_routing,
+    restamp_ticket,
+)
 from app.core.travel_rules import TravelRulesOut, get_travel_rules as read_travel_rules
 from app.core.franchise_logins import (
     FRANCHISEE_ADMIN,
@@ -67,12 +72,21 @@ from app.core.realtime import (
     publish_ticket_changed,
 )
 from app.core.schemas import ListParams, canonical_filter
+from app.core.speed_rules import (
+    SpeedEffectiveOut,
+    SpeedRuleIn,
+    SpeedRuleOut,
+    delete_rule,
+    effective_rule,
+    list_rules,
+    upsert_rule,
+)
 from app.core.tickets import TERMINAL_STATUSES
 from app.core.travel_rules import stamp_travel_rules
 from app.models.franchisee import Franchisee, FranchiseePincode, HOME_CODE, MAX_CODE
 from app.models.membership import Membership
 from app.models.redemption import Redemption
-from app.models.role import FRANCHISE_ROLES
+from app.models.role import FRANCHISE_ROLES, NATIONAL_HEAD, ROLE_RANKS
 from app.models.technician import (
     LIVE_INVITE_STATUSES,
     TechnicianInvite,
@@ -253,6 +267,107 @@ async def get_travel_rules(
     return await read_travel_rules(
         db, company_id=row.company_id, franchisee_id=row.id
     )
+
+
+# ── Task 11 (§4.10, W15): the speed matrix, read by staff, written by home ──
+#
+# The staff twin of `settings/franchise_router`'s `/franchise/settings/speed*`.
+# The matrix rows themselves are `core.speed_rules` (no slice import); what this
+# slice adds is the QUESTION of which franchisee a staff principal may look at,
+# which is this slice's whole job.
+
+
+def _speed_matrix_guard(principal: Principal, row: Franchisee, *, read: bool) -> None:
+    """W15's two questions, in order: is this the HOME franchisee, and if not,
+    how senior is the caller?
+
+    Reads (`franchisees.view`, Area Manager floor at the router) work for any
+    rank of NATIONAL HEAD and above on ANY franchisee — a National Head audits
+    somebody else's matrix the way they audit somebody else's pool — and 404
+    below that, never 403: a matrix this caller may not even LOOK at does not
+    exist to them (tenancy rule 0).
+
+    Writes (`settings.edit` + the National Head floor at the router) are the
+    HOME franchisee's matrix and nobody else's — an external franchisee's
+    pricing is its own admin's, the same wall the travel PUT's docstring draws —
+    so a staff principal is refused with 403 and a message that says whose
+    admins DO have the key.
+    """
+    if row.is_home:
+        return
+    # A rank the table does not know is the LEAST senior — refuse both doors.
+    rank = ROLE_RANKS.get(principal.role, 999)
+    if rank > ROLE_RANKS[NATIONAL_HEAD]:
+        if read:
+            raise _not_found()
+        raise AppError(
+            403, "NOT_HOME",
+            f"Only {row.name}'s own admins change its speed rules",
+        )
+
+
+async def list_speed_rules(
+    db: AsyncSession,
+    principal: Principal,
+    franchisee_id: uuid.UUID,
+    technician_type: str | None,
+) -> list[SpeedRuleOut]:
+    """One franchisee's matrix — the manager's side of the console Speed page."""
+    row = await _load(db, principal.company_id, franchisee_id)
+    _speed_matrix_guard(principal, row, read=True)
+    return await list_rules(
+        db, company_id=row.company_id, franchisee_id=row.id,
+        technician_type=technician_type,
+    )
+
+
+async def get_speed_rule_effective(
+    db: AsyncSession,
+    principal: Principal,
+    franchisee_id: uuid.UUID,
+    technician_type: str,
+    model_id: uuid.UUID | None,
+    node_id: uuid.UUID | None,
+) -> SpeedEffectiveOut:
+    """The preview against ONE franchisee's matrix — the stamper's own rule."""
+    row = await _load(db, principal.company_id, franchisee_id)
+    _speed_matrix_guard(principal, row, read=True)
+    return await effective_rule(
+        db, company_id=row.company_id, franchisee_id=row.id,
+        technician_type=technician_type, model_id=model_id, node_id=node_id,
+    )
+
+
+async def save_speed_rule(
+    db: AsyncSession,
+    principal: Principal,
+    franchisee_id: uuid.UUID,
+    body: SpeedRuleIn,
+) -> SpeedRuleOut:
+    """Staff-side PUT for the HOME franchisee (guard's only passing case)."""
+    row = await _load(db, principal.company_id, franchisee_id)
+    _speed_matrix_guard(principal, row, read=False)
+    out = await upsert_rule(
+        db, company_id=row.company_id, franchisee_id=row.id,
+        body=body, by_user=principal.user_id,
+    )
+    await db.commit()
+    return out
+
+
+async def destroy_speed_rule(
+    db: AsyncSession,
+    principal: Principal,
+    franchisee_id: uuid.UUID,
+    rule_id: uuid.UUID,
+) -> None:
+    """Staff-side DELETE for the HOME franchisee."""
+    row = await _load(db, principal.company_id, franchisee_id)
+    _speed_matrix_guard(principal, row, read=False)
+    await delete_rule(
+        db, company_id=row.company_id, franchisee_id=row.id, rule_id=rule_id,
+    )
+    await db.commit()
 
 
 async def _hydrate(
@@ -980,6 +1095,9 @@ async def _plan(
                     Ticket.technician_id.is_(None),
                     Ticket.status.in_(OPEN_TICKET_STATUSES),
                     Ticket.pincode.in_(all_codes),
+                    # A ticket a PERSON handed to a franchisee (Task 18) is not re-routed by an
+                    # unrelated range edit - and the preview's "re-routed" count excludes it.
+                    Ticket.routing_override.is_(False),
                 )
             )
         ).all()
@@ -1169,6 +1287,9 @@ async def _apply(
                     Ticket.deleted_at.is_(None),
                     Ticket.technician_id.is_(None),
                     Ticket.status.in_(OPEN_TICKET_STATUSES),
+                    # Task 18, H5: re-tested here, not only in `_plan`, for the guard's reason - a
+                    # hand-over between the read and this write must not be undone.
+                    Ticket.routing_override.is_(False),
                 )
                 .values(franchisee_id=target)
                 .returning(
@@ -1309,6 +1430,63 @@ async def _apply(
 # ── deactivate / activate ──────────────────────────────────────────────────
 
 
+async def _hand_back_override_tickets(
+    db: AsyncSession, principal: Principal, row: Franchisee
+) -> None:
+    """Task 18 (H5): a franchisee being switched off hands its UNASSIGNED handed-over tickets back to
+    their pincode's owner. Without this a ticket could sit at a franchisee with no way to be served.
+
+    Flag cleared, stamp = the pincode owner (read AFTER `_apply` released this franchisee's codes), one
+    `franchisee_changed` event per ticket (actor system), and a pool frame for each side. **Assigned
+    tickets keep theirs** (F6's spirit): the select is `technician_id IS NULL`. Runs under the
+    exclusive routing lock `deactivate` already holds (a session never conflicts with its own lock).
+    """
+    company_id = principal.company_id
+    stuck = list(
+        await db.scalars(
+            select(Ticket).where(
+                Ticket.company_id == company_id,
+                Ticket.franchisee_id == row.id,
+                Ticket.routing_override.is_(True),
+                Ticket.technician_id.is_(None),
+                Ticket.status.in_(OPEN_TICKET_STATUSES),
+                Ticket.deleted_at.is_(None),
+            )
+        )
+    )
+    for t in stuck:
+        owner = await franchisee_for_pincode(db, company_id, t.pincode)
+        owner_name = (await _names(db, company_id, {owner})).get(owner, "—")
+        was_flag = t.routing_override
+        await restamp_ticket(
+            db,
+            t,
+            actor_kind="system",
+            actor_label="Pincode routing",
+            by_user=principal.user_id,
+            release_override=True,
+            note=f"{row.name} was deactivated · handed ticket returned to {owner_name}",
+        )
+        # Old pool: the franchisee that was being shown it (flag as it was). New pool: the owner's.
+        await publish_pool_changed(
+            db,
+            company_id=company_id,
+            pincode=t.pincode,
+            node_path_ids=list(t.node_path_ids or []),
+            franchisee_id=row.id,
+            routing_override=was_flag,
+        )
+        await publish_pool_changed(
+            db,
+            company_id=company_id,
+            pincode=t.pincode,
+            node_path_ids=list(t.node_path_ids or []),
+            franchisee_id=t.franchisee_id,
+            routing_override=False,
+        )
+        await publish_ticket_changed(db, t)
+
+
 async def deactivate(db: AsyncSession, principal: Principal, franchisee_id: uuid.UUID) -> FranchiseeOut:
     company_id = principal.company_id
     row = await _load(db, company_id, franchisee_id)
@@ -1403,6 +1581,7 @@ async def deactivate(db: AsyncSession, principal: Principal, franchisee_id: uuid
     plan.stored = frozenset()
     row.updated_by = principal.user_id
     await _apply(db, principal, plan, this=row.id, home_id=home_id)
+    await _hand_back_override_tickets(db, principal, row)
 
     row.is_active = False
     row.updated_by = principal.user_id

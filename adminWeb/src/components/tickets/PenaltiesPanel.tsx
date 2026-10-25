@@ -87,6 +87,11 @@ export function PenaltiesPanel({
                       {p.technicianName}
                     </div>
                     <div className="text-xs text-ink-3">
+                      {/* Task 11 — a speed penalty is reversed exactly like a
+                          cancellation penalty, so it sits in this list; the
+                          prefix is what tells the two apart. Absent `kind`
+                          (a server older than Task 11) reads as `penalty`. */}
+                      {p.kind === "speed_penalty" ? "Speed penalty · " : ""}
                       {p.reason} · {formatDateTime(p.chargedAt)}
                     </div>
                   </div>

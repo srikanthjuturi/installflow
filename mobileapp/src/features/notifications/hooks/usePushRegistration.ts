@@ -3,10 +3,11 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { t } from 'i18next';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 
+import { pushRoute } from '@/features/notifications/pushRoute';
 import { authedRequest } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useLanguage } from '@/store/language.store';
@@ -246,36 +247,10 @@ export function usePushRegistration(): void {
     // app is opened by typing a URL.
     if (Platform.OS === 'web') return;
 
+    // The route decision is `pushRoute` (pure, tested); this only navigates.
     const open = (data: Record<string, unknown> | undefined) => {
-      // A redemption names no ticket, so it is routed before the ticket test
-      // below would drop it. The screen fetches the rest — including the
-      // payer's screenshot, which never travels in a push.
-      if (data?.type === 'redemption') {
-        const redemptionId = data.redemptionId;
-        if (typeof redemptionId === 'string') router.push(`/redeem/${redemptionId}`);
-        return;
-      }
-      if (data?.type === 'upi_change') {
-        router.push('/payout-account');
-        return;
-      }
-
-      // Routing only — the frame carries no customer details, so the screen
-      // this lands on fetches the offer through the authenticated API.
-      const id = data?.ticketId;
-      if (typeof id !== 'string') return;
-
-      // `pool` is an OFFER — the job is not theirs yet, so it opens masked and
-      // the accept sheet is the next step. `job` is one they already hold,
-      // either because a manager assigned it after it escalated or because
-      // their slot is about to start, and it opens unlocked.
-      //
-      // Sending both to `/pool/:id` would have been worse than doing nothing:
-      // an assigned job is not in the pool, so that screen 404s on a job the
-      // technician is due to attend. Until now `job` was simply ignored, which
-      // is why the slot reminder has been opening the app on Home.
-      if (data?.type === 'pool') router.push(`/pool/${id}`);
-      else if (data?.type === 'job') router.push(`/job/${id}`);
+      const route = pushRoute(data);
+      if (route) router.push(route as Href);
     };
 
     // A tap that COLD-STARTED the app is not delivered to the listener below —

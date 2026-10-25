@@ -1,6 +1,9 @@
 import type { ServiceType } from "./product";
+import type { TicketSpeed, TicketTravel } from "./allowances";
+import type { PartRequest } from "./parts";
 
-/** Ticket status. Ten values — the prototype's nine plus Awaiting Customer.
+/** Ticket status. Eleven values — the prototype's nine plus Awaiting Customer
+ *  and (Task 12) Awaiting Part.
  *
  *  Two are worth spelling out, because the names do not carry their meaning:
  *
@@ -12,6 +15,12 @@ import type { ServiceType } from "./product";
  *    New           the slot is locked and the ticket is in the pool. Eligible
  *                  technicians can see it; none has accepted.
  *
+ *  Awaiting Part  the technician started the job and asked for a spare part
+ *                  that is not yet issued. NON-terminal; `In Progress` again
+ *                  once no request is waiting. A manager can still reschedule
+ *                  it (`isReschedulable`) but it is never "waiting on the
+ *                  customer" (`isTimeChoosable`).
+ *
  *  There is no state between New and Assigned — Assigned already means somebody
  *  took it.
  */
@@ -20,6 +29,7 @@ export const TICKET_STATUSES = [
   "Slot Pending",
   "Assigned",
   "In Progress",
+  "Awaiting Part",
   "Awaiting Customer",
   "AI Review",
   "Escalated",
@@ -72,6 +82,77 @@ export const isTimeChoosable = (ticket: {
 }): boolean =>
   TIME_CHOOSABLE_STATUSES.includes(ticket.status) &&
   !(ticket.status === "Escalated" && ticket.technicianId !== null);
+
+/**
+ * Whether a manager's "Change the time" is still on offer. Mirrors the API's
+ * reschedulable set: everything `isTimeChoosable` says, PLUS `Awaiting Part`
+ * (Task 12 D8 — a revisit is booked with the existing reschedule).
+ *
+ * Never fold `Awaiting Part` into `TIME_CHOOSABLE_STATUSES`: that set mirrors
+ * `core.slots.CHOOSABLE_STATUSES`, which Task 12 leaves alone, and the slot
+ * strip and the technician panel would start telling a manager the customer
+ * is picking a time on a job that is half finished.
+ */
+export const isReschedulable = (ticket: {
+  status: TicketStatus;
+  technicianId: string | null;
+}): boolean => isTimeChoosable(ticket) || ticket.status === "Awaiting Part";
+
+/**
+ * Task 18 (H3): the statuses a ticket can be handed to another franchisee FROM
+ * — `HANDOVER_STATUSES` in `api/app/core/franchise_handover.py` — provided
+ * nobody holds it. Presentation only: the server decides.
+ */
+export const HANDOVER_TICKET_STATUSES: readonly TicketStatus[] = [
+  "New",
+  "Slot Pending",
+  "Escalated",
+];
+
+/** One franchisee in the hand-over picker, with the numbers that make it a choice. */
+export interface FranchiseeOption {
+  id: string;
+  name: string;
+  code: string;
+  isHome: boolean;
+  kind: "internal" | "external";
+  /** The ticket's present franchisee: shown, never selectable. */
+  isCurrent: boolean;
+  ownsPincode: boolean;
+  /** Active, certified for the job, with room on the day (and covering the
+   *  pincode, for its own owner). */
+  eligibleTechnicians: number;
+  /** The subset of `eligibleTechnicians` accepting work now. */
+  onlineTechnicians: number;
+}
+
+export type HandOverBlocker = "TICKET_ASSIGNED" | "TICKET_NOT_ASSIGNABLE";
+
+/** `GET /tickets/:id/franchisee-options`. */
+export interface FranchiseeOptions {
+  ticketId: string;
+  code: string;
+  pincode: string;
+  currentFranchiseeId: string;
+  pincodeOwnerId: string;
+  routingOverride: boolean;
+  canHandOver: boolean;
+  blocker: HandOverBlocker | null;
+  /** Can the pool still offer this ticket now (an escalated ticket whose window
+   *  has closed cannot be put back). */
+  slotOffered: boolean;
+  /** Empty when `canHandOver` is false. */
+  options: FranchiseeOption[];
+}
+
+/** `POST /tickets/:id/franchisee`. */
+export interface HandToFranchiseeResult {
+  ticket: TicketDetail;
+  /** Phones the push reached. */
+  notified: number;
+  /** An escalated ticket left the queue for the pool. */
+  backInPool: boolean;
+}
 
 /**
  * SLA state. `done` means the window closed with the job complete — it is a
@@ -191,6 +272,13 @@ export interface Ticket {
    */
   franchiseeId: string | null;
   franchiseeName: string | null;
+  /**
+   * Task 18: a person, not the pincode, chose `franchiseeId` — the ticket was
+   * handed to another franchisee, and the pincode half of eligibility is waived
+   * for it. Null for a vendor (with the franchisee). Optional so a payload from
+   * before the field existed reads as "not handed over".
+   */
+  routingOverride?: boolean | null;
   technicianType: "employee" | "freelancer" | null;
 
   /**
@@ -309,7 +397,19 @@ export interface TimelineEvent {
     | "no_show"
     | "force_closed"
     | "rescheduled"
-    | "penalty_reversed";
+    | "penalty_reversed"
+    // Task 11 — the speed allowance was measured when the customer confirmed.
+    | "speed_settled"
+    // Task 12 — the spare-part trail. Titles are the server's (`part_rejected`
+    // reads *Approved spare part cancelled* when it had been approved).
+    | "part_requested"
+    | "part_approved"
+    | "part_rejected"
+    | "part_issued"
+    | "part_returned"
+    // Task 03/18 — the ticket moved to another franchisee (carve-out, release
+    // re-stamp, or a manager's hand-over). Title is the server's.
+    | "franchisee_changed";
   title: string;
   /**
    * WHO caused it, as a value rather than as wording.
@@ -352,6 +452,24 @@ export interface TicketDetail extends Ticket {
    * Null when there are no penalties.
    */
   penaltyReviewer: PenaltyReviewer | null;
+  /**
+   * The travel allowance frozen at accept (Task 10 §4.4), or null — nobody
+   * holds the job, it was accepted before Task 10, or the server withholds it
+   * (a vendor, or facility staff). Visibility is the SERVER'S: never gate the
+   * panel on a surface here (company staff and the franchise admin get it).
+   */
+  travel: TicketTravel | null;
+  /**
+   * The speed allowance for this job (Task 11 §4.11), null when no rule was
+   * frozen at accept — and for a vendor or facility staff.
+   */
+  speed: TicketSpeed | null;
+  /**
+   * This ticket's spare-part requests, oldest first (Task 12 §4.7). `[]` for a
+   * vendor — the way `penalties` is withheld — and a franchise principal sees
+   * only its own franchisee's. The return photo's link is signed per read.
+   */
+  partRequests: PartRequest[];
 }
 
 /**
@@ -362,6 +480,11 @@ export interface TicketDetail extends Ticket {
  * A reversal is always the full amount.
  */
 export interface TicketPenalty {
+  /**
+   * Task 11 §4.6 — `speed_penalty` is a penalty too: same Reverse button, same
+   * endpoint. Absent on a server older than Task 11, which reads as `penalty`.
+   */
+  kind?: "penalty" | "speed_penalty";
   /** The ledger entry's id — what `reversePenalty` is called with. */
   id: string;
   technicianName: string;

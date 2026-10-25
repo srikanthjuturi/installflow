@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.base_location import BaseLocationIn
 from app.core.database import get_db
-from app.core.deps import Principal, require_feature, require_franchise_principal
+from app.core.deps import Principal, require_all, require_feature, require_franchise_principal
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -61,16 +61,24 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 #: says whether the company has opened it.
 CanTech = Annotated[
     Principal,
-    Depends(require_franchise_principal),
-    Depends(require_feature("franchise.technicians")),
+    Depends(
+        require_all(
+            require_franchise_principal,
+            require_feature("franchise.technicians"),
+        )
+    ),
 ]
 #: `franchise.payouts` — where somebody's money lands, and who decides when they
 #: move it. A different key from the roster, because adding a technician and
 #: redirecting their pay are different decisions.
 CanPay = Annotated[
     Principal,
-    Depends(require_franchise_principal),
-    Depends(require_feature("franchise.payouts")),
+    Depends(
+        require_all(
+            require_franchise_principal,
+            require_feature("franchise.payouts"),
+        )
+    ),
 ]
 
 

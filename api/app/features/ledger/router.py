@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import (
     Principal,
+    require_all,
     require_any_feature,
     require_feature,
     require_min_rank,
@@ -72,13 +73,21 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 #: these are company money screens, and the families have their own doors.
 CanSeeBalance = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_any_feature("earnings.view", "jobs.assign")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_any_feature("earnings.view", "jobs.assign"),
+        )
+    ),
 ]
 CanView = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("earnings.view")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("earnings.view"),
+        )
+    ),
 ]
 #: The statement door (Task 06 §4.9) carries the entries' grant PLUS a rank
 #: floor: a Regional/Area Manager cannot read payroll documents for anybody.
@@ -87,9 +96,13 @@ CanView = Annotated[
 #: one is for the people who already see every franchisee's figures.
 CanSeeStatements = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("earnings.view")),
-    Depends(require_min_rank(NATIONAL_HEAD)),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("earnings.view"),
+            require_min_rank(NATIONAL_HEAD),
+        )
+    ),
 ]
 
 
@@ -149,8 +162,10 @@ async def list_entries(
 ) -> PaginatedEnvelope[LedgerEntryOut]:
     """One page of movements, newest first.
 
-    `kind` filters to `penalty`, `bonus` or `reversal`, case-insensitively — the
-    console labels them "Penalty", "Bonus" and "Penalty reversed". An unrecognised value matches no rows
+    `kind` filters to `penalty`, `bonus`, `reversal`, `speed_reward` or
+    `speed_penalty` (Task 11), case-insensitively — the console labels them
+    "Penalty", "Bonus", "Penalty reversed", "Speed reward" and "Speed penalty".
+    An unrecognised value matches no rows
     and yields an empty page rather than a 422, which is the lesson from the
     vendor list: a stale bookmark carrying an old filter should show nothing,
     not break the screen.

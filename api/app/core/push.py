@@ -287,6 +287,7 @@ async def announce_pool_job(
     city: str,
     node_path_ids: list[uuid.UUID],
     franchisee_id: uuid.UUID,
+    routing_override: bool,
     payout_paise: int | None = None,
     slot_start: datetime.datetime | None = None,
 ) -> int:
@@ -305,6 +306,10 @@ async def announce_pool_job(
     BELONGS to, and therefore whose phones this rings. Required on purpose, like
     `technicians_covering`'s: a caller that forgets it would reach for a push
     that silently went company-wide.
+
+    `routing_override` is the ticket's flag (Task 18), required like `franchisee_id`: a
+    ticket a person handed to this franchisee waives the pincode test, so the audience is
+    the franchisee's certified, online technicians wherever they work.
 
     Audience is `technicians_covering`, which is `pool_query` read backwards: it
     excludes anyone offline, suspended, or already full for that day.
@@ -330,6 +335,7 @@ async def announce_pool_job(
         db,
         company_id=company_id,
         franchisee_id=franchisee_id,
+        routing_override=routing_override,
         pincode=pincode,
         node_path_ids=node_path_ids,
         slot_start=slot_start,

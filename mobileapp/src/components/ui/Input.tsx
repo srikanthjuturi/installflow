@@ -26,6 +26,11 @@ export interface InputProps {
   error?: string;
   editable?: boolean;
   autoFocus?: boolean;
+  /**
+   * A taller, top-aligned box that wraps — for a free-text note. Single-line
+   * (52px) stays the default.
+   */
+  multiline?: boolean;
 }
 
 export function Input({
@@ -40,6 +45,7 @@ export function Input({
   error,
   editable = true,
   autoFocus = false,
+  multiline = false,
 }: InputProps) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
@@ -68,8 +74,8 @@ export function Input({
       <View
         style={{
           flexDirection: 'row',
-          alignItems: 'center',
-          height: 52,
+          alignItems: multiline ? 'flex-start' : 'center',
+          ...(multiline ? { minHeight: 92, paddingVertical: 12 } : { height: 52 }),
           borderRadius: radius.md,
           borderWidth: 1,
           borderColor,
@@ -105,6 +111,8 @@ export function Input({
           maxLength={maxLength}
           editable={editable}
           autoFocus={autoFocus}
+          multiline={multiline}
+          textAlignVertical={multiline ? 'top' : undefined}
           onFocus={() => {
             setFocused(true);
             reveal();

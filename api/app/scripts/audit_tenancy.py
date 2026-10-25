@@ -227,6 +227,30 @@ TENANT_LINKS = [
     # put one tenant's money in a second tenant's pool.
     ("ledger_entries", "franchisee_id", "franchisees"),
     ("redemptions", "franchisee_id", "franchisees"),
+    # Task 11: the speed matrix. A speed rule naming another company's
+    # franchisee, category or product would let one tenant's matrix price
+    # another's jobs — the money it stamps is frozen onto the accept, so the
+    # leak would be recorded, not just mis-routed.
+    ("franchisee_speed_rules", "franchisee_id", "franchisees"),
+    ("franchisee_speed_rules", "node_id", "product_nodes"),
+    ("franchisee_speed_rules", "model_id", "product_models"),
+    # Task 12: spare parts. A catalogue row naming another company's category
+    # or product would put one tenant's parts list under another's jobs.
+    ("spare_parts", "node_id", "product_nodes"),
+    ("spare_parts", "model_id", "product_models"),
+    # A part request is the only record that a part left a store. Every parent
+    # it names must be this company's: the franchisee whose desk it lands on,
+    # the ticket it is about, the technician who asked, the catalogue row.
+    ("spare_part_requests", "franchisee_id", "franchisees"),
+    ("spare_part_requests", "ticket_id", "tickets"),
+    ("spare_part_requests", "technician_id", "technician_profiles"),
+    ("spare_part_requests", "spare_part_id", "spare_parts"),
+    # Task 17: a transfer is the only record of why a technician is where they
+    # are. A history line naming another company's technician or franchisee would
+    # let one tenant read - or forge - how another moves its people.
+    ("technician_transfers", "technician_id", "technician_profiles"),
+    ("technician_transfers", "from_franchisee_id", "franchisees"),
+    ("technician_transfers", "to_franchisee_id", "franchisees"),
 ]
 
 

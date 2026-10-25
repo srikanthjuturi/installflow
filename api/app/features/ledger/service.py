@@ -28,12 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.ledger import pool
-from app.core.penalty_reversal import REVERSIBLE_KINDS, reverse
+from app.core.penalty_reversal import reverse
 from app.core.schemas import ListParams
 from app.db.repository import paginate
 from app.features.ledger.schemas import LedgerEntryOut, LedgerPoolOut
 from app.models.franchisee import Franchisee
-from app.models.ledger import POOL_KINDS, LedgerEntry
+from app.models.ledger import POOL_KINDS, REVERSIBLE_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.technician import TechnicianProfile
 from app.models.ticket import Ticket
@@ -141,10 +141,12 @@ async def list_entries(
             .where(TechnicianProfile.id.in_({e.technician_id for e in rows}))
         )
     }
-    # Which penalties on this page have been given back. Asked of the reversal
-    # rows, across every page — the reversal is usually newer than its penalty
-    # and so sits on an EARLIER page than the charge it tags.
-    penalty_ids = {e.id for e in rows if e.kind == "penalty"}
+    # Which chargeable rows on this page have been given back. Asked of the
+    # reversal rows, across every page — the reversal is usually newer than its
+    # penalty and so sits on an EARLIER page than the charge it tags. Task 11:
+    # the two capped kinds both reverse, so a speed penalty's `reversed` tag
+    # comes from the same query (§4.6).
+    penalty_ids = {e.id for e in rows if e.kind in REVERSIBLE_KINDS}
     reversed_ids = (
         set(
             await db.scalars(

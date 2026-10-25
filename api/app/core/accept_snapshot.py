@@ -23,8 +23,11 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.speed import SpeedTerms
+from app.core.speed_rules import resolve_terms
 from app.core.travel import Point, compute_travel
 from app.core.travel_rules import load_travel_rule
+from app.models.franchisee_speed_rule import SPEED_HOURS, SPEED_PAISE
 from app.models.technician import TECHNICIAN_TYPES
 from app.models.territory import Pincode
 
@@ -52,8 +55,11 @@ def base_point(technician) -> Point | None:
 
 
 def assemble(*, now: datetime.datetime, technician_id: uuid.UUID,
-             franchisee_id: uuid.UUID, technician_type: str, travel: dict) -> dict:
-    """The whole snapshot, index §3.5 keys; `speed` is None until Task 11.
+             franchisee_id: uuid.UUID, technician_type: str, travel: dict,
+             speed: dict | None) -> dict:
+    """The whole snapshot, index §3.5 keys; `speed` is the terms frozen here
+    (S5, Task 11) or None when no rule applied — W1 keeps an empty matrix
+    stamping None, exactly as Task 10 wrote until Task 11 filled this in.
 
     `acceptedAt` is UTC ISO-8601 with a trailing 'Z' — the shape the console's
     formatter and the app's both expect a wire timestamp to carry.
@@ -65,7 +71,7 @@ def assemble(*, now: datetime.datetime, technician_id: uuid.UUID,
         "franchiseeId": str(franchisee_id),
         "technicianType": technician_type,
         "travel": travel,
-        "speed": None,
+        "speed": speed,
     }
 
 
@@ -137,16 +143,71 @@ def travel_of(snapshot: dict | None) -> TravelView | None:
     )
 
 
-def speed_of(snapshot: dict | None) -> dict | None:
-    """Placeholder: the `speed` dict or None, never raises. Task 11 (already
-    written) replaces it with a typed `SpeedTerms | None` reader and fills
-    `snapshot["speed"]` inside `build_accept_snapshot`. Task 10 keeps the
-    `speed` key present and None, exactly as index §3.5, so that extension is
-    a one-function change."""
-    if not isinstance(snapshot, dict):
+def speed_of(snapshot: dict | None) -> SpeedTerms | None:
+    """The speed terms frozen at accept, or None — never raises.
+
+    The `snapshot_value` rule: None for a NULL snapshot, a non-dict `speed`,
+    a missing key, or ANY key missing or ill-typed — a hand-patched snapshot
+    must not 500 the read answering a question the writer never got to. The
+    vocabulary of `matchedOn` is closed (an unknown literal is unrecognised
+    data, never a resolution); the money and hours are typed strictly with
+    the same non-negative-int reader `travel_of` uses, so a bool or a string
+    reads as "no terms at all" rather than as 0.
+
+    `speed_settle.settle_speed` reads this, as do the ticket detail's `speed`
+    block and `JobOut.speed` — nobody reads `accept_snapshot["speed"][…]`
+    directly (Task 11 §8's trap).
+    """
+    speed = snapshot.get("speed") if isinstance(snapshot, dict) else None
+    if not isinstance(speed, dict):
         return None
-    speed = snapshot.get("speed")
-    return speed if isinstance(speed, dict) else None
+
+    matched_on = speed.get("matchedOn")
+    if matched_on not in ("model", "node"):
+        return None
+
+    def _ids(key: str) -> uuid.UUID | None:
+        try:
+            return uuid.UUID(speed.get(key))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    matched_id = _ids("matchedId")
+    rule_id = _ids("ruleId")   # None when absent, null or unparseable
+    hours = [speed.get(k) for k in
+             ("rewardWithinHours", "penaltyAfterHours")]
+    money = [speed.get(k) for k in ("rewardPaise", "penaltyPaise")]
+    if not _positive_hours(*hours) or not _non_negative(*money) or matched_id is None:
+        return None
+    return SpeedTerms(
+        rule_id=rule_id,
+        matched_on=matched_on,
+        matched_id=matched_id,
+        reward_within_hours=hours[0],
+        penalty_after_hours=hours[1],
+        reward_paise=money[0],
+        penalty_paise=money[1],
+    )
+
+
+def _positive_hours(*values) -> bool:
+    """1–720, ints (bools are NOT ints), no bools — the matrix's own W3."""
+    return all(
+        isinstance(v, int)
+        and not isinstance(v, bool)
+        and SPEED_HOURS[0] <= v <= SPEED_HOURS[1]
+        for v in values
+    )
+
+
+def _non_negative(*values) -> bool:
+    """0–1,000,000, ints (bools are NOT ints) — the matrix's own W3."""
+    return all(
+        isinstance(v, int)
+        and not isinstance(v, bool)
+        and SPEED_PAISE[0] <= v <= SPEED_PAISE[1]
+        for v in values
+    )
 
 
 def technician_type_of(snapshot: dict | None, fallback: str) -> str:
@@ -204,11 +265,24 @@ async def build_accept_snapshot(
     db: AsyncSession, ticket, technician, now
 ) -> dict:
     """The snapshot `jobs.service.accept` and `tickets.service.assign_technician`
-    write inside their guarded UPDATE (W3). Flushes nothing — a pure build."""
+    write inside their guarded UPDATE (W3). Flushes nothing — a pure build
+    (the resolutions inside it only read)."""
     rule = await load_travel_rule(
         db, company_id=ticket.company_id,
         franchisee_id=technician.franchisee_id,        # Task 01 column
         technician_type=technician.technician_type,    # Task 01 column
+    )
+    # Task 11 (S5): the speed terms freeze HERE, at accept, from the payer's
+    # own matrix — a rule edited later restates nothing already stamped, and
+    # the closure is judged on these four figures for as long as the job is
+    # this technician's. No rows exist (W1, an empty matrix) → None, and
+    # nothing at closure is ever measured. Resolution keys on the technician's
+    # franchisee and type as frozen per T1.
+    terms = await resolve_terms(
+        db, company_id=ticket.company_id,
+        franchisee_id=technician.franchisee_id,
+        technician_type=technician.technician_type,
+        model_id=ticket.model_id, node_path_ids=ticket.node_path_ids,
     )
     pin_lat = pin_lng = None
     if ticket.latitude is None:                         # only then is the pincode needed
@@ -220,9 +294,22 @@ async def build_accept_snapshot(
         customer_point(ticket.latitude, ticket.longitude, _f(pin_lat), _f(pin_lng)),
         rule,
     )
-    return assemble(now=now, technician_id=technician.id,
-                    franchisee_id=technician.franchisee_id,
-                    technician_type=technician.technician_type, travel=travel)
+    return assemble(
+        now=now, technician_id=technician.id,
+        franchisee_id=technician.franchisee_id,
+        technician_type=technician.technician_type,
+        travel=travel,
+        speed=(
+            None if terms is None else {
+                "ruleId": str(terms.rule_id), "matchedOn": terms.matched_on,
+                "matchedId": str(terms.matched_id),
+                "rewardWithinHours": terms.reward_within_hours,
+                "penaltyAfterHours": terms.penalty_after_hours,
+                "rewardPaise": terms.reward_paise,
+                "penaltyPaise": terms.penalty_paise,
+            }
+        ),
+    )
 
 
 __all__ = [

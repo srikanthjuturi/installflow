@@ -320,6 +320,52 @@ def require_min_rank(role_key: str):
     return _guard
 
 
+def require_all(*guards):
+    """ONE dependency that runs every guard, in order, and returns the Principal.
+
+    The cure for the stacked-`Depends` trap (api/AGENTS.md, hard rule 2):
+    `Annotated[Principal, Depends(a), Depends(b)]` keeps only the LAST marker, so
+    `a` never runs. Here each guard is its own single-marker PARAMETER of one
+    function, which FastAPI does resolve — in parameter order, stopping at the
+    first refusal. `Annotated[Principal, Depends(require_all(a, b))]` is then a
+    single marker that really means "a, then b".
+
+    Order the guards wall first (`require_staff_principal` /
+    `require_franchise_principal`), then the feature, then the rank floor, so an
+    unauthorised caller meets a 403 by principal kind before anything else.
+    """
+    if not 2 <= len(guards) <= 4:
+        raise ValueError("require_all takes two to four guards")
+    first, second, *rest = guards
+
+    def _principal(guard):
+        return Annotated[Principal, Depends(guard)]
+
+    if not rest:
+
+        def _all(a: _principal(first), b: _principal(second)) -> Principal:
+            return b
+
+    elif len(rest) == 1:
+
+        def _all(
+            a: _principal(first), b: _principal(second), c: _principal(rest[0])
+        ) -> Principal:
+            return c
+
+    else:
+
+        def _all(
+            a: _principal(first),
+            b: _principal(second),
+            c: _principal(rest[0]),
+            d: _principal(rest[1]),
+        ) -> Principal:
+            return d
+
+    return _all
+
+
 def require_vendor_principal(principal: CompanyPrincipal) -> Principal:
     """The caller acts FOR a vendor. Not a feature, and not a rank floor.
 

@@ -81,3 +81,46 @@ def test_a_corrupt_franchisee_id_discards_the_whole_frame() -> None:
         "franchisee_id": "not-a-uuid",
     }
     assert TicketChanged.from_payload(raw) is None
+
+# ── Task 18: the routing override on a pool frame (cases 32–34) ──────────────
+
+
+def test_pool_changed_routing_override_round_trips() -> None:
+    frame = PoolChanged(
+        company_id=_COMPANY,
+        pincode="500032",
+        node_path_ids=(_TW,),
+        franchisee_id=_FRANCHISEE,
+        routing_override=True,
+    )
+    parsed = PoolChanged.from_payload(json.loads(frame.as_payload()))
+    assert parsed == frame
+    assert parsed is not None and parsed.routing_override is True
+
+
+def test_pool_changed_without_the_key_parses_as_false() -> None:
+    # Today's shape (a worker that predates Task 18): no "routing_override" key at all.
+    raw = {
+        "kind": "pool.changed",
+        "company_id": str(_COMPANY),
+        "pincode": "500032",
+        "node_path_ids": [str(_TW)],
+        "franchisee_id": str(_FRANCHISEE),
+    }
+    parsed = PoolChanged.from_payload(raw)
+    assert parsed is not None
+    assert parsed.routing_override is False
+
+
+def test_a_non_bool_routing_override_is_false_not_a_crash() -> None:
+    raw = {
+        "kind": "pool.changed",
+        "company_id": str(_COMPANY),
+        "pincode": "500032",
+        "node_path_ids": [str(_TW)],
+        "franchisee_id": str(_FRANCHISEE),
+        "routing_override": "yes",
+    }
+    parsed = PoolChanged.from_payload(raw)
+    assert parsed is not None
+    assert parsed.routing_override is False

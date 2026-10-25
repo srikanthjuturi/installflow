@@ -1261,13 +1261,21 @@ async def set_payout_account(
 # ── the technician's own UPI ID: add once with a code, then ask to change ─────
 
 
-async def _own_profile(session: AsyncSession, principal: Principal) -> TechnicianProfile:
-    """The caller's profile, from the bearer token — never an id in the request."""
+async def _own_profile(
+    session: AsyncSession, principal: Principal, *, lock: bool = False
+) -> TechnicianProfile:
+    """The caller's profile, from the bearer token — never an id in the request.
+
+    `lock=True` takes the profile row FOR UPDATE (only the profile's — `of=`
+    keeps the membership join from being locked too), for the one caller whose
+    answer depends on a fact a concurrent transaction may change: see
+    `request_upi_change`.
+    """
     if principal.role != TECHNICIAN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not a technician account"
         )
-    profile = await session.scalar(
+    stmt = (
         select(TechnicianProfile)
         .join(Membership, Membership.id == TechnicianProfile.membership_id)
         .where(
@@ -1278,6 +1286,9 @@ async def _own_profile(session: AsyncSession, principal: Principal) -> Technicia
         # The read-back after a write: sessions keep objects across a commit.
         .execution_options(populate_existing=True)
     )
+    if lock:
+        stmt = stmt.with_for_update(of=TechnicianProfile)
+    profile = await session.scalar(stmt)
     if profile is None:
         raise _not_found("Technician profile")
     return profile
@@ -1445,7 +1456,12 @@ async def request_upi_change(
     holds it and the `franchisee_id` that keeps a franchisee-addressed row to
     that franchisee.
     """
-    profile = await _own_profile(session, principal)
+    # FOR UPDATE (Task 17, §4.9 trap 4): the reviewer is resolved from the
+    # profile's franchisee below, and a transfer re-addresses a pending change
+    # under the same lock. Without it a request computed against the OLD
+    # franchisee could commit just after the move and be addressed to admins
+    # who now get a 404 for this technician.
+    profile = await _own_profile(session, principal, lock=True)
     if not profile.upi_id:
         raise AppError(
             status.HTTP_409_CONFLICT,

@@ -8,6 +8,7 @@ import {
 import { Notice } from "@/components/shared/Notice";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { LedgerTable } from "@/components/ledger/LedgerTable";
+import { LEDGER_KINDS } from "@/components/ledger/ledgerKinds";
 import { PoolSummary } from "@/components/ledger/PoolSummary";
 import { ReversePenaltyDialog } from "@/components/tickets/ReversePenaltyDialog";
 import { toTicketPenalty } from "@/components/franchise/ledgerAdapters";
@@ -25,7 +26,7 @@ import { moneyPaise } from "@/utils/money";
 
 /** The query-string key for the Type filter — the control's own name. */
 const TYPE_PARAM = "type";
-const KINDS: readonly LedgerEntry["kind"][] = ["penalty", "bonus", "reversal"];
+const KINDS: readonly LedgerEntry["kind"][] = LEDGER_KINDS;
 
 export default function LedgerPage() {
   // The Type filter and the §5.10 Franchisee selector both live in the query
@@ -59,7 +60,7 @@ export default function LedgerPage() {
   // server's own default, sent by nobody.
   const pool = useLedgerPool(franchiseeParam);
 
-  // Validated, not trusted: anything but the three kinds means no filter. Sent
+  // Validated, not trusted: anything but the five kinds means no filter. Sent
   // as it stands, the API would match nothing and the screen would say nothing
   // matches under a dropdown naming a type that does not exist.
   const typeParam = searchParams.get(TYPE_PARAM);

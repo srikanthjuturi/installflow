@@ -106,6 +106,10 @@ class PoolChanged:
     #: or a frame for "anyone" — matched by everyone, because this socket rings
     #: too often rather than too rarely (see `franchise_routing.pool_frame_matches`).
     franchisee_id: uuid.UUID | None = None
+    #: The ticket was HANDED to this franchisee by a person (Task 18), so the pool
+    #: socket waives the pincode test for it. Absent -> False (today's shape); a
+    #: non-bool is treated as False, never a crash.
+    routing_override: bool = False
 
     def as_payload(self) -> str:
         return json.dumps(
@@ -117,6 +121,7 @@ class PoolChanged:
                 "franchisee_id": str(self.franchisee_id)
                 if self.franchisee_id
                 else None,
+                "routing_override": self.routing_override,
             },
             separators=(",", ":"),
         )
@@ -135,6 +140,7 @@ class PoolChanged:
                 pincode=str(raw["pincode"]),
                 node_path_ids=tuple(uuid.UUID(str(n)) for n in path),
                 franchisee_id=uuid.UUID(str(franchisee)) if franchisee else None,
+                routing_override=raw.get("routing_override") is True,
             )
         except (KeyError, ValueError, TypeError):
             # A malformed payload is a bug on the publishing side, not something
@@ -505,6 +511,7 @@ async def publish_pool_changed(
     pincode: str,
     node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
     franchisee_id: uuid.UUID | None = None,
+    routing_override: bool = False,
 ) -> None:
     """Ring the doorbell **when this transaction commits**.
 
@@ -518,6 +525,10 @@ async def publish_pool_changed(
     callers make names the ticket's stamped franchisee, so the pool socket can
     stop ringing for the technicians who are no longer offered the job.
 
+    `routing_override` (Task 18) is the ticket's flag: True makes the socket waive the
+    pincode test for it. A caller announcing a ticket LEAVING a pool passes the value as
+    it was in THAT pool, before any move.
+
     `pg_notify(...)` rather than `NOTIFY channel, 'payload'` because the payload
     is then a bind parameter — a literal would be string-built SQL wrapped
     around customer-adjacent data, and the first pincode with an apostrophe in
@@ -528,6 +539,7 @@ async def publish_pool_changed(
         pincode=pincode,
         node_path_ids=tuple(node_path_ids),
         franchisee_id=franchisee_id,
+        routing_override=routing_override,
     )
     await db.execute(
         text("SELECT pg_notify(:channel, :payload)"),

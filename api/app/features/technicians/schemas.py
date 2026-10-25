@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.core.base_location import BaseLocationOut
 from app.core.images import ImageUrl
@@ -517,3 +517,85 @@ class DistrictBreakdownOut(AppModel):
     districts: list[DistrictTechnicianCount]
     totalTechnicians: int
     withoutDistrict: int
+
+
+# ── moving a technician between franchisees (Task 17) ────────────────────────
+
+
+class TechnicianTransferRequest(BaseModel):
+    """`POST /technicians/{id}/transfer`. Deliberately has no `technicianType`
+    (D3: a type change has its own guards) and no `regionId` (D5: the region
+    follows the coverage)."""
+
+    franchiseeId: uuid.UUID
+    #: Required (>= 5 after stripping) unless `dryRun` — the service says which,
+    #: so a preview can run before anybody has typed a word.
+    reason: str | None = Field(default=None, max_length=255)
+    #: None = keep what is inside the target's range. A list = EXACTLY this
+    #: coverage after the move, every code of which must lie in that range.
+    pincodes: (
+        list[Annotated[str, StringConstraints(pattern=r"^[1-9][0-9]{5}$")]] | None
+    ) = Field(default=None, max_length=500)
+
+
+class TransferCoverageOut(AppModel):
+    source: Literal["kept", "supplied"]
+    kept: list[str]
+    trimmed: list[str]
+    added: list[str]
+    after: list[str]
+    keptCount: int
+    trimmedCount: int
+    addedCount: int
+    regionBefore: str | None
+    regionAfter: str | None
+    regionChanged: bool
+
+
+class TransferBlockerOut(AppModel):
+    #: None for the code-less 409s ("already works for…", "inactive").
+    code: str | None
+    message: str
+    openJobs: int | None = None
+    redeemablePaise: int | None = None
+    redemptionCode: str | None = None
+
+
+class TechnicianTransferRowOut(AppModel):
+    id: uuid.UUID
+    at: datetime
+    technicianId: uuid.UUID
+    fromFranchiseeId: uuid.UUID
+    fromFranchiseeName: str
+    toFranchiseeId: uuid.UUID
+    toFranchiseeName: str
+    technicianType: TechnicianType
+    reason: str
+    byUserId: uuid.UUID
+    byName: str
+    #: Derived from the two stored arrays, never stored twice.
+    kept: list[str]
+    trimmed: list[str]
+    added: list[str]
+
+
+class TechnicianTransferOut(AppModel):
+    dryRun: bool
+    technicianId: uuid.UUID
+    technicianCode: str
+    technicianName: str
+    technicianType: TechnicianType
+    fromFranchiseeId: uuid.UUID
+    fromFranchiseeName: str
+    fromFranchiseeIsHome: bool
+    toFranchiseeId: uuid.UUID
+    toFranchiseeName: str
+    toFranchiseeIsHome: bool
+    coverage: TransferCoverageOut
+    blockers: list[TransferBlockerOut]
+    warnings: list[str]
+    #: No blockers. On a dry run this is the whole answer; on an apply it is
+    #: always true (a blocker is raised as an error instead).
+    canTransfer: bool
+    #: Null on a dry run.
+    transfer: TechnicianTransferRowOut | None

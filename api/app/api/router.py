@@ -29,6 +29,8 @@ from app.features.redemptions.franchise_router import (
     router as redemptions_franchise_router,
 )
 from app.features.search.router import router as search_router
+from app.features.spare_parts.home_router import router as spare_parts_home_router
+from app.features.spare_parts.router import router as spare_parts_router
 from app.features.settings.franchise_router import (
     router as settings_franchise_router,
 )
@@ -126,3 +128,9 @@ api_router.include_router(platform_router)
 # paths are matched before anything could shadow them.
 api_router.include_router(vendor_credit_staff_router)
 api_router.include_router(vendor_credit_router)
+# Spare parts (Task 12): the catalogue editor (Admin / National Head) and the
+# facility's request queue (franchise staff only — no staff fallback, R4), plus
+# the home franchisee's facility users, which company Admin / National Head
+# create because the home has no franchisee admin by default.
+api_router.include_router(spare_parts_router)
+api_router.include_router(spare_parts_home_router)

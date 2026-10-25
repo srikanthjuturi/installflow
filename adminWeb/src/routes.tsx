@@ -77,6 +77,7 @@ const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
 const TerritoryPage = lazy(() => import("@/pages/masters/TerritoryPage"));
 const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
 const UsersRolesPage = lazy(() => import("@/pages/settings/UsersRolesPage"));
+const AllowancesPage = lazy(() => import("@/pages/settings/AllowancesPage"));
 const AccountPage = lazy(() => import("@/pages/account/AccountPage"));
 const NotificationsPage = lazy(
   () => import("@/pages/notifications/NotificationsPage")
@@ -141,8 +142,21 @@ const FranchiseUpiChangesPage = lazy(
 const FranchiseStatementsPage = lazy(
   () => import("@/pages/franchise/FranchiseStatementsPage")
 );
+const FranchiseAllowancesPage = lazy(
+  () => import("@/pages/franchise/FranchiseAllowancesPage")
+);
 const FranchiseTicketsPage = lazy(
   () => import("@/pages/franchise/FranchiseTicketsPage")
+);
+/* Task 13 — the facility's spare-parts desk and its people. Franchise staff
+   only (owner ruling 2026-10-15, R4): the staff tree below has NO parts route,
+   so `/parts` is the 404 page there. */
+const FacilityQueuePage = lazy(
+  () => import("@/pages/franchise/FacilityQueuePage")
+);
+const PartRequestPage = lazy(() => import("@/pages/franchise/PartRequestPage"));
+const FacilityUsersPage = lazy(
+  () => import("@/pages/franchise/FacilityUsersPage")
 );
 
 /**
@@ -406,6 +420,19 @@ export const routes: RouteObject[] = [
               { path: "franchise/redemptions/:id", element: <RedemptionPage /> },
               { path: "franchise/pool", element: <LedgerPage /> },
               { path: "franchise/statements", element: <FranchiseStatementsPage /> },
+              { path: "franchise/settings", element: <FranchiseAllowancesPage /> },
+              // Gated on `parts.handle` / `franchise.facility_users` through
+              // `franchiseNav.ts` — the guard DENIES anything that table does
+              // not name, and the request page rides the entry's `match` prefix.
+              { path: "franchise/parts", element: <FacilityQueuePage /> },
+              {
+                path: "franchise/parts/requests/:id",
+                element: <PartRequestPage />,
+              },
+              {
+                path: "franchise/facility-users",
+                element: <FacilityUsersPage />,
+              },
               { path: "franchise/tickets", element: <FranchiseTicketsPage /> },
               // Read-only here: `actions={null}` strips every ops control
               // (the same prop the vendor portal's detail route passes, which
@@ -504,6 +531,7 @@ export const routes: RouteObject[] = [
               { path: "territory", element: <TerritoryPage /> },
               { path: "settings/rules", element: <RulesConfigPage /> },
               { path: "settings/users", element: <UsersRolesPage /> },
+              { path: "settings/allowances", element: <AllowancesPage /> },
               // Guarded by `vendors.credit` off the nav table, the payment
               // route through the entry's `match` prefix.
               { path: "vendor-credit", element: <VendorCreditPage /> },

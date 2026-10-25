@@ -27,6 +27,7 @@ import { TECHNICIAN_TYPES } from "@/types/technician";
 import type { FranchiseeOption } from "@/types/franchisee";
 import { AvailabilityPill } from "./AvailabilityPill";
 import { BandwidthBar, CancelCount } from "./BandwidthBar";
+import { BaseChip } from "./BaseChip";
 import { OnboardingStatusCell } from "./OnboardingStatusCell";
 import { wireTypeToWord } from "./technicianType";
 import {
@@ -245,6 +246,25 @@ export function TechTable({
           <span className="font-mono text-xs">{t.pincodes.join(", ")}</span>
         ) : (
           NONE
+        ),
+    },
+    /* Task 13 §5.5 (R9) — where their travel allowance starts from, as the
+       SOURCE chip and nothing more: a list must not hand every row-reader a
+       coordinate pair (W13). A registered technician with no base reads "Not
+       set" in words — the allowance pays nothing for their jobs until it is;
+       an invite has no profile to hold one yet. */
+    {
+      id: "base",
+      header: "Base",
+      cell: (t) =>
+        !t.registered ? (
+          NONE
+        ) : t.baseSource ? (
+          <BaseChip source={t.baseSource} />
+        ) : (
+          <span className="inline-block rounded-full bg-warn-bg px-2.25 py-0.75 text-[11px] font-semibold text-warn">
+            Not set
+          </span>
         ),
     },
     ...(isOps
@@ -612,7 +632,7 @@ export function TechTable({
       onRowClick={(t) => t.registered && navigate(paths.technician(t.id))}
       // Bumped from 90rem with the Franchisee and Type columns; the portal
       // drops five of them (§5.4) and fits again.
-      minWidth={isOps ? "96rem" : "72rem"}
+      minWidth={isOps ? "101rem" : "77rem"}
       emptyIcon={Users}
       emptyTitle="No technicians yet"
       emptyDescription="Add a technician, or invite one by mobile number and let them register themselves."

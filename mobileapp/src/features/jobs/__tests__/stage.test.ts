@@ -62,11 +62,37 @@ describe('jobActions', () => {
     expect(jobActions({ ...base, serverStatus: 'Awaiting Customer' }).stage).toBe('awaitingCustomer');
   });
 
-  it('waits for a part — nothing to press until the part lands', () => {
+  it('waits for a part — a second part and a revisit time are both offered', () => {
     const actions = jobActions({ ...base, serverStatus: 'Awaiting Part' });
     expect(actions.stage).toBe('awaitingPart');
     expect(actions.canCancel).toBe(false);
+    // Task 12 D8: the revisit uses reschedule, which needs a slot to move.
+    expect(actions.canReschedule).toBe(true);
+    expect(actions.canRequestPart).toBe(true);
+  });
+
+  it('offers no reschedule while waiting for a part when there is no slot', () => {
+    const actions = jobActions({ ...base, serverStatus: 'Awaiting Part', hoursToSlot: null });
     expect(actions.canReschedule).toBe(false);
+    expect(actions.canRequestPart).toBe(true);
+  });
+
+  it('offers a part request on an in-progress job', () => {
+    const actions = jobActions({ ...base, serverStatus: 'In Progress' });
+    expect(actions.canRequestPart).toBe(true);
+    expect(actions.canReschedule).toBe(false);
+    expect(actions.canCancel).toBe(false);
+  });
+
+  it('offers a part request on no other status', () => {
+    const others = [
+      'Assigned', 'Awaiting Customer', 'Escalated', 'AI Review', 'Closed',
+      'Force-Closed', 'Cancelled', 'New', 'Slot Pending', 'Something New', undefined,
+    ];
+    for (const status of others) {
+      expect(jobActions({ ...base, serverStatus: status }).canRequestPart).toBe(false);
+    }
+    expect(jobActions({ ...base, hoursToSlot: null }).canRequestPart).toBe(false);
   });
 
   it('escalates both Escalated and AI Review', () => {
@@ -91,5 +117,6 @@ describe('jobActions', () => {
     expect(actions.stage).toBe('unknown');
     expect(actions.canCancel).toBe(false);
     expect(actions.canReschedule).toBe(false);
+    expect(actions.canRequestPart).toBe(false);
   });
 });

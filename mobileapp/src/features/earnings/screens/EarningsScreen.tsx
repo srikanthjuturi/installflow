@@ -14,6 +14,7 @@ import {
   listTransactions,
   windowQuery,
 } from '@/features/earnings/api/earnings';
+import { breakdown } from '@/features/earnings/breakdown';
 import { LedgerRow } from '@/features/earnings/components/LedgerRow';
 import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
 import { RedeemCard } from '@/features/redeem/components/RedeemCard';
@@ -146,6 +147,9 @@ export function EarningsScreen() {
     refetchOnWindowFocus: true,
   });
 
+  // The "incl." parts of the three tiles; empty until a summary has arrived.
+  const parts = summary.data ? breakdown(summary.data) : {};
+
   // The whole `earnings` prefix, not the two queries above: the Redeem card's
   // balance lives under it too, and a pull that updated the totals but left
   // "Redeem ₹…" showing the old figure would be refreshing half the screen.
@@ -264,21 +268,40 @@ export function EarningsScreen() {
                 {t(employee ? 'earnings.netCaptionEmployee' : 'earnings.netCaption')}
               </Text>
 
+              {/* The three tiles keep the SERVER's figures, which already include
+                  travel and speed (index §6a). The "incl." line under each is a
+                  part of that figure, never added to it, and absent when the
+                  server did not send the breakdown or it is zero. */}
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <ChromeTile
                   label={t('earnings.earned')}
                   value={formatPaise(summary.data.earnedPaise)}
                   tint={color.creditOnChrome}
+                  sub={
+                    parts.earned !== undefined
+                      ? t('earnings.inclTravel', { amount: formatPaise(parts.earned) })
+                      : undefined
+                  }
                 />
                 <ChromeTile
                   label={t('earnings.bonuses')}
                   value={formatPaise(summary.data.bonusesPaise)}
                   tint={color.bonusOnChrome}
+                  sub={
+                    parts.bonuses !== undefined
+                      ? t('earnings.inclSpeed', { amount: formatPaise(parts.bonuses) })
+                      : undefined
+                  }
                 />
                 <ChromeTile
                   label={t('earnings.penalties')}
                   value={formatPaise(summary.data.penaltiesPaise)}
                   tint={color.debitOnChrome}
+                  sub={
+                    parts.penalties !== undefined
+                      ? t('earnings.inclSpeedPenalty', { amount: formatPaise(parts.penalties) })
+                      : undefined
+                  }
                 />
               </View>
             </>
@@ -506,7 +529,18 @@ function PeriodPicker({
   );
 }
 
-function ChromeTile({ label, value, tint }: { label: string; value: string; tint: string }) {
+function ChromeTile({
+  label,
+  value,
+  tint,
+  sub,
+}: {
+  label: string;
+  value: string;
+  tint: string;
+  /** "incl. ₹70 travel" — a part of `value`, not an addition to it. */
+  sub?: string;
+}) {
   return (
     <View
       style={{
@@ -531,6 +565,19 @@ function ChromeTile({ label, value, tint }: { label: string; value: string; tint
       >
         {value}
       </Text>
+      {sub ? (
+        <Text
+          numberOfLines={2}
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 11,
+            color: color.textOnChrome,
+            marginTop: 2,
+          }}
+        >
+          {sub}
+        </Text>
+      ) : null}
     </View>
   );
 }

@@ -158,6 +158,11 @@ async def move_slot(
     it. That shape means "the customer said it was not done", not "nobody
     accepted", and this function cannot tell the difference from the row.
 
+    A job that is `Awaiting Part` (Task 12, D8) is the one started job whose visit
+    must move — the technician has to come back — and it STAYS `Awaiting Part`:
+    `to = was`, so the event's `to_status` is NULL below, as that comment already
+    handles.
+
     ## Which event it writes
 
     `rescheduled` when a slot already existed, `slot_confirmed` when one did
@@ -175,7 +180,11 @@ async def move_slot(
     previous_start, previous_end = row.slot_start, row.slot_end
     first_booking = previous_start is None
 
-    to = "Assigned" if held is not None else "New"
+    # A job waiting for a spare part keeps that status: the visit moves, the
+    # wait does not (Task 12, D8) — and only `core.spare_parts` moves a job in or
+    # out of `Awaiting Part`. Writing `Assigned` over it would un-start a job
+    # with proof against it and let Complete through with a part outstanding.
+    to = was if was == "Awaiting Part" else ("Assigned" if held is not None else "New")
 
     values: dict[str, object] = {
         "slot_start": start,
@@ -245,7 +254,13 @@ async def move_slot(
             actor_label=actor_label,
             created_by=by_user,
             note=trail if not note else f"{trail} · {note}",
-            from_status=was,
+            # An `Awaiting Part` job stays there, and the event must not look
+            # like it LEFT: Task 11's speed clock closes a wait on any event
+            # whose `from_status` is `Awaiting Part` (W6, matched on the status
+            # columns whatever the kind), so a reschedule carrying it would end
+            # the wait early and charge the technician for the facility's lead
+            # time. Both columns are NULL for it — nothing moved.
+            from_status=None if was == "Awaiting Part" else was,
             # Both null when nothing moved — an `Assigned` job rescheduled by
             # its own technician is still `Assigned`, and a trail claiming a
             # transition that did not happen is worse than one that says
@@ -274,6 +289,7 @@ async def move_slot(
             node_path_ids=row.node_path_ids,
             # The ticket's stamped franchisee — whose pool it re-enters.
             franchisee_id=row.franchisee_id,
+            routing_override=row.routing_override,
         )
     return to
 

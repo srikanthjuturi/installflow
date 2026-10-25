@@ -40,6 +40,9 @@ import { useCoverageOptions } from "@/hooks/useTechnicians";
  * hint copy (§5.9). `boundedByStates` is false there by construction: no
  * portal role covers states.
  */
+/** How many rows a limited picker reads on its own looking for the franchisee's. */
+const LIMITED_SCAN_CAP = 1000;
+
 export function CoverageFields({
   regionId,
   pincodes,
@@ -48,6 +51,7 @@ export function CoverageFields({
   regionError,
   pincodeError,
   hasOtherFranchisees,
+  limitTo,
   className,
 }: {
   regionId: string;
@@ -65,6 +69,13 @@ export function CoverageFields({
    * result the list page already holds.
    */
   hasOtherFranchisees?: boolean;
+  /**
+   * Task 17 — offer only the pincodes one franchisee owns (the transfer
+   * dialog's picker). `matches` is a presentation filter over the region's
+   * pages; the server still judges every code, and the transfer preview names
+   * any it refuses. Absent everywhere else.
+   */
+  limitTo?: { franchisee: string; matches: (code: string) => boolean };
   /** Layout is the caller's business — side by side, stacked, whatever fits. */
   className?: string;
 }) {
@@ -99,13 +110,42 @@ export function CoverageFields({
       (boundedByStates
         ? search.rows.filter((p) => stateNames.has(p.stateName))
         : search.rows
-      ).map((p) => ({
+      )
+        .filter((p) => !limitTo || limitTo.matches(p.code))
+        .map((p) => ({
         value: p.code,
         // The district is what makes a six-digit number recognisable.
         label: p.districts.length ? `${p.code} — ${p.districts[0]}` : p.code,
       })),
-    [boundedByStates, search.rows, stateNames]
+    [boundedByStates, search.rows, stateNames, limitTo]
   );
+
+  // A franchisee's area is a thin slice of a region's pages, so a filtered list
+  // can start out empty while the next page still holds it. Keep reading — up
+  // to a bound, so a region with none of them cannot loop for ever — until
+  // there is something to choose from. Typing a code narrows it on the server.
+  const scanned = search.rows.length;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = search;
+  React.useEffect(() => {
+    if (
+      limitTo &&
+      regionId &&
+      options.length < 10 &&
+      hasNextPage &&
+      !isFetchingNextPage &&
+      scanned < LIMITED_SCAN_CAP
+    ) {
+      void fetchNextPage();
+    }
+  }, [
+    limitTo,
+    regionId,
+    options.length,
+    hasNextPage,
+    isFetchingNextPage,
+    scanned,
+    fetchNextPage,
+  ]);
 
   const regionName =
     regions.find((r) => r.id === regionId)?.name ?? "this region";
@@ -180,7 +220,9 @@ export function CoverageFields({
           loadingMore={search.isFetchingNextPage}
           disabled={!regionId}
           emptyMessage={
-            query
+            limitTo
+              ? `No pincode ${limitTo.franchisee} owns matches that here. Type a code to search.`
+              : query
               ? // §5.9 — the portal's empty names the franchisee, since every
                 // pincode in this list is already one its franchisee runs; a
                 // miss means the code is outside their whole coverage.
@@ -209,7 +251,9 @@ export function CoverageFields({
           <FieldDescription id="coverage-pincodes-hint">
             {!regionId
               ? "Pick a region, then search its pincodes here."
-              : boundedByStates
+              : limitTo
+                ? `Pincodes ${limitTo.franchisee} owns, in ${regionName}. Search by code or district.`
+                : boundedByStates
                 ? `Pincodes in ${regionName}, inside ${ownStates
                     .map((s) => s.name)
                     .join(", ")}.`

@@ -98,10 +98,32 @@ from app.db.mixins import AuditMixin, IdMixin
 #: payout it reads "by name" in every technician-facing total (`core.ledger.
 #: credited`, `earnings.summary`) and reaches the pool readers by NOT being in
 #: `POOL_KINDS`, whose sum stays the penalty/bonus circuit.
-LEDGER_KINDS = ("penalty", "bonus", "payout", "reversal", "travel")
+#:
+#: `speed_reward` / `speed_penalty` (Task 11) are the speed allowance's two
+#: movements — a fast finish is paid, a slow one is charged (S1). Both ARE pool
+#: money (S6): a speed penalty is collected into the franchisee's pool and a
+#: speed reward is paid out of it, so slow technicians fund fast ones. At most
+#: ONE of them per ticket (`uq_ledger_entries_speed_once`), written only on the
+#: customer's closure — never on a force-close (S5, R7). `speed_penalty` counts
+#: against `cancel_penalty_cap_paise` (S6) and is reversible like a penalty.
+LEDGER_KINDS = (
+    "penalty", "bonus", "payout", "reversal", "travel", "speed_reward",
+    "speed_penalty",
+)
 
 #: The kinds that move the pool balance: penalties in, bonuses and reversals out.
-POOL_KINDS = ("penalty", "bonus", "reversal")
+POOL_KINDS = ("penalty", "bonus", "reversal", "speed_reward", "speed_penalty")
+
+#: What a `reversal` may name. Enforced in the service (a CHECK cannot see
+#: another row). MOVED here from Task 05's `core/penalty_reversal.py` (which
+#: now imports it) — one tuple, one home, beside the kinds it names.
+REVERSIBLE_KINDS = ("penalty", "speed_penalty")
+
+#: The kinds that count against `cancel_penalty_cap_paise` (S6).
+CAPPED_KINDS = REVERSIBLE_KINDS
+
+#: The two Task 11 kinds — at most one per ticket.
+SPEED_KINDS = ("speed_reward", "speed_penalty")
 
 
 class LedgerEntry(Base, IdMixin, AuditMixin):
@@ -159,7 +181,8 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('penalty', 'bonus', 'payout', 'reversal', 'travel')", name="kind"
+            "kind IN ('penalty', 'bonus', 'payout', 'reversal', 'travel', "
+            "'speed_reward', 'speed_penalty')", name="kind"
         ),
         CheckConstraint(
             "(kind = 'reversal') = (reverses_id IS NOT NULL)",
@@ -247,5 +270,17 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
             "ticket_id",
             unique=True,
             postgresql_where=text("kind = 'travel'"),
+        ),
+        # One speed row per ticket (W9). Task 11's own backstop for a settlement
+        # that races with itself: the closure's guarded UPDATE makes it
+        # once-only by argument, this makes it once-only by construction.
+        # Declared here (as `uq_ledger_entries_reverses` is) so autogenerate
+        # does not propose dropping it.
+        Index(
+            "uq_ledger_entries_speed_once",
+            "company_id",
+            "ticket_id",
+            unique=True,
+            postgresql_where=text("kind IN ('speed_reward', 'speed_penalty')"),
         ),
     )

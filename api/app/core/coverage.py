@@ -21,6 +21,13 @@ columns, this one against literals. If a FOURTH condition is ever added to pool
 eligibility, it belongs in both, and this note is where whoever adds it should
 look.
 
+**The pincode test has one waiver (Task 18).** A ticket a PERSON handed to another
+franchisee (`tickets.routing_override`) is judged without the coverage half - a pincode
+its franchisee does not own can never be in its technicians' coverage - and with
+every other fact intact: franchisee, certification, status, the cap, the toggle.
+`technicians_covering` takes it as the required keyword `routing_override`;
+`technicians_by_franchisee` counts the picker's numbers by the same rule.
+
 Certification covers a whole SUBTREE, so both sides test membership of the
 ticket's stamped `node_path_ids` rather than equality with one id. There are
 five places that test job eligibility in all — here, `pool_query`, the guarded
@@ -29,7 +36,8 @@ UPDATE in
 are all one array
 containment against the same column. Task 04 added the franchisee to all five;
 this module's copy is the keyword `franchisee_id`, required on purpose (see
-`technicians_covering`).
+`technicians_covering`). Task 18 waives the pincode half in each for a handed-over
+ticket (the guarded UPDATE in `accept` never tested coverage and must not start).
 """
 
 import datetime
@@ -47,6 +55,8 @@ from app.models.membership import Membership
 from app.models.role import (
     ADMIN,
     AREA_MANAGER,
+    FRANCHISE_ROLES,
+    FRANCHISE_ROLES,
     FRANCHISEE_ADMIN,
     NATIONAL_HEAD,
     REGIONAL_HEAD,
@@ -127,11 +137,16 @@ async def technicians_covering(
     *,
     company_id: uuid.UUID,
     franchisee_id: uuid.UUID,
+    routing_override: bool,
     pincode: str,
     node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
     slot_start: datetime.datetime | None = None,
 ) -> list[uuid.UUID]:
     """Technician profile ids eligible to be offered this job.
+
+    `routing_override` is the ticket's `routing_override` (Task 18) - REQUIRED, for
+    `franchisee_id`'s reason: a caller that forgets it must fail loudly, not ring
+    nobody. True waives the pincode-coverage test and NOTHING else.
 
     `franchisee_id` is the ticket's `franchisee_id`, as stamped — REQUIRED, so
     a caller that forgets it fails loudly instead of ringing company-wide (the
@@ -199,13 +214,73 @@ async def technicians_covering(
         # filtering on coverage alone would still reach them.
         TechnicianProfile.status == ACTIVE,
         TechnicianProfile.accepting_work.is_(True),
-        covers_pincode,
         certified_for,
     ]
+    if not routing_override:  # the waiver; nothing else relaxes (Task 18)
+        conditions.append(covers_pincode)
     if slot_start is not None:
         conditions.append(has_room_at(slot_start))
 
     return list(await db.scalars(select(TechnicianProfile.id).where(*conditions)))
+
+
+async def technicians_by_franchisee(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    pincode: str,
+    pincode_owner_id: uuid.UUID,
+    node_path_ids: list[uuid.UUID] | tuple[uuid.UUID, ...],
+    slot_start: datetime.datetime | None = None,
+) -> dict[uuid.UUID, tuple[int, int]]:
+    """franchisee_id -> (eligible, online) for ONE ticket. Missing key = (0, 0).
+
+    `eligible`: ACTIVE, certified anywhere on the job's path, room on the slot's day (omitted when there is
+    no slot, as in `technicians_covering`) — and, for the franchisee that OWNS the pincode, covering it.
+    Every other franchisee's technicians are counted with the pincode test waived, because that is
+    exactly what they would be judged by after a hand-over. `online`: the subset with accepting_work.
+
+    Must agree with `technicians_covering(..., franchisee_id=F, routing_override=(F != owner))`:
+    `online[F] == len(that list)` before job passes. This docstring is where that promise lives.
+    The pure twin of the owner clause is `franchise_handover.coverage_required`.
+    """
+    covers_pincode = (
+        select(TechnicianPincode.id)
+        .where(
+            TechnicianPincode.company_id == company_id,
+            TechnicianPincode.technician_id == TechnicianProfile.id,
+            TechnicianPincode.pincode == pincode,
+        )
+        .exists()
+    )
+    certified_for = (
+        select(TechnicianNode.id)
+        .where(
+            TechnicianNode.company_id == company_id,
+            TechnicianNode.technician_id == TechnicianProfile.id,
+            TechnicianNode.node_id.in_(list(node_path_ids)),
+        )
+        .exists()
+    )
+    conditions = [
+        TechnicianProfile.company_id == company_id,
+        TechnicianProfile.status == ACTIVE,
+        certified_for,
+        # Coverage is required only of the pincode's own owner (`coverage_required`).
+        or_(TechnicianProfile.franchisee_id != pincode_owner_id, covers_pincode),
+    ]
+    if slot_start is not None:
+        conditions.append(has_room_at(slot_start))
+    rows = await db.execute(
+        select(
+            TechnicianProfile.franchisee_id,
+            func.count().label("eligible"),
+            func.count().filter(TechnicianProfile.accepting_work.is_(True)).label("online"),
+        )
+        .where(*conditions)
+        .group_by(TechnicianProfile.franchisee_id)
+    )
+    return {fid: (int(eligible), int(online)) for fid, eligible, online in rows}
 
 
 def ist_date(column: ColumnElement) -> ColumnElement:
@@ -742,11 +817,12 @@ async def users_notified_by(
     that teaches people to ignore notifications. The two cannot share code —
     `_visible` narrows a query correlated to one principal, this one tests many
     principals against literals — so they are duplicated deliberately, exactly
-    as `technicians_covering` duplicates `pool_query`. **If a sixth audience
+    as `technicians_covering` duplicates `pool_query`. **If another audience
     rule is ever added it belongs in both, and this note is where whoever adds
-    it should look.**
+    it should look.** (`facility`, Task 12, is the latest: every franchise role
+    of the row's franchisee and nobody on company staff.)
 
-    Five branches, mirroring `_visible` clause for clause:
+    Five branches (plus the addressed audiences below, `facility` among them), mirroring `_visible` clause for clause:
 
     * **Admin and national head** hear everything in the company. They are the
       `ALL_INDIA_ROLES` for whom `visible_pincodes` returns None. A superadmin
@@ -838,6 +914,14 @@ async def users_notified_by(
                 return []
             who = [(User.role == FRANCHISEE_ADMIN)
                    & (Membership.franchisee_id == franchisee_id)]
+        elif audience == "facility":
+            # The franchise staff of ONE franchisee (Task 12, owner ruling R4):
+            # its facility admins, operators and franchisee admins. No staff
+            # role, the home franchisee's company included. Without an id there
+            # is nobody to point at, so fail closed.
+            if franchisee_id is None:
+                return []
+            who = [User.role.in_(FRANCHISE_ROLES) & (Membership.franchisee_id == franchisee_id)]
         elif audience == "vendor":
             # The named vendor's own people, and no staff at all — the one
             # audience that points outward. Without an id there is nobody to

@@ -17,7 +17,21 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import Principal, require_feature, require_franchise_principal
+from app.core.deps import (
+    Principal,
+    require_all,
+    require_facility_principal,
+    require_feature,
+    require_franchise_principal,
+)
+from app.core.facility_users import (
+    CREATED_MESSAGE,
+    REISSUED_MESSAGE,
+    create_user,
+    list_users,
+    reissue,
+    set_user_active,
+)
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -35,6 +49,10 @@ from app.core.statements import (
 )
 from app.features.franchise_portal import service
 from app.features.franchise_portal.schemas import (
+    FacilityUserCreateRequest,
+    FacilityUserCreatedOut,
+    FacilityUserOut,
+    FacilityUserUpdateRequest,
     FranchiseOptionsOut,
     FranchisePincodeOut,
 )
@@ -46,8 +64,12 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 #: the pickers ON that screen.
 CanSee = Annotated[
     Principal,
-    Depends(require_franchise_principal),
-    Depends(require_feature("franchise.technicians")),
+    Depends(
+        require_all(
+            require_franchise_principal,
+            require_feature("franchise.technicians"),
+        )
+    ),
 ]
 #: `franchise.statements` — the monthly-payroll door (Task 06 §4.9), keyed
 #: separately so the feature grant is what turns statements on, not the
@@ -55,8 +77,12 @@ CanSee = Annotated[
 #: own admin.
 CanSeeStatements = Annotated[
     Principal,
-    Depends(require_franchise_principal),
-    Depends(require_feature("franchise.statements")),
+    Depends(
+        require_all(
+            require_franchise_principal,
+            require_feature("franchise.statements"),
+        )
+    ),
 ]
 
 
@@ -164,3 +190,103 @@ async def statement(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── facility users (Task 12 §4.8) ────────────────────────────────────────────
+#
+# `require_facility_principal` — ANY franchise role, because a facility admin
+# manages operators and a franchisee-admin-only guard would lock them out; the
+# `franchise.facility_users` key (franchisee_admin, facility_admin) is what keeps
+# operators out. Both guards are listed in `dependencies`, never stacked into one
+# `Annotated`: FastAPI applies only the LAST `Depends` of an alias.
+#
+# Scoped `company_id` + `franchisee_id` + a facility role in `core.facility_users`,
+# so another franchisee's — or a franchisee admin's — membership id is a 404. The
+# creation rules (`can_create_facility_role`) are the same module's.
+
+CanManageFacilityUsers = Annotated[
+    Principal, Depends(require_feature("franchise.facility_users"))
+]
+IsFacilityPrincipal = Depends(require_facility_principal)
+
+
+@router.get(
+    "/facility-users",
+    response_model=PaginatedEnvelope[FacilityUserOut],
+    dependencies=[IsFacilityPrincipal],
+)
+async def list_facility_users(
+    db: Db,
+    principal: CanManageFacilityUsers,
+    params: Annotated[ListParams, Depends(list_params)],
+) -> PaginatedEnvelope[FacilityUserOut]:
+    """Facility admins and operators of MY franchisee."""
+    assert principal.company_id is not None and principal.franchisee_id is not None
+    rows, total = await list_users(
+        db,
+        company_id=principal.company_id,
+        franchisee_id=principal.franchisee_id,
+        params=params,
+    )
+    return paginated(rows, page=params.page, limit=params.limit, total=total)
+
+
+@router.post(
+    "/facility-users",
+    response_model=ApiEnvelope[FacilityUserCreatedOut],
+    status_code=201,
+    dependencies=[IsFacilityPrincipal],
+)
+async def create_facility_user(
+    body: FacilityUserCreateRequest, db: Db, principal: CanManageFacilityUsers
+) -> ApiEnvelope[FacilityUserCreatedOut]:
+    """403 "You can only add roles below your own" for a role the caller may not
+    create. **201 even when the email fails** — `data.emailStatus`, and
+    `data.temporaryPassword` only when it did not go."""
+    assert principal.franchisee_id is not None
+    row = await create_user(
+        db, actor=principal, franchisee_id=principal.franchisee_id, body=body
+    )
+    return envelope(row, message=CREATED_MESSAGE[row.emailStatus], status_code=201)
+
+
+@router.patch(
+    "/facility-users/{membershipId}",
+    response_model=ApiEnvelope[FacilityUserOut],
+    dependencies=[IsFacilityPrincipal],
+)
+async def update_facility_user(
+    membershipId: uuid.UUID,
+    body: FacilityUserUpdateRequest,
+    db: Db,
+    principal: CanManageFacilityUsers,
+) -> ApiEnvelope[FacilityUserOut]:
+    """Switch a facility user off (their sessions end) or back on."""
+    assert principal.franchisee_id is not None
+    row = await set_user_active(
+        db,
+        actor=principal,
+        franchisee_id=principal.franchisee_id,
+        membership_id=membershipId,
+        active=body.isActive,
+    )
+    return envelope(row, message="User updated")
+
+
+@router.post(
+    "/facility-users/{membershipId}/reissue-password",
+    response_model=ApiEnvelope[FacilityUserCreatedOut],
+    dependencies=[IsFacilityPrincipal],
+)
+async def reissue_facility_user_password(
+    membershipId: uuid.UUID, db: Db, principal: CanManageFacilityUsers
+) -> ApiEnvelope[FacilityUserCreatedOut]:
+    """A fresh temporary password, emailed; their old sessions end."""
+    assert principal.franchisee_id is not None
+    row = await reissue(
+        db,
+        actor=principal,
+        franchisee_id=principal.franchisee_id,
+        membership_id=membershipId,
+    )
+    return envelope(row, message=REISSUED_MESSAGE[row.emailStatus])

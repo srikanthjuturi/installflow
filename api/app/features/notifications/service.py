@@ -79,16 +79,19 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
         # is what keeps Task 02's closed-leak guarantee, whatever audiences it
         # permits; `franchisee_admin` (rows addressed to them) and `payers`
         # (their franchisee's money — for the home, the company payer's own
-        # audience) join the unaddressed rows. Task 12 appends the facility
-        # audience here, for THIS franchisee's facility staff only.
-        allowed: list[Any] = [
-            Notification.audience.is_(None),
-            Notification.audience == "franchisee_admin",
-            Notification.audience == "payers",
-        ] if principal.role == FRANCHISEE_ADMIN else []
-        if principal.franchisee_id is None or not allowed:
-            # Fail closed — a corrupt membership, or a facility role, which
-            # Task 12 has not opened yet.
+        # audience) join the unaddressed rows. `facility` (Task 12, owner ruling
+        # R4) is heard by EVERY franchise role of the franchisee — the parts
+        # desk and the franchisee admin — and by nobody on company staff, the
+        # home franchisee included; a facility role hears nothing else.
+        allowed: list[Any] = [Notification.audience == "facility"]
+        if principal.role == FRANCHISEE_ADMIN:
+            allowed += [
+                Notification.audience.is_(None),
+                Notification.audience == "franchisee_admin",
+                Notification.audience == "payers",
+            ]
+        if principal.franchisee_id is None:
+            # Fail closed — a corrupt membership.
             return stmt.where(sql_false())
         return stmt.where(
             Notification.franchisee_id == principal.franchisee_id,

@@ -32,6 +32,7 @@ from app.core.database import get_db
 from app.core.deps import (
     Principal,
     TechnicianPrincipal,
+    require_all,
     require_feature,
     require_min_rank,
     require_staff_principal,
@@ -71,10 +72,14 @@ TechnicianRoute = [Depends(require_feature("pool.view"))]
 
 CanPay = Annotated[
     Principal,
-    Depends(require_staff_principal),
-    Depends(require_feature("redemptions.pay")),
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("redemptions.pay"),
+            require_min_rank(NATIONAL_HEAD),
+        )
+    ),
 ]
-PayerRoute = [Depends(require_min_rank(NATIONAL_HEAD))]
 
 
 # ── the technician ───────────────────────────────────────────────────────────
@@ -158,7 +163,7 @@ async def confirm_redemption(
 
 
 @router.get(
-    "", response_model=PaginatedEnvelope[StaffRedemptionOut], dependencies=PayerRoute
+    "", response_model=PaginatedEnvelope[StaffRedemptionOut]
 )
 async def list_redemptions(
     db: Db,
@@ -186,7 +191,7 @@ async def list_redemptions(
 
 
 @router.get(
-    "/count", response_model=ApiEnvelope[RedemptionCountOut], dependencies=PayerRoute
+    "/count", response_model=ApiEnvelope[RedemptionCountOut]
 )
 async def count_redemptions(
     db: Db,
@@ -207,7 +212,6 @@ async def count_redemptions(
 @router.get(
     "/{redemption_id}",
     response_model=ApiEnvelope[StaffRedemptionDetailOut],
-    dependencies=PayerRoute,
 )
 async def get_redemption(
     db: Db,
@@ -224,7 +228,6 @@ async def get_redemption(
 @router.post(
     "/{redemption_id}/claim",
     response_model=ApiEnvelope[StaffRedemptionDetailOut],
-    dependencies=PayerRoute,
 )
 async def claim_redemption(
     db: Db, principal: CanPay, redemption_id: uuid.UUID, body: ClaimRequest
@@ -239,7 +242,6 @@ async def claim_redemption(
 @router.post(
     "/{redemption_id}/decline",
     response_model=ApiEnvelope[StaffRedemptionDetailOut],
-    dependencies=PayerRoute,
 )
 async def decline_redemption(
     db: Db, principal: CanPay, redemption_id: uuid.UUID, body: DeclineRequest

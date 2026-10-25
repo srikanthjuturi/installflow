@@ -16,6 +16,15 @@ reach a real person, and no production write without `--production` typed in
 full. A third is at the end: the run fails if the data it just wrote does not
 add up.
 
+Since the franchisee programme the company is not a single flat tenant: the
+technicians are split between the home franchisee and two carved out of its
+pincodes (one external with a facility, one internal with none), every fifth
+technician is an employee, travel and speed rules pay something, a spare-parts
+list exists and a share of jobs wait for a part. `--plan` prints that shape and
+the verdict is followed by how many rows each franchisee-era check read, so a
+seed that stopped producing employees or parts cannot pass quietly (a check that
+reads no rows passes on anything).
+
 What it does NOT do, on purpose:
 
 * upload images — five artifacts per closed job would leave files in a blob
@@ -99,6 +108,21 @@ async def main() -> int:
     print(f"  catalogue {len(tenant.CATEGORIES)} categories, "
           f"{sum(len(m) for _, m in tenant.CATEGORIES)} models")
     print(f"  people    {args.technicians} technicians")
+    _, crest_codes, north_codes = tenant.split_pincodes(["x"] * 20)
+    print(f"  franchise Crestline Field Services {args.tag} (external, "
+          f"{len(crest_codes)} of 20 pincodes, facility), "
+          f"Northgate Field Services {args.tag} (internal, "
+          f"{len(north_codes)} pincodes, NO facility), home keeps the rest")
+    print(f"  mix       technicians placed {' / '.join(tenant.COVERAGE_CYCLE)} in turn; "
+          f"the 2nd of every 5 per franchisee is an employee")
+    print(f"  money     travel free {tenant.TRAVEL_FREE_KM['freelancer']}/"
+          f"{tenant.TRAVEL_FREE_KM['employee']} km, step {tenant.TRAVEL_STEP_KM} km, "
+          f"Rs {tenant.TRAVEL_PAISE_PER_STEP // 100}, cap "
+          f"Rs {tenant.TRAVEL_MAX_PAISE // 100}; speed {tenant.SPEED_REWARD_WITHIN_H} h "
+          f"-> Rs {tenant.SPEED_REWARD_PAISE // 100}, {tenant.SPEED_PENALTY_AFTER_H} h "
+          f"-> Rs {tenant.SPEED_PENALTY_PAISE // 100} (freelancers, first category)")
+    print(f"  parts     {', '.join(tenant.PARTS_ON_CATEGORY)} on the first category, "
+          f"{tenant.PART_ON_MODEL} on its first product")
     print(f"  tickets   {args.tickets}, mixed:")
     for intent, share in lifecycle.MIX:
         print(f"              {round(args.tickets * share):4d}  {intent}")
@@ -130,8 +154,11 @@ async def main() -> int:
             db, built, count=args.tickets, rng=rng, on_progress=progress
         )
 
-        # Backdating is LAST, because any later write would re-stamp
-        # `updated_at` and undo it.
+        handed = await lifecycle.hand_one_ticket_over(db, built, outcomes)
+        print(f"  hand-over  {handed or 'no unassigned home ticket to hand over'}")
+
+        # Backdating comes after every write to a TICKET, because any later
+        # write would re-stamp `updated_at` and undo it.
         settled = [o for o in outcomes if o.settled]
         print(f"\n  moving {len(settled)} settled tickets into the past …")
         for outcome in settled:
@@ -145,8 +172,15 @@ async def main() -> int:
             )
         await db.commit()
 
+        # After backdating, on purpose: a transfer is stamped "now", and the
+        # money it leaves behind must be older than it (a transfer writes no
+        # ticket or ledger row, so nothing above is disturbed).
+        moved = await lifecycle.transfer_one_technician(db, built)
+        print(f"  transfer   {moved or 'no technician with history and nothing to redeem'}")
+
         print("\n  checking what was written …")
         problems = await verify.run(db, company_id=built.company_id)
+        coverage = await verify.rows_read(db, built.company_id)
 
     refused = [o for o in outcomes if o.status.startswith("refused")]
     print(f"\n  {len(outcomes) - len(refused)} tickets written, {len(refused)} refused")
@@ -154,6 +188,15 @@ async def main() -> int:
         print(f"    refused ({outcome.intent}): {outcome.status}")
     if len(refused) > 5:
         print(f"    … and {len(refused) - 5} more")
+    if len(refused) * 4 > len(outcomes):
+        # A few refusals are real answers (a technician at the daily cap); a
+        # quarter of the plan is a seed that stopped working - the vendor's
+        # credit line did exactly that once, and the run still "passed".
+        print(
+            f"\n  FAILED: {len(refused)} of {len(outcomes)} tickets were refused - "
+            "the company this left behind is mostly empty. Delete it with cleanup_db.\n"
+        )
+        return 1
 
     if problems:
         print(f"\n  FAILED {len(problems)} checks:")
@@ -165,6 +208,9 @@ async def main() -> int:
         )
         return 1
 
+    print("\n  what the checks read:")
+    for label, n in coverage.items():
+        print(f"    {n:5d}  {label}{'' if n else '   <- none: the check on this proved nothing'}")
     print(f"\n  all checks passed in {time.monotonic() - started:.0f}s")
     print(f"  company id: {built.company_id}")
     print("  run `python -m app.scripts.audit_tenancy` to confirm isolation\n")

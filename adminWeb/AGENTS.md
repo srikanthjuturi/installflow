@@ -443,6 +443,18 @@ adminWeb/
       vendor/             VendorShell · VendorSidebar · portalNav.ts
                           AddVendorUserDialog · RejectedProductsNotice
                           — the vendor PORTAL, a third shell. See below.
+      franchise/          FranchiseShell · FranchiseSidebar · franchiseNav.ts · franchiseRouteMeta.ts
+                          ledgerAdapters · statements · EmployeeStatementTable · UpiChangeTable
+                          FacilityUsersSection (+ dialogs)
+                          — the franchise PORTAL, the fourth shell. See 0a and the workspace adapter.
+      franchisees/        FranchiseeTable · FranchiseeFormDialog · PincodeRangesDialog · CarveOutPreview
+                          FranchiseeAdminsPanel · pincodeRanges.ts (the grammar, mirrored)
+                          — the STAFF screen /franchisees; not the portal
+      allowances/         TravelRulesForm · TravelPreviewCard · SpeedMatrixTable · SpeedRuleDialog
+                          — one view for Settings → Allowances and the portal; travelPreview.ts mirrors
+                            the server's arithmetic
+      parts/              SparePartsDialog (the catalogue) · PartRequestTable · Approve/Issue/Reject/Return
+                          dialogs · partStatus.ts
       escalations/        EscalationCard · BonusPicker
                           — `EligibleTechTable` went with the mock queue; the
                             shortlist is `tickets/CandidateTechTable`
@@ -483,15 +495,23 @@ adminWeb/
                             duplicate of it and is gone
       ai-review/          AiQueuePage · AiReviewDetailPage
       technicians/        TechnicianListPage · TechnicianProfilePage
+      franchise/          FranchiseLanding · FranchiseUpiChangesPage · FranchiseStatementsPage
+                          FranchiseAllowancesPage · FranchiseTicketsPage · FacilityQueuePage
+                          PartRequestPage · FacilityUsersPage
+                          (the technicians, redemptions and pool pages are the STAFF pages, reused)
+      franchisees/        FranchiseesPage · FranchiseePage
       ledger/LedgerPage.tsx
       masters/            VendorsPage · TerritoryPage · CategoriesPage
       settings/           RulesConfigPage · UsersRolesPage
       auth/LoginPage.tsx
       NotFoundPage.tsx    the `*` route — eager, not lazy
     hooks/                useTickets · useEscalations · useAiQueue · useTechnicians · useRules …
+                          useWorkspace (the adapter) · useFranchise · useFranchisees · useAllowances · useParts
+    lib/                  surface.ts (surfaces + workspaces, pure) · handOver.ts · errorCodes.ts …
     services/
       mocks/              seeded mock data, one file per domain
       tickets.ts …        the seam the real API replaces later
+      workspace.ts · franchise.ts   the two workspaces' backends (see the adapter below)
     store/                Zustand — client state only
     contexts/             ThemeContext
     types/                ticket.ts · technician.ts · escalation.ts · ai.ts · rules.ts · user.ts
@@ -674,12 +694,16 @@ mode outright because technicians work outdoors; a desk console has no such cons
 
 ## Hard rules
 
-### 0a. Three surfaces, and a vendor must never reach the ops one.
+### 0a. Four surfaces, and neither a vendor nor a franchise user may reach the ops one.
 
-`routes.tsx` has three top-level branches, each with its own shell: `/companies` (superadmin),
-`/portal/*` (vendor), and everything else (staff). `landingPath()` in `store/session.ts` is the ONE
-place they are ranked; the two guards, the login redirect and the catch-all all read it, because
-five call sites deciding independently is how they stop agreeing.
+`routes.tsx` has four top-level branches, each with its own shell: `/companies` (superadmin), `/portal/*`
+(vendor), `/franchise/*` (franchise roles — franchisee admin and facility staff), and everything else (staff).
+`landingPath()` in `store/session.ts` is the ONE place they are ranked — **superadmin → franchise → vendor →
+ops**, through `lib/surface.ts`'s `surfaceOf` — and the two guards, the login redirect and the catch-all all read
+it, because five call sites deciding independently is how they stop agreeing. `SHELL_PATHS[surface]` is the one
+table of each shell's home, bell, account page and password form; it replaced every `portal ? "/portal/…" :
+"/…"` ternary, so a fifth surface cannot be silently forgotten by a screen mounted on several. The session
+persists a `franchise` flag beside `portal` (store version 7).
 
 **The portal is a top-level branch, not routes under `AppShell`, and that is a security decision.**
 `useFeatureAccess().has(undefined)` returns **true**, so six ops paths are ungated — `/`, the
@@ -690,6 +714,15 @@ before `AppShell` mounts, a vendor never reaches the guard that would have to de
 `RequirePortalFeature` therefore runs the **opposite polarity** to `RequireFeature`: an unrecognised
 path is DENIED, and the two genuinely open paths are an explicit allow-list in `portalNav.ts`.
 `PortalNavItem.feature` is required rather than optional for the same reason.
+
+**The franchise portal repeats all of that a third time.** `RequireFranchiseFeature` denies by default like
+`RequirePortalFeature`, its allow-list is `FRANCHISE_UNGATED` in `components/franchise/franchiseNav.ts`, and
+`FranchiseNavItem.feature` is required — there is no ungated franchise screen. A denied path redirects to
+`franchiseLanding(has)`, the first rail entry the user holds (a facility operator lands on Spare parts), never
+to a screen they cannot open.
+⚠ **`/franchisees` (the staff screen) and `/franchise` (the portal) differ by one letter.** Both feature matchers
+append `/` before prefix-matching (`${to}/`), so `/franchisees/…` is never read as a `/franchise` path — never
+match `"/franchise"` without the slash.
 
 **Deleting a route does not close a path.** `/tickets/new` still matched `tickets/:id` with
 `id="new"` and rendered the detail screen 422-ing on a ticket called "new". Dead paths get an
@@ -881,6 +914,27 @@ grep -rn 'FieldGroup className=' src/ | grep -Ei 'grid|COLS'   # should find not
 
 ---
 
+## The workspace adapter — one set of screens, two workspaces
+
+The staff technician list, redemption queue and penalty pool are the franchise portal's too: the same components
+and hooks, different endpoint twins, different link targets, different feature keys. Those three differences live
+in `services/workspace.ts` as two CONSTANT records — `OPS_WORKSPACE` (built from the existing staff services) and
+`FRANCHISE_WORKSPACE` (from `services/franchise.ts`) — each a `WorkspaceApi` of `paths`, `features`,
+`technicians`, `redemptions` and `ledger`, and `hooks/useWorkspace` hands the right one to whoever asks. Rejected:
+forking seven pages (eleven copies of every bug) and threading an `isPortal` boolean four props deep.
+
+- **`FranchiseShell` provides the workspace and `AppShell` does not — outside the provider IS ops, and that is the
+  safety property.** `useWorkspace()` falls back to `OPS_WORKSPACE`, so a screen can never reach the franchise
+  backend by being mounted in the wrong tree; reading `WorkspaceContext` by hand would skip that default. A
+  portal-only page therefore has to sit under `FranchiseShell`.
+- **The one asymmetry is `ledger.reverse`**: ops reverses a penalty from the ticket page (never the pool screen),
+  so its record carries `null` and the pool table's column is gone there instead of a button that 403s.
+- **Reused screens render no heading of their own** — they relied on `AppShell`'s topbar — so `FranchiseShell`
+  draws the single `<h1>` from `franchiseRouteMeta`.
+- **What the user may do comes from the server, never from the browser.** `canManage` (technician), `canAct`
+  (redemption) and `canReverse` (penalty) are fields on the response; do not recompute F7/F8 in a component. A
+  staff user can SEE a non-home franchisee's technician and not manage it, and the page must say so from the flag.
+
 ## State management
 
 | Kind | Home | Examples |
@@ -1061,6 +1115,12 @@ tree) lazy-load too. Images: `loading="lazy"`, `decoding="async"`, explicit `wid
 kill CLS, `.webp`. Long tables virtualize past ~200 rows. Framer Motion is imported per-component,
 never namespace-wide. Keep the vendor chunk lean and tree-shakeable; **audit before adding any
 dependency** — target Lighthouse 95+.
+
+**`leaflet` 1.9.4 + `react-leaflet` 5.0.0 were audited in for the base-location pin** (the franchisee admin
+drops a technician's base on an OpenStreetMap): about 45 kB gzipped, loaded only in the lazy `BaseLocationMap`
+chunk, with `leaflet.css` imported inside it and a `divIcon` in place of the default marker PNGs (which a bundler
+cannot find). OpenStreetMap's tile policy applies: visible attribution, the default Referer, no prefetching — move
+to a keyed tile provider if maps ever become routine.
 
 **Three.js is not used.** No screen in the approved design has a 3D surface, and shipping a WebGL
 runtime into an internal ops console works directly against the 95+ target. If a login-page
@@ -1444,6 +1504,35 @@ it is vocabulary the system is built from. Two removals make the line concrete:
 
 ## Domain facts that are easy to get wrong
 
+- **An unknown ledger kind must never print `NaN`.** The pool screen once indexed `KIND_LABEL[kind]` /
+  `POOL_SIGN[kind]` with a string off the wire, so the first `travel` or `speed_*` row rendered a `NaN` amount.
+  `components/ledger/ledgerKinds.ts` answers every lookup with an OWN-property read and a fallback (label = the raw
+  kind, neutral tone, sign +1); a bare `table[kind]` also finds `Object.prototype` members (`constructor`). The
+  new kinds' labels have to ship no later than the API that writes them.
+- **`Awaiting Part` is a status, a badge and a token.** `--status-awaiting-part` aliases the warn colour; the
+  dashboard tile and the list behind it both send `Assigned,In Progress,Awaiting Part`, so the count and the list
+  it opens cannot disagree. **`isReschedulable` is not `isTimeChoosable`**: a manager may "Change the time" on an
+  `Awaiting Part` job (a revisit), but it is never "waiting for the customer to pick" — never fold it into
+  `TIME_CHOOSABLE_STATUSES`, which mirrors a server set that deliberately did not change.
+- **The travel preview is a mirror, not a source.** `components/allowances/travelPreview.ts` repeats
+  `api/app/core/travel.py` line for line, in integer tenths of a km, and its parity table is the Python test rows
+  copied verbatim; change the two in the same PR. If it ever disagrees with a ticket's `travel.amountPaise`, the
+  server is right and the file is stale.
+- **A ticket nobody holds can be HANDED to another franchisee** (Task 18) - **Hand to another franchisee** on the
+  staff ticket page, between *Change the time* and *Re-assign*, opening `HandToFranchiseeDialog` (a dialog, not a
+  routed page: one choice and one sentence). `canHandOver` in `lib/handOver.ts` mirrors the server's three statuses
+  (`New`, `Slot Pending`, `Escalated`) + "no technician" + `jobs.assign`; it is presentation, the server decides again.
+  The dialog is a **radio list, not a `Select`**, because the counts ("3 eligible · 2 online" from
+  `GET /tickets/:id/franchisee-options`) are the point and a closed menu hides them; the current franchisee is shown
+  but disabled; **nothing is preselected** and **Hand over** stays disabled until a franchisee AND a reason (3-255,
+  trimmed) are given. Zero eligible warns but is still confirmable (an Area Manager can assign by hand). A 409 that
+  means "it moved while you were deciding" (`TICKET_ASSIGNED`, `ALREADY_ASSIGNED`...) makes `useHandToFranchisee`
+  re-read the options, which drops the dialog into its Blocked state with the sentence. A handed ticket wears a
+  **Handed over** chip, and **Re-assign and the bonus count ask for the receiving franchisee's technicians and send NO
+  pincode** (`useCandidateTechnicians(..., franchiseeId)`): its pincode belongs to the franchisee that could not take
+  it, and the receiving one's technicians cover none of it, so a pincode filter would list nobody. `routingOverride`
+  is never sent by the console - the server derives it. All of the dialog's copy is PROPOSED (doc 18 section 5.3) and
+  awaits sign-off (index section 7).
 - **A technician may take a job before the customer picks a time, but cannot start it until one
   is agreed** — by the customer's link, or by a manager's "Change the time" here. They never
   propose one. See the root `AGENTS.md`.
@@ -1528,6 +1617,13 @@ it is vocabulary the system is built from. Two removals make the line concrete:
   list and for everything the serial lookup says, so a model is called the same thing in both.
   ⚠ `useBrand` beside `useOwnBrands` is the company WHITE-LABEL hook, a different idea entirely —
   never add a `useBrands`.
+
+- **The franchise rail wears the COMPANY's brand, not the franchisee's.** `FranchiseSidebar` draws `BrandMark`
+  from `useBrand()` (the company's tile and name) and shows the franchisee's own name only as the SECOND line: an
+  external franchisee leases the company's name (F1/F11) and never replaces it. The downloaded statement is named
+  by the console itself (`components/franchise/statements.ts`: company, franchisee, technician code and month, each
+  slugged — it never sees `Content-Disposition`). `BRAND_NAME` is wrong there — it is the platform's, and a
+  franchise user is signed in to a company.
   All of its copy is net-new — neither prototype has brands — and was **approved as written on
   2026-09-11**: the vendor form's Brands section, My brands and its dialog, the product form's
   Vendor and Brand pickers, the Approvals Products | Brands switch and its brand dialogs, and the

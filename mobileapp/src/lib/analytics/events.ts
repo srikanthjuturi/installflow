@@ -80,6 +80,11 @@ export function trackProofSubmitted(jobId: string): void {
   posthogCapture('proof_submitted', { jobId });
 }
 
+/** Diagnostic funnel detail, not a business KPI — PostHog only. */
+export function trackPartRequested(jobId: string): void {
+  posthogCapture('part_requested', { jobId });
+}
+
 export function trackRedemptionRequested(amountPaise: number): void {
   gaEvent('redemption_requested', { amountPaise });
   posthogCapture('redemption_requested', { amountPaise });

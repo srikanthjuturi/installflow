@@ -18,4 +18,10 @@ describe("featureForPath", () => {
     );
     expect(featureForPath("/franchiseesque")).toBeUndefined();
   });
+
+  it("gates Configuration > Allowances on the settings read key (Task 13)", () => {
+    expect(featureForPath("/settings/allowances")).toBe("settings.view");
+    // ...and does not shade its sibling.
+    expect(featureForPath("/settings/rules")).toBe("settings.view");
+  });
 });

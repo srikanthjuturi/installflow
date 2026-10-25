@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import Principal, require_feature, require_franchise_principal
+from app.core.deps import Principal, require_all, require_feature, require_franchise_principal
 from app.core.schemas import (
     ApiEnvelope,
     ListParams,
@@ -49,8 +49,12 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 #: opened it.
 CanPay = Annotated[
     Principal,
-    Depends(require_franchise_principal),
-    Depends(require_feature("franchise.payouts")),
+    Depends(
+        require_all(
+            require_franchise_principal,
+            require_feature("franchise.payouts"),
+        )
+    ),
 ]
 
 

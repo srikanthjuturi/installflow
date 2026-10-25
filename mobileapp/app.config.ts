@@ -208,7 +208,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
  *
  * expo-location is FOREGROUND only — one reading at the shutter of the live
  *   site photo, which is what evidences that the technician was actually
- *   there. Background location is never requested: it needs a development
+ *   there — and, if the technician chooses "Use my current location" on Base
+ *   location, the place they start their day from. Background location is never requested: it needs a development
  *   build, and following somebody around is not what this is for.
  *
  * expo-secure-store keeps session tokens in the Keychain / Android Keystore,

@@ -66,6 +66,12 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Penalty · bonus · AI · timing",
   },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
+  /* Net-new (Task 13 §5.10, PROPOSED). The page itself names the home
+     franchisee — this table is a pure path -> copy map with no session. */
+  "/settings/allowances": {
+    title: "Allowances",
+    subtitle: "Travel and speed allowances for the home franchisee's technicians",
+  },
   /* Net-new, like Credits below, and for the same reason. */
   "/vendor-credit": {
     title: "Vendor credit",

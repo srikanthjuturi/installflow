@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ArrowLeft, Pencil, Users } from "lucide-react";
 import { useLocation, useParams } from "react-router";
+import { HomeFacilityUsersCard } from "@/components/franchise/HomeFacilityUsersCard";
+import { FranchiseeAllowancesCard } from "@/components/allowances/FranchiseeAllowancesCard";
 import { FranchiseeAdminsPanel } from "@/components/franchisees/FranchiseeAdminsPanel";
 import { FranchiseeBadges } from "@/components/franchisees/FranchiseeBadges";
 import { FranchiseeFacts } from "@/components/franchisees/FranchiseeFacts";
@@ -217,11 +219,15 @@ export default function FranchiseePage() {
 
               <FranchiseeAdminsPanel franchisee={franchisee} canManage={canManage} />
 
-              {/* Task 13's HomeFacilityUsersCard goes on the home franchisee's
-                  page only (owner ruling 2026-10-15, R4; Task 08 §5.6). The home
-                  has no parts desk until somebody adds a facility user, and that
-                  work owns its own card — explicitly OUT OF SCOPE here, not a
-                  TODO this screen forgot (Task 08 §8, item 10). */}
+              {/* Task 13 §5.4 — Admin / National Head only (the card decides). */}
+              <FranchiseeAllowancesCard franchisee={franchisee} />
+
+              {/* Task 13 §5.7 — the HOME franchisee's facility users (owner
+                  ruling 2026-10-15, R4). The home has no parts desk until
+                  somebody adds a facility user, and no staff role works the
+                  queue, so Admin / National Head give it one here. The card
+                  decides: home only, Admin / NH only. */}
+              <HomeFacilityUsersCard franchisee={franchisee} />
             </>
           )}
         </div>

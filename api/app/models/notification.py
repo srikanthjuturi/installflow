@@ -172,6 +172,22 @@ NOTIFICATION_KINDS = (
     #: F6). Not raised for a ticket re-stamp — that is `franchisee_changed` on
     #: `ticket_events`, a different audience entirely.
     "technician_moved",
+    #: A technician asked a franchisee's facility for a spare part (Task 12).
+    #: `audience='facility'` — the franchise staff of that franchisee, nobody on
+    #: company staff (owner ruling 2026-10-15, R4).
+    "part_requested",
+    #: A facility REJECTED a part request — including one it had approved
+    #: first (R2). Written for rejections only: an approval is nobody's work
+    #: item but the facility's. Territory staff own the ticket (F7) and a job
+    #: that cannot get its part may need a force-close or a different plan.
+    "part_decided",
+    #: A facility handed the new part to the technician. Territory staff may
+    #: need to book the revisit.
+    "part_issued",
+    #: A manager handed an unassigned ticket to a franchisee (Task 18).
+    #: `audience='franchisee_admin'`, `franchisee_id` = the receiving franchisee. The
+    #: arrival event for work - like `technician_joined`, good news, not a problem.
+    "ticket_handed",
 )
 
 #: Who a row is for when territory is the wrong question.
@@ -225,6 +241,12 @@ AUDIENCES = (
     "billing",
     "vendor",
     "franchisee_admin",
+    #: `facility` — the franchise staff of the row's `franchisee_id`: facility
+    #: admins, facility operators and franchisee admins. Never company staff,
+    #: the home franchisee included (owner ruling 2026-10-15, R4), and no
+    #: territory staff. Like `vendor` it narrows AWAY from staff: no staff role
+    #: is spelled `facility`, so it falls out of every territory branch.
+    "facility",
 )
 
 

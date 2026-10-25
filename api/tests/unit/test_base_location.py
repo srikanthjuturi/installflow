@@ -129,7 +129,13 @@ def test_penalty_titles_unchanged() -> None:
 
 
 def test_unknown_kind_returns_its_reason() -> None:
-    assert _title("speed_reward", "Under 12h") == "Under 12h"
+    # Task 11 §4.8: `speed_reward` / `speed_penalty` are no longer unknown —
+    # they carry their own fixed titles, which is why this case's old example
+    # (a `speed_reward` through the reason fallthrough) had to move. An actual
+    # unknown kind still reads its own reason back.
+    assert _title("speed_reward", "Under 12h") == "Speed reward"
+    assert _title("speed_penalty", "Over 24h") == "Speed penalty"
+    assert _title("mystery", "Under 12h") == "Under 12h"
 
 
 # ── travel_reason (case 5) ───────────────────────────────────────────────────

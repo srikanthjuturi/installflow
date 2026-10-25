@@ -243,3 +243,64 @@ def test_viewer_without_a_franchisee_is_silent() -> None:
     assert not franchise_hears_ticket(
         viewer_franchisee=None, facility=False, event_franchisee=_SKYFIX
     )
+
+# ── Task 18: the override (cases 26–31) ──────────────────────────────────────
+
+
+def test_needs_restamp_is_false_for_a_handed_over_ticket_even_when_the_owner_differs() -> None:
+    assert needs_restamp(_HOME, _SKYFIX, routing_override=True) is False
+    assert needs_restamp(None, _SKYFIX, routing_override=True) is False
+
+
+def test_needs_restamp_without_the_override_is_task_04s_three_cases() -> None:
+    assert needs_restamp(_SKYFIX, _SKYFIX, routing_override=False) is False
+    assert needs_restamp(_HOME, _SKYFIX, routing_override=False) is True
+    assert needs_restamp(None, _HOME, routing_override=False) is True
+
+
+def test_override_waives_the_pincode_for_the_matching_franchisee() -> None:
+    # The viewer covers a different pincode entirely; the franchisee matches and the node is on the path.
+    assert pool_frame_matches(
+        pincodes={"500003"},
+        nodes={_TW},
+        franchisee_id=_SKYFIX,
+        event_pincode="500032",
+        event_path=[_TW],
+        event_franchisee=_SKYFIX,
+        event_override=True,
+    )
+
+
+def test_override_never_crosses_the_franchisee_wall() -> None:
+    assert not pool_frame_matches(
+        pincodes={"500003"},
+        nodes={_TW},
+        franchisee_id=_HOME,
+        event_pincode="500032",
+        event_path=[_TW],
+        event_franchisee=_SKYFIX,
+        event_override=True,
+    )
+
+
+def test_override_does_not_waive_certification() -> None:
+    assert not pool_frame_matches(
+        pincodes={"500003"},
+        nodes={_ANDROID_TV},
+        franchisee_id=_SKYFIX,
+        event_pincode="500032",
+        event_path=[_TW],
+        event_franchisee=_SKYFIX,
+        event_override=True,
+    )
+
+
+def test_override_omitted_keeps_the_coverage_test() -> None:
+    assert not pool_frame_matches(
+        pincodes={"500003"},
+        nodes={_TW},
+        franchisee_id=_SKYFIX,
+        event_pincode="500032",
+        event_path=[_TW],
+        event_franchisee=_SKYFIX,
+    )

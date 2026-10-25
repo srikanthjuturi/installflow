@@ -68,9 +68,10 @@ def hears(
     with THEIR franchisee and addressed to nobody, to them, or to the payer
     (their money, and `payers` rows of home — F8); `payers` is the resolved
     payer; `billing` is the recharge pair; a role key is that role, still
-    inside its territory; an unaddressed row is territory as usual. Anything
-    unknown — including `facility' until Task 12 widens the rule — reaches
-    nobody rather than everybody.
+    inside its territory; an unaddressed row is territory as usual; `facility`
+    (Task 12) is the franchise staff — admin, facility admin and operator — of
+    the row's own franchisee and NOBODY else, the home franchisee included
+    (owner ruling R4). Anything unknown reaches nobody rather than everybody.
     """
     # The franchise branch first, and COMPLETE — it must answer addressed AND
     # unaddressed rows, so it cannot sit inside the `audience is not None`
@@ -81,14 +82,19 @@ def hears(
     # on the row means a staff event, NULL on the reader is a corrupt
     # membership, and both mean silence.
     if reader.role in FRANCHISE_ROLES:
-        return (
-            reader.role == FRANCHISEE_ADMIN
-            # Facility roles hear nothing in this task — Task 12 adds `facility`
-            # here, for THIS franchisee's facility staff only (owner ruling R4).
-            and reader.franchisee_id is not None
-            and franchisee_id is not None
-            and franchisee_id == reader.franchisee_id
-            and audience in (None, "franchisee_admin", "payers")
+        if (
+            reader.franchisee_id is None
+            or franchisee_id is None
+            or franchisee_id != reader.franchisee_id
+        ):
+            return False
+        if audience == "facility":
+            # Any of the three franchise roles of THIS franchisee (R4): the
+            # parts desk, and the franchisee admin who may do all it can.
+            return True
+        # Facility roles hear nothing else: the rest is a franchisee admin's.
+        return reader.role == FRANCHISEE_ADMIN and audience in (
+            None, "franchisee_admin", "payers",
         )
     if audience is not None:
         if audience == "vendor":

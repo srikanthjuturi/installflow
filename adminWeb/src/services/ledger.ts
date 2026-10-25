@@ -40,6 +40,17 @@ export interface LedgerPool {
   cancellations: number;
   bonusesPaidPaise: number;
   pickups: number;
+  /**
+   * Task 11's breakdown (W11) — the speed kinds INSIDE the two tiles above,
+   * never on top of them: `penaltiesCollectedPaise` already includes
+   * `speedPenaltyPaise` and `bonusesPaidPaise` already includes
+   * `speedRewardPaise`, so `collected − bonuses = balance` holds on every
+   * console. Optional because a server older than Task 11 sends none of them.
+   */
+  speedPenaltyPaise?: number;
+  speedPenalties?: number;
+  speedRewardPaise?: number;
+  speedRewards?: number;
   /** Whose pool this is (Task 05, F12) — every money read names its franchisee. */
   franchiseeId: string;
   franchiseeName: string;

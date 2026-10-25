@@ -31,6 +31,7 @@ from app.core.realtime import (
     publish_notification,
     publish_ticket_changed,
 )
+from app.core.speed_settle import settle_speed
 from app.core.tickets import NO_SHOW_GRACE_MINUTES
 from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.models.membership import Membership
@@ -239,6 +240,21 @@ async def record_feedback(
                     reason=travel_reason(km=_view.km),
                 )
             )
+
+        # Task 11 (S5): the speed allowance is measured HERE — after the
+        # payout and travel rows are built, in the same closure transaction,
+        # and before the commit (`refresh_technician_stats` commits on its
+        # own, so nothing speed-related may be ordered after that).
+        # `settle_speed` reads the terms frozen at accept, folds the clock
+        # off `ticket_events`, takes the profile lock the cap shares with the
+        # cancel path, and writes at most one speed row plus the
+        # `speed_settled` event whenever a rule was measured. Returning None
+        # (no terms, a mismatched stamp, no clock) writes nothing and
+        # settles nothing, exactly as Task 10's absent travel does.
+        #
+        # Never on a force-closure (S5, R7) — `force_close_ticket` does not
+        # call it, deliberately.
+        await settle_speed(db, row, now=now)
 
     if confirmed:
         # And the other half of the same money: the vendor asked for this visit,

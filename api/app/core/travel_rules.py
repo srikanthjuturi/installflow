@@ -193,14 +193,26 @@ async def _load_both(
     return rows
 
 
+def _to_io(row: FranchiseeTravelRule) -> TravelRuleIO:
+    # The wire fields are camelCase and the columns snake_case, so
+    # `model_validate(row)` finds nothing — name each one.
+    return TravelRuleIO(
+        freeKm=row.free_km,
+        stepKm=row.step_km,
+        paisePerStep=row.paise_per_step,
+        roadFactorPct=row.road_factor_pct,
+        maxPaisePerJob=row.max_paise_per_job,
+    )
+
+
 async def get_travel_rules(
     db: AsyncSession, *, company_id: uuid.UUID, franchisee_id: uuid.UUID
 ) -> TravelRulesOut:
     """Both types, for the GET endpoints. Self-heals a missing pair."""
     rows = await _load_both(db, company_id=company_id, franchisee_id=franchisee_id)
     return TravelRulesOut(
-        freelancer=TravelRuleIO.model_validate(rows["freelancer"]),
-        employee=TravelRuleIO.model_validate(rows["employee"]),
+        freelancer=_to_io(rows["freelancer"]),
+        employee=_to_io(rows["employee"]),
     )
 
 

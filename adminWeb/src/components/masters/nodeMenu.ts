@@ -16,7 +16,12 @@ export type MasterAction =
   | { kind: "delete-node"; node: ProductNode }
   | { kind: "add-model"; node: ProductNode }
   | { kind: "edit-model"; node: ProductNode; model: ProductModel }
-  | { kind: "delete-model"; model: ProductModel };
+  | { kind: "delete-model"; model: ProductModel }
+  // Task 13 §5.6 — the spare-parts catalogue of a category or a product. A
+  // different permission (`parts.catalogue`) from the rest of the union, which
+  // is `masters.edit`; the tree offers it to either holder on its own.
+  | { kind: "node-parts"; node: ProductNode }
+  | { kind: "model-parts"; node: ProductNode; model: ProductModel };
 
 export interface NodeMenuItem {
   label: string;

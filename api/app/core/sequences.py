@@ -58,6 +58,11 @@ KINDS: dict[str, str] = {
     #: the vendor and the company quote at each other when a payment is
     #: argued about, and it lands on both their bank statements.
     "vendor_payment": "VPY",
+    #: A technician's request for a spare part — `RGT-SPR-0007` (Task 12, D20).
+    #: The handle a facility and a technician quote at each other. Allocated
+    #: inside the request's own transaction, so a rolled-back request gives its
+    #: number back, exactly as a ticket does.
+    "spare_part_request": "SPR",
 }
 
 #: Zero-padding for the counter. A MINIMUM width, not a cap: the 10,000th

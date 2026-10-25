@@ -61,6 +61,16 @@ const OPS_ROUTES: Rewrite[] = [
  */
 const FRANCHISE_ROUTES: Rewrite[] = [
   ["/tickets/", (path) => `/franchise${path}`],
+  // Task 13: a `part_requested` row is stored as `/franchise/parts/requests/{id}`
+  // (Task 12 writes it that way), which already IS a portal route — without
+  // this rule it would fall through to the portal home. Declared first so
+  // nothing below can rewrite a route that is already right.
+  ["/franchise/", (path) => path],
+  // And a `/parts/…` route written without the prefix lands on the portal's
+  // desk. ONE WAY ONLY (owner ruling 2026-10-15, R4): there is no mapping into
+  // the staff table, because no staff reader hears a `facility` row and no
+  // staff `/parts` route exists to land on.
+  ["/parts/", (path) => `/franchise${path}`],
   // The list AND the profiles: one prefix does both, the same way the staff
   // table's rules are by prefix rather than by shape.
   ["/technicians", (path) => `/franchise${path}`],

@@ -18,39 +18,17 @@ import {
 } from "@/components/shared/DataTable";
 import { formatTimeOfDay } from "@/utils/datetime";
 import { dayLabel } from "@/lib/dayGroup";
-import { moneyPaiseSigned } from "@/utils/money";
+import { moneyPaise, moneyPaiseSigned } from "@/utils/money";
 import { ALL_FILTER, withFilter } from "@/hooks/useListParams";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LedgerEntry } from "@/types";
-
-/**
- * Static class strings, one per kind — an interpolated `bg-${kind}-bg` would
- * never be generated. Kind is widened to include `(string & {})`
- * (`types/index.ts`), so a kind with no entry here falls through the `??` to
- * the neutral tone instead of rendering nothing at all — the API's kinds
- * table grows (Task 13's speed rewards next), and the label lookup below
- * already handles that the same way.
- */
-const KIND_CHIP: Partial<Record<LedgerEntry["kind"], string>> = {
-  penalty: "bg-danger-bg text-danger",
-  bonus: "bg-ok-bg text-ok",
-  // Money out of the pool like a bonus, but not a bonus — its own tone so the
-  // two are never read as one.
-  reversal: "bg-info-bg text-info",
-};
-const KIND_CHIP_FALLBACK = "bg-surface-2 text-ink-2";
-
-/**
- * The wire value is lower case; the column prints the approved label.
- * "Penalty reversed" is net-new — neither prototype has a reversal — and was
- * approved as written on 2026-09-11. An unknown kind prints ITSELF — a
- * fallback word could be mistaken for an approved one.
- */
-const KIND_LABEL: Partial<Record<LedgerEntry["kind"], string>> = {
-  penalty: "Penalty",
-  bonus: "Bonus",
-  reversal: "Penalty reversed",
-};
+import {
+  isKnownKind,
+  kindChip,
+  kindLabel,
+  LEDGER_KINDS,
+  poolSign,
+} from "./ledgerKinds";
 
 /**
  * Beside a penalty that was later given back. The table and the CSV both say
@@ -58,33 +36,7 @@ const KIND_LABEL: Partial<Record<LedgerEntry["kind"], string>> = {
  */
 const REVERSED_MARK = "(reversed)";
 
-/**
- * Which way each kind moves the POOL — this screen's point of view, and the one
- * "Current pool balance" is the sum of. A penalty is collected into the pool;
- * a bonus is paid out of it; a reversal gives a penalty back to the technician,
- * so that money leaves the pool too.
- *
- * The API stores a magnitude and no sign because the direction depends on who
- * is looking: the technician's own Earnings reads the same rows the other way
- * round, a penalty as a debit. That view belongs to the app, not to this one.
- *
- * A reversed penalty keeps its `+`. It WAS collected, and its reversal row is
- * what takes it back out — so the signed rows still add up to the balance.
- * Striking the charge out as well would take the same money out twice.
- */
-const POOL_SIGN: Partial<Record<LedgerEntry["kind"], 1 | -1>> = {
-  penalty: 1,
-  bonus: -1,
-  reversal: -1,
-};
-
-const poolPaise = (e: LedgerEntry) =>
-  (POOL_SIGN[e.kind] ?? /* unknown kind reads as collected */ 1) * e.amountPaise;
-
-const kindChip = (k: LedgerEntry["kind"]) => KIND_CHIP[k] ?? KIND_CHIP_FALLBACK;
-const kindLabel = (k: LedgerEntry["kind"]) =>
-  KIND_LABEL[k] ?? /* the raw wire value, above */
-  k;
+const poolPaise = (e: LedgerEntry) => poolSign(e.kind) * e.amountPaise;
 
 const ALL = ALL_FILTER;
 
@@ -248,13 +200,21 @@ export function LedgerTable({
       header: "Amount",
       align: "right",
       cellClassName: "font-mono font-semibold",
-      // The POOL's sign — see `POOL_SIGN`. Green in, red out, and the `+`/`−`
+      // The POOL's sign — see `poolSign` in `ledgerKinds`. Green in, red out, and the `+`/`−`
       // says the same thing for anyone who cannot tell the two colours apart.
       cell: (l) => {
         const signed = poolPaise(l);
+        // A kind this build has never heard of is unsigned AND uncoloured: the
+        // direction is a guess, and a green `+` would assert it.
+        const known = isKnownKind(l.kind);
+        const tone = !known
+          ? "text-ink"
+          : signed < 0
+            ? "text-danger"
+            : "text-ok";
         return (
-          <span className={signed < 0 ? "text-danger" : "text-ok"}>
-            {moneyPaiseSigned(signed)}
+          <span className={tone}>
+            {known ? moneyPaiseSigned(signed) : moneyPaise(signed)}
           </span>
         );
       },
@@ -298,11 +258,7 @@ export function LedgerTable({
       id: "kind",
       label: "Type",
       variant: "select",
-      options: [
-        { value: "penalty", label: "Penalty" },
-        { value: "bonus", label: "Bonus" },
-        { value: "reversal", label: "Penalty reversed" },
-      ],
+      options: LEDGER_KINDS.map((k) => ({ value: k, label: kindLabel(k) })),
       value: kind,
       // `withFilter` drops "All" rather than sending it as a kind — the API
       // matches nothing for kind "all", which is what emptied the ledger on
@@ -377,8 +333,8 @@ export function LedgerTable({
                   visible.map((e) => [
                     e.at,
                     e.reversed
-                      ? `${KIND_LABEL[e.kind]} ${REVERSED_MARK}`
-                      : KIND_LABEL[e.kind],
+                      ? `${kindLabel(e.kind)} ${REVERSED_MARK}`
+                      : kindLabel(e.kind),
                     e.technicianName,
                     e.ticketCode,
                     e.reason,
