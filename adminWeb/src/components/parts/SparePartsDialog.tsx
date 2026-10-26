@@ -233,7 +233,7 @@ function PartsEditor({ owner }: { owner: { kind: "node" | "model"; id: string } 
         {own.length === 0 ? (
           <p className="text-xs text-ink-3">No parts added here yet.</p>
         ) : (
-          <ul className="scroll-slim max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+          <ul className="scroll-none max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {own.map((part) =>
               editing === part.id ? (
                 <li key={part.id} className="grid gap-1 px-3 py-1.5">

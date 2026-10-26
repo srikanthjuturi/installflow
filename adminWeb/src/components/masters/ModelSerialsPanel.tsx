@@ -232,7 +232,7 @@ export function ModelSerialsPanel({
         )
       ) : (
         <>
-          <ul className="scroll-slim max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+          <ul className="scroll-none max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {rows.map((row) =>
               editing === row.id ? (
                 <li key={row.id} className="flex items-center gap-1.5 px-3 py-1.5">

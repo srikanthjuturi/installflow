@@ -82,7 +82,7 @@ export function RejectsTable<T>({
         </Button>
       </div>
 
-      <div className="scroll-slim max-h-44 overflow-y-auto">
+      <div className="scroll-none max-h-44 overflow-y-auto">
         <table className="w-full text-[12px]">
           <thead className="sticky top-0 bg-surface-2 text-ink-3">
             <tr>

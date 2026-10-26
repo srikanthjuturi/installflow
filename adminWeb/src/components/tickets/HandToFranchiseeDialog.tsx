@@ -100,7 +100,7 @@ export function HandToFranchiseeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto scroll-none">
         <DialogHeader>
           <DialogTitle>Hand {ticket.code} to another franchisee</DialogTitle>
           <DialogDescription>
@@ -148,7 +148,7 @@ export function HandToFranchiseeDialog({
                     value={field.value}
                     onValueChange={(v) => field.onChange(String(v))}
                     aria-labelledby="hand-over-franchisee-label"
-                    className="gap-1.5"
+                    className="max-h-[45vh] gap-1.5 overflow-y-auto scroll-none"
                   >
                     {rows.map((row) => (
                       <label

@@ -152,7 +152,7 @@ function MiniTable<T>({
         <p className="text-[13px] font-medium text-ink">{title}</p>
         {note ? <p className="text-[12px] text-ink-3">{note}</p> : null}
       </div>
-      <div className="scroll-slim max-h-44 overflow-y-auto">
+      <div className="scroll-none max-h-44 overflow-y-auto">
         <table className="w-full text-[12px]">
           <thead className="bg-surface-2 text-ink-3">
             <tr>
@@ -235,7 +235,7 @@ function RestampedTickets({ change }: { change: PincodeChange }) {
         {formatCount(n, "ticket", "tickets")}
       </p>
       {change.restampedTickets.sample.length > 0 ? (
-        <div className="scroll-slim max-h-44 overflow-y-auto pb-2">
+        <div className="scroll-none max-h-44 overflow-y-auto pb-2">
           <table className="w-full text-[12px]">
             <thead className="bg-surface-2 text-ink-3">
               <tr>
