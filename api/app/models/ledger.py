@@ -90,10 +90,40 @@ from app.db.mixins import AuditMixin, IdMixin
 #:
 #: `reversal` is a penalty given back — see the module docstring. It arrived
 #: with its writer, `tickets.service.reverse_penalty`.
-LEDGER_KINDS = ("penalty", "bonus", "payout", "reversal")
+#:
+#: `travel` (Task 10) is the company — through the technician's franchisee —
+#: paying for distance travelled on a job, from outside the pool, exactly like
+#: `payout` is the company paying for work. It is written when the job settles:
+#: on the customer's confirmation, or on a manager's force-closure. Like a
+#: payout it reads "by name" in every technician-facing total (`core.ledger.
+#: credited`, `earnings.summary`) and reaches the pool readers by NOT being in
+#: `POOL_KINDS`, whose sum stays the penalty/bonus circuit.
+#:
+#: `speed_reward` / `speed_penalty` (Task 11) are the speed allowance's two
+#: movements — a fast finish is paid, a slow one is charged (S1). Both ARE pool
+#: money (S6): a speed penalty is collected into the franchisee's pool and a
+#: speed reward is paid out of it, so slow technicians fund fast ones. At most
+#: ONE of them per ticket (`uq_ledger_entries_speed_once`), written only on the
+#: customer's closure — never on a force-close (S5, R7). `speed_penalty` counts
+#: against `cancel_penalty_cap_paise` (S6) and is reversible like a penalty.
+LEDGER_KINDS = (
+    "penalty", "bonus", "payout", "reversal", "travel", "speed_reward",
+    "speed_penalty",
+)
 
 #: The kinds that move the pool balance: penalties in, bonuses and reversals out.
-POOL_KINDS = ("penalty", "bonus", "reversal")
+POOL_KINDS = ("penalty", "bonus", "reversal", "speed_reward", "speed_penalty")
+
+#: What a `reversal` may name. Enforced in the service (a CHECK cannot see
+#: another row). MOVED here from Task 05's `core/penalty_reversal.py` (which
+#: now imports it) — one tuple, one home, beside the kinds it names.
+REVERSIBLE_KINDS = ("penalty", "speed_penalty")
+
+#: The kinds that count against `cancel_penalty_cap_paise` (S6).
+CAPPED_KINDS = REVERSIBLE_KINDS
+
+#: The two Task 11 kinds — at most one per ticket.
+SPEED_KINDS = ("speed_reward", "speed_penalty")
 
 
 class LedgerEntry(Base, IdMixin, AuditMixin):
@@ -131,9 +161,28 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
     #: a reversal can never name another company's penalty.
     reverses_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
+    #: Whose pool / whose money (00-index F11, F12). The technician's franchisee
+    #: at write time; a reversal copies the penalty's instead (`core.ledger.entry`),
+    #: so money returns to the pool that collected it even if the technician has
+    #: since moved franchisee. Never updated afterwards — a technician moving
+    #: franchisee later does not move money already written.
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: What the technician WAS when the money moved — `employee` or `freelancer`
+    #: (models/technician.TECHNICIAN_TYPES). Stamped on the row at write time
+    #: beside `franchisee_id` (Task 05 §3.3, the same pattern Task 01 used),
+    #: because the type can change later (T1) and two questions are answered
+    #: against the OLD type: "which of this person's money is redeemable by
+    #: UPI" (freelancer money — Task 06) and "which goes on the salary
+    #: statement" (employee money). The current profile type cannot answer
+    #: either for an old row. A reversal copies the penalty's, in that pool and
+    #: in that stream. No server default: a writer that forgets it must fail on
+    #: NOT NULL, not silently file salary money as redeemable.
+    technician_type: Mapped[str] = mapped_column(String(16), nullable=False)
+
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('penalty', 'bonus', 'payout', 'reversal')", name="kind"
+            "kind IN ('penalty', 'bonus', 'payout', 'reversal', 'travel', "
+            "'speed_reward', 'speed_penalty')", name="kind"
         ),
         CheckConstraint(
             "(kind = 'reversal') = (reverses_id IS NOT NULL)",
@@ -147,6 +196,12 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
         # place that could produce a zero — a technician whose monthly cap is
         # already spent — writes nothing instead, and says so where it decides.
         CheckConstraint("amount_paise > 0", name="amount_paise"),
+        # The technician's type at write time — the same vocabulary
+        # `technician_profiles.technician_type` holds. BARE name, matching the
+        # profile's and invite's.
+        CheckConstraint(
+            "technician_type IN ('employee', 'freelancer')", name="technician_type"
+        ),
         # The ledger list: one company's entries, newest first.
         Index("ix_ledger_entries_company_created", "company_id", "created_at"),
         # Two jobs at once, which is why it is one index and not two: the
@@ -162,10 +217,24 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
         # The covering index for the ticket FK. Postgres creates none, and
         # without it deleting one ticket scans the whole ledger.
         Index("ix_ledger_entries_company_ticket", "company_id", "ticket_id"),
+        # Covering index for the franchisee FK AND the per-franchisee pool /
+        # ledger list (F12), newest first.
+        Index(
+            "ix_ledger_entries_company_franchisee",
+            "company_id",
+            "franchisee_id",
+            "created_at",
+        ),
         ForeignKeyConstraint(
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],
             name="fk_ledger_entries_company_technician",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_ledger_entries_company_franchisee",
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
@@ -189,5 +258,29 @@ class LedgerEntry(Base, IdMixin, AuditMixin):
             "reverses_id",
             unique=True,
             postgresql_where=text("reverses_id IS NOT NULL"),
+        ),
+        # One travel credit per ticket (W6). Both writers settle a terminal
+        # transition, so a second row is unreachable by argument — this makes it
+        # unreachable by construction, as `uq_ledger_entries_reverses` does for
+        # reversals. Declared on the MODEL with its `postgresql_where` so
+        # autogenerate sees it rather than proposing to drop it.
+        Index(
+            "uq_ledger_entries_one_travel",
+            "company_id",
+            "ticket_id",
+            unique=True,
+            postgresql_where=text("kind = 'travel'"),
+        ),
+        # One speed row per ticket (W9). Task 11's own backstop for a settlement
+        # that races with itself: the closure's guarded UPDATE makes it
+        # once-only by argument, this makes it once-only by construction.
+        # Declared here (as `uq_ledger_entries_reverses` is) so autogenerate
+        # does not propose dropping it.
+        Index(
+            "uq_ledger_entries_speed_once",
+            "company_id",
+            "ticket_id",
+            unique=True,
+            postgresql_where=text("kind IN ('speed_reward', 'speed_penalty')"),
         ),
     )

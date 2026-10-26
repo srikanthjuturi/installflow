@@ -5,8 +5,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { groupByDay } from "@/lib/dayGroup";
+import { surfaceOf } from "@/lib/surface";
 import { useSession } from "@/store/session";
 import { NotificationRow } from "./NotificationRow";
+import { routeFor } from "./routeFor";
 import type { OpsNotification } from "@/services/notifications";
 
 interface NotificationListProps {
@@ -28,68 +30,11 @@ interface NotificationListProps {
   onClearFilters: () => void;
 }
 
-type Rewrite = [prefix: string, rewrite: (path: string) => string];
-
 /**
- * Where each route lands for a PORTAL reader, first match wins.
- *
- * An ordered table rather than a chain of ifs, because the list grows:
- * `vendor_id` widens a notification to a vendor's portal, and six kinds
- * already carry one.
+ * The three route tables and their matching moved to `routeFor.ts` when the
+ * franchise portal became a third reader (Task 09) — same rules, one more
+ * table, and a fallback of `/franchise` for anything it has no twin for.
  */
-const PORTAL_ROUTES: Rewrite[] = [
-  ["/tickets/", (path) => `/portal${path}`],
-  // A staff-written route for something a vendor is a party to. `/approvals`
-  // is the ops queue; their copy of that product is on their own screen.
-  ["/approvals", () => "/portal/products"],
-  ["/portal/products", (path) => path],
-  // A decision on a brand they added.
-  ["/portal/brands", (path) => path],
-];
-
-/**
- * The same table in the other direction, for a STAFF reader.
- *
- * It is needed because `vendor_id` on a notification WIDENS the audience and
- * never narrows it: a product decision is written for the vendor and lands in
- * every staff feed too. Without this, a manager clicking one would be sent to
- * `/portal/products`, which `RequirePortal` bounces straight back to `/` — a
- * bell that leads nowhere, which is the one thing a notification must not be.
- */
-const OPS_ROUTES: Rewrite[] = [
-  ["/portal/products", () => "/approvals"],
-  // The Brands half of the same queue.
-  ["/portal/brands", () => "/approvals?kind=brands"],
-];
-
-/**
- * The server stores ONE route per notification. Most are written for the
- * console; the vendor portal is a separate route tree over the same records, so
- * the same row has to point somewhere else there.
- *
- * Rewritten here rather than stored twice: two columns would have to be kept
- * in step by every writer, and a notification whose two routes disagreed would
- * be worse than one that needed translating.
- *
- * The query string is split off BEFORE matching. The old single rule only
- * handled `/tickets/…` correctly by luck — it prefixed the whole string, so a
- * `?focus=` would have travelled along by accident rather than by design.
- *
- * The fallback stays and is deliberate: a kind this build has never heard of
- * must still land somewhere real, the same reasoning `kindMeta` uses, and the
- * ticket list is the portal's home.
- */
-function routeFor(to: string, portal: boolean): string {
-  const q = to.indexOf("?");
-  const path = q === -1 ? to : to.slice(0, q);
-  const query = q === -1 ? "" : to.slice(q);
-  const table = portal ? PORTAL_ROUTES : OPS_ROUTES;
-  const hit = table.find(([prefix]) => path.startsWith(prefix));
-  if (hit) return `${hit[1](path)}${query}`;
-  // A portal reader falls back to their home; a staff reader keeps whatever the
-  // server wrote, because the ops routes ARE the ones it writes by default.
-  return portal ? "/portal/tickets" : to;
-}
 
 export function NotificationList({
   items,
@@ -106,7 +51,11 @@ export function NotificationList({
   isFiltered,
   onClearFilters,
 }: NotificationListProps) {
-  const portal = useSession((s) => s.portal);
+  // The three surfaces this list runs on — staff, vendor, franchise — each
+  // rewrite the same stored rows to their own route tree. The selector
+  // returns a string (v5 compares with Object.is), so the subscription is
+  // stable across unrelated session writes.
+  const surface = useSession((s) => surfaceOf(s));
 
   // Auto-load on scroll, with the button below as the real control. The
   // observer is the convenience; the button is what a keyboard reaches, and
@@ -180,7 +129,7 @@ export function NotificationList({
                 <NotificationRow
                   key={n.id}
                   notification={n}
-                  to={routeFor(n.to, portal)}
+                  to={routeFor(n.to, surface)}
                   onOpen={onOpen}
                   onMarkRead={onMarkRead}
                   busy={pendingId === n.id}

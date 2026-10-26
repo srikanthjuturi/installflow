@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useMe } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
-import { PORTAL_ROLES } from "@/types/api";
+import { FRANCHISE_ROLES, PORTAL_ROLES } from "@/types/api";
 import type { ListParams } from "@/types/api";
 import type {
   CreateUserInput,
@@ -25,7 +25,7 @@ import {
 } from "@/services/companyUsers";
 
 /** Roles whose reach is the whole country — they hand out any region. */
-const ALL_INDIA_ROLES = new Set(["superadmin", "admin", "national_head"]);
+export const ALL_INDIA_ROLES = new Set(["superadmin", "admin", "national_head"]);
 
 export const companyUserKeys = {
   all: ["company-users"] as const,
@@ -51,11 +51,12 @@ export function useRoles() {
 }
 
 /** The regions of India. Reference data — cached like the role catalog. */
-export function useRegions() {
+export function useRegions({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["regions"],
     queryFn: listRegions,
     staleTime: 60 * 60_000,
+    enabled,
   });
 }
 
@@ -68,14 +69,18 @@ export function useRegions() {
  * same thing: an empty list while the catalog is still arriving would render
  * selected regions as raw ids and read as "you have no regions".
  */
-export function useAssignableRegions(): {
+export function useAssignableRegions({
+  enabled = true,
+}: { enabled?: boolean } = {}): {
   regions: Region[];
   isLoading: boolean;
   isError: boolean;
 } {
-  const catalog = useRegions();
+  // Staff-only by consumers: the portal's coverage and filter hooks pass
+  // `enabled: false` rather than fire a staff endpoint and toast 403 on it.
+  const catalog = useRegions({ enabled });
   const me = useMe();
-  const loading = catalog.isPending || me.isPending;
+  const loading = enabled && (catalog.isPending || me.isPending);
   const failed = catalog.isError || me.isError;
 
   if (loading || failed || !catalog.data || !me.data) {
@@ -96,7 +101,7 @@ export function useAssignableRegions(): {
  * backend enforces the same rule; this only keeps the UI from offering choices
  * that would be rejected. Returns [] until the catalog loads.
  *
- * Three roles are withheld on purpose, all for one reason: this endpoint cannot
+ * Three groups are withheld on purpose, all for one reason: this endpoint cannot
  * create the record each of them needs, so offering them would be offering a
  * choice the server refuses.
  *
@@ -106,22 +111,43 @@ export function useAssignableRegions(): {
  *     login is created WITH the vendor on the Vendors screen, and a vendor's
  *     own people from the portal. One made here would authenticate, hold
  *     `jobs.create`, and have no vendor to raise a ticket against.
+ *   * **franchise roles** — need a franchisee on the membership — created on
+ *     the Franchisees screen (Task 03; the screen is Task 08). One made here
+ *     would authenticate and act for no franchisee — and the servers's
+ *     `create_user` refuses them by name for exactly that reason.
  *
- * The rank filter cannot express any of this: a vendor ranks 6, BELOW every
- * staff role, so an Area Manager "outranks" one and both would sail straight
- * through. `create_user` in the API refuses all three by name for exactly that
- * reason; this list keeps the dropdown honest about it.
+ * The rank filter cannot express any of this: a vendor ranks 6 and the
+ * franchise roles 8–10, BELOW every staff role, so an Area Manager "outranks"
+ * each and all would sail straight through. `create_user` in the API refuses
+ * them all by name; this list keeps the dropdown honest about it.
  */
-const NOT_INVITABLE_HERE: readonly string[] = ["technician", ...PORTAL_ROLES];
+const NOT_INVITABLE_HERE: readonly string[] = [
+  "technician",
+  ...PORTAL_ROLES,
+  ...FRANCHISE_ROLES,
+];
+
+/**
+ * PURE, unit-tested (`useCompanyUsers.test.ts`): the assignable slice of the
+ * role catalog for one signed-in role. Extracted from `useAssignableRoles` so
+ * the filter can be asserted without a React Query harness — the hook below is
+ * now only cache wiring.
+ */
+export function assignableRoles(
+  roles: RoleOption[],
+  myRole: string
+): RoleOption[] {
+  const myRank = roles.find((r) => r.key === myRole)?.rank ?? -Infinity;
+  return roles.filter(
+    (r) => r.rank > myRank && !NOT_INVITABLE_HERE.includes(r.key)
+  );
+}
 
 export function useAssignableRoles(): RoleOption[] {
   const { data: roles } = useRoles();
   const myRole = useSession((s) => s.backendUser?.role);
   if (!roles || !myRole) return [];
-  const myRank = roles.find((r) => r.key === myRole)?.rank ?? -Infinity;
-  return roles.filter(
-    (r) => r.rank > myRank && !NOT_INVITABLE_HERE.includes(r.key)
-  );
+  return assignableRoles(roles, myRole);
 }
 
 /** The signed-in user's rank (from the role catalog), or -Infinity if unknown. */

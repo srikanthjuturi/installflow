@@ -2,12 +2,14 @@ import {
   AlertTriangle,
   BadgeCheck,
   Boxes,
+  Building2,
   Coins,
   HandCoins,
   IndianRupee,
   LayoutDashboard,
   ListFilter,
   Map,
+  Route,
   SlidersHorizontal,
   Tags,
   UserCog,
@@ -155,6 +157,17 @@ export const NAV_GROUPS: NavGroup[] = [
         match: ["/technicians/"],
         feature: "technicians.view",
       },
+      // Net-new — no prototype has franchisees. Awaiting sign-off (index §7).
+      {
+        label: "Franchisees",
+        to: "/franchisees",
+        icon: Building2,
+        match: ["/franchisees/"],
+        // view, not manage: an Area Manager reads who runs which pincodes. The
+        // writes are gated per button on `franchisees.manage` and refused by
+        // the API.
+        feature: "franchisees.view",
+      },
       {
         label: "Penalty & Bonus",
         to: "/ledger",
@@ -197,6 +210,15 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Rules Config",
         to: "/settings/rules",
         icon: SlidersHorizontal,
+        feature: "settings.view",
+      },
+      {
+        label: "Allowances",
+        to: "/settings/allowances",
+        icon: Route,
+        // Travel and speed rules for the HOME franchisee. Read with
+        // `settings.view`; editing is Admin / National Head with
+        // `settings.edit`, held by the page (and refused by the server).
         feature: "settings.view",
       },
       {

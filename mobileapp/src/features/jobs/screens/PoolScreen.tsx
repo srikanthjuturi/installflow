@@ -9,6 +9,7 @@ import { FilterChips, type FilterChipOption, Text } from '@/components/ui';
 import { useAcceptingWork } from '@/features/availability/hooks/useAvailability';
 import { PoolJobCard } from '@/features/jobs/components/PoolJobCard';
 import { usePool } from '@/features/jobs/hooks/useJobs';
+import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { useButtonNavInset } from '@/hooks/useButtonNavInset';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
@@ -44,6 +45,9 @@ export function PoolScreen() {
   const online = useAcceptingWork();
   const { data, isPending, isError, refetch } = usePool();
   const { data: me } = useMe();
+  // Task 06. An employee's job pay arrives with their salary, so the pool's
+  // payout slots read "In salary" instead of a figure they will not be paid.
+  const employee = useIsEmployee();
   // Local, not a store: pushing an offer leaves this screen mounted underneath,
   // so the choice survives a look at a job and resets on the next visit.
   const [filter, setFilter] = useState<string>(ALL);
@@ -161,6 +165,7 @@ export function PoolScreen() {
                   key={job.id}
                   job={job}
                   onPress={() => router.push(`/pool/${job.id}`)}
+                  payoutHidden={employee}
                 />
               ))
             )}

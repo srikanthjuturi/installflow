@@ -42,11 +42,18 @@ DEFAULT_SERVICE_LEVEL_HOURS = 24
 #:                      CUSTOMER closes a job, not the technician. A ticket can
 #:                      sit here indefinitely: nothing chases a silent customer
 #:                      yet.
+#:
+#:   Awaiting Part      the technician started, found a part missing, and asked
+#:                      the franchisee's facility for it (Task 12). Non-terminal,
+#:                      and only `core.spare_parts` moves a job in or out of it:
+#:                      In Progress -> Awaiting Part when a request is raised,
+#:                      back when no request is requested/approved any more.
 TICKET_STATUSES = (
     "New",
     "Slot Pending",
     "Assigned",
     "In Progress",
+    "Awaiting Part",
     "Awaiting Customer",
     "AI Review",
     "Escalated",

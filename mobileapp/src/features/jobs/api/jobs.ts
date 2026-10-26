@@ -1,3 +1,8 @@
+// The server's status vocabulary → the app's lives in `features/jobs/stage.ts`
+// now, beside `jobActions` — Task 07. Anything unrecognised falls to
+// `inprogress` rather than throwing: a status added server-side should put the
+// job somewhere sensible, not blank the list.
+import { toJobStatus } from '@/features/jobs/stage';
 import { authedRequest } from '@/lib/api';
 import type { Job, JobStatus } from '@/types/domain';
 
@@ -143,35 +148,28 @@ export interface JobDto extends JobOfferDto {
   modelParameters?: ProductParameterDto[];
   /** Prose about the product, if any. Read as a sentence, not a spec. */
   modelNotes?: string | null;
-}
 
-/**
- * The server's status vocabulary → the app's.
- *
- * Two different alphabets on purpose. The API speaks the ticket's language,
- * which ops and the console share and which has nine words; the app has five
- * and only cares which SCREEN a job belongs on. Mapping here, once, is what
- * keeps every card and badge from having to know that `AI Review` and
- * `Escalated` both mean "still being worked".
- *
- * Anything unrecognised falls to `upcoming` rather than throwing: a status
- * added server-side should put the job somewhere sensible, not blank the list.
- */
-const STATUS_MAP: Record<string, JobStatus> = {
-  New: 'pool',
-  'Slot Pending': 'pool',
-  Assigned: 'upcoming',
-  'In Progress': 'inprogress',
-  'Awaiting Customer': 'inprogress',
-  'AI Review': 'inprogress',
-  Escalated: 'inprogress',
-  Closed: 'completed',
-  'Force-Closed': 'completed',
-  Cancelled: 'cancelled',
-};
-
-function toJobStatus(status: string): JobStatus {
-  return STATUS_MAP[status] ?? 'upcoming';
+  /**
+   * The travel allowance frozen at accept (Task 10 §4.5). Null for a job
+   * accepted before it existed; absent from an older API. Never on the pool
+   * offer: there is no travel estimate before accept (owner ruling R10).
+   */
+  travel?: { km: number; amountPaise: number; reason: string | null } | null;
+  /** The speed terms frozen at accept (Task 11 §4.12). Null = no rule matched. */
+  speed?: {
+    rewardWithinHours: number;
+    penaltyAfterHours: number;
+    rewardPaise: number;
+    penaltyPaise: number;
+    clockStartedAt: string;
+    /** Absent from a server that predates the slot-start ruling (R1). */
+    clockFromSlot?: boolean;
+  } | null;
+  /**
+   * False when the job's franchise has no facility staff (Task 12, R4). Absent
+   * from an older API, which reads as enabled; see `Job.partsEnabled`.
+   */
+  partsEnabled?: boolean;
 }
 
 /**
@@ -274,6 +272,12 @@ export function toAcceptedJob(dto: JobDto): Job {
     // guard. An older API sending nothing reads as "none recorded".
     modelParameters: dto.modelParameters ?? [],
     modelNotes: dto.modelNotes ?? null,
+    // Null collapses "older API", "accepted before the rule existed" and "no
+    // rule matched" onto the same thing: no Allowances line.
+    travel: dto.travel ?? null,
+    speed: dto.speed ?? null,
+    // Null = the server did not say. Read as enabled; `NO_FACILITY` still guards.
+    partsEnabled: dto.partsEnabled ?? null,
   };
 }
 

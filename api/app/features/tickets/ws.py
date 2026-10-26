@@ -12,6 +12,13 @@ vendor learning that a ticket id exists is a vendor learning about another
 vendor's customer. So the vendor test here is exact, and matches `scoped()`
 line for line.
 
+The franchise test (F13, Task 04) is EXACT for the same reason: a franchisee's
+console hearing that another franchisee's ticket moved is a console ringing for
+work it can read nothing of — `franchise_hears_ticket` demands the ticket's
+stamped franchisee EQUAL the viewer's, and stays silent when either side is
+unknown or the viewer is facility staff (Task 12 widens, as `service.scoped()`
+does).
+
 Staff are filtered by territory for the same reason, just a weaker one — an area
 manager has no business knowing the ids of tickets outside their states, even
 though fetching one would 404.
@@ -39,9 +46,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audience import Reader, hears as audience_hears
 from app.core.coverage import payer_role
 from app.core.database import AsyncSessionLocal
 from app.core.deps import Principal
+from app.core.franchise_routing import franchise_hears_ticket
 from app.core.realtime import (
     NotificationRaised,
     TechnicianChanged,
@@ -52,6 +61,9 @@ from app.core.security import decode_token
 from app.models.membership import Membership
 from app.models.role import (
     ADMIN,
+    FACILITY_ROLES,
+    FRANCHISEE_ADMIN,
+    FRANCHISE_ROLES,
     NATIONAL_HEAD,
     ROLE_RANKS,
     SUPERADMIN,
@@ -78,6 +90,9 @@ class _Visibility:
         "all_india",
         "pincodes",
         "vendor_id",
+        "franchise",
+        "franchisee_id",
+        "facility",
         "user_id",
         "vendor_user",
         "payer",
@@ -89,6 +104,14 @@ class _Visibility:
         self.all_india = False
         self.pincodes: set[str] = set()
         self.vendor_id: uuid.UUID | None = None
+        self.franchise = False
+        #: The viewer's OWN franchisee, when `franchise` — the id a ticket frame
+        #: must equal to be heard (`franchise_hears_ticket`). None means corrupt
+        #: membership, and nothing is heard, exactly as `scoped()` refuses.
+        self.franchisee_id: uuid.UUID | None = None
+        #: A facility role of that franchise — fail closed until Task 12 gives
+        #: facility staff a part-request table to gate on, as `scoped()` does.
+        self.facility = False
         self.user_id: uuid.UUID | None = None
         self.vendor_user = False
         #: For rows addressed to a role — see `hears_notification`.
@@ -116,6 +139,18 @@ class _Visibility:
             self.vendor_user = principal.role == VENDOR_USER
             self._at = time.monotonic()
             return
+        if principal.is_franchise:
+            # Ownership (F13, Task 04), mirroring the REST rule: a ticket frame
+            # is heard when its stamped franchisee IS the viewer's, and a
+            # facility role hears nothing until Task 12. Anything unset fails
+            # closed; nothing here falls through to the staff branch, whose
+            # all-india/pincodes defaults would make a franchise viewer hear
+            # every company-wide row.
+            self.franchise = True
+            self.franchisee_id = principal.franchisee_id
+            self.facility = principal.role in FACILITY_ROLES
+            self._at = time.monotonic()
+            return
 
         self.payer = principal.role in (ADMIN, NATIONAL_HEAD) and (
             principal.role
@@ -140,48 +175,55 @@ class _Visibility:
         pincode: str | None,
         vendor: uuid.UUID | None,
         audience: str | None = None,
+        franchisee: uuid.UUID | None = None,
     ) -> bool:
         """Whether this viewer is in a notification's audience.
 
-        Two audiences, and a row can be in both. Staff are matched on territory
-        — a null pincode is company-wide and reaches everyone. A vendor is
-        matched only on being NAMED: most events here are operational problems
-        of ours, and telling a vendor "no technician accepted this" is telling
-        them about our staffing rather than their customer.
+        The rule is `core.audience.hears` — the pure spec Task 05 §4.8 pulled
+        the four readers under — and this delegates, keeping only the one shape
+        it owes: the facts this socket holds, as a `Reader`. The socket is the
+        in-memory copy that must agree with `_visible` (SQL) and
+        `users_notified_by` (push); delegating is how it STOPS being a third
+        hand copy.
 
-        The vendor test is `==` on their own id and never falls through to the
-        territory branch. A vendor has no territory, and letting one reach that
-        code would hand them every company-wide notification we write.
-
-        An ADDRESSED row (`audience`) replaces both: it reaches that audience
-        and nobody else, mirroring `notifications.service._visible`. `payers`
-        is the payer; a role key is that role, still inside its territory — the
-        row's pincode does that for an area manager or regional head; `vendor`
-        is the named vendor and no staff member at all. An audience this code
-        does not know reaches nobody.
+        A franchise principal hears only rows stamped with THEIR franchisee and
+        addressed to nobody, to them, or to the payer — an audience this code
+        used to blanket-refuse (Task 02, closing the company-wide leak, whose
+        test still passes). Ticket FRAMES for a franchise viewer stay refused by
+        `may_hear`: Task 04 opened those, and this half is Task 05's.
         """
-        if audience is not None:
-            if audience == "vendor":
-                # The one audience that points AWAY from staff. Tested before
-                # the guard below, which would otherwise refuse the very reader
-                # it is addressed to.
-                return self.vendor_id is not None and vendor == self.vendor_id
-            if self.vendor_id is not None:
-                return False
-            if audience == "payers":
-                return self.payer
-            if audience == "billing":
-                return self.role in (ADMIN, NATIONAL_HEAD)
-            if audience != self.role:
-                return False
-            return self.all_india or pincode is None or pincode in self.pincodes
-        if self.vendor_id is not None:
-            return vendor is not None and vendor == self.vendor_id
-        if self.all_india or pincode is None:
-            return True
-        return pincode in self.pincodes
+        return audience_hears(
+            Reader(
+                # A load()ed socket always carries its role; one that only set
+                # the franchise flag (the raw shape Task 02's test 13 builds)
+                # would otherwise fall through to the staff territory branch,
+                # where `pincode is None` hears every company-wide row again.
+                # A franchise FLAG with no role is therefore read as a
+                # franchisee admin — which still hears nothing without a
+                # franchisee id, so this is fail-closed in both directions.
+                role=self.role or (FRANCHISEE_ADMIN if self.franchise else ""),
+                vendor_id=self.vendor_id,
+                franchisee_id=self.franchisee_id,
+                is_payer=self.payer,
+                all_india=self.all_india,
+                pincodes=frozenset(self.pincodes),
+            ),
+            pincode=pincode,
+            vendor_id=vendor,
+            audience=audience,
+            franchisee_id=franchisee,
+        )
 
     def may_hear(self, event: TicketChanged) -> bool:
+        if self.franchise:
+            # EXACT, not biased — this socket may not over-ring the way the
+            # pool socket may (see the module docstring). Either side unknown,
+            # ids differing, or a facility viewer: silence.
+            return franchise_hears_ticket(
+                viewer_franchisee=self.franchisee_id,
+                facility=self.facility,
+                event_franchisee=event.franchisee_id,
+            )
         if self.vendor_id is not None:
             if event.vendor_id != self.vendor_id:
                 return False
@@ -238,6 +280,14 @@ async def _authenticate(
             is_superadmin=False,
             company_id=company_id,
             vendor_id=membership.vendor_id,
+            # The websocket does not go through `get_current_principal`, so the
+            # `Principal` is hand-built and `franchisee_id` must be carried the
+            # same way `vendor_id` is. Only franchise roles get one — a
+            # `franchisee_id` on a staff membership is ignored, exactly as the
+            # REST resolver ignores it.
+            franchisee_id=membership.franchisee_id
+            if user.role in FRANCHISE_ROLES
+            else None,
         ),
         company_id,
     )
@@ -310,7 +360,10 @@ async def ticket_stream(ws: WebSocket) -> None:
                             async with AsyncSessionLocal() as db:
                                 await visibility.load(db, principal)
                     if visibility.hears_notification(
-                        event.pincode, event.vendor_id, event.audience
+                        event.pincode,
+                        event.vendor_id,
+                        event.audience,
+                        event.franchisee_id,
                     ):
                         # No id and no text: the bell is a count, and the feed
                         # behind it applies the audience rule properly.

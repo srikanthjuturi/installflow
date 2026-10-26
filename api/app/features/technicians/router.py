@@ -12,12 +12,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.base_location import BaseLocationIn, BaseLocationOut
 from app.core.database import get_db
 from app.core.deps import (
     CompanyPrincipal,
     Principal,
+    require_all,
     require_feature,
     require_min_rank,
+    require_staff_principal,
 )
 from app.core.schemas import (
     ApiEnvelope,
@@ -28,8 +31,8 @@ from app.core.schemas import (
     paginated,
 )
 from app.features.auth.schemas import OtpRequestResponse
-from app.features.technicians import service
-from app.models.role import AREA_MANAGER
+from app.features.technicians import service, transfer_service
+from app.models.role import AREA_MANAGER, NATIONAL_HEAD
 from app.features.technicians.schemas import (
     AppLinkOutcome,
     AvailabilityOut,
@@ -50,16 +53,57 @@ from app.features.technicians.schemas import (
     TechnicianInviteOut,
     TechnicianRowOut,
     TechnicianSessionOut,
+    TechnicianTransferOut,
+    TechnicianTransferRequest,
+    TechnicianTransferRowOut,
     TechnicianUpdateRequest,
 )
 
 router = APIRouter(prefix="/technicians", tags=["technicians"])
 
 Db = Annotated[AsyncSession, Depends(get_db)]
-CanView = Annotated[Principal, Depends(require_feature("technicians.view"))]
-CanCreate = Annotated[Principal, Depends(require_feature("technicians.create"))]
-CanInvite = Annotated[Principal, Depends(require_feature("technicians.invite"))]
-CanEdit = Annotated[Principal, Depends(require_feature("technicians.edit"))]
+#: Staff console guards. Task 05 adds `require_staff_principal` everywhere a
+#: feature key is checked: these routes manage PEOPLE and MONEY, and since this
+#: task a franchisee admin reaches those facts through its OWN `/franchise`
+#: twins — a feature override must not be able to hand a company's roster to
+#: the wrong family (`require_staff_principal` refuses franchise, vendor and
+#: technician principals alike).
+CanView = Annotated[
+    Principal,
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.view"),
+        )
+    ),
+]
+CanCreate = Annotated[
+    Principal,
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.create"),
+        )
+    ),
+]
+CanInvite = Annotated[
+    Principal,
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.invite"),
+        )
+    ),
+]
+CanEdit = Annotated[
+    Principal,
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("technicians.edit"),
+        )
+    ),
+]
 
 
 @router.get("/me", response_model=ApiEnvelope[TechnicianSessionOut])
@@ -73,6 +117,41 @@ async def get_my_technician_profile(
     their own record.
     """
     return envelope(await service.get_me(db, principal))
+
+
+@router.get(
+    "/me/base-location", response_model=ApiEnvelope[BaseLocationOut | None]
+)
+async def get_my_base_location(
+    db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[BaseLocationOut | None]:
+    """Where you start from, or null — the Profile screen and the Home card.
+
+    No feature guard, for the reason `/me` has none — a feature key would 403
+    every technician against their own record.
+    """
+    return envelope(await service.get_my_base_location(db, principal))
+
+
+@router.put(
+    "/me/base-location", response_model=ApiEnvelope[BaseLocationOut]
+)
+async def set_my_base_location(
+    db: Db, principal: CompanyPrincipal, body: BaseLocationIn
+) -> ApiEnvelope[BaseLocationOut]:
+    """Set or move your own base. PUT only — it replaces; no DELETE, because a
+    base can be moved, not removed.
+
+    A pincode must be inside your franchisee's range (W9), for everybody —
+    outside it, drop a map pin instead (422 `PINCODE_OUTSIDE_FRANCHISEE`). A
+    pin without coordinates is 400 `PINCODE_HAS_NO_LOCATION`, and a point
+    outside India is 400 `BASE_OUTSIDE_INDIA` — the place, not the shape. No
+    approval and no cooldown (R9); what you set shows on your console row.
+    """
+    return envelope(
+        await service.set_my_base_location(db, principal, body),
+        message="Base location saved",
+    )
 
 
 @router.patch("/me/availability", response_model=ApiEnvelope[AvailabilityOut])
@@ -280,6 +359,8 @@ async def list_technicians(
     districtId: Annotated[uuid.UUID | None, Query()] = None,
     onboardingMode: Annotated[str | None, Query()] = None,
     onDay: Annotated[datetime.datetime | None, Query()] = None,
+    franchiseeId: Annotated[uuid.UUID | None, Query()] = None,
+    technicianType: Annotated[str | None, Query()] = None,
 ) -> PaginatedEnvelope[TechnicianRowOut]:
     """Registered technicians and open invites in one list.
 
@@ -292,6 +373,10 @@ async def list_technicians(
     slot, so the capacity it shows is capacity on the day the work happens; a
     Friday job otherwise reports Monday's load and the manager picks somebody
     the assign call then refuses at cap.
+
+    `franchiseeId`/`technicianType` narrow the roster by franchisee and pay type
+    (Task 05). An unknown type answers an empty page, never a 422 — a filter in
+    a shareable query string may be stale.
     """
     rows, total = await service.list_technicians(
         db,
@@ -306,6 +391,8 @@ async def list_technicians(
         district_id=districtId,
         onboarding_mode=onboardingMode,
         on_day=onDay,
+        franchisee_id=franchiseeId,
+        technician_type=technicianType,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
@@ -363,6 +450,70 @@ async def send_app_link(
     return envelope(data, message=message)
 
 
+# ── moving a technician between franchisees (Task 17) ─────────────────────────
+#
+# Every guard is in `dependencies=[...]` and NEVER stacked inside one `Annotated`
+# alias: FastAPI applies only the LAST `Depends` of an `Annotated`, so the stacked
+# `CanView`/`CanEdit` aliases above silently skip `require_staff_principal`.
+# Here `franchisees.manage` (Admin / NH by default), the National-Head floor (a
+# Feature Access override cannot lift it) and the staff-only door all actually
+# run. Declared after the literal `/invites…` routes and before `/{technician_id}`.
+
+
+@router.post(
+    "/{technician_id}/transfer",
+    response_model=ApiEnvelope[TechnicianTransferOut],
+    dependencies=[
+        Depends(require_feature("franchisees.manage")),
+        Depends(require_min_rank(NATIONAL_HEAD)),
+        Depends(require_staff_principal),
+    ],
+)
+async def transfer_technician(
+    technician_id: uuid.UUID,
+    body: TechnicianTransferRequest,
+    db: Db,
+    principal: CompanyPrincipal,
+    dryRun: Annotated[bool, Query()] = False,
+) -> ApiEnvelope[TechnicianTransferOut]:
+    """Move a technician to another franchisee, or preview the move (`?dryRun=true`).
+
+    `franchisees.manage` + a National-Head floor - NOT `_load_managed`, which
+    would 403 every non-home technician for an Admin/NH. A dry run answers 200
+    with the blockers as DATA and writes nothing; an apply raises the first one
+    (409 `TECHNICIAN_HAS_OPEN_JOBS` / `TECHNICIAN_HAS_BALANCE` /
+    `FRANCHISEE_HAS_NO_ADMIN`, code-less 409 for "already works for" and
+    "inactive", 422 `PINCODE_OUTSIDE_FRANCHISEE`, 422 for a missing reason or
+    coverage across two regions). Another company's technician or franchisee is
+    a 404. History stays where it was earned: no ticket, ledger entry or
+    redemption is touched.
+    """
+    data = await transfer_service.transfer_technician(
+        db, principal, technician_id, body, dry_run=dryRun
+    )
+    return envelope(
+        data, message="Preview — nothing was saved" if dryRun else "Technician moved"
+    )
+
+
+@router.get(
+    "/{technician_id}/transfers",
+    response_model=ApiEnvelope[list[TechnicianTransferRowOut]],
+    dependencies=[
+        Depends(require_feature("technicians.view")),
+        Depends(require_staff_principal),
+    ],
+)
+async def list_transfers(
+    technician_id: uuid.UUID, db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[list[TechnicianTransferRowOut]]:
+    """Every time this technician changed franchisee, newest first. Staff only
+    (D11): the reason is the company's note about a franchisee. The same `_load`
+    wall as the profile, so an Area Manager reads the history of technicians in
+    their scope and anything else is a 404."""
+    return envelope(await transfer_service.list_transfers(db, principal, technician_id))
+
+
 @router.get("/{technician_id}", response_model=ApiEnvelope[TechnicianDetailOut])
 async def get_technician(
     technician_id: uuid.UUID, db: Db, principal: CanView
@@ -379,6 +530,32 @@ async def update_technician(
 ) -> ApiEnvelope[TechnicianDetailOut]:
     data = await service.update_technician(db, principal, technician_id, body)
     return envelope(data, message="Technician updated")
+
+
+@router.put(
+    "/{technician_id}/base-location",
+    response_model=ApiEnvelope[TechnicianDetailOut],
+)
+async def set_base_location(
+    technician_id: uuid.UUID,
+    body: BaseLocationIn,
+    db: Db,
+    principal: CanEdit,
+) -> ApiEnvelope[TechnicianDetailOut]:
+    """Set or move a technician's base for them, from their profile screen.
+
+    The manager twin of `PUT /technicians/me/base-location`: a map pin or a
+    pincode, the whole `MANAGER_SOURCES` set (W8) — a technician's own edit
+    refuses "manual", the one source meaning somebody else recorded it. Same
+    place-not-shape refusals as the self-service put. Scope is the same `_load`
+    wall as the profile itself: 404 out of territory, 403 for a staff user
+    reaching into a franchisee whose people they do not manage — the franchisee
+    admin uses its own `/franchise/technicians/{id}/base-location` twin.
+    """
+    return envelope(
+        await service.set_base_location(db, principal, technician_id, body),
+        message="Base location saved",
+    )
 
 
 @router.delete(

@@ -1,27 +1,32 @@
+import { useMemo } from "react";
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  approveUpiChange,
-  cancelInvite,
-  createTechnician,
-  deleteTechnician,
   getDistrictBreakdown,
-  getTechnician,
-  getUpiChange,
-  inviteTechnician,
+  getTransfers,
   listCandidateTechnicians,
-  listTechnicians,
-  rejectUpiChange,
-  resendInvite,
-  sendAppLink,
-  updateTechnician,
+  previewTransfer,
+  transferTechnician,
 } from "@/services/technicians";
+import {
+  getTechnicianOptions as getFranchiseTechnicianOptions,
+  listFranchisePincodes,
+} from "@/services/franchise";
+import { useWorkspace } from "./useWorkspace";
+import { useCertifiableNodeOptions } from "./useProductMaster";
+import { useAssignableRegions } from "./useCompanyUsers";
+import { useDistricts, useInfinitePincodes } from "./useGeo";
+import { useMe } from "./useAuth";
+import { franchiseKeys } from "./useFranchise";
+import { toNodeOption } from "@/types/franchise";
 import { PRESENCE_REFETCH_MS } from "./liveness";
 import type { ListParams } from "@/types/api";
+import type { TechnicianTransferInput } from "@/types/technician";
 
 export const technicianKeys = {
   all: ["technicians"] as const,
@@ -33,13 +38,30 @@ export const technicianKeys = {
    * shortlists, because the capacity column answers a different day for each.
    * Leaving it out would serve one from the other's cache.
    */
-  candidates: (subcategoryId: string, pincode: string, onDay?: string | null) =>
-    ["technicians", "candidates", subcategoryId, pincode, onDay ?? "today"] as const,
+  candidates: (
+    subcategoryId: string,
+    pincode: string,
+    onDay?: string | null,
+    franchiseeId?: string | null
+  ) =>
+    [
+      "technicians",
+      "candidates",
+      subcategoryId,
+      pincode,
+      onDay ?? "today",
+      franchiseeId ?? "",
+    ] as const,
   detail: (id: string) => ["technicians", "detail", id] as const,
   districts: (stateId: string) =>
     ["technicians", "districts", stateId] as const,
   /** Under the prefix, so every technician write — and the bell — refreshes it. */
   upiChange: (id: string) => ["technicians", "upi-change", id] as const,
+  /** Task 17 — the history card. Under the prefix, so a move refreshes it. */
+  transfers: (id: string) => ["technicians", "transfers", id] as const,
+  /** Task 17 — a preview of one move, keyed on exactly what it asked. */
+  transferPreview: (id: string, franchiseeId: string, pincodes: string) =>
+    ["technicians", "transfer-preview", id, franchiseeId, pincodes] as const,
 };
 
 /**
@@ -49,9 +71,10 @@ export const technicianKeys = {
  * nothing pending costs no request at all.
  */
 export function useUpiChange(id: string, { enabled }: { enabled: boolean }) {
+  const { api } = useWorkspace();
   return useQuery({
     queryKey: technicianKeys.upiChange(id),
-    queryFn: () => getUpiChange(id),
+    queryFn: () => api.technicians.getUpiChange(id),
     enabled: Boolean(id) && enabled,
     refetchOnWindowFocus: true,
   });
@@ -82,9 +105,10 @@ export function useDistrictBreakdown(stateId: string | undefined) {
  * would blank the table to skeletons and jump the scroll position.
  */
 export function useTechnicians(params: ListParams = {}) {
+  const { api } = useWorkspace();
   return useQuery({
     queryKey: technicianKeys.list(params),
-    queryFn: () => listTechnicians(params),
+    queryFn: () => api.technicians.list(params),
     placeholderData: keepPreviousData,
     // Reachability is the reason this one polls rather than waiting on the
     // socket. A toggle arrives as `technician.changed`; a phone going quiet
@@ -96,9 +120,10 @@ export function useTechnicians(params: ListParams = {}) {
 }
 
 export function useTechnician(id: string) {
+  const { api } = useWorkspace();
   return useQuery({
     queryKey: technicianKeys.detail(id),
-    queryFn: () => getTechnician(id),
+    queryFn: () => api.technicians.get(id),
     enabled: Boolean(id),
     refetchInterval: PRESENCE_REFETCH_MS,
     refetchOnWindowFocus: true,
@@ -110,10 +135,16 @@ export function useTechnician(id: string) {
  * An invite that completes becomes a technician row, a technician that is
  * removed leaves the eligibility list — the lists are views of one record, so
  * refreshing one and not the others just shows a stale screen.
+ *
+ * `alsoInvalidate` is for the portals' own state: the UPI decisions change the
+ * badge count (`franchiseKeys.count` sits under `franchiseKeys.all`), so those
+ * two mutations pass the prefix. Invalidating a prefix no subscriber holds in
+ * the other workspace is a no-op, never a fetch.
  */
 function useTechnicianMutation<TVars, TData>(
   fn: (vars: TVars) => Promise<TData>,
-  errorTitle: string
+  errorTitle: string,
+  alsoInvalidate: readonly (readonly unknown[])[] = []
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -121,28 +152,91 @@ function useTechnicianMutation<TVars, TData>(
     mutationFn: fn,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      for (const key of alsoInvalidate) {
+        void queryClient.invalidateQueries({ queryKey: key });
+      }
     },
   });
 }
 
-export const useCreateTechnician = () =>
-  useTechnicianMutation(createTechnician, "Couldn't add the technician");
-export const useUpdateTechnician = () =>
-  useTechnicianMutation(updateTechnician, "Couldn't save the technician");
-export const useDeleteTechnician = () =>
-  useTechnicianMutation(deleteTechnician, "Couldn't remove the technician");
+export const useCreateTechnician = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: Parameters<typeof api.technicians.create>[0]) =>
+      api.technicians.create(input),
+    "Couldn't add the technician"
+  );
+};
+export const useUpdateTechnician = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: Parameters<typeof api.technicians.update>[0]) =>
+      api.technicians.update(input),
+    "Couldn't save the technician"
+  );
+};
+export const useDeleteTechnician = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (id: string) => api.technicians.remove(id),
+    "Couldn't remove the technician"
+  );
+};
 
-export const useApproveUpiChange = () =>
-  useTechnicianMutation(approveUpiChange, "Couldn't change the UPI ID");
-export const useRejectUpiChange = () =>
-  useTechnicianMutation(rejectUpiChange, "Couldn't reject the change");
+/**
+ * Move a technician's base location (Task 13 §5.3). Through the workspace, so
+ * the staff console and the portal each reach their own door; invalidates the
+ * `technicians` prefix because the list's source chip and the profile's panel
+ * read the same record.
+ */
+export const useSetBaseLocation = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: Parameters<typeof api.technicians.setBaseLocation>[0]) =>
+      api.technicians.setBaseLocation(input),
+    "Couldn't save the base location"
+  );
+};
 
-export const useInviteTechnician = () =>
-  useTechnicianMutation(inviteTechnician, "Couldn't create the invite");
-export const useResendInvite = () =>
-  useTechnicianMutation(resendInvite, "Couldn't resend the invite");
-export const useCancelInvite = () =>
-  useTechnicianMutation(cancelInvite, "Couldn't cancel the invite");
+export const useApproveUpiChange = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (id: string) => api.technicians.approveUpiChange(id),
+    "Couldn't change the UPI ID",
+    [franchiseKeys.all]
+  );
+};
+export const useRejectUpiChange = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: { id: string; reason: string }) => api.technicians.rejectUpiChange(input),
+    "Couldn't reject the change",
+    [franchiseKeys.all]
+  );
+};
+
+export const useInviteTechnician = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: Parameters<typeof api.technicians.invite>[0]) =>
+      api.technicians.invite(input),
+    "Couldn't create the invite"
+  );
+};
+export const useResendInvite = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (id: string) => api.technicians.resendInvite(id),
+    "Couldn't resend the invite"
+  );
+};
+export const useCancelInvite = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (id: string) => api.technicians.cancelInvite(id),
+    "Couldn't cancel the invite"
+  );
+};
 
 /**
  * "Send app link" on a registered row. A plain mutation, not
@@ -150,9 +244,10 @@ export const useCancelInvite = () =>
  * list to refresh — the toast reports the outcome and that is all of it.
  */
 export function useSendAppLink() {
+  const { api } = useWorkspace();
   return useMutation({
     meta: { errorTitle: "Couldn't send the app link" },
-    mutationFn: sendAppLink,
+    mutationFn: (id: string) => api.technicians.sendAppLink(id),
   });
 }
 
@@ -166,26 +261,287 @@ export function useSendAppLink() {
  * `slotStart` is optional and moves only the capacity column — see
  * `listCandidateTechnicians`. Pass the ticket's own slot wherever the answer
  * will be acted on, which is both assignment screens.
+ *
+ * Task 18: for a ticket HANDED to another franchisee pass `franchiseeId` and NO
+ * pincode — its pincode's owner is the franchisee that could not take it, and
+ * the receiving franchisee's technicians cover none of it, so a pincode filter
+ * would list nobody. The list is still narrowed to technicians the reader can
+ * see (an Area Manager sees her states); that is the existing rule.
  */
 export function useCandidateTechnicians(
   subcategoryId: string | undefined,
   pincode: string | undefined,
-  slotStart?: string | null
+  slotStart?: string | null,
+  franchiseeId?: string | null
 ) {
   return useQuery({
     queryKey: technicianKeys.candidates(
       subcategoryId ?? "",
       pincode ?? "",
-      slotStart
+      slotStart,
+      franchiseeId
     ),
     queryFn: () =>
       // Never runs unguarded — `enabled` below is the real check; the
       // fallbacks only satisfy the types.
       listCandidateTechnicians({
         subcategoryId: subcategoryId ?? "",
-        pincode: pincode ?? "",
+        ...(pincode ? { pincode } : {}),
+        ...(franchiseeId ? { franchiseeId } : {}),
         slotStart,
       }),
-    enabled: Boolean(subcategoryId && pincode),
+    enabled: Boolean(subcategoryId && (pincode || franchiseeId)),
+  });
+}
+
+
+/* ═══════════════════════════════════════ Task 09 — workspace-aware pick lists
+
+   The form's and the list's option sources, for a screen that runs under both
+   shells. Each hook reads the workspace VALUE the provider handed in and
+   enables both underlying queries against their own flag — the React-query
+   calls never disappear, only the answers are chosen, which is what keeps
+   these rules-of-hooks-proof for a shared component.
+
+   Ops answers are today's queries, byte for byte; the portal answers come from
+   the options and pincodes doors of §4.2, whose staff twins live behind
+   `masters.view` and staff-only territory reads a franchisee is not granted. */
+
+/** How many pincodes one page of the searchable picker holds — both sides. */
+const PICKER_PAGE = 25;
+
+/** Master data: the two pick lists the technician form renders (§4.2). */
+export function useTechnicianOptions({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: franchiseKeys.options(),
+    queryFn: getFranchiseTechnicianOptions,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+/** The certification checkbox list, per workspace (§5.3). */
+export function useCertifiableSubcategories() {
+  const { workspace } = useWorkspace();
+  // Each underlying query is enabled on ITS OWN flag — the staff tree is
+  // `masters.view`, which a franchise role is deliberately NOT granted (the
+  // Task 09 writer decision behind `/franchise/technician-options`), so letting
+  // it run in the portal turned every dialog open into a 403 "Not allowed"
+  // toast. Both queries stay mounted; only the answers are chosen.
+  const ops = workspace === "ops";
+  const staff = useCertifiableNodeOptions(ops);
+  const portal = useTechnicianOptions({ enabled: workspace === "franchise" });
+
+  // The shape callers see is the same on either side: `{ options, isLoading }`
+  // plus the rest of the underlying query, so `TechnicianFormDialog` reads one
+  // thing and carries no branch.
+  const options = useMemo(
+    () => (ops ? staff.options : toNodeOption(portal.data?.subcategories ?? [])),
+    [ops, staff.options, portal.data]
+  );
+  return {
+    options,
+    isLoading: ops ? staff.isLoading : portal.isLoading,
+  };
+}
+
+/**
+ * The coverage picker's pincodes, searchable and paged — the portal twin of
+ * `useGeo.ts::useInfinitePincodes`, against `/franchise/pincodes`, narrowed to
+ * the one region selected (the endpoint takes a single one, as the staff
+ * read does).
+ */
+export function useInfiniteFranchisePincodes(
+  search: string,
+  regionId: string | undefined,
+  enabled = true
+) {
+  const query = useInfiniteQuery({
+    queryKey: franchiseKeys.pincodes({
+      search: search || undefined,
+      regionId: regionId || undefined,
+      limit: PICKER_PAGE,
+    }),
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      listFranchisePincodes({
+        page: pageParam,
+        limit: PICKER_PAGE,
+        search: search || undefined,
+        regionId: regionId || undefined,
+      }),
+    getNextPageParam: (last) =>
+      last.pagination.hasNextPage ? last.pagination.page + 1 : undefined,
+    enabled,
+  });
+
+  return {
+    ...query,
+    /** Every page flattened — what the picker renders. */
+    rows: query.data?.pages.flatMap((p) => p.rows) ?? [],
+    total: query.data?.pages[0]?.pagination.totalRecords ?? 0,
+  };
+}
+
+/**
+ * The technician list's filter sources: which Region and which Districts.
+ *
+ * Ops is today's pair — `useAssignableRegions` plus `useDistricts({ mine: 1 })`.
+ * The portal holds NO staff territory (`regions` is a staff endpoint, a 403
+ * toast on every list open is exactly the noise this work exists to kill), so
+ * it reads the options endpoint's regions and offers no districts — every
+ * pincode a portal row can carry is already the franchisee's own.
+ */
+export function useTechnicianFilterOptions() {
+  const { workspace } = useWorkspace();
+  const staffRegions = useAssignableRegions({ enabled: workspace === "ops" });
+  const districts = useDistricts({ mine: true }, workspace === "ops");
+  const portalRegions = useTechnicianOptions({ enabled: workspace === "franchise" });
+
+  if (workspace === "ops") {
+    return { regions: staffRegions.regions, districts: staffRegions.isLoading ? [] : districts.data ?? [], loading: staffRegions.isLoading };
+  }
+  return {
+    regions: portalRegions.data?.regions ?? [],
+    districts: [],
+    loading: portalRegions.isLoading,
+  };
+}
+
+/** `{franchisee}` for the portal's copy — from the `/auth/me` the session keeps. */
+export function useFranchiseeName(): string | null {
+  const { workspace } = useWorkspace();
+  const me = useMe();
+  if (workspace !== "franchise") return null;
+  return me.data?.franchisee?.name ?? null;
+}
+
+/**
+ * CoverageFields' two data sources, behind ONE hook (§5.4) — the markup stays
+ * untouched and the shell decides where the rows come from.
+ *
+ * Both branches return the same six things. The portal fills the ops-only
+ * flags (`boundedByStates`, `ownStates`) with their no-op values rather than
+ * omitting them, so the component carries no workspace branch, and `franchisee`
+ * is the portal hint's subject — null on ops, the one new flag it reads.
+ */
+export function useCoverageOptions(query: string, regionId: string) {
+  const { workspace } = useWorkspace();
+
+  const regionsCatalog = useAssignableRegions({ enabled: workspace === "ops" });
+  const me = useMe();
+  const ownStates = useMemo(
+    () => (workspace === "ops" ? (me.data?.states ?? []) : []),
+    [workspace, me.data?.states]
+  );
+  const boundedByStates =
+    workspace === "ops" &&
+    me.data?.role === "area_manager" &&
+    ownStates.length > 0;
+  const singleState =
+    boundedByStates && ownStates.length === 1 ? ownStates[0].id : undefined;
+
+  const staffSearch = useInfinitePincodes(
+    query,
+    singleState
+      ? { stateId: singleState }
+      : { regionId: regionId || undefined },
+    workspace === "ops" && Boolean(regionId)
+  );
+  const portalSearch = useInfiniteFranchisePincodes(
+    query,
+    regionId || undefined,
+    workspace === "franchise" && Boolean(regionId)
+  );
+
+  const regions = useTechnicianOptions({ enabled: workspace === "franchise" });
+
+  return workspace === "ops"
+    ? {
+        workspace,
+        regions: regionsCatalog.regions,
+        loadingRegions: regionsCatalog.isLoading,
+        search: staffSearch,
+        boundedByStates,
+        ownStates,
+        franchisee: null as string | null,
+      }
+    : {
+        workspace,
+        regions: regions.data?.regions ?? [],
+        loadingRegions: regions.isLoading,
+        search: portalSearch,
+        boundedByStates: false,
+        ownStates,
+        franchisee: (me.data?.franchisee?.name ?? null) as string | null,
+      };
+}
+
+
+/* ═══════════════════════════════════════════════ Task 17 — moving a technician */
+
+/**
+ * What moving this technician to `franchiseeId` would do — a `useQuery` and not a
+ * mutation, for the reason `usePincodePreview` is one: the reply is display only,
+ * and the key (franchisee + pincodes) drops a stale answer for free.
+ *
+ * `pincodes` is the comma-joined, SORTED list the caller means to send, or "" to
+ * keep what is inside the range — the key and the request are one string, so the
+ * two cannot disagree. `reason` is deliberately not part of it: a preview never
+ * needs one, and typing must not re-ask the server.
+ *
+ * `placeholderData: keepPreviousData` keeps the last answer on screen while a
+ * changed pincode is re-checked; the dialog treats it as stale (`isFetching`)
+ * and refuses to confirm against it.
+ */
+export function useTransferPreview(
+  id: string,
+  franchiseeId: string,
+  pincodes: string,
+  { enabled = true }: { enabled?: boolean } = {}
+) {
+  return useQuery({
+    queryKey: technicianKeys.transferPreview(id, franchiseeId, pincodes),
+    queryFn: () =>
+      previewTransfer({
+        id,
+        body: {
+          franchiseeId,
+          ...(pincodes ? { pincodes: pincodes.split(",") } : {}),
+        },
+      }),
+    enabled: Boolean(id && franchiseeId) && enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 0,
+    gcTime: 60_000,
+    meta: { errorTitle: "Couldn't check that move" },
+  });
+}
+
+/**
+ * The move itself. Refreshes the whole `technicians` prefix (the profile, the
+ * roster's Franchisee column, the history) and the franchisees' technician
+ * counts. The prefix is written out because `useFranchisees` imports THIS file —
+ * importing its keys back would be a cycle.
+ */
+export function useTransferTechnician() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't move the technician" },
+    mutationFn: (input: { id: string; body: TechnicianTransferInput }) =>
+      transferTechnician(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+    },
+  });
+}
+
+/** The profile's Transfer history card — staff only, newest first. */
+export function useTechnicianTransfers(id: string, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: technicianKeys.transfers(id),
+    queryFn: () => getTransfers(id),
+    enabled: Boolean(id) && enabled,
   });
 }

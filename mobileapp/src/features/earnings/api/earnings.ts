@@ -1,9 +1,9 @@
+import { toTransaction, type TransactionDto } from '@/features/earnings/ledger';
 import { authedRequest } from '@/lib/api';
 import type {
   EarningsSummary,
   EarningsWindow,
   Transaction,
-  TransactionKind,
 } from '@/types/domain';
 
 /**
@@ -21,10 +21,12 @@ import type {
  *   net = earned + bonuses − penalties
  *
  * All four are summed from `ledger_entries` in ONE grouped query over one
- * window, so the three tiles and the big number above them can never be read
- * from different moments. Penalties arrive POSITIVE — a magnitude, with `kind`
- * carrying the direction — and this screen applies the sign where it can be
- * seen.
+ * window. From Task 10 onward the server folds every kind into those three
+ * before dividing — travel into `earned` (it is pay for the job) and
+ * speed_reward / speed_penalty into `bonuses` / `penalties` — so the tiles
+ * never miss a kind. Penalties arrive POSITIVE — a magnitude, with `kind`
+ * carrying the direction — and the sign is applied where it can be seen, in
+ * `signedPaise` (`features/earnings/ledger.ts`).
  *
  * `net` and `earned` were null until installs were priced, and this comment
  * used to explain why. The refusal is still worth remembering: substituting
@@ -38,30 +40,20 @@ interface SummaryDto {
   bonusesPaise: number;
   penaltiesPaise: number;
   /**
+   * The breakdown (Tasks 10/11): subsets of the three figures above, never
+   * extra terms. OPTIONAL — an API that predates them sends nothing, and the
+   * mapper turns that into "no line", not into a wrong number.
+   */
+  travelPaise?: number;
+  speedRewardPaise?: number;
+  speedPenaltyPaise?: number;
+  /**
    * OPTIONAL on the wire, and it has to be: a server that predates the date
    * range sends neither, and the screen's whole reason for reading them is to
    * notice exactly that. See `EarningsSummary.covered`.
    */
   dateFrom?: string;
   dateTo?: string;
-}
-
-interface TransactionDto {
-  id: string;
-  at: string;
-  kind: TransactionKind;
-  /** Always POSITIVE — the server sends a magnitude and `kind` the direction. */
-  amountPaise: number;
-  title: string;
-  subtitle: string;
-  ticketCode: string;
-  /**
-   * OPTIONAL on the wire, like `dateFrom` above and for the same reason — a
-   * server that predates it sends nothing, and a row that cannot name a job
-   * must not pretend to link to one. The server also sends null deliberately,
-   * for a ticket this technician no longer holds; both arrive here as null.
-   */
-  ticketId?: string | null;
 }
 
 /**
@@ -88,6 +80,10 @@ export async function getEarningsSummary(
     earnedPaise: dto.earnedPaise,
     bonusesPaise: dto.bonusesPaise,
     penaltiesPaise: dto.penaltiesPaise,
+    // `?? null`: absent is "the server did not say", which is not zero.
+    travelPaise: dto.travelPaise ?? null,
+    speedRewardPaise: dto.speedRewardPaise ?? null,
+    speedPenaltyPaise: dto.speedPenaltyPaise ?? null,
     // Both or neither — half an answer is not a span, and treating one end as
     // a window would caption the money with a date the server never named.
     covered:
@@ -101,19 +97,5 @@ export async function listTransactions(
   const rows = await authedRequest<TransactionDto[]>(
     `/earnings/transactions?${windowQuery(window)}`,
   );
-  return rows.map((t) => ({
-    id: t.id,
-    kind: t.kind,
-    title: t.title,
-    at: t.at,
-    ticketCode: t.ticketCode,
-    // The SIGN is applied here, once, and this is the technician's own screen:
-    // a penalty is money out of their pocket. The server stores a magnitude
-    // because the same row is money IN to the company's pool — see the API's
-    // note on `ledger_entries`.
-    amountPaise: t.kind === 'penalty' ? -t.amountPaise : t.amountPaise,
-    // Absent and null collapse to null: the screen asks one question of this —
-    // "can I open the job?" — and undefined is not a third answer.
-    ticketId: t.ticketId ?? null,
-  }));
+  return rows.map(toTransaction);
 }

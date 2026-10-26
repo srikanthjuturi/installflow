@@ -5,19 +5,21 @@ import { PageMeta } from "@/components/shared/PageMeta";
 import { DeleteTechnicianDialog } from "@/components/technicians/DeleteTechnicianDialog";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { TechnicianInviteDialog } from "@/components/technicians/TechnicianInviteDialog";
+import { TYPE_WORD_TO_WIRE } from "@/components/technicians/technicianType";
 import { TechTable } from "@/components/technicians/TechTable";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
-import { useAssignableRegions } from "@/hooks/useCompanyUsers";
-import { useDistricts } from "@/hooks/useGeo";
+import { useFranchiseeOptions } from "@/hooks/useFranchisees";
 import {
   useCancelInvite,
   useInviteTechnician,
   useResendInvite,
   useSendAppLink,
+  useTechnicianFilterOptions,
   useTechnicians,
 } from "@/hooks/useTechnicians";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useUrlSeededListParams } from "@/hooks/useListParams";
 import type { Technician, TechnicianRow } from "@/types/technician";
 import { copyToClipboard } from "@/utils/clipboard";
@@ -38,21 +40,39 @@ export default function TechnicianListPage() {
   const sendAppLink = useSendAppLink();
 
   const { has } = useFeatureAccess();
-  const canCreate = has("technicians.create");
-  const canInvite = has("technicians.invite");
-  const canEdit = has("technicians.edit");
-  const { regions } = useAssignableRegions();
-  // Scoped by the server to the caller's own territory, so the dropdown can
-  // never offer a district whose technicians they would not be shown.
-  const { data: districts } = useDistricts({ mine: true });
+  // Task 09 — the buttons gate on the WORKSPACE's keys: `technicians.*` in the
+  // staff console, the single `franchise.technicians` in the portal (§5.2),
+  // so a reused page hands `has` the key its adapter names.
+  const { workspace, features } = useWorkspace();
+  const canCreate = has(features.createTechnician);
+  const canInvite = has(features.inviteTechnician);
+  const canEdit = has(features.editTechnician);
+  // The Region/District filter sources per workspace — ops reads the staff
+  // territory tables, the portal reads its options endpoint and offers no
+  // districts (§5.4).
+  const { regions, districts } = useTechnicianFilterOptions();
+
+  // The Franchisee filter's options. Only for a caller who can see the
+  // franchisees screen at all — otherwise the request would 403 and toast, and
+  // the filter it feeds is not coming anyway. Task 09 — ops-only twice over:
+  // the portal's rows all name the same franchisee, so its column and filter
+  // are not drawn and no `/franchisees` read is made.
+  const { data: franchiseeOptions } = useFranchiseeOptions({
+    enabled: workspace === "ops" && has("franchisees.view"),
+  });
 
   // The query the server answers. Search, filters and page all live in one
   // object so the table can hand back a whole new intent in one call. The
   // table already strips "All" — it is a control value, not a filter — so
   // nothing here has to know which values are sentinels.
   // Seeded from the URL so the territory panel's "8 technicians in
-  // Visakhapatnam" lands here already filtered to that district.
-  const [params, setParams] = useUrlSeededListParams({}, ["districtId"]);
+  // Visakhapatnam" lands here already filtered to that district — and, since
+  // Task 08, so a franchisee page's "View technicians" lands filtered to that
+  // franchisee (`?franchiseeId=…`).
+  const [params, setParams] = useUrlSeededListParams(
+    {},
+    ["districtId", "franchiseeId", "technicianType"]
+  );
 
   const { data, isLoading, isError, error, refetch } = useTechnicians(params);
 
@@ -90,6 +110,7 @@ export default function TechnicianListPage() {
               phone: toE164(values.phone),
               regionId: values.regionId || null,
               pincodes: values.pincodes,
+              technicianType: TYPE_WORD_TO_WIRE[values.technicianType],
             },
             {
               onSuccess: (created) => {
@@ -119,7 +140,8 @@ export default function TechnicianListPage() {
         params={params}
         onParams={setParams}
         regions={regions}
-        districts={districts ?? []}
+        districts={districts}
+        franchisees={workspace === "ops" ? (franchiseeOptions ?? []) : []}
         isLoading={isLoading}
         error={isError ? error : null}
         onRetry={() => refetch()}

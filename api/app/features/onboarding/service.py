@@ -28,6 +28,7 @@ import jwt
 
 from app.core import brand
 from app.core.config import settings
+from app.core.franchise import assert_pincodes_in_franchisee
 from app.core.notifications import notify
 from app.core.realtime import publish_notification
 from app.core.schemas import ListParams
@@ -175,6 +176,8 @@ async def resolve_invite(session: AsyncSession, token: str) -> InviteResolveOut:
         user_id = None
         is_vendor = False
         vendor_id = None
+        is_franchise = False
+        franchisee_id = None
 
     categories = _flatten_for_invite(
         await get_tree(session, _AnonPrincipal())  # type: ignore[arg-type]
@@ -310,6 +313,14 @@ async def register(
     # widen it — which is what the old "is this inside your manager's area?"
     # check existed to police.
     assigned = await tech_service.invite_pincodes(session, invite.id)
+    # Still this franchisee's to hand out? A carve-out (Task 03) moves or trims
+    # live invites, but data can drift; judged BEFORE anything is written, so a
+    # refusal here leaves no partial record — the technician is told the code and
+    # asked to check with whoever invited them, rather than registering into a
+    # franchisee that cannot route the work.
+    await assert_pincodes_in_franchisee(
+        session, invite.company_id, invite.franchisee_id, assigned, name_owners=False
+    )
 
     actor = invite.invited_by_user_id
 
@@ -343,6 +354,9 @@ async def register(
         company_id=invite.company_id,
         code=await tech_service.next_code(session, invite.company_id),
         region_id=invite.region_id,
+        # Copied, not joined — the invite records what was offered.
+        franchisee_id=invite.franchisee_id,
+        technician_type=invite.technician_type,
         daily_job_cap=body.dailyJobCap or invite.daily_job_cap,
         # `body.upiId` is deliberately NOT saved — see `RegisterRequest.upiId`.
         # A UPI ID is added on Payout account, with its name and its own code.
@@ -406,12 +420,17 @@ async def register(
         # which is company-wide — and a technician nobody can offer work to is
         # exactly the anomaly everyone should see.
         pincode=assigned[0] if assigned else None,
+        # Task 05 §4.5: stamped with the franchisee too — staff hear it by
+        # pincode as always, AND that franchisee's admins hear their roster
+        # growing (`core.audience.hears`, case 6).
+        franchisee_id=invite.franchisee_id,
     )
     await publish_notification(
         session,
         company_id=invite.company_id,
         pincode=assigned[0] if assigned else None,
         notification_id=raised.id,
+        franchisee_id=invite.franchisee_id,
     )
 
     # sign_in commits, so the whole registration lands in one transaction.

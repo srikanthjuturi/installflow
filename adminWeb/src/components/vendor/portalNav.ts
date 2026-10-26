@@ -9,6 +9,7 @@ import {
   Wallet,
 } from "lucide-react";
 import type { IntakeChannel } from "@/types/vendor";
+import { longestMatch as sharedLongestMatch } from "@/components/shared/navMatch";
 
 /**
  * The vendor portal's own navigation table.
@@ -153,7 +154,7 @@ export const PORTAL_UNGATED = new Set([
 
 /** `undefined` means "not a portal screen", which the guard reads as deny. */
 export function featureForPortalPath(pathname: string): string | undefined {
-  return longestMatch(ALL_ITEMS, pathname)?.feature;
+  return sharedLongestMatch(ALL_ITEMS, pathname)?.feature;
 }
 
 /**
@@ -169,20 +170,5 @@ export function activePortalPath(
   items: PortalNavItem[],
   pathname: string
 ): string | undefined {
-  return longestMatch(items, pathname)?.to;
-}
-
-function longestMatch(
-  items: PortalNavItem[],
-  pathname: string
-): PortalNavItem | undefined {
-  const exact = items.find((i) => i.to === pathname);
-  if (exact) return exact;
-  return items
-    .filter(
-      (i) =>
-        pathname.startsWith(`${i.to}/`) ||
-        i.match?.some((m) => pathname.startsWith(m))
-    )
-    .sort((a, b) => b.to.length - a.to.length)[0];
+  return sharedLongestMatch(items, pathname)?.to;
 }

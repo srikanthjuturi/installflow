@@ -415,7 +415,7 @@ Each client task has a **PROPOSED copy** section. Tick when signed off:
 - [ ] 08 Franchisees screen
 - [ ] 09 Franchise portal
 - [ ] 13 Allowances, parts catalogue, facility queue
-- [ ] 07 Mobile new ledger kinds / status labels / employee earnings
+- [x] 07 Mobile new ledger kinds / status labels / employee earnings — signed off 2026-10-22 (owner approved §5.12's 14 strings as written)
 - [ ] 14 Mobile base location
 - [ ] 15 Mobile spare-part request and allowance display
 - [ ] 17 Technician transfer dialog and push

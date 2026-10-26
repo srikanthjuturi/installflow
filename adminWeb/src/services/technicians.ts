@@ -11,6 +11,7 @@
 
 import { apiDelete, apiGetPage, apiGet, apiPost, apiPut } from "./http";
 import type { ListParams, Page } from "@/types/api";
+import type { BaseLocation, BaseLocationInput } from "@/types/allowances";
 import type {
   AppLinkOutcome,
   CreatedTechnician,
@@ -20,6 +21,9 @@ import type {
   Technician,
   TechnicianInvite,
   TechnicianRow,
+  TechnicianTransfer,
+  TechnicianTransferInput,
+  TechnicianTransferResult,
   UpdateTechnicianInput,
   UpiChange,
 } from "@/types/technician";
@@ -38,6 +42,22 @@ export function listTechnicians(
 
 export function getTechnician(id: string): Promise<Technician> {
   return apiGet<Technician>(`/technicians/${id}`);
+}
+
+/**
+ * Move a technician's base (Task 10 §4.7) — a bare pincode, or a map / typed
+ * point. There is no delete: a base is moved, never removed. Staff
+ * `technicians.edit` on a HOME technician they manage; a visible non-home one
+ * answers 403 "Managed by …".
+ */
+export function setBaseLocation({
+  id,
+  body,
+}: {
+  id: string;
+  body: BaseLocationInput;
+}): Promise<BaseLocation> {
+  return apiPut<BaseLocation>(`/technicians/${id}/base-location`, body);
 }
 
 /**
@@ -164,7 +184,13 @@ export function cancelInvite(id: string): Promise<null> {
  */
 export function listCandidateTechnicians(input: {
   subcategoryId: string;
-  pincode: string;
+  /** Omitted for a ticket that was HANDED to another franchisee (Task 18): its
+   *  pincode belongs to a franchisee whose technicians cannot take it, and
+   *  filtering by it would list nobody. */
+  pincode?: string;
+  /** The receiving franchisee, sent instead of the pincode for a handed ticket
+   *  — `GET /technicians` has always taken `franchiseeId` (Task 05). */
+  franchiseeId?: string;
   slotStart?: string | null;
 }): Promise<Technician[]> {
   return apiGetPage<TechnicianRow>("/technicians", {
@@ -173,8 +199,53 @@ export function listCandidateTechnicians(input: {
       view: "registered",
       status: "active",
       subcategoryId: input.subcategoryId,
-      pincode: input.pincode,
+      ...(input.pincode ? { pincode: input.pincode } : {}),
+      ...(input.franchiseeId ? { franchiseeId: input.franchiseeId } : {}),
       ...(input.slotStart ? { onDay: input.slotStart } : {}),
     },
   }).then(({ rows }) => rows.filter((row): row is Technician => row.registered));
+}
+
+/* ------------------------------------------- moving between franchisees */
+
+/**
+ * What a move WOULD do (Task 17). A preview answers 200 even when something is in
+ * the way — the blockers are data — and writes nothing, so it is safe to call as
+ * often as the person changes their mind. `reason` is not needed for it.
+ */
+export function previewTransfer({
+  id,
+  body,
+}: {
+  id: string;
+  body: TechnicianTransferInput;
+}): Promise<TechnicianTransferResult> {
+  return apiPost<TechnicianTransferResult>(
+    `/technicians/${id}/transfer?dryRun=true`,
+    body
+  );
+}
+
+/**
+ * Move them. The first blocker is raised as the error instead — 409
+ * `TECHNICIAN_HAS_OPEN_JOBS` / `TECHNICIAN_HAS_BALANCE` / `FRANCHISEE_HAS_NO_ADMIN`
+ * (or code-less), 422 `PINCODE_OUTSIDE_FRANCHISEE` — so a race the preview could
+ * not see still lands as a sentence.
+ */
+export function transferTechnician({
+  id,
+  body,
+}: {
+  id: string;
+  body: TechnicianTransferInput;
+}): Promise<TechnicianTransferResult> {
+  return apiPost<TechnicianTransferResult>(
+    `/technicians/${id}/transfer?dryRun=false`,
+    body
+  );
+}
+
+/** Every move this technician has had, newest first. Staff only. */
+export function getTransfers(id: string): Promise<TechnicianTransfer[]> {
+  return apiGet<TechnicianTransfer[]>(`/technicians/${id}/transfers`);
 }

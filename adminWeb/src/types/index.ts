@@ -49,7 +49,7 @@ export interface AiFlag {
  * but which direction depends on who is looking: to the POOL a penalty is
  * money in, to the TECHNICIAN it is a debit. The API's own note explains it;
  * here it means the pool screen applies the POOL's sign where it prints one
- * (`POOL_SIGN` in `LedgerTable`), out loud, rather than trusting a sign that
+ * (`POOL_SIGN` in `ledgerKinds`), out loud, rather than trusting a sign that
  * means two things.
  */
 export interface LedgerEntry {
@@ -59,8 +59,22 @@ export interface LedgerEntry {
   /**
    * `reversal` is a penalty a manager gave back: the technician's credit, the
    * pool's money out. Its `reason` is the manager's own words.
+   *
+   * Task 09 — widened and ends on `(string & {})` so an unknown kind still
+   * renders rather than crashing the label lookup: the API's own kinds table
+   * grows (`travel` is not a pool kind and never reaches this screen).
+   * `components/ledger/ledgerKinds` owns the label, chip and pool sign for each
+   * known kind and falls back, for any other, to the raw kind on the neutral
+   * tone with an unsigned `+` — never `NaN`. A `speed_penalty` given back is
+   * undone by an ordinary `reversal` row, so no further kind exists for it.
    */
-  kind: "penalty" | "bonus" | "reversal";
+  kind:
+    | "penalty"
+    | "bonus"
+    | "reversal"
+    | "speed_reward"
+    | "speed_penalty"
+    | (string & {});
   /** PAISE, always positive. `kind` carries the direction. */
   amountPaise: number;
   technicianId: string;
@@ -75,6 +89,17 @@ export interface LedgerEntry {
    * changes — the `reversal` entry is the record — so this is only the tag.
    */
   reversed: boolean;
+  /**
+   * Whose pool the money sits in (Task 05, F12) — stamped on every row, so a
+   * staff reader using the Franchisee selector knows which ledger each row
+   * came from even after it is read. There is deliberately NO `canAct` here:
+   * the staff ledger has no row action (owner ruling — reverse happens on the
+   * ticket page), so the per-row permission the redemptions rows carry would
+   * gate nothing.
+   */
+  franchiseeId: string;
+  /** How the technician in question is paid — payroll vs. UPI, on the row. */
+  technicianType: "employee" | "freelancer";
 }
 
 /* `Vendor` moved to `types/vendor.ts` when vendors became real. It used to

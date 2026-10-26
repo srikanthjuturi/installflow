@@ -4,6 +4,8 @@ from app.models.company import Company
 from app.models.company_rules import CompanyRules
 from app.models.credits import CreditEntry, CreditRecharge, PlatformSettings
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
+from app.models.franchisee import Franchisee, FranchiseePincode, FranchiseeTravelRule
+from app.models.franchisee_speed_rule import FranchiseeSpeedRule
 from app.models.job_pass import JobPass
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
@@ -14,6 +16,8 @@ from app.models.redemption import Redemption, RedemptionEvent
 from app.models.upi_change import UpiChangeRequest
 from app.models.role import Role
 from app.models.sequence import CompanySequence
+from app.models.spare_part import SparePart, SparePartRequest
+from app.models.technician_transfer import TechnicianTransfer
 from app.models.technician import (
     TechnicianInvite,
     TechnicianInvitePincode,
@@ -55,6 +59,10 @@ __all__ = [
     "CreditRecharge",
     "District",
     "Feature",
+    "Franchisee",
+    "FranchiseePincode",
+    "FranchiseeSpeedRule",
+    "FranchiseeTravelRule",
     "JobPass",
     "LedgerEntry",
     "Membership",
@@ -74,6 +82,8 @@ __all__ = [
     "RefreshToken",
     "Region",
     "Role",
+    "SparePart",
+    "SparePartRequest",
     "State",
     "RoleFeatureDefault",
     "TechnicianInvite",
@@ -81,6 +91,7 @@ __all__ = [
     "TechnicianNode",
     "TechnicianPincode",
     "TechnicianProfile",
+    "TechnicianTransfer",
     "Ticket",
     "Notification",
     "NotificationRead",

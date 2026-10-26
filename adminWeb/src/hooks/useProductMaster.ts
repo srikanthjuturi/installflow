@@ -60,7 +60,8 @@ export const productKeys = {
 export function useNodeTree(
   includeInactive = false,
   vendorId?: string,
-  purpose: TreePurpose = "catalogue"
+  purpose: TreePurpose = "catalogue",
+  enabled = true
 ) {
   return useQuery({
     queryKey: productKeys.tree(includeInactive, vendorId, purpose),
@@ -69,7 +70,7 @@ export function useNodeTree(
     // Nothing to ask for until a vendor is chosen, when one is being asked for.
     // Fetching the whole catalogue first and discarding it would flash the wrong
     // options into a dropdown somebody may already be opening.
-    enabled: vendorId !== "",
+    enabled: enabled && vendorId !== "",
   });
 }
 
@@ -84,8 +85,8 @@ export function useNodeTree(
  *
  * Certification is narrower — see `useCertifiableNodeOptions`.
  */
-export function useNodeOptions() {
-  const query = useNodeTree();
+export function useNodeOptions(enabled = true) {
+  const query = useNodeTree(false, undefined, "catalogue", enabled);
   const options = useMemo(() => flattenNodes(query.data), [query.data]);
   return { ...query, options };
 }
@@ -102,8 +103,8 @@ export function useNodeOptions() {
  * Deliberately NOT a change to `useNodeOptions`: Rules Config offers every
  * level, and folding the two would quietly narrow that too.
  */
-export function useCertifiableNodeOptions() {
-  const query = useNodeOptions();
+export function useCertifiableNodeOptions(enabled = true) {
+  const query = useNodeOptions(enabled);
   const options = useMemo(
     () => query.options.filter((o) => o.depth === CERTIFY_DEPTH),
     [query.options]

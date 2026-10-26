@@ -17,6 +17,7 @@ forbids one slice importing another.
 """
 
 import re
+from collections.abc import Iterable
 
 #: Words that carry no identity. A code built from "Reliance GreenTech Private
 #: Limited" should be RGT, not RGTPL — the suffix is a legal form, not a name.
@@ -89,3 +90,31 @@ def validate(code: str) -> str | None:
     if not cleaned[0].isalpha():
         return "Company code must start with a letter"
     return None
+
+
+def unique_code(
+    base: str, taken: Iterable[str], *, max_len: int = 8
+) -> str:
+    """A free code — `base` if nobody holds it, else `base` + suffix 2…99,
+    truncating the base so the result never exceeds `max_len`.
+
+    Franchisee codes allow 8 characters (company codes stop at 6), so this
+    carries its own cap instead of reusing `normalise`. Case-insensitive: a
+    taken "sfs" blocks "SFS". Exhausted → ValueError, which the service turns
+    into a 422 telling the caller to type a code themselves."""
+    taken_upper = {t.upper() for t in taken if t}
+    head = re.sub(r"[^A-Za-z0-9]", "", base or "").upper()
+    if not head:
+        raise ValueError("Nothing in the name can become a code")
+    if max_len < MIN_LEN:
+        raise ValueError(f"max_len must be at least {MIN_LEN}")
+    if head[:max_len] not in taken_upper and len(head[:max_len]) >= MIN_LEN:
+        return head[:max_len]
+    for suffix in range(2, 100):
+        keep = max_len - len(str(suffix))
+        candidate = head[:keep] + str(suffix)
+        if candidate not in taken_upper:
+            return candidate
+    raise ValueError(
+        f"Every code from this name is taken — type one yourself (at most {max_len})"
+    )

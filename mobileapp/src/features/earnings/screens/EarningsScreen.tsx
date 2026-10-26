@@ -6,7 +6,7 @@ import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, Skeleton } from '@/components/feedback';
-import { Icon, type IconName } from '@/components/icons/Icon';
+import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
 import { Text } from '@/components/ui';
 import {
@@ -14,32 +14,30 @@ import {
   listTransactions,
   windowQuery,
 } from '@/features/earnings/api/earnings';
+import { breakdown } from '@/features/earnings/breakdown';
+import { LedgerRow } from '@/features/earnings/components/LedgerRow';
+import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
 import { RedeemCard } from '@/features/redeem/components/RedeemCard';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { errorText } from '@/i18n/errorText';
-import { ledgerTitle } from '@/i18n/serverLabels';
 import { ApiError } from '@/lib/api';
 import { qk } from '@/lib/queryKeys';
 import { useEarningsWindow } from '@/store/earnings.store';
 import { color } from '@/theme/semantic';
-import { palette } from '@/theme/tokens';
 import {
   EARNINGS_PERIODS,
   type DateRange,
   type EarningsPeriod,
   type EarningsWindow,
-  type Transaction,
-  type TransactionKind,
 } from '@/types/domain';
 import {
   formatRange,
   longDayLabel,
   monthYearLabel,
-  relativeDayLabel,
   spanDays,
   weekSpanLabel,
 } from '@/utils/date';
-import { formatPaise, formatSignedPaise } from '@/utils/money';
+import { formatPaise } from '@/utils/money';
 
 /** What each span is called on the control, and under the title. */
 const PERIOD_LABEL = {
@@ -109,13 +107,6 @@ function windowCaption(
   return `${t(PERIOD_LABEL[period])} · ${weekSpanLabel()}`;
 }
 
-/** Each ledger kind gets its own icon and tint — a penalty must never skim as a payout. */
-const KIND_STYLE: Record<TransactionKind, { icon: IconName; fg: string; bg: string }> = {
-  payout: { icon: 'card', fg: color.statusCompleted.fg, bg: color.statusCompleted.bg },
-  bonus: { icon: 'gift', fg: palette.secondary[600], bg: palette.secondary[100] },
-  penalty: { icon: 'warn', fg: color.statusCancelled.fg, bg: color.statusCancelled.bg },
-};
-
 /**
  * Screen 15 — Earnings.
  *
@@ -130,6 +121,9 @@ export function EarningsScreen() {
   const { t } = useTranslation();
   const showing = useEarningsWindow((s) => s.window);
   const setShowing = useEarningsWindow((s) => s.setWindow);
+  // Task 06. An employee's job pay arrives with their salary, so the caption
+  // under the net figure says what the figure is for them instead.
+  const employee = useIsEmployee();
 
   // The query string IS the cache key — see `qk.earningsSummary`. Two windows
   // that ask the server the same thing are the same answer by construction.
@@ -152,6 +146,9 @@ export function EarningsScreen() {
     queryFn: () => listTransactions(showing),
     refetchOnWindowFocus: true,
   });
+
+  // The "incl." parts of the three tiles; empty until a summary has arrived.
+  const parts = summary.data ? breakdown(summary.data) : {};
 
   // The whole `earnings` prefix, not the two queries above: the Redeem card's
   // balance lives under it too, and a pull that updated the totals but left
@@ -268,24 +265,43 @@ export function EarningsScreen() {
                   color: color.textOnChrome,
                 }}
               >
-                {t('earnings.netCaption')}
+                {t(employee ? 'earnings.netCaptionEmployee' : 'earnings.netCaption')}
               </Text>
 
+              {/* The three tiles keep the SERVER's figures, which already include
+                  travel and speed (index §6a). The "incl." line under each is a
+                  part of that figure, never added to it, and absent when the
+                  server did not send the breakdown or it is zero. */}
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <ChromeTile
                   label={t('earnings.earned')}
                   value={formatPaise(summary.data.earnedPaise)}
                   tint={color.creditOnChrome}
+                  sub={
+                    parts.earned !== undefined
+                      ? t('earnings.inclTravel', { amount: formatPaise(parts.earned) })
+                      : undefined
+                  }
                 />
                 <ChromeTile
                   label={t('earnings.bonuses')}
                   value={formatPaise(summary.data.bonusesPaise)}
                   tint={color.bonusOnChrome}
+                  sub={
+                    parts.bonuses !== undefined
+                      ? t('earnings.inclSpeed', { amount: formatPaise(parts.bonuses) })
+                      : undefined
+                  }
                 />
                 <ChromeTile
                   label={t('earnings.penalties')}
                   value={formatPaise(summary.data.penaltiesPaise)}
                   tint={color.debitOnChrome}
+                  sub={
+                    parts.penalties !== undefined
+                      ? t('earnings.inclSpeedPenalty', { amount: formatPaise(parts.penalties) })
+                      : undefined
+                  }
                 />
               </View>
             </>
@@ -383,116 +399,6 @@ export function EarningsScreen() {
         </View>
       </ScrollView>
     </View>
-  );
-}
-
-/**
- * One line of the ledger — and, when the job behind it is still theirs, a way
- * into it.
- *
- * A technician reading "Install · Samsung 55" OLED · ₹450" and wanting to know
- * WHICH job that was had no route from here: the code is in the subtitle, and
- * finding it meant going to Jobs and scrolling. The row is the obvious thing to
- * press, so it now is one.
- *
- * `onOpen` is undefined rather than a no-op for a row that cannot navigate, and
- * that is the whole guard: no `Pressable` is rendered at all, so there is no
- * press feedback and no chevron promising a screen that would 404. Whether a
- * row qualifies is the server's answer, not a test on `kind` — see
- * `Transaction.ticketId`.
- */
-function LedgerRow({
-  txn,
-  first,
-  onOpen,
-}: {
-  txn: Transaction;
-  first: boolean;
-  onOpen?: () => void;
-}) {
-  const { t } = useTranslation();
-  const style = KIND_STYLE[txn.kind];
-  // The server's English title, translated where it is one of its fixed
-  // ones ("Reassignment bonus", "Install · <model>") — see serverLabels.
-  const title = ledgerTitle(txn.title);
-  // "Today · RGT-INST-0012", the way the server words it, but in the app's
-  // language: the day is built here rather than taken from its English.
-  const subtitle = `${relativeDayLabel(txn.at)} · ${txn.ticketCode}`;
-
-  const body = (pressed: boolean) => (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 14,
-        paddingHorizontal: 15,
-        borderTopWidth: first ? 0 : 1,
-        borderTopColor: palette.neutral[100],
-        backgroundColor: pressed ? palette.neutral[50] : color.surfaceRaised,
-      }}
-    >
-      <View
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 11,
-          backgroundColor: style.bg,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon name={style.icon} size={20} color={style.fg} />
-      </View>
-
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text
-          style={{
-            fontFamily: 'Roboto_700Bold',
-            fontSize: 14,
-            color: color.textPrimary,
-          }}
-          numberOfLines={1}
-        >
-          {title}
-        </Text>
-        <Text
-          style={{
-            fontFamily: 'Roboto_400Regular',
-            fontSize: 11.5,
-            color: color.textMuted,
-          }}
-        >
-          {subtitle}
-        </Text>
-      </View>
-
-      <Text style={{ fontFamily: 'Roboto_900Black', fontSize: 15, color: style.fg }}>
-        {formatSignedPaise(txn.amountPaise)}
-      </Text>
-
-      {/* The affordance. Only on rows that go somewhere — a chevron on every
-          line would make the ones that do not look broken when pressed. */}
-      {onOpen ? (
-        <Icon name="chevronRight" size={16} color={palette.neutral[400]} />
-      ) : null}
-    </View>
-  );
-
-  if (!onOpen) return body(false);
-
-  return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      // The amount is read out too. A screen reader user pressing a row is
-      // choosing between amounts as much as between job codes, and the visible
-      // line already says all three.
-      accessibilityLabel={`${title}. ${subtitle}. ${formatSignedPaise(txn.amountPaise)}`}
-      accessibilityHint={t('earnings.opensJob')}
-    >
-      {({ pressed }) => body(pressed)}
-    </Pressable>
   );
 }
 
@@ -623,7 +529,18 @@ function PeriodPicker({
   );
 }
 
-function ChromeTile({ label, value, tint }: { label: string; value: string; tint: string }) {
+function ChromeTile({
+  label,
+  value,
+  tint,
+  sub,
+}: {
+  label: string;
+  value: string;
+  tint: string;
+  /** "incl. ₹70 travel" — a part of `value`, not an addition to it. */
+  sub?: string;
+}) {
   return (
     <View
       style={{
@@ -648,6 +565,19 @@ function ChromeTile({ label, value, tint }: { label: string; value: string; tint
       >
         {value}
       </Text>
+      {sub ? (
+        <Text
+          numberOfLines={2}
+          style={{
+            fontFamily: 'Roboto_400Regular',
+            fontSize: 11,
+            color: color.textOnChrome,
+            marginTop: 2,
+          }}
+        >
+          {sub}
+        </Text>
+      ) : null}
     </View>
   );
 }

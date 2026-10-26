@@ -62,7 +62,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Reliance GreenTech Technician records where the live site photo was taken, to confirm the visit.",
+          "locationWhenInUsePermission": "Reliance GreenTech Technician records where the live site photo was taken, and, if you choose, where you start your day from.",
           "isAndroidBackgroundLocationEnabled": false
         }
       ],

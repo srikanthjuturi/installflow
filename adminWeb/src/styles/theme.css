@@ -88,6 +88,8 @@
   --color-status-assigned-bg: var(--status-assigned-bg);
   --color-status-in-progress: var(--status-in-progress);
   --color-status-in-progress-bg: var(--status-in-progress-bg);
+  --color-status-awaiting-part: var(--status-awaiting-part);
+  --color-status-awaiting-part-bg: var(--status-awaiting-part-bg);
   --color-status-awaiting-customer: var(--status-awaiting-customer);
   --color-status-awaiting-customer-bg: var(--status-awaiting-customer-bg);
   --color-status-ai-review: var(--status-ai-review);
@@ -187,6 +189,10 @@
      done but the ticket is not, and the chip should read as neither. */
   --status-awaiting-customer: #0f766e;
   --status-awaiting-customer-bg: #e6f5f3;
+  /* Awaiting Part (Task 12): the job is started but waiting on a spare part —
+     a task with a fix, so the warn reading, the same one APPROVAL_CLASS uses. */
+  --status-awaiting-part: var(--warn);
+  --status-awaiting-part-bg: var(--warn-bg);
   --status-ai-review: #7a3fc0;
   --status-ai-review-bg: #f3ecfd;
   --status-escalated: var(--danger);
@@ -320,6 +326,8 @@
   --status-assigned-bg: #172441;
   --status-in-progress: #5fb2e8;
   --status-in-progress-bg: #10293c;
+  --status-awaiting-part: var(--warn);
+  --status-awaiting-part-bg: var(--warn-bg);
   --status-ai-review: #b18ae6;
   --status-ai-review-bg: #271a3c;
   --status-escalated: var(--danger);

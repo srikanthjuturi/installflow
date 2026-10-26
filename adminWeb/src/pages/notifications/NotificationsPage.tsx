@@ -141,7 +141,7 @@ export default function NotificationsPage() {
 function BackButton() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { superadmin, portal } = useSession();
+  const { superadmin, portal, franchise } = useSession();
 
   const origin = readNavOrigin(location.state);
   if (origin) {
@@ -174,7 +174,7 @@ function BackButton() {
       variant="ghost"
       size="sm"
       className="-ml-2"
-      to={landingPath({ superadmin, portal })}
+      to={landingPath({ superadmin, portal, franchise })}
     >
       <ArrowLeft data-icon="inline-start" />
       Back

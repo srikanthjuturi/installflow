@@ -8,6 +8,14 @@ head, and the credit entry that lets a ticket be raised at all. Those omissions
 do not announce themselves — they surface later as an empty screen.
 
 Read with `lifecycle.py`, which drives tickets through what this builds.
+
+Since the franchisee programme (Task 16, §5.1) it also dresses the company the
+way a real one looks: a second and third franchisee carved out of its pincodes,
+employees beside freelancers, travel and speed rules that pay something, a spare
+parts list and the facility staff who answer it. Every one of those goes through
+the same service a console screen calls — a seed that INSERTed a franchisee
+would skip the carve-out, the travel-rule stamp and the login, and `verify.py`
+would then be reading rows nobody could have produced.
 """
 
 import dataclasses
@@ -18,20 +26,37 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.base_location import BaseLocationIn
 from app.core.credits import load_platform_settings
 from app.core.deps import Principal
+from app.core.facility_users import FacilityUserCreateRequest
+from app.core.facility_users import create_user as create_facility_user
+from app.core.franchise import home_franchisee_id
 from app.features.companies import service as companies_service
 from app.features.companies.schemas import CompanyCreateRequest
 from app.features.credits import service as credits_service
 from app.features.credits.schemas import RechargeClaimRequest, RechargeRequest
+from app.features.franchisees import service as franchisees_service
+from app.features.franchisees.schemas import (
+    FranchiseeAdminIn,
+    FranchiseeCreateRequest,
+    PincodesRequest,
+)
 from app.features.masters import service as masters_service
 from app.features.masters.schemas import ModelCreateRequest, NodeCreateRequest
 from app.features.technicians import service as technicians_service
-from app.features.technicians.schemas import TechnicianCreateRequest
+from app.features.spare_parts import service as parts_service
+from app.features.spare_parts.schemas import SparePartCreate
+from app.features.technicians.schemas import (
+    TechnicianCreateRequest,
+    TechnicianUpdateRequest,
+)
 from app.features.users import service as users_service
 from app.features.users.schemas import UserCreateRequest
 from app.features.vendors import service as vendors_service
 from app.features.vendors.schemas import VendorCreateRequest
+from app.models.franchisee import FranchiseeTravelRule
+from app.models.franchisee_speed_rule import FranchiseeSpeedRule
 from app.models.product import ProductModel, ProductNode
 from app.models.role import (
     ADMIN,
@@ -41,7 +66,7 @@ from app.models.role import (
     ROLE_RANKS,
     SUPERADMIN,
 )
-from app.models.technician import TechnicianProfile
+from app.models.technician import TechnicianPincode, TechnicianProfile
 from app.models.territory import Pincode, State
 from app.models.user import User
 from app.models.vendor import Vendor
@@ -121,6 +146,59 @@ TECHNICIAN_NAMES: tuple[str, ...] = (
 )
 
 
+#: Who a technician works for, by position — a repeating pattern rather than a
+#: draw, so a six-technician demo and a fifty-technician load test both contain
+#: every case. Coverage is chosen FROM the group, because a carve-out only moves
+#: someone whose coverage lies wholly inside the new range (F6): random coverage
+#: from twenty pincodes almost never would, and the second franchisee would be
+#: empty.
+#:
+#: * ``home``      stays home — coverage inside the part nobody claims;
+#: * ``straddle``  stays home but is TRIMMED — coverage on both sides, so the
+#:                 carve-out takes some of it away (F6's second rule);
+#: * ``crestline`` MOVES to the external franchisee;
+#: * ``northgate`` MOVES to the internal one that deliberately has no facility.
+COVERAGE_CYCLE: tuple[str, ...] = (
+    "home", "home", "straddle", "crestline", "crestline", "northgate",
+)
+
+#: The parts list the seed puts on the first category (and its first product),
+#: and the names a technician types as "Other" on every other category.
+PARTS_ON_CATEGORY: tuple[str, ...] = ("Power supply board", "Remote sensor")
+PART_ON_MODEL = "Backlight strip"
+OTHER_PART_NAMES: tuple[str, ...] = ("Drain pump", "Door lock", "Inlet hose", "Fan motor")
+
+#: The money the seed configures, so the allowance rows are non-zero (TA3/S1):
+#: a step of 2 km, ₹10 a step, road factor 130 %, ₹300 cap — and one speed rule,
+#: 12 h -> ₹200, 24 h -> ₹150.
+#:
+#: The free distance is NOT the product's default (20 km freelancer / 30 km
+#: employee). Every pincode in the seed lies inside one city, a few kilometres
+#: apart, so the defaults would pay ₹0 on every job and `verify`'s travel checks
+#: would read no rows at all; 2 km / 4 km keeps the rule on its normal shape and
+#: lets a job a few kilometres from its technician's base pay a step or two.
+TRAVEL_FREE_KM = {"freelancer": 2, "employee": 4}
+TRAVEL_STEP_KM = 2
+TRAVEL_PAISE_PER_STEP = 1_000
+TRAVEL_ROAD_FACTOR_PCT = 130
+TRAVEL_MAX_PAISE = 30_000
+SPEED_REWARD_WITHIN_H = 12
+SPEED_PENALTY_AFTER_H = 24
+SPEED_REWARD_PAISE = 20_000
+SPEED_PENALTY_PAISE = 15_000
+
+
+def split_pincodes(pincodes: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """The seed's pincodes as (home's, Crestline's, Northgate's).
+
+    Home keeps the first half — it is the catch-all and owns whatever nobody
+    claims — Crestline takes the next 30 %, Northgate the last 20 %. Sorted
+    input in, three disjoint slices out.
+    """
+    n = len(pincodes)
+    return pincodes[: n // 2], pincodes[n // 2 : n * 4 // 5], pincodes[n * 4 // 5 :]
+
+
 def phone_block(tag: str) -> int:
     """A 100,000-number block of `+911…` reserved for one run.
 
@@ -169,15 +247,51 @@ class Tenant:
     #: This run's reserved block of unreachable numbers — customers are drawn
     #: from its upper half, so no two runs ever mint the same phone.
     phone_block: int
+    #: Every franchisee of the company with the logins that act for it —
+    #: home first. Empty only for a caller that skipped the franchisee setup.
+    franchisees: list["FranchiseeSeed"] = dataclasses.field(default_factory=list)
+    #: node id -> the catalogue `spare_parts` rows on that node. Only the first
+    #: category has any; every other category's requests are typed as "Other".
+    parts_by_node: dict[uuid.UUID, list[uuid.UUID]] = dataclasses.field(default_factory=dict)
+    #: What the setup did, for the progress lines.
+    setup_report: dict[str, int] = dataclasses.field(default_factory=dict)
+
+    def franchisee_seed(self, franchisee_id: uuid.UUID) -> "FranchiseeSeed | None":
+        return next((f for f in self.franchisees if f.id == franchisee_id), None)
+
+
+@dataclasses.dataclass
+class FranchiseeSeed:
+    """One franchisee and the people who act for it."""
+
+    id: uuid.UUID
+    name: str
+    code: str
+    is_home: bool
+    #: Its franchisee admin. None for home: the company's Admin stands in for
+    #: it there (F8), exactly as on a real home franchisee.
+    admin: Principal | None
+    #: A facility operator, or None when the franchisee DELIBERATELY has no
+    #: facility so the `NO_FACILITY` refusal is a path the seed walks (P8).
+    facility: Principal | None
 
 
 async def principal_for(
-    db: AsyncSession, user: User, *, company_id: uuid.UUID | None, rank: int | None = None
+    db: AsyncSession,
+    user: User,
+    *,
+    company_id: uuid.UUID | None,
+    rank: int | None = None,
+    franchisee_id: uuid.UUID | None = None,
 ) -> Principal:
     """Build a `Principal` by hand, the way `ws.py` already does.
 
     `rank` overrides the role's own — the superadmin acting INSIDE a company
     keeps rank 0, which is what lets it create that company's admin.
+
+    `franchisee_id` is for the three franchise roles, whose authority is the
+    franchisee on their membership (never a rank): leave it out and a franchise
+    principal would fail every wall, which is the right way for it to fail.
     """
     return Principal(
         user=user,
@@ -186,6 +300,7 @@ async def principal_for(
         is_superadmin=user.role == SUPERADMIN,
         company_id=company_id,
         vendor_id=None,
+        franchisee_id=franchisee_id,
     )
 
 
@@ -365,6 +480,14 @@ async def build(
             pincode="500081",
             loginEmail=synthetic_email(f"vendor.{tag.lower()}"),
             brands=["Meridian", "Sunview"],
+            # The credit line's ceiling. A vendor is created with ₹5,000 of
+            # room, and every ticket it raises RESERVES its price until it
+            # closes, so the default admits about three tickets and refuses the
+            # other 497 with 409 VENDOR_OUT_OF_CREDITS - the seed shipped a
+            # month before the line did and silently stopped working when it
+            # landed. `drive` counts a refusal rather than failing on it, which
+            # is how a "successful" run came back with an empty company.
+            creditLimitPaise=1_000_000_000,
             # Left ON, the product's own default: the live proof photo is
             # location-gated, and the seed satisfies it honestly by sending a
             # device pincode that matches the ticket's.
@@ -469,7 +592,7 @@ async def build(
         # and the pool is genuinely contested — which is what the accept race in
         # the load test needs.
         certified = rng.sample(node_ids, k=rng.choice((2, 3)))
-        covered = rng.sample(pincodes, k=rng.choice((6, 8, 10)))
+        covered = _coverage_for(COVERAGE_CYCLE[index % len(COVERAGE_CYCLE)], pincodes, rng)
         created = await technicians_service.create_technician(
             db,
             admin,
@@ -488,7 +611,7 @@ async def build(
         profile = await db.get(TechnicianProfile, created.id)
         technicians.append(profile)
 
-    return Tenant(
+    tenant = Tenant(
         company_id=company_id,
         company_name=company.name,
         superadmin=superadmin,
@@ -502,6 +625,276 @@ async def build(
         technicians=technicians,
         phone_block=block,
     )
+
+    # ── franchisees, employees, allowances, parts ─────────────────────────
+    # After the technicians exist (a carve-out moves PEOPLE) and before any
+    # ticket (a ticket is stamped, and its job snapshots, from what is true
+    # when it is raised).
+    await _franchise_setup(db, tenant, tag=tag)
+    return tenant
+
+
+def _coverage_for(group: str, pincodes: list[str], rng: random.Random) -> list[str]:
+    """Pincodes for one technician, drawn from the slice their group lives in."""
+    home, crest, north = split_pincodes(pincodes)
+    if group == "home":
+        return rng.sample(home, k=min(len(home), rng.choice((4, 5, 6))))
+    if group == "straddle":
+        # Both sides, so the Crestline carve-out takes the second three away.
+        return rng.sample(home, k=min(len(home), 3)) + rng.sample(
+            crest, k=min(len(crest), 3)
+        )
+    if group == "crestline":
+        return rng.sample(crest, k=min(len(crest), rng.choice((3, 4, 5))))
+    return rng.sample(north, k=min(len(north), rng.choice((2, 3))))
+
+
+async def _stored_coverage(db: AsyncSession, profile: TechnicianProfile) -> list[str]:
+    return sorted(
+        await db.scalars(
+            select(TechnicianPincode.pincode).where(
+                TechnicianPincode.technician_id == profile.id
+            )
+        )
+    )
+
+
+async def _franchise_admin(
+    db: AsyncSession, *, company_id: uuid.UUID, franchisee_id: uuid.UUID, email: str
+) -> Principal:
+    user = await _user_by_email(db, email)
+    return await principal_for(
+        db, user, company_id=company_id, franchisee_id=franchisee_id
+    )
+
+
+async def _franchise_setup(db: AsyncSession, tenant: Tenant, *, tag: str) -> None:
+    """Task 16 §5.1 rows 2-6: the franchisee-era shape of the seeded company."""
+    company_id = tenant.company_id
+    admin = tenant.admin
+    low = tag.lower()
+    home_id = await home_franchisee_id(db, company_id)
+    home_codes, crest_codes, north_codes = split_pincodes(tenant.pincodes)
+    report: dict[str, int] = {}
+
+    # -- two franchisees, each with an admin login (a real carve-out) -------
+    made = {}
+    for key, name, kind, codes, mailbox, phone_index in (
+        ("crestline", f"Crestline Field Services {tag}", "external", crest_codes,
+         f"franchise.{low}", 900_000_006),
+        ("northgate", f"Northgate Field Services {tag}", "internal", north_codes,
+         f"franchise.north.{low}", 900_000_008),
+    ):
+        created = await franchisees_service.create_franchisee(
+            db,
+            admin,
+            FranchiseeCreateRequest(
+                name=name,
+                kind=kind,
+                contactName=f"{name} Contact",
+                contactPhone=synthetic_phone(phone_index),
+                admin=FranchiseeAdminIn(
+                    fullName=f"{key.title()} Admin",
+                    email=synthetic_email(mailbox),
+                    phone=synthetic_phone(phone_index + 1),
+                ),
+            ),
+        )
+        if created.admin is not None and created.admin.temporaryPassword:
+            # The mailbox cannot receive mail (that is the point of the
+            # address), so the server hands the password back — the vendor-
+            # login pattern. Printed once; the demo resets it to a known one.
+            print(
+                f"    note: {created.admin.email} could not be mailed — "
+                f"temporary password {created.admin.temporaryPassword}"
+            )
+        change = await franchisees_service.set_pincodes(
+            db,
+            admin,
+            created.id,
+            PincodesRequest(pincodeRanges=", ".join(codes)),
+            dry_run=False,
+        )
+        report[f"{key} moved"] = len(change.movedTechnicians)
+        report[f"{key} trimmed"] = len(change.trimmedTechnicians)
+        made[key] = (created, mailbox)
+        print(
+            f"    {name}: {len(codes)} pincodes — "
+            f"{len(change.movedTechnicians)} technicians moved, "
+            f"{len(change.trimmedTechnicians)} trimmed"
+        )
+
+    # The carve-out rewrote profiles underneath objects this session already
+    # holds — read them back before anything below judges "whose" they are.
+    for profile in tenant.technicians:
+        await db.refresh(profile)
+
+    crest, crest_mailbox = made["crestline"]
+    north, north_mailbox = made["northgate"]
+    seeds = [
+        FranchiseeSeed(home_id, tenant.company_name, "HOME", True, None, None),
+        FranchiseeSeed(
+            crest.id, crest.name, crest.code, False,
+            await _franchise_admin(
+                db, company_id=company_id, franchisee_id=crest.id,
+                email=synthetic_email(crest_mailbox),
+            ),
+            None,
+        ),
+        FranchiseeSeed(
+            north.id, north.name, north.code, False,
+            await _franchise_admin(
+                db, company_id=company_id, franchisee_id=north.id,
+                email=synthetic_email(north_mailbox),
+            ),
+            None,
+        ),
+    ]
+    actor_of = {s.id: (s.admin or admin) for s in seeds}
+    tenant.franchisees = seeds
+
+    by_franchisee: dict[uuid.UUID, list[TechnicianProfile]] = {s.id: [] for s in seeds}
+    for profile in tenant.technicians:  # creation order = position order
+        by_franchisee.setdefault(profile.franchisee_id, []).append(profile)
+
+    # -- employees: the second technician of every five, per franchisee -----
+    # Never the first, so every franchisee keeps a freelancer; done before any
+    # job exists because a type change is refused over an open job or money.
+    employees = 0
+    for fid, people in by_franchisee.items():
+        for ordinal, profile in enumerate(people):
+            if ordinal % 5 != 1:
+                continue
+            await technicians_service.update_technician(
+                db, actor_of[fid], profile.id,
+                TechnicianUpdateRequest(technicianType="employee"),
+            )
+            await db.refresh(profile)
+            employees += 1
+    report["employees"] = employees
+
+    # -- travel: non-zero rules for both types at every franchisee ----------
+    # Written onto the two rows `stamp_travel_rules` made at creation (TA4), the
+    # way `put_travel_rules` does - but not THROUGH it. ⚠ That function (and
+    # `get_travel_rules`, so every GET/PUT travel endpoint) answers with
+    # `TravelRuleIO.model_validate(<ORM row>)`, whose camelCase fields do not
+    # exist on the snake_case row, so it raises a ValidationError after the
+    # write. Found by Task 16 and reported, not fixed here (no feature code);
+    # switch this back to `put_travel_rules` when `get_travel_rules` builds the
+    # model from the columns.
+    for s_ in seeds:
+        for row in await db.scalars(
+            select(FranchiseeTravelRule).where(
+                FranchiseeTravelRule.company_id == company_id,
+                FranchiseeTravelRule.franchisee_id == s_.id,
+            )
+        ):
+            row.free_km = TRAVEL_FREE_KM[row.technician_type]
+            row.step_km = TRAVEL_STEP_KM
+            row.paise_per_step = TRAVEL_PAISE_PER_STEP
+            row.road_factor_pct = TRAVEL_ROAD_FACTOR_PCT
+            row.max_paise_per_job = TRAVEL_MAX_PAISE
+            row.updated_by = actor_of[s_.id].user_id
+    await db.commit()
+
+    # -- base location: all but the third of every five ---------------------
+    # The unset one is what produces `no_base_location` on its jobs (TA8).
+    based = 0
+    for fid, people in by_franchisee.items():
+        for ordinal, profile in enumerate(people):
+            if ordinal % 5 == 2:
+                continue
+            coverage = await _stored_coverage(db, profile)
+            if not coverage:
+                continue
+            # The centre of the first of their pincodes, sent as a MAP point
+            # rather than as `pincode=...`. ⚠ The pincode branch of
+            # `core.base_location.resolve_base` awaits `execute(...)` and then
+            # calls `.one_or_none()` on the coroutine, so every pincode base
+            # raises AttributeError (found by Task 16, reported, not fixed - no
+            # feature code). Switch back to `BaseLocationIn(pincode=...)` -
+            # which also records `source = 'pincode'` - once that is fixed.
+            lat, lng = (
+                await db.execute(
+                    select(Pincode.latitude, Pincode.longitude).where(
+                        Pincode.code == coverage[0]
+                    )
+                )
+            ).one()
+            await technicians_service.set_base_location(
+                db,
+                actor_of[fid],
+                profile.id,
+                BaseLocationIn(latitude=float(lat), longitude=float(lng), source="map"),
+            )
+            await db.refresh(profile)
+            based += 1
+    report["bases set"] = based
+
+    # -- speed: one node rule per franchisee, freelancers only --------------
+    # Employees keep no rule on purpose, so the `speed: null` path is walked.
+    # ⚠ Added as ORM rows, not through `core.speed_rules.upsert_rule`: that
+    # function answers with `_one_out(row)`, which reads a `db` it is never
+    # given (NameError after the write), so `PUT .../settings/speed` cannot
+    # work. Found by Task 16, reported, not fixed (no feature code); switch this
+    # to `upsert_rule(SpeedRuleIn(...))` when `_one_out` takes the session.
+    first_node = next(iter(tenant.models_by_node))
+    for s_ in seeds:
+        db.add(
+            FranchiseeSpeedRule(
+                company_id=company_id,
+                franchisee_id=s_.id,
+                technician_type="freelancer",
+                node_id=first_node,
+                reward_within_hours=SPEED_REWARD_WITHIN_H,
+                penalty_after_hours=SPEED_PENALTY_AFTER_H,
+                reward_paise=SPEED_REWARD_PAISE,
+                penalty_paise=SPEED_PENALTY_PAISE,
+                created_by=actor_of[s_.id].user_id,
+                updated_by=actor_of[s_.id].user_id,
+            )
+        )
+    await db.commit()
+
+    # -- parts: a list on the first category and its first product ----------
+    ids: list[uuid.UUID] = []
+    for name in PARTS_ON_CATEGORY:
+        added = await parts_service.add_part(
+            db, admin, SparePartCreate(name=name), node_id=first_node
+        )
+        ids.append(added.id)
+    tenant.parts_by_node[first_node] = ids
+    first_model = tenant.models_by_node[first_node][0][0]
+    await parts_service.add_part(
+        db, admin, SparePartCreate(name=PART_ON_MODEL), model_id=first_model
+    )
+
+    # -- facility: one operator at home and at Crestline, none at Northgate --
+    # Owner ruling 2026-10-15 (R4): nobody in the staff shell works the parts
+    # queue, so a franchisee with no facility staff answers a request with
+    # 409 NO_FACILITY — Northgate is left that way on purpose.
+    for s, mailbox, phone_index in (
+        (seeds[0], f"facility.{low}", 900_000_010),
+        (seeds[1], f"facility.crest.{low}", 900_000_011),
+    ):
+        await create_facility_user(
+            db,
+            actor=actor_of[s.id],
+            franchisee_id=s.id,
+            body=FacilityUserCreateRequest(
+                fullName=f"Facility Operator {s.code}",
+                email=synthetic_email(mailbox),
+                phone=synthetic_phone(phone_index),
+                role="facility_operator",
+            ),
+        )
+        s.facility = await principal_for(
+            db,
+            await _user_by_email(db, synthetic_email(mailbox)),
+            company_id=company_id,
+            franchisee_id=s.id,
+        )
+    tenant.setup_report = report
 
 
 async def _node_id(

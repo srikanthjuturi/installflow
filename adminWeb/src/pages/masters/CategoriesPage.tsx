@@ -9,6 +9,7 @@ import {
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
+import { SparePartsDialog } from "@/components/parts/SparePartsDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,9 @@ export default function CategoriesPage() {
 
   const { has } = useFeatureAccess();
   const canEdit = has("masters.edit");
+  // A different grant (Admin / National Head): the catalogue of spare parts a
+  // technician picks from. Presentation only — the server enforces it.
+  const canEditParts = has("parts.catalogue");
   // Reading the rules is a different grant from editing the catalogue — an Area
   // Manager holds `jobs.assign` and can read them; see the API's `ReadRules`.
   const canSeeRules = has("settings.view") || has("jobs.assign");
@@ -84,6 +88,7 @@ export default function CategoriesPage() {
         <CategoryTree
           nodes={data}
           canEdit={canEdit}
+          canEditParts={canEditParts}
           onAction={setDialog}
           // The rules themselves live on one screen, scoped by a picker — one
           // form in two modes beats a second copy of it in a dialog here.
@@ -120,6 +125,23 @@ export default function CategoriesPage() {
           onOpenChange={(next) => !next && close()}
           node={dialog.node}
           model={dialog.kind === "edit-model" ? dialog.model : undefined}
+        />
+      ) : null}
+
+      {/* Task 13 §5.6 — mounted only while open so the drafts start clear. */}
+      {dialog?.kind === "node-parts" ? (
+        <SparePartsDialog
+          open
+          onOpenChange={(next) => !next && close()}
+          owner={{ kind: "node", node: dialog.node }}
+        />
+      ) : null}
+
+      {dialog?.kind === "model-parts" ? (
+        <SparePartsDialog
+          open
+          onOpenChange={(next) => !next && close()}
+          owner={{ kind: "model", node: dialog.node, model: dialog.model }}
         />
       ) : null}
 

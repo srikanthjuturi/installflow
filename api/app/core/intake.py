@@ -34,6 +34,9 @@ INTAKE_CHANNELS = ("API", "Excel", "Manual")
 #: Move it across when the push endpoint and key issuance land. Nothing else in
 #: this module changes, and the schema layer picks the difference up for free.
 AVAILABLE_INTAKE_CHANNELS = ("Excel", "Manual")
+#
+#: The API channel, when built, must create tickets through `create_ticket` (or
+#: stamp with `franchisee_for_pincode` under `lock_routing(shared)`) — Task 04.
 
 #: Manual, because it is the one that is always true: somebody can always type
 #: a ticket in. A vendor nobody has configured is not an API integration.

@@ -1,4 +1,10 @@
+import { asRedeemRefusal, type RedeemRefusal } from '@/features/redeem/refusals';
 import { ApiError, authedRequest } from '@/lib/api';
+
+// Moved to a pure file (`features/redeem/refusals.ts`) so the refusal set —
+// including Task 06's `EMPLOYEE_CANNOT_REDEEM` — is testable without
+// `lib/api` pulling in the session store.
+export type { RedeemRefusal } from '@/features/redeem/refusals';
 
 /**
  * Cashing out the balance — paid by UPI, straight to the technician's account.
@@ -108,24 +114,11 @@ export function getRedemption(id: string): Promise<RedemptionDetail> {
   return authedRequest<RedemptionDetail>(`/redemptions/me/${id}`);
 }
 
-/** Why a request was refused — each leads somewhere different on screen. */
-export type RedeemRefusal =
-  | 'BALANCE_CHANGED'
-  | 'NO_UPI_ID'
-  | 'NOTHING_TO_REDEEM'
-  | 'REDEMPTION_OPEN';
-
-const REFUSALS: readonly RedeemRefusal[] = [
-  'BALANCE_CHANGED',
-  'NO_UPI_ID',
-  'NOTHING_TO_REDEEM',
-  'REDEMPTION_OPEN',
-];
-
 /**
  * A "no" with a reason, switched on the envelope's `code` rather than the
- * 409 — four reasons share that status, and they send the technician to four
- * different places (a new figure, the payout account, nowhere, the open one).
+ * 409 — five reasons share that status, and they send the technician to five
+ * different places (a new figure, the payout account, nowhere, the open one,
+ * an explanation that salary pays them).
  */
 export class RedeemRefusedError extends Error {
   constructor(
@@ -149,7 +142,7 @@ export async function requestRedemption(amountPaise: number): Promise<Redemption
     });
   } catch (error) {
     if (error instanceof ApiError) {
-      const refusal = REFUSALS.find((c) => c === error.code);
+      const refusal = asRedeemRefusal(error.code);
       if (refusal) throw new RedeemRefusedError(refusal, error.message);
     }
     throw error;

@@ -40,7 +40,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import (
+    CompanyPrincipal,
     Principal,
+    require_all,
     require_any_feature,
     require_feature,
     require_min_rank,
@@ -61,6 +63,9 @@ from app.features.tickets.schemas import (
     BonusRequest,
     DashboardSummaryOut,
     ForceCloseRequest,
+    FranchiseeOptionsOut,
+    HandToFranchiseeOut,
+    HandToFranchiseeRequest,
     IntakeStatusOut,
     NoShowRequest,
     PenaltyReverseRequest,
@@ -83,6 +88,11 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("jobs.view"))]
+#: Read-only ticket access for the franchise portal (F13) beside staff and vendors' `jobs.view`.
+#: Who sees WHICH tickets is `service.scoped()`'s, not this key's.
+CanReadTickets = Annotated[
+    Principal, Depends(require_any_feature("jobs.view", "franchise.tickets"))
+]
 CanCreate = Annotated[Principal, Depends(require_feature("jobs.create"))]
 IsVendor = Depends(require_vendor_principal)
 
@@ -148,18 +158,30 @@ CanForceClose = Annotated[Principal, Depends(require_feature("jobs.force_close")
 #: may reasonably let every Area Manager record a no-show while keeping refunds
 #: with the National Head — one Feature Access row, with no deploy.
 #:
-#: Paired with `AreaManagerUp`, because it returns pool money (hard rule 2).
+#: Paired with the Area-Manager floor, because it returns pool money (hard rule 2).
 #: Together with `_load`'s territory scoping that is the whole of "the ticket's
 #: AM, else its RH, else a NH, else an Admin — or anyone senior".
+#:
+#: And with `require_staff_principal` (Task 05 §4.10): the penalty money is a
+#: franchisee's (F12), and a franchisee manages its own pool on its OWN door
+#: — `features/ledger`'s `/franchise` twin — never through the ticket page,
+#: which reads it read-only (§4.11).
 CanReversePenalty = Annotated[
-    Principal, Depends(require_feature("penalties.reverse"))
+    Principal,
+    Depends(
+        require_all(
+            require_staff_principal,
+            require_feature("penalties.reverse"),
+            require_min_rank(AREA_MANAGER),
+        )
+    ),
 ]
 
 
 @router.get("", response_model=PaginatedEnvelope[TicketOut])
 async def list_tickets(
     db: Db,
-    principal: CanView,
+    principal: CanReadTickets,
     params: Annotated[ListParams, Depends(list_params)],
     status: Annotated[str | None, Query()] = None,
     slaState: Annotated[str | None, Query()] = None,
@@ -190,7 +212,7 @@ async def list_tickets(
     Every figure on that screen has to open a list holding exactly what it
     counted, and several of them are populations a single status cannot name:
 
-      * `status` takes a comma-separated SET — `Assigned,In Progress` is the
+      * `status` takes a comma-separated SET — `Assigned,In Progress,Awaiting Part` is the
         funnel's middle tile, `Closed,Force-Closed` its last. One value behaves
         as it always did.
       * `open=true` is "not yet closed", from `service.open_tickets()` — the
@@ -540,6 +562,67 @@ async def assign_ticket(
     return envelope(data, message="Technician assigned")
 
 
+#: Handing an unassigned ticket to another franchisee (Task 18, H2): `jobs.assign` + the
+#: Area-Manager rank floor + the staff door - the pairing `POST /{id}/assign` carries.
+#: ALL THREE ride in each route's `dependencies=[...]` and NONE is stacked inside an
+#: `Annotated[...]`: FastAPI applies only the LAST `Depends` of a stacked alias, so an earlier
+#: guard would silently never run (the note at the top of `spare_parts/router.py`). A franchise
+#: principal (ranks 8-10) clears no rank floor and holds no `jobs.assign`; a vendor ranks below
+#: every staff role - both 403 before any ticket is read.
+HAND_OVER_GUARDS = [
+    Depends(require_feature("jobs.assign")),
+    AreaManagerUp,
+    IsStaff,
+]
+
+
+@router.get(
+    "/{ticket_id}/franchisee-options",
+    response_model=ApiEnvelope[FranchiseeOptionsOut],
+    dependencies=HAND_OVER_GUARDS,
+)
+async def franchisee_options(
+    ticket_id: uuid.UUID, db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[FranchiseeOptionsOut]:
+    """Who could take this ticket if it were handed over - the dialog's numbers.
+
+    Every active franchisee, the current one included and flagged, with how many of its
+    technicians are eligible (active, certified, room on the day; the pincode test waived for
+    all but the pincode's own owner) and how many of those are online. `canHandOver: false`
+    comes with `options: []` - the dialog never offers a choice the server will refuse.
+    404 outside the manager's territory or the company.
+    """
+    return envelope(await service.franchisee_options(db, principal, ticket_id))
+
+
+@router.post(
+    "/{ticket_id}/franchisee",
+    response_model=ApiEnvelope[HandToFranchiseeOut],
+    dependencies=HAND_OVER_GUARDS,
+)
+async def hand_to_franchisee(
+    ticket_id: uuid.UUID,
+    db: Db,
+    principal: CompanyPrincipal,
+    body: HandToFranchiseeRequest,
+) -> ApiEnvelope[HandToFranchiseeOut]:
+    """Hand an unassigned ticket to another franchisee, with a written reason.
+
+    The server DERIVES `routing_override` (the target is not the pincode's owner); no client
+    field sets it. **409** says which kind of no: `TICKET_ASSIGNED`, `TICKET_NOT_ASSIGNABLE`,
+    `SAME_FRANCHISEE`, `FRANCHISEE_INACTIVE`, or `ALREADY_ASSIGNED` when somebody accepted,
+    assigned or moved it first. **404** for a ticket or franchisee outside the company (a 403
+    would confirm it exists). `notified` is how many phones rang; `backInPool` whether an
+    escalated ticket left the queue.
+    """
+    return envelope(
+        await service.hand_to_franchisee(
+            db, principal, ticket_id, franchisee_id=body.franchiseeId, reason=body.reason
+        ),
+        message="Ticket handed over",
+    )
+
+
 @router.post(
     "/{ticket_id}/bonus",
     response_model=ApiEnvelope[RenotifyOut],
@@ -602,7 +685,6 @@ async def record_no_show(
 @router.post(
     "/{ticket_id}/penalties/{entry_id}/reverse",
     response_model=ApiEnvelope[TicketDetailOut],
-    dependencies=[AreaManagerUp],
 )
 async def reverse_penalty(
     ticket_id: uuid.UUID,
@@ -742,13 +824,18 @@ async def force_close_ticket(
     response_model=ApiEnvelope[list[TicketAttachmentOut]],
 )
 async def get_ticket_attachments(
-    ticket_id: uuid.UUID, db: Db, principal: CanView
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
 ) -> ApiEnvelope[list[TicketAttachmentOut]]:
     """The evidence a manager attached when force-closing this ticket.
 
     `jobs.view`, not `jobs.force_close`: whoever may look at the ticket may see
     why it was ended. Making the justification harder to read than the closure
     itself would defeat the point of collecting it.
+
+    The guard is `CanReadTickets` only so a franchise principal can be turned
+    away IN WORDS by the service (404) instead of at the door with a 403 that
+    would leak nothing but confuse the portal; the panel stays staff/vendor
+    shaped otherwise.
     """
     return envelope(await service.list_attachments(db, principal, ticket_id))
 
@@ -827,13 +914,14 @@ async def check_ticket_serial(
     "/{ticket_id}/proof", response_model=ApiEnvelope[list[TicketProofOut]]
 )
 async def get_ticket_proof(
-    ticket_id: uuid.UUID, db: Db, principal: CanView
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
 ) -> ApiEnvelope[list[TicketProofOut]]:
     """What the technician photographed on site.
 
     Who sees it is decided by the same visibility rule as the ticket itself:
     staff by territory, a vendor by ownership, a vendor user only for tickets
-    they raised. A technician gets 404 here — they read their own work through
+    they raised, and (F13) a franchise principal for tickets stamped its
+    franchisee. A technician gets 404 here — they read their own work through
     `/jobs/{id}/proof`.
 
     This exists because of escalation. When a customer says the job was not
@@ -847,8 +935,14 @@ async def get_ticket_proof(
 
 @router.get("/{ticket_id}", response_model=ApiEnvelope[TicketDetailOut])
 async def get_ticket(
-    ticket_id: uuid.UUID, db: Db, principal: CanView
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
 ) -> ApiEnvelope[TicketDetailOut]:
+    """One ticket, by id — read-only for a franchise principal (F13).
+
+    Outside a franchise caller's stamp, `service.scoped()` turns the fetch into
+    a 404 in SQL; a guessed id from another franchisee reads exactly like one
+    that does not exist.
+    """
     return envelope(await service.get_ticket(db, principal, ticket_id))
 
 

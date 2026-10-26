@@ -7,6 +7,7 @@ import { readNavOrigin } from "@/hooks/useNavOrigin";
 import { useTechnician } from "@/hooks/useTechnicians";
 import { useTicketFilters } from "@/hooks/useTicketFilters";
 import { useTechnicianTickets } from "@/hooks/useTickets";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 /**
  * Every ticket one technician has worked — the page behind the profile's
@@ -31,9 +32,12 @@ export default function TechnicianJobsPage() {
 
   /* The profile is the only way in, so the fallback is the whole story. The
      origin is read for what sits BEHIND the profile — a ledger row, a search —
-     so two Backs from here return there instead of the roster. */
+     so two Backs from here return there instead of the roster.
+     Task 09 — the fallback is the WORKSPACE's profile; the portal's version of
+     this page falls back to its own. */
+  const { paths } = useWorkspace();
   const origin = readNavOrigin(location.state);
-  const backHref = origin?.backTo ?? `/technicians/${id}`;
+  const backHref = origin?.backTo ?? paths.technician(id);
   const backText = origin?.backLabel ?? "Back to profile";
   const { params, setParams } = useTicketFilters();
   const { data, isLoading, isError, error, refetch } = useTechnicianTickets(
@@ -78,6 +82,9 @@ export default function TechnicianJobsPage() {
         // Comes back to THIS list, on this page, with these filters.
         backLabel={tech ? `Back to ${tech.name}` : "Back to technician"}
         backState={origin}
+        // Task 09 — the row opens the SHELL's ticket page. The staff console
+        // passes nothing: the default is its own `/tickets`.
+        basePath={paths.tickets}
       />
     </>
   );

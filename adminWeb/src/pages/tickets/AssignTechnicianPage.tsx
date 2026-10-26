@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { originFor, readNavOrigin } from "@/hooks/useNavOrigin";
+import { handedByLabel } from "@/lib/handOver";
 import { useAssignTicket, useTicket } from "@/hooks/useTickets";
 import { useCandidateTechnicians } from "@/hooks/useTechnicians";
 import { isTerminalTicketStatus } from "@/types";
@@ -53,10 +54,16 @@ export default function AssignTechnicianPage() {
   // capacity column has to describe the day the WORK happens, or it reports
   // today's load for a Friday job and the assign call refuses somebody the
   // screen just showed as free.
+  //
+  // Task 18: a ticket handed to another franchisee is judged WITHOUT the
+  // pincode half (its franchisee cannot cover a pincode it does not own), so
+  // the shortlist asks for that franchisee's technicians and sends no pincode.
+  const handedOver = ticket?.routingOverride === true && !!ticket.franchiseeId;
   const candidates = useCandidateTechnicians(
     ticket?.subcategoryId,
-    ticket?.pincode,
-    ticket?.slotStart
+    handedOver ? undefined : ticket?.pincode,
+    ticket?.slotStart,
+    handedOver ? ticket?.franchiseeId : null
   );
   const assign = useAssignTicket();
 
@@ -122,6 +129,12 @@ export default function AssignTechnicianPage() {
             <p className="text-xs text-ink-3">
               Eligible by category and pincode.
             </p>
+            {/* Task 18 (PROPOSED copy): why the shortlist is not the pincode's. */}
+            {handedOver ? (
+              <p className="text-xs text-ink-2">
+                {handedByLabel(ticket?.franchiseeName ?? null)}
+              </p>
+            ) : null}
             <CardAction className="self-center">
               {isLoading || !ticket ? (
                 <Skeleton className="h-4 w-56" />

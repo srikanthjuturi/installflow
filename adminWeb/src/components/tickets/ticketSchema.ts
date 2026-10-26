@@ -1,6 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { SERVICE_TYPES } from "@/components/masters/categorySchema";
+import { REASON_MAX, REASON_MIN } from "@/lib/handOver";
 import { SERVICE_LEVELS } from "@/types/ticket";
 import { istToday, offeredSlots } from "@/utils/slots";
 
@@ -167,6 +168,23 @@ export const rescheduleSchema = z.object({
 
 export type RescheduleFormValues = z.infer<typeof rescheduleSchema>;
 export const rescheduleResolver = zodResolver(rescheduleSchema);
+
+/**
+ * Handing an unassigned ticket to another franchisee (Task 18). The reason's
+ * bounds are the API's (3-255, trimmed) and its sentences are `reasonError`'s,
+ * so the dialog's button and this resolver can never disagree.
+ */
+export const handOverSchema = z.object({
+  franchiseeId: z.string().min(1, "Pick a franchisee"),
+  reason: z
+    .string()
+    .trim()
+    .min(REASON_MIN, "Say why you're handing it over.")
+    .max(REASON_MAX, "Keep it under 255 characters."),
+});
+
+export type HandOverFormValues = z.infer<typeof handOverSchema>;
+export const handOverResolver = zodResolver(handOverSchema);
 
 /**
  * Giving a penalty back. Required for the same reason as a reschedule: nothing

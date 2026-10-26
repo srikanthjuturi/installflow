@@ -85,6 +85,13 @@ export function PoolSummary({
             <div className="mt-1.5 text-xs text-ink-3">
               across {plural(pool.cancellations, "cancellation")} (not reversed)
             </div>
+            {/* The fold keeps the sum above true; this says how much of it is
+                speed, so the tile is not read as cancellations alone. */}
+            {pool.speedPenaltyPaise ? (
+              <div className="mt-0.5 text-xs text-ink-3">
+                incl. {moneyPaise(pool.speedPenaltyPaise)} speed penalties
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -99,6 +106,11 @@ export function PoolSummary({
             <div className="mt-1.5 text-xs text-ink-3">
               across {plural(pool.pickups, "escalation pickup")}
             </div>
+            {pool.speedRewardPaise ? (
+              <div className="mt-0.5 text-xs text-ink-3">
+                incl. {moneyPaise(pool.speedRewardPaise)} speed rewards
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

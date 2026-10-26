@@ -6,6 +6,8 @@
  * both. Narrow on `registered` before touching anything an invite cannot know.
  */
 
+import type { BaseSource, BaseLocation } from "./allowances";
+
 export type OnboardingMode = "invite" | "direct";
 export type RegisteredBy = "self" | "manager";
 export type TechnicianStatus = "active" | "inactive" | "suspended";
@@ -21,6 +23,20 @@ export type InviteStatus =
   | "registered"
   | "cancelled"
   | "expired";
+
+/**
+ * How they are paid — the second fact Task 05 puts on every technician row
+ * (T1). Lowercase on the wire; the forms hold the WORD ("Freelancer"/"Employee")
+ * and convert at submit, per ChoiceCards' rule.
+ *
+ * An employee gets no per-job payout and can't redeem earnings; allowances and
+ * penalties still apply. A change applies to the jobs accepted AFTER it, so it
+ * is never backdated — the server refuses one that would rewrite a balance.
+ */
+export type TechnicianType = "employee" | "freelancer";
+
+export const TECHNICIAN_TYPES = ["employee", "freelancer"] as const satisfies
+  readonly TechnicianType[];
 
 export interface SubcategoryRef {
   id: string;
@@ -104,6 +120,37 @@ export interface Technician {
   onTimePct: number | null;
 
   onboarding: TechnicianOnboarding;
+
+  /* ── Task 05 fields: who the row belongs to, how they are paid ─────────── */
+
+  franchiseeId: string;
+  franchiseeName: string;
+  /** True on the home franchisee — the catch-all every unclaimed pincode is. */
+  franchiseeIsHome: boolean;
+  technicianType: TechnicianType;
+  /**
+   * From the server (`franchise_scope.can_manage_technician` for the CALLER),
+   * never recomputed in the browser (F8). False hides every row write — Edit,
+   * Remove, Send app link, UPI decides — because the franchisee admin manages
+   * this one; a false row also nulls its money fields server-side.
+   */
+  canManage: boolean;
+
+  /* ── Task 10 (R9): the base at a glance ───────────────────────────────────
+     On every row and the detail. All three are null together when there is no
+     base — which is "not set", never "₹0". The COORDINATES are not here: a
+     list must not hand them to every row-reader, so they ride only the detail
+     (`baseLocation`) and only for a caller who can manage the technician. */
+  baseSource: BaseSource | null;
+  baseSetAt: string | null;
+  baseSetBySelf: boolean | null;
+  /**
+   * The base in full — the detail read only, and non-null only for a caller
+   * who can manage this technician. A staff viewer of a non-home technician
+   * gets null here and the three fields above (W13).
+   */
+  baseLocation?: BaseLocation | null;
+
   createdAt: string;
 }
 
@@ -126,6 +173,15 @@ export interface TechnicianInvite {
   sentAt: string | null;
   registeredAt: string | null;
   expiresAt: string;
+
+  /* ── Task 05 fields, same as a registered row ──────────────────────────── */
+
+  franchiseeId: string;
+  franchiseeName: string;
+  franchiseeIsHome: boolean;
+  technicianType: TechnicianType;
+  canManage: boolean;
+
   createdAt: string;
 }
 
@@ -168,6 +224,10 @@ export interface CreateTechnicianInput {
   upiId?: string | null;
   /** The name on that account. Optional even with a UPI ID. */
   upiName?: string | null;
+  /** Omitted takes the API's default, freelancer. Staff creates always land on
+   *  the HOME franchisee; a 422 `PINCODE_OUTSIDE_FRANCHISEE` names the codes
+   *  another franchisee owns. */
+  technicianType?: TechnicianType;
 }
 
 export interface UpdateTechnicianInput {
@@ -190,6 +250,11 @@ export interface UpdateTechnicianInput {
   upiId?: string | null;
   upiName?: string | null;
   status?: TechnicianStatus;
+  /**
+   * Omitted leaves the type alone. The server refuses a change that would
+   * strand a balance or open jobs — the refusal's message names the reason.
+   */
+  technicianType?: TechnicianType;
 }
 
 /**
@@ -221,6 +286,8 @@ export interface InviteTechnicianInput {
   phone: string;
   regionId?: string | null;
   dailyJobCap?: number;
+  /** Omitted takes the API's default, freelancer. */
+  technicianType?: TechnicianType;
 }
 
 /** One district of a state, and how many technicians work in it. */
@@ -248,4 +315,90 @@ export interface DistrictBreakdown {
   districts: DistrictTechnicianCount[];
   totalTechnicians: number;
   withoutDistrict: number;
+}
+
+/* ── Task 17: moving a technician to another franchisee ─────────────────────
+   Mirror `api/app/features/technicians/schemas.py` (TechnicianTransfer*). The
+   server wrote every sentence and every number; the console renders them. */
+
+/** `kept` — what the technician already covers inside the target's area;
+ *  `supplied` — the pincodes the caller sent instead. */
+export type TransferCoverageSource = "kept" | "supplied";
+
+export interface TransferCoverage {
+  source: TransferCoverageSource;
+  kept: string[];
+  trimmed: string[];
+  added: string[];
+  /** What the coverage becomes — sorted, and empty only alongside a blocker. */
+  after: string[];
+  keptCount: number;
+  trimmedCount: number;
+  addedCount: number;
+  regionBefore: string | null;
+  regionAfter: string | null;
+  regionChanged: boolean;
+}
+
+/**
+ * One thing standing in the way. `code` is null for the code-less 409s
+ * ("already works for…", "Activate … first", two regions) — the sentence is the
+ * whole answer. `message` is shown exactly as sent.
+ */
+export interface TransferBlocker {
+  code: string | null;
+  message: string;
+  openJobs?: number | null;
+  redeemablePaise?: number | null;
+  redemptionCode?: string | null;
+}
+
+/** One recorded move — a row of the profile's history, newest first. */
+export interface TechnicianTransfer {
+  id: string;
+  at: string;
+  technicianId: string;
+  fromFranchiseeId: string;
+  fromFranchiseeName: string;
+  toFranchiseeId: string;
+  toFranchiseeName: string;
+  technicianType: TechnicianType;
+  reason: string;
+  byUserId: string;
+  byName: string;
+  kept: string[];
+  trimmed: string[];
+  added: string[];
+}
+
+/** The reply to both the preview (`dryRun: true`, `transfer: null`) and the move. */
+export interface TechnicianTransferResult {
+  dryRun: boolean;
+  technicianId: string;
+  technicianCode: string;
+  technicianName: string;
+  technicianType: TechnicianType;
+  fromFranchiseeId: string;
+  fromFranchiseeName: string;
+  fromFranchiseeIsHome: boolean;
+  toFranchiseeId: string;
+  toFranchiseeName: string;
+  toFranchiseeIsHome: boolean;
+  coverage: TransferCoverage;
+  blockers: TransferBlocker[];
+  warnings: string[];
+  /** No blockers. The preview's whole answer; always true on a move. */
+  canTransfer: boolean;
+  transfer: TechnicianTransfer | null;
+}
+
+/**
+ * The body of `POST /technicians/{id}/transfer`. `reason` is optional on a
+ * preview and needs 5+ characters on the move. **Omit `pincodes`** to keep what
+ * the technician covers inside the target's area; sending it REPLACES coverage.
+ */
+export interface TechnicianTransferInput {
+  franchiseeId: string;
+  reason?: string;
+  pincodes?: string[];
 }

@@ -19,6 +19,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.core.coordinates import IndiaLatitude, IndiaLongitude
+from app.core.part_request_out import PartRequestOut
 from app.core.phone import Phone
 from app.core.schemas import AppModel
 from app.core.service_types import SERVICE_TYPES
@@ -191,6 +192,12 @@ class TicketOut(AppModel):
     #: until they upload one — the client falls back to initials, never to a
     #: broken image.
     technicianPhotoUrl: str | None = None
+    #: How they are paid (Task 06 §4.3): their CURRENT profile type, so the
+    #: force-close form can hide the payout field for an employee before
+    #: sending a number the server would only throw away. Null for a vendor
+    #: principal — not a party to how a technician is paid, the same rule that
+    #: nulls `technicianPayoutPaise` — and when nobody is assigned.
+    technicianType: Literal["employee", "freelancer"] | None = None
 
     #: What a manager attached to a re-notification after nobody accepted, in
     #: PAISE. Null means no bonus was ever funded — a different claim from ₹0,
@@ -209,7 +216,27 @@ class TicketOut(AppModel):
     #: What the vendor is charged for this job, in paise. Stamped at intake.
     #: Everyone who can see the ticket sees this, the vendor included — it is
     #: their own price, and there is nothing to hide from the person paying it.
-    vendorPricePaise: int
+    #:
+    #: **NULL for a franchise principal** (owner ruling R6, settled 2026-10-15):
+    #: `_hydrate` never populates it for one. An external franchisee is a
+    #: separate business, and this merely extends the standing rule that
+    #: neither party sees the other's figure — a franchisee admin can read a
+    #: ticket, but not what the company bills for it. Staff get the number.
+    vendorPricePaise: int | None = None
+
+    #: Which franchisee runs this job — the stamped `tickets.franchisee_id`, the
+    #: one fact a staff reader and a franchise reader both want on the card.
+    #: Shown to staff and franchise callers; **withheld from vendors** (`null`):
+    #: who runs the company's technicians is not the vendor's business, the same
+    #: rule that hides the payout from them.
+    franchiseeId: uuid.UUID | None = None
+    #: The batched name that goes with `franchiseeId`. Null whenever the id is.
+    franchiseeName: str | None = None
+    #: A person, not the pincode, chose `franchiseeId` (Task 18) - the stored
+    #: `tickets.routing_override`. Staff and franchise callers get it; **null for a
+    #: vendor**, with the franchisee id and name. The console shows "Handed over" off it
+    #: and drops the pincode filter from the assignment shortlist.
+    routingOverride: bool | None = None
 
     #: What the technician is paid for this job, in paise. Stamped at intake.
     #:
@@ -305,11 +332,23 @@ class TicketPenaltyOut(AppModel):
     #: What it was for, as recorded when it was charged — "Cancel 2–4h before
     #: slot", "No-show".
     reason: str
+    #: `penalty` | `speed_penalty` (Task 11, §4.6) — a default of `"penalty"`
+    #: keeps an old client's reading of this list exactly as it was, and Task 13
+    #: labels the new value "Speed penalty".
+    kind: str = "penalty"
     chargedAt: datetime.datetime
     #: All three null while the penalty stands.
     reversedAt: datetime.datetime | None = None
     reversedByName: str | None = None
     reversalReason: str | None = None
+    #: Whose pool this was collected into (F12) — money is per franchisee since
+    #: Task 05, and a staff member reading a mixed view needs the label.
+    franchiseeId: uuid.UUID
+    #: May THIS caller give it back (`core.franchise_money.may_reverse`, the
+    #: REVERSE column): Admin/NH on every franchisee, RH/AM on home's only.
+    #: False for a franchise principal — the ticket door is staff-only
+    #: (`require_staff_principal`); its reversal door is its own pool screen.
+    canReverse: bool = False
 
 
 class PenaltyReviewerOut(AppModel):
@@ -325,6 +364,88 @@ class PenaltyReviewerOut(AppModel):
     name: str
     #: `area_manager` | `regional_head` | `national_head` | `admin`.
     role: str
+
+
+class TicketTravelOut(AppModel):
+    """The travel allowance frozen when this job was accepted. Company staff
+    (Area Manager and above, a non-home franchisee's ticket included — owner
+    ruling 2026-10-15, R8, so travel and Task 11's speed block behave
+    identically) and the franchisee admin only; never a vendor or facility staff
+    (Task 04's money block). Never the base's coordinates (W13)."""
+
+    technicianId: uuid.UUID
+    acceptedAt: datetime.datetime
+    technicianType: str
+    baseSource: str | None      # pincode | gps | map | manual | null (no base)
+    customerSource: str | None  # ticket | pincode | null
+    straightKm: float
+    roadFactorPct: int
+    km: float
+    freeKm: int
+    stepKm: int
+    paisePerStep: int
+    maxPaisePerJob: int
+    amountPaise: int
+    reason: str | None          # null | no_base_location | no_customer_point
+    #: The `travel` ledger row's amount, or null if none (open job, ₹0, or a
+    #: force-closure that paid nothing). Never 0 — the `technicianCreditedPaise`
+    #: rule.
+    creditedPaise: int | None
+    #: What the force-close form pre-fills and caps at (TA6, W5).
+    forceCloseDefaultPaise: int     # = amountPaise
+    forceCloseMaxPaise: int         # = maxPaisePerJob
+
+
+class TicketSpeedOut(AppModel):
+    """The speed allowance measured on this job (Task 11 §4.11), re-derived on
+    read from the FROZEN terms (`accept_snapshot.speed`), the append-only
+    `ticket_events` and the ticket's speed ledger row — no second copy of any
+    of it is stored, so this cannot drift from what was written.
+
+    Visible to company staff (Area Manager and above, a non-home franchisee's
+    ticket included — owner ruling 2026-10-15, R8) and to the ticket's own
+    franchisee admin; never a vendor or facility staff. NOT gated by
+    `may_see_money`, which keeps gating the LEDGER reads: the outcome and the
+    amounts are ticket data for people who reschedule and force-close.
+    """
+
+    matchedOn: Literal["model", "node"]
+    #: The CURRENT name of the node or model the terms named — "—" when the
+    #: target is gone outright, which is the display's loss and nothing more.
+    matchedName: str
+    #: The frozen figures (S5). A rule edited later restates nothing here.
+    rewardWithinHours: int
+    penaltyAfterHours: int
+    rewardPaise: int
+    penaltyPaise: int
+    #: R1: max(latest `assigned`, `ticket.slot_start`) — what the hours run
+    #: from. None when no `assigned` event exists (the job was never held).
+    clockStartedAt: datetime.datetime | None = None
+    acceptedAt: datetime.datetime | None = None   # the latest `assigned`
+    #: The slot in force at completion (W17) — the other half of the clock's
+    #: start, so a reader can tell which half won rather than trusting the max.
+    slotStart: datetime.datetime | None = None
+    completedAt: datetime.datetime | None = None  # the latest `completed`
+    elapsedHours: float | None = None
+    partWaitHours: float | None = None
+    workingHours: float | None = None
+    #:
+    #: pending       — not completed yet, or completed and awaiting the customer
+    #: reward/penalty/none — measured, and the ticket is Closed
+    #: force_closed — S5 (R7): measured facts exist but no speed money ever will
+    outcome: Literal["pending", "reward", "penalty", "none", "force_closed"]
+    ledgerEntryId: uuid.UUID | None = None
+    #: What the ledger row says. Null when there is no row — never 0, which
+    #: would assert a zero movement happened (the `technicianCreditedPaise`
+    #: rule, applied to speed).
+    paidPaise: int | None = None
+    #: True on a penalty that the monthly cap reduced or refused, INCLUDING no
+    #: row at all: `paidPaise` below the frozen `penaltyPaise` is the capped
+    #: story, and the `speed_settled` event's note says which sentence it was.
+    capped: bool = False
+    #: A speed penalty is reversible like a cancellation penalty (§4.6) — this
+    #: reads the same way `TicketPenaltyOut.reversedAt` does.
+    reversed: bool = False
 
 
 class TicketDetailOut(TicketOut):
@@ -351,6 +472,20 @@ class TicketDetailOut(TicketOut):
     #: Withheld from a vendor, exactly as `technicianPayoutPaise` is — it is the
     #: same fact, one step later.
     technicianCreditedPaise: int | None = None
+
+    #: Null when no technician holds the job, or it was accepted before Task 10.
+    travel: TicketTravelOut | None = None
+
+    #: Task 11 (§4.11): what the speed allowance did on this job, re-derived on
+    #: read. Null when no rule was frozen at accept, the snapshot names nobody,
+    #: or the ticket predates Tasks 10/11.
+    speed: TicketSpeedOut | None = None
+
+    #: Task 12 (D16): the job's spare-part requests, oldest first — for staff and
+    #: franchise principals. EMPTY for a vendor (withheld the way `penalties` is:
+    #: it is not a party to how the franchise stocks parts). No customer data
+    #: rides on it (D21).
+    partRequests: list[PartRequestOut] = []
 
 
 class TicketProofOut(AppModel):
@@ -418,6 +553,70 @@ class RenotifyOut(AppModel):
     #: and important answer: it means the bonus cannot work, because nobody
     #: covers this pincode for this subcategory with room on that day.
     notified: int
+
+
+class HandToFranchiseeRequest(AppModel):
+    """Staff handing an unassigned ticket to another franchisee (Task 18).
+
+    There is NO `routingOverride` field, on purpose: the flag is derived server-side
+    (`target != the pincode's owner`) and never sent by a client. `reason` is stripped
+    and bounded like `RescheduleRequest.reason` - the same record-of-the-call stance.
+    """
+
+    franchiseeId: uuid.UUID
+    reason: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=255)
+    ]
+
+
+class FranchiseeOptionOut(AppModel):
+    """One franchisee in the hand-over picker, with the numbers that make it a choice."""
+
+    id: uuid.UUID
+    name: str
+    code: str
+    isHome: bool
+    kind: Literal["internal", "external"]
+    #: The ticket's current franchisee: listed first-class but not selectable.
+    isCurrent: bool
+    #: Owns the ticket's pincode (home owns every pincode nobody else claims).
+    ownsPincode: bool
+    #: Active, certified for the job, with room on the slot's day - and, for the
+    #: pincode's own owner, covering the pincode. Everyone else is counted with the
+    #: pincode test waived, because that is how they would be judged after a hand-over.
+    eligibleTechnicians: int
+    #: The subset of `eligibleTechnicians` that is accepting work now.
+    onlineTechnicians: int
+
+
+class FranchiseeOptionsOut(AppModel):
+    ticketId: uuid.UUID
+    code: str
+    pincode: str
+    currentFranchiseeId: uuid.UUID
+    pincodeOwnerId: uuid.UUID
+    routingOverride: bool
+    canHandOver: bool
+    #: `TICKET_ASSIGNED` or `TICKET_NOT_ASSIGNABLE` when `canHandOver` is false.
+    blocker: Literal["TICKET_ASSIGNED", "TICKET_NOT_ASSIGNABLE"] | None = None
+    #: Can the pool still offer this ticket now - the dialog words its warning for an
+    #: `Escalated` ticket whose window has closed off this.
+    slotOffered: bool
+    #: Empty when `canHandOver` is false: the dialog never offers a choice the server
+    #: will refuse.
+    options: list[FranchiseeOptionOut]
+
+
+class HandToFranchiseeOut(AppModel):
+    """What a hand-over actually did. Fields, not the envelope's `message`, because the
+    console's transport returns `data` and drops `message` (see `RenotifyOut`)."""
+
+    ticket: TicketDetailOut
+    #: Phones the push reached (after job passes are subtracted, as a bonus counts it).
+    notified: int
+    #: An `Escalated` ticket left the queue for the pool. False for a ticket that was
+    #: not escalated, or whose window had already closed.
+    backInPool: bool
 
 
 class NoShowRequest(AppModel):
@@ -559,6 +758,15 @@ class ForceCloseRequest(AppModel):
     #: service where the ticket is in hand.
     vendorChargePaise: int | None = Field(default=None, ge=0)
 
+    #: Travel allowance to credit, in paise (TA6). The console pre-fills the
+    #: amount frozen at accept (`TicketDetailOut.travel.forceCloseDefaultPaise`);
+    #: the manager may change it. Capped at the frozen `maxPaisePerJob`,
+    #: silently, like the two fields above. `0` and omitted both write NO row
+    #: (W5) — a body that never mentioned this field came from a client that
+    #: never heard of it. Ignored when the ticket has no technician or no
+    #: snapshot for them.
+    travelPaise: int | None = Field(default=None, ge=0)
+
 
 class TicketAttachmentOut(AppModel):
     """One force-closure attachment, served through a short-lived link."""
@@ -592,7 +800,9 @@ class FunnelOut(AppModel):
 
     #: Raised, and the customer has not picked a time. Invisible to technicians.
     slotPending: int
-    #: Somebody holds it — `Assigned` or `In Progress`.
+    #: Somebody holds it — `Assigned`, `In Progress` or `Awaiting Part` (Task 12:
+    #: a job waiting on a spare part is held just the same). The console's tile
+    #: link must send the same set (Task 13).
     active: int
     #: Closed in the last 7 days, measured on `customer_confirmed_at`, which is
     #: written in the same UPDATE that sets the status. NOT `updated_at`, which

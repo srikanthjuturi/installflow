@@ -12,6 +12,8 @@ import {
   createTicket,
   getIntakeStatus,
   forceCloseTicket,
+  getFranchiseeOptions,
+  handToFranchisee,
   getRescheduleSlots,
   getTicket,
   getTicketProof,
@@ -34,6 +36,8 @@ import { BACKSTOP_REFETCH_MS } from "./liveness";
 import { technicianKeys } from "./useTechnicians";
 import type { ListParams } from "@/types/api";
 import { trackForceClose } from "@/lib/analytics/events";
+import { HAND_OVER_STALE_CODES } from "@/lib/handOver";
+import { ApiError } from "@/services/client";
 
 /**
  * Query keys are tuples so a mutation can invalidate by prefix:
@@ -65,6 +69,9 @@ export const ticketKeys = {
    *  everything else here, so any mutation — or the socket's `ticket.changed` —
    *  already clears a list that has gone stale. */
   rescheduleSlots: (id: string) => ["tickets", "rescheduleSlots", id] as const,
+  /** The hand-over picker's numbers (Task 18). Same prefix and invalidation. */
+  franchiseeOptions: (id: string) =>
+    ["tickets", "franchiseeOptions", id] as const,
   /** Under the prefix too: loading a product's serials invalidates nothing
    *  here, but a ticket change does, and an answer that old is worth re-asking. */
   serialCheck: (id: string, serial: string) =>
@@ -383,6 +390,51 @@ export function useRescheduleTicket() {
       queryClient.invalidateQueries({ queryKey: escalationKeys.all });
       queryClient.invalidateQueries({ queryKey: technicianKeys.all });
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+    },
+  });
+}
+
+/**
+ * The hand-over dialog's options. `staleTime: 0` and only while it is open: the
+ * counts are a statement about THIS minute (who is online), and an answer that
+ * old is worth re-asking.
+ */
+export function useFranchiseeOptions(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ticketKeys.franchiseeOptions(id),
+    queryFn: () => getFranchiseeOptions(id),
+    enabled: enabled && !!id,
+    staleTime: 0,
+  });
+}
+
+/**
+ * Hand an unassigned ticket to another franchisee. The response carries the
+ * ticket, so the detail is seeded from it — the timeline shows the new entry
+ * without a reload — and the same four prefixes `useRescheduleTicket` clears
+ * are invalidated: the job leaves one franchisee's queue for another's, which
+ * moves the escalation queue, the dashboard and the shortlist's technicians.
+ */
+export function useHandToFranchisee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't hand the ticket over" },
+    mutationFn: handToFranchisee,
+    onSuccess: ({ ticket }) => {
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      queryClient.invalidateQueries({ queryKey: escalationKeys.all });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+      queryClient.invalidateQueries({ queryKey: technicianKeys.all });
+    },
+    // The toaster says what was refused (`meta.errorTitle`). A refusal that means
+    // "this ticket moved while the dialog was open" also re-reads it and the
+    // options, so the dialog drops into its Blocked state with the reason.
+    onError: (err, { id }) => {
+      if (err instanceof ApiError && err.code && HAND_OVER_STALE_CODES.includes(err.code)) {
+        queryClient.invalidateQueries({ queryKey: ticketKeys.detail(id) });
+        queryClient.invalidateQueries({ queryKey: ticketKeys.franchiseeOptions(id) });
+      }
     },
   });
 }

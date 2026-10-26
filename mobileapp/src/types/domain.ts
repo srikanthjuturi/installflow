@@ -34,6 +34,28 @@ export interface SubcategoryRef {
   iconKey?: string;
 }
 
+/** Where a technician's base came from. `manual` is only ever a manager's typed coordinate. */
+export type BaseSource = 'pincode' | 'gps' | 'map' | 'manual';
+
+/**
+ * The place a technician starts their day from — travel allowance is measured
+ * from here to the customer (Task 10). Never removed, only moved.
+ */
+export interface BaseLocation {
+  latitude: number;
+  longitude: number;
+  /** Set when the base was chosen by pincode (its area centre). */
+  pincode: string | null;
+  /**
+   * A string, not `BaseSource`: a newer API may send a fourth word. Read it
+   * only through `baseSummary`, so an unknown one cannot break a screen.
+   */
+  source: string;
+  setAt: string;
+  /** False when a manager set it in the console. */
+  setBySelf: boolean;
+}
+
 /**
  * The signed-in technician, straight off the login response.
  *
@@ -83,6 +105,20 @@ export interface TechnicianSession {
    * captured has none.
    */
   upiName?: string | null;
+  /**
+   * `employee` | `freelancer` — Task 06. Employees are paid by salary: no per-job payout and no
+   * Redeem. A string, not the union, because a newer API may send a third word; read it only
+   * through `isEmployee()`. Optional: a session persisted before the API sent it has no key, and
+   * absent means freelancer — today's behaviour.
+   */
+  technicianType?: string;
+  /**
+   * Where they start their day (Task 10). Three states, and they are not the
+   * same: an object is set, `null` is "the server knows the field and there is
+   * none yet" (the only case that nags), and `undefined` is an API or a
+   * persisted session that predates it — unknown, never "not set".
+   */
+  baseLocation?: BaseLocation | null;
   /**
    * Jobs already held for TODAY, counted the way the cap is enforced.
    *
@@ -255,7 +291,7 @@ export interface Job {
   status: JobStatus;
   /**
    * The server's own status word — `Assigned`, `In Progress`, `Awaiting
-   * Customer`, `Closed`…
+   * Customer`, `Awaiting Part`, `Closed`…
    *
    * `status` above is the app's five-value vocabulary, which is what badges and
    * list filters want. It is deliberately coarser: `In Progress` and `Awaiting
@@ -313,6 +349,45 @@ export interface Job {
   customer?: string;
   address?: string;
   phone?: string;
+
+  /**
+   * What travelling to this job pays, frozen when it was accepted (Task 10).
+   *
+   * OPTIONAL and nullable, three ways of "nothing": a pool offer never has it
+   * (there is no travel estimate before accept — owner ruling R10), an older
+   * API sends nothing, and a job accepted before travel allowances existed
+   * carries null. All three draw no travel line.
+   */
+  travel?: JobTravel | null;
+  /** The speed terms frozen at accept (Task 11). Same three kinds of nothing. */
+  speed?: JobSpeed | null;
+  /**
+   * False when the job's franchise has no facility admin or operator, so a spare
+   * part cannot be requested (Task 12, owner ruling R4). NULL = the server did
+   * not say (an older API, a pool offer) and is read as enabled — the server's
+   * `NO_FACILITY` is still the final word.
+   */
+  partsEnabled?: boolean | null;
+}
+
+/** `JobOut.travel` — the amount is the server's, never computed here. */
+export interface JobTravel {
+  km: number;
+  amountPaise: number;
+  /** `null` | `no_base_location` | `no_customer_point` — why it is ₹0, when it is. */
+  reason: string | null;
+}
+
+/** `JobOut.speed` — what the matched rule offers, and when its clock started. */
+export interface JobSpeed {
+  rewardWithinHours: number;
+  penaltyAfterHours: number;
+  rewardPaise: number;
+  penaltyPaise: number;
+  /** `max(accepted, the slot's start)` — display only. */
+  clockStartedAt: string;
+  /** True when the slot is the later half. Absent from an older server. */
+  clockFromSlot?: boolean;
 }
 
 export interface Technician {
@@ -338,11 +413,23 @@ export interface Technician {
  * installation — that is the approved prototype's own wording and it comes
  * from the server, which stored it when the money moved.
  */
-export type TransactionKind = 'payout' | 'bonus' | 'penalty';
+/** Every ledger kind THIS build knows how to draw. Mirrors the API's `LEDGER_KINDS` minus
+ *  `reversal`, which a technician is never sent (`core/ledger.shown_to_technician`). */
+export type LedgerKind =
+  | 'payout' | 'bonus' | 'penalty' | 'travel' | 'speed_reward' | 'speed_penalty';
+
+/** `other` is the app's own word for a kind a newer API sent and this build has never heard of.
+ *  The server never sends it. */
+export type TransactionKind = LedgerKind | 'other';
+
+/** Which way the money moved FOR THE TECHNICIAN. `unknown` for `other`: the server sends a
+ *  magnitude and the kind carries the direction, so an unknown kind has no knowable sign. */
+export type LedgerDirection = 'credit' | 'debit' | 'unknown';
 
 export interface Transaction {
   id: string;
   kind: TransactionKind;
+  direction: LedgerDirection;
   title: string;
   /**
    * When the money moved, and the job it was for — the two halves of the
@@ -352,7 +439,8 @@ export interface Transaction {
    */
   at: string;
   ticketCode: string;
-  /** Signed integer paise: credits positive, penalties negative. */
+  /** Signed paise: credit positive, debit negative. `unknown` → the positive magnitude, drawn
+   *  WITHOUT a sign (`formatLedgerAmount`). */
   amountPaise: number;
   /**
    * The job this money is about, when the technician can still open it — null
@@ -410,6 +498,18 @@ export interface EarningsSummary {
   bonusesPaise: number;
   /** Real, and positive — a magnitude. The screen signs and colours it. */
   penaltiesPaise: number;
+  /**
+   * The parts of the three figures above that came from travel and speed.
+   * SUBSETS, never extra terms: travel is already inside `earnedPaise`, a speed
+   * reward inside `bonusesPaise`, a speed penalty inside `penaltiesPaise`
+   * (index §6a), so adding any of these to anything double-counts it.
+   *
+   * NULL = the server did not say (an API that predates the breakdown) and
+   * draws no line — never 0, which would be a claim.
+   */
+  travelPaise: number | null;
+  speedRewardPaise: number | null;
+  speedPenaltyPaise: number | null;
   /**
    * The span the SERVER says these figures cover, or null from one too old to
    * say.

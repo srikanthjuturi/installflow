@@ -8,6 +8,7 @@ sitting, which is the only way anyone will notice if it grows.
 """
 
 import datetime
+import logging
 import math
 import uuid
 
@@ -16,7 +17,12 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.core.ledger import entry as ledger_entry, payout_reason
+from app.core.accept_snapshot import (
+    closure_travel_paise,
+    travel_of,
+)
+from app.core.employment import job_technician_type, pays_per_job
+from app.core.ledger import entry as ledger_entry, payout_reason, travel_reason
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
@@ -25,6 +31,7 @@ from app.core.realtime import (
     publish_notification,
     publish_ticket_changed,
 )
+from app.core.speed_settle import settle_speed
 from app.core.tickets import NO_SHOW_GRACE_MINUTES
 from app.core.vendor_credits import charge_closure as charge_vendor_closure
 from app.models.membership import Membership
@@ -37,6 +44,8 @@ from app.models.user import User
 #: What we keep of a customer's comment. Long enough for a real complaint,
 #: bounded because this is an unauthenticated write.
 MAX_COMMENT = 1000
+
+_log = logging.getLogger(__name__)
 
 
 def _now() -> datetime.datetime:
@@ -166,24 +175,86 @@ async def record_feedback(
         # read that changed the row, and `Closed` is terminal, so there is no
         # second closure to double-pay. (`complete` needs its `already_paid`
         # check because a bonus is paid at a NON-terminal step that can repeat.)
-        model_name = await db.scalar(
-            select(ProductModel.name).where(
-                ProductModel.company_id == row.company_id,
-                ProductModel.id == row.model_id,
-            )
+        #
+        # T2, Task 06: unless they are an employee. Their money is salary,
+        # moved by payroll, and a `payout` row here would put the same job's
+        # pay in both channels. No new event and no refusal — the ledger's
+        # silence IS the fact, and the ticket page renders it as
+        # `technicianCreditedPaise: null`, which the console already draws.
+        kind_of = await job_technician_type(
+            db,
+            company_id=row.company_id,
+            technician_id=row.technician_id,
+            snapshot=row.accept_snapshot,
         )
-        db.add(
-            ledger_entry(
-                company_id=row.company_id,
-                technician_id=row.technician_id,
-                ticket_id=row.id,
-                kind="payout",
-                amount_paise=row.technician_payout_paise,
-                reason=payout_reason(
-                    service_type=row.service_type, model_name=model_name or "—"
-                ),
+        if pays_per_job(kind_of):
+            model_name = await db.scalar(
+                select(ProductModel.name).where(
+                    ProductModel.company_id == row.company_id,
+                    ProductModel.id == row.model_id,
+                )
             )
+            db.add(
+                ledger_entry(
+                    company_id=row.company_id,
+                    technician_id=row.technician_id,
+                    ticket_id=row.id,
+                    kind="payout",
+                    amount_paise=row.technician_payout_paise,
+                    reason=payout_reason(
+                        service_type=row.service_type, model_name=model_name or "—"
+                    ),
+                )
+            )
+
+        # Task 10: the travel allowance, in the same transaction. T3: paid to an
+        # EMPLOYEE too — travel is petrol, not per-job pay, and salary does not
+        # cover it. The amount is the one frozen at accept (TA6), paid to the
+        # CURRENT holder only when the snapshot names them (W17): every path
+        # that changes the holder re-stamps or clears (§4.3), so a mismatch
+        # means a path was missed — logged so it is findable, paid to nobody.
+        _view = travel_of(row.accept_snapshot)
+        if (
+            _view is not None
+            and _view.technician_id is not None
+            and _view.technician_id != str(row.technician_id)
+        ):
+            _log.warning(
+                "accept_snapshot names %s but ticket %s is held by %s on closure",
+                _view.technician_id, row.id, row.technician_id,
+            )
+        travel_paise = closure_travel_paise(
+            row.accept_snapshot, technician_id=row.technician_id
         )
+        if travel_paise > 0:
+            # The franchisee stamped is `ledger.entry`'s default — the
+            # technician's franchisee at write time, the SAME choice the payout
+            # row above leaves to it (00-index.md §3.2, §6).
+            db.add(
+                ledger_entry(
+                    company_id=row.company_id,
+                    technician_id=row.technician_id,
+                    ticket_id=row.id,
+                    kind="travel",
+                    amount_paise=travel_paise,
+                    reason=travel_reason(km=_view.km),
+                )
+            )
+
+        # Task 11 (S5): the speed allowance is measured HERE — after the
+        # payout and travel rows are built, in the same closure transaction,
+        # and before the commit (`refresh_technician_stats` commits on its
+        # own, so nothing speed-related may be ordered after that).
+        # `settle_speed` reads the terms frozen at accept, folds the clock
+        # off `ticket_events`, takes the profile lock the cap shares with the
+        # cancel path, and writes at most one speed row plus the
+        # `speed_settled` event whenever a rule was measured. Returning None
+        # (no terms, a mismatched stamp, no clock) writes nothing and
+        # settles nothing, exactly as Task 10's absent travel does.
+        #
+        # Never on a force-closure (S5, R7) — `force_close_ticket` does not
+        # call it, deliberately.
+        await settle_speed(db, row, now=now)
 
     if confirmed:
         # And the other half of the same money: the vendor asked for this visit,

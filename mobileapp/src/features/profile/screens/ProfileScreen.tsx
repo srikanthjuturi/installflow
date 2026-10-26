@@ -8,6 +8,7 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar } from '@/components/layout';
 import { Avatar, Button, Switch, Text } from '@/components/ui';
+import { baseShortLabel } from '@/features/base-location/lib/baseSummary';
 import { usePushToggle } from '@/features/notifications/hooks/usePushToggle';
 import { useMe } from '@/features/profile/hooks/useMe';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
@@ -282,6 +283,56 @@ export function ProfileScreen() {
                 </View>
               )}
             </Pressable>
+
+            {/* Where travel allowance is measured from. Hidden while the field
+                is `undefined` — an API that predates it: a row leading to a
+                screen whose save would 404 is worse than none. */}
+            {me?.baseLocation !== undefined ? (
+              <Pressable
+                onPress={() => router.push('/base-location')}
+                accessibilityRole="button"
+                accessibilityLabel={t('baseLocation.title')}
+              >
+                {({ pressed }) => (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 13,
+                      paddingVertical: 15,
+                      paddingHorizontal: 16,
+                      borderTopWidth: 1,
+                      borderTopColor: palette.neutral[100],
+                      backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
+                    }}
+                  >
+                    <Icon name="home" size={21} color={color.textLabel} strokeWidth={1.7} />
+                    <Text
+                      style={{
+                        fontFamily: 'Roboto_500Medium',
+                        fontSize: 14.5,
+                        color: color.textPrimary,
+                      }}
+                    >
+                      {t('baseLocation.title')}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flex: 1,
+                        textAlign: 'right',
+                        fontFamily: 'Roboto_400Regular',
+                        fontSize: 13,
+                        color: color.textMuted,
+                      }}
+                    >
+                      {me.baseLocation ? baseShortLabel(me.baseLocation) : '—'}
+                    </Text>
+                    <Icon name="chevronRight" size={19} color={color.textMuted} />
+                  </View>
+                )}
+              </Pressable>
+            ) : null}
 
             <Pressable
               onPress={togglePush}

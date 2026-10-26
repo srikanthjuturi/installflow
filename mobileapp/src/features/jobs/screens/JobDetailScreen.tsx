@@ -7,8 +7,14 @@ import { ErrorState, Skeleton } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { CATEGORY_ICONS, Icon } from '@/components/icons/Icon';
 import { Button, Text } from '@/components/ui';
+import { AllowancesCard } from '@/features/jobs/components/AllowancesCard';
 import { jobSla, jobSlot } from '@/features/jobs/format';
 import { useJob } from '@/features/jobs/hooks/useJobs';
+import { jobActions } from '@/features/jobs/stage';
+import { PartRequestsCard } from '@/features/parts/components/PartRequestsCard';
+import { useJobParts } from '@/features/parts/hooks/useJobParts';
+import { blocksCompletion, needPartMode } from '@/features/parts/partStatus';
+import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
 import { useCompleteJob } from '@/features/proof/hooks/useProof';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { errorText } from '@/i18n/errorText';
@@ -41,23 +47,33 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
   // is the answer when they are not sure it has.
   const pull = usePullToRefresh(refetch);
 
-  // Three CTA states, from the server's own word rather than the app's coarser
+  // The CTA stage, from the server's own word rather than the app's coarser
   // five-value one — `In Progress` and `Awaiting Customer` both map to
-  // `inprogress`, and they need completely different buttons.
+  // `inprogress`, and they need completely different buttons. `jobActions`
+  // (`features/jobs/stage.ts`) is the one place that decides it, including
+  // statuses this build has never heard of (`unknown` → a note and no buttons).
   //
   //   Assigned           → start, which opens proof capture straight away —
   //                        or, with no time agreed yet, a note saying so
   //   In Progress        → complete, which asks the customer to confirm
   //   Awaiting Customer  → nothing to do; it is their move
-  const stage = job?.serverStatus;
-  const waiting = stage === 'Awaiting Customer';
-  const working = stage === 'In Progress';
-  // The customer said the work was NOT finished. The technician gets no button:
-  // the person who reported it done is not the person who gets to try again
-  // unsupervised, and every endpoint would refuse them anyway.
-  const escalated = stage === 'Escalated' || stage === 'AI Review';
-  const done = job?.status === 'completed' || job?.status === 'cancelled';
+  //   Awaiting Part      → Complete shown but disabled; another part may be
+  //                        asked for and a revisit time agreed (Tasks 12, 15)
+  const actions = job ? jobActions(job) : null;
+  const stage = actions?.stage;
+  const employee = useIsEmployee();
   const linkFailed = job?.feedbackRequestStatus === 'failed';
+
+  // Spare parts (Task 15). Asked for only once the job has been started: before
+  // that there is nothing to show and nothing to ask. Called here with the other
+  // hooks, never conditionally; `enabled` is what switches it off.
+  const started =
+    !!job?.serverStatus && !['Assigned', 'New', 'Slot Pending'].includes(job.serverStatus);
+  const parts = useJobParts(jobId, { enabled: started });
+  // A request raised from another device before the status refetched. The
+  // server's `PARTS_PENDING` still guards the tap; this only says why up front.
+  const partsOpen = blocksCompletion(parts.data?.requests ?? []);
+  const needPart = needPartMode(actions?.canRequestPart ?? false, job?.partsEnabled);
 
   const call = () => {
     if (job?.phone) Linking.openURL(`tel:${job.phone.replace(/\s/g, '')}`);
@@ -353,12 +369,28 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
 
             <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
               <StatTile label={t('jobs.detail.slaType')} value={jobSla(job)} />
-              <StatTile label={t('jobs.detail.payout')} value={formatPaise(job.payoutPaise)} />
+              <StatTile
+                label={t('jobs.detail.payout')}
+                value={employee ? t('jobs.payoutInSalary') : formatPaise(job.payoutPaise)}
+              />
             </View>
+
+            {/* Net-new, not from the prototype (Task 15 PROPOSED copy). Above the
+                verdict and the actions: what this job pays beyond the payout,
+                and where its spare parts stand. Each draws nothing when it has
+                nothing to say. */}
+            <AllowancesCard job={job} />
+            <PartRequestsCard
+              enabled={started}
+              isPending={parts.isPending}
+              isError={parts.isError}
+              data={parts.data}
+              onRetry={() => parts.refetch()}
+            />
 
             <CustomerVerdict job={job} />
 
-            {escalated ? (
+            {stage === 'escalated' ? (
               <View
                 style={{
                   flexDirection: 'row',
@@ -385,7 +417,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                   {t('jobs.detail.escalated')}
                 </Text>
               </View>
-            ) : waiting ? (
+            ) : stage === 'awaitingCustomer' ? (
               <View
                 style={{
                   flexDirection: 'row',
@@ -431,12 +463,14 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                       : t('jobs.detail.linkSent')}
                 </Text>
               </View>
-            ) : working ? (
+            ) : stage === 'complete' ? (
               <>
                 <Button
                   label={t('jobs.detail.complete')}
                   leadingIcon="check"
                   loading={complete.isPending}
+                  disabled={partsOpen}
+                  disabledHint={t('jobs.detail.completeWaitingParts')}
                   onPress={() =>
                     complete.mutate(undefined, {
                       onSuccess: () => router.push(`/job/${jobId}/proof/closure`),
@@ -458,8 +492,9 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                       : t('jobs.detail.completeFailed')}
                   </Text>
                 ) : null}
+                <NeedPart mode={needPart} onPress={() => router.push(`/job/${jobId}/parts`)} />
               </>
-            ) : !done ? (
+            ) : stage === 'awaitingTime' || stage === 'start' ? (
               <>
                 {/* No time agreed, no start. The job can be TAKEN before the
                     customer picks a time, but not begun — the server refuses
@@ -471,7 +506,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
 
                     Net-new copy — the prototype has no slotless job. Approved
                     2026-09-21, together with the server's matching sentence. */}
-                {stage === 'Assigned' && job.hoursToSlot === null ? (
+                {stage === 'awaitingTime' ? (
                   <View
                     style={{
                       flexDirection: 'row',
@@ -517,11 +552,12 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                     worse than none, and `display: 'none'` would have left it
                     in the tree for a screen reader to find.
 
-                    Only while the job is still `Assigned`. Once proof has been
+                    Only while the job is still `Assigned` (`jobActions` sets
+                    `canCancel`, and nothing else does). Once proof has been
                     captured the technician is on site and the job is In
                     Progress; walking away from that is a different event with
                     different evidence, and the server refuses this one. */}
-                {stage === 'Assigned' ? (
+                {actions?.canCancel ? (
                   <View style={{ marginTop: 10 }}>
                     {/* Net-new copy — the prototype has no reschedule
                         anywhere. Approved 2026-09-07; see the header of
@@ -545,7 +581,7 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                         straight to an error screen. Absent rather than disabled,
                         for the cancel button's reason above; the header chip
                         already says "Accepted" rather than "Committed". */}
-                    {job.hoursToSlot !== null ? (
+                    {actions.canReschedule ? (
                       <View style={{ marginBottom: 10 }}>
                         <Button
                           label={t('jobs.detail.reschedule')}
@@ -577,12 +613,153 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
                   </View>
                 ) : null}
               </>
+            ) : stage === 'awaitingPart' ? (
+              /* Waiting on a spare part (Task 12). Complete is refused while any
+                 part request is open (`PARTS_PENDING`), but it is shown, disabled
+                 and with the reason beneath, so the technician can see where it
+                 will be and why it isn't live yet (Task 15; the banner used to
+                 stand alone, with no buttons). A second part may be asked for
+                 (D1) and a revisit time agreed with the customer through the
+                 existing reschedule (D8). No Cancel (D7). Call and Navigate in
+                 the customer card stay available.
+
+                 Banner copy approved with the 07 sign-off (index §7); the
+                 disabled Complete, Need a spare part and the revisit are
+                 Task 15, PROPOSED and not from the prototype. */
+              <>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    backgroundColor: color.statusAwaitingPart.bg,
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    paddingHorizontal: 15,
+                    marginBottom: 12,
+                  }}
+                >
+                  <Icon
+                    name="wrench"
+                    size={20}
+                    color={color.statusAwaitingPart.fg}
+                    strokeWidth={1.8}
+                  />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 13,
+                      lineHeight: 19,
+                      color: color.statusAwaitingPart.fg,
+                    }}
+                  >
+                    {t('jobs.detail.awaitingPart')}
+                  </Text>
+                </View>
+
+                <Button
+                  label={t('jobs.detail.complete')}
+                  leadingIcon="check"
+                  disabled
+                  disabledHint={t('jobs.detail.completeWaitingParts')}
+                />
+                <NeedPart mode={needPart} onPress={() => router.push(`/job/${jobId}/parts`)} />
+
+                {/* The revisit: only with a slot to move, the same gate as
+                    everywhere else (`jobActions`). */}
+                {actions?.canReschedule ? (
+                  <View style={{ marginTop: 10 }}>
+                    <Button
+                      label={t('jobs.detail.reschedule')}
+                      variant="secondary"
+                      leadingIcon="calendar"
+                      onPress={() => router.push(`/job/${jobId}/reschedule`)}
+                    />
+                  </View>
+                ) : null}
+              </>
+            ) : stage === 'unknown' ? (
+              /* A status newer than this build. No buttons — the app cannot
+                 know whether completing is right; anything the technician COULD
+                 do lives in a newer app, so say so and get them onto it. */
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  backgroundColor: color.surfaceSunken,
+                  borderRadius: 14,
+                  paddingVertical: 14,
+                  paddingHorizontal: 15,
+                }}
+              >
+                <Icon name="info" size={20} color={color.textLabel} strokeWidth={1.8} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 13,
+                    lineHeight: 19,
+                    color: color.textLabel,
+                  }}
+                >
+                  {t('jobs.detail.unknownStage')}
+                </Text>
+              </View>
             ) : null}
           </>
         )}
       </ScrollView>
     </View>
   );
+}
+
+/**
+ * "Need a spare part", or the line that says why there isn't one.
+ *
+ * `unavailable` is the franchise having no parts store (owner ruling R4): no
+ * button, because there is nobody to ask and no staff fallback to point at, and
+ * a muted line instead. Net-new, Task 15 PROPOSED copy.
+ */
+function NeedPart({
+  mode,
+  onPress,
+}: {
+  mode: 'button' | 'unavailable' | 'none';
+  onPress: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (mode === 'button') {
+    return (
+      <View style={{ marginTop: 10 }}>
+        <Button
+          label={t('jobs.detail.needPart')}
+          variant="outline"
+          leadingIcon="wrench"
+          onPress={onPress}
+        />
+      </View>
+    );
+  }
+  if (mode === 'unavailable') {
+    return (
+      <Text
+        style={{
+          fontFamily: 'Roboto_400Regular',
+          fontSize: 12.5,
+          lineHeight: 18,
+          color: color.textMuted,
+          textAlign: 'center',
+          marginTop: 12,
+        }}
+      >
+        {t('jobs.detail.partsUnavailable')}
+      </Text>
+    );
+  }
+  return null;
 }
 
 function Card({ children }: { children: React.ReactNode }) {

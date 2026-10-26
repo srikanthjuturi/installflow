@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Principal
+from app.core import speed_rules
 from app.core.rules import (
     CANCEL_PENALTY_BANDS,
     LIMITS,
@@ -34,6 +35,18 @@ from app.core.rules import (
     resolve_rules,
     resolve_rules_with_sources,
     validate_resolved,
+)
+from app.core.speed_rules import (
+    SpeedEffectiveOut,
+    SpeedCatalogueOut,
+    SpeedRuleIn,
+    SpeedRuleOut,
+)
+from app.core.travel_rules import (
+    TravelRulesIn,
+    TravelRulesOut,
+    get_travel_rules,
+    put_travel_rules,
 )
 from app.models.company import Company
 from app.features.settings.schemas import (
@@ -461,3 +474,127 @@ async def update_payment_account(
     return PaymentAccountOut(
         upiId=row.upi_id, upiName=row.upi_name, updatedAt=row.updated_at
     )
+
+
+# ── travel-allowance rules (Task 10 §4.8) ─────────────────────────────────────
+#
+# On this screen beside Rules Config because it is the same question — the
+# numbers this company operates by — but per FRANCHISEE, not per company, and
+# stored in `franchisee_travel_rules` for the same reason a UPI address is not in
+# `company_rules`: it is never stamped onto a ticket's `rules_snapshot`. What
+# freezes it onto a job is `accept_snapshot`, written once at accept (TA5) —
+# which is also why nothing here validates across rows the way `RulesConfig`
+# does: each type's numbers stand alone, bounded by `TravelRuleIO`.
+
+
+async def get_travel(
+    db: AsyncSession, company_id: uuid.UUID, franchisee_id: uuid.UUID
+) -> TravelRulesOut:
+    """Both types' rows for one franchisee, self-healing a missing pair.
+
+    The self-heal flushes and deliberately does not commit, exactly as
+    `load_rules`'s does — the caller owns the transaction, and on a plain read
+    the repair being redone next time is harmless.
+    """
+    return await get_travel_rules(
+        db, company_id=company_id, franchisee_id=franchisee_id
+    )
+
+
+async def update_travel(
+    db: AsyncSession,
+    principal: Principal,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    body: TravelRulesIn,
+) -> TravelRulesOut:
+    """Write both types' rows and answer with what is now stored.
+
+    Same answer-from-the-row discipline as `update_rules`: the response is what
+    the next accept will read, not what the caller sent.
+    """
+    out = await put_travel_rules(
+        db,
+        company_id=company_id,
+        franchisee_id=franchisee_id,
+        body=body,
+        by_user=principal.user_id,
+    )
+    await db.commit()
+    return out
+
+
+# ── Task 11: the speed-allowance matrix (§4.10) ─────────────────────────────
+#
+# Wrappers over `app.core.speed_rules` with the same shape `get_travel` /
+# `update_travel` read `core.travel_rules` through: the CRUD in the core module
+# flushes and never commits, so the commit lives here, beside the principal —
+# who is the franchisee admin's own (the router never takes a franchisee_id from
+# the path or the body; their principal IS the answer, as on `/franchise/travel`).
+
+
+async def get_speed_rules(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    technician_type: str | None,
+) -> list[SpeedRuleOut]:
+    """The matrix, whole or one type's half, with the inheritance hints."""
+    return await speed_rules.list_rules(
+        db, company_id=company_id, franchisee_id=franchisee_id,
+        technician_type=technician_type,
+    )
+
+
+async def update_speed_rule(
+    db: AsyncSession,
+    principal: Principal,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    body: SpeedRuleIn,
+) -> SpeedRuleOut:
+    """Write one row of the matrix and answer with what is now stored — same
+    answer-from-the-row discipline as `update_travel`, so the response is what
+    the next accept will stamp (S5), not what the caller sent."""
+    out = await speed_rules.upsert_rule(
+        db, company_id=company_id, franchisee_id=franchisee_id,
+        body=body, by_user=principal.user_id,
+    )
+    await db.commit()
+    return out
+
+
+async def remove_speed_rule(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    rule_id: uuid.UUID,
+) -> None:
+    """One row gone; deleting a node's rule restores inheritance beneath it."""
+    await speed_rules.delete_rule(
+        db, company_id=company_id, franchisee_id=franchisee_id, rule_id=rule_id,
+    )
+    await db.commit()
+
+
+async def get_effective_speed_rule(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    franchisee_id: uuid.UUID,
+    technician_type: str,
+    model_id: uuid.UUID | None,
+    node_id: uuid.UUID | None,
+) -> SpeedEffectiveOut:
+    """The preview — the SAME resolution the stamper runs at accept (S2)."""
+    return await speed_rules.effective_rule(
+        db, company_id=company_id, franchisee_id=franchisee_id,
+        technician_type=technician_type, model_id=model_id, node_id=node_id,
+    )
+
+
+async def get_speed_catalogue(
+    db: AsyncSession, company_id: uuid.UUID
+) -> SpeedCatalogueOut:
+    """The rule editor's pickers — price-free (W16). No franchisee scoping,
+    because a catalogue is the company's and nothing here is company money."""
+    return await speed_rules.catalogue(db, company_id=company_id)

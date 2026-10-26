@@ -55,15 +55,22 @@ weights 400/500/700/900 — headline numbers are 900.
 
 ## 2. Screen inventory
 
-18 screens in the prototype, 24 now. The prototype's own index numbering is kept so it's easy
+18 screens in the prototype, 27 now. The prototype's own index numbering is kept so it's easy
 to cross-reference; the additions are marked NEW — two came with real onboarding, one with
-rescheduling, and three with redemption.
+rescheduling, three with redemption, two with the base location (a screen and its map) and one
+with spare parts (the part picker).
 
 ⚠ **Redemption is NOT IN THE PROTOTYPE either** — the Earnings screen there has no redeem control,
 and nothing mentions UPI, a balance or being paid. Its copy was written fresh and approved with
 the plan on **2026-09-11**, with the same two consequences spelled out for Reschedule below. The
 Payout account row became a real screen at the same time, with a scan-your-own-UPI-QR step and a
 confirmation tick; the prototype drew that row as a static `••4432`.
+
+⚠ **Base location, spare parts and allowances are NOT IN THE PROTOTYPE** — it has no map, no part
+request and no travel or speed line, and mentions nothing of an employee. Their copy was written fresh
+for the franchisee programme and signed off task by task (Tasks 07, 14 and 15), with the same two
+consequences as Reschedule below: it is approved only as written, and nothing in these screens may be
+copied elsewhere as though the prototype had blessed the pattern.
 
 ⚠ **Reschedule is NOT IN THE PROTOTYPE.** It has no such screen and never mentions moving a
 time; the console's own prototype says the opposite outright ("Slot confirmed & locked"). Every
@@ -91,6 +98,7 @@ elsewhere as though the prototype had blessed the pattern — it did not.
 | 7 | `(app)/job/[id]/index` | Job detail (unlocked) |
 | 8 | `(app)/job/[id]/cancel` | Cancel + penalty |
 | — | `(app)/job/[id]/reschedule` | **NEW** — move the slot, with the CUSTOMER's code |
+| — | `(app)/job/[id]/parts` | **NEW** (Task 15) — request a spare part: pick from the product's list or "Other", add a note. NOT in the prototype; copy PROPOSED and approved separately |
 | 9–12 | `(app)/job/[id]/proof/capture` | Camera — 4 modes |
 | 13 | `(app)/job/[id]/proof/review` | Review & submit |
 | — | `(app)/job/[id]/proof/verifying` | AI wait |
@@ -102,6 +110,8 @@ elsewhere as though the prototype had blessed the pattern — it did not.
 | — | `(app)/redeem/index` | **NEW** — redemption history |
 | 16 | `(app)/(tabs)/profile` | Profile & settings |
 | — | `(app)/payout-account` | Payout account — add once (scan or type UPI ID + name, WhatsApp code), then **request a change** a manager approves |
+| — | `(app)/base-location/index` | **NEW** (Task 14) — Base location: home pincode, current location, or a pin on the map; also the last onboarding step (`?onboarding=1`) |
+| — | `(app)/base-location/map` | **NEW** (Task 14) — Drop a pin on an OpenStreetMap map (Leaflet in a WebView) |
 | — | `avatar-options`, `crop-photo` | Photo modals — at the ROOT, not under `(app)` |
 
 ### The two onboarding paths
@@ -116,8 +126,9 @@ cold open, signed out   ->  /(auth)/login          NOT /invite
 being non-null on the login response IS that signal; there is no second call.
 
 **Invite** — reachable ONLY from the deep link `reliancegreentech://invite/<token>`:
-`R1 -> R1b -> R2 -> register/verify -> Home`. Nothing is written until the last screen; the
-draft lives in `store/registration.store.ts` (persisted, so backgrounding the app mid-flow does
+`R1 -> R1b -> R2 -> register/verify -> base-location (step 5, skippable) -> Home`. Nothing is
+written until register/verify; the base-location step runs AFTER the account exists, so a refused
+pincode never refuses the whole registration. The draft lives in `store/registration.store.ts` (persisted, so backgrounding the app mid-flow does
 not lose it) and the whole registration commits in one call.
 
 `app/(app)/_layout.tsx` guards the authenticated area. `app/_layout.tsx` holds the SPLASH until
@@ -172,8 +183,9 @@ your manager covers.` (not approved).
 `Which areas do you cover?` / `Add every pincode you can service — you'll be offered jobs from
 any of them.` · button `Add` · hint `Add at least one pincode. Most technicians cover 2–5 nearby areas.`
 CTA `Continue`, with summary `N categories · N areas`.
-**StepDots is now 4, not 3** — R1b was inserted. This is a change to an approved visual and is
-the item to lead any copy-approval request with.
+**StepDots is now 5, not 4 (it was 3 in the prototype)** — R1b was inserted, then Task 14's
+base-location step. This is a change to an approved visual and is the item to lead any
+copy-approval request with.
 Disabled hints: `Select at least one category` then `Add at least one pincode`.
 Pincode input is 6 digits, numeric only; Add enables only at exactly 6 and rejects duplicates.
 
@@ -187,7 +199,8 @@ would only earn a 429. Failures render inline (not approved), e.g.
 
 ### Register — confirm your number  *(NEW — no approved copy)*
 The last step of the invite path. `Confirm your number` /
-`Enter the 6-digit code sent to <number>. This is the last step.` · CTA `Create my account`.
+`Enter the 6-digit code sent to <number>.` (it no longer says "This is the last step" — base
+location follows) · CTA `Create my account`.
 
 ### 2 — Home
 `Good morning` + name · toggle `You're online` / `Receiving job offers` — off state
@@ -239,6 +252,33 @@ Empty per segment: `No upcoming jobs` · `Nothing in progress` · `No completed 
 `Job details` · id · `Committed` + slot · `Customer` + name + full address ·
 actions `Call` / `Navigate` · `Product to install` · `Install & demo` · `SLA type` · `Payout` ·
 CTA `Start job & capture proof` · destructive `Cancel this job`.
+
+**Two cards and two actions were added after the prototype (Task 15) — NOT in it, copy PROPOSED
+and signed off separately, so the same warning the Reschedule entry carries applies: nothing
+here may be copied elsewhere as though the prototype had blessed the pattern.** Both cards sit
+above the customer verdict and the actions, and each draws nothing when it has nothing to say:
+- **Allowances** (`features/jobs/components/AllowancesCard`) — the travel line (`27 km · ₹70 travel`,
+  or why it is ₹0, with a `Set base location` link to `/base-location`) and the speed lines
+  (`Finish within 12 h for ₹200`, `After 24 h: −₹150`, one note on where the clock starts). Amounts
+  are the server's, frozen at accept (`Job.travel` / `Job.speed`); the card is absent on a pool
+  offer (no estimate before accept) and on a job accepted before Tasks 10/11. Wording lives in
+  `features/jobs/allowances.ts`. Employees see it too.
+- **Spare parts** (`features/parts/components/PartRequestsCard`) — one row per request: part name
+  (data, never translated), an `Other` pill, a status pill (`partPill`), the code, the note and a
+  trail of lines (`partTrail`). Shown once the job has started; empty → nothing; error → a compact
+  retry inside the card.
+- **Need a spare part** — `In Progress` and `Awaiting Part` (`jobActions().canRequestPart`),
+  opens `/job/{id}/parts`. When the job's franchise has no parts store (`partsEnabled === false`,
+  `needPartMode`) there is no button, only the muted line `Spare parts can't be requested for this
+  job…`.
+- **Awaiting Part** keeps Task 07's banner and adds a disabled `Complete the job` (`Waiting for
+  parts` beneath), `Need a spare part`, and — with a slot — `Reschedule with the customer` (the
+  revisit). Never Cancel. `Complete the job` is also disabled on `In Progress` while any request
+  is `requested`/`approved`.
+- The picker (`features/parts/screens/PartRequestScreen`) is a `CancelJobScreen`-style radio list
+  with search above 8 parts and `Other — not on the list` last; the footer button's label is the
+  requirement (`Select a part` → `Type the part's name` → `Request part`). The server's `canRequest`
+  is the final word on whether it submits; never hard-code the requestable statuses.
 
 ### 8 — Cancel
 `Cancel job` · band label · `Penalty deducted from earnings` · `−₹{amount}`.
@@ -292,6 +332,16 @@ documents. Every closure records who, when and why.` · CTA `Done — back to jo
 `Earnings` · `This week` `Mon–Sun` · net figure + `Net payout after penalties` ·
 tiles `Earned` / `Bonuses` / `Penalties` · `Transactions`.
 Ledger kinds: install credit (green) · `Reassignment bonus` (amber) · `Late cancellation penalty` (red).
+After the prototype, three more (Task 07, approved 2026-10-22): `Travel allowance` (green, navigation icon),
+`Speed reward` (amber, zap) and `Speed penalty` (red, clock, a debit). Direction comes from the kind, never from
+the sign; **a kind this build does not know renders neutral (info icon), unsigned, with the server's own title**
+rather than crashing — an unknown kind used to throw on `KIND_STYLE[kind].bg`. The tiles are unchanged: travel
+folds into `Earned`, a speed reward into `Bonuses`, a speed penalty into `Penalties`, so an old build's three tiles
+still add up to the net.
+After the prototype (Task 15, PROPOSED copy): each tile may carry a small `incl. ₹70 travel` /
+`incl. ₹200 speed` line under its figure (`features/earnings/breakdown.ts`). The figure is the
+server's and already includes it — the line is a part of the tile, never added; absent or zero →
+no line.
 
 ### Redeem  *(NEW — approved with the plan on 2026-09-11, not from the prototype)*
 Card on Earnings: `Available to redeem` · `Redemptions` link · amount · `To {upiId}` · `Redeem`
@@ -321,15 +371,33 @@ These add/change strings came with the 2026-09-11 rework and were approved as wr
 day. They replace the approved "confirm tick" version, which is gone.
 `{payer}` is the server's `payerLabel` — "National Head", or "Admin" when the company has none.
 
+**An employee has no redeem card.** The session carries `technicianType` (absent = freelancer, never an
+error); an employee sees `You're an employee` / `Your job pay comes with your salary, so there is nothing to
+redeem here. Allowances, bonuses and penalties below go on your monthly statement.` in its place — no amount, no
+`Redeem`, no `Add UPI ID` — and the net caption reads `Net for your monthly statement, after penalties`. The
+`Redemptions` link stays, and a redemption left open from freelancer days stays confirmable (the card shows it
+instead of the employee text). The pool, the offer and Job detail show `In salary` where the payout figure was.
+
 **The rules a screen must never bend:** the amount is the server's (the sheet sends back the figure
 it showed, never a sum it wants); the QR is drawn from the server's `upiUri`, never rebuilt; the QR
 disappears once claimed; `I received it` is the ONLY thing that makes a redemption paid; and there
 is no technician cancel — only the payer declines, before paying.
 
+### Base location  *(NEW — Task 14, PROPOSED copy, not from the prototype)*
+Travel allowance is measured from the technician's base to the customer, so they say where they start
+their day from — three ways: `My home pincode` (the server uses the pincode's centre; refused outside
+the franchisee's range), `Use my current location` (GPS, bounded fix) or `Drop a pin on the map`
+(OpenStreetMap in a WebView). No approval, no cooldown; a change applies to jobs accepted from now on.
+Onboarding step 5 `Where do you start from?` (skippable), Home card `Set your base location` until set,
+Profile row `Base location`. `baseLocation` on the session is `undefined` (old API: show nothing),
+`null` (none yet: nag) or an object — never treat `undefined` as "not set". All strings live under
+`baseLocation.*` in `en.json`; the OSM attribution is a legal constant in `map/mapHtml.ts`, not copy.
+Adds `react-native-webview` (13.15.0) — the one native module allowed, so it needs a new build.
+
 ### 16 — Profile
 Avatar initials · name · `Technician` · `ID TCH-4021` · stats `Rating` / `Jobs done` /
 `On-time` · `Service coverage` (Categories, Pincodes) · link `Availability & bandwidth` ·
-rows `Push notifications` / `Language` / `Payout account` / `Delete account` · `Log out`.
+rows `Push notifications` / `Language` / `Payout account` / `Base location` (Task 14, hidden on an API without the field) / `Delete account` · `Log out`.
 
 `Delete account` is net-new, added 2026-09-17 for the Google Play account-deletion requirement —
 not in the prototype, same as Payout account. Opens a dedicated screen
@@ -369,6 +437,14 @@ interface Job {
 }
 ```
 
+**Every enum that comes off the wire goes through a total function with a fallback — never a `Record` index.**
+`toTransactionKind(raw)` answers `'other'` for anything it does not know, and `toJobStatus(raw)` (in
+`features/jobs/stage.ts`) answers an in-progress line with a note to update the app; the old way, `LABEL[raw]`,
+throws on a new value and — because the prototype's own tables are plain objects — answers `constructor` or
+`__proto__` with a function. `Job.serverStatus` carries the server's exact status string beside the coarse
+`JobStatus`, because `Awaiting Part` is an in-progress job that looks different and behaves differently.
+`technicianType` comes from the session, not the profile list.
+
 `hoursToSlot` is the pseudo-clock the prototype uses — it drives status badges, pool filtering
 and penalty bands from a single number. Keep it in mock data; replace with real timestamps at
 binding time.
@@ -378,16 +454,37 @@ binding time.
 | Condition | Label | Role |
 |---|---|---|
 | completed | `Completed` | `statusCompleted` |
+| cancelled | `Cancelled` | `statusCancelled` |
+| server says `Awaiting Part` (Task 12) — checked before the generic in-progress line, even when the slot has closed | `Awaiting part` | `statusAwaitingPart` |
 | in progress | `In progress` | `statusInProgress` |
 | no agreed time | `Awaiting time` | `statusUpcoming` |
 | slot END has passed | `Slot closed` | `statusSlotClosed` |
 | ≤ 4h to slot start | `Starting soon` | `statusStartingSoon` |
 | otherwise | `Upcoming` | `statusUpcoming` |
 
-`jobBadge` in `ui/StatusBadge` is the one implementation; every card calls it. It reads
+A status the build has never heard of reads as `In progress`, and Job detail adds an "update the app" note
+(`toJobStatus`): an unknown status only misbehaves (it used to fall back to `upcoming` and offer *Start job*),
+where an unknown ledger kind used to crash.
+
+`jobBadge` in `ui/jobBadge` (a pure file; `ui/StatusBadge` renders it) is the one implementation; every card calls it. It reads
 `slotStart`/`slotEnd` against the clock at RENDER, not `hoursToSlot`, which is frozen when the
 list is fetched. `Slot closed` is not in the prototype (it has no missed job); the words are the
 console's own for the same state.
+
+### Native modules
+
+Root `AGENTS.md` forbids a third-party native module without flagging it first. **One was flagged and added for
+the franchisee programme (X3): `react-native-webview` 13.15.0**, for the base-location map. It is in Expo Go for
+SDK 54, needs no config plugin, and needs a NEW EAS build for a dev client or production — so it rides a Play
+release, never an update. `react-native-maps` is not wanted. Four things about how the map uses it:
+
+- The page is OpenStreetMap through **Leaflet loaded from unpkg inside the HTML** (`map/mapHtml.ts`): a runtime
+  dependency of the map, not of the app, and the reason the screen needs a connection.
+- A message from the page (`postMessage`) is **untrusted input** — it goes through `parseMapMessage` before
+  anything reads a coordinate from it.
+- `source.html` is built once and **never changes after mount** (a new `source` reloads the page and loses the pin).
+- OpenStreetMap's tile policy: visible attribution (a legal constant in `mapHtml.ts`, not copy), a stable
+  application name in the user agent, the default Referer, and no prefetching.
 
 ### Penalty bands
 
@@ -453,9 +550,11 @@ Real: sign-in (`/auth/otp/*`), invite resolution and self-registration (`/onboar
 technician's own profile (`/technicians/me`), and the product catalogue. The signed-in technician
 comes from `store/session.store.ts`, **not** `mocks/db.ts` — Profile reads the session.
 
-Still mock: jobs, the pool, earnings, availability, proof capture. `Job.category` is still a
-`ProductCategory` literal; a technician's real certifications are `SubcategoryRef[]` from the API.
-When the jobs slice lands, `Job.category` becomes one too and that union goes.
+Real since: jobs, the pool, my jobs, proof capture, cancellation, rescheduling, earnings, redemptions and the
+payout account, the base location and spare parts — all through TanStack Query hooks over `src/lib/api.ts`. What is
+still mock is **AI review** (hidden: `VerifyingScreen` / `ResultScreen` are unwired) and whatever `src/mocks/db.ts`
+still seeds for the prototype's demo path. `Job.category` is still a `ProductCategory` literal while a
+technician's real certifications are `SubcategoryRef[]` from the API.
 
 Two things the app deliberately does NOT fake: a null `rating` renders `—`, not `0.0` (which
 reads as the worst possible score), and a self-registered technician's photo is stored locally

@@ -31,14 +31,29 @@ class EarningsSummaryOut(AppModel):
     #: cancellation and little work, which is a true thing to say; the phone
     #: renders the minus. The monthly penalty cap bounds how far it can go.
     netPaise: int
-    #: What the JOBS paid — `payout` entries, written at closure.
+    #: What the JOBS paid — `payout` + `travel` entries, written at closure.
     earnedPaise: int
-    #: Escalation bonuses credited to this technician in the period.
+    #: Travel allowances credited in the period — `travel` entries, written at
+    #: closure. Employees get these too (T3). A BREAKDOWN of `earnedPaise`,
+    #: which already includes it — never add the two together (§8 trap 5).
+    travelPaise: int = 0
+    #: Escalation bonuses credited to this technician in the period. Since
+    #: Task 11 (W10) this INCLUDES speed rewards — the two kinds move the same
+    #: pool under the same signs, and the fold keeps `net = earned + bonuses −
+    #: penalties` saying the same thing to every build already installed.
     bonusesPaise: int
     #: Real, and POSITIVE — a magnitude, not a debit. The screen colours it and
     #: signs it; the API does not decide how somebody's own money reads to
-    #: them.
+    #: them. Since Task 11 (W10) this INCLUDES speed penalties, for the same
+    #: reason.
     penaltiesPaise: int
+
+    #: BREAKDOWNS, not extra tiles — the speed kinds inside the two above
+    #: (W10), sent additive for Task 15's display. Default 0 and never summed
+    #: on top of `bonusesPaise` / `penaltiesPaise`, exactly as `travelPaise` is
+    #: never added to `earnedPaise`.
+    speedRewardPaise: int = 0
+    speedPenaltyPaise: int = 0
 
     #: The IST calendar days these figures actually cover, inclusive at both
     #: ends — what the request RESOLVED to, not what it asked for.
@@ -57,8 +72,10 @@ class TransactionOut(AppModel):
 
     id: uuid.UUID
     at: datetime.datetime
-    #: `payout` | `bonus` | `penalty`. The phone picks the icon and the sign
-    #: from this — `payout` and `bonus` are credits, `penalty` is a debit.
+    #: `payout` | `travel` | `bonus` | `penalty` | `speed_reward` |
+    #: `speed_penalty` (Task 11). The phone picks the icon and the sign from
+    #: this — `payout`, `travel`, `bonus` and `speed_reward` are credits,
+    #: `penalty` and `speed_penalty` are debits (`title` names them either way).
     kind: str
     #: PAISE, always positive. See `models/ledger.py` on why no sign is stored.
     amountPaise: int

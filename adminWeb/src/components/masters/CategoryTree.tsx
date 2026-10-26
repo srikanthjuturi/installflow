@@ -33,6 +33,14 @@ interface CategoryTreeProps {
   onAction: (action: MasterAction) => void;
   /** Presentation only — the server enforces `masters.edit` (hard rule 8). */
   canEdit: boolean;
+  /**
+   * Offers **Spare parts** on every category and product. Presentation only —
+   * the server enforces `parts.catalogue` (hard rule 8) — and a different grant
+   * from `canEdit` (`masters.edit`): a holder of only this one sees a menu with
+   * that single item, and a holder of both sees it among the rest. The vendor
+   * portal's `menuFor` path never passes it.
+   */
+  canEditParts?: boolean;
   /** Opens Rules Config scoped to a node. Absent when the viewer cannot read
    *  rules, which is a different grant from editing the catalogue. */
   onOpenRules?: (node: ProductNode) => void;
@@ -71,6 +79,7 @@ export function CategoryTree({
   nodes,
   onAction,
   canEdit,
+  canEditParts = false,
   onOpenRules,
   menuFor,
 }: CategoryTreeProps) {
@@ -82,6 +91,7 @@ export function CategoryTree({
             node={node}
             onAction={onAction}
             canEdit={canEdit}
+            canEditParts={canEditParts}
             onOpenRules={onOpenRules}
             menuFor={menuFor}
           />
@@ -182,8 +192,17 @@ function RowMenu({
 function nodeMenuItems(
   node: ProductNode,
   onAction: (a: MasterAction) => void,
+  canEdit: boolean,
+  canEditParts: boolean,
   onOpenRules?: (n: ProductNode) => void
 ): NodeMenuItem[] {
+  const parts: NodeMenuItem = {
+    label: "Spare parts",
+    onSelect: () => onAction({ kind: "node-parts", node }),
+  };
+  // A holder of `parts.catalogue` alone gets the one item and nothing else.
+  if (!canEdit) return canEditParts ? [parts] : [];
+
   const items: NodeMenuItem[] = [
     { label: "Edit category", onSelect: () => onAction({ kind: "edit-node", node }) },
   ];
@@ -191,6 +210,7 @@ function nodeMenuItems(
   if (onOpenRules) {
     items.push({ label: "Rules for this category", onSelect: () => onOpenRules(node) });
   }
+  if (canEditParts) items.push(parts);
   items.push({
     label: "Remove category",
     danger: true,
@@ -203,12 +223,14 @@ function RootNode({
   node,
   onAction,
   canEdit,
+  canEditParts,
   onOpenRules,
   menuFor,
 }: {
   node: ProductNode;
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
+  canEditParts: boolean;
   onOpenRules?: (n: ProductNode) => void;
   menuFor?: (n: ProductNode) => NodeMenuItem[];
 }) {
@@ -258,7 +280,20 @@ function RootNode({
             <RowMenu
               label={`Category actions for ${node.name}`}
               tooltip="Category actions"
-              items={menuFor ? menuFor(node) : nodeMenuItems(node, onAction, onOpenRules)}
+              items={
+                menuFor
+                  ? menuFor(node)
+                  : nodeMenuItems(node, onAction, canEdit, canEditParts, onOpenRules)
+              }
+            />
+          </div>
+        ) : canEditParts ? (
+          /* `parts.catalogue` without `masters.edit`: the menu with its one item. */
+          <div className="flex items-center gap-1">
+            <RowMenu
+              label={`Category actions for ${node.name}`}
+              tooltip="Category actions"
+              items={nodeMenuItems(node, onAction, false, true)}
             />
           </div>
         ) : null}
@@ -282,6 +317,7 @@ function RootNode({
                 node={child}
                 onAction={onAction}
                 canEdit={canEdit}
+                canEditParts={canEditParts}
                 onOpenRules={onOpenRules}
                 menuFor={menuFor}
               />
@@ -307,12 +343,14 @@ function ChildNode({
   node,
   onAction,
   canEdit,
+  canEditParts,
   onOpenRules,
   menuFor,
 }: {
   node: ProductNode;
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
+  canEditParts: boolean;
   onOpenRules?: (n: ProductNode) => void;
   menuFor?: (n: ProductNode) => NodeMenuItem[];
 }) {
@@ -372,7 +410,19 @@ function ChildNode({
               <RowMenu
                 label={`Category actions for ${node.name}`}
                 tooltip="Category actions"
-                items={menuFor ? menuFor(node) : nodeMenuItems(node, onAction, onOpenRules)}
+                items={
+                  menuFor
+                    ? menuFor(node)
+                    : nodeMenuItems(node, onAction, canEdit, canEditParts, onOpenRules)
+                }
+              />
+            </div>
+          ) : canEditParts ? (
+            <div className="ml-auto flex items-center gap-1">
+              <RowMenu
+                label={`Category actions for ${node.name}`}
+                tooltip="Category actions"
+                items={nodeMenuItems(node, onAction, false, true)}
               />
             </div>
           ) : null}
@@ -390,6 +440,7 @@ function ChildNode({
                   model={model}
                   onAction={onAction}
                   canEdit={canEdit}
+                  canEditParts={canEditParts}
                 />
               </li>
             ))}
@@ -408,6 +459,7 @@ function ChildNode({
                 node={child}
                 onAction={onAction}
                 canEdit={canEdit}
+                canEditParts={canEditParts}
                 onOpenRules={onOpenRules}
                 menuFor={menuFor}
               />
@@ -429,11 +481,13 @@ function ModelChip({
   model,
   onAction,
   canEdit,
+  canEditParts,
 }: {
   node: ProductNode;
   model: ProductModel;
   onAction: (a: MasterAction) => void;
   canEdit: boolean;
+  canEditParts: boolean;
 }) {
   /* Brand and capacity ride inline because they are what tell two models apart
      at a glance; warranty is a detail you go looking for, so it stays in the
@@ -557,7 +611,7 @@ function ModelChip({
     ? `${model.name} · ${detail.join(" · ")}`
     : model.name;
 
-  if (!canEdit) {
+  if (!canEdit && !canEditParts) {
     return (
       <span
         title={title}
@@ -611,18 +665,33 @@ function ModelChip({
         align="end"
         className="w-auto min-w-44 max-w-[calc(100vw-2rem)]"
       >
-        <DropdownMenuItem
-          onClick={() => onAction({ kind: "edit-model", node, model })}
-        >
-          Edit product
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-danger"
-          onClick={() => onAction({ kind: "delete-model", model })}
-        >
-          Remove product
-        </DropdownMenuItem>
+        {canEdit ? (
+          <DropdownMenuItem
+            onClick={() => onAction({ kind: "edit-model", node, model })}
+          >
+            Edit product
+          </DropdownMenuItem>
+        ) : null}
+        {/* Task 13 §5.6 — `parts.catalogue`, above the separator. A holder of
+            that alone gets the chip as a menu with this single item. */}
+        {canEditParts ? (
+          <DropdownMenuItem
+            onClick={() => onAction({ kind: "model-parts", node, model })}
+          >
+            Spare parts
+          </DropdownMenuItem>
+        ) : null}
+        {canEdit ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-danger"
+              onClick={() => onAction({ kind: "delete-model", model })}
+            >
+              Remove product
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

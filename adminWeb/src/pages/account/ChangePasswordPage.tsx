@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
 import { PageMeta } from "@/components/shared/PageMeta";
+import { SHELL_PATHS, surfaceOf } from "@/lib/surface";
 import {
   EMPTY_CHANGE_PASSWORD,
   changePasswordSchema,
@@ -22,17 +23,21 @@ import { useChangePassword } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
 
 /**
- * One screen, mounted twice — `/account/password` for staff and
- * `/portal/password` for a vendor. Nothing about changing your own password
- * differs between the two, so a second copy would only be a second thing to
- * keep in step.
+ * One screen, mounted three times — `/account/password` for staff and
+ * `/portal/password` and `/franchise/password` for the portals. Nothing about
+ * changing your own password differs between them, so a second copy would only
+ * be a second thing to keep in step. Where the two buttons go comes off
+ * `SHELL_PATHS`, so the next surface is a row, not another ternary.
  *
  * No feature key: anyone with a password may change it.
  */
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
+  const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
   const change = useChangePassword();
+  const accountPath = SHELL_PATHS[surfaceOf({ superadmin, portal, franchise })].account;
 
   const {
     register,
@@ -54,7 +59,7 @@ export default function ChangePasswordPage() {
         title: "Password changed",
         description: "You have been signed out on every other device.",
       });
-      navigate(portal ? "/portal/account" : "/account", { replace: true });
+      navigate(accountPath, { replace: true });
     } catch {
       // Already in the toaster, via the global mutation handler.
     }
@@ -157,9 +162,7 @@ export default function ChangePasswordPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() =>
-                  navigate(portal ? "/portal/account" : "/account")
-                }
+                onClick={() => navigate(accountPath)}
               >
                 Cancel
               </Button>

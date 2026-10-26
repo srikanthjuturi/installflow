@@ -54,6 +54,11 @@ class Membership(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: for staff and technicians. COMPOSITE FK, so it can never name another
     #: company's vendor. See the module docstring for why it lives here.
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    #: The franchisee this membership acts for — set for the three franchise
+    #: roles (Task 02), NULL for everyone else. COMPOSITE FK, so a login can
+    #: never name another company's franchisee. No CHECK ties it to the role —
+    #: `role` lives on `users`, not here; Task 02/03 enforce it in the service.
+    franchisee_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
     )
@@ -91,4 +96,13 @@ class Membership(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # Covers the FK above, and answers "who logs in for this vendor" —
         # which the portal asks on every request.
         Index("ix_memberships_company_vendor", "company_id", "vendor_id"),
+        # RESTRICT, as above: removing a franchisee must not silently delete
+        # the accounts that acted for it.
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_memberships_company_franchisee",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_memberships_company_franchisee", "company_id", "franchisee_id"),
     )

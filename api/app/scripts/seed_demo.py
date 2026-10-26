@@ -73,6 +73,10 @@ LOGINS: tuple[tuple[str, str], ...] = (
     ("Regional Head", f"rh.{TAG}"),
     ("Area Manager", f"am.{TAG}"),
     ("Vendor", f"vendor.{TAG}"),
+    # The franchisee-era logins (Task 16): the external franchisee's admin lands
+    # in the franchise portal, the home facility operator on the parts queue.
+    ("Franchise Admin", f"franchise.{TAG}"),
+    ("Facility Operator", f"facility.{TAG}"),
 )
 
 #: Deliberately not a real PSP handle, so a QR scanned during the demo fails in
@@ -106,9 +110,15 @@ async def _set_passwords(db: AsyncSession) -> None:
 
 
 async def _one_redemption(db: AsyncSession, built: tenant.Tenant) -> str:
-    """The first technician with money earned asks to be paid it."""
+    """The first FREELANCER with money earned asks to be paid it.
+
+    An employee is paid through salary and cannot redeem (409
+    `EMPLOYEE_CANNOT_REDEEM`), so asking one would only seed a refusal.
+    """
     for profile in built.technicians:
         await db.refresh(profile)
+        if profile.technician_type != "freelancer":
+            continue
         available = await redemptions_service.balance(
             db, company_id=built.company_id, technician_id=profile.id
         )
@@ -139,6 +149,8 @@ async def main() -> int:
     print(f"\nSeeding {database}")
     print(f"  company   {NAMES.company}")
     print(f"  staff     admin, national head, regional head, area manager, vendor")
+    print(f"  franchise Crestline Field Services {TAG} (external, facility), "
+          f"Northgate Field Services {TAG} (internal, no facility); home keeps the rest")
     print(f"  people    {TECHNICIANS} technicians, {TICKETS} tickets:")
     for intent, share in lifecycle.MIX:
         print(f"              {round(TICKETS * share):3d}  {intent}")
@@ -172,7 +184,9 @@ async def main() -> int:
         print("  raising tickets …")
         outcomes = await lifecycle.drive(db, built, count=TICKETS, rng=rng)
 
-        # Last, because any later write to a ticket re-stamps `updated_at`.
+        handed = await lifecycle.hand_one_ticket_over(db, built, outcomes)
+
+        # Last among the ticket writes, because a later one re-stamps `updated_at`.
         for outcome in (o for o in outcomes if o.settled):
             await backdate.shift_ticket(
                 db,
@@ -183,9 +197,14 @@ async def main() -> int:
             )
         await db.commit()
 
+        # Before the redemption below: a technician with an open redemption
+        # cannot be moved, and the demo wants both on screen.
+        moved = await lifecycle.transfer_one_technician(db, built)
+
         redemption = await _one_redemption(db, built)
         await _set_passwords(db)
         problems = await verify.run(db, company_id=built.company_id)
+        coverage = await verify.rows_read(db, built.company_id)
 
     refused = [o for o in outcomes if o.status.startswith("refused")]
     counts: dict[str, int] = {}
@@ -195,7 +214,19 @@ async def main() -> int:
     print(f"\n  tickets   {', '.join(f'{n} {s}' for s, n in sorted(counts.items()))}")
     if refused:
         print(f"  refused   {len(refused)} — first: {refused[0].status}")
+    if len(refused) * 4 > len(outcomes):
+        print(
+            "\n  FAILED: a quarter of the tickets were refused - the demo would be "
+            "mostly empty. Delete the company with cleanup_db and fix the cause first."
+        )
+        return 1
     print(f"  redeem    {redemption}")
+    print(f"  hand-over {handed or 'none'}")
+    print(f"  transfer  {moved or 'none'}")
+    print("  read      " + ", ".join(f"{n} {label}" for label, n in coverage.items() if n))
+    empty = [label for label, n in coverage.items() if not n]
+    if empty:
+        print(f"  empty     {', '.join(empty)} — nothing for those checks to prove")
 
     if problems:
         print(f"\n  FAILED {len(problems)} checks:")

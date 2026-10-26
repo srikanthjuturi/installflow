@@ -12,7 +12,7 @@ one, see "Cleanup" at the bottom.)
 
 | Workflow | Trigger | Does |
 |---|---|---|
-| `.github/workflows/pr-check.yml` | any PR into `main` or `dev` | lint+typecheck adminWeb and mobileapp; import/syntax-check api. No deploy. |
+| `.github/workflows/pr-check.yml` | any PR into `main` or `dev` | lint+typecheck+`npm test` adminWeb and mobileapp; import/syntax-check api and run its pure `pytest` suite (no database). No deploy. |
 | `.github/workflows/dev-deploy.yml` | push to `dev` (path-filtered to `api/**`), or manual | zip-deploys api to `installflowapi-dev`. Migrations happen on the app's own restart, not here. |
 | `.github/workflows/prod-deploy.yml` | **manual only** (`workflow_dispatch`) | zip-deploys api to `installflowapi` — requires typing `deploy` into a confirmation box, and refuses to run off anything but `main` unless you explicitly tick an override |
 | `.github/workflows/web-dev-deploy.yml` | push to `dev` (path-filtered to `adminWeb/**`), or manual | deploys adminWeb's full SOURCE tree (not a pre-built `dist/`) to the Azure App Service `installflowweb-dev-eeakh9hpfsh4e5a7`, which builds it remotely via Oryx — same mechanics as the prod web deploy, no confirm box (pushing to `dev` IS the intent) |
@@ -104,6 +104,47 @@ python -m alembic upgrade head && gunicorn -k uvicorn_worker.UvicornWorker -w 2 
 (Only the `python -m alembic upgrade head &&` prefix is new — the gunicorn
 part is unchanged from what `api/.claude/skills/publish-api/` already
 documents.)
+
+### ⚠ Unconfirmed: does each App Service really migrate on restart?
+
+The repo disagrees with itself, and a portal setting is not something it can
+prove. This file says both startup commands begin `python -m alembic upgrade
+head &&` (and that production "does not auto-migrate today" until you change it);
+`api/.claude/skills/publish-api/SKILL.md` documents the production command as
+gunicorn **only**; and a comment in `api/scripts/publish.py` still says the
+deploy workflows run `alembic upgrade head` "as their own step" before it, which
+the section above says CI no longer does. Task 16's
+rollout plan (R0) therefore asks the owner to open **Azure Portal →
+installflowapi → Configuration → General settings → Startup Command** (and the
+same for `installflowapi-dev`) and write the answer here:
+
+| App Service | Startup command migrates? | Confirmed by / on |
+|---|---|---|
+| `installflowapi-dev` | _not recorded_ | |
+| `installflowapi` | _not recorded_ | |
+
+Why it matters for the franchisee programme: if production **does** migrate on
+restart, every publish also runs `upgrade head` against RelianceProdDB — a no-op
+when the owner has already migrated by hand, and a down backend (gunicorn never
+starts) if `main` carries a migration that fails there or one the release was not
+meant to include. If it does **not**, the owner's manual `alembic upgrade
+<revision>` is the only thing that migrates it, and forgetting it makes the new
+API 500 on a missing column. Either way the owner migrates to an **explicit
+revision** before each publish (never `head`), and `main` never carries a
+migration later than the release it is tagged as.
+
+### One release at a time on `main`
+
+`dev` accumulates every task as it lands; `prod-deploy.yml` and
+`web-prod-deploy.yml` deploy whatever `main` holds. A production release is
+therefore a **tagged merge of `dev` into `main`**, and during a gated programme
+(the franchisee rollout, `RequirementDocs/franchisee/16-rollout-and-docs.md`)
+`main` holds only what has passed its gate; a production hotfix in that window is
+cut from the last release tag, not from `dev`. Remember too that
+`dev-deploy.yml` deploys `installflowapi-dev` on every push to `dev`: run each
+migration's `upgrade` → `downgrade` → `upgrade` round trip locally **before**
+merging, because if that app's startup command migrates, the push migrates
+RelianceDB on the shared server as well.
 
 ## Manual setup required
 
@@ -213,8 +254,11 @@ Not required for anything above to work, but tidy:
 - **Local `alembic upgrade head` refuses `RelianceProdDB`** unless
   `CONFIRM_PROD=yes-i-mean-it` is also set — enforced in `api/alembic/env.py`,
   unrelated to and unaffected by the CI changes above.
-- **The api PR check is a syntax/import smoke test**, not real testing — no
-  ruff/mypy/pytest configured yet.
+- **The api PR check is a syntax/import smoke test plus pytest unit tests** —
+  pure functions only, no database (`api/pytest.ini`, `api/tests/unit`); no
+  ruff/mypy configured yet. Both clients' PR checks also run `npm test`
+  (vitest for adminWeb, jest-expo for mobileapp). See
+  `RequirementDocs/franchisee/00-prerequisites-and-test-harness.md`.
 
 ## What this deliberately does not cover
 

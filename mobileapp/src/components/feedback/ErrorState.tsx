@@ -11,25 +11,36 @@ export interface ErrorStateProps {
   title?: string;
   body?: string;
   onRetry?: () => void;
+  /**
+   * For inside a card, where a full-screen failure would swamp the rest of the
+   * screen: tight padding, a smaller glyph, a ghost retry.
+   */
+  compact?: boolean;
 }
 
-export function ErrorState({ title, body, onRetry }: ErrorStateProps) {
+export function ErrorState({ title, body, onRetry, compact = false }: ErrorStateProps) {
   const { t } = useTranslation();
 
   return (
-    <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
+    <View
+      style={{
+        alignItems: 'center',
+        paddingVertical: compact ? 8 : 48,
+        paddingHorizontal: compact ? 0 : 24,
+      }}
+    >
       <View
         style={{
-          width: 56,
-          height: 56,
+          width: compact ? 40 : 56,
+          height: compact ? 40 : 56,
           borderRadius: radius.full,
           backgroundColor: color.statusCancelled.bg,
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 16,
+          marginBottom: compact ? 10 : 16,
         }}
       >
-        <Icon name="warn" size={26} color={color.debit} />
+        <Icon name="warn" size={compact ? 20 : 26} color={color.debit} />
       </View>
 
       <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 15, color: color.textPrimary }}>
@@ -49,7 +60,7 @@ export function ErrorState({ title, body, onRetry }: ErrorStateProps) {
       </Text>
 
       {onRetry ? (
-        <View style={{ marginTop: 20, alignSelf: 'stretch' }}>
+        <View style={{ marginTop: compact ? 12 : 20, alignSelf: 'stretch' }}>
           <Button label={t('common.tryAgain')} variant="secondary" onPress={onRetry} />
         </View>
       ) : null}

@@ -30,6 +30,7 @@ from app.features.auth.schemas import (
     MeStateOut,
     MeUpdateRequest,
     MeVendorOut,
+    MeFranchiseeOut,
     MembershipOut,
     RefreshResponse,
     RegionOut,
@@ -41,6 +42,7 @@ from app.integrations import google_identity
 from app.integrations.google_identity import GoogleIdentityError
 from app.models.company import Company
 from app.models.vendor import Vendor
+from app.models.franchisee import Franchisee
 from app.models.membership import Membership
 from app.models.role import ROLE_LABELS, SUPERADMIN, TECHNICIAN
 from app.models.technician import TechnicianProfile
@@ -477,6 +479,29 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
                 addressSearchEnabled=row.address_search_enabled,
             )
 
+    # The franchisee this caller acts FOR. `get_current_principal` refuses a
+    # switched-off or removed franchisee before any endpoint — including this
+    # one — reaches here, so this block fires only for a live one. The
+    # franchisee's NAME is the caller's scope label (scope_label has no answer
+    # for them; it would print "—").
+    franchisee: MeFranchiseeOut | None = None
+    if principal.franchisee_id is not None:
+        row = await session.scalar(
+            select(Franchisee).where(
+                Franchisee.company_id == principal.company_id,
+                Franchisee.id == principal.franchisee_id,
+                Franchisee.deleted_at.is_(None),
+            )
+        )
+        if row is not None:
+            franchisee = MeFranchiseeOut(
+                id=row.id,
+                name=row.name,
+                code=row.code,
+                kind=row.kind,
+                isHome=row.is_home,
+            )
+
     return MeResponse(
         user=_user_out(user),
         activeCompany=_company_out(active_company) if active_company else None,
@@ -487,8 +512,9 @@ async def get_me(session: AsyncSession, principal: Principal) -> MeResponse:
         states=[
             MeStateOut(id=s.id, name=s.name, regionId=s.region_id) for s in scope.states
         ],
-        scopeLabel=scope_label(principal.role, scope),
+        scopeLabel=franchisee.name if franchisee else scope_label(principal.role, scope),
         vendor=vendor,
+        franchisee=franchisee,
     )
 
 

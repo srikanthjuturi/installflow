@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { surfaceOf } from "@/lib/surface";
 import { useSession } from "@/store/session";
 import type { SearchType } from "@/types/search";
 
@@ -90,16 +91,21 @@ const useRecentlySeenStore = create<RecentlySeenState>()(
 export function useRecentlySeen() {
   const userId = useSession((s) => s.backendUser?.id);
   const companyId = useSession((s) => s.activeCompanyId);
-  // The portal shares `TicketDetailPage` with the ops console but has no global
-  // search to show a trail in, so recording there would only ever write storage
-  // nothing reads. A vendor is refused by the search API too.
+  // The portals share `TicketDetailPage` with the ops console but neither has
+  // a global search to show a trail in, so recording there would only ever
+  // write storage nothing reads, and a vendor is refused by the search API
+  // too. Only the staff surface has anything that would read it back.
+  const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
   const byScope = useRecentlySeenStore((s) => s.byScope);
   const recordIn = useRecentlySeenStore((s) => s.record);
   const clearIn = useRecentlySeenStore((s) => s.clear);
 
   const scope =
-    userId && companyId && !portal ? `${userId}:${companyId}` : null;
+    userId && companyId && surfaceOf({ superadmin, portal, franchise }) === "ops"
+      ? `${userId}:${companyId}`
+      : null;
 
   // Stable, so a caller can put `record` in a dependency list — which the
   // detail screens have to, since they record from an effect.

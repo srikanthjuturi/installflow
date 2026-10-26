@@ -111,11 +111,28 @@ export type BackendRole =
   /** Signs in to the vendor portal. Sees every ticket its own users raised. */
   | "vendor"
   /** Created by a vendor. Sees only the tickets it raised itself. */
-  | "vendor_user";
+  | "vendor_user"
+  /** Acts FOR a franchisee — owns its technicians and money (F7). */
+  | "franchisee_admin"
+  /** Franchisee staff who work the spare-parts desk (P6). */
+  | "facility_admin"
+  | "facility_operator";
 
 /** The two roles whose home is `/portal`, not the ops console. */
 export const PORTAL_ROLES = ["vendor", "vendor_user"] as const satisfies
   readonly BackendRole[];
+
+/**
+ * The three roles that act FOR a franchisee. A set, not a rank test — like
+ * `PORTAL_ROLES`, rank cannot say "this family and no other": they rank below
+ * every staff role, so a staff shell must never offer or accept one on the
+ * Users screen while the franchise portal (Task 09) does not exist yet.
+ */
+export const FRANCHISE_ROLES = [
+  "franchisee_admin",
+  "facility_admin",
+  "facility_operator",
+] as const satisfies readonly BackendRole[];
 
 export interface BackendUser {
   id: string;
@@ -236,6 +253,24 @@ export interface MeResponse {
    * caller lists every vendor in the company.
    */
   vendor: MeVendor | null;
+  /**
+   * The franchisee a franchise login acts for; null for everyone else.
+   *
+   * The portal's identity comes from here the way the vendor portal's does
+   * from `vendor` — and Task 09 uses it to land a franchisee admin on the
+   * portal's technicians page and a facility role on its tickets page.
+   */
+  franchisee: MeFranchisee | null;
+}
+
+export interface MeFranchisee {
+  id: string;
+  name: string;
+  /** Stamped once, never recomputed — the `companies.code` rule (HOME for a home). */
+  code: string;
+  /** 'internal' | 'external' */
+  kind: string;
+  isHome: boolean;
 }
 
 export interface MeVendor {

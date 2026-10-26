@@ -28,6 +28,7 @@ async def notify(
     pincode: str | None = None,
     vendor_id: uuid.UUID | None = None,
     audience: str | None = None,
+    franchisee_id: uuid.UUID | None = None,
 ) -> Notification:
     """Ring the bell. Adds to the caller's transaction; does NOT commit.
 
@@ -47,12 +48,21 @@ async def notify(
     `audience` NARROWS the staff audience to one role instead — `'payers'` is
     the company's National Heads, or its Admins when it has none. For work only
     one kind of person can do, where a company-wide row would ring everybody.
-    See `models.notification.AUDIENCES`.
+    See `models.notification.AUDIENCES`. `'franchisee_admin'` is addressed to
+    ONE franchisee's admins, so it REQUIRES `franchisee_id` — the model's
+    `franchisee_audience` CHECK holds the pair together.
+
+    `franchisee_id` says WHICH franchisee the row is about, for rows addressed
+    to its admins and for `payers` rows of a specific franchisee's money. The
+    staff audience ignores it entirely (`audience` of a role spelled
+    `franchisee_admin` never matches a staff role) — pass it with `audience`,
+    or it says nothing.
 
     The realtime frame is the caller's to publish. See
     `core.realtime.publish_notification`, and pass it the returned row's `id` —
     web push needs it to find the row again and to deduplicate across workers —
-    and the same `audience`, or the console socket rings the wrong people.
+    and the same `audience` AND `franchisee_id`, or the console socket rings the
+    wrong people.
     """
     row = Notification(
         company_id=company_id,
@@ -64,6 +74,7 @@ async def notify(
         pincode=pincode,
         vendor_id=vendor_id,
         audience=audience,
+        franchisee_id=franchisee_id,
     )
     db.add(row)
     # `id` is a DB-side `gen_random_uuid()` default and sessions run

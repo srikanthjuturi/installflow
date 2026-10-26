@@ -22,6 +22,15 @@ What cannot be produced here, and why it is absent rather than faked:
 `Cancelled` and `AI Review`. Nothing in the API writes either — a technician
 cancelling returns the job to the pool and is charged a penalty, which is what
 the 'cancelled' share of the mix actually becomes.
+
+Spare parts (Task 16 §5.1 row 7). A small share of in-progress jobs wait in
+`Awaiting Part`, and a third of the jobs that close raise a part on the way:
+the technician asks, the franchisee's facility operator approves and issues,
+and for half of those logs the old part coming back after the job is done —
+every step through `jobs.service.request_part` and `spare_parts.service.act`,
+so `verify._parts_agree_with_status` has settled requests to read as well as
+open ones. A technician whose franchisee has no facility (Northgate, on
+purpose) cannot raise one: the run walks that refusal once, as a probe.
 """
 
 import dataclasses
@@ -31,20 +40,28 @@ import uuid
 from collections.abc import Sequence
 
 from fastapi import BackgroundTasks, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
+from app.core.ledger import redeemable_balance
 from app.core.slots import bookable_slots
+from app.core.tickets import TERMINAL_STATUSES
 from app.features.jobs import service as jobs_service
-from app.features.jobs.schemas import ProofArtifactIn
+from app.features.jobs.schemas import PartRequestCreate, ProofArtifactIn
+from app.features.spare_parts import service as parts_service
+from app.features.spare_parts.schemas import ApproveBody, IssueBody, ReturnBody
+from app.features.technicians import transfer_service
+from app.features.technicians.schemas import TechnicianTransferRequest
 from app.features.tickets import feedback_service
 from app.features.tickets import service as tickets_service
 from app.features.tickets.schemas import ForceCloseRequest, TicketCreateRequest
+from app.models.ledger import LedgerEntry
+from app.models.spare_part import SparePartRequest
 from app.models.technician import TechnicianNode, TechnicianPincode, TechnicianProfile
 from app.models.ticket import Ticket
 from app.scripts.seed.guards import assert_unreachable, synthetic_phone
-from app.scripts.seed.tenant import Tenant
+from app.scripts.seed.tenant import OTHER_PART_NAMES, Tenant, split_pincodes
 
 #: How the 500 divide. Shares rather than counts so the same mix survives a
 #: smaller `--tickets` run. They are the states a real week leaves behind, not
@@ -53,7 +70,8 @@ MIX: tuple[tuple[str, float], ...] = (
     ("pool_no_slot", 0.24),   # raised, customer has not picked a time
     ("pool_slot", 0.20),      # time agreed, nobody has taken it
     ("assigned", 0.14),       # a technician holds it
-    ("in_progress", 0.06),    # proof captured, work under way
+    ("in_progress", 0.04),    # proof captured, work under way
+    ("awaiting_part", 0.02),  # work under way, waiting on the facility
     ("awaiting_customer", 0.06),  # finished, customer not answered
     ("closed", 0.20),         # customer confirmed and rated → payout
     ("penalised", 0.06),      # accepted then cancelled → penalty, back to pool
@@ -73,6 +91,16 @@ FORCE_CLOSE_REASONS: tuple[str, ...] = (
     "Customer did not respond to the confirmation link",
     "Customer confirmed verbally on call",
 )
+
+#: Intents that need a facility to answer — chosen only among technicians whose
+#: franchisee has one, so they are never refused for the one reason this file
+#: walks on purpose elsewhere (`probe_no_facility`).
+NEEDS_FACILITY = ("awaiting_part",)
+
+#: The share of closing jobs that raise a part on the way, and the share of
+#: those that also log the old part coming back after Complete.
+PART_ON_CLOSED = 1 / 3
+RETURNED_SHARE = 1 / 2
 
 CANCEL_REASONS: tuple[str, ...] = (
     "Vehicle breakdown on the way",
@@ -245,6 +273,114 @@ def _artifacts(company_id: uuid.UUID, row: Ticket) -> list[ProofArtifactIn]:
     ]
 
 
+def _facility_of(tenant: Tenant, worker: Worker):
+    """The facility operator who answers this worker's requests, or None."""
+    seed = tenant.franchisee_seed(worker.profile.franchisee_id)
+    return None if seed is None else seed.facility
+
+
+async def _raise_part(
+    db: AsyncSession,
+    tenant: Tenant,
+    worker: Worker,
+    row: Ticket,
+    *,
+    rng: random.Random,
+) -> SparePartRequest:
+    """The technician asks for a part on their started job.
+
+    A job in the first category picks from its catalogue; every other category
+    has no list, so the technician types the name — the "Other" path (P2).
+    """
+    listed = tenant.parts_by_node.get(row.node_id)
+    if listed:
+        body = PartRequestCreate(sparePartId=rng.choice(listed), note="Seeded request")
+    else:
+        body = PartRequestCreate(
+            otherName=rng.choice(OTHER_PART_NAMES), note="Seeded request"
+        )
+    await jobs_service.request_part(
+        db, row.id, company_id=tenant.company_id, profile=worker.profile, body=body
+    )
+    request = await db.scalar(
+        select(SparePartRequest)
+        .where(
+            SparePartRequest.company_id == tenant.company_id,
+            SparePartRequest.ticket_id == row.id,
+        )
+        .order_by(SparePartRequest.created_at.desc())
+        .limit(1)
+    )
+    await db.refresh(row)
+    return request
+
+
+async def _facility_answers(
+    db: AsyncSession, tenant: Tenant, worker: Worker, request: SparePartRequest, row: Ticket
+) -> None:
+    """The franchisee's operator approves and issues the new part."""
+    operator = _facility_of(tenant, worker)
+    await parts_service.act(db, operator, request.id, "approve", body=ApproveBody())
+    await parts_service.act(
+        db, operator, request.id, "issue", body=IssueBody(note="New part issued")
+    )
+    await db.refresh(row)
+
+
+async def probe_no_facility(
+    db: AsyncSession,
+    tenant: Tenant,
+    workers: list[Worker],
+    *,
+    index: int,
+    background: BackgroundTasks,
+    rng: random.Random,
+) -> Outcome | None:
+    """Walk the `NO_FACILITY` refusal once, on purpose (owner ruling R4/P8).
+
+    A franchisee with no active facility admin or operator cannot have a part
+    requested — nobody in the staff shell works the queue — so a started job at
+    one asks and is told so. The job stays `In Progress` (nothing was written);
+    this returns None when no franchisee is left without one.
+    """
+    stranded = [
+        w for w in workers
+        if (seed := tenant.franchisee_seed(w.profile.franchisee_id)) is not None
+        and seed.facility is None
+    ]
+    if not stranded:
+        return None
+    worker = stranded[0]
+    try:
+        row = await _raise_ticket(db, tenant, worker, index=index, with_slot=True, rng=rng)
+    except (AppError, HTTPException):
+        return None  # the vendor is out of room - there is nothing to probe with
+    if row.slot_start is None:
+        return None
+    await jobs_service.accept(
+        db, row.id, company_id=tenant.company_id, profile=worker.profile,
+        background=background,
+    )
+    await db.refresh(row)
+    await jobs_service.submit_proof(
+        db, row.id, company_id=tenant.company_id, profile=worker.profile,
+        artifacts=_artifacts(tenant.company_id, row),
+        observed_serial=row.serial_number, observed_serial_source="scanned",
+    )
+    await db.refresh(row)
+    try:
+        await _raise_part(db, tenant, worker, row, rng=rng)
+    except AppError as exc:
+        if exc.code != "NO_FACILITY":
+            raise
+    else:
+        raise RuntimeError(
+            "A part request was accepted at a franchisee with no facility staff "
+            "— the NO_FACILITY refusal is broken."
+        )
+    return Outcome(ticket_id=row.id, intent="no_facility", status=row.status, settled=False)
+
+
 async def drive(
     db: AsyncSession,
     tenant: Tenant,
@@ -261,8 +397,13 @@ async def drive(
     background = BackgroundTasks()
     outcomes: list[Outcome] = []
 
+    # The workers a facility-needing intent may use. If none has one (a company
+    # built without the franchisee setup) those intents fall back to everyone,
+    # and the part step below is skipped rather than failed.
+    served = [w for w in workers if _facility_of(tenant, w) is not None] or workers
+
     for index, intent in enumerate(plan(count, rng), start=1):
-        worker = rng.choice(workers)
+        worker = rng.choice(served if intent in NEEDS_FACILITY else workers)
         try:
             outcome = await _one(
                 db,
@@ -288,6 +429,12 @@ async def drive(
         outcomes.append(outcome)
         if on_progress is not None:
             on_progress(index, count, outcome)
+
+    probe = await probe_no_facility(
+        db, tenant, workers, index=count + 1, background=background, rng=rng
+    )
+    if probe is not None:
+        outcomes.append(probe)
     return outcomes
 
 
@@ -382,12 +529,37 @@ async def _one(
     if intent == "in_progress":
         return done()
 
+    if intent == "awaiting_part":
+        # Left waiting: the slot was confirmed AHEAD and this ticket is never
+        # backdated, or `_live_tickets_still_have_a_future` would fail it.
+        if _facility_of(tenant, worker) is not None:
+            await _raise_part(db, tenant, worker, row, rng=rng)
+        return done()
+
+    part = None
+    if (
+        intent == "closed"
+        and _facility_of(tenant, worker) is not None
+        and rng.random() < PART_ON_CLOSED
+    ):
+        # The part detour: ask, get it approved and issued — the job returns to
+        # `In Progress` by itself once no request is open — then carry on.
+        part = await _raise_part(db, tenant, worker, row, rng=rng)
+        await _facility_answers(db, tenant, worker, part, row)
+
     await jobs_service.complete(
         db, row.id, company_id=company_id, profile=profile
     )
     await db.refresh(row)
     if intent == "awaiting_customer":
         return done()
+
+    if part is not None and rng.random() < RETURNED_SHARE:
+        # Allowed after Complete: the old part usually comes back later.
+        await parts_service.act(
+            db, _facility_of(tenant, worker), part.id, "return",
+            body=ReturnBody(note="Old part received back"),
+        )
 
     # closed: only the customer can do this, through the link they were sent.
     await feedback_service.record_feedback(
@@ -406,3 +578,114 @@ async def _one(
     )
     await db.refresh(row)
     return done(settled=True)
+
+
+async def hand_one_ticket_over(
+    db: AsyncSession, tenant: Tenant, outcomes: Sequence[Outcome]
+) -> str | None:
+    """Staff hand one unassigned HOME ticket to the external franchisee (Task 18).
+
+    The only way a ticket ends up flagged `routing_override`, so it is the only
+    way `verify._override_flags_are_honest` and the carve-out-skips-handed-tickets
+    rule have a row to read. Picks a ticket nobody holds whose pincode home owns,
+    hands it to Crestline, and says what it did; None when there is none.
+    """
+    if len(tenant.franchisees) < 2:
+        return None
+    home = tenant.franchisees[0]
+    target = next((f for f in tenant.franchisees if not f.is_home), None)
+    if target is None:
+        return None
+    for outcome in outcomes:
+        if outcome.intent not in ("pool_no_slot", "pool_slot") or outcome.settled:
+            continue
+        row = await db.get(Ticket, outcome.ticket_id)
+        if (
+            row is None
+            or row.technician_id is not None
+            or row.status not in ("New", "Slot Pending")
+            or row.franchisee_id != home.id
+        ):
+            continue
+        try:
+            await tickets_service.hand_to_franchisee(
+                db,
+                tenant.admin,
+                row.id,
+                franchisee_id=target.id,
+                reason="Seeded hand-over: the home desk asked for another team",
+            )
+        except (AppError, HTTPException):
+            continue
+        await db.refresh(row)
+        return f"{row.code} handed to {target.name} (routing_override={row.routing_override})"
+    return None
+
+
+async def transfer_one_technician(db: AsyncSession, tenant: Tenant) -> str | None:
+    """Move one technician who has history to another franchisee (Task 17).
+
+    Run AFTER backdating, and for a technician with ledger rows but nothing to
+    redeem and no open job (an employee, or a freelancer who only paid
+    penalties): the move must come after the money it leaves behind, or
+    `_transferred_technicians_keep_their_old_money` would read rows written
+    "before" a transfer that happened later, and the check proves nothing without
+    rows to read. Candidates the move refuses (open job, balance, an open
+    redemption) are stepped over; None when nobody qualifies.
+    """
+    if len(tenant.franchisees) < 2:
+        return None
+    codes_of = {
+        f.id: split_pincodes(tenant.pincodes)[i]
+        for i, f in enumerate(tenant.franchisees)
+    }
+    for profile in tenant.technicians:
+        await db.refresh(profile)
+        history = await db.scalar(
+            select(func.count())
+            .select_from(LedgerEntry)
+            .where(
+                LedgerEntry.company_id == tenant.company_id,
+                LedgerEntry.technician_id == profile.id,
+            )
+        )
+        if not history:
+            continue
+        open_jobs = await db.scalar(
+            select(func.count())
+            .select_from(Ticket)
+            .where(
+                Ticket.company_id == tenant.company_id,
+                Ticket.technician_id == profile.id,
+                Ticket.status.not_in(TERMINAL_STATUSES),
+            )
+        )
+        if open_jobs:
+            continue
+        balance = await redeemable_balance(
+            db, company_id=tenant.company_id, technician_id=profile.id
+        )
+        if balance > 0:
+            continue
+        target = next(
+            (f for f in tenant.franchisees if f.id != profile.franchisee_id), None
+        )
+        if target is None:
+            return None
+        try:
+            await transfer_service.transfer_technician(
+                db,
+                tenant.admin,
+                profile.id,
+                TechnicianTransferRequest(
+                    franchiseeId=target.id,
+                    reason="Seeded transfer: moved after their last job",
+                    pincodes=codes_of[target.id][:1],
+                ),
+                dry_run=False,
+            )
+        except (AppError, HTTPException):
+            continue
+        await db.refresh(profile)
+        return f"{profile.code} moved to {target.name}"
+    return None
