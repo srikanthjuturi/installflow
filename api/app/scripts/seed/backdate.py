@@ -6,7 +6,8 @@ slot that has already gone. So the lifecycle is driven forward at real time —
 which is what keeps prices, penalties and payouts genuine — and the row is
 moved backwards afterwards.
 
-Three traps, all of them silent:
+Four traps, all of them silent (the fourth, `accept_snapshot->>'acceptedAt'`,
+is handled in `shift_ticket` and explained there):
 
 1. `updated_at` carries `onupdate=func.now()` (`app/db/mixins.py`), so ANY
    later ORM write stomps a shifted row back to the real present. Backdating
@@ -43,6 +44,15 @@ _TICKET_CHILDREN: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("ticket_attachments", "ticket_id", ("created_at", "updated_at")),
     ("ledger_entries", "ticket_id", ("created_at", "updated_at")),
     ("notifications", "ticket_id", ("created_at", "updated_at")),
+    # Task 16: a settled ticket may carry part requests. Every moment on one
+    # moves with the ticket, or a request would read as decided before it was
+    # raised — which `_parts_agree_with_status` cannot see, only a reader of the
+    # facility queue can.
+    (
+        "spare_part_requests",
+        "ticket_id",
+        ("created_at", "updated_at", "decided_at", "issued_at", "returned_at"),
+    ),
 )
 
 #: The ticket's own moments. `expected_date` is a DATE and is shifted by whole
@@ -78,6 +88,25 @@ async def shift_ticket(
             f"WHERE id = :id"
         ),
         {"delta": delta, "days": delta.days, "id": ticket_id},
+    )
+
+    # The accept snapshot froze `acceptedAt` as TEXT inside JSONB, so no column
+    # shift reaches it: left alone, it would read weeks AFTER the timeline's own
+    # `assigned` event, and the speed clock (`max(acceptedAt, slot_start)`) would
+    # start in the future. Same delta, same format `accept_snapshot.assemble`
+    # writes (`...Z`, microseconds). Money is already written — a speed row
+    # was settled at the real clock, and every event moves by one delta, so the
+    # measured duration it was settled on is unchanged.
+    await db.execute(
+        text(
+            "UPDATE tickets SET accept_snapshot = jsonb_set(accept_snapshot, "
+            "'{acceptedAt}', to_jsonb(to_char("
+            "((accept_snapshot->>'acceptedAt')::timestamptz - :delta) "
+            "AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'))) "
+            "WHERE id = :id AND accept_snapshot IS NOT NULL "
+            "AND accept_snapshot ? 'acceptedAt'"
+        ),
+        {"delta": delta, "id": ticket_id},
     )
 
     for table, fk, columns in _TICKET_CHILDREN:

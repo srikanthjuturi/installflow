@@ -33,6 +33,7 @@ import uuid
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -150,12 +151,30 @@ class Pincode(Base, AuditMixin):
     source: Mapped[str] = mapped_column(
         String(8), nullable=False, server_default=text("'import'")
     )
+    #: The pincode's representative point, loaded by
+    #: app.scripts.import_pincode_coordinates from an external file. NULL until
+    #: loaded — most rows start NULL and that is a real state, not a gap to fill
+    #: with a guess. Float (double precision) to match tickets.latitude, which
+    #: travel-distance compares against this via core.coordinates.metres_between.
+    #: Bounded to India by the CHECK below, the same box tickets carries and
+    #: core.coordinates.IndiaLatitude states to pydantic.
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
         # The naming convention adds the ck_pincodes_ prefix; passing it here
         # too produced names like ck_tickets_ck_tickets_status once already.
         CheckConstraint("code ~ '^[1-9][0-9]{5}$'", name="format"),
         CheckConstraint("source IN ('import', 'manual')", name="source"),
+        # Half a point is not a place; the box is India, not the globe. Mirrors
+        # tickets.coordinates_both_or_neither so the two coordinate sets obey
+        # one rule. Declared on the model so --autogenerate sees it.
+        CheckConstraint(
+            "(latitude IS NULL) = (longitude IS NULL) "
+            "AND (latitude IS NULL OR (latitude BETWEEN 6 AND 38 "
+            "AND longitude BETWEEN 68 AND 98))",
+            name="coordinates",
+        ),
         Index("ix_pincodes_state_id", "state_id"),
     )
 

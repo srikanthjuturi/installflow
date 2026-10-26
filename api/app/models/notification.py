@@ -167,6 +167,27 @@ NOTIFICATION_KINDS = (
     #: A vendor asked for a bigger credit line, or somebody decided that
     #: request. Addressed the same way round as `vendor_payment`.
     "vendor_credit_request",
+    #: A technician's coverage moved to a different franchisee because a
+    #: carve-out claimed pincodes they were the sole coverage for (Task 03,
+    #: F6). Not raised for a ticket re-stamp — that is `franchisee_changed` on
+    #: `ticket_events`, a different audience entirely.
+    "technician_moved",
+    #: A technician asked a franchisee's facility for a spare part (Task 12).
+    #: `audience='facility'` — the franchise staff of that franchisee, nobody on
+    #: company staff (owner ruling 2026-10-15, R4).
+    "part_requested",
+    #: A facility REJECTED a part request — including one it had approved
+    #: first (R2). Written for rejections only: an approval is nobody's work
+    #: item but the facility's. Territory staff own the ticket (F7) and a job
+    #: that cannot get its part may need a force-close or a different plan.
+    "part_decided",
+    #: A facility handed the new part to the technician. Territory staff may
+    #: need to book the revisit.
+    "part_issued",
+    #: A manager handed an unassigned ticket to a franchisee (Task 18).
+    #: `audience='franchisee_admin'`, `franchisee_id` = the receiving franchisee. The
+    #: arrival event for work - like `technician_joined`, good news, not a problem.
+    "ticket_handed",
 )
 
 #: Who a row is for when territory is the wrong question.
@@ -190,6 +211,15 @@ NOTIFICATION_KINDS = (
 #: to the other — either may recharge, so both hear about the balance and the
 #: outcome of a recharge whichever of them asked.
 #:
+#: `franchisee_admin` — the franchisee admins of the row's `franchisee_id` and
+#: nobody else, staff included. A non-home technician's redemption or UPI
+#: change is THEIR franchisee admin's work, not the company payer's (Task 05,
+#: F7/F8), so a company-wide or territory row would ring the wrong people.
+#: It requires `franchisee_id` to be set (`franchisee_audience` CHECK) — the
+#: audience says which KIND of reader, the id says which one, exactly the
+#: pairing `vendor` makes. `payers` additionally reaches them when the row's
+#: franchisee is theirs — see `core.audience`.
+#:
 #: `vendor` — the named vendor's own people and NOBODY on staff. The only
 #: audience that narrows AWAY from staff rather than within them, and it exists
 #: because `vendor_id` alone does not: a row carrying a vendor id and no
@@ -210,6 +240,13 @@ AUDIENCES = (
     "admin",
     "billing",
     "vendor",
+    "franchisee_admin",
+    #: `facility` — the franchise staff of the row's `franchisee_id`: facility
+    #: admins, facility operators and franchisee admins. Never company staff,
+    #: the home franchisee included (owner ruling 2026-10-15, R4), and no
+    #: territory staff. Like `vendor` it narrows AWAY from staff: no staff role
+    #: is spelled `facility`, so it falls out of every territory branch.
+    "facility",
 )
 
 
@@ -249,13 +286,21 @@ class Notification(Base, IdMixin, AuditMixin):
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     #: NARROWS the staff audience to one role, where `vendor_id` widens it.
-    #: NULL for every row but a redemption's. See `AUDIENCES`.
+    #: NULL for every row but a redemption's and a UPI change's. See `AUDIENCES`.
     #:
-    #: ⚠ Three places decide who hears a row, and all three read this:
+    #: ⚠ FOUR places decide who hears a row, and all four read this:
     #: `notifications.service._visible` (the feed and the count),
-    #: `core.coverage.users_notified_by` (web push) and the console socket's
-    #: `_Visibility.hears_notification`. A fourth reader must too.
+    #: `core.coverage.users_notified_by` (web push), the console socket's
+    #: `_Visibility.hears_notification` and `core.audience.hears` (the pure
+    #: spec those two delegate to). A fifth reader must too.
     audience: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: The franchisee the row is ABOUT, for rows addressed to its admins
+    #: (`audience='franchisee_admin'`) and for `payers` rows of a specific
+    #: franchisee's money. NULL for the staff-only events — and NULL is also
+    #: what keeps every company-wide row out of a franchise reader's feed,
+    #: whichever audience it carries. NOT set on its own: the CHECK pairs it
+    #: with `audience`. COMPOSITE FK — see __table_args__.
+    franchisee_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
     __table_args__ = (
         # Built FROM the tuple above rather than spelled out beside it. It was
@@ -301,6 +346,25 @@ class Notification(Base, IdMixin, AuditMixin):
         ),
         # The vendor portal's feed. Postgres makes no index for a foreign key.
         Index("ix_notifications_company_vendor", "company_id", "vendor_id"),
+        # The franchisee portal's feed (Task 05), and the covering index the
+        # composite FK below needs — Postgres makes none, so deleting a
+        # franchisee would otherwise scan the table.
+        Index("ix_notifications_company_franchisee", "company_id", "franchisee_id"),
+        # Composite, like every parent link here: a notification must not be
+        # able to name another company's franchisee. CASCADE — a removed
+        # franchisee's notifications have nobody left to read them.
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_notifications_company_franchisee",
+            ondelete="CASCADE",
+        ),
+        # An addressed franchise row must say which franchisee — the audience
+        # says which KIND of reader, and without the id the row is unanswerable.
+        CheckConstraint(
+            "audience IS DISTINCT FROM 'franchisee_admin' OR franchisee_id IS NOT NULL",
+            name="franchisee_audience",
+        ),
     )
 
 

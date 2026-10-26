@@ -4,6 +4,7 @@ import { useLocation, useParams } from "react-router";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
@@ -17,7 +18,10 @@ import {
   ProofPanel,
   TechnicianPanel,
 } from "@/components/tickets/SidePanels";
+import { SpeedPanel, TravelPanel } from "@/components/tickets/AllowancePanels";
+import { HandToFranchiseeDialog } from "@/components/tickets/HandToFranchiseeDialog";
 import { NoShowDialog } from "@/components/tickets/NoShowDialog";
+import { PartRequestsPanel } from "@/components/tickets/PartRequestsPanel";
 import { PenaltiesPanel } from "@/components/tickets/PenaltiesPanel";
 import { ReversePenaltyDialog } from "@/components/tickets/ReversePenaltyDialog";
 import { Timeline } from "@/components/tickets/Timeline";
@@ -25,17 +29,19 @@ import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { readNavOrigin, useNavOrigin } from "@/hooks/useNavOrigin";
 import { useRulesConfig } from "@/hooks/useSettings";
+import { canHandOver as mayHandOver, handOverToast } from "@/lib/handOver";
 import { formatSlot } from "@/utils/datetime";
 import { moneyPaise } from "@/utils/money";
 import { RescheduleDialog } from "@/components/tickets/RescheduleDialog";
 import {
+  useHandToFranchisee,
   useRecordNoShow,
   useRescheduleTicket,
   useReversePenalty,
   useTicket,
 } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
-import { isTerminalTicketStatus, isTimeChoosable } from "@/types";
+import { isReschedulable, isTerminalTicketStatus } from "@/types";
 import type { TicketPenalty } from "@/types/ticket";
 
 /**
@@ -120,6 +126,8 @@ export default function TicketDetailPage({
   const recordNoShow = useRecordNoShow();
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const reschedule = useRescheduleTicket();
+  const [handOverOpen, setHandOverOpen] = useState(false);
+  const handOver = useHandToFranchisee();
   const { data: rules } = useRulesConfig({ enabled: isOps });
   const noShowAmount = rules?.penalty.at(-1)?.amount ?? null;
   const canRecordNoShow =
@@ -158,24 +166,37 @@ export default function TicketDetailPage({
      wants managers to reschedule but not technicians turns off one row.
 
      The status gate mirrors the server's `RESCHEDULABLE_STATUSES` through
-     `isTimeChoosable` — the same question the customer's link asks — and its
-     second half is the interesting one: `Escalated` means two different things
+     `isReschedulable` — `isTimeChoosable`, the question the customer's link
+     asks, plus `Awaiting Part` (Task 12 D8: a revisit for a part is booked
+     with this same dialog) — and the first half's second half is the
+     interesting one: `Escalated` means two different things
      depending on whether a technician is still on it. With one, the CUSTOMER
      said the job was not done, and giving that a new time would launder a
      complaint into an appointment. The server refuses it; this stops the button
      appearing at all. */
   const canReschedule =
-    canAct && has("jobs.reschedule") && !!ticket && isTimeChoosable(ticket);
+    canAct && has("jobs.reschedule") && !!ticket && isReschedulable(ticket);
+
+  /* Handing an unassigned ticket to another franchisee (Task 18). The same
+     `jobs.assign` key `Re-assign` rides; the Area-Manager floor is the
+     server's, and this whole action row is already ops-only. `mayHandOver` is
+     presentation — it mirrors the server's three statuses and "nobody holds
+     it", and the server decides again. */
+  const canHandOver = canAct && !!ticket && mayHandOver(ticket, has);
 
   /* Giving a penalty back. `isOps`, not `canAct`: a ticket closed since the
-     charge is still one whose charge can be unfair. The key is its own —
-     `penalties.reverse`, the four staff roles by default — and the server adds
-     the Area-Manager floor and the territory, which is what makes it "the
-     ticket's AM, else its RH, else a NH, else an Admin, or anyone senior".
+     charge is still one whose charge can be unfair.
+
+     Task 09 §5.10 — WHO may reverse is no longer a client gate. The server
+     answers per ROW (`TicketPenaltyOut.canReverse`): Admin/NH on every
+     franchisee, RH/AM on home's only, false for a franchise principal — whose
+     ticket page is not this one anyway. A feature key here knew the viewer's
+     role and nothing about WHOSE money the charge sits in, which is the whole
+     question's second half; the row's flag draws the button only where the
+     door would open.
 
      `reversing` outlives `reverseOpen` on purpose: clearing the penalty the
      moment the dialog starts to close would blank its sentence mid-animation. */
-  const canReversePenalty = isOps && has("penalties.reverse");
 
   /* Correcting what the technician typed, when the order was right. `isOps`,
      not `canAct`, like the order correction beside it: a settled ticket's
@@ -235,6 +256,11 @@ export default function TicketDetailPage({
                       </h2>
                       <StatusBadge status={ticket.status} />
                       <SlaBadge state={ticket.slaState} />
+                      {/* Task 18: a person chose this ticket's franchisee, so
+                          the pincode half of eligibility is waived for it. */}
+                      {ticket.routingOverride ? (
+                        <Badge variant="outline">Handed over</Badge>
+                      ) : null}
                     </div>
                     <p className="mt-1.5 text-[13px] text-ink-2">
                       {ticket.modelName} · {ticket.serviceType} · {ticket.serviceLevelHours}h
@@ -278,6 +304,17 @@ export default function TicketDetailPage({
                             onClick={() => setRescheduleOpen(true)}
                           >
                             Change the time
+                          </Button>
+                        ) : null}
+                        {/* After the time and before the person: a dialog, not
+                            a routed page — one choice and one sentence, like
+                            Change the time. */}
+                        {canHandOver ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => setHandOverOpen(true)}
+                          >
+                            Hand to another franchisee
                           </Button>
                         ) : null}
                         <LinkButton
@@ -350,18 +387,30 @@ export default function TicketDetailPage({
                 ) : null
               }
             />
+            {/* Task 13 §5.8 — NOT behind `isOps`: the server nulls both blocks
+                for a vendor and for facility staff and sends them to company
+                staff and the franchise admin, so one rule decides it. A panel
+                with nothing to say renders nothing. */}
+            <TravelPanel ticket={ticket} />
+            <SpeedPanel ticket={ticket} />
             {/* Beside the technician panel it concerns. Ops-only; it renders
-                nothing on a ticket nobody was ever charged on. */}
+                nothing on a ticket nobody was ever charged on. The Reverse
+                button is the row's own decision (`canReverse`, §5.10) — no
+                viewer-level prop is passed, because the viewer's key said less
+                than the row's flag does. */}
             {isOps ? (
               <PenaltiesPanel
                 ticket={ticket}
-                canReverse={canReversePenalty}
                 onReverse={(penalty) => {
                   setReversing(penalty);
                   setReverseOpen(true);
                 }}
               />
             ) : null}
+            {/* Task 13 §5.8 — like the two above, decided by the server and not
+                gated on `isOps`: the trail reaches staff (read-only) and the
+                franchise portal, and never a vendor. */}
+            <PartRequestsPanel ticket={ticket} origin={actionOrigin} />
             <ProofPanel ticket={ticket} />
             {/* Only where there is a closure to justify. Ops-only: the whole
                 point of the record is that a colleague can audit the decision,
@@ -421,6 +470,43 @@ export default function TicketDetailPage({
               }
             );
           }}
+        />
+      ) : null}
+
+      {/* Outside the loading branch for the same reason: the success seeds and
+          refetches the ticket. Closed only on success — a refusal (somebody
+          accepted it first) is the toaster's, and the hook re-reads the options
+          so the dialog drops into its Blocked state with the reason. */}
+      {ticket && isOps ? (
+        <HandToFranchiseeDialog
+          open={handOverOpen}
+          onOpenChange={setHandOverOpen}
+          ticket={{
+            id: ticket.id,
+            code: ticket.code,
+            status: ticket.status,
+            franchiseeName: ticket.franchiseeName,
+          }}
+          isPending={handOver.isPending}
+          onConfirm={(values) =>
+            handOver.mutate(
+              { id: ticket.id, ...values },
+              {
+                onSuccess: (result) => {
+                  const target = result.ticket.franchiseeName ?? "the other franchisee";
+                  toast.add({
+                    title: "Ticket handed over",
+                    description: handOverToast(ticket.code, target, {
+                      notified: result.notified,
+                      backInPool: result.backInPool,
+                      wasEscalated: ticket.status === "Escalated",
+                    }),
+                  });
+                  setHandOverOpen(false);
+                },
+              }
+            )
+          }
         />
       ) : null}
 

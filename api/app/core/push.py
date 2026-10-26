@@ -40,6 +40,10 @@ from app.core.job_passes import technicians_who_passed
 from app.core.push_text import PushText, normalize_language
 from app.models.product import ProductNode
 from app.models.push_token import PushToken
+from app.models.technician import (
+    TYPE_EMPLOYEE,
+    TechnicianProfile,
+)
 
 log = logging.getLogger(__name__)
 
@@ -253,7 +257,9 @@ async def _post(messages: list[dict]) -> list[dict] | None:
     try:
         async with httpx.AsyncClient(timeout=20, verify=verify) as client:
             response = await client.post(EXPO_PUSH_URL, json=messages, headers=headers)
-    except httpx.HTTPError as exc:
+    # OSError too: a configured CA bundle missing on disk raises FileNotFoundError
+    # at client construction, which httpx.HTTPError does not cover.
+    except (httpx.HTTPError, OSError) as exc:
         log.warning("push: could not reach Expo: %s", exc)
         return None
 
@@ -280,6 +286,8 @@ async def announce_pool_job(
     pincode: str,
     city: str,
     node_path_ids: list[uuid.UUID],
+    franchisee_id: uuid.UUID,
+    routing_override: bool,
     payout_paise: int | None = None,
     slot_start: datetime.datetime | None = None,
 ) -> int:
@@ -294,8 +302,21 @@ async def announce_pool_job(
     job from the pool, and announcing one somebody has just taken is the exact
     notification that teaches people to ignore notifications.
 
+    `franchisee_id` is the ticket's stamped franchisee (Task 04) — who the job
+    BELONGS to, and therefore whose phones this rings. Required on purpose, like
+    `technicians_covering`'s: a caller that forgets it would reach for a push
+    that silently went company-wide.
+
+    `routing_override` is the ticket's flag (Task 18), required like `franchisee_id`: a
+    ticket a person handed to this franchisee waives the pincode test, so the audience is
+    the franchisee's certified, online technicians wherever they work.
+
     Audience is `technicians_covering`, which is `pool_query` read backwards: it
     excludes anyone offline, suspended, or already full for that day.
+
+    Task 06 §4.7: when the summary carries a rupee figure the send splits by
+    type — freelancers read it whole, employees without it (no per-job payout
+    exists to promise them). Same key, same `data`, two sends.
     """
     if not settings.PUSH_ENABLED:
         return 0
@@ -313,6 +334,8 @@ async def announce_pool_job(
     technician_ids = await technicians_covering(
         db,
         company_id=company_id,
+        franchisee_id=franchisee_id,
+        routing_override=routing_override,
         pincode=pincode,
         node_path_ids=node_path_ids,
         slot_start=slot_start,
@@ -341,16 +364,34 @@ async def announce_pool_job(
     # whether opening it is worth doing.
     #
     # Whole rupees, no paise: this is a glance, not an invoice.
-    parts = [p for p in (
-        f"₹{payout_paise // 100:,}" if payout_paise else None,
-        what,
-        f"{city} {pincode}",
-    ) if p]
-
-    return await send_to_technicians(
+    money = f"₹{payout_paise // 100:,}" if payout_paise else None
+    rest = [p for p in (what, f"{city} {pincode}") if p]
+    parts = ([money] if money else []) + rest
+    # Task 06 §4.7: for an employee the rupee figure is a promise the product
+    # will not keep (T2 — they are paid through salary, no per-job payout), and
+    # Task 07 §5.9 hides it in the app for the same reason. So the SAME job is
+    # announced twice: freelancers see today's summary whole, employees see it
+    # without the rupee element — same `PushText`, same `data`, so nothing
+    # downstream can tell the difference except what is missing.
+    #
+    # One extra query, once per announcement, only when it matters: a type
+    # filter over the ids `technicians_covering` just produced.
+    employees = set(
+        await db.scalars(
+            select(TechnicianProfile.id).where(
+                TechnicianProfile.company_id == company_id,
+                TechnicianProfile.id.in_(technician_ids),
+                TechnicianProfile.technician_type == TYPE_EMPLOYEE,
+            )
+        )
+    ) if money else set()
+    freelancers = [t for t in technician_ids if t not in employees]
+    # Both sends are no-ops on an empty id list (`send_to_technicians`), so no
+    # branch is needed for "all of one type".
+    sent = await send_to_technicians(
         db,
         company_id=company_id,
-        technician_ids=technician_ids,
+        technician_ids=freelancers,
         # Titled as the singular of the prototype's Home banner, "{n} new jobs
         # in your area" — in each phone's language (`push_text`).
         message=PushText("pool.new", summary=" · ".join(parts)),
@@ -359,3 +400,15 @@ async def announce_pool_job(
         # until the technician accepts they are not entitled to them anyway.
         data={"type": "pool", "ticketId": str(ticket_id), "code": code},
     )
+    sent += await send_to_technicians(
+        db,
+        company_id=company_id,
+        technician_ids=list(employees),
+        message=PushText(
+            "pool.new",
+            summary=" · ".join(rest),
+        ),
+        # Identical routing data — the app opens the SAME offer either way.
+        data={"type": "pool", "ticketId": str(ticket_id), "code": code},
+    )
+    return sent

@@ -129,6 +129,15 @@ export const technicianSchema = z.object({
     ),
   /** EDIT ONLY. Only an Active technician is offered work — see the dialog. */
   status: z.enum(TECHNICIAN_STATUSES),
+  /**
+   * Task 08. The form holds the WORD and the wire takes the lowercase — the
+   * conversion happens once at submit, in the dialog. "Freelancer" is the
+   * default: the company's technicians historically are paid per job, and an
+   * accidental Employee would withhold a payout nobody meant to withhold — the
+   * reverse mistake only costs money nobody meant to pay.
+   */
+  // "Freelancer" is the default in the Add form — see the field's note above.
+  technicianType: z.enum(["Freelancer", "Employee"]),
 });
 
 export type TechnicianFormValues = z.infer<typeof technicianSchema>;

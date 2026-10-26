@@ -18,7 +18,7 @@
 
 import type { ListParams, Page } from "@/types/api";
 import type { LedgerEntry } from "@/types";
-import { apiGet, apiGetPage } from "./http";
+import { apiGet, apiGetBlob, apiGetPage } from "./http";
 
 export interface LedgerPool {
   /**
@@ -40,10 +40,39 @@ export interface LedgerPool {
   cancellations: number;
   bonusesPaidPaise: number;
   pickups: number;
+  /**
+   * Task 11's breakdown (W11) — the speed kinds INSIDE the two tiles above,
+   * never on top of them: `penaltiesCollectedPaise` already includes
+   * `speedPenaltyPaise` and `bonusesPaidPaise` already includes
+   * `speedRewardPaise`, so `collected − bonuses = balance` holds on every
+   * console. Optional because a server older than Task 11 sends none of them.
+   */
+  speedPenaltyPaise?: number;
+  speedPenalties?: number;
+  speedRewardPaise?: number;
+  speedRewards?: number;
+  /** Whose pool this is (Task 05, F12) — every money read names its franchisee. */
+  franchiseeId: string;
+  franchiseeName: string;
 }
 
-export function getLedgerPool(): Promise<LedgerPool> {
-  return apiGet<LedgerPool>("/ledger/pool");
+/**
+ * `?franchiseeId=` names whose pool is being read.
+ *
+ * Absent means the principal's own — home for staff, the franchisee's for a
+ * portal session. A staff Admin or NH names another franchisee's to read its
+ * pool; an unknown id is a 404 and a franchise principal is refused before the
+ * query even runs, so nothing here validates the id: the server owns that.
+ */
+export interface LedgerPoolParams {
+  franchiseeId?: string | null;
+}
+
+export function getLedgerPool(params: LedgerPoolParams = {}): Promise<LedgerPool> {
+  const q = new URLSearchParams();
+  if (params.franchiseeId) q.set("franchiseeId", params.franchiseeId);
+  const qs = q.toString();
+  return apiGet<LedgerPool>(`/ledger/pool${qs ? `?${qs}` : ""}`);
 }
 
 /**
@@ -59,4 +88,23 @@ export function listLedgerEntries(
   params: ListParams = {}
 ): Promise<Page<LedgerEntry>> {
   return apiGetPage<LedgerEntry>("/ledger", params);
+}
+
+/**
+ * The staff twin of the portal's employee statement (§5.10): one HOME
+ * employee's month, a CSV. The endpoint is home-franchisee only and National
+ * Head and above server-side (Task 06) — a gate the staff profile card
+ * mirrors, so nobody reaches the click just to be refused.
+ *
+ * The blob only: the browser names the file, for the same
+ * `Content-Disposition`-is-not-CORS-exposed reason the portal's
+ * `components/franchise/statements.ts` documents.
+ */
+export function getLedgerStatement(
+  technicianId: string,
+  month: string
+): Promise<Blob> {
+  return apiGetBlob(
+    `/ledger/statements/${technicianId}?month=${encodeURIComponent(month)}`
+  );
 }

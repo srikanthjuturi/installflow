@@ -32,6 +32,13 @@ interface TicketTableProps {
    * portal list is your own — and one sentence cannot be true of both.
    */
   emptyDescription?: string;
+  /**
+   * The empty state's TITLE — not overridable before Task 09 because every
+   * surface reading this table has read the same one. The portal splits what
+   * "empty" means by reader (a facility role waits for spare-part work, an
+   * admin waits for any ticket), so it supplies its own word.
+   */
+  emptyTitle?: string;
   /** One server page. The table renders these rows and only these rows. */
   tickets?: Ticket[];
   /** The envelope's pagination block — total, page count, where we are. */
@@ -68,6 +75,7 @@ interface TicketTableProps {
 export function TicketTable({
   basePath = "/tickets",
   emptyDescription = "Tickets raised by your vendors will appear here.",
+  emptyTitle = "No tickets yet",
   tickets,
   meta,
   params,
@@ -244,7 +252,7 @@ export function TicketTable({
       onRowClick={(t) => navigate(`${basePath}/${t.id}`, { state: origin })}
       minWidth="57.5rem"
       narrowed={narrowed}
-      emptyTitle="No tickets yet"
+      emptyTitle={emptyTitle}
       emptyDescription={emptyDescription}
       filteredEmptyTitle="No tickets match those filters"
       filteredEmptyDescription="Try a different status, or clear the search."

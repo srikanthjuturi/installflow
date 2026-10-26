@@ -9,13 +9,17 @@ anything not tied to a place should use; it is not a way to skip scoping.
 
 A notification with an `audience` is ADDRESSED, and the territory rule does not
 apply to it at all: `'payers'` reaches whoever holds `core.coverage.payer_role`
-— the company's National Heads, or its Admins when it has none — and nobody
-else, however wide their territory. Three places decide who hears a row and all
-three apply this; see `models.notification.Notification.audience`.
+— the company's National Heads, or its Admins when it has none, plus the row's
+franchisee's own admins when it carries a `franchisee_id` — and nobody
+else, however wide their territory. `'franchisee_admin'` reaches exactly one
+franchisee's admins. Four places decide who hears a row and all
+four apply this — `core.audience.hears` is the pure spec of the rule; see
+`models.notification.Notification.audience`.
 """
 
 import datetime
 import uuid
+from typing import Any
 
 from sqlalchemy import Select, false as sql_false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +28,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.coverage import payer_role
 from app.core.deps import Principal
 from app.core.scope import visible_pincodes
-from app.models.role import ADMIN, NATIONAL_HEAD
+from app.models.role import ADMIN, FRANCHISEE_ADMIN, NATIONAL_HEAD
 from app.features.notifications.schemas import NotificationKind, NotificationOut
 from app.models.notification import Notification, NotificationRead
 
@@ -67,6 +71,32 @@ async def _visible(db: AsyncSession, principal: Principal) -> Select:
         return stmt.where(Notification.vendor_id == principal.vendor_id).order_by(
             *_NEWEST_FIRST
         )
+
+    if principal.is_franchise:
+        # A franchise principal hears only rows ABOUT their franchisee — never
+        # a company-wide row, whose `franchisee_id` is NULL and covers staff
+        # work. Task 05's audience table (§4.8): the `franchisee_id ==` clause
+        # is what keeps Task 02's closed-leak guarantee, whatever audiences it
+        # permits; `franchisee_admin` (rows addressed to them) and `payers`
+        # (their franchisee's money — for the home, the company payer's own
+        # audience) join the unaddressed rows. `facility` (Task 12, owner ruling
+        # R4) is heard by EVERY franchise role of the franchisee — the parts
+        # desk and the franchisee admin — and by nobody on company staff, the
+        # home franchisee included; a facility role hears nothing else.
+        allowed: list[Any] = [Notification.audience == "facility"]
+        if principal.role == FRANCHISEE_ADMIN:
+            allowed += [
+                Notification.audience.is_(None),
+                Notification.audience == "franchisee_admin",
+                Notification.audience == "payers",
+            ]
+        if principal.franchisee_id is None:
+            # Fail closed — a corrupt membership.
+            return stmt.where(sql_false())
+        return stmt.where(
+            Notification.franchisee_id == principal.franchisee_id,
+            or_(*allowed),
+        ).order_by(*_NEWEST_FIRST)
 
     # Addressed rows first, and decided in Python so the SQL stays a literal:
     # a reader sees unaddressed rows, rows addressed to THEIR ROLE (a UPI change

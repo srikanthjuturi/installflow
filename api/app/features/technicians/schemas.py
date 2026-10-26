@@ -11,8 +11,9 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
+from app.core.base_location import BaseLocationOut
 from app.core.images import ImageUrl
 from app.core.phone import Phone
 from app.core.schemas import AppModel
@@ -29,6 +30,9 @@ OnboardingMode = Literal["invite", "direct"]
 RegisteredBy = Literal["self", "manager"]
 TechnicianStatus = Literal["active", "inactive", "suspended"]
 InviteStatus = Literal["pending", "sent", "failed", "registered", "cancelled", "expired"]
+#: How this technician is paid — whose stream their money rows carry (F12).
+#: Task 10 reads it at job accept and stamps the ledger from it.
+TechnicianType = Literal["employee", "freelancer"]
 
 
 # ── requests ──────────────────────────────────────────────────────────────────
@@ -57,6 +61,12 @@ class TechnicianCreateRequest(BaseModel):
     #: The name on that account. Optional even with a UPI ID — a manager may
     #: not know it — and a redemption falls back to the technician's own name.
     upiName: OptionalUpiName = None
+    #: How they are paid: salary ("employee") or per job ("freelancer"). Task 01
+    #: defaulted every row to freelancer; the choice is now the caller's, and
+    #: changing it later is refused while the technician holds an open job
+    #: (`core.franchise_money.type_change_refusal`) — T1 stamps the type a job
+    #: is ACCEPTED under, so a mid-job switch would restate accepted work.
+    technicianType: TechnicianType = "freelancer"
 
 
 class TechnicianUpdateRequest(BaseModel):
@@ -79,6 +89,10 @@ class TechnicianUpdateRequest(BaseModel):
     #: Clearable the same way, and tested for presence the same way.
     upiName: OptionalUpiName = None
     status: TechnicianStatus | None = None
+    #: Omitted leaves it alone; sent, it is refused with 409
+    #: `TECHNICIAN_HAS_OPEN_JOBS` while the technician still holds an open job.
+    #: Not editable here: re-typing the technician is Task 03's carve-out.
+    technicianType: TechnicianType | None = None
 
 
 class InviteCreateRequest(BaseModel):
@@ -93,6 +107,9 @@ class InviteCreateRequest(BaseModel):
     pincodes: list[Pincode] = Field(min_length=1, max_length=50)
     #: See `TechnicianCreateRequest.dailyJobCap` — normally absent.
     dailyJobCap: DailyJobCap | None = None
+    #: See `TechnicianCreateRequest.technicianType` — carried so the invite row
+    #: and the profile it becomes say the same thing about pay.
+    technicianType: TechnicianType = "freelancer"
 
 
 # ── responses ─────────────────────────────────────────────────────────────────
@@ -131,6 +148,16 @@ class TechnicianOut(AppModel):
     profileImageUrl: str | None
     isActive: bool
     status: TechnicianStatus
+
+    #: Who manages and pays this technician (F8): the franchisee their profile
+    #: is stamped with. `canManage` is the caller's own answer (`franchise_scope`'s
+    #: MANAGE column) — a staff member reading another franchisee's technician
+    #: sees it and can change nothing, so screens can gate the buttons off it.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
+    franchiseeIsHome: bool
+    technicianType: TechnicianType
+    canManage: bool
 
     regionId: uuid.UUID
     regionName: str
@@ -172,12 +199,27 @@ class TechnicianOut(AppModel):
     onboarding: OnboardingOut
     createdAt: datetime
 
+    # ── Task 10 (R9): the base at a glance — the "no base" badge and the
+    # source chip (*Pincode / GPS / Map / Set by admin*; `manual` reads "Set by
+    # admin"). All three null together when there is no base — null ≠ ₹0.
+    # COORDINATES deliberately not here: a coordinate pair is the base's whole
+    # content, and lists must not hand it to every row-reader (W13).
+    baseSource: str | None = None          # pincode | gps | map | manual
+    baseSetAt: datetime | None = None
+    baseSetBySelf: bool | None = None      # null = no base
+
 
 class TechnicianInviteOut(AppModel):
     registered: Literal[False] = False
     id: uuid.UUID
     phone: str
     status: InviteStatus
+    #: The franchisee the invite is joined to (F8) — the same stamp the profile
+    #: will carry when this phone registers. No `franchiseeIsHome`: an invite
+    #: has no money to hide, and the console does not render a field it cannot use.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
+    technicianType: TechnicianType
     regionId: uuid.UUID
     regionName: str
     #: Who sent the link — the tracking half of the invite path.
@@ -202,6 +244,14 @@ TechnicianRowOut = TechnicianOut | TechnicianInviteOut
 
 class TechnicianDetailOut(TechnicianOut):
     """The profile page. Same shape today; kept apart so it can grow."""
+
+    # ── Task 10: the base, full shape — NON-NULL only for a caller who can
+    # manage this technician (its franchisee admin; a home manager on a home
+    # technician). A staff caller merely viewing a non-home technician gets
+    # null here and the three list fields above (W13: coordinates are not
+    # theirs to see). Self-set bases need no approval and no cooldown (R9);
+    # the source chip and the "set by" line are the visibility.
+    baseLocation: BaseLocationOut | None = None
 
 
 class AppLinkOutcome(AppModel):
@@ -241,6 +291,14 @@ class TechnicianSessionOut(AppModel):
     name: str
     phone: str
     profileImageUrl: str | None
+    #: How they are paid (`models/technician.TECHNICIAN_TYPES`, Task 06 §4.6).
+    #: The app branches its money screens on this — the redeem card disappears
+    #: for an employee (T4), the earnings net is relabelled, and the pool offer
+    #: is read with no rupee figure on the lock screen (§4.7). Sent on both
+    #: sign-in and `/technicians/me` because one builder fills it; a screen
+    #: that learns the type only after "me" is a screen that shows the wrong
+    #: money button for one refresh.
+    technicianType: Literal["employee", "freelancer"]
     regionName: str
     #: Display-only, e.g. "Priya Deshmukh · Twincore Technologies" — who
     #: onboarded them. Already carries the company, but glued to a person's
@@ -281,6 +339,9 @@ class TechnicianSessionOut(AppModel):
     #: NOT derivable from `/jobs/today`: that list drops closed jobs, so the
     #: screen would show a smaller number than the server refuses on.
     jobsToday: int
+    # Task 14: the Home card says "set your base" until this is non-null, and
+    #: Profile → Base location reads it after.
+    baseLocation: BaseLocationOut | None = None
 
 
 class AvailabilityRequest(AppModel):
@@ -407,6 +468,24 @@ class PayoutAccountOut(AppModel):
     change: UpiChangeOut | None = None
 
 
+class UpiChangeRowOut(UpiChangeOut):
+    """A change request on the franchisee's waiting/approved/rejected lists.
+
+    The portal renders it inside a technician's name, so the row carries who it
+    is about — the staff profile page reached it from the profile instead.
+    """
+
+    technicianId: uuid.UUID
+    technicianName: str
+    technicianCode: str
+
+
+class UpiChangeCountOut(AppModel):
+    """The badge on the franchisee's Payouts tab: changes waiting on them."""
+
+    pending: int
+
+
 class DistrictTechnicianCount(AppModel):
     """One district of a state, and how many technicians work in it."""
 
@@ -438,3 +517,85 @@ class DistrictBreakdownOut(AppModel):
     districts: list[DistrictTechnicianCount]
     totalTechnicians: int
     withoutDistrict: int
+
+
+# ── moving a technician between franchisees (Task 17) ────────────────────────
+
+
+class TechnicianTransferRequest(BaseModel):
+    """`POST /technicians/{id}/transfer`. Deliberately has no `technicianType`
+    (D3: a type change has its own guards) and no `regionId` (D5: the region
+    follows the coverage)."""
+
+    franchiseeId: uuid.UUID
+    #: Required (>= 5 after stripping) unless `dryRun` — the service says which,
+    #: so a preview can run before anybody has typed a word.
+    reason: str | None = Field(default=None, max_length=255)
+    #: None = keep what is inside the target's range. A list = EXACTLY this
+    #: coverage after the move, every code of which must lie in that range.
+    pincodes: (
+        list[Annotated[str, StringConstraints(pattern=r"^[1-9][0-9]{5}$")]] | None
+    ) = Field(default=None, max_length=500)
+
+
+class TransferCoverageOut(AppModel):
+    source: Literal["kept", "supplied"]
+    kept: list[str]
+    trimmed: list[str]
+    added: list[str]
+    after: list[str]
+    keptCount: int
+    trimmedCount: int
+    addedCount: int
+    regionBefore: str | None
+    regionAfter: str | None
+    regionChanged: bool
+
+
+class TransferBlockerOut(AppModel):
+    #: None for the code-less 409s ("already works for…", "inactive").
+    code: str | None
+    message: str
+    openJobs: int | None = None
+    redeemablePaise: int | None = None
+    redemptionCode: str | None = None
+
+
+class TechnicianTransferRowOut(AppModel):
+    id: uuid.UUID
+    at: datetime
+    technicianId: uuid.UUID
+    fromFranchiseeId: uuid.UUID
+    fromFranchiseeName: str
+    toFranchiseeId: uuid.UUID
+    toFranchiseeName: str
+    technicianType: TechnicianType
+    reason: str
+    byUserId: uuid.UUID
+    byName: str
+    #: Derived from the two stored arrays, never stored twice.
+    kept: list[str]
+    trimmed: list[str]
+    added: list[str]
+
+
+class TechnicianTransferOut(AppModel):
+    dryRun: bool
+    technicianId: uuid.UUID
+    technicianCode: str
+    technicianName: str
+    technicianType: TechnicianType
+    fromFranchiseeId: uuid.UUID
+    fromFranchiseeName: str
+    fromFranchiseeIsHome: bool
+    toFranchiseeId: uuid.UUID
+    toFranchiseeName: str
+    toFranchiseeIsHome: bool
+    coverage: TransferCoverageOut
+    blockers: list[TransferBlockerOut]
+    warnings: list[str]
+    #: No blockers. On a dry run this is the whole answer; on an apply it is
+    #: always true (a blocker is raised as an error instead).
+    canTransfer: bool
+    #: Null on a dry run.
+    transfer: TechnicianTransferRowOut | None

@@ -40,17 +40,20 @@ export default function NotFoundPage() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
   const reduceMotion = useReducedMotion();
   const brand = useBrand();
 
   const home = signedIn
     ? {
-        to: landingPath({ superadmin, portal }),
+        to: landingPath({ superadmin, portal, franchise }),
         label: superadmin
           ? "Back to companies"
           : portal
             ? "Back to tickets"
-            : "Back to dashboard",
+            : franchise
+              ? "Back to portal"
+              : "Back to dashboard",
       }
     : { to: "/login", label: "Go to sign in" };
 

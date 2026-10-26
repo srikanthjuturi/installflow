@@ -18,6 +18,7 @@ from app.core.credits import balance as credit_balance
 from app.core.credits import balances as credit_balances
 from app.core.credits import grant_free
 from app.core.deps import Principal
+from app.core.franchise import create_home_franchisee
 from app.core.gst import assert_gstin_free_for_company
 from app.core.rules import load_rules
 from app.core.schemas import EmailStatus, ListParams
@@ -216,6 +217,10 @@ async def create_company(
     # The free credits, in the same transaction for the same reason: a company
     # that exists without its gift is one whose first ticket is refused.
     await grant_free(session, company.id, by_user=principal.user_id)
+    # The home franchisee, in the same transaction for the same reason as the
+    # rules and the gift: a company that exists without one is a company
+    # whose first technician or ticket has nothing to be stamped with.
+    await create_home_franchisee(session, company)
 
     # Stays None on the reuse branch: that admin already has a password, and
     # `users` is global, so minting a new one would sign them out of every other

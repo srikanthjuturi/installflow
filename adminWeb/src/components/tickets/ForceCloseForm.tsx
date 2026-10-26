@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { EMPTY } from "@/utils/datetime";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Paperclip, TriangleAlert, X } from "lucide-react";
-import { z } from "zod";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { NavOrigin } from "@/hooks/useNavOrigin";
 import { MAX_UPLOAD_BYTES } from "@/services/uploads";
 import { cn } from "@/lib/utils";
+import { forceCloseSchema, type ForceCloseFormValues } from "./forceCloseSchema";
 import { moneyPaise } from "@/utils/money";
 
 /** The three approved bases for a manager closure (§10). */
@@ -44,60 +45,6 @@ const REASONS = [
 const ACCEPT = "image/jpeg,image/png,image/webp,image/heic";
 const ACCEPTED_TYPES = ACCEPT.split(",");
 
-/**
- * Attachments are the whole point of this screen: §10 requires supporting
- * documents and images, and records who closed the ticket, when and on what
- * basis. The API rejects an empty list with a 422 — this schema stops it ever
- * getting that far.
- *
- * The field holds real `File` objects, not names. It used to hold `file.name`
- * strings, which meant the form collected evidence and then threw the bytes
- * away: what reached the (unimplemented) service was a list of filenames. They
- * are uploaded on submit, and what the API stores is the blob name each upload
- * returns.
- */
-const forceCloseSchema = z.object({
-  reason: z.string().min(1, "Select a reason for force-closure"),
-  notes: z
-    .string()
-    .trim()
-    .min(10, "Describe the attempts made — the note is kept for audit"),
-  attachments: z
-    .array(z.instanceof(File))
-    .min(1, "At least one supporting document or image is required")
-    .max(10, "Ten attachments is the most this records"),
-  /**
-   * What to credit the technician, in whole RUPEES as typed. Empty means
-   * nothing — which is a real answer here, not a skipped field.
-   *
-   * Only shown when a technician is actually assigned; the schema keeps the key
-   * unconditionally so the form's type does not change shape between renders.
-   */
-  technicianPayout: z
-    .string()
-    .trim()
-    .refine((v) => v === "" || /^\d{1,7}$/.test(v), "Enter a whole number of rupees"),
-  /**
-   * What to BILL the vendor for the same job, in whole RUPEES as typed. Empty
-   * means nothing, which is a real answer: a ticket whose customer never
-   * confirmed a slot had nobody attend, and billing the vendor for it would
-   * charge them for our own unfilled appointment.
-   *
-   * Independent of the payout above, and nothing here couples them. A technician
-   * who travelled and found the door locked is owed something while the vendor is
-   * billed nothing; a visit that happened but was never confirmed is the reverse.
-   *
-   * Always shown, unlike the payout — every ticket has a vendor, and the ticket
-   * carries the price it was stamped with at intake.
-   */
-  vendorCharge: z
-    .string()
-    .trim()
-    .refine((v) => v === "" || /^\d{1,9}$/.test(v), "Enter a whole number of rupees"),
-});
-
-export type ForceCloseFormValues = z.infer<typeof forceCloseSchema>;
-
 interface ForceCloseFormProps {
   ticketId: string;
   onSubmit: (values: ForceCloseFormValues) => void;
@@ -108,9 +55,31 @@ interface ForceCloseFormProps {
    * technician attend, so there is nobody to pay and the field is not shown.
    */
   technician: { name: string; payoutPaise: number } | null;
+  /**
+   * How the assigned technician is paid (§5.10, Task 06): an EMPLOYEE is
+   * salaried, so a force-closure credits no per-job payout — the field is
+   * replaced by one line saying so. Null when nobody holds the job.
+   */
+  technicianType: "employee" | "freelancer" | null;
   /** The vendor that asked for the visit, and the price this ticket stamped for
-   *  them at intake. Always present — every ticket has both. */
-  vendor: { name: string; pricePaise: number };
+   *  them at intake. The price is `number | null` since Task 04 nulls it for a
+   * franchise principal (who never reaches this staff-only page, but the type
+   * follows the wire). */
+  vendor: { name: string; pricePaise: number | null };
+  /**
+   * The travel allowance frozen when the technician accepted (Task 10 TA6,
+   * W5), or null when there is none to offer — nobody holds the job, the job
+   * pre-dates Task 10, or the server withholds the block. The field is drawn
+   * only when this is non-null AND `maxPaise > 0`: a ₹0 ceiling can pay
+   * nothing whatever is typed. Speed money is never written on a force-closure
+   * (S5, R7), so nothing here speaks of it.
+   */
+  travel: {
+    defaultPaise: number;
+    maxPaise: number;
+    km: number;
+    technicianName: string;
+  } | null;
   /**
    * The trail to hand back to the ticket that Cancel returns to, so abandoning
    * a force-close does not also lose the queue or the ledger behind it.
@@ -123,9 +92,17 @@ export function ForceCloseForm({
   onSubmit,
   isSubmitting,
   technician,
+  technicianType,
   vendor,
+  travel,
   cancelState,
 }: ForceCloseFormProps) {
+  // Shown only for a ceiling above ₹0; the schema caps at that same ceiling.
+  const travelShown = travel !== null && travel.maxPaise > 0;
+  const schema = useMemo(
+    () => forceCloseSchema(travelShown ? travel.maxPaise : null),
+    [travelShown, travel]
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   /** Files the picker refused, named so nothing disappears silently. */
   const [rejected, setRejected] = useState<string[]>([]);
@@ -136,7 +113,7 @@ export function ForceCloseForm({
     setValue,
     formState: { errors },
   } = useForm<ForceCloseFormValues>({
-    resolver: zodResolver(forceCloseSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       reason: "",
       notes: "",
@@ -148,8 +125,14 @@ export function ForceCloseForm({
       // Prefilled with the full price, for the mirror of the payout's reason:
       // the common case is a visit that happened and a customer who went quiet,
       // and the vendor owes for that. Editable down to nothing for the case
-      // where nobody attended.
-      vendorCharge: String(vendor.pricePaise / 100),
+      // where nobody attended. Null (Task 04 withholds it from a franchise
+      // principal) prefills empty — a gap, never ₹0.
+      vendorCharge:
+        vendor.pricePaise === null ? "" : String(vendor.pricePaise / 100),
+      // Pre-filled with what the technician was owed when they accepted (TA6):
+      // the manager may lower it or clear it, never raise it past the frozen
+      // ceiling. Not shown, and so not sent, without a ceiling.
+      travelAllowance: travelShown ? String(travel.defaultPaise / 100) : "",
     },
   });
 
@@ -296,10 +279,16 @@ export function ForceCloseForm({
               ) : null}
             </Field>
 
-            {/* Only when somebody actually holds the job. A ticket whose
-                customer never confirmed a slot has no technician, so there is
-                nobody to pay and asking would be a question with no answer. */}
-            {technician ? (
+            {/* Only when somebody FREELANCED the job: a ticket whose customer
+                never confirmed a slot has no technician, and a ticket an
+                EMPLOYEE held is paid through salary — §5.10's one line stands
+                where the box would be, as the answer rather than as a greyed
+                field still asking for a number it would throw away. */}
+            {technician && technicianType === "employee" ? (
+              <p className="flex items-start gap-2.5 rounded-md bg-info-bg px-3.5 py-3 text-[13px] leading-relaxed text-info">
+                Employees are paid through salary — no per-job payout.
+              </p>
+            ) : technician ? (
               <Field data-invalid={err("technicianPayout") ? true : undefined}>
                 <FieldLabel htmlFor="force-close-payout">
                   Credit {technician.name} (₹)
@@ -334,6 +323,44 @@ export function ForceCloseForm({
               </Field>
             ) : null}
 
+            {/* Task 13 §5.8 — after the payout, before the vendor's side. Drawn
+                only when the ticket froze a ceiling above ₹0; omitted is "pay
+                nothing" (W5), so a hidden field and a cleared one agree. */}
+            {travelShown ? (
+              <Field data-invalid={err("travelAllowance") ? true : undefined}>
+                <FieldLabel htmlFor="force-close-travel">
+                  Travel allowance (₹)
+                </FieldLabel>
+                <Input
+                  id="force-close-travel"
+                  inputMode="numeric"
+                  placeholder="0"
+                  aria-invalid={err("travelAllowance") ? true : undefined}
+                  aria-describedby={
+                    err("travelAllowance")
+                      ? "force-close-travel-error"
+                      : "force-close-travel-hint"
+                  }
+                  {...register("travelAllowance")}
+                />
+                {err("travelAllowance") ? (
+                  <FieldDescription
+                    id="force-close-travel-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {err("travelAllowance")}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription id="force-close-travel-hint">
+                    Worked out as {moneyPaise(travel.defaultPaise)} when{" "}
+                    {travel.technicianName} accepted ({travel.km} km). At most{" "}
+                    {moneyPaise(travel.maxPaise)}. Clear it to pay nothing.
+                  </FieldDescription>
+                )}
+              </Field>
+            ) : null}
+
             {/* Always, unlike the payout above: every ticket has a vendor, and
                 they asked for the visit whether or not anybody attended it. */}
             <Field data-invalid={err("vendorCharge") ? true : undefined}>
@@ -362,7 +389,7 @@ export function ForceCloseForm({
                 </FieldDescription>
               ) : (
                 <FieldDescription id="force-close-vendor-charge-hint">
-                  This job is priced at {moneyPaise(vendor.pricePaise)} to them.
+                  This job is priced at {vendor.pricePaise === null ? EMPTY : moneyPaise(vendor.pricePaise)} to them.
                   Clear it to bill nothing — which is right when nobody attended.
                 </FieldDescription>
               )}

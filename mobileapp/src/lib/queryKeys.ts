@@ -24,6 +24,10 @@ export const qk = {
   // from anywhere else already clears this list without the socket learning
   // about it.
   rescheduleSlots: (id: string) => ['jobs', id, 'reschedule-slots'] as const,
+  // Under `['jobs', id]` for the same reason (Task 15): `job.changed` and every
+  // `job` push already invalidate that prefix, so a facility's decision
+  // refreshes the Spare parts card without any new wiring.
+  jobParts: (id: string) => ['jobs', id, 'parts'] as const,
 
   // The window is part of the key, not just the request: a week, a month and a
   // range somebody picked are three different answers, and sharing one entry

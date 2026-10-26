@@ -152,6 +152,11 @@ TENANT_LINKS = [
     # A notification can also be addressed to a VENDOR. One naming another
     # company's vendor would put a stranger's customer on their portal.
     ("notifications", "vendor_id", "vendors"),
+    # A notification addressed to a FRANCHISEE (Task 05): whose admin the bell
+    # rings. One naming another company's franchisee would put a bell about a
+    # stranger's money on their portal — a redemption row named in its title
+    # they can then try to open.
+    ("notifications", "franchisee_id", "franchisees"),
     # Where a phone gets pushed to. A row pointing at another company's
     # technician would deliver one tenant's customer address to the other's
     # lock screen — and unlike a leaked list, nobody would ever see it happen.
@@ -203,6 +208,49 @@ TENANT_LINKS = [
     # How much a vendor may owe. A request naming another company's vendor
     # would let one tenant's National Head raise a stranger's credit line.
     ("vendor_credit_requests", "vendor_id", "vendors"),
+    # Who owns a pincode. One pointing at another company's franchisee would
+    # route one tenant's tickets to a second tenant's technicians.
+    ("franchisee_pincodes", "franchisee_id", "franchisees"),
+    # Task 10: the allowance rules, exactly two rows per franchisee. A rule
+    # row stamped for another company's franchisee would be unreachable by the
+    # reader (every query filters company_id) and silently widen what an
+    # accept in THAT company freezes.
+    ("franchisee_travel_rules", "franchisee_id", "franchisees"),
+    # A franchise login. Proves the LINK; whether one franchisee can read
+    # another's rows inside a company is an application invariant
+    # (core.franchise_scope, Task 02) this script cannot see.
+    ("memberships", "franchisee_id", "franchisees"),
+    ("technician_profiles", "franchisee_id", "franchisees"),
+    ("technician_invites", "franchisee_id", "franchisees"),
+    ("tickets", "franchisee_id", "franchisees"),
+    # Money. A payout or penalty booked to another company's franchisee would
+    # put one tenant's money in a second tenant's pool.
+    ("ledger_entries", "franchisee_id", "franchisees"),
+    ("redemptions", "franchisee_id", "franchisees"),
+    # Task 11: the speed matrix. A speed rule naming another company's
+    # franchisee, category or product would let one tenant's matrix price
+    # another's jobs — the money it stamps is frozen onto the accept, so the
+    # leak would be recorded, not just mis-routed.
+    ("franchisee_speed_rules", "franchisee_id", "franchisees"),
+    ("franchisee_speed_rules", "node_id", "product_nodes"),
+    ("franchisee_speed_rules", "model_id", "product_models"),
+    # Task 12: spare parts. A catalogue row naming another company's category
+    # or product would put one tenant's parts list under another's jobs.
+    ("spare_parts", "node_id", "product_nodes"),
+    ("spare_parts", "model_id", "product_models"),
+    # A part request is the only record that a part left a store. Every parent
+    # it names must be this company's: the franchisee whose desk it lands on,
+    # the ticket it is about, the technician who asked, the catalogue row.
+    ("spare_part_requests", "franchisee_id", "franchisees"),
+    ("spare_part_requests", "ticket_id", "tickets"),
+    ("spare_part_requests", "technician_id", "technician_profiles"),
+    ("spare_part_requests", "spare_part_id", "spare_parts"),
+    # Task 17: a transfer is the only record of why a technician is where they
+    # are. A history line naming another company's technician or franchisee would
+    # let one tenant read - or forge - how another moves its people.
+    ("technician_transfers", "technician_id", "technician_profiles"),
+    ("technician_transfers", "from_franchisee_id", "franchisees"),
+    ("technician_transfers", "to_franchisee_id", "franchisees"),
 ]
 
 

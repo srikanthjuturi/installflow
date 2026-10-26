@@ -7,7 +7,10 @@ two surfaces end up disagreeing about a rounding.
 """
 
 import datetime
+import typing as t
 import uuid
+
+from pydantic import Field
 
 from app.core.schemas import AppModel
 
@@ -19,6 +22,9 @@ class LedgerPoolOut(AppModel):
     so `balancePaise` is not a stored figure but the difference of the two
     below it, computed on every read. A stored balance is a number that can
     disagree with the rows it claims to summarise, and eventually does.
+
+    There is one pool PER FRANCHISEE (F12) since Task 05, so the answer names
+    which one it is.
     """
 
     #: Unspent penalty money — what a bonus is drawn against. **Can go
@@ -33,9 +39,33 @@ class LedgerPoolOut(AppModel):
     penaltiesCollectedPaise: int
     #: How many penalty entries still stand, not how many tickets — a job
     #: cancelled twice collected twice; a reversed penalty no longer counts.
+    #: Since Task 11 this counts ONLY cancellation/no-show penalties (W11);
+    #: standing speed penalties have their own two fields below.
     cancellations: int
+    #: Bonuses OUT, folding speed rewards in since Task 11 (W11) — so
+    #: `penaltiesCollectedPaise − bonusesPaidPaise = balancePaise` still reads
+    #: true on every console already deployed. The split is the two fields
+    #: below, additive into this and `penaltiesCollectedPaise`, never summed on
+    #: top of them.
     bonusesPaidPaise: int
     pickups: int
+
+    # ── Task 11's breakdown (§4.7, W11) — the speed kinds inside the two tiles ──
+
+    #: Standing speed penalties, NET of their reversals. Positive magnitude,
+    #: exactly as `penaltiesCollectedPaise` is.
+    speedPenaltyPaise: int
+    #: How many speed penalty entries still stand.
+    speedPenalties: int
+    #: Speed rewards PAID out of the pool (W7: a fast finish is paid even when
+    #: the pool is low) — a part of `bonusesPaidPaise`, never on top of it.
+    speedRewardPaise: int
+    #: How many speed reward entries there were.
+    speedRewards: int
+    #: Whose pool this is (Task 05 §4.12) — every money read names its
+    #: franchisee.
+    franchiseeId: uuid.UUID
+    franchiseeName: str
 
 
 class LedgerEntryOut(AppModel):
@@ -43,9 +73,11 @@ class LedgerEntryOut(AppModel):
 
     id: uuid.UUID
     at: datetime.datetime
-    #: `penalty` | `bonus` | `reversal`. The console renders its own label and
-    #: its own sign from this — see `models/ledger.py` on why no sign is stored.
-    #: A `reversal` is a penalty given back: the technician's `+`, the pool's out.
+    #: `penalty` | `bonus` | `reversal` | `speed_reward` | `speed_penalty` (the
+    #: kinds in `POOL_KINDS`). The console renders its own label and its own
+    #: sign from this — see `models/ledger.py` on why no sign is stored: to the
+    #: pool a charge is money IN, a bonus and a reward are out, and a
+    #: `reversal` returns whichever charge it names.
     kind: str
     #: PAISE, always positive. `kind` carries the direction.
     amountPaise: int
@@ -63,3 +95,19 @@ class LedgerEntryOut(AppModel):
     #: read off that row, for the tag the console draws beside the charge.
     #: Always false on the other kinds.
     reversed: bool = False
+    #: The pool the money belongs to, and the stream it came from — stamped on
+    #: every row since Task 05 (F12, §3.3), read straight off the entry.
+    franchiseeId: uuid.UUID
+    technicianType: t.Literal["employee", "freelancer"]
+
+
+class ReverseRequest(AppModel):
+    """Giving a penalty back, for a reason the technician and any reader sees.
+
+    The same shape both doors ask for — `§4.10`'s ticket route and this
+    franchisee's own Pool door — because it is one body around one act
+    (`core.penalty_reversal`). Rule 4 duplicates it here rather than having a
+    feature import a feature.
+    """
+
+    reason: str = Field(min_length=3, max_length=160)

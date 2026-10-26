@@ -187,6 +187,36 @@ EVENT_KINDS = (
     #: `ledger_entries`, written in the same transaction. Its own kind because
     #: the trail has to say the money came back, not just that it was taken.
     "penalty_reversed",
+    #: An UNASSIGNED ticket was re-stamped to a different franchisee by a
+    #: carve-out (Task 03, F6) — the pincode it sits in changed owner while the
+    #: ticket itself had nobody holding it yet. Assigned work never moves this
+    #: way; the trail says so because "why did this job's franchisee change"
+    #: is a question only the carve-out answers.
+    "franchisee_changed",
+    #: The speed allowance was MEASURED on this ticket (Task 11, W12) — written
+    #: by `core.speed_settle.settle_speed` in the customer's closure transaction
+    #: whenever a frozen rule existed, including when nothing was paid (an
+    #: unremarkable case an auditor still asks about: the event IS the record of
+    #: the measurement, and the `speed` block on ticket detail re-derives from
+    #: the same facts). `actor_kind = 'system'`; `note` carries the working
+    #: hours and the verdict in words but NO rupee amounts (W12): a vendor reads
+    #: every timeline, and the amounts are ticket data for staff and the
+    #: franchisee admin, not a story a technician's incentives should tell the
+    #: vendor. Hidden from vendor principals in `_timeline` (R8). Never written
+    #: for a force-closure — S5 says the speed allowance does not settle there.
+    "speed_settled",
+    #: The spare-part trail (Task 12). A technician asked a franchisee's facility
+    #: for a part, and the facility logged each physical step. `note` carries
+    #: `RGT-SPR-0007 · Drain pump · …`; none of them moves the TICKET (the move
+    #: in or out of `Awaiting Part` is its own `status_changed` event, whose
+    #: `from_status`/`to_status` Task 11's speed clock reads — D5). A
+    #: `part_rejected` note says where the rejection came from
+    #: (`requested → rejected` or `approved → rejected`).
+    "part_requested",
+    "part_approved",
+    "part_rejected",
+    "part_issued",
+    "part_returned",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -239,7 +269,9 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'feedback_requested', 'completed', 'feedback_received', "
             "'reopened', 'serial_mismatch', 'serial_corrected', 'reminded', "
             "'customer_notified', 'escalated', 'bonus_added', 'released', "
-            "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed')",
+            "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed', "
+            "'franchisee_changed', 'speed_settled', 'part_requested', "
+            "'part_approved', 'part_rejected', 'part_issued', 'part_returned')",
             name="kind",
         ),
         CheckConstraint(

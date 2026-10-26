@@ -6,11 +6,13 @@ import i18n, { type ParseKeys, t } from 'i18next';
  *
  * Each is a closed list in the API: the penalty bands in `core/rules.py`, the
  * service types in `core/service_types.py`, role names in `models/role.py`, and
- * ledger titles in `features/earnings/service.py` and `core/ledger.py`.
- * Anything not in a table — a new band, a reworded title — is shown exactly as
- * sent, because English beats a blank or a wrong guess. In English the
- * server's words are shown untouched: this only ever translates, it never
- * rewrites.
+ * ledger titles in `features/earnings/service.py` and `core/ledger.py`. The
+ * three newer ledger titles ("Travel allowance", "Speed reward", "Speed
+ * penalty", Task 10/11) come from `service.py`'s `_title`, whose strings those
+ * tasks must match. Anything not in a table — a new band, a reworded title — is
+ * shown exactly as sent, because English beats a blank or a wrong guess. In
+ * English the server's words are shown untouched: this only ever translates,
+ * it never rewrites.
  *
  * Keyed by the English text because, for most of these, that is all the server
  * sends. If one of those files changes its wording, change the table with it.
@@ -45,12 +47,17 @@ const ROLES: Table = {
   regional_head: 'server.role.regionalHead',
   'Area Manager': 'server.role.areaManager',
   area_manager: 'server.role.areaManager',
+  'Franchisee Admin': 'server.role.franchiseeAdmin',
+  franchisee_admin: 'server.role.franchiseeAdmin',
 };
 
 const LEDGER_TITLES: Table = {
   'Reassignment bonus': 'server.ledgerTitle.reassignmentBonus',
   'No-show penalty': 'server.ledgerTitle.noShowPenalty',
   'Late cancellation penalty': 'server.ledgerTitle.lateCancellationPenalty',
+  'Travel allowance': 'server.ledgerTitle.travelAllowance',
+  'Speed reward': 'server.ledgerTitle.speedReward',
+  'Speed penalty': 'server.ledgerTitle.speedPenalty',
 };
 
 /** A payout row is "<service> · <model>" — see `ledger.payout_reason`. */

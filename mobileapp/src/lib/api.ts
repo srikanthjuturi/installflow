@@ -29,6 +29,15 @@ function inferBaseUrl(): string {
 
 export const API_BASE_URL = inferBaseUrl();
 
+/**
+ * Build-count telemetry, not an API version. 1 = renders unknown ledger kinds
+ * and statuses safely and knows travel / speed_reward / speed_penalty /
+ * Awaiting Part. Bump when a later build adds a vocabulary the API must not
+ * send to older ones. Task 16 counts requests WITHOUT this header — the direct
+ * measure of how many phones are still live and still crashable.
+ */
+export const APP_COMPAT_LEVEL = 1;
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -91,6 +100,7 @@ export async function apiRequest<T>(
       headers: {
         ...(body === undefined || multipart ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'X-App-Compat': String(APP_COMPAT_LEVEL),
       },
       body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
     });

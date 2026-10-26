@@ -10,6 +10,7 @@ import { Button, Pill, Text } from '@/components/ui';
 import { jobSlaPill, jobSlot } from '@/features/jobs/format';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { usePassJob } from '@/features/jobs/hooks/usePassJob';
+import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
 import { errorText } from '@/i18n/errorText';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
@@ -33,6 +34,9 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
   const { t } = useTranslation();
   const { data: job, isError, refetch } = useOffer(jobId);
   const pass = usePassJob(jobId);
+  // Task 06. The figure is the ticket's stamped price, but an employee is paid
+  // through their salary — showing ₹ here would be a promise the product breaks.
+  const employee = useIsEmployee();
 
   // Pass used to be a plain Back: nothing was recorded and the job was in the
   // pool again on the next refresh. Now it is a decision the server keeps, so
@@ -210,7 +214,7 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
                   <Text
                     style={{ fontFamily: 'Roboto_900Black', fontSize: 17, color: color.slotFg }}
                   >
-                    {formatPaise(job.payoutPaise)}
+                    {employee ? t('jobs.payoutInSalary') : formatPaise(job.payoutPaise)}
                   </Text>
                   {/* Repeated from the pool card on purpose. This is the last
                       screen before the accept sheet, and a number that changed

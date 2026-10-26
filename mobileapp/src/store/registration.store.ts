@@ -17,7 +17,10 @@ import { secureStorage } from '@/lib/secureStorage';
  * `submitRegistration`.
  */
 
-export const REGISTRATION_STEPS = ['invite', 'profile', 'coverage', 'verify'] as const;
+// `base` comes AFTER the account exists (it is saved through the same PUT as
+// Profile → Base location, so nothing is added to the draft): a refused pincode
+// in the register call would refuse the whole registration on its last screen.
+export const REGISTRATION_STEPS = ['invite', 'profile', 'coverage', 'verify', 'base'] as const;
 export type RegistrationStep = (typeof REGISTRATION_STEPS)[number];
 
 /** Total for `StepDots`, so no screen carries a hardcoded number. */

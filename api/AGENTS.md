@@ -24,6 +24,17 @@ the slot never moves, the band is charged, and inside the window it escalates im
 no-show is detected by a sweep that charges NOTHING and confirmed by a person. **A penalty can be
 given back** — in full, by the ticket's Area Manager or anyone senior — see "Reversing a penalty".
 
+**Every company runs franchisees, and a franchisee runs the technicians.** `franchisees` (one **home** per
+company, owning every pincode nobody else claims, plus internal and external ones given pincode ranges),
+`franchisee_pincodes`, a third family of logins (`franchisee_admin`, `facility_admin`, `facility_operator`) in a
+restricted `/franchise/*` portal, **employees** beside freelancers, a **travel** and a **speed** allowance, **spare
+parts** with the `Awaiting Part` status, a manual **technician transfer** and a staff **ticket hand-over**. Tickets
+stay company work; technicians and their money are the franchisee's (F7), and every technician rupee carries the
+franchisee that paid it (`ledger_entries.franchisee_id`). Read, in order: "Franchisees", "Ranges and the
+carve-out", "Franchise principals", "`accept_snapshot`", "Travel allowance", "Base location", "Speed allowance",
+"Spare parts", "Employee statements", "Moving a technician" and "Handing an unassigned ticket" — and hard rule 2's
+trap about stacked guards before adding a route to any of them.
+
 Every operating number is per company in `company_rules`, edited on Configuration → Rules Config,
 **and any catalogue node may override any of them** in `product_node_rules` (every column
 nullable; null means inherit). The band BOUNDARIES are not, and belong in `core/rules.py`: an
@@ -99,7 +110,14 @@ ticket was raised.
 `vendor_price_paise`, `tickets` stamps both at intake, and closure writes a third `LEDGER_KINDS`
 value, `payout`. Two writers, and they shipped with the kind (hard rule 8): `feedback_service` on a
 customer-confirmed closure credits the full amount, `force_close_ticket` credits what the manager
-entered, clamped to the ticket's price and writing no row at zero.
+entered, clamped to the ticket's price and writing no row at zero. **An employee's closure writes
+none (Task 06, T2)** — they are salaried, so `core.employment.job_technician_type` +
+`pays_per_job` gate both writers and a force close appends `· no per-job payout: employee` to the
+event note; bonuses, penalties and reversals still flow exactly as for a freelancer (T3). See
+**Employee statements** below. `LEDGER_KINDS` also carries `travel`, `speed_reward` and `speed_penalty` since
+Tasks 10/11 — `travel` is the technician's money like a payout, the two speed kinds are POOL kinds
+(`POOL_KINDS`, `REVERSIBLE_KINDS`, `CAPPED_KINDS` and `SPEED_KINDS` live in `models/ledger.py`); see
+**Travel allowance** and **Speed allowance**.
 
 ⚠ **Both price columns are NULLABLE, and an unpriced model IS a state now** — it is a product a
 vendor submitted and nobody has approved. That reverses what this section used to say, and it did
@@ -122,6 +140,17 @@ Three things about it are load-bearing:
   restrict to `POOL_KINDS`; `features/earnings` reads the same table unfiltered, because the
   technician's own list is all three kinds. Left unfiltered, the console's pool screen would list
   wages under a balance they are not part of.
+- **The pool is one PER franchisee** (Task 05, F12): every penalty/bonus/reversal row is stamped
+  with its technician's `franchisee_id` inside the write, and `core.ledger.pool` now REQUIRES a
+  franchisee id — `pool_arithmetic` derives
+  `balance = collected − bonuses` from the grouped totals of exactly that franchisee's rows, and
+  the console prints `collected − bonuses = balance` against ONE franchisee's figures. There is
+  deliberately no "all franchisees" total. A read resolves whose pool from the caller via
+  `core.franchise_money.pool_franchisee`: a franchisee principal gets its own wall-pinned one;
+  staff name `?franchiseeId=` when they want another (Admin/NH for the ledger entries — an AM or
+  RH may read the BALANCE of any franchisee but cannot open its rows — home when absent, 404
+  "Franchisee not found" unknown). On `/franchise/ledger/pool` the franchisee sees its own,
+  stamped on every row (`franchiseeId`, `technicianType`).
 - **`net = earned + bonuses − penalties`**, in one grouped query in `earnings.summary`, so the
   three tiles and the hero figure cannot come from different reads. It may be negative.
 
@@ -137,6 +166,19 @@ two people's word, kept apart:
   (`core.coverage.payer_role`) — **claims** "I paid" with a screenshot (required, a private
   `attachment/<company>/` blob) and a UTR (optional). A claim can repeat; the row holds the latest,
   the events hold every one.
+  **For a HOME technician's redemption, that is the whole story** (F8, unchanged). A NON-home
+  technician's redemption is money of THEIR franchisee: `redemptions.franchisee_id` is stamped at
+  request, it rings `audience='franchisee_admin'` and that franchisee's own admin pays it
+  (`franchise.payouts`, R3's no-fallback ruling) — the company's payer hears nothing of it and
+  cannot claim it (a claim attempt is a 404 through the scoped loader, never a 403). Both read the
+  same rows and both are told who may act: staff shape rows read `canAct` (false for any staff
+  caller on another franchisee's rows) and `payerLabel` names the audience — "National Head" or
+  "Franchisee Admin" (`redemption_audience(is_home=…)`).
+- **The wall and the doors are one pair.** Staff keep their two list/detail/
+  claim/decline routes with `require_staff_principal` (Task 05); the franchisee's own admin has
+  the `/franchise/redemptions…` twin — list (`_payer_scope`, own rows only — a company-wide row
+  never reaches it), `/count`, detail and claim/decline. There is deliberately NO confirm
+  endpoint on either door: the technician confirming is the one thing that pays, unchanged.
 - The **technician confirms** it arrived. **`confirmed_at IS NOT NULL` is what "paid" means**, not
   a status value, and there is no endpoint that marks a redemption paid any other way — an admin
   confirming would be inventing a fact. "Not yet" writes a `denied` event and rings the payers; it
@@ -157,6 +199,48 @@ two people's word, kept apart:
   refuse it; Google Pay decodes it, which hides the bug from anybody testing on GPay alone. Test a
   change to `build_upi_uri` on BHIM or PhonePe.
 
+**Employees cannot redeem (Task 06, T4) — and the balance they would have redeemed is the
+FREELANCER stream only.** `POST /redemptions/me` answers 409 `EMPLOYEE_CANNOT_REDEEM`
+("Employees are paid through salary, so there is nothing to redeem.") before the open-redemption
+guard, because a person who cannot be paid by UPI has no business in the queue at all;
+`GET` still answers 200 with `canRedeem: false` + `technicianType` so the app hides the redeem
+sheet instead of discovering the refusal. Behind both:
+`core.ledger.redeemable_balance = credited(company, technician) − reserved`, where `credited`
+now filters to rows stamped `technician_type = 'freelancer'` — every ledger row says which stream
+it moved under at write time (Task 05 §3.3), so one table answers "redeemable" and "salary
+statement" from the same rows, and a technician who switched types mid-life has their money in
+exactly the stream it was earned under.
+
+## Employee statements — one CSV file per employee per month (Task 06)
+
+`GET /franchise/statements/{technicianId}?month=2026-10` for the franchisee's own admin
+(`require_franchise_principal` + the `franchise.statements` feature), and the home staff twin
+`GET /ledger/statements/{technicianId}` (`earnings.view` + a **National-Head floor** — money on
+home employees is the company's least-shared read). Both share `core/statements.py` and return
+the FILE, not an envelope: success is the raw CSV with a UTF-8 BOM, an attachment
+`Content-Disposition` filename `statement-<franchisee>-<technician>-<yyyy>-<mm>.csv`, and any
+failure uses the ordinary envelope — the console reads it with `apiGetBlob`. The month is
+`?month=2026-10` (422 `BAD_MONTH` otherwise, and for one that has not started). What it holds:
+
+- **The month is WRITTEN, never restated.** Rows land in the month the money moved, a reversal
+  is a line of the month it was GIVEN BACK (its `Reverses` column naming the penalty and the
+  date it carried), and a re-download is byte-identical — that is what lets payroll trust it.
+  (The technician's Earnings screen reads the same rows as "never charged"; the statement reads
+  them as a written line that later got a credit. Different questions, both honest.)
+- **Kind-generic.** Rows are selected with `kind <> 'payout'` (T2), `KIND_LINES` rules each
+  kind's sign and title, every ruled kind still gets a total line at zero when the month has
+  none, and an unruled kind is LISTED — its own row with *"unrecognised item — not in the net"*
+  beside each amount — but is kept OUT of the net and logged. Hidden money is worse than
+  unsummed money, and `test_statements`' coverage gate fails the build when Task 10/11 add a
+  kind without teaching the statement about it.
+- **The wall is two clauses, either suffices:** the technician is an employee OF THAT franchisee,
+  or they carry employee-stream ledger rows in the month. Everything else is 404 "Statement not
+  found" — including a freelancer (never an employee, nothing to state) and another
+  franchisee's people, the same way every money read walls.
+- **Every cell goes through `csv_safe`** — a leading `= + - @` or tab gets an apostrophe the
+  spreadsheet hides, because payroll opens this file in one. Amounts are plain two-decimal
+  rupees, no thousand separators and no currency column to argue with.
+
 **A UPI ID is added once, then changed by request** (`b7d2c9e41f60`). The technician adds it on
 `POST /technicians/me/payout-account/code` → `POST /technicians/me/payout-account`, with the name
 on the account (`technician_profiles.upi_name`) and a code to their own registered number
@@ -167,7 +251,14 @@ addressed to `core.coverage.upi_reviewer`'s role — the AM whose states cover o
 technician's pincodes, else the RH of one of their regions, else a National Head, else an Admin —
 and `POST /technicians/{id}/upi-change/approve|reject` decides it (`technicians.edit` + an
 Area-Manager floor, territory-scoped through `_load`; any manager who can edit the technician may
-act, whoever's bell rang). The old free `PATCH …/payout-account` now answers 409 `UPDATE_APP`;
+act, whoever's bell rang). **Task 05 splits it by whose technician it is (F7/F8):** a NON-home
+technician's reviewer is its own franchisee's admin — `reviewer_role='franchisee_admin'`, the bell
+carrying `audience='franchisee_admin'` + the row's `franchisee_id` — decided on the `/franchise`
+twin's `POST /franchise/technicians/{id}/upi-change/approve|reject`, queued on
+`GET /franchise/upi-changes?state=pending` and counted on its `/count` (R3's no-fallback ruling:
+no staff role decides it, and only an admin of THAT franchisee can). The home keeps the
+AM → RH → NH → Admin chain above. `GET /technicians/me/payout-account` names it for the app:
+`reviewerLabel: "Franchisee Admin"`. The old free `PATCH …/payout-account` now answers 409 `UPDATE_APP`;
 joining ignores a `upiId` if an old build sends one; the console's add/edit still sets it directly,
 no code — a manager IS the check. A redemption's payee name is `upi_name`, falling back to the
 technician's own. Each redemption still freezes the address it was asked with.
@@ -451,6 +542,352 @@ Eight things about it are load-bearing:
 One thing nothing clears yet, deliberate and needing a product decision rather than code: the
 vendor is never told their customer's slot is at risk.
 
+## Franchisees — who runs a company's technicians (Tasks 01-03)
+
+`franchisees` + `franchisee_pincodes` (`3b7e1f0a9c41`), `core/franchise.py`, and the management API in
+`features/franchisees/` (prefix `/franchisees`; a company Admin or National Head writes, `franchisees.manage`;
+an Area Manager and above reads, `franchisees.view`). Every company has exactly ONE **home** franchisee —
+`uq_franchisees_one_home` (partial, `WHERE is_home AND deleted_at IS NULL`), `ck_franchisees_home_is_internal`,
+`ck_franchisees_home_is_permanent` — named after the company, code `HOME`. The rest are `internal` or `external`;
+a `code` is `^[A-Z0-9]{2,8}$`, stamped once at creation and never editable.
+
+- **The home stores NO pincode rows and owns every pincode nobody else does (F4).** That is what makes a ticket
+  unable to be franchisee-less, and it is why `franchisee_pincodes_subquery(company_id, franchisee_id,
+  is_home=…)` is a SUBQUERY — "active master codes not in any other franchisee's rows" — and never a list (hard
+  rule 3's reason). `uq_franchisee_pincodes_company_pincode (company_id, pincode)` is the no-overlap rule and
+  what settles a race between two saves.
+- **`core.franchise` is the one place that answers "who owns this pincode"**: `franchisee_for_pincode` (one
+  probe), `franchisees_for_pincodes` (two queries for a whole sheet — the importer), `restamp_ticket`,
+  `assert_pincodes_in_franchisee` and `lock_routing`. Nothing else reads `franchisee_pincodes` to route.
+- **`create_company` creates the home in its own transaction** (and the two travel-rule rows with it), and
+  `home_franchisee_id` repairs a company that has none — one created by the OLD code between the production
+  migration and the publish. Concurrent repairs collide on the partial unique and the retry finds the row. This
+  is the credits precedent, and the reason R1 is "migrate, then publish PROMPTLY": five `franchisee_id` columns
+  are NOT NULL, so until the new API is live the old one cannot raise a ticket, add a technician, close a job or
+  take a redemption.
+- **There is no DELETE** — history is NOT NULL on five tables. `POST /{id}/deactivate` refuses with 409
+  `FRANCHISEE_HAS_TECHNICIANS` while it holds a technician or a live invite (clear its pincodes first, which hands
+  them back to home) and while a redemption is unsettled; then it releases the pincodes, hands back the
+  unassigned tickets that were handed to it (Task 18), and switches off every franchise login it has
+  (memberships, never users — a person may hold roles elsewhere). Home answers 409 `FRANCHISEE_HOME_IMMUTABLE`
+  to deactivate, to becoming external, and to a range.
+- **Franchise logins** live in `core/franchise_logins.py`, shared by the franchisee admins (Task 03) and the
+  facility users (Task 12): an email is one identity per tenant across ALL roles; a temporary password is minted
+  only for a brand-new user and mailed only AFTER the commit, never raising; if the mailbox refuses it (the
+  `ACS_EMAIL_ALLOWLIST` on dev, any `@seed.example.com`) or the send fails, the password comes back in the
+  response — the vendor-login pattern. The last active admin of a NON-home franchisee cannot be deactivated
+  (`blocks_last_admin`, 409 `FRANCHISEE_LAST_ADMIN`): nobody else could approve its technicians' UPI changes or
+  pay its redemptions. The home is exempt, because company staff hold every home authority anyway.
+
+## Ranges and the carve-out (Task 03)
+
+`PUT /franchisees/{id}/pincodes` (`?dryRun=true` previews) takes ranges as text: `500001-500099, 500120`.
+
+- **The grammar is pure** — `core/pincode_ranges.py` (`parse`, `expand`, `span`, `empty_ranges`, `compress`). A bad
+  token is a 422 naming it; `expand` intersects the ranges with the master's ACTIVE codes, so a range may span
+  thousands of numbers and only codes that exist are stored (the response counts the rest as `unknownCount`).
+- **The decision is pure too** — `core/carve_out.plan_carve_out` decides who moves, who is trimmed and which
+  tickets re-route; the service only fetches coverage and owner maps and writes the answer. A technician whose
+  coverage lies wholly inside the new set moves; one with some inside loses those codes; one who would be left
+  with none moves instead (F6).
+- **Apply order, in one transaction, under an EXCLUSIVE routing lock:** the leaving rows are deleted, the new rows
+  inserted (the unique is the boundary; a lost race is one retry, then a 409 `FRANCHISEE_PINCODE_TAKEN` naming
+  the clashing codes and their owners), moved technicians, trimmed ones, live invites, then the tickets. The
+  ticket UPDATE stays CONDITIONAL (`technician_id IS NULL AND status IN …`, `Escalated` with nobody on it
+  included), so a job accepted between the read and the write stays with its holder and its franchisee —
+  assigned jobs keep both. Only RETURNED rows get a `franchisee_changed` event and a frame.
+- **The routing lock is advisory and per company** (`lock_routing(db, company_id, exclusive=…)`): EXCLUSIVE for a
+  carve-out and a deactivation, SHARED for intake and every coverage check, so a pool read never lands between two
+  halves of a carve-out. Lock order, where several are needed: routing → credits → vendor credit. A DRY RUN takes
+  no lock and rolls back — previews never queue behind saves.
+- Tickets handed over by hand (Task 18) are skipped by the planner: a carve-out must not undo a person's choice.
+
+## Franchise principals — the second wall inside a company (Task 02)
+
+Four kinds of principal sign in: staff, technicians, vendors and **franchise users**. Their roles
+(`FRANCHISE_ROLES = {franchisee_admin, facility_admin, facility_operator}`, `FACILITY_ROLES` the last two) are
+ranks 8-10 — BELOW every staff role — and **rank never decides their authority**: `require_min_rank` refuses them
+(a franchisee admin outranks nobody) and so cannot be the thing that lets them in, while `ensure_below_rank` is the
+wrong tool for managing them. Test the set, never the number.
+
+- **`Principal.franchisee_id` is read from the membership on every request**, never a token claim, so a franchisee
+  switched off mid-session loses access at once (403 "This franchisee is no longer active"); on a staff
+  membership it is ignored and stays None.
+- **Two guards, two audiences.** `require_franchise_principal` / `FranchisePrincipal` is the franchisee ADMIN only —
+  the owner of technicians and money (F7); `require_facility_principal` / `FacilityPrincipal` is any of the three
+  (the parts desk). Each is used ALONGSIDE the route's `franchise.*` / `parts.handle` feature key, because Feature
+  Access can hand any key to any role. Hard rule 2 records the stacked-`Depends` trap that once defeated the pairing; it is fixed and pinned at zero.
+- **`core/franchise_scope.py` is F7/F8 in one place.** `managed_franchisee_ids(db, principal, purpose='manage' |
+  'view' | 'reverse')` (None = all in the company) and `can_manage_technician`: a franchise principal manages its
+  own franchisee; Admin/NH manage the HOME franchisee (and reverse a penalty anywhere); everyone else sees a
+  non-home franchisee's technicians but does not manage them. **See but not manage is a 403 "Managed by …"; not
+  seeing is a 404** — the scoped loader answers first.
+- **A franchise caller sees tickets by OWNERSHIP (`tickets.franchisee_id`), never through `visible_pincodes`:**
+  after a carve-out an assigned ticket keeps its old franchisee while its pincode moves. A facility user sees the
+  tickets that have a part request. `vendorPricePaise` is withheld (null) from every franchise principal.
+- **Users & roles refuses the franchise roles** (400): they are created only by the Franchisees screen (franchisee
+  admins) and the portal (facility users; plus, for HOME, the Admin/NH routes under `/spare-parts/home-facility-users`).
+- **A franchise principal asking for another franchisee's technician, ledger row, redemption or part request gets
+  404**, exactly as for another company's. `audit_tenancy` proves the company wall only; this one is an
+  application invariant the script cannot see.
+
+## `accept_snapshot` — what depended on the technician (Task 10, extended by Task 11)
+
+`tickets.accept_snapshot` (JSONB, camelCase) freezes, at the moment a technician takes a job: `acceptedAt`,
+`technicianId`, `franchiseeId`, `technicianType`, `travel{…}` (base and customer point with their sources, km,
+the rates, the computed amount, and a `reason` of `no_base_location` / `no_customer_point` when the amount is
+₹0 for want of a point) and `speed` (the matched rule, or null). It exists because a rule edited next week must
+never restate a job somebody already accepted (TA5/S5) — the same reason `rules_snapshot` exists at intake.
+
+- **Written BY the guarded UPDATE that assigns the ticket** (`jobs.service.accept` and
+  `tickets.service.assign_technician`), so it exists if and only if that technician won. Every path that clears
+  `technician_id` (a release, a cancel, an escalation) clears the snapshot in the SAME statement; a re-accept
+  stamps a fresh one.
+- **`JSONB(none_as_null=True)` is load-bearing.** Without it `values(accept_snapshot=None)` writes the JSON value
+  `null`, which is not SQL NULL and defeats every `IS NULL` reader.
+- **Read it through `core/accept_snapshot` (`travel_of`, `speed_of`, `technician_type_of`), never with a bare
+  `[]`.** A NULL snapshot means "accepted before Task 10" and pays nothing; the readers degrade to "nothing to
+  pay" on a hand-patched or malformed one instead of raising.
+- **`backdate.shift_ticket` moves `acceptedAt` with the timeline** (it is text inside JSONB, so no column shift
+  reaches it), or a seeded job would read as accepted weeks after its own `assigned` event.
+
+## Travel allowance (Task 10)
+
+`core/travel.py` (pure), `core/travel_rules.py`, `core/base_location.py`, `franchisee_travel_rules`
+(`9e1b5d3c7a26`): exactly two rows per franchisee, one per technician type, stamped from `TRAVEL_DEFAULTS` when
+the franchisee is created and healed on read. Defaults: free 20 km (freelancer) / 30 km (employee), a 1 km step,
+a 130 % road factor, **₹0 per step and ₹0 maximum, so it is off until a franchisee configures it**.
+
+- **The arithmetic is in integer TENTHS of a km (W1)**: `road_km` rounds the straight-line metres × factor half-up
+  to 0.1, and `travel_amount_paise` is `min(max, floor(max(0, km − free) / step) × rate)` — the km a technician is
+  shown is exactly the km they are paid for, and a partial step is dropped.
+- **A rate needs a ceiling (W2):** `paisePerStep > 0` with `maxPaisePerJob = 0` is refused at the schema, because
+  that allowance would always be ₹0 and say it was on.
+- **Paid on the customer's confirmation as ledger kind `travel`** (`closure_travel_paise` reads the FROZEN amount,
+  and only when the snapshot names the ticket's current holder); `uq_ledger_entries_one_travel` makes a second
+  row impossible. It is the technician's money, not pool money. On a **force-closure** the manager's
+  `travelPaise` is pre-filled by the form with the frozen amount; **omitted means nothing** (the
+  `ForceCloseRequest` doctrine), anything above the frozen `maxPaisePerJob` is clamped (`force_close_travel_paise`),
+  and 0 writes no row. A cancellation pays no travel.
+- **It folds INTO `earnedPaise`** (with `travelPaise` as a breakdown), never a fourth term beside it — an installed
+  app's three tiles must keep adding up to `netPaise`. `core.ledger.credited()` includes the kind.
+- Rules are read/written at `GET|PUT /settings/travel` (the HOME franchisee, `settings.edit` + a National-Head
+  floor), `GET|PUT /franchise/settings/travel` (a franchisee admin, its own) and `GET
+  /franchisees/{id}/travel-rules` (any franchisee, read-only). The API still never calls a map service: the
+  distance is the straight line from `core.coordinates.metres_between`, so a "road" is a multiplier, not a route.
+
+## Base location (Task 10)
+
+Six columns on `technician_profiles` (`base_latitude`, `base_longitude`, `base_pincode`, `base_source`,
+`base_set_at`, `base_set_by_user_id`): both coordinates or neither, inside India's box, `base_source` one of
+`pincode`, `gps`, `map`, `manual`.
+
+- **Who may send which source (W8):** a technician `pincode`, `gps` or `map`; a manager `pincode`, `map` or
+  `manual` — `manual` is an office's knowledge, `gps` is a device's fix. Routes: `PUT /technicians/me/base-location`
+  (the app), `PUT /technicians/{id}/base-location` (staff, HOME technicians only) and its `/franchise` twin.
+- **The coordinates are COPIED onto the profile even for a pincode base (W7)**, so the point is self-contained and a
+  later correction of that pincode's centre moves nobody who already has a base. A correction to a pincode centre
+  would have to re-copy `base_source = 'pincode'` bases explicitly, and must never touch an `accept_snapshot`.
+- **A pincode base must lie inside the technician's own franchisee for EVERYBODY, the home included (W9)** — 422
+  `PINCODE_OUTSIDE_FRANCHISEE` — and must have a centre: 400 `PINCODE_HAS_NO_LOCATION`; a point outside India is 400
+  `BASE_OUTSIDE_INDIA`. All three are `AppError`s the app translates by `code`.
+- **Abuse is made visible, not impossible (owner ruling R9):** no approval and no cooldown; the source and who set
+  it are stored and SHOWN to the franchisee admin (and home managers), who can correct it at any time; the frozen
+  `maxPaisePerJob` bounds the downside, and a correction never restates an accepted job. Coordinates are returned
+  ONLY on the technician-management endpoints — never on a ticket, where a technician's address would leak to
+  every manager who can read it.
+
+## Speed allowance (Task 11)
+
+`core/speed.py` (pure), `core/speed_rules.py`, `core/speed_settle.py`, `franchisee_speed_rules` (`b4a8e2f6c903`):
+a matrix keyed by franchisee × technician type × (category node OR product model), each row holding
+`reward_within_hours`, `penalty_after_hours`, `reward_paise`, `penalty_paise`. **An empty matrix is OFF (W1)** —
+resolution never self-heals, absence is the answer, and the snapshot stamps `speed: null`.
+
+- **Resolution (S2):** the ticket's MODEL row wins, else the DEEPEST node row on `node_path_ids`, else none —
+  keyed on the snapshot's franchisee and type, not today's. It is frozen at accept and measured at completion.
+- **The clock (S3, owner ruling R1) starts at the LATER of the latest `assigned` event and `tickets.slot_start`,
+  minus the time spent in `Awaiting Part`, and stops at the latest `completed` event** — `clock_start`,
+  `working_hours`, `clock_from_events(events, slot_start)`. The slot is read from the TICKET (a reschedule moves
+  it, so the one in force at completion counts) and passed in as data; the `Awaiting Part` spans are read off the
+  `status_changed` events' `from_status` / `to_status`, which is the contract with Task 12. A slot after
+  completion is 0 hours; no slot starts the clock at the accept.
+- **Boundaries are compared on EXACT seconds (W4)** — ≤ `reward_within_hours` rewards, > `penalty_after_hours`
+  charges, between pays nothing — so the one-decimal figure on a screen never decides money.
+- **Written on the customer's confirmation only** (`speed_settle.settle_speed`, inside the closure transaction,
+  after the payout and travel rows, before the commit). A force-closure pays no speed money (S5, R7). The two
+  kinds are POOL kinds: `speed_reward` is paid from the franchisee's pool like a bonus, even from a negative pool
+  (no balance check); `speed_penalty` funds it, counts against `cancel_penalty_cap_paise` through
+  `capped_charge` taken under the technician's profile lock (so it cannot interleave with a cancellation charge),
+  and is reversible like any penalty. `uq_ledger_entries_speed_once` allows one speed row per ticket.
+- **The `speed_settled` event carries the hours but no rupee amount** and is hidden from vendors. Staff edit only
+  the HOME matrix (`settings.edit` + a National-Head floor, the same guard as home travel); a franchisee admin edits
+  its own at `/franchise/settings/speed*`, and `GET …/speed/catalogue` is the editor's two pickers, price-free.
+
+## Spare parts and `Awaiting Part` (Task 12)
+
+`features/spare_parts/` (prefix `/spare-parts`), `core/spare_parts.py`, `spare_parts` and `spare_part_requests`
+(`d6c3a9f1e874`), plus the technician's side in `features/jobs/` (`GET /jobs/{id}/parts`, `POST
+/jobs/{id}/part-requests`).
+
+- **A job is `Awaiting Part` EXACTLY while it has a request that is `requested` or `approved`.** That is a fact
+  about a SET of rows, so no single guarded UPDATE can settle it: every writer takes `lock_ticket` (`FOR NO KEY
+  UPDATE` — never `FOR UPDATE`, which conflicts with the KEY SHARE lock every FK insert on `ticket_events` and
+  `notifications` takes), flushes, then calls `settle_job_status`. Capture `was` before an ORM UPDATE. Every move in
+  or out is a `status_changed` event with exact `from_status` / `to_status`.
+- **The catalogue** is on category nodes, inherited by everything beneath, plus a product's own
+  (`merge_catalogue`: deepest row per case-folded name wins, inactive dropped); maintained by Admin/NH
+  (`parts.catalogue`). A request names a catalogue row or an "Other" typed name (exactly one — a CHECK), and the
+  label is frozen on the request as `part_name`. An open request for the same name on the same job is idempotent
+  (`uq_spare_part_requests_open_name`).
+- **States** `requested → approved | rejected`, `approved → issued | rejected` (a facility may cancel an APPROVED
+  request, with a reason; `rejected_from` records which), `issued → returned`. Facility actions are allowed in ANY
+  ticket status — an old part is returned after Complete — because they record physical facts. `PARTS_PENDING`
+  refuses Complete; `PART_REQUEST_NOT_IN_PROGRESS` refuses a request outside `In Progress` / `Awaiting Part`;
+  `PART_REQUEST_BAD_STATE` is a step out of order.
+- **The desk is the TICKET's franchisee** (`spare_part_requests.franchisee_id`). Facility admin and operator share
+  every part power; the admin also manages operators. **Nobody in the staff shell works the queue — the home
+  franchisee included.** A franchisee with no active facility admin or operator (`franchisee_has_facility`; a
+  franchisee admin does not count) answers a request with 409 `NO_FACILITY`, and the technician API says so with
+  `partsEnabled` so the app hides *Need a spare part*. Company Admin/NH can create the HOME franchisee's facility
+  users (`/spare-parts/home-facility-users`, `franchisees.manage` + a National-Head floor).
+- **Notifications** use the `facility` audience (the fourth branch every notification reader learned) and the
+  kinds `part_requested`, `part_decided`, `part_issued`; the technician is pushed `part.approved`, `part.rejected`,
+  `part.issued` as `type: 'job'`. Codes use the `spare_part_request` sequence (`SPR`). `PartRequestOut` carries no
+  customer PII; a return photo is a blob NAME under `attachment/{company_id}/`, validated by prefix.
+- **`Awaiting Part` is non-terminal** (`core.tickets.TERMINAL_STATUSES` does not list it), so everything that asks
+  "is it still open?" — the daily cap, the vendor credit reservation, the technician-delete guard, force-closure —
+  includes it for free. Two lists that are written out by hand had to learn it: the jobs router's
+  `SEGMENTS["inprogress"]` (or the job appears in no My jobs tab) and `RESCHEDULABLE_STATUSES`
+  (`ASSIGNABLE_STATUSES + ("Awaiting Part",)`). A revisit uses the ordinary reschedule, which now also moves a
+  started job and KEEPS its status (`core.reschedule.move_slot`); reassign stays at the four statuses it had.
+
+## Moving a technician between franchisees (Task 17)
+
+`POST /technicians/{id}/transfer` (`?dryRun=true` previews) and
+`GET /technicians/{id}/transfers`, in `features/technicians/transfer_service.py`
+with the decisions pure in `core/technician_transfer.py` and the audit in
+`technician_transfers` (`e8a2c5b7d913`). A company **Admin or National Head**
+changes WHO RUNS a technician from now on - their pool, their payer, their
+pincodes - and nothing about what already happened.
+
+- **The authority is `franchisees.manage` + a National-Head floor + the staff door,
+  NOT `_load_managed`.** `_load_managed` answers "may this caller manage this
+  technician?", which for a non-home technician is its franchisee admin's alone, so
+  it would 403 every non-home technician for an Admin/NH. The technician is loaded
+  with the ordinary `_load` (staff visibility): another company's, or one outside
+  the caller's scope, is a 404, never a 403.
+- ⚠ **All three guards are in the route's `dependencies=[...]`** (never stacked in an `Annotated`: FastAPI keeps only
+  the LAST `Depends`). A pinned unit test (`test_technician_transfer.py`) reads the route table; the integration file
+  calls the real route's guards. The router's older `CanView` / `CanEdit` aliases that once skipped
+  `require_staff_principal` are FIXED — see hard rule 2.
+- **History stays where it was earned.** The move writes `technician_profiles.franchisee_id`,
+  the coverage rows, the region (when the new coverage is in one other region, D5)
+  and a pending UPI change's reviewer (D6) - and issues NO `UPDATE tickets`, NO
+  `UPDATE ledger_entries`, NO `UPDATE redemptions`. A reversal copies the penalty's
+  own franchisee, so an old penalty is given back to the old pool; the monthly cap is
+  the technician's across franchisees; two employee statements split at the month of
+  the move. What makes that safe is the guard set: **no open job, no redeemable money
+  and no unsettled redemption** (the type change's blockers, R5), because with none
+  of them nothing but a reversal can write a row against the technician.
+  `technician_type`, certifications, cap, base location, UPI, memberships and
+  `manager_id` are untouched (D3/D4/D13).
+- **Coverage is `current ∩ target's range`, or exactly the `pincodes` sent** (D1),
+  never empty (422 `PINCODE_OUTSIDE_FRANCHISEE`), and the region follows it (D5).
+  ⚠ With the F4/F6 invariant intact a technician's pincodes are all in their own
+  franchisee's area, and areas are disjoint, so the no-`pincodes` path keeps NOTHING
+  for any other target: the console's preview will usually say "nothing left" and
+  open the picker. The kept/trimmed arithmetic matters only for drifted data (a code
+  its franchisee no longer owns), which the integration test simulates.
+- **Blockers are data on a preview and the first one is the error on an apply.**
+  Order: same franchisee, target inactive, target has no admin
+  (`FRANCHISEE_HAS_NO_ADMIN`, non-home only - R3), open jobs, balance / open
+  redemption (`TECHNICIAN_HAS_BALANCE`), coverage (`PINCODE_OUTSIDE_FRANCHISEE`),
+  then two regions (code-less 422). A NEGATIVE balance is a warning, not a blocker
+  (D7). `core.ledger.open_redemption_exists` / `open_redemption_code` are the
+  `uq_redemptions_one_open` predicate.
+- **Locks, in this order:** routing (shared, `lock_routing`) then the profile row
+  FOR UPDATE, re-read with `populate_existing` - the lock `redemptions.request`
+  takes - so two moves of one person queue and the second judges the franchisee the
+  first left (409 "already works for"). `request_upi_change` now takes the same row
+  lock (`_own_profile(lock=True)`), or a request computed against the old franchisee
+  could commit after the move and be addressed to admins who now get a 404. A dry run
+  takes NO lock and rolls back.
+- **Two bells, one push.** A non-home side is `audience='franchisee_admin'` +
+  its id; the HOME side is company-wide carrying the home id (home's admins are
+  company staff, F8). The push is `technician.moved` with `data={"type": "job"}` and
+  **no ticket id** (the `penalty.reversed` shape) - installed builds refresh on any
+  job push and an id would route a tap to a 404. It is sent after the commit and a
+  failure never fails the move.
+- **One race is left open on purpose:** `jobs.accept` does not lock the profile, so
+  an accept landing between the open-job count and the commit leaves one job
+  stamped with the OLD franchisee - the state a carve-out already leaves (F6).
+- **Append-only.** No edit, no undo (a correction is another transfer), and the
+  migration's downgrade refuses while any row exists. The dev acceptance file
+  deletes its own rows at the end so the round trip stays possible.
+- `core.franchise_routing.outside_message(owner_names=...)` is keyed by pincode
+  CODE; `core.franchise.assert_pincodes_in_franchisee` passes it a
+  `{franchisee_id: name}` dict, so the staff variant of its sentence never names an
+  owner. The transfer builds the right mapping; the older caller is not changed.
+
+## Handing an unassigned ticket to another franchisee (Task 18)
+
+`GET /tickets/{id}/franchisee-options` and `POST /tickets/{id}/franchisee` (`{franchiseeId, reason}`), in
+`features/tickets/service.py` (`franchisee_options`, `hand_to_franchisee`), the decisions pure in
+`core/franchise_handover.py` and one column, `tickets.routing_override` (`f3b9d1a6c845`). Company staff
+(`jobs.assign` + the Area-Manager floor + the staff door - exactly what `POST /{id}/assign` carries, no new
+feature key) move a ticket nobody holds (`New`, `Slot Pending`, `Escalated` with no technician; anything with a
+technician, `Awaiting Part` included, is 409 `TICKET_ASSIGNED`) to another franchisee, with a 3-255 character
+reason.
+
+- **Why a flag at all.** A technician's coverage must lie inside their own franchisee's range, so a pincode SkyFix
+  owns can never be in another franchisee's technicians' coverage. A bare re-stamp would satisfy the franchisee
+  test and fail the pincode test for everybody: stranded. `routing_override` means *"a person chose this ticket's
+  franchisee; the pincode did not"* and waives **only the pincode half** of eligibility. Certification, `ACTIVE`,
+  the daily cap, `accepting_work` and the franchisee test itself are never waived.
+- **It is DERIVED, never typed.** The service sets `override_for(target, owner)` = `target != franchisee_for_pincode`;
+  `HandToFranchiseeRequest` has no such field. Handing a ticket back to the pincode's owner clears it. It SURVIVES
+  acceptance and release on purpose (a released handed ticket goes back to the franchisee it was handed to) - never
+  "tidy" it to false because a technician took the job.
+- **Five eligibility places, each waives the pincode half for an override ticket:** `jobs/service.pool_query`
+  (`or_(Ticket.routing_override.is_(True), covers_pincode)`), `core/coverage.technicians_covering` (new REQUIRED
+  keyword `routing_override`, forwarded by `announce_pool_job`), `tickets/service._load_assignable_technician`,
+  `jobs/ws.py` (`pool_frame_matches(event_override=)` fed by `PoolChanged.routing_override`) - and **the guarded
+  UPDATE in `jobs/service.accept` deliberately gains NOTHING**: it never tested the pincode (the `pool_query` read
+  above it does), and a coverage clause "for symmetry" would re-strand every handed ticket at the last step.
+  Anyone changing who may take a job changes all five; every `publish_pool_changed` caller passes the flag, the
+  `accept`/`assign` ones as it was in the pool the ticket LEFT.
+- **Counts for the picker** are `coverage.technicians_by_franchisee` (one grouped query; the pincode's own owner
+  counts only technicians covering it, everyone else with the test waived - `franchise_handover.coverage_required`
+  is the pure twin). Its docstring promises `online[F] == len(technicians_covering(F, override=F != owner))`.
+- **Re-routing never undoes it (H5).** `restamp_ticket` returns None for an override ticket (unless
+  `release_override=True`); the carve-out's `_plan` and `_apply` skip override tickets (the preview's "re-routed"
+  count excludes them); **deactivating the target** hands its UNASSIGNED handed tickets back to their pincode owner
+  (flag cleared, `franchisee_changed` by `system`, "<X> was deactivated · handed ticket returned to <owner>") and
+  assigned ones keep theirs. `sweeps.sweep_unaccepted`'s grace now counts `franchisee_changed` beside
+  `bonus_added`/`rescheduled`, or a ticket handed at 10:00 for an 11:00 slot would re-escalate on the next tick (a
+  carve-out re-stamp gives its ticket the same breather - accepted).
+- **One transaction, push after it.** Guarded UPDATE (`technician_id IS NULL AND status = :read AND franchisee_id
+  = :read`; 0 rows -> 409 `ALREADY_ASSIGNED`), one `franchisee_changed` event (staff; status in `from/to` only when
+  an `Escalated` ticket went back to the pool, `New` with a slot / `Slot Pending` without, and only while
+  `still_offerable`), one `ticket_handed` bell (`audience='franchisee_admin'`, `franchisee_id` = the target, no
+  pincode - the source franchisee and the manager hear nothing), two pool frames (the OLD franchisee's with its old
+  flag so the card disappears, the NEW one's), then after the commit the push and `notified`. Shared routing lock,
+  never exclusive. Money follows the TECHNICIAN (F12): nothing on the ticket's prices or `rules_snapshot` moves.
+- **Errors, in the order tests pin:** terminal (409 `TICKET_NOT_ASSIGNABLE`) -> assigned/live (`TICKET_ASSIGNED`) ->
+  same (`SAME_FRANCHISEE`) -> inactive target (`FRANCHISEE_INACTIVE`). An unknown or other-company franchisee or
+  ticket is 404 (never 403).
+- ⚠ **All three guards sit in each route's `dependencies=[...]`** (`HAND_OVER_GUARDS`), and a pinned unit test reads
+  the route table. The older stacked `CanView` / `CanEdit`-style aliases are FIXED (hard rule 2), and
+  `test_stacked_depends.py` now refuses any new one.
+- The shortlist `GET /technicians?franchiseeId=&subcategoryId=&onDay=` (no `pincode`) is how the console assigns a
+  handed ticket; it is still narrowed to technicians the manager can see (an Area Manager's states) - the existing
+  rule, deliberately not widened. `seed/verify.py` excludes override tickets from
+  `_open_unassigned_tickets_route_by_pincode` and adds `_handed_tickets_point_at_active_franchisees`. The downgrade
+  refuses while any ticket is flagged or any `ticket_handed` bell exists.
+- Not built: a bell to the SOURCE franchisee (its link would 404), the target declining, bulk hand-over, handing over
+  an assigned ticket, a new feature key, re-basing the SLA deadline.
+
 ---
 
 ## Hard rules
@@ -483,6 +920,12 @@ __table_args__ = (
 
 **Every read and every write filters on `principal.company_id`.** Load-by-id included: a caller
 who guesses another company's UUID must get **404, not 403** — a 403 confirms the row exists.
+
+**A franchisee is a second wall inside the company.** A franchise principal asking for another franchisee's
+technician, ledger row, redemption or part request gets **404**, exactly as for another company. The database
+cannot say it (a `franchisee_id` link only proves the franchisee is THIS company's), so it is an application
+invariant — `core.franchise_scope`, the franchise-twin routers and the service-level pin to
+`principal.franchisee_id` — and `audit_tenancy` stays green either way, as it does for vendors.
 
 **Never trust a client-supplied id.** Resolve it through a scoped loader (`_load_node`,
 `_load_model`, `_load`, `_load_invite`) that already has `company_id` in its WHERE clause. An id
@@ -582,6 +1025,21 @@ the superadmin out of the very screen that maintains this data. Every **write** 
 Geography is global, so **404-not-403 does not apply here** — there is no tenant to leak by
 confirming a code exists, and an unknown one is an ordinary 404.
 
+#### Pincode coordinates (`pincodes.latitude` / `longitude`)
+
+Loaded by `app.scripts.import_pincode_coordinates` from an external lat/lon file — not researched
+by hand and not part of `RequirementDocs/Reliance Green Tech Pin Code.xlsx`. The script is
+UPDATE-only (it never inserts a pincode the geography master does not already have), and
+`import_geography` never writes these two columns, so a loaded point survives every future
+geography sheet re-upload, exactly as `is_active` does.
+
+As of 2026-10-16, RelianceDB carries a point for **19,496 of 19,496** pincodes — every row. Owner
+ruling G2 stands regardless of coverage: **trust whatever the data says; a pincode with no point
+contributes 0 km to the travel-distance calculation** (`core.coordinates.metres_between`) rather
+than the request failing or a value being guessed. `RelianceProdDB` must be migrated to
+`f9c2d8a3e17b` and loaded the same way before Task 10 (travel allowance) publishes against it —
+see Environments below for running a one-off command against production.
+
 ### 2. RBAC is enforced here, never in the UI.
 
 Hiding a button is presentation. Every endpoint carries `require_feature("...")`, and territory
@@ -594,6 +1052,50 @@ it got its own `jobs.force_close` rather than either locking out every manager t
 or handing technicians an override that skips the customer. Where the decision spends money or
 ends a job, pair the feature with `require_min_rank` — a feature grant is overridable per company
 on Feature Access, and the floor is what makes "Area Manager and above" stick.
+
+**Every staff door that a franchisee may open for its OWN affairs carries a `/franchise` TWIN in
+the same slice** (Task 05): `features/technicians/franchise_router.py` (roster, UPI changes),
+`features/redemptions/franchise_router.py`, `features/ledger/franchise_router.py`,
+`features/settings/franchise_router.py` (travel and speed) and, for its read-only picker master data and its
+statements and facility users, `features/franchise_portal/` — all `prefix="/franchise"`. A twin is MEANT to
+carry `require_franchise_principal` + a `franchise.*` feature key (never a staff floor — `require_min_rank`
+refuses franchise roles) and to pin every query to `principal.franchisee_id` in the service itself; the staff
+route beside it is MEANT to carry `require_staff_principal`, which is what keeps the twin's audience off the
+console door (`require_min_rank` does not do that job — franchise roles are ranks 8–10, ABOVE the staff
+floors). Same URLs as Task 09's screens, one guard per door.
+
+⚠ **A stacked `Annotated[Principal, Depends(a), Depends(b)]` runs ONLY the last `Depends` — and every such alias is now
+FIXED.** FastAPI reads one parameter with one dependency and keeps the last marker; the earlier guards were never called,
+nothing logged it, and the alias read like two checks. 75 route registrations across 11 routers carried one (found by
+introspecting every route with `get_dependant`); each is now ONE marker over
+`app.core.deps.require_all(wall, feature[, floor])` — a function that takes each guard as its own single-marker
+parameter, so FastAPI runs them in order and stops at the first 403. The order is fixed: **the wall first**
+(`require_staff_principal` / `require_franchise_principal`), **then the feature key, then the rank floor**, so a caller of
+the wrong family is told 403 about the door before anything else, and a guessed id still 404s in the service's scoped
+loader afterwards. What each family now enforces, and what changed in behaviour:
+
+| Router(s) | Aliases | Net guard set now enforced |
+|---|---|---|
+| `franchise_portal`, `ledger/franchise_router`, `redemptions/franchise_router`, `technicians/franchise_router`, `settings/franchise_router` | `CanSee`, `CanSeeStatements`, `CanTech`, `CanPay`, `FranchiseSettings` | `require_franchise_principal` + the route's `franchise.*` key (never a staff floor) |
+| `technicians/router`, `ledger/router` (`CanSeeBalance`, `CanView`), `settings/router` (`EditTravel`) | `CanView`/`CanCreate`/`CanInvite`/`CanEdit`, … | `require_staff_principal` + the feature (`require_any_feature` for `CanSeeBalance`) |
+| `ledger/router` | `CanSeeStatements` | staff + `earnings.view` + National-Head floor — the feature check was the part that never ran |
+| `redemptions/router` | `CanPay` | staff + `redemptions.pay` + National-Head floor (the floor moved from `dependencies=PayerRoute` into the alias, so it runs once; the staff wall was the part that never ran) |
+| `settings/router` | `EditTravel` | staff + `settings.edit` + **National-Head floor — `PUT /settings/travel` had no floor at all**, despite its docstring |
+| `tickets/router` | `CanReversePenalty` | staff + `penalties.reverse` + Area-Manager floor (moved from the route's `dependencies` into the alias) |
+| `franchisees/router` | `CanView`, `CanManage`, `CanEditSpeed` | staff + `franchisees.view` (AM floor) / `franchisees.manage` (NH floor) / `settings.edit` (NH floor) — the feature key was never consulted, so switching `franchisees.manage` off changed nothing |
+
+The tightening cost no default access: every key now enforced is already granted to the roles that use the route
+(`franchisees.view` admin/NH/RH/AM; `franchisees.manage`, `settings.edit`, `earnings.view`, `redemptions.pay`
+admin/NH; `penalties.reverse` the four staff roles; `technicians.*` admin/NH/RH/AM; `franchise.*` franchisee admin).
+What does change is that a company that had switched one of these off through Feature Access now actually loses the
+door, and `PUT /settings/travel` is closed to a Regional Head / Area Manager who holds `settings.edit`.
+
+**Pinned at zero.** `tests/unit/test_stacked_depends.py` walks every route and every dependency it pulls in and fails on
+ANY `Annotated` carrying two `Depends` (with a self-test that the detector still finds a synthetic stack, so zero cannot
+mean "broken detector"); `tests/unit/test_guard_pairs.py` drives representative routes of each router with a crafted
+principal and proves the feature, the floor and the wall each refuse on their own. **New code** puts every guard in
+`require_all(...)` or in the route's `dependencies=[…]` (as `spare_parts`, `HAND_OVER_GUARDS` and the transfer route do);
+never two `Depends` in one `Annotated`.
 
 ### 3. An area manager may only act inside their own states.
 
@@ -716,8 +1218,9 @@ above counts a prefix as covered, so it will not ask you for one.
 
 ### 7. Only a vendor raises a ticket, and a vendor sees only its own.
 
-Three roles now sign in: staff, technicians, and **vendors**. A vendor is an outside party, so two
-rules govern it and neither is expressible with the tools the other roles use.
+Four kinds of principal now sign in: staff, technicians, **vendors** and **franchise users**. A vendor
+is an outside party, so two rules govern it and neither is expressible with the tools the other roles use (the
+franchise family has its own wall — hard rules 1 and 2).
 
 **`POST /tickets` carries `require_vendor_principal`, not just `require_feature("jobs.create")`.**
 A feature grant is overridable per company through Feature Access, so on the feature alone
@@ -735,6 +1238,8 @@ is the one door both go through:
 | regional head / area manager | their territory's pincodes |
 | `vendor` | `vendor_id = mine` — every ticket its people raised |
 | `vendor_user` | `vendor_id = mine AND created_by = me` |
+| `franchisee_admin` | `franchisee_id = mine` — by OWNERSHIP, read-only (F13) |
+| `facility_admin` / `facility_operator` | the tickets of their franchisee that have a part request |
 
 Applied on the list AND on fetch-by-id, so a guessed id reads 404. It fails closed: a portal role
 whose membership names no vendor sees nothing.
@@ -798,11 +1303,18 @@ When a table is genuinely needed before its writer lands, write the writer in th
 `ticket_events` declares only the four `kind` values the code writes TODAY; assignment and release
 join the CHECK in the migration that adds the accept flow, not before.
 
+**A migration that rewrites a CHECK vocabulary spells the BEFORE list out and asserts it against
+`pg_get_constraintdef`** (`d6c3a9f1e874`'s `_assert_check_is`): `ticket_events.kind`, `notifications.kind` /
+`audience`, `tickets.status` and `ledger_entries.kind` were each rewritten by several tasks working in parallel, and
+a list copied from memory silently drops the values the others added. Compare the live definition first.
+
 Three things the autogenerated diff gets wrong every time:
 
 - It wants to DROP the hand-written functional and partial indexes — `uq_companies_gst_lower`,
   `uq_users_email_lower`, `uq_memberships_user_company`, the `lower(name)` ones on the product
-  master and vendors, `uq_tickets_slot_token`, the live-invite index. SQLAlchemy cannot express
+  master and vendors, `uq_tickets_slot_token`, the live-invite index, and the franchise-era ones —
+  `uq_franchisees_company_name_lower`, `uq_spare_parts_node_name`, `uq_spare_parts_model_name`,
+  `uq_spare_part_requests_open_name` (and the partial uniques on `ledger_entries` and the speed matrix). SQLAlchemy cannot express
   `lower(x)` or a `WHERE` clause in an `Index()`, so Alembic cannot see them and mistakes them for
   stale. **Delete those drops.** Recent Alembic sometimes emits a drop *and* an identical create —
   that is the same false positive wearing a different hat, and both halves go. They are created by
@@ -1078,12 +1590,19 @@ app/
   core/                  config, database, deps (Principal + guards), errors, features,
                          icons, phone, schemas (the envelope), scope, security,
                          sequences, sessions (revoking refresh tokens)
+                         franchise-era: franchise, franchise_scope, franchise_logins,
+                         franchise_routing, franchise_handover, carve_out, pincode_ranges,
+                         audience, franchise_money, penalty_reversal, employment, statements,
+                         accept_snapshot, travel, travel_rules, base_location, speed,
+                         speed_rules, speed_settle, spare_parts, technician_transfer
   db/                    base_class (naming convention), mixins, repository (territory_scope)
   emails/                templates/*.html and the renderer — the ONE place an email
                          BODY lives. Content only; the egress is integrations/.
                          Filled with string.Template ($name), NOT str.format, because
                          an email is mostly CSS braces. Every value is html-escaped.
   features/<slice>/      router.py · schemas.py · service.py — nothing else
+                         (franchise-era slices: franchisees, franchise_portal, spare_parts;
+                         a slice's `/franchise` twin is a second router file in the same slice)
                          NB `vendor_users` is its OWN slice, not part of `users`:
                          `users.*` gates the COMPANY's staff, and a vendor
                          holding it could read every manager in the tenant.
@@ -1094,7 +1613,11 @@ app/
                          right outcome and there is no record to preserve.
   models/                one module per area; every model reachable from __init__
   scripts/               bootstrap, audit_tenancy, create_database, copy_geography, cleanup_db,
-                         seed_synthetic, seed_play_review
+                         seed_synthetic, seed_demo, seed_play_review; seed/ is their shared
+                         package (tenant, lifecycle, backdate, verify, guards)
+tests/unit/              pure-function pytest only — no database (see "Unit tests")
+tests/integration/       service-level acceptance walks against the DEV database — run by hand,
+                         never by CI (see "Unit tests")
 alembic/versions/        hand-written, with a prose docstring saying WHY
 ```
 
@@ -1117,8 +1640,21 @@ one command, set the environment variable: pydantic-settings ranks it above the 
 nothing is edited and there is nothing to forget to revert.
 
 ```powershell
-$env:POSTGRES_DB='RelianceProdDB'; python -m alembic upgrade head
+$env:CONFIRM_PROD='yes-i-mean-it'; $env:POSTGRES_DB='RelianceProdDB'
+python -m alembic upgrade <revision>      # the release's revision, never "head"
+Remove-Item Env:CONFIRM_PROD, Env:POSTGRES_DB
 ```
+
+`alembic/env.py` refuses `RelianceProdDB` without `CONFIRM_PROD`, and **the owner migrates production to an
+EXPLICIT revision before each publish** — `main` may carry a later migration than the release needs, and naming
+the revision makes the sitting do exactly what the release gate allowed. Several of the franchisee migrations are
+migrate-then-publish-in-the-same-sitting (a NOT NULL column the old API never writes).
+
+⚠ **Whether an App Service migrates by itself on restart is NOT settled in the repo.**
+`.github/DEPLOYMENT.md` says both startup commands are `python -m alembic upgrade head && gunicorn …` (so a
+publish runs `upgrade head` against whatever that service points at, and a failing migration takes the backend
+down); the `publish-api` skill and `publish.py` show gunicorn only. Confirm it in the Azure Portal before a
+release that carries a migration, and record the answer in `DEPLOYMENT.md`.
 
 ⚠ Editing `.env` to point at production "just for a minute" is how a laptop ends up migrating,
 seeding or wiping the live database an hour later. Use the override.
@@ -1188,6 +1724,7 @@ default rules like any new company.
 | Every live company in `PROTECTED_COMPANY_SLUGS` — today **`RGT Play Review`** — **whatever `--keep` says**, even an empty list and even a driver that calls `run()` directly | Google Play's reviewers sign in to it (see "Google Play review sign-in"); deleting it gets the next submission rejected. Matched by slug, because its id differs per database |
 | The superadmin (`users.role = 'superadmin'`) | The only way back in after a full wipe |
 | Any user with a membership in a kept company | Otherwise the kept company survives with nobody able to sign in to it, and its history names authors who no longer exist — worse than deleting it, because nothing on screen says so |
+| Franchise logins (`franchisee_admin`, `facility_*`) | Nothing special: they are `users` with a `memberships` row, so they follow their company's memberships like any user — kept with a kept company, deleted with a deleted one. `delete_order` derives `memberships`/`tickets`/… → `franchisees` from the live FKs |
 | `regions`, `states`, `districts`, `pincodes`, `pincode_districts` | Global master; ids are shared with the other database via `copy_geography` |
 | `platform_settings`, `features`, `role_feature_defaults`, `roles`, `alembic_version` | Platform configuration, not tenant data |
 
@@ -1203,6 +1740,14 @@ never hard-deleted"*. `created_by` / `updated_by` are plain UUIDs with no FK, so
 id left in a kept company's rows fails nothing. Rule 2 above — keep anyone with a kept membership —
 is what stops that happening to the client; it does not cover a person who once acted in a kept
 company and has since lost that membership.
+
+The franchise-era tables are all per-company and classified in `COMPANY_TABLES` (`franchisees`,
+`franchisee_pincodes`, `franchisee_travel_rules`, `franchisee_speed_rules`, `spare_parts`, `spare_part_requests`,
+`technician_transfers`); money is already summed (`travel` and `speed_*` are `ledger_entries` rows, parts carry no
+money). **`ALLOWED_DANGLING_FKS` gained nothing, deliberately:** `technician_profiles.base_set_by_user_id → users`
+is a real FK (`ON DELETE SET NULL`), so a kept technician whose base was set by a user being deleted would stop the
+run — which cannot happen today, because anyone who acted in a kept company keeps an account through their
+membership, and if it ever does the refusal is the right outcome.
 
 ### Locked decisions
 
@@ -1284,17 +1829,99 @@ RELIANCEGREENTECH PRIVATE LIMITED (the client — **keep**), and TWINCORE TECHNO
 twice (one active, one inactive, same GSTIN). The app had just been published; anything registered
 since is exactly the case decision 1 warns about.
 
+## Seeds, and the checks that make them mean something
+
+`seed_synthetic` (a load-test company), `seed_demo` (the client walkthrough) and `seed_play_review` (Google Play's
+reviewer) all build through the real services in the shared `app/scripts/seed/` package — `tenant.build`
+stands the company up, `lifecycle.drive` walks tickets through accept, proof, complete, cancel, force-close and
+the customer's answer, `backdate` moves the settled ones into the past, and `verify` proves the numbers add up.
+Nothing INSERTs a row a service would have written; a company assembled by hand is missing exactly the rows
+(`company_rules`, the home franchisee, the travel-rule pair, the credit entry) whose absence only shows up later
+as an empty screen.
+
+- **They dress the franchisee-era shape on purpose** (Task 16): the technicians are placed by a repeating pattern
+  across the HOME franchisee and two carved out of its pincodes — an external one with a facility operator and an
+  internal one with none, so `NO_FACILITY` is a path the run walks — the second technician of every five per
+  franchisee is an employee, one in five has no base (so `no_base_location` is produced), both franchisees get
+  travel rules and a freelancer speed rule, the first category has a parts list, a share of jobs wait in
+  `Awaiting Part`, a third of the jobs that close raise a part first (approved and issued by the franchisee's
+  operator, half returned afterwards), one unassigned home ticket is handed to the external franchisee and,
+  after backdating, one technician with history is transferred. **`--plan` prints the shape; the run ends with
+  `verify.rows_read`, the number of rows each franchisee-era check actually read.** A check that reads no rows
+  passes on anything, and a seed that quietly stopped producing employees or parts would turn half of
+  `verify.run` into a formality — an empty line in that table is the warning.
+- **The seeded travel rule is not the product default.** Every seeded pincode is inside one city, a few
+  kilometres apart, so the 20 / 30 km free distance would pay ₹0 on every job and the travel checks would read
+  nothing; the seed uses 2 / 4 km (`tenant.TRAVEL_FREE_KM`) and says so where it is set.
+- **A vendor's credit line stops a seed.** Every ticket reserves its price until it closes, and a vendor is
+  created with ₹5,000 of room, so a seed written before the line existed raised three tickets and refused the
+  rest — and `drive` counts a refusal instead of failing, so the run came back "green" and nearly empty. The seeds
+  now create their vendor at the credit ceiling, `seed_play_review` raises its vendor's line on every run, and the
+  synthetic and demo scripts FAIL when a quarter of the planned tickets were refused.
+- **`verify.py` compares two paths over real rows.** Beyond the original five checks it now covers: the home and
+  its pincode rows (F4), open unassigned tickets against `franchisees_for_pincodes`, handed-over tickets and their
+  flags, technicians on live franchisees, employees never paid per job, the ledger's franchisee and type against
+  the accept snapshot (a reversal against its penalty), earnings against the ledger with given-back penalties left
+  out, one `travel` row per closed job at the frozen amount and never above its cap, speed rows only on closed
+  tickets with a frozen rule and never on a force-close, each franchisee's pool against the F12 formula, an
+  employee's statement against a plain SUM, spare-part requests against the ticket's status, and a transferred
+  technician's old money against the franchisee they had when it was written. The last two families carry the
+  caveat in their docstrings: a carve-out also moves technicians without a transfer row, so a hit is a prompt to look.
+- **Run against a database that holds acceptance-test data (`tests/integration`, the Task 05 cast), `verify` reports
+  that data's residue** — payouts written while a technician was briefly an employee, tickets accepted before
+  `accept_snapshot` existed — and that is not a regression. Run it per company.
+- **`seed_synthetic` writes a whole company into a SHARED database.** `cleanup_db --keep <the others>` removes it; a
+  run that fails part-way leaves a half-built company behind, so name each attempt with its own `--tag`.
+  `LIKE 'Seed Appliances%'` lookups in the acceptance tests and `seed_franchisee` take the first match, so do not
+  add a second company with that prefix to a database those still use.
+- **Sends:** a seed creates logins (emailed a temporary password) and technicians (WhatsApped an app link, on the
+  first few to the team's real numbers). On dev set `WHATSAPP_ALLOWLIST` / `ACS_EMAIL_ALLOWLIST`, or run with
+  `WHATSAPP_TOKEN=` and `ACS_CONNECTION_STRING=` empty and `PUSH_ENABLED=false` in the environment (an environment
+  variable outranks `.env`), and the temporary passwords come back in the output instead.
+
+## Unit tests
+
+`pytest` (`pytest.ini`, `tests/unit/`) tests **pure functions only — parsers, calculators, state
+machines.** Owner ruling X1: API unit tests never touch a database; what a request actually does
+is proven by each task's acceptance criteria and by `app/scripts/seed/verify.py`, not by pytest.
+
+`tests/unit/conftest.py` carries an `autouse=True` guard fixture that monkeypatches
+`sqlalchemy.ext.asyncio.create_async_engine` and `psycopg.connect` / `psycopg.AsyncConnection.connect`
+to raise — `tests/unit/test_no_db_guard.py` is what proves the wall is actually there, not merely
+documented. The same file sets placeholder `POSTGRES_*` / `JWT_SECRET_KEY` env vars in its **module
+body**, before `app` is ever imported: `app/core/config.py` builds `Settings()` at import time and
+fails without them, and collection fails before any fixture runs if they are set inside one instead.
+
+**Rule for every later task:** a module tested here must be importable with no database. If a pure
+function lives beside DB code, the test imports only the pure symbol; if importing the module pulls
+in an engine, move the pure function to its own `app/core/` module first.
+
+`tests/integration/` is the OTHER kind and is not collected (`pytest.ini` points at `tests/unit` alone, so
+neither `python -m pytest` nor CI runs it): service-level acceptance walks, one file per franchisee task, that
+build hand-made `Principal`s and drive the real services against the DEV database, with no HTTP. They are run by
+hand — `.venv/Scripts/python.exe -m pytest tests/integration/test_taskNN_acceptance.py -v` — leave real rows
+behind, and share the cast the first of them seeds (`app/scripts/seed_task05.py`), so they depend on the state
+earlier runs left: an interrupted run can fail the next one for reasons that are not a regression (open jobs left
+on the cast, a type change refused over them). Never point them at production.
+
+`pytest==8.*` lives only in `requirements-dev.txt`, never in `requirements.txt` — that file is what
+Oryx installs on Azure (`scripts/publish.py`), and test tooling must not ship.
+
 ## Commands
 
 ```bash
 python run.py                              # uvicorn on :8000 — DEVELOPMENT database
 python -m alembic upgrade head             # DEVELOPMENT unless POSTGRES_DB is overridden
+python -m app.scripts.seed_synthetic --plan  # a synthetic company: franchisees, employees, parts… (dev only)
+python -m app.scripts.seed_demo --plan       # the client walkthrough company
+python -m app.scripts.seed_play_review --plan  # the Play reviewer's company — re-run before each submission
 python -m app.scripts.bootstrap            # the platform superadmin
 python -m app.scripts.audit_tenancy        # after any schema change
 python -m app.scripts.create_database --name <db>      # a new database on the same server
 python -m app.scripts.copy_geography --to <db>         # the geography master, ids preserved
 python -m app.scripts.cleanup_db --check               # after adding a table — no database
 python -m app.scripts.cleanup_db --keep <id> --dry-run # see "Database cleanup" before anything else
+pip install -r requirements-dev.txt && python -m pytest  # unit tests — pure, no database (see above)
 ```
 
 ### ⚠ Orphaned workers, and why "stale code" keeps happening on Windows
@@ -1567,6 +2194,23 @@ vendor account whose membership names no vendor gets `[]` from `get_tree` and fr
   `core.coverage.users_notified_by` (web push — the relay passes `row.audience`) and the console
   socket's `_Visibility.hears_notification` (the `NotificationRaised` frame carries `audience`).
   An audience any of them does not know reaches nobody.
+  **Four readers since Task 05 — and now there is a REFERENCE COPY.** `core/audience.py` is the
+  pure rule in its memory shape (`hears(Reader, *, pincode, vendor_id, audience, franchisee_id)`,
+  unit-tested in §6's `test_audience.py`); the SQL feed keeps its own mirror clause for clause, the
+  coverage mirror does the same for push, and the socket delegates to `hears` outright — so the
+  next audience branch is written ONCE, then mirrored twice, never three times.
+  **`'franchisee_admin'` is the branch it joins, with the row's `franchisee_id` as its fourth
+  fact** (`notifications.franchisee_id`, whose franchisee the row is ABOUT — the pairing the
+  `vendor`/`audience` one makes for vendors, made here as an explicit CHECK because a Postgres
+  FK pair cannot say "audience is franchisee_admin ⇒ id is not null… or is vendor"). Only an
+  admin (or facility role, Task 12) of THAT franchisee hears such a row; a reader with
+  `franchisee_id=None` — or a row with `franchisee_id=None` reaching a franchise reader — hears
+  nothing, which is Task 02's closed leak restated in `hears` itself. `payers` rows of one
+  franchisee's money ALSO reach that franchisee's admin through the franchise branch. An admin
+  hearing a bell addressed `audience=franchisee_admin` still cannot act on a staff door — the
+  doors themselves stay guarded by rank/feature, exactly like every other audience. **`'facility'`** (Task 12) is
+  the fifth branch: a franchisee's admin and facility staff hear a part-request bell for THEIR franchisee only, and
+  nobody in the staff shell does.
 - The two decision kinds carry `vendor_id`, which **widens and never narrows**, so they land in
   staff feeds too with a `to` pointing at the portal. `assigned` already ships the same compromise.
   Two mitigations: the wording — *"43 inch LED (Samsung) approved"* is true on a manager's screen
@@ -1693,6 +2337,31 @@ ticket by territory. An AM who does not cover the ticket's state cannot load it;
 that state, no AM can, so the RH is automatically the lowest rank able to act — the chain falls out
 of rules that already existed. `TicketDetailOut.penaltyReviewer` NAMES the responsible person via
 `core.coverage.nearest_manager_for(require_phone=False, include_admin=True)`; it limits nobody.
+⚠ **Since Task 05, that `nearest_manager_for` chain answers a HOME ticket only.** On a non-home
+franchisee's ticket the reviewer is that franchisee's own admin (`penaltyReviewer.role =
+'franchisee_admin'`), because its penalties sit in its pool — but the REVERSING door stays staff
+(see below).
+⚠ **The staff door is staff-only since Task 05**, and the penalty's own franchisee decides who
+may give it back: the route carries `require_staff_principal` beside `penalties.reverse` and the
+service refuses with **404 "Penalty not found"** when
+`core.franchise_money.may_reverse(role, principal_franchisee_id, penalty.franchisee_id, home_id)`
+is false — an AM or RH may reverse a HOME penalty (and only inside their territory, as above),
+an Admin/NH any franchisee's, a franchise principal never here (its door is below, and the
+filtered `penalties` list on the read already hid the row, so 404 answers it honestly).
+
+**Two doors, one body.** Task 05 §4.10/§4.12 pulled the whole write into
+**`core/penalty_reversal.py`** — the reason-length check, the profile-row lock, the once-only 409,
+the reversal row (which copies BOTH of the penalty's stamps, `franchisee_id` AND
+`technician_type`, so a technician who changed either since the charge cannot move the money),
+the `penalty_reversed` ticket event and its wording (`₹… penalty to {name} reversed · {reason}`,
+`actor_kind='staff'` whichever door rang it), the frame publishes and the post-commit push — so
+the ticket page (staff, Door 1: `POST /tickets/{id}/penalties/{entryId}/reverse`) and the
+franchisee's own Pool screen (Door 2:
+`POST /franchise/ledger/{entryId}/reverse`, `franchise.pool`, own rows only) cannot drift. The
+franchisee's door loads its penalty THROUGH its own stamp — a guessed or foreign `entryId` is a
+404 — and `REVERSIBLE_KINDS` (`models/ledger.py`) is the list both pass: `("penalty", "speed_penalty")` since
+Task 11, so a slow-job charge is given back by the same people through the same two doors. The reversal copies the
+penalty's `franchisee_id`, so the money returns to the pool that collected it even if the technician has moved.
 
 **A reversal is a new row, never an edit.** `ledger_entries.kind = 'reversal'` with `reverses_id`
 naming the penalty — the table's own rule ("a correction is a NEW entry"). The penalty keeps saying
@@ -1706,7 +2375,7 @@ is invisible to anything that reads `totals.get("penalty")` by name, which is al
 | Reader | What it does with a reversal |
 |---|---|
 | `core.ledger.charged_this_month` (the monthly cap) | skips reversed penalties, keyed on the PENALTY's month — an October reversal of a September charge frees September |
-| `core.ledger.pool` | `reversal` is in `POOL_KINDS`; `penaltiesCollectedPaise` and `cancellations` are NET of it, so `collected − bonuses = balance` still holds and the console's sum line survives |
+| `core.ledger.pool` | `reversal` is in `POOL_KINDS`; `penaltiesCollectedPaise` and `cancellations` are NET of it, so `collected − bonuses = balance` still holds and the console's sum line survives. The reversal is grouped by the KIND IT UNDID (a join to the reversed row), so a speed penalty given back nets out of `speedPenaltyPaise` and not out of `cancellations` |
 | `features/earnings` | leaves out both the reversal and the penalty it names (`_shown()`), so the technician's screen needs no new copy and no rebuild |
 | `features/ledger` | lists reversal rows; `LedgerEntryOut.reversed` tags the charge |
 
@@ -1922,9 +2591,19 @@ python -m app.scripts.seed_play_review                    # dev
 $env:POSTGRES_DB='RelianceProdDB'; python -m app.scripts.seed_play_review --production
 ```
 
+**The reviewer is a FREELANCER of the review company's HOME franchisee, and the script refuses (`SeedRefused`)
+otherwise** — and refuses if the company has any franchisee besides its home: this is a fixed demo, and silently
+undoing somebody's carve-out is worse than stopping before a submission. A reviewer carved into another
+franchisee, or made an employee, would see a different Home, Earnings and Redeem. Give the reviewer a base
+location, a spare-parts entry, a home facility operator (nothing in the staff shell works the parts queue, so
+without one *Need a spare part* is hidden) and one job in *Awaiting part* — the script does all four; the
+company's travel and speed rules stay at their ₹0 defaults.
+
 It is safe to re-run and **must be re-run before every Play submission**: it creates only what is
 missing, force-closes the reviewer's held jobs whose slot has ended (paying nothing), and adds fresh
-pool, upcoming and in-progress jobs, because a slotless pool job is offered for at most 48 hours. It prints the
+pool, upcoming, in-progress and awaiting-part jobs, because a slotless pool job is offered for at most 48 hours. It
+also keeps the demo vendor's credit line at the ceiling: every ticket reserves its price, and the default
+₹5,000 refused a re-run partway through. It prints the
 admin and vendor console passwords only when it creates those logins, or with `--reset-passwords`.
 `cleanup_db` never deletes the company (see "What survives").
 

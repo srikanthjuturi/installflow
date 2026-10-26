@@ -49,7 +49,12 @@ TABLES: list[tuple[str, str]] = [
     # which is a fact about the sheet and not about either database. Letting it
     # fall back to the 'import' default here would tell the target that a
     # hand-added pincode came from a file that has never named it.
-    ("pincodes", "code, state_id, is_active, source, created_at, updated_at"),
+    # `latitude` / `longitude` travel for the same reason: they were loaded from
+    # an external file and are a fact about the pincode, not the database.
+    (
+        "pincodes",
+        "code, state_id, is_active, source, latitude, longitude, created_at, updated_at",
+    ),
     ("pincode_districts", "pincode_code, district_id, created_at, updated_at"),
 ]
 

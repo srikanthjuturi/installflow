@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   API_ROLE,
+  FRANCHISE_ROLES,
   PORTAL_ROLES,
   type ApiRole,
   type AuthPayload,
@@ -12,6 +13,7 @@ import {
   type LoginResponse,
 } from "@/types/api";
 import type { Role } from "@/types";
+import { SHELL_PATHS, surfaceOf } from "@/lib/surface";
 
 /* ------------------------------------------------------------- role mapping */
 
@@ -130,6 +132,17 @@ interface SessionState {
    * `backendUser?.role` directly is how they stop agreeing.
    */
   portal: boolean;
+  /**
+   * This session belongs in the franchise portal — Task 09's third shell.
+   *
+   * Identical reasoning to `portal` above, for the same five call sites: the
+   * franchise guards, the login redirect, the catch-all and the shell all
+   * branch off this flag rather than re-reading `backendUser?.role`. Ranked
+   * BELOW `superadmin` and ABOVE `portal` by `surfaceOf` — a user cannot hold
+   * both a franchise role and a portal role, but the ranking makes that
+   * unrepresentable rather than handled.
+   */
+  franchise: boolean;
   backendUser: BackendUser | null;
   memberships: BackendMembership[];
   /** The company the token is currently scoped to (the header switcher's value). */
@@ -198,6 +211,7 @@ export const useSession = create<SessionState>()(
       user: null,
       superadmin: false,
       portal: false,
+      franchise: false,
       backendUser: null,
       memberships: [],
       activeCompanyId: null,
@@ -238,6 +252,7 @@ export const useSession = create<SessionState>()(
           refreshToken,
           superadmin: user.isSuperadmin,
           portal: (PORTAL_ROLES as readonly string[]).includes(user.role),
+          franchise: (FRANCHISE_ROLES as readonly string[]).includes(user.role),
           backendUser: user,
           memberships,
           activeCompanyId,
@@ -262,6 +277,7 @@ export const useSession = create<SessionState>()(
           user: null,
           superadmin: false,
           portal: false,
+          franchise: false,
           backendUser: null,
           memberships: [],
           activeCompanyId: null,
@@ -279,16 +295,30 @@ export const useSession = create<SessionState>()(
     }),
     {
       name: "reliancegreentech.session",
-      version: 6,
-      // Older sessions predate the live backend (or carry a stale view-role
-      // from the removed role toggle, lack activeCompanyId, or — before v5 —
-      // hold an access token with no refresh token to renew it). Before v6 they
-      // also predate the vendor portal, so they cannot say which shell they
-      // belong in — and that flag decides routing. None can be trusted — keep
-      // the workspace preference and re-sign-in against the backend, which
+      version: 7,
+      // Before v7 they also predate the franchise portal, so they cannot say
+      // which shell they belong in — and that flag decides routing. Older than
+      // v6 none can be trusted at all (they predate the live backend, or carry
+      // a stale view-role from the removed role toggle, lack activeCompanyId,
+      // or hold an access token with no refresh token to renew it) — keep the
+      // workspace preference and re-sign-in against the backend, which
       // re-derives role, active company and surface from scratch.
-      migrate: (persisted) =>
-        ({
+      //
+      // A v6 session is kept: everything real it holds (identity, tokens, the
+      // company the tokens are scoped to) is unchanged by this version — v7
+      // only names a surface v6 was silent about, derivable from the role it
+      // already carries.
+      migrate: (persisted, from) => {
+        if (from === 6) {
+          const s = persisted as Partial<SessionState>;
+          return {
+            ...s,
+            franchise: (FRANCHISE_ROLES as readonly string[]).includes(
+              s.backendUser?.role as BackendRole
+            ),
+          } as SessionState;
+        }
+        return {
           ...(persisted as Partial<SessionState>),
           signedIn: false,
           accessToken: null,
@@ -296,13 +326,15 @@ export const useSession = create<SessionState>()(
           user: null,
           superadmin: false,
           portal: false,
+          franchise: false,
           backendUser: null,
           memberships: [],
           activeCompanyId: null,
           name: "",
           email: "",
           avatarUrl: null,
-        }) as SessionState,
+        } as SessionState;
+      },
       partialize: (s) => ({
         signedIn: s.signedIn,
         accessToken: s.accessToken,
@@ -310,6 +342,7 @@ export const useSession = create<SessionState>()(
         user: s.user,
         superadmin: s.superadmin,
         portal: s.portal,
+        franchise: s.franchise,
         backendUser: s.backendUser,
         memberships: s.memberships,
         activeCompanyId: s.activeCompanyId,
@@ -335,15 +368,18 @@ export const ROLE_LABEL: Record<Role, string> = {
 /**
  * Where a session lives.
  *
- * The ONE place the three surfaces are ranked, so the two route guards, the
- * login redirect and the catch-all cannot drift apart. Order matters:
- * superadmin has no company and therefore no portal, so it is asked first.
+ * The ONE place the surfaces are ranked, so the route guards, the login
+ * redirect and the catch-all cannot drift apart. The ranking itself and the
+ * home paths are `surfaceOf` / `SHELL_PATHS`'s (`lib/surface.ts`); this stays
+ * a named entry point because four screens read "where do I go now" rather
+ * than "which surface am I", and because its `franchise` field is REQUIRED —
+ * a call site that forgets to pass it does not compile, which is how the doc
+ * guaranteed every branch was found on the day the third shell landed.
  */
 export function landingPath(s: {
   superadmin: boolean;
+  franchise: boolean;
   portal: boolean;
 }): string {
-  if (s.superadmin) return "/companies";
-  if (s.portal) return "/portal";
-  return "/";
+  return SHELL_PATHS[surfaceOf(s)].home;
 }

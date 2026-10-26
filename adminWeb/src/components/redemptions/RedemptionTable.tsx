@@ -21,6 +21,7 @@ import {
 } from "@/types/redemption";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { moneyPaise } from "@/utils/money";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { RedemptionBadge } from "./RedemptionBadge";
 
 interface RedemptionTableProps {
@@ -50,6 +51,9 @@ export function RedemptionTable({
   onRetry,
 }: RedemptionTableProps) {
   const navigate = useNavigate();
+  // Task 09 — the row's destination is the shell's route, not a constant;
+  // the portal's queue opens the same page under `/franchise/redemptions/…`.
+  const { paths, workspace } = useWorkspace();
   const write = useParamsWriter(params, onParams);
   // Hard rule 11: whoever navigates says where they came from, filters and all.
   const origin = useNavOrigin("Back to redemptions");
@@ -135,7 +139,18 @@ export function RedemptionTable({
       }}
       filters={filters}
       server={{ meta, params, onParams }}
-      onRowClick={(r) => navigate(`/redemptions/${r.id}`, { state: origin })}
+      // §5.10 — the pool the row belongs to travels in the URL, so the detail
+      // read asks in that same pool (the staff payer's selector is already at
+      // work) and a pasted link lands where it was copied from. The portal's
+      // rows are always its own pool's — nothing to name.
+      onRowClick={(r) =>
+        navigate(
+          workspace === "ops"
+            ? `${paths.redemption(r.id)}?franchiseeId=${r.franchiseeId}`
+            : paths.redemption(r.id),
+          { state: origin }
+        )
+      }
       minWidth="56rem"
       emptyIcon={IndianRupee}
       emptyTitle="No redemptions yet"

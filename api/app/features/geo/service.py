@@ -431,6 +431,8 @@ def _pincode_out(
         districtIds=[district_id for district_id, _name in districts],
         isActive=pincode.is_active,
         source=pincode.source,
+        latitude=pincode.latitude,
+        longitude=pincode.longitude,
     )
 
 

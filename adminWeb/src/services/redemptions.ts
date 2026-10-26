@@ -40,8 +40,18 @@ export async function redemptionsToPayCount(): Promise<number> {
   return toPay;
 }
 
-export function getRedemption(id: string): Promise<RedemptionDetail> {
-  return apiGet<RedemptionDetail>(`/redemptions/${id}`);
+/**
+ * One redemption. Task 09 §5.10 — a staff payer reading a NON-home franchisee's
+ * queue reaches its rows through `?franchiseeId=`, and the detail read carries
+ * the same id (the route answers in the pool the id names). Absent means home,
+ * and the portal never sends one: `require_franchise_principal` pins its own.
+ */
+export function getRedemption(
+  id: string,
+  franchiseeId?: string | null
+): Promise<RedemptionDetail> {
+  const qs = franchiseeId ? `?franchiseeId=${encodeURIComponent(franchiseeId)}` : "";
+  return apiGet<RedemptionDetail>(`/redemptions/${id}${qs}`);
 }
 
 /**

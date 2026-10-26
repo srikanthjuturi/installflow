@@ -51,6 +51,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import presence
 from app.core.database import AsyncSessionLocal
+from app.core.franchise_routing import pool_frame_matches
 from app.core.realtime import JobChanged, PoolChanged, broker
 from app.core.security import decode_token
 from app.models.membership import Membership
@@ -91,9 +92,9 @@ _CLOSE_NOT_TECHNICIAN = 4403
 
 
 class _Coverage:
-    """The two sets a pool event is matched against, cached with a TTL."""
+    """The two sets — and one id — a pool event is matched against, cached with a TTL."""
 
-    __slots__ = ("pincodes", "nodes", "_loaded_at")
+    __slots__ = ("pincodes", "nodes", "franchisee_id", "_loaded_at")
 
     def __init__(self) -> None:
         self.pincodes: set[str] = set()
@@ -103,6 +104,12 @@ class _Coverage:
         #: cache stays the size of the certifications rather than the size of
         #: the subtree they cover.
         self.nodes: set[uuid.UUID] = set()
+        #: The franchisee this technician currently belongs to (Task 04). None
+        #: only for an instant — a cache loaded before the column existed, or a
+        #: profile with no stamp (which the migration forbids) — and None is
+        #: matched by every frame: a spurious ring costs one re-read of the
+        #: pool, a missed ring costs a technician the job.
+        self.franchisee_id: uuid.UUID | None = None
         self._loaded_at = 0.0
 
     @property
@@ -124,22 +131,40 @@ class _Coverage:
                 TechnicianNode.technician_id == technician_id,
             )
         )
+        franchisee = await db.scalar(
+            select(TechnicianProfile.franchisee_id).where(
+                TechnicianProfile.company_id == company_id,
+                TechnicianProfile.id == technician_id,
+            )
+        )
         self.pincodes = set(pincodes)
         self.nodes = set(nodes)
+        self.franchisee_id = franchisee
         self._loaded_at = time.monotonic()
 
     def matches(self, event: PoolChanged) -> bool:
-        """Certified ANYWHERE on the job's path, and covering its pincode.
+        """Certified ANYWHERE on the job's path, covering its pincode (unless the
+        ticket was handed over, Task 18), and in the ticket's franchisee.
 
-        The set intersection is what makes certification descendant-aware here:
-        a technician holding only *TV* matches an *Android TV* job because *TV*
-        is in that job's `node_path_ids`. Equality against the leaf — which is
-        what this was before the catalogue had depth — would have gone on
-        compiling and silently stopped ringing for exactly the technicians whose
+        The pure `pool_frame_matches` holds the rule and its reasoning; this
+        stays the thin cache-shaped wrapper, so the socket and any future caller
+        of the rule cannot drift. The set intersection on nodes is what makes
+        certification descendant-aware here: a technician holding only *TV*
+        matches an *Android TV* job because *TV* is in that job's
+        `node_path_ids`. Equality against the leaf — which is what this was
+        before the catalogue had depth — would have gone on compiling and
+        silently stopped ringing for exactly the technicians whose
         certification is broadest.
         """
-        return event.pincode in self.pincodes and not self.nodes.isdisjoint(
-            event.node_path_ids
+        return pool_frame_matches(
+            pincodes=self.pincodes,
+            nodes=self.nodes,
+            franchisee_id=self.franchisee_id,
+            event_pincode=event.pincode,
+            event_path=event.node_path_ids,
+            event_franchisee=event.franchisee_id,
+            # A ticket handed to this franchisee waives the pincode test (Task 18).
+            event_override=event.routing_override,
         )
 
 

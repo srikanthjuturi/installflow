@@ -141,7 +141,9 @@ export function RegisterVerifyScreen() {
       }
       // Only now — a cleared draft with no session would strand them.
       clear();
-      router.replace('/(app)/(tabs)');
+      // One more step, now that there is an account to save a base location
+      // against. They can skip it; Home then asks until it is set.
+      router.replace('/base-location?onboarding=1');
     } catch (e) {
       setFailure({ error: e, fallback: 'onboarding.verify.errors.submitFailed' });
     } finally {

@@ -18,6 +18,7 @@ import datetime
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -53,6 +54,23 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     # ── what, and whose ────────────────────────────────────────────────────
     #: All three are COMPOSITE FKs — see __table_args__.
     vendor_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: Who runs the technicians for this job — stamped at intake from the
+    #: pincode (core.franchise), moved only by a carve-out while the ticket is
+    #: unassigned (F6, Task 03). Assigned work keeps it. COMPOSITE FK.
+    #:
+    #: Re-stamp through `core.franchise.restamp_ticket` whenever `pincode`
+    #: changes. Today nothing changes a ticket's pincode.
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: A person, not the pincode, chose this ticket's franchisee (Task 18). While true the pool's PINCODE
+    #: test is waived - the technician's franchisee must still equal `franchisee_id`, and certification,
+    #: status, the daily cap and the online toggle all still apply. Set only by `tickets.service.
+    #: hand_to_franchisee`, and DERIVED there as `target != franchisee_for_pincode(pincode)`, so handing a
+    #: ticket back to the pincode's owner clears it. Survives acceptance and release on purpose: a released
+    #: handed ticket goes back to the franchisee it was handed to. Read it with every other routing fact -
+    #: `pool_query`, `technicians_covering`, `assign`, the pool socket, `restamp_ticket`, the carve-out.
+    routing_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     #: The catalogue node this job sits under. Renamed from `subcategory_id`
     #: when the product tree merged into one recursive table; the values never
     #: changed, so nothing had to be re-keyed.
@@ -333,6 +351,22 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: ticket ever raised.
     rules_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
+    #: What depended on the TECHNICIAN when they took this job — their franchisee,
+    #: their type, and the travel allowance from their base (index §3.5). Task 11
+    #: adds `speed`. Written by the guarded UPDATE in `jobs.service.accept` and
+    #: `tickets.service.assign_technician`; set back to NULL by every path that
+    #: clears `technician_id`, so a re-accept re-stamps (TA5).
+    #:
+    #: ⚠ `none_as_null=True` is load-bearing — see `models/product_node_rules.py`.
+    #: Without it, `.values(accept_snapshot=None)` writes the JSON value `null`,
+    #: `accept_snapshot IS NULL` is then false, and every verify query lies.
+    #:
+    #: Read it through `core.accept_snapshot.travel_of` / `speed_of`, never with a
+    #: bare subscript: tickets accepted before Task 10 have NULL here.
+    accept_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
     __table_args__ = (
         # Declared on the MODEL, not only in a migration, so the model is the
         # whole truth about the table and `--autogenerate` can see them.
@@ -345,7 +379,7 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         ),
         CheckConstraint(
             "status IN ('New', 'Slot Pending', 'Assigned', 'In Progress', "
-            "'Awaiting Customer', 'AI Review', 'Escalated', 'Closed', "
+            "'Awaiting Part', 'Awaiting Customer', 'AI Review', 'Escalated', 'Closed', "
             "'Force-Closed', 'Cancelled')",
             name="status",
         ),
@@ -434,6 +468,7 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_tickets_company_node", "company_id", "node_id"),
         Index("ix_tickets_company_model", "company_id", "model_id"),
         Index("ix_tickets_company_technician", "company_id", "technician_id"),
+        Index("ix_tickets_company_franchisee", "company_id", "franchisee_id"),
         # A vendor USER's list is "my vendor, and raised by me". `created_by`
         # comes from ActorMixin as a plain UUID with no foreign key, so the
         # FK-coverage query that catches this class of miss would never ask for
@@ -464,6 +499,12 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ["company_id", "technician_id"],
             ["technician_profiles.company_id", "technician_profiles.id"],
             name="fk_tickets_company_technician",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_tickets_company_franchisee",
             ondelete="RESTRICT",
         ),
     )

@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowLeftRight,
   BadgeCheck,
   BadgeIndianRupee,
   BadgeX,
@@ -8,6 +9,7 @@ import {
   Clock,
   Coins,
   HandCoins,
+  Inbox,
   IndianRupee,
   MailX,
   PackagePlus,
@@ -20,6 +22,7 @@ import {
   UserPlus,
   UserX,
   WalletCards,
+  Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { NotificationKind } from "@/services/notifications";
@@ -102,6 +105,26 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: WalletCards,
     wrap: "bg-info-bg text-info",
     label: "UPI change",
+  },
+  // The spare-part trail (Task 12). One icon for all three, so the feed groups
+  // them by eye; the tint says what each one asks of the reader. A request is
+  // news to a facility desk (info); a rejection — an approved part cancelled
+  // included — is a task with a fix for the territory staff (warn, the
+  // `product_rejected` call); an issue is just news (ok).
+  part_requested: {
+    icon: Wrench,
+    wrap: "bg-info-bg text-info",
+    label: "Part requested",
+  },
+  part_decided: {
+    icon: Wrench,
+    wrap: "bg-warn-bg text-warn",
+    label: "Part not approved",
+  },
+  part_issued: {
+    icon: Wrench,
+    wrap: "bg-ok-bg text-ok",
+    label: "Part issued",
   },
   // The company's credits crossed a line — used up, or tickets paused. Warn:
   // a paused company is one whose vendors cannot raise tickets, a task with a
@@ -199,6 +222,22 @@ export const KIND: Record<NotificationKind, KindMeta> = {
     icon: UserPlus,
     wrap: "bg-success-bg text-success",
     label: "Technician joined",
+  },
+  // Task 05's stored kind, which a franchisee admin receives (index §3.3 —
+  // the wire value). A technician's territory changed, so somebody's coverage
+  // of them changed hands. Info rather than warn: nothing is broken and
+  // nothing is being asked — it is the news, worded as it lands (§5.9).
+  technician_moved: {
+    icon: ArrowLeftRight,
+    wrap: "bg-info-bg text-info",
+    label: "Technician moved",
+  },
+  // Task 18 (PROPOSED copy): work arrived at a franchisee. The neutral "arrival"
+  // icon of `technician_joined` — good news, not a problem.
+  ticket_handed: {
+    icon: Inbox,
+    wrap: "bg-success-bg text-success",
+    label: "Ticket handed over",
   },
 };
 

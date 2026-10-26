@@ -14,6 +14,7 @@ import {
   withFilter,
   withSearch,
 } from "@/hooks/useListParams";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useIncrementalOptions } from "@/hooks/useIncrementalOptions";
 import { formatPhone } from "@/utils/phone";
 import type { ListParams, PaginationMeta } from "@/types/api";
@@ -22,9 +23,13 @@ import type {
   TechnicianInvite,
   TechnicianRow,
 } from "@/types/technician";
+import { TECHNICIAN_TYPES } from "@/types/technician";
+import type { FranchiseeOption } from "@/types/franchisee";
 import { AvailabilityPill } from "./AvailabilityPill";
 import { BandwidthBar, CancelCount } from "./BandwidthBar";
+import { BaseChip } from "./BaseChip";
 import { OnboardingStatusCell } from "./OnboardingStatusCell";
+import { wireTypeToWord } from "./technicianType";
 import {
   INVITE_STATUSES,
   STATUS_LABEL,
@@ -63,6 +68,13 @@ interface TechTableProps {
   regions: { id: string; name: string }[];
   /** Districts the caller covers, for the district filter. */
   districts: { id: string; name: string; stateName: string }[];
+  /**
+   * The company's franchisees, for the Franchisee filter (Task 08 §5.8). Every
+   * one, active and not — a paused franchisee's technicians still appear here.
+   * Ops-only: the portal's rows are all the same franchisee (§5.4), so the
+   * caller there passes `[]` and both the column and the filter disappear.
+   */
+  franchisees: FranchiseeOption[];
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -92,6 +104,7 @@ export function TechTable({
   onParams,
   regions,
   districts,
+  franchisees,
   isLoading,
   error,
   onRetry,
@@ -109,6 +122,14 @@ export function TechTable({
   busyInviteId,
 }: TechTableProps) {
   const navigate = useNavigate();
+  /**
+   * Task 09 — routes, not props. Rows link to the technician's profile, and
+   * which profile route that is is the SHELL's answer: the adapter carries
+   * both. Nothing here branches on `kind` except for the Franchisee column
+   * (every portal row is the same franchisee, so the column is noise).
+   */
+  const { workspace: ws, paths } = useWorkspace();
+  const isOps = ws === "ops";
 
   /**
    * The district filter's options: searched, and revealed a page at a time.
@@ -157,7 +178,7 @@ export function TechTable({
               {/* A real link so the row is keyboard reachable and opens in a
                   new tab — the row click is a convenience on top. */}
               <Link
-                to={`/technicians/${t.id}`}
+                to={paths.technician(t.id)}
                 onClick={(e) => e.stopPropagation()}
                 className="font-medium hover:text-brand-400"
               >
@@ -180,6 +201,37 @@ export function TechTable({
           </div>
         ),
     },
+    /* Task 08: who runs them. Both rows — a registered technician and an open
+       invite — carry the answer, because an invite already belongs to a
+       franchisee too. Ops-only: in the portal the column is noise — every row
+       is the same franchisee (its own), so the rail's second line says it. */
+    ...(isOps
+      ? ([
+          {
+            id: "franchisee",
+            header: "Franchisee",
+            cell: (t: TechnicianRow) => (
+              <div className="flex flex-wrap items-center gap-1.25 leading-tight">
+                <div>{t.franchiseeName}</div>
+                {/* "Home" rides in words, as on the Franchisees screen. */}
+                {t.franchiseeIsHome ? (
+                  <span className="inline-block rounded-full border border-line bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-ink-2">
+                    Home
+                  </span>
+                ) : null}
+              </div>
+            ),
+          },
+        ] satisfies Column<TechnicianRow>[])
+      : []),
+    {
+      id: "type",
+      header: "Type",
+      cell: (t) =>
+        /* The wire value, capitalised for the column — the words the copy table
+           uses. Never colour alone: it is a word, always. */
+        <span className="text-[13px]">{wireTypeToWord(t.technicianType)}</span>,
+    },
     {
       id: "cats",
       header: "Categories",
@@ -196,11 +248,34 @@ export function TechTable({
           NONE
         ),
     },
+    /* Task 13 §5.5 (R9) — where their travel allowance starts from, as the
+       SOURCE chip and nothing more: a list must not hand every row-reader a
+       coordinate pair (W13). A registered technician with no base reads "Not
+       set" in words — the allowance pays nothing for their jobs until it is;
+       an invite has no profile to hold one yet. */
     {
-      id: "region",
-      header: "Region",
-      cell: (t) => t.regionName,
+      id: "base",
+      header: "Base",
+      cell: (t) =>
+        !t.registered ? (
+          NONE
+        ) : t.baseSource ? (
+          <BaseChip source={t.baseSource} />
+        ) : (
+          <span className="inline-block rounded-full bg-warn-bg px-2.25 py-0.75 text-[11px] font-semibold text-warn">
+            Not set
+          </span>
+        ),
     },
+    ...(isOps
+      ? ([
+          {
+            id: "region",
+            header: "Region",
+            cell: (t: TechnicianRow) => t.regionName,
+          },
+        ] satisfies Column<TechnicianRow>[])
+      : []),
     {
       id: "availability",
       header: "Availability",
@@ -231,48 +306,55 @@ export function TechTable({
           NONE
         ),
     },
-    {
-      id: "jobs",
-      header: "Jobs",
-      align: "right",
-      cell: (t) =>
-        t.registered && t.jobsCompleted !== null ? (
-          <span className="tabular-nums">{t.jobsCompleted}</span>
-        ) : (
-          NONE
-        ),
-    },
-    {
-      id: "cancels",
-      header: "Cancels",
-      align: "right",
-      cell: (t) =>
-        t.registered && t.jobsCancelled !== null ? (
-          <CancelCount cancels={t.jobsCancelled} />
-        ) : (
-          NONE
-        ),
-    },
-    {
-      id: "appointedBy",
-      header: "Appointed by",
-      cell: (t) => {
-        const name = t.registered
-          ? t.onboarding.appointedByName
-          : t.invitedByName;
-        // The role is the half that carries meaning: an Area Manager onboarding
-        // into their own pincodes and a National Head reaching across the
-        // country are different acts, and a bare name hides which.
-        const role = t.registered ? t.onboarding.appointedByRoleLabel : null;
-        if (!name) return <span className="text-xs text-ink-2">{NONE}</span>;
-        return (
-          <div className="min-w-0">
-            <div className="text-xs text-ink-2">{name}</div>
-            {role ? <div className="text-[11px] text-ink-3">{role}</div> : null}
-          </div>
-        );
-      },
-    },
+    /* Jobs · Cancels · Appointed by — ops-only, per mock 09a: the portal list
+       is the franchisee's own team, and its three counting columns are the
+       staff dispatch question, not the portal's. */
+    ...(isOps
+      ? ([
+          {
+            id: "jobs",
+            header: "Jobs",
+            align: "right" as const,
+            cell: (t: TechnicianRow) =>
+              t.registered && t.jobsCompleted !== null ? (
+                <span className="tabular-nums">{t.jobsCompleted}</span>
+              ) : (
+                NONE
+              ),
+          },
+          {
+            id: "cancels",
+            header: "Cancels",
+            align: "right" as const,
+            cell: (t: TechnicianRow) =>
+              t.registered && t.jobsCancelled !== null ? (
+                <CancelCount cancels={t.jobsCancelled} />
+              ) : (
+                NONE
+              ),
+          },
+          {
+            id: "appointedBy",
+            header: "Appointed by",
+            cell: (t: TechnicianRow) => {
+              const name = t.registered
+                ? t.onboarding.appointedByName
+                : t.invitedByName;
+              // The role is the half that carries meaning: an Area Manager onboarding
+              // into their own pincodes and a National Head reaching across the
+              // country are different acts, and a bare name hides which.
+              const role = t.registered ? t.onboarding.appointedByRoleLabel : null;
+              if (!name) return <span className="text-xs text-ink-2">{NONE}</span>;
+              return (
+                <div className="min-w-0">
+                  <div className="text-xs text-ink-2">{name}</div>
+                  {role ? <div className="text-[11px] text-ink-3">{role}</div> : null}
+                </div>
+              );
+            },
+          },
+        ] satisfies Column<TechnicianRow>[])
+      : []),
     {
       id: "status",
       header: "Status",
@@ -299,8 +381,13 @@ export function TechTable({
               {/* The app link again — what a technician needs when the first
                   message never arrived, or when they change phones. Beside
                   Edit rather than in a menu, matching the invite row's
-                  Resend: it is the one other thing done to a row here. */}
-              {canSendAppLink ? (
+                  Resend: it is the one other thing done to a row here.
+
+                  `t.canManage` is the server's F8 opinion — a technician a
+                  non-home franchisee runs is THAT franchisee's admin's to
+                  manage, and staff verbs refuse with 403. Hiding them here
+                  keeps the row honest without waiting for the request. */}
+              {canSendAppLink && t.canManage ? (
                 <Button
                   type="button"
                   variant="link"
@@ -315,7 +402,7 @@ export function TechTable({
               ) : null}
               {/* A button, not a link: it opens a dialog rather than
                   navigating, and the row click already goes to the profile. */}
-              {canEditTechnician ? (
+              {canEditTechnician && t.canManage ? (
                 <Button
                   type="button"
                   variant="link"
@@ -327,7 +414,7 @@ export function TechTable({
                   <span className="sr-only"> {t.name}</span>
                 </Button>
               ) : null}
-              {canEditTechnician ? (
+              {canEditTechnician && t.canManage ? (
                 <Button
                   type="button"
                   variant="link"
@@ -342,7 +429,7 @@ export function TechTable({
             </div>
           );
         }
-        if (!canManageInvites || !isResendable(t.status)) return null;
+        if (!canManageInvites || !t.canManage || !isResendable(t.status)) return null;
         const busy = busyInviteId === t.id;
         return (
           <div
@@ -392,9 +479,15 @@ export function TechTable({
    * The defs own the label and the options — the toolbar renders from them.
    * What they do not own is the matching: the value goes into `params.filters`
    * and the server narrows the result set, so `match` is never called.
+   *
+   * Ops-only filters (Onboarding, Franchisee, District) stay behind `isOps` —
+   * mock 09a offers the portal three: search, Type, Status, Region. The portal
+   * never loses the rows, only the filter that would have narrowed them; the
+   * server accepts the same filter set on both doors.
    */
-  const filters: TypedFilterDef<TechnicianRow>[] = [
-    {
+  const filters: TypedFilterDef<TechnicianRow>[] = [];
+  if (isOps) {
+    filters.push({
       id: "onboarding",
       label: "Onboarding",
       variant: "select",
@@ -405,11 +498,12 @@ export function TechTable({
       value: filterValue(params, "onboarding"),
       onChange: (v) => setFilter("onboarding", v),
       match: () => true,
-    },
-    {
-      id: "status",
-      label: "Status",
-      variant: "select",
+    });
+  }
+  filters.push({
+    id: "status",
+    label: "Status",
+    variant: "select",
       options: [
         { value: "active", label: "Active" },
         { value: "inactive", label: "Inactive" },
@@ -418,8 +512,60 @@ export function TechTable({
       value: filterValue(params, "status"),
       onChange: (v) => setFilter("status", v),
       match: () => true,
-    },
-  ];
+    });
+
+  // The Franchisee filter — a combobox when the company has grown past ten
+  // franchisees (the search-and-load pattern the district filter needs), a
+  // plain select before that. Rendered at all only when there is more than one:
+  // one is not a choice (the same test the Region filter uses), and hidden —
+  // with no value auto-filled — is where "single-option" ends (hard rule 10).
+  // Ops-only: in the portal the answer to "which franchisee" is the rail's
+  // second line, and a filter of one is no filter.
+  if (isOps && franchisees.length > 1) {
+    filters.push(
+      franchisees.length > 10
+        ? {
+            id: "franchiseeId",
+            label: "Franchisee",
+            variant: "combobox",
+            options: franchisees.map((f) => ({
+              value: f.id,
+              label: f.name,
+              hint: f.code,
+            })),
+            value: filterValue(params, "franchiseeId"),
+            onChange: (v) => setFilter("franchiseeId", v),
+            match: () => true,
+          }
+        : {
+            id: "franchiseeId",
+            label: "Franchisee",
+            variant: "select",
+            options: franchisees.map((f) => ({
+              value: f.id,
+              label: f.name,
+            })),
+            value: filterValue(params, "franchiseeId"),
+            onChange: (v) => setFilter("franchiseeId", v),
+            match: () => true,
+          }
+    );
+  }
+
+  // The Type filter is static — exempt from hard rule 10, which is about
+  // options that depend on the caller; every company has both kinds.
+  filters.push({
+    id: "technicianType",
+    label: "Type",
+    variant: "select",
+    options: TECHNICIAN_TYPES.map((t) => ({
+      value: t,
+      label: wireTypeToWord(t),
+    })),
+    value: filterValue(params, "technicianType"),
+    onChange: (v) => setFilter("technicianType", v),
+    match: () => true,
+  });
 
   // A manager who holds one region has nothing to choose between.
   if (regions.length > 1) {
@@ -446,7 +592,9 @@ export function TechTable({
   // A combobox, not a select: a national head covers all 754 districts, and
   // five names belong to two states each — so the list has to be typed at, and
   // each option has to name its state or the two Bilaspurs are the same row.
-  if (districts.length > 1) {
+  // Ops-only: the portal's pincodes are all its own, and mock 09a offers no
+  // district filter there.
+  if (isOps && districts.length > 1) {
     filters.push({
       id: "districtId",
       label: "District",
@@ -464,7 +612,7 @@ export function TechTable({
   return (
     <DataTable
       errorTitle="Couldn't load technicians"
-      caption="Technicians and open invites, with their categories, service pincodes, region, bandwidth, availability and who appointed them"
+      caption="Technicians and open invites, with their franchisee, type, categories, service pincodes, region, bandwidth, availability and who appointed them"
       data={rows}
       columns={columns}
       getRowId={(t) => t.id}
@@ -472,15 +620,19 @@ export function TechTable({
       error={error}
       onRetry={onRetry}
       search={{
-        placeholder: "Search by name, mobile, ID or pincode…",
+        placeholder: isOps
+          ? "Search by name, mobile, ID or pincode…"
+          : "Search name, mobile or code",
         value: params.search ?? "",
         onChange: setSearch,
       }}
       filters={filters}
       toolbarActions={toolbarActions}
       server={{ meta, params, onParams }}
-      onRowClick={(t) => t.registered && navigate(`/technicians/${t.id}`)}
-      minWidth="90rem"
+      onRowClick={(t) => t.registered && navigate(paths.technician(t.id))}
+      // Bumped from 90rem with the Franchisee and Type columns; the portal
+      // drops five of them (§5.4) and fits again.
+      minWidth={isOps ? "101rem" : "77rem"}
       emptyIcon={Users}
       emptyTitle="No technicians yet"
       emptyDescription="Add a technician, or invite one by mobile number and let them register themselves."

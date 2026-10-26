@@ -11,18 +11,34 @@ from app.features.companies.router import router as companies_router
 from app.features.credits.platform_router import router as platform_router
 from app.features.credits.router import router as credits_router
 from app.features.earnings.router import router as earnings_router
+from app.features.franchise_portal.router import router as franchise_portal_router
 from app.features.geo.router import router as geo_router
+from app.features.franchisees.router import router as franchisees_router
 from app.features.jobs.router import router as jobs_router
 from app.features.jobs.ws import router as jobs_stream_router
 from app.features.ledger.router import router as ledger_router
+from app.features.ledger.franchise_router import (
+    router as ledger_franchise_router,
+)
 from app.features.masters.router import router as masters_router
 from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
 from app.features.rbac.router import router as rbac_router
 from app.features.redemptions.router import router as redemptions_router
+from app.features.redemptions.franchise_router import (
+    router as redemptions_franchise_router,
+)
 from app.features.search.router import router as search_router
+from app.features.spare_parts.home_router import router as spare_parts_home_router
+from app.features.spare_parts.router import router as spare_parts_router
+from app.features.settings.franchise_router import (
+    router as settings_franchise_router,
+)
 from app.features.settings.router import router as settings_router
 from app.features.technicians.router import router as technicians_router
+from app.features.technicians.franchise_router import (
+    router as technicians_franchise_router,
+)
 from app.features.tickets.router import router as tickets_router
 from app.features.tickets.ws import router as tickets_stream_router
 from app.features.territory.router import router as territory_router
@@ -48,6 +64,8 @@ api_router.include_router(vendors_router)
 # Before /vendors is irrelevant — different prefix — but grouped with it so the
 # vendor surface reads as one thing.
 api_router.include_router(vendor_users_router)
+# Who runs the technicians, and which pincodes each one routes.
+api_router.include_router(franchisees_router)
 api_router.include_router(masters_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)
@@ -76,9 +94,25 @@ api_router.include_router(search_router)
 api_router.include_router(earnings_router)
 # A technician cashing out, paid by UPI: the payer claims, the technician
 # confirms, and nothing else can say a redemption is paid.
+#
+# Each money/employee slice carries a `/franchise` twin beside its staff router
+# (Task 05) — the franchisee's OWN door on the same rows. The twins are
+# different prefixes from their staff routers, so nothing can shadow anything;
+# the shadowing rule still holds within a twin, whose own literal `/count`
+# routes sit before their `/{id}` routes. Twins carry a FranchisePrincipal
+# guard; the staff routers carry `require_staff_principal`.
+api_router.include_router(redemptions_franchise_router)
 api_router.include_router(redemptions_router)
+api_router.include_router(ledger_franchise_router)
 api_router.include_router(ledger_router)
+# The franchisee portal's read-only master data — what Tasks 05/06's screens
+# are filled from (05 §4.6), through the franchisee wall like every twin.
+api_router.include_router(franchise_portal_router)
 api_router.include_router(settings_router)
+api_router.include_router(settings_franchise_router)
+# Task 05's own employees slice — the technician roster twin is registered
+# beside its staff router above, where the roster itself lives.
+api_router.include_router(technicians_franchise_router)
 # What a company pays for tickets with. The company's side (`/credits`) claims a
 # recharge; the superadmin's (`/platform`) holds the rules and confirms it —
 # the only door through which credits are bought.
@@ -94,3 +128,9 @@ api_router.include_router(platform_router)
 # paths are matched before anything could shadow them.
 api_router.include_router(vendor_credit_staff_router)
 api_router.include_router(vendor_credit_router)
+# Spare parts (Task 12): the catalogue editor (Admin / National Head) and the
+# facility's request queue (franchise staff only — no staff fallback, R4), plus
+# the home franchisee's facility users, which company Admin / National Head
+# create because the home has no franchisee admin by default.
+api_router.include_router(spare_parts_router)
+api_router.include_router(spare_parts_home_router)

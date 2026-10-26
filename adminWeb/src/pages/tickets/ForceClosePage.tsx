@@ -5,7 +5,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ErrorState } from "@/components/shared/states";
 import { ForceCloseForm } from "@/components/tickets/ForceCloseForm";
-import type { ForceCloseFormValues } from "@/components/tickets/ForceCloseForm";
+import type { ForceCloseFormValues } from "@/components/tickets/forceCloseSchema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { originFor, readNavOrigin } from "@/hooks/useNavOrigin";
@@ -14,6 +14,11 @@ import { useForceCloseTicket, useTicket } from "@/hooks/useTickets";
 import type { ForceCloseAttachment } from "@/services/tickets";
 import { uploadImage } from "@/services/uploads";
 import { isTerminalTicketStatus } from "@/types";
+import type { TicketTravel } from "@/types/allowances";
+
+/** The form draws the travel field exactly when the frozen block has a ceiling. */
+const showsTravel = (travel: TicketTravel | null | undefined) =>
+  travel != null && travel.forceCloseMaxPaise > 0;
 
 export default function ForceClosePage() {
   const { id = "" } = useParams();
@@ -128,6 +133,13 @@ export default function ForceClosePage() {
         // has a vendor. Empty means bill nothing, which the API writes as no
         // entry at all — so 0 and omitted say the same thing here too.
         vendorChargePaise: Number(values.vendorCharge || 0) * 100,
+        // Task 13 §5.8 — only when the form SHOWED the field: omitted means
+        // "pay nothing" to the API (Task 10 W5), and a hidden field's
+        // untouched empty string must not be read as the manager clearing it.
+        // Cleared-by-hand (`""`) sends 0, which writes no row either.
+        travelPaise: showsTravel(current.travel)
+          ? Number(values.travelAllowance || 0) * 100
+          : undefined,
       },
       {
         onSuccess: () => {
@@ -205,11 +217,29 @@ export default function ForceClosePage() {
                   }
                 : null
             }
+            /* The form's answer to the same question, and the server is
+               stricter than this read: it re-resolves the type itself and
+               credits nothing for an employee no matter what was sent (the
+               trail records "no per-job payout: employee"). */
+            technicianType={ticket.technicianType}
             /* Always present, both of them: every ticket carries a vendor, and
                `vendorPricePaise` is NOT NULL and shown to everyone who can see
                the ticket — the vendor included, because it is their own price
                and there is nothing to hide from the party paying it. */
             vendor={{ name: ticket.vendorName, pricePaise: ticket.vendorPricePaise }}
+            /* The frozen allowance (Task 10), when somebody holds the job and
+               the ticket froze a ceiling. The server decides who gets the
+               block; a null one simply draws no field. */
+            travel={
+              ticket.technicianId && showsTravel(ticket.travel) && ticket.travel
+                ? {
+                    defaultPaise: ticket.travel.forceCloseDefaultPaise,
+                    maxPaise: ticket.travel.forceCloseMaxPaise,
+                    km: ticket.travel.km,
+                    technicianName: ticket.technicianName ?? "the technician",
+                  }
+                : null
+            }
             onSubmit={(values) => void submit(ticket, values)}
           />
         </>

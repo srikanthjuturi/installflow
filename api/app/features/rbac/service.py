@@ -17,7 +17,7 @@ from app.features.rbac.schemas import (
     RoleOut,
 )
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
-from app.models.role import ROLE_RANKS, SUPERADMIN, Role
+from app.models.role import FRANCHISE_ROLES, NATIONAL_HEAD, ROLE_RANKS, SUPERADMIN, Role
 from app.models.territory import Region
 
 
@@ -51,6 +51,18 @@ async def list_features(session: AsyncSession) -> list[FeatureOut]:
 
 
 def _check_manageable_role(principal: Principal, role: str) -> None:
+    if principal.is_franchise:
+        # A franchisee admin outranks the facility roles (8 < 9, 10), so rank
+        # alone would let SkyFix's admin re-shape what EVERY franchisee's
+        # facility staff can do. Feature Access is company-wide reference data
+        # and no franchise surface at all.
+        raise HTTPException(403, detail="Not available on this account")
+    if role in FRANCHISE_ROLES and principal.rank > ROLE_RANKS[NATIONAL_HEAD]:
+        # F9: franchise roles are the Admin's and National Head's to shape, like
+        # the franchisees themselves. `ensure_below_rank` cannot say this — a
+        # Regional Head (3) "outranks" rank 8 — so it is refused by name, the
+        # way `create_user` refuses a vendor.
+        raise HTTPException(403, detail="National Head and above only")
     if role == SUPERADMIN or role not in ROLE_RANKS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
     ensure_below_rank(principal, role)  # only roles below the actor

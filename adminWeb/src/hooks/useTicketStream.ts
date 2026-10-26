@@ -4,9 +4,11 @@ import { useEffect, useRef } from "react";
 import { BASE_URL } from "@/services/http";
 import { useSession } from "@/store/session";
 import { approvalKeys } from "./useApprovals";
+import { franchiseKeys } from "./useFranchise";
 import { creditKeys } from "./useCredits";
 import { dashboardKeys } from "./useDashboard";
 import { notificationKeys } from "./useNotifications";
+import { partKeys } from "./useParts";
 import { redemptionKeys } from "./useRedemptions";
 import { technicianKeys } from "./useTechnicians";
 import { ticketKeys } from "./useTickets";
@@ -178,6 +180,17 @@ export function useTicketStream(): void {
             void queryClient.invalidateQueries({
               queryKey: notificationKeys.all,
             });
+            // And the franchise portal's own state — a UPI change request rings
+            // the franchisee admin's bell, and the queue behind the badge
+            // applies the audience rule in SQL exactly as the staff feed does.
+            // Inverted in the staff console: no subscriber holds the prefix,
+            // so this is a no-op there.
+            void queryClient.invalidateQueries({ queryKey: franchiseKeys.all });
+            // And the facility's spare-parts desk: a new request rings its
+            // bell, and the queue, its rail badge and an open request page all
+            // read this prefix. In the staff console only an open catalogue
+            // editor holds it, and re-reading that is harmless.
+            void queryClient.invalidateQueries({ queryKey: partKeys.all });
             // The only frame a redemption rings — a new request, or a
             // technician saying the money has not arrived — so the rail badge
             // and an open redemption page refresh on it rather than waiting for

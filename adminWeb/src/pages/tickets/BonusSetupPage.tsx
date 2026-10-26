@@ -69,10 +69,15 @@ export default function BonusSetupPage() {
   // — so the count waits for the ticket rather than asking early and reporting
   // a number that is not the shortlist. `onDay` is the SLOT's day: a bonus is
   // only offered to technicians with room on the day the work happens.
+  //
+  // Task 18: a ticket handed to another franchisee waives the pincode half, so
+  // the count asks for that franchisee's technicians instead of the pincode's.
+  const handedOver = ticket?.routingOverride === true && !!ticket.franchiseeId;
   const eligible = useCandidateTechnicians(
     ticket?.subcategoryId,
-    ticket?.pincode,
-    ticket?.slotStart
+    handedOver ? undefined : ticket?.pincode,
+    ticket?.slotStart,
+    handedOver ? ticket?.franchiseeId : null
   );
   /* The chips come off the TICKET, not off Rules configuration.
      `bonus_bands_paise` is one of the rules a product category may override,
@@ -88,7 +93,12 @@ export default function BonusSetupPage() {
   // the API does not refuse a bonus that overdraws it, because a manager
   // choosing to commit more than the cancellations have funded is a decision
   // and not a mistake — and the balance can be read back either way.
-  const pool = useLedgerPool();
+  //
+  // Task 09 (F12) — one pool per franchisee, so the ticket's OWN franchisee id
+  // travels: a bonus funded on a SkyFix job is drawn from SkyFix's pool, and
+  // asking the home pool would read a balance the bonus never touches. Null
+  // (the home pool) until the ticket has arrived.
+  const pool = useLedgerPool(ticket?.franchiseeId);
   const addBonus = useAddBonus();
 
   // Null until a manager actually picks, so the opening band follows the

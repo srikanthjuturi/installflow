@@ -20,8 +20,11 @@ from app.core.database import get_db
 from app.core.features import effective_features
 from app.core.security import decode_token
 from app.models.company import Company
+from app.models.franchisee import Franchisee
 from app.models.membership import Membership
 from app.models.role import (
+    FRANCHISEE_ADMIN,
+    FRANCHISE_ROLES,
     ROLE_LABELS,
     ROLE_RANKS,
     SUPERADMIN,
@@ -49,6 +52,16 @@ class Principal:
     #: would keep a stale one for the life of the access token, and every other
     #: authorization fact here is re-read per request for the same reason.
     vendor_id: uuid.UUID | None = None
+    #: The franchisee this caller acts FOR — set only for FRANCHISE_ROLES, None
+    #: for everyone else.
+    #:
+    #: Read from the membership `get_current_principal` already loads, like
+    #: `vendor_id`; never a token claim, for the same reason `vendor_id` is not
+    #: one — a franchisee switched off mid-session must not keep a stale pointer
+    #: for the life of the access token. A `franchisee_id` on a NON-franchise
+    #: membership is ignored and stays None here: it must never narrow or widen
+    #: a staff principal.
+    franchisee_id: uuid.UUID | None = None
 
     @property
     def user_id(self) -> uuid.UUID:
@@ -63,6 +76,15 @@ class Principal:
         Area Manager managing a vendor; only the role answers that.
         """
         return self.role in VENDOR_ROLES
+
+    @property
+    def is_franchise(self) -> bool:
+        """Acts for a franchisee — any of the three franchise roles.
+
+        Tests the set, never rank: a franchisee admin ranks below every staff
+        role, so a rank test cannot say "this family and no other".
+        """
+        return self.role in FRANCHISE_ROLES
 
 
 def _unauthorized(detail: str = "Not authenticated") -> HTTPException:
@@ -123,6 +145,7 @@ async def get_current_principal(
 
     company_id: uuid.UUID | None = None
     vendor_id: uuid.UUID | None = None
+    franchisee_id: uuid.UUID | None = None
     raw_company = payload.get("company_id")
     if raw_company:
         try:
@@ -156,6 +179,20 @@ async def get_current_principal(
         # The membership was loaded to prove the caller belongs here; keep the
         # one field the portal needs rather than querying for it again.
         vendor_id = membership.vendor_id
+        if user.role in FRANCHISE_ROLES:
+            # Corrupt (no franchisee) and closed (removed / switched off) both
+            # refuse here, so EVERY endpoint, /auth/me included, says why — the
+            # same reason the company-suspended check lives here: a guard deeper
+            # in the slice would give the portal an empty page instead of a
+            # sentence it can show.
+            live = membership.franchisee_id is not None and await db.scalar(
+                select(Franchisee.id).where(
+                    Franchisee.company_id == company_id, Franchisee.id == membership.franchisee_id,
+                    Franchisee.is_active.is_(True), Franchisee.deleted_at.is_(None)))
+            if not live:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                    detail="This franchisee is no longer active")
+            franchisee_id = membership.franchisee_id
 
     return Principal(
         user=user,
@@ -164,6 +201,7 @@ async def get_current_principal(
         is_superadmin=False,
         company_id=company_id,
         vendor_id=vendor_id,
+        franchisee_id=franchisee_id,
     )
 
 
@@ -282,6 +320,52 @@ def require_min_rank(role_key: str):
     return _guard
 
 
+def require_all(*guards):
+    """ONE dependency that runs every guard, in order, and returns the Principal.
+
+    The cure for the stacked-`Depends` trap (api/AGENTS.md, hard rule 2):
+    `Annotated[Principal, Depends(a), Depends(b)]` keeps only the LAST marker, so
+    `a` never runs. Here each guard is its own single-marker PARAMETER of one
+    function, which FastAPI does resolve — in parameter order, stopping at the
+    first refusal. `Annotated[Principal, Depends(require_all(a, b))]` is then a
+    single marker that really means "a, then b".
+
+    Order the guards wall first (`require_staff_principal` /
+    `require_franchise_principal`), then the feature, then the rank floor, so an
+    unauthorised caller meets a 403 by principal kind before anything else.
+    """
+    if not 2 <= len(guards) <= 4:
+        raise ValueError("require_all takes two to four guards")
+    first, second, *rest = guards
+
+    def _principal(guard):
+        return Annotated[Principal, Depends(guard)]
+
+    if not rest:
+
+        def _all(a: _principal(first), b: _principal(second)) -> Principal:
+            return b
+
+    elif len(rest) == 1:
+
+        def _all(
+            a: _principal(first), b: _principal(second), c: _principal(rest[0])
+        ) -> Principal:
+            return c
+
+    else:
+
+        def _all(
+            a: _principal(first),
+            b: _principal(second),
+            c: _principal(rest[0]),
+            d: _principal(rest[1]),
+        ) -> Principal:
+            return d
+
+    return _all
+
+
 def require_vendor_principal(principal: CompanyPrincipal) -> Principal:
     """The caller acts FOR a vendor. Not a feature, and not a rank floor.
 
@@ -312,24 +396,77 @@ def require_vendor_principal(principal: CompanyPrincipal) -> Principal:
     return principal
 
 
-def require_staff_principal(principal: CompanyPrincipal) -> Principal:
-    """An ops-console role: not a vendor, not a technician. The mirror of the two
-    guards above, and like them a role test rather than a feature or a rank.
+def require_franchise_principal(principal: CompanyPrincipal) -> Principal:
+    """The franchisee's own admin — the F7 owner of technicians and money, and
+    nobody else.
 
-    Rank cannot express it — technicians and vendors sit below every staff role,
-    so a floor that admitted staff would admit them too — and a feature cannot
-    either, since `masters.view` and `jobs.view` are deliberately granted to
-    vendors so the intake form has a product tree.
+    Not a feature (Feature Access can hand any key to any role), not a rank
+    floor (franchise roles rank below everyone, so a floor would admit the
+    company). Use ALONGSIDE require_feature("franchise.*").
+    Routes: /franchise/technicians, payouts, pool, settings, statements
+    (Tasks 05/06/10/11).
+
+    The index fixes the name; this — franchisee admin ONLY — is what the name
+    has to mean, because `FRANCHISE_ROLES = {franchisee_admin} ∪ FACILITY_ROLES`
+    would make a "franchise principal" that also admitted the admin of the
+    facility roles two names for one set. The money/technician wall has to
+    survive a Feature Access toggle, so it rests on the role, exactly as
+    `require_vendor_principal` rests on `VENDOR_ROLES`.
+    """
+    if principal.role != FRANCHISEE_ADMIN:
+        raise HTTPException(status_code=403, detail="Only a franchisee admin can do this")
+    if principal.franchisee_id is None:
+        raise HTTPException(403, detail="This account is not linked to a franchisee")
+    return principal
+
+
+FranchisePrincipal = Annotated[Principal, Depends(require_franchise_principal)]
+
+
+def require_facility_principal(principal: CompanyPrincipal) -> Principal:
+    """Anyone who works for a franchisee: its admin or its facility staff (P6 —
+    the admin may do everything a facility admin can).
+
+    Routes: franchise tickets (Task 04), part requests and facility users
+    (Task 12), each with its feature key. Deliberately wider than
+    `require_franchise_principal` — this is the family test, `Principal.is_
+    franchise` in dependency form; narrowing belongs to the feature key and to
+    `core.franchise_scope.purpose`.
+    """
+    if principal.role not in FRANCHISE_ROLES:
+        raise HTTPException(403, detail="Not available on this account")
+    if principal.franchisee_id is None:
+        raise HTTPException(403, detail="This account is not linked to a franchisee")
+    return principal
+
+
+FacilityPrincipal = Annotated[Principal, Depends(require_facility_principal)]
+
+
+def require_staff_principal(principal: CompanyPrincipal) -> Principal:
+    """An ops-console role: not a vendor, not a technician, not franchise staff.
+    The mirror of the guards above, and like them a role test rather than a
+    feature or a rank.
+
+    Rank cannot express it — technicians, vendors and franchise roles sit below
+    every staff role, so a floor that admitted staff would admit them too — and
+    a feature cannot either, since `masters.view` and `jobs.view` are
+    deliberately granted to vendors so the intake form has a product tree.
 
     It exists for global search. Anything that reads ACROSS slices at once has to
     satisfy every slice's ownership rule at the same time, and a vendor's rule is
     the awkward one: they hold `jobs.view` and `masters.view`, so a cross-entity
     read would have to re-derive the vendor pinning that `masters.get_tree` and
     `tickets.scoped()` each do their own way. Refusing the role at the door is
-    both safer and honest — the vendor portal has no search box, and a technician
-    searches in the app.
+    both safer and honest — the vendor portal has no search box, a technician
+    searches in the app, and no franchise screen is a search screen: search
+    remains staff.
     """
-    if principal.role in VENDOR_ROLES or principal.role == TECHNICIAN:
+    if (
+        principal.role in VENDOR_ROLES
+        or principal.role in FRANCHISE_ROLES
+        or principal.role == TECHNICIAN
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not available on this account",

@@ -19,7 +19,10 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useFeatureAccess } from "@/hooks/useAuth";
+import { useFranchiseeOptions } from "@/hooks/useFranchisees";
 import { CoverageFields } from "./CoverageFields";
+import { TechnicianTypeField } from "./TechnicianTypeField";
 import { EMPTY_INVITE, inviteSchema, type InviteFormValues } from "./onboarding";
 
 interface TechnicianInviteDialogProps {
@@ -52,6 +55,14 @@ export function TechnicianInviteDialog({
     resolver: zodResolver(inviteSchema),
     defaultValues: EMPTY_INVITE,
   });
+
+  // The CoverageFields hint names the franchisee carve-out only when there is
+  // another franchisee to carve against — the same test the edit form makes.
+  const { has } = useFeatureAccess();
+  const { data: franchiseeOptions } = useFranchiseeOptions({
+    enabled: has("franchisees.view"),
+  });
+  const hasOtherFranchisees = (franchiseeOptions?.length ?? 0) > 1;
 
   // The dialog stays mounted, so a reopened form would otherwise still hold
   // the last attempt.
@@ -104,6 +115,23 @@ export function TechnicianInviteDialog({
               )}
             </Field>
 
+            {/* Task 08 — how they are paid. Known at intake for the same
+                reason the Add form asks it: who answers for the money is a
+                fact the manager has when they decide to invite, not one the
+                technician volunteers later. */}
+            <Controller
+              name="technicianType"
+              control={control}
+              render={({ field }) => (
+                <TechnicianTypeField
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.technicianType?.message}
+                  errorId="invite-type-error"
+                />
+              )}
+            />
+
             {/* Coverage is assigned here, not by the technician: the manager
                 knows the area and the workload, and somebody joining on a phone
                 could otherwise claim a district nobody meant to give them. The
@@ -123,6 +151,7 @@ export function TechnicianInviteDialog({
                       onPincodes={pins.onChange}
                       regionError={errors.regionId?.message}
                       pincodeError={errors.pincodes?.message}
+                      hasOtherFranchisees={hasOtherFranchisees}
                       className="grid gap-4"
                     />
                   )}

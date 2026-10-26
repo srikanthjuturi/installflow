@@ -257,7 +257,9 @@ async def lookup(gstin: str) -> GstinLookup:
                 },
                 json={"gstin": gstin},
             )
-    except httpx.HTTPError as exc:
+    # OSError too: a configured CA bundle missing on disk raises FileNotFoundError
+    # at client construction, which httpx.HTTPError does not cover.
+    except (httpx.HTTPError, OSError) as exc:
         logger.warning("GSTIN lookup could not reach GSTZen: %s", exc)
         return GstinLookup.unavailable("Could not reach the GST portal")
 

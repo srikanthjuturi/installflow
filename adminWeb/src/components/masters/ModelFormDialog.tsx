@@ -150,7 +150,7 @@ export function ModelFormDialog({
 // keeps DialogFooter's own -mx-4 -mb-4 bleed working inside it.
 function ScrollBody({ children }: { children: ReactNode }) {
   return (
-    <div className="scroll-slim -mx-4 -mb-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-4">
+    <div className="scroll-none -mx-4 -mb-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-4">
       {children}
     </div>
   );

@@ -11,6 +11,8 @@ import {
   useAcceptingWork,
   useSetAcceptingWork,
 } from '@/features/availability/hooks/useAvailability';
+import { BaseLocationCard } from '@/features/base-location/components/BaseLocationCard';
+import { needsBaseLocation } from '@/features/base-location/lib/baseSummary';
 import { TodayJobCard } from '@/features/jobs/components/TodayJobCard';
 import { type DayPeriod, useGreeting } from '@/features/jobs/hooks/useGreeting';
 import { useLanguagePrompt } from '@/features/language/hooks/useLanguagePrompt';
@@ -239,6 +241,10 @@ export function HomeScreen() {
         </View>
 
         <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+          {/* Only for a server that knows the field and has no base yet — an
+              API that predates it reads as unknown, never as "not set". */}
+          {needsBaseLocation(me) ? <BaseLocationCard /> : null}
+
           {poolCount > 0 ? (
             <Pressable
               onPress={() => router.push('/pool')}

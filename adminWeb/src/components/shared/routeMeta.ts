@@ -53,6 +53,11 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Region → Regional Head → Area Manager → pincode",
   },
   "/categories": { title: "Categories & models", subtitle: "Product master" },
+  // Net-new — no prototype has franchisees. Awaiting sign-off (index §7).
+  "/franchisees": {
+    title: "Franchisees",
+    subtitle: "Who runs your technicians, and where",
+  },
   // The prototype's subtitle read "SLA · penalty · AI · wait period". SLA
   // windows were a read-only card that has been removed, and the bonus bands
   // arrived from `BonusPicker` when the rules became a real per-company table.
@@ -61,6 +66,12 @@ const STATIC: Record<string, Meta> = {
     subtitle: "Penalty · bonus · AI · timing",
   },
   "/settings/users": { title: "Users & roles", subtitle: "Access management" },
+  /* Net-new (Task 13 §5.10, PROPOSED). The page itself names the home
+     franchisee — this table is a pure path -> copy map with no session. */
+  "/settings/allowances": {
+    title: "Allowances",
+    subtitle: "Travel and speed allowances for the home franchisee's technicians",
+  },
   /* Net-new, like Credits below, and for the same reason. */
   "/vendor-credit": {
     title: "Vendor credit",
@@ -107,6 +118,14 @@ const DYNAMIC: Array<[RegExp, Meta]> = [
   [
     /^\/technicians\/[^/]+$/,
     { title: "Technician profile", subtitle: "Category · pincode · bandwidth" },
+  ],
+  // Net-new — no prototype has franchisees. Awaiting sign-off (index §7).
+  // Matches BOTH the list's children (`match: ["/franchisees/"]` keeps the rail
+  // lit) and the detail id — `/franchise` does NOT match; the trailing-slash
+  // trap in Task 08 §8 applies.
+  [
+    /^\/franchisees\/[^/]+$/,
+    { title: "Franchisee", subtitle: "Pincodes · admins · technicians" },
   ],
   [
     /^\/redemptions\/[^/]+$/,

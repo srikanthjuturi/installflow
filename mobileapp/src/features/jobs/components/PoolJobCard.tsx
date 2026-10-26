@@ -12,6 +12,12 @@ import { formatPaise } from '@/utils/money';
 export interface PoolJobCardProps {
   job: Job;
   onPress: () => void;
+  /**
+   * `payoutPaise` is the ticket's stamped price, but an employee (Task 06) is
+   * paid through their salary, so PoolScreen computes it once from
+   * `useIsEmployee()` — not a hook per row — and the slot shows "In salary".
+   */
+  payoutHidden?: boolean;
 }
 
 /**
@@ -24,7 +30,7 @@ export interface PoolJobCardProps {
  * The payout and the slot sit together below a rule, since those are the two
  * facts being weighed against each other.
  */
-export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
+export function PoolJobCard({ job, onPress, payoutHidden }: PoolJobCardProps) {
   const { t } = useTranslation();
 
   return (
@@ -153,7 +159,7 @@ export function PoolJobCard({ job, onPress }: PoolJobCardProps) {
               <Text
                 style={{ fontFamily: 'Roboto_900Black', fontSize: 16, color: color.textPrimary }}
               >
-                {formatPaise(job.payoutPaise)}
+                {payoutHidden ? t('jobs.payoutInSalary') : formatPaise(job.payoutPaise)}
               </Text>
             </View>
           </View>

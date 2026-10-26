@@ -1,7 +1,13 @@
 import { Link } from "react-router";
-import { Download } from "lucide-react";
+import { Download, Undo2 } from "lucide-react";
 import { useBrand } from "@/hooks/useBrand";
 import { useNavOrigin } from "@/hooks/useNavOrigin";
+import { useWorkspace } from "@/hooks/useWorkspace";
+import { useMe } from "@/hooks/useAuth";
+import {
+  isReversible,
+  ledgerFileName,
+} from "@/components/franchise/ledgerAdapters";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { downloadCsv, toCsv } from "@/utils/csv";
@@ -12,33 +18,17 @@ import {
 } from "@/components/shared/DataTable";
 import { formatTimeOfDay } from "@/utils/datetime";
 import { dayLabel } from "@/lib/dayGroup";
-import { moneyPaiseSigned } from "@/utils/money";
+import { moneyPaise, moneyPaiseSigned } from "@/utils/money";
 import { ALL_FILTER, withFilter } from "@/hooks/useListParams";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import type { LedgerEntry } from "@/types";
-
-/**
- * Static class strings, one per kind — an interpolated `bg-${kind}-bg` would
- * never be generated.
- */
-const KIND_CHIP: Record<LedgerEntry["kind"], string> = {
-  penalty: "bg-danger-bg text-danger",
-  bonus: "bg-ok-bg text-ok",
-  // Money out of the pool like a bonus, but not a bonus — its own tone so the
-  // two are never read as one.
-  reversal: "bg-info-bg text-info",
-};
-
-/**
- * The wire value is lower case; the column prints the approved label.
- * "Penalty reversed" is net-new — neither prototype has a reversal — and was
- * approved as written on 2026-09-11.
- */
-const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
-  penalty: "Penalty",
-  bonus: "Bonus",
-  reversal: "Penalty reversed",
-};
+import {
+  isKnownKind,
+  kindChip,
+  kindLabel,
+  LEDGER_KINDS,
+  poolSign,
+} from "./ledgerKinds";
 
 /**
  * Beside a penalty that was later given back. The table and the CSV both say
@@ -46,31 +36,19 @@ const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
  */
 const REVERSED_MARK = "(reversed)";
 
-/**
- * Which way each kind moves the POOL — this screen's point of view, and the one
- * "Current pool balance" is the sum of. A penalty is collected into the pool;
- * a bonus is paid out of it; a reversal gives a penalty back to the technician,
- * so that money leaves the pool too.
- *
- * The API stores a magnitude and no sign because the direction depends on who
- * is looking: the technician's own Earnings reads the same rows the other way
- * round, a penalty as a debit. That view belongs to the app, not to this one.
- *
- * A reversed penalty keeps its `+`. It WAS collected, and its reversal row is
- * what takes it back out — so the signed rows still add up to the balance.
- * Striking the charge out as well would take the same money out twice.
- */
-const POOL_SIGN: Record<LedgerEntry["kind"], 1 | -1> = {
-  penalty: 1,
-  bonus: -1,
-  reversal: -1,
-};
-
-const poolPaise = (e: LedgerEntry) => POOL_SIGN[e.kind] * e.amountPaise;
+const poolPaise = (e: LedgerEntry) => poolSign(e.kind) * e.amountPaise;
 
 const ALL = ALL_FILTER;
 
 interface LedgerTableProps {
+  /**
+   * The franchisee whose pool is on screen when it is NOT the reader's own —
+   * §5.10's staff selector looking at a non-home pool. It names the CSV export
+   * (`ledgerFileName`) so two files in one Downloads folder do not
+   * indistinguishable-read; the franchise workspace derives it from the
+   * principal instead and passes nothing here.
+   */
+  fileFranchiseeName?: string | null;
   /** Every page loaded so far, already filtered and sorted by the server. */
   entries?: LedgerEntry[];
   /** The LAST page's meta — `totalRecords` is the whole filtered ledger. */
@@ -86,6 +64,16 @@ interface LedgerTableProps {
   isFetchingNextPage?: boolean;
   fetchNextPage: () => void;
   /**
+   * Task 09, §4.3 — the pool screen is where the FRANCHISEE's admin gives a
+   * penalty back (`ledger.reverse` lives on the franchise adapter; the staff
+   * one keeps its own reversal on the ticket page, per owner ruling 2026-10-16
+   * R3, and passes neither prop). When given, a trailing column renders
+   * **Reverse** on the rows `canReverse` — defaulting to `isReversible` —
+   * returns true for, and the dialog itself stays on the page.
+   */
+  onReverse?: (e: LedgerEntry) => void;
+  canReverse?: (e: LedgerEntry) => boolean;
+  /**
    * When the rows were READ, as an epoch. It is what "Today" on a divider is
    * measured against — `new Date()` here would be an impure call during render
    * and would also drift from the data it is labelling.
@@ -95,6 +83,7 @@ interface LedgerTableProps {
 
 export function LedgerTable({
   entries,
+  fileFranchiseeName,
   meta,
   params,
   onParams,
@@ -106,10 +95,27 @@ export function LedgerTable({
   isFetchingNextPage,
   fetchNextPage,
   readAt,
+  onReverse,
+  canReverse,
 }: LedgerTableProps) {
   const kind = params.filters?.kind ?? ALL;
   const now = new Date(readAt);
   const brand = useBrand();
+  // Task 09 — both destinations are the shell's routes. The staff console
+  // mounts this under `/ledger`; the portal under `/franchise/ledger`, beside
+  // the same ticket board and technician roster its Franchisee column never
+  // needed because every row is already theirs.
+  const { paths, workspace } = useWorkspace();
+  const me = useMe();
+  // The franchise workspace pins the principal server-side, so the file name
+  // is the one fact about who this ledger belongs to that the client knows:
+  // without it `acme-appliances-…` and a franchise's own copy of the same
+  // ledger are indistinguishable in a Downloads folder.
+  const franchiseeName =
+    workspace === "franchise" ? (me.data?.franchisee?.name ?? null) : null;
+  // The staff selector's pool — null on the home/default read, where the file
+  // is still the company's own ledger.
+  const poolName = workspace === "ops" ? (fileFranchiseeName ?? null) : null;
 
   /* Both link columns leave the ledger, and both landed on a screen that sent
      the reader to its own list — a technician row to the roster, a ticket row
@@ -140,10 +146,10 @@ export function LedgerTable({
           <span
             className={cn(
               "inline-block rounded-full px-2.25 py-0.75 text-[11px] font-semibold",
-              KIND_CHIP[l.kind]
+              kindChip(l.kind)
             )}
           >
-            {KIND_LABEL[l.kind]}
+            {kindLabel(l.kind)}
           </span>
           {/* The charge stays on the ledger as it was; this says it was later
               given back. The reversal is its own row, usually newer — in the
@@ -161,7 +167,7 @@ export function LedgerTable({
       header: "Technician",
       cell: (l) => (
         <Link
-          to={`/technicians/${l.technicianId}`}
+          to={paths.technician(l.technicianId)}
           state={origin}
           className="font-semibold text-brand-400 hover:underline"
         >
@@ -176,7 +182,7 @@ export function LedgerTable({
         // The CODE is what a person quotes; the UUID beside it is what the
         // route needs. The mock had only one value and used it for both.
         <Link
-          to={`/tickets/${l.ticketId}`}
+          to={paths.ticket(l.ticketId)}
           state={origin}
           className="font-mono text-xs font-semibold text-brand-400 hover:underline"
         >
@@ -194,17 +200,54 @@ export function LedgerTable({
       header: "Amount",
       align: "right",
       cellClassName: "font-mono font-semibold",
-      // The POOL's sign — see `POOL_SIGN`. Green in, red out, and the `+`/`−`
+      // The POOL's sign — see `poolSign` in `ledgerKinds`. Green in, red out, and the `+`/`−`
       // says the same thing for anyone who cannot tell the two colours apart.
       cell: (l) => {
         const signed = poolPaise(l);
+        // A kind this build has never heard of is unsigned AND uncoloured: the
+        // direction is a guess, and a green `+` would assert it.
+        const known = isKnownKind(l.kind);
+        const tone = !known
+          ? "text-ink"
+          : signed < 0
+            ? "text-danger"
+            : "text-ok";
         return (
-          <span className={signed < 0 ? "text-danger" : "text-ok"}>
-            {moneyPaiseSigned(signed)}
+          <span className={tone}>
+            {known ? moneyPaiseSigned(signed) : moneyPaise(signed)}
           </span>
         );
       },
     },
+    // Task 09 — drawn only when the caller passes `onReverse`, i.e. only in
+    // the franchise workspace, whose pool screen this is (§4.3). The staff
+    // console's reversal stays on the ticket page (owner ruling R3), and a
+    // column no workspace mounts is not shipped — `satisfies` keeps the
+    // compiler checking it either way.
+    ...(onReverse
+      ? ([
+          {
+            id: "reverse",
+            header: "",
+            align: "right" as const,
+            cell: (l) =>
+              // The entry's own state is the check the server re-runs: a
+              // reversal row, and a penalty already given back, both render
+              // blank — same rule `PenaltiesPanel` follows on the ticket page.
+              !(canReverse ?? isReversible)(l) ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onReverse(l)}
+                >
+                  <Undo2 data-icon="inline-start" aria-hidden />
+                  Reverse
+                </Button>
+              ),
+          },
+        ] satisfies Column<LedgerEntry>[])
+      : []),
   ];
 
   // The def keeps the label and the options; the value goes into
@@ -215,11 +258,7 @@ export function LedgerTable({
       id: "kind",
       label: "Type",
       variant: "select",
-      options: [
-        { value: "penalty", label: "Penalty" },
-        { value: "bonus", label: "Bonus" },
-        { value: "reversal", label: "Penalty reversed" },
-      ],
+      options: LEDGER_KINDS.map((k) => ({ value: k, label: kindLabel(k) })),
       value: kind,
       // `withFilter` drops "All" rather than sending it as a kind — the API
       // matches nothing for kind "all", which is what emptied the ledger on
@@ -281,7 +320,10 @@ export function LedgerTable({
                 // Named for the company whose ledger it is — someone who works
                 // across two of them ends up with both files in one Downloads
                 // folder, and a fixed product name makes them indistinguishable.
-                `${brand.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-ledger.csv`,
+                // Task 09 — the shared name moved to the pure helper, and the
+                // portal appends its franchisee, since its principal's ledger
+                // and the company's own can both be acme-appliances-….
+                ledgerFileName(brand.name, franchiseeName ?? poolName ?? undefined),
                 toCsv(
                   // Spelled out rather than taken from `columns`. The first
                   // column's header is "Time" now that the divider carries the
@@ -291,8 +333,8 @@ export function LedgerTable({
                   visible.map((e) => [
                     e.at,
                     e.reversed
-                      ? `${KIND_LABEL[e.kind]} ${REVERSED_MARK}`
-                      : KIND_LABEL[e.kind],
+                      ? `${kindLabel(e.kind)} ${REVERSED_MARK}`
+                      : kindLabel(e.kind),
                     e.technicianName,
                     e.ticketCode,
                     e.reason,

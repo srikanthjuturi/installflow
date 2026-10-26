@@ -14,6 +14,11 @@ import {
   PORTAL_UNGATED,
   featureForPortalPath,
 } from "@/components/vendor/portalNav";
+import {
+  FRANCHISE_UNGATED,
+  featureForFranchisePath,
+} from "@/components/franchise/franchiseNav";
+import { franchiseLanding } from "@/components/franchise/franchiseNav";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { landingPath, useSession } from "@/store/session";
 
@@ -66,10 +71,13 @@ const AssignTechnicianPage = lazy(
 const BonusSetupPage = lazy(() => import("@/pages/tickets/BonusSetupPage"));
 const LedgerPage = lazy(() => import("@/pages/ledger/LedgerPage"));
 const VendorsPage = lazy(() => import("@/pages/masters/VendorsPage"));
+const FranchiseesPage = lazy(() => import("@/pages/franchisees/FranchiseesPage"));
+const FranchiseePage = lazy(() => import("@/pages/franchisees/FranchiseePage"));
 const CategoriesPage = lazy(() => import("@/pages/masters/CategoriesPage"));
 const TerritoryPage = lazy(() => import("@/pages/masters/TerritoryPage"));
 const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
 const UsersRolesPage = lazy(() => import("@/pages/settings/UsersRolesPage"));
+const AllowancesPage = lazy(() => import("@/pages/settings/AllowancesPage"));
 const AccountPage = lazy(() => import("@/pages/account/AccountPage"));
 const NotificationsPage = lazy(
   () => import("@/pages/notifications/NotificationsPage")
@@ -111,6 +119,45 @@ const TermsPage = lazy(() => import("@/pages/legal/TermsPage"));
 const DeleteAccountPage = lazy(
   () => import("@/pages/legal/DeleteAccountPage")
 );
+/* Task 09 — the franchise portal's own pages. Everything else on /franchise/*
+   is a staff screen reused through the workspace adapter.
+
+   The portal's SHELL is lazy too (§7.15): the staff console must not pay for,
+   or hold, the portal's chrome in its entry chunk — a staff manager's session
+   downloads none of it. The outer Suspense in `App.tsx` has no fallback on
+   purpose, so the first-ever load shows the boot splash for the extra moment
+   instead of a skeleton; from then on the chunk is cached. */
+const FranchiseShell = lazy(
+  () =>
+    import("@/components/franchise/FranchiseShell").then(
+      (m) => ({ default: m.FranchiseShell })
+    )
+);
+const FranchiseLanding = lazy(
+  () => import("@/pages/franchise/FranchiseLanding")
+);
+const FranchiseUpiChangesPage = lazy(
+  () => import("@/pages/franchise/FranchiseUpiChangesPage")
+);
+const FranchiseStatementsPage = lazy(
+  () => import("@/pages/franchise/FranchiseStatementsPage")
+);
+const FranchiseAllowancesPage = lazy(
+  () => import("@/pages/franchise/FranchiseAllowancesPage")
+);
+const FranchiseTicketsPage = lazy(
+  () => import("@/pages/franchise/FranchiseTicketsPage")
+);
+/* Task 13 — the facility's spare-parts desk and its people. Franchise staff
+   only (owner ruling 2026-10-15, R4): the staff tree below has NO parts route,
+   so `/parts` is the 404 page there. */
+const FacilityQueuePage = lazy(
+  () => import("@/pages/franchise/FacilityQueuePage")
+);
+const PartRequestPage = lazy(() => import("@/pages/franchise/PartRequestPage"));
+const FacilityUsersPage = lazy(
+  () => import("@/pages/franchise/FacilityUsersPage")
+);
 
 /**
  * The escalation queue's two action screens moved under `/tickets/:id/…` when
@@ -135,6 +182,7 @@ function RequireAuth() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
   if (!signedIn) return <Navigate to="/login" replace />;
   // The superadmin console is a separate surface — keep it out of the ops app.
   if (superadmin) return <Navigate to="/companies" replace />;
@@ -143,6 +191,8 @@ function RequireAuth() {
   // true, so `/`, `/escalations`, `/notifications` and `/account` would all
   // wave one through if they were ever reached. They never are.
   if (portal) return <Navigate to="/portal" replace />;
+  // And so is the franchise portal (Task 09) — same reasoning, third surface.
+  if (franchise) return <Navigate to="/franchise" replace />;
   return <Outlet />;
 }
 
@@ -177,6 +227,40 @@ function RequirePortalFeature() {
   );
 }
 
+function RequireFranchise() {
+  const signedIn = useSession((s) => s.signedIn);
+  const superadmin = useSession((s) => s.superadmin);
+  const franchise = useSession((s) => s.franchise);
+  if (!signedIn) return <Navigate to="/login" replace />;
+  if (superadmin) return <Navigate to="/companies" replace />;
+  if (!franchise) return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+/**
+ * The franchise guard — `RequirePortalFeature`'s twin, same opposite polarity:
+ * a `/franchise/*` path `franchiseNav` does not name is DENIED, and the
+ * genuinely open paths are the `FRANCHISE_UNGATED` allow-list.
+ *
+ * The redirect lands on `franchiseLanding(has)` — the user's first held rail
+ * entry — rather than a fixed page, because a facility role holding only
+ * `franchise.tickets` would loop on anything else. The landing fallback is
+ * `/franchise/account`, which is ungated, so this can never redirect into
+ * itself no matter how empty an override has left this account's feature set.
+ */
+function RequireFranchiseFeature() {
+  const { pathname } = useLocation();
+  const { loading, has } = useFeatureAccess();
+  if (FRANCHISE_UNGATED.has(pathname)) return <Outlet />;
+  if (loading) return <PageSkeleton />;
+  const feature = featureForFranchisePath(pathname);
+  return feature && has(feature) ? (
+    <Outlet />
+  ) : (
+    <Navigate to={franchiseLanding(has)} replace />
+  );
+}
+
 function RequireSuperadmin() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
@@ -207,8 +291,11 @@ function RedirectIfSignedIn() {
   const signedIn = useSession((s) => s.signedIn);
   const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
+  const franchise = useSession((s) => s.franchise);
   if (!signedIn) return <Outlet />;
-  return <Navigate to={landingPath({ superadmin, portal })} replace />;
+  return (
+    <Navigate to={landingPath({ superadmin, portal, franchise })} replace />
+  );
 }
 
 export const routes: RouteObject[] = [
@@ -299,6 +386,77 @@ export const routes: RouteObject[] = [
     ],
   },
   {
+    // Task 09 — the franchise portal's shell and routes (§5.6). Deliberately
+    // NOT nested under RequireAuth/AppShell: `RequireAuth` bounces a
+    // franchise session OUT of the ops tree, and the portals never nest in
+    // each other, so a franchise admin and a vendor are structurally unable
+    // to reach one another's screens no matter what either feature table
+    // says. The ungated screens inside are still behind `RequireFranchise`,
+    // which is who the FRANCHISE_UNGATED allow-list assumes did the check.
+    element: <RequireFranchise />,
+    children: [
+      {
+        element: <FranchiseShell />,
+        children: [
+          // Outside the feature guard: it only redirects (to this user's
+          // first held rail entry), and gating a redirector would put the
+          // guard's landing fallback in a loop with itself.
+          { path: "franchise", element: <FranchiseLanding /> },
+          {
+            element: <RequireFranchiseFeature />,
+            children: [
+              // The roster, profile and job history are the STAFF screens
+              // mounted on the franchise workspace — no franchise-specific
+              // page exists for them. Same for the redemption list/detail,
+              // the pool and the ticket detail below.
+              { path: "franchise/technicians", element: <TechnicianListPage /> },
+              { path: "franchise/technicians/:id", element: <TechnicianProfilePage /> },
+              {
+                path: "franchise/technicians/:id/tickets",
+                element: <TechnicianJobsPage />,
+              },
+              { path: "franchise/upi-changes", element: <FranchiseUpiChangesPage /> },
+              { path: "franchise/redemptions", element: <RedemptionsPage /> },
+              { path: "franchise/redemptions/:id", element: <RedemptionPage /> },
+              { path: "franchise/pool", element: <LedgerPage /> },
+              { path: "franchise/statements", element: <FranchiseStatementsPage /> },
+              { path: "franchise/settings", element: <FranchiseAllowancesPage /> },
+              // Gated on `parts.handle` / `franchise.facility_users` through
+              // `franchiseNav.ts` — the guard DENIES anything that table does
+              // not name, and the request page rides the entry's `match` prefix.
+              { path: "franchise/parts", element: <FacilityQueuePage /> },
+              {
+                path: "franchise/parts/requests/:id",
+                element: <PartRequestPage />,
+              },
+              {
+                path: "franchise/facility-users",
+                element: <FacilityUsersPage />,
+              },
+              { path: "franchise/tickets", element: <FranchiseTicketsPage /> },
+              // Read-only here: `actions={null}` strips every ops control
+              // (the same prop the vendor portal's detail route passes, which
+              // the detail page reads as "not the ops surface").
+              {
+                path: "franchise/tickets/:id",
+                element: (
+                  <TicketDetailPage
+                    backTo="/franchise/tickets"
+                    backLabel="Back to tickets"
+                    actions={null}
+                  />
+                ),
+              },
+              { path: "franchise/notifications", element: <NotificationsPage /> },
+              { path: "franchise/account", element: <AccountPage /> },
+              { path: "franchise/password", element: <ChangePasswordPage /> },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
     element: <RequireAuth />,
     children: [
       {
@@ -365,10 +523,15 @@ export const routes: RouteObject[] = [
               },
               { path: "ledger", element: <LedgerPage /> },
               { path: "vendors", element: <VendorsPage /> },
+              // Task 08 — view via `franchisees.view` off the nav table; the
+              // writes are per-button on `franchisees.manage` (§5.7).
+              { path: "franchisees", element: <FranchiseesPage /> },
+              { path: "franchisees/:id", element: <FranchiseePage /> },
               { path: "categories", element: <CategoriesPage /> },
               { path: "territory", element: <TerritoryPage /> },
               { path: "settings/rules", element: <RulesConfigPage /> },
               { path: "settings/users", element: <UsersRolesPage /> },
+              { path: "settings/allowances", element: <AllowancesPage /> },
               // Guarded by `vendors.credit` off the nav table, the payment
               // route through the entry's `match` prefix.
               { path: "vendor-credit", element: <VendorCreditPage /> },

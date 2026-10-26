@@ -46,6 +46,18 @@ export interface Redemption {
   technicianId: string;
   technicianName: string;
   technicianCode: string;
+  /** Whose money this redemption is (F12) — the payout queue is a per-franchisee
+   *  slice, and a staff payer reading another franchisee's rows needs its name
+   *  on the row. */
+  franchiseeId: string;
+  franchiseeName: string;
+  /**
+   * May THIS caller press claim/decline. False only for a staff payer reading
+   * another franchisee's rows — only that franchisee's own admin pays its money
+   * (R3), which the write doors make a 404; a row is read-only here, on screen
+   * as it is in the service.
+   */
+  canAct: boolean;
 }
 
 export type RedemptionEventKind =

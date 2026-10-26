@@ -33,8 +33,10 @@ export default function LoginPage() {
 
   /** Where a session goes once it exists. One path, not two. */
   function goToLanding() {
-    const { superadmin, portal } = useSession.getState();
-    navigate(landingPath({ superadmin, portal }), { replace: true });
+    const { superadmin, portal, franchise } = useSession.getState();
+    navigate(landingPath({ superadmin, portal, franchise }), {
+      replace: true,
+    });
   }
 
   async function handleCredential(credential: string) {

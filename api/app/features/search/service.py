@@ -53,6 +53,7 @@ from app.models.membership import Membership
 from app.models.product import ProductModel, ProductNode
 from app.models.role import (
     NATIONAL_HEAD,
+    FRANCHISE_ROLES,
     ROLE_LABELS,
     ROLE_RANKS,
     TECHNICIAN,
@@ -206,8 +207,10 @@ async def _users_stmt(db: AsyncSession, principal: Principal, term: str) -> Sele
             Membership.deleted_at.is_(None),
             # Users, Technicians and Vendors are disjoint screens, and the
             # groups here mirror them — a technician found under "Users" would
-            # link to a screen that does not list them.
-            User.role.not_in([TECHNICIAN, *VENDOR_ROLES]),
+            # link to a screen that does not list them. Franchise logins are
+            # likewise never listed on the Users screen (their management lives
+            # on the franchisee screens), so they do not appear here either.
+            User.role.not_in([TECHNICIAN, *VENDOR_ROLES, *FRANCHISE_ROLES]),
             or_(
                 func.lower(User.full_name).like(term),
                 func.lower(User.email).like(term),

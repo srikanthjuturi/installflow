@@ -114,6 +114,10 @@ class Redemption(Base, IdMixin, AuditMixin):
     #: COMPOSITE FK — see __table_args__. RESTRICT, as on `ledger_entries`: a
     #: technician who has been paid cannot be deleted out from under the money.
     technician_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    #: The technician's franchisee when they asked — who pays (Task 05). Frozen
+    #: like the amount: a technician who moves franchisee afterwards must not
+    #: rewrite who owed this redemption. COMPOSITE FK.
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     #: `RGT-RDM-0001`, from `core.sequences`.
     code: Mapped[str] = mapped_column(String(32), nullable=False)
 
@@ -202,6 +206,15 @@ class Redemption(Base, IdMixin, AuditMixin):
             ["technician_profiles.company_id", "technician_profiles.id"],
             name="fk_redemptions_company_technician",
             ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "franchisee_id"],
+            ["franchisees.company_id", "franchisees.id"],
+            name="fk_redemptions_company_franchisee",
+            ondelete="RESTRICT",
+        ),
+        Index(
+            "ix_redemptions_company_franchisee", "company_id", "franchisee_id", "created_at"
         ),
     )
 

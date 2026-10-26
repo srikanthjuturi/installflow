@@ -27,6 +27,7 @@ export const STATUS_FILTER: TicketStatus[] = [
   "New",
   "Assigned",
   "In Progress",
+  "Awaiting Part",
   "Awaiting Customer",
   // "AI Review",
   "Escalated",

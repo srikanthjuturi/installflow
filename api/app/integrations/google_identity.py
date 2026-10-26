@@ -138,7 +138,9 @@ async def _key_for(kid: str) -> jwt.PyJWK:
         if may_refetch:
             try:
                 await _fetch_keys()
-            except (httpx.HTTPError, ValueError, KeyError) as exc:
+            # OSError too: a configured CA bundle missing on disk raises
+            # FileNotFoundError at client construction, which httpx does not wrap.
+            except (httpx.HTTPError, OSError, ValueError, KeyError) as exc:
                 if not _keys:
                     logger.warning("Could not fetch Google's signing keys: %s", exc)
                     raise GoogleIdentityError(

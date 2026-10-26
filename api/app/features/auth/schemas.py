@@ -216,6 +216,23 @@ class ChangePasswordRequest(BaseModel):
     newPassword: BoundedPassword = Field(min_length=8)
 
 
+class MeFranchiseeOut(AppModel):
+    """The franchisee a franchise login acts for. Null for everyone else.
+
+    The portal's identity comes from here the way the vendor portal's does from
+    `MeVendorOut` — the caller acts FOR one franchisee and should not have to
+    ask a company-wide question to learn its own name. The console reads this to
+    land a franchisee admin on the portal's technicians page and a facility role
+    on its tickets page (Task 09).
+    """
+
+    id: uuid.UUID
+    name: str
+    code: str
+    kind: str  # 'internal' | 'external'
+    isHome: bool
+
+
 class MeResponse(AppModel):
     user: UserOut
     activeCompany: CompanyOut | None
@@ -232,3 +249,5 @@ class MeResponse(AppModel):
     scopeLabel: str
     #: Set for the two portal roles, null for everyone else.
     vendor: MeVendorOut | None = None
+    #: Set for the three franchise roles, null for everyone else.
+    franchisee: MeFranchiseeOut | None = None

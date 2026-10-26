@@ -65,6 +65,13 @@ export interface GeoPincode {
    *  because the importer never deletes what the file omits, so a hand-added
    *  code survives every future upload and nothing else would mark it. */
   source: "import" | "manual";
+  /**
+   * The pincode's centre (Task 10 §4.7) — what the base-location dialog's
+   * *Use centre* moves its pin to. Null until the coordinates import has run
+   * for the code; both or neither.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /** A pincode entered by hand. `districtIds` may be empty — four real pincodes
