@@ -188,6 +188,19 @@ MESSAGES: dict[str, dict[str, tuple[str, str]]] = {
         "kn": ("{code} ಆರಂಭ ಸಮಯ: {time}", "{place} · {to_slot}"),
         "ta": ("{code} தொடங்கும் நேரம்: {time}", "{place} · {to_slot}"),
     },
+    # Its sibling at the other edge of the same visit (A22/A9): the slot is
+    # about to close and no serial photo has been captured yet. PROPOSED
+    # copy — not yet seen by a native speaker, following the same glossary
+    # (सीरियल नंबर / సీరియల్ నంబర్ / ಸೀರಿಯಲ್ ನಂಬರ್ / சீரியல் எண் — already how
+    # the app's own Serial step names it — and "before you leave the site",
+    # already `unreadableBody`'s own phrase) rather than inventing new words.
+    "job.serial_reminder": {
+        "en": ("{code}: upload the serial before you leave", "{place} · {to_slot}"),
+        "hi": ("{code}: साइट छोड़ने से पहले सीरियल नंबर अपलोड करें", "{place} · {to_slot}"),
+        "te": ("{code}: సైట్ నుండి వెళ్లే ముందు సీరియల్ నంబర్ అప్‌లోడ్ చేయండి", "{place} · {to_slot}"),
+        "kn": ("{code}: ಅಲ್ಲಿಂದ ಹೊರಡುವ ಮೊದಲು ಸೀರಿಯಲ್ ನಂಬರ್ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ", "{place} · {to_slot}"),
+        "ta": ("{code}: இடத்தை விட்டுச் செல்லும் முன் சீரியல் எண்ணை பதிவேற்றவும்", "{place} · {to_slot}"),
+    },
     "job.assigned": {
         "en": ("{code} assigned to you", "{place} · {when}"),
         "hi": ("{code} आपको सौंपा गया", "{place} · {when}"),

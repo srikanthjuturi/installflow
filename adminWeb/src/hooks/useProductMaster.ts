@@ -11,6 +11,7 @@ import {
   deleteOwnSerial,
   deleteSerial,
   importOwnSerials,
+  importProducts,
   importSerials,
   listNodeTree,
   listSerials,
@@ -22,6 +23,7 @@ import {
   updateOwnNode,
   updateOwnSerial,
   updateSerial,
+  type ProductImportOptions,
   type TreePurpose,
 } from "@/services/productMaster";
 import { CERTIFY_DEPTH, flattenNodes } from "@/types/product";
@@ -161,6 +163,24 @@ export const useUpdateModel = () =>
   useMasterMutation(updateModel, "Couldn't save the product model");
 export const useDeleteModel = () =>
   useMasterMutation(deleteModel, "Couldn't remove the product model");
+
+/**
+ * The bulk product importer. A DRY RUN invalidates nothing — it wrote
+ * nothing, and refetching on it would flicker the tree for a preview the
+ * user may still cancel. Mirrors `useImportSerials`'s own shape.
+ */
+export function useImportProducts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't read that file" },
+    mutationFn: ({ file, ...options }: { file: File } & ProductImportOptions) =>
+      importProducts(file, options),
+    onSuccess: (report) => {
+      if (report.dryRun) return;
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+    },
+  });
+}
 
 /* ── model-wise serial numbers ─────────────────────────────────────────────── */
 //

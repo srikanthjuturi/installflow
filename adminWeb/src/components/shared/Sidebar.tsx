@@ -6,11 +6,12 @@ import { ROLE_LABEL, useSession } from "@/store/session";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { SidebarCollapseToggle } from "@/components/shared/SidebarCollapseToggle";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { useFeatureAccess } from "@/hooks/useAuth";
+import { useFeatureAccess, useMe } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
 import { useApprovalsBadge } from "@/hooks/useApprovals";
 import { useEscalations } from "@/hooks/useEscalations";
 import { useRedemptionsBadge } from "@/hooks/useRedemptions";
+import { useTicketsBadge } from "@/hooks/useTicketsBadge";
 
 function isActive(pathname: string, to: string, match?: string[]) {
   if (to === "/") return pathname === "/";
@@ -40,12 +41,16 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
   const roleLabel = backendUser?.roleLabel ?? ROLE_LABEL[role];
   const brand = useBrand();
 
-  // Two filters, then drop groups left empty:
+  // Three filters, then drop groups left empty:
   //   1. `roles` — the console's own coarse grouping (mock chrome).
   //   2. `feature` — the backend's effective feature set for this user in this
   //      company. A hidden link is also blocked by the route guard, and the
   //      server refuses the call regardless.
+  //   3. `adminOnly` — the one entry with no feature key at all (Purchase
+  //      Platforms), checked against the REAL backend role from `/auth/me`
+  //      rather than the mock `role` above. See `NavItem.adminOnly`.
   const { has } = useFeatureAccess();
+  const { data: me } = useMe();
 
   // Two live badges, sourced DIFFERENTLY, and the difference is not an
   // inconsistency worth tidying away.
@@ -96,11 +101,18 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
     enabled: has("redemptions.pay"),
   });
 
+  // E5: how many high-priority tickets nobody has a technician for yet. Same
+  // shape again — its own count endpoint, gated on `jobs.view`, the same
+  // feature the ticket list itself requires.
+  const { data: highPriorityCount = 0 } = useTicketsBadge({
+    enabled: has("jobs.view"),
+  });
+
   const groups = NAV_GROUPS.filter((g) => !g.roles || g.roles.includes(role))
     .map((g) => ({
       ...g,
       items: g.items
-        .filter((i) => has(i.feature))
+        .filter((i) => has(i.feature) && (!i.adminOnly || me?.role === "admin"))
         .map((i) =>
           i.to === "/escalations"
             ? { ...i, badge: escalationCount }
@@ -108,7 +120,9 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
               ? { ...i, badge: approvalCount }
               : i.to === "/redemptions"
                 ? { ...i, badge: redemptionCount }
-                : i
+                : i.to === "/tickets"
+                  ? { ...i, badge: highPriorityCount }
+                  : i
         ),
     }))
     .filter((g) => g.items.length > 0);
@@ -214,7 +228,12 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
                         "bg-brand-accent text-[10px] font-bold text-white",
                         collapsed
                           ? "absolute top-1 right-1 grid size-4 place-items-center rounded-full"
-                          : "rounded-full px-1.5 py-px"
+                          : "rounded-full px-1.5 py-px",
+                        // E5: only the Tickets badge blinks, and only while
+                        // it is non-zero — this branch is unreachable at 0
+                        // anyway (`item.badge ?` above), so the class never
+                        // has to be turned off, only never applied.
+                        item.to === "/tickets" && "animate-blink"
                       )}
                     >
                       {item.badge}

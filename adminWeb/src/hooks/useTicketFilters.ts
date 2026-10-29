@@ -88,6 +88,15 @@ interface Field {
 function fields(p: ListParams): Field[] {
   const search = p.search ?? "";
   const status = p.filters?.status ?? ALL;
+  // A1: which vendor raised it — the board's own control, beside Status, not
+  // one of the dashboard's PASSTHROUGH narrowings below. Unvalidated here
+  // (unlike `status`): an id belonging to nobody simply reads empty, the same
+  // answer a stale region or state narrowing already gets.
+  const vendorId = p.filters?.vendorId ?? "";
+  // A2: the board's own flag, beside `vendorId` — "true" or cleared, never
+  // "false" written to the URL, since the control is a single pill rather
+  // than a three-way choice.
+  const highPriority = p.filters?.highPriority === "true" ? "true" : "";
   const page = p.page ?? 1;
   const limit = p.limit ?? DEFAULT_PAGE_SIZE;
   // Empty means "the server's order" — see `isSortDir` above.
@@ -96,6 +105,12 @@ function fields(p: ListParams): Field[] {
   return [
     { key: "q", value: search, isDefault: search.trim() === "" },
     { key: "status", value: status, isDefault: status === ALL },
+    { key: "vendorId", value: vendorId, isDefault: vendorId === "" },
+    {
+      key: "highPriority",
+      value: highPriority,
+      isDefault: highPriority === "",
+    },
     { key: "page", value: String(page), isDefault: page === 1 },
     {
       key: "limit",
@@ -125,6 +140,13 @@ export function useTicketFilters() {
   const status: string = isStatusSet(statusParam)
     ? (statusParam as string)
     : ALL;
+  // A1: the vendor combobox beside Status. Empty string means "every vendor" —
+  // the same thing an absent filter means — so it is never sent as `""`.
+  const vendorId = searchParams.get("vendorId") ?? "";
+  // A2: the High priority pill. Anything other than the literal "true" reads
+  // as cleared — the same stale-bookmark rule every filter here follows,
+  // rather than a 422 for a value nobody could have typed by hand.
+  const highPriority = searchParams.get("highPriority") === "true" ? "true" : "";
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const limit = Math.max(
     1,
@@ -154,6 +176,8 @@ export function useTicketFilters() {
       );
       const filters = {
         ...(status === ALL ? {} : { status }),
+        ...(vendorId ? { vendorId } : {}),
+        ...(highPriority ? { highPriority } : {}),
         ...extra,
       };
       return {
@@ -165,7 +189,7 @@ export function useTicketFilters() {
         ...(Object.keys(filters).length ? { filters } : {}),
       };
     },
-    [page, limit, search, sortBy, sortDir, status, inherited]
+    [page, limit, search, sortBy, sortDir, status, vendorId, highPriority, inherited]
   );
 
   // Chains writes that land in the same tick. `searchParams` is the URL of the

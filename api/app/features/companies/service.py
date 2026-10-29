@@ -20,6 +20,7 @@ from app.core.credits import grant_free
 from app.core.deps import Principal
 from app.core.franchise import create_home_franchisee
 from app.core.gst import assert_gstin_free_for_company
+from app.core.purchase_platforms import seed_default_platforms
 from app.core.rules import load_rules
 from app.core.schemas import EmailStatus, ListParams
 from app.core.security import generate_temporary_password, hash_password
@@ -221,6 +222,10 @@ async def create_company(
     # rules and the gift: a company that exists without one is a company
     # whose first technician or ticket has nothing to be stamped with.
     await create_home_franchisee(session, company)
+    # A7's real platforms (Amazon, Flipkart, ...), same transaction, same
+    # reason: a company that exists without them is one whose first ONLINE
+    # ticket offers nothing but "Others".
+    await seed_default_platforms(session, company.id, created_by=principal.user_id)
 
     # Stays None on the reuse branch: that admin already has a password, and
     # `users` is global, so minting a new one would sign them out of every other

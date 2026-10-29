@@ -27,7 +27,7 @@ import type { ApprovalStatus } from "./approval";
  * which it supports, and that is what a ticket raised against it will be
  * allowed to ask for.
  */
-export type ServiceType = "Installation + Demo" | "Tech Visit" | "Service";
+export type ServiceType = "Installation + Demo" | "Tech Visit" | "Service" | "Uninstall";
 
 /**
  * One free-text spec — `RAM` / `8 GB`.
@@ -455,6 +455,66 @@ export interface SerialMatch {
   /** As STORED, not as typed. The form writes this back so a serial entered in
    *  the wrong case is corrected in front of the user. */
   serial: string;
+}
+
+/* ── the bulk product importer ─────────────────────────────────────────── */
+//
+// `POST /masters/products/import` (staff, naming a vendor) and
+// `POST /masters/portal/products/import` (a vendor's own) — the fourth
+// importer in the family beside geography, serials and tickets. One row is
+// one PRODUCT: re-uploading the same sheet UPDATES the row it already wrote
+// (matched on category, brand and name) rather than refusing a duplicate.
+
+export interface ProductImportReject {
+  row: number;
+  code: string;
+  reason: string;
+  /** The column heading, for the rejects table. */
+  field?: string | null;
+  /** The offending cell, truncated server-side. */
+  value?: string | null;
+}
+
+/** A category chain the sheet names that the catalogue does not hold yet. */
+export interface ProductCategoryToCreate {
+  /** `Electronics › Television › Android TV`. */
+  path: string;
+  /** Only the levels that are missing — the rest of `path` already exists. */
+  newSegments: string[];
+  depth: number;
+  isLeaf: boolean;
+  /** The last level exists but was not marked as the last sub-category. */
+  markedLeaf: boolean;
+  /** A brand-new MAIN sub-category — nobody is certified there yet. */
+  newMainSubcategory: boolean;
+  rowCount: number;
+}
+
+/**
+ * What an upload would do, or what it did.
+ *
+ * A dry run writes nothing and returns exactly what the commit would do, so
+ * every figure here is the server's own count — nothing is parsed in the
+ * browser.
+ */
+export interface ProductImportReport {
+  dryRun: boolean;
+  /** Echoed back on the commit so the numbers confirmed describe that file. */
+  fileDigest: string;
+  rowsRead: number;
+  /** What a commit of this file would create or update. */
+  toCreate: number;
+  toUpdate: number;
+  /** What it did. Both 0 on a dry run. */
+  created: number;
+  updated: number;
+  rejected: number;
+  /** Capped server-side; `rejected` carries the true total. */
+  rejects: ProductImportReject[];
+  categoriesToCreate: ProductCategoryToCreate[];
+  categoriesCreated: number;
+  /** Two rows naming the same product — the second is rejected. */
+  duplicateRowsInFile: number;
 }
 
 /**

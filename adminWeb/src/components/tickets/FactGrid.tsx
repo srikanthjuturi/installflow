@@ -15,6 +15,16 @@ import type { TicketDetail } from "@/types/ticket";
  * job) but the natural way to render a field that is legitimately absent.
  */
 export function FactGrid({ ticket }: { ticket: TicketDetail }) {
+  // A7: never null — `purchaseMode` always carries one of `PURCHASE_MODES`.
+  // The platform name rides along only when there is one to show, rather than
+  // drawing a second row that would read empty for every offline ticket.
+  const purchased =
+    ticket.purchaseMode === "online"
+      ? ticket.purchasePlatformName
+        ? `Online · ${ticket.purchasePlatformName}`
+        : "Online"
+      : "Offline";
+
   const facts: Array<[string, string]> = [
     ["Vendor", ticket.vendorName],
     // Read live through the model, like its name — a vendor may sell several
@@ -24,6 +34,7 @@ export function FactGrid({ ticket }: { ticket: TicketDetail }) {
     ["Product model", ticket.modelName],
     ["Service type", ticket.serviceType],
     ["Service level", `${ticket.serviceLevelHours}h`],
+    ["Purchased", purchased],
     // Only ever present for Tech Visit and Service.
     ["Problem", ticket.description ?? EMPTY],
     ["Expected serial", ticket.serialNumber ?? EMPTY],

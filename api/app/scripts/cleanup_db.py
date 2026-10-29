@@ -98,6 +98,7 @@ COMPANY_TABLES: frozenset[str] = frozenset(
         "product_models",
         "product_node_rules",
         "product_nodes",
+        "purchase_platforms",
         "push_tokens",
         "redemption_events",
         "redemptions",
