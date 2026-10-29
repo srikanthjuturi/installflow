@@ -1,5 +1,15 @@
 # InstallFlow — Client Change Request: Segregation & Implementation Breakdown
 
+## Session status (as of 29 October 2026)
+
+**Part A — implemented and tested in the development environment.** All nine items
+(A1–A9) were built this session, along with six further client-requested refinements
+that came up during review (their own section follows the Part A checklist below).
+Nothing has yet been pushed to the shared/live codebase — that step, and any production
+release, is still pending review and go-ahead.
+
+**Part B has not been started.** Nothing in the dependency tree below has changed.
+
 ## Context
 
 The client (InstallFlow / "Reliance GreenTech" — a multi-tenant field-service platform)
@@ -82,39 +92,94 @@ already exists) — no code is changed by this task; it is the implementation ro
 
 > Each item is self-contained, reuses existing patterns, and ships independently.
 
-- [ ] **A1 · #5 Vendor-wise filter**
-  - Tickets list: add a Vendor `TypedFilterDef` (combobox) to `adminWeb/src/components/tickets/TicketTable.tsx`; add `vendor_id` query param to `api/app/features/tickets/router.py` + `service.py` (server-mode already paginates).
-  - Dashboard: add a Vendor selector to `adminWeb/src/components/dashboard/DashboardFilterBar.tsx`, thread via URL query in `pages/dashboard/DashboardPage.tsx` → `hooks/useDashboard.ts` → `services/dashboard.ts`; backend dashboard aggregation accepts `vendor_id`.
-  - Reuse `ui/combobox.tsx` + vendor list service. **Done when** both lists filter by vendor and the URL is shareable.
+- [x] **A1 · #5 Vendor-wise filter** — ✅ Done.
+  - Tickets list and the main dashboard can both now be filtered to one vendor, and the
+    choice is carried in the page's URL so a filtered view can be shared or bookmarked.
+  - Built exactly as planned.
 
-- [ ] **A2 · #6 High-priority ticket flag**
-  - Add `is_high_priority` boolean to `api/app/models/ticket.py` + Alembic migration; expose in `TicketOut` and accept in create/update `schemas.py`.
-  - UI: checkbox in `ManualEntryForm.tsx` (vendor at raise) + staff edit; priority badge + a High-priority filter pill and sort in `TicketTable.tsx`.
-  - No SLA/routing effect (visual + filter/sort only). **Done when** flag persists, shows as a badge, filters & sorts.
+- [x] **A2 · #6 High-priority ticket flag** — ✅ Done, extended further in review.
+  - A vendor can mark a ticket high priority when raising it. It shows as a badge on the
+    ticket list and the ticket's own page, can be filtered and sorted for, and
+    high-priority tickets now automatically sort to the top of the list.
+  - No SLA/routing effect, as planned — visual and filter/sort only.
+  - Added during review (not in the original ask): the badge now **blinks continuously**,
+    and a matching blinking count appears on the Tickets menu for staff, which clears
+    itself the moment every high-priority ticket has been picked up by a technician.
 
-- [ ] **A3 · #13 Brand dropdown in raise-ticket**
-  - Add an explicit Brand `Select` in `ManualEntryForm.tsx` sourced from the vendor's approved brands (`VendorBrand`). Feeds A4 ordering (brand filters the model list).
+- [x] **A3 · #13 Brand dropdown in raise-ticket** — ✅ Done.
+  - A Brand selector was added to the raise-ticket form, built from the vendor's own
+    approved brands, and it narrows every choice shown afterwards (category, product).
 
-- [ ] **A4 · #14 Reorder raise-ticket cascade → Vendor → Brand → Category → Subcategory → Serial**
-  - Reorder the cascade in `ManualEntryForm.tsx`; brand (A3) becomes an upfront selector that scopes category/model; keep the category drill-down and **serial autofill preserved**; model still chosen (filtered by brand+subcategory). Adjust `useAutoSelectSingle` wiring. (UI-heavy; no schema change.)
+- [x] **A4 · #14 Reorder raise-ticket cascade** — ✅ Done, with one agreed change from plan.
+  - Built order: Vendor → Serial number → Brand → Category → Sub-category → Product → Service type.
+  - **Deviation from the original plan (confirmed with the client):** the plan called for
+    Serial to move to the END of the sequence (Vendor→Brand→Category→Subcategory→Serial).
+    At the client's explicit request, Serial was instead **kept in its original, proven
+    first position** — typing it still auto-fills the rest of the form — and Brand was
+    placed directly after it instead. Serial auto-fill now also sets the matching brand,
+    so the two never disagree.
 
-- [ ] **A5 · #15 "Uninstall" service type**
-  - Add `"Uninstall"` to `api/app/core/service_types.py`; update the CHECK constraints on `Ticket.service_type` and `ProductModel.service_types` + Alembic migration. Selectors read the catalog, so it appears automatically in ticket + product-model forms.
+- [x] **A5 · #15 "Uninstall" service type** — ✅ Done.
+  - "Uninstall" was added as a job type, alongside Installation, Tech Visit and Service.
+  - A gap was caught during review: the first pass added it correctly behind the scenes,
+    but it did not yet show up on screen because the on-screen pickers keep their own
+    separate list of job types. That was corrected in the same session — it now appears
+    in both the product-setup screen and the raise-ticket form.
 
-- [ ] **A6 · #16 Alternate number in raise-ticket**
-  - Add nullable `customer_alt_phone` (E.164) to `api/app/models/ticket.py` + migration + schemas; optional field beside `customer_phone` in `ManualEntryForm.tsx`, same validation.
+- [x] **A6 · #16 Alternate number in raise-ticket** — ✅ Done.
+  - An optional second phone number can now be captured for the customer at raise, with
+    the same validation as the main number, and is shown on the ticket's own page.
 
-- [ ] **A7 · #19 Online/offline + platform master**
-  - New `purchase_platforms` master (company-scoped, admin-managed, readable by all roles) + CRUD; add `purchase_mode` (online/offline) + nullable `purchase_platform_id` to `tickets` + migration.
-  - UI at raise (`ManualEntryForm.tsx`): online/offline radio + platform select (shown when online) with an inline "add platform" for admins; shown read-only on ticket detail for everyone. (Small, but introduces one master table.)
+- [x] **A7 · #19 Online/offline + platform master** — ✅ Done, built richer than planned.
+  - Online/offline choice added at raise. Offline now asks for the shop's name as free
+    text; online offers a dropdown of shopping platforms, plus an admin screen to manage
+    that list. Shown read-only on the ticket's own page for every role.
+  - **Expanded beyond the original plan, at the client's later request:** rather than
+    starting empty with only an admin "add platform" control, the dropdown now comes
+    pre-filled with well-known real shopping platforms, and includes an "Others" choice —
+    typing a platform that isn't listed saves it automatically, so it becomes a ready
+    option for every vendor from that point on, with no admin step required.
 
-- [ ] **A8 · #20 Bulk import products**
-  - New `api/app/features/masters/import_service.py` mirroring `tickets/import_service.py` (two-pass dry-run→confirm, `openpyxl`); columns = category path, brand, name, service types, capacity, warranty, pricing, parameters; respects approval (vendor import → pending, staff → approved).
-  - UI: `adminWeb/src/components/masters/ProductImportDialog.tsx` reusing `useFilePicker`, preview tiles, `RejectsTable`; add button on the products page.
+- [x] **A8 · #20 Bulk import products** — ✅ Done.
+  - A spreadsheet upload for products was added, checking the file and showing exactly
+    what will be added or changed before anything is saved — the same approach already
+    used for bulk ticket uploads. Respects the approval rule: a vendor's upload lands
+    unpriced and pending, a staff upload lands approved.
+  - The button was added to the staff product-catalogue screen and, as a deliberate
+    follow-up in the same session, to the vendor's own product page as well.
 
-- [ ] **A9 · #22 Technician "complete task" reminder**
-  - New sweep in `api/app/features/tickets/sweeps.py` (registered on the existing ticker): select tickets in Assigned/In Progress where `slot_end - 30min ≤ now < slot_end` **and** no serial-number proof photo on `ticket_proofs`; fire once (dedupe via a `ticket_events` marker or `serial_reminder_sent_at` column + migration).
-  - Channel: push (`pywebpush`) + WhatsApp. Mobile handles the push → deep-links to the job's proof-capture (serial photo) screen. (Reuses sweep + notification infra; focused backend task.)
+- [x] **A9 · #22 Technician "complete task" reminder** — ✅ Done, one channel deferred.
+  - A technician is now automatically reminded 30 minutes before their job's time window
+    closes if the required serial-number proof photo has not yet been uploaded. Fires
+    once per job, and re-arms itself if the job's time is later rescheduled.
+  - **Deviation:** delivered through the in-app push notification only for now. The
+    WhatsApp channel was deferred because it needs a message template approved by
+    WhatsApp's parent company first — a business approval step, not a technical one —
+    and can be switched on the moment that approval comes through.
+
+---
+
+## Follow-up refinements completed this session (client-requested, outside the original 22)
+
+Six further changes were requested and completed in the same session, after the Part A
+items above were first delivered and reviewed:
+
+- [x] **Raise-ticket form: removed, then restored, the address look-up search box.** It was
+  removed at the client's request, then restored at a later request once review was
+  complete. The form now behaves exactly as it did before this round of work — the
+  search is offered or not per each vendor's own existing setting.
+- [x] **Fixed: the city field did not update when the pincode was changed.** Correcting a
+  pincode after the address had already been filled in previously left the city showing
+  the old value; the city now always matches the latest pincode entered, while a city
+  that was typed or looked up by hand elsewhere is still respected.
+- [x] **Reviewed: a vendor's ticket was not appearing on the company dashboard.** Investigated
+  in detail — the system was found to be working correctly; every ticket a vendor raises
+  is visible to admin-level staff across the whole company. The specific case was traced
+  to the viewing account being linked to a different company record than the one holding
+  that ticket — an account setup detail, not a system fault. No code change was needed.
+- [x] **Online "Others" platform entry + real seeded platform list** — folded into A7 above.
+- [x] **Blinking high-priority alerts** — folded into A2 above.
+- [x] **"Uninstall" made visible on screen** — folded into A5 above.
 
 ---
 
