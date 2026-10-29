@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FolderPlus, Plus } from "lucide-react";
+import { FolderPlus, Plus, Upload } from "lucide-react";
 import {
   CategoryTree,
   CategoryTreeSkeleton,
@@ -10,6 +10,7 @@ import {
 } from "@/components/masters/nodeMenu";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
+import { ProductImportDialog } from "@/components/masters/ProductImportDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -82,6 +83,8 @@ export default function VendorProductsPage() {
   // The step BEFORE an add dialog: which category it goes in. Separate from
   // `dialog` because choosing is what decides which add dialog opens next.
   const [picking, setPicking] = useState<PickFor | null>(null);
+  // Bulk upload, its own flag because it is not a per-row action like `dialog`.
+  const [importOpen, setImportOpen] = useState(false);
   const removeModel = useDeleteOwnModel();
 
   // Where a rejection notification lands.
@@ -106,6 +109,21 @@ export default function VendorProductsPage() {
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">My products</h2>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Bulk upload of a vendor's own products — the same sheet the ops
+              Categories screen imports on their behalf, through the portal
+              door (unpriced, pending). Only offered once the vendor is known,
+              since `portal` mode needs its id and name. */}
+          {vendor ? (
+            <Button
+              type="button"
+              size="toolbar"
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload data-icon="inline-start" />
+              Import products
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="toolbar"
@@ -234,6 +252,19 @@ export default function VendorProductsPage() {
               },
             })
           }
+        />
+      ) : null}
+
+      {/* Bulk import, portal door: the vendor's own id/name drive it, and the
+          dialog posts to `/masters/portal/products/import` so everything lands
+          unpriced and pending, the same as a single submission. */}
+      {vendor ? (
+        <ProductImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          portal
+          vendorId={vendor.id}
+          vendorName={vendor.name}
         />
       ) : null}
     </>

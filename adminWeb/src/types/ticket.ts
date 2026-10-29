@@ -176,6 +176,14 @@ export type SlaState = "ok" | "warn" | "breach" | "done";
 export const SERVICE_LEVELS = [12, 24, 36, 48] as const;
 export type ServiceLevelHours = (typeof SERVICE_LEVELS)[number];
 
+/**
+ * A7: where the unit was bought. Mirrors `PURCHASE_MODES` in
+ * `api/app/core/tickets.py`. `purchasePlatformId`/`purchasePlatformName` are
+ * null together unless this is `"online"`.
+ */
+export const PURCHASE_MODES = ["online", "offline"] as const;
+export type PurchaseMode = (typeof PURCHASE_MODES)[number];
+
 export interface Ticket {
   id: string;
   /** `INST-240912`. What ops quote on the phone. */
@@ -205,6 +213,21 @@ export interface Ticket {
   /** The customer's problem. Present for Tech Visit and Service, null otherwise. */
   description: string | null;
   /**
+   * A2: a manager or vendor flagging this job for attention on the board.
+   * No SLA, no routing, no eligibility consequence — a flag, nothing else.
+   */
+  isHighPriority: boolean;
+  /**
+   * A7: where the unit was bought. Always one of `PURCHASE_MODES`;
+   * `purchasePlatformId`/`purchasePlatformName` are null together unless
+   * this is `"online"`.
+   */
+  purchaseMode: PurchaseMode;
+  purchasePlatformId: string | null;
+  /** Resolved on read, like every other `*Name` beside an id — the platform
+   *  can be renamed without rewriting every ticket that named it. */
+  purchasePlatformName: string | null;
+  /**
    * The EXPECTED serial, off the invoice — not the one the technician
    * photographs on site. A mismatch between the two is what AI review is for.
    */
@@ -225,6 +248,9 @@ export interface Ticket {
   /** Masked from technicians until they accept; ops always sees it. */
   customerName: string;
   customerPhone: string;
+  /** A6: a second number for the same customer. Masked on the same terms as
+   *  `customerPhone` until a technician accepts. */
+  customerAltPhone: string | null;
   address: string;
   city: string;
   state: string;
@@ -575,6 +601,9 @@ export interface CreateTicketInput {
   serialNumber?: string | null;
   customerName: string;
   customerPhone: string;
+  /** A6: a second number for the same customer. Optional — most tickets
+   *  carry one. */
+  customerAltPhone?: string | null;
   address: string;
   city: string;
   state: string;
@@ -594,6 +623,21 @@ export interface CreateTicketInput {
   serviceLevelHours: ServiceLevelHours;
   slotStart?: string | null;
   slotEnd?: string | null;
+
+  /** A2: flag this job for attention on the board. Defaults to `false`
+   *  server-side when omitted. */
+  isHighPriority?: boolean;
+  /** A7: where the unit was bought. Defaults to `"offline"` server-side
+   *  when omitted. */
+  purchaseMode?: PurchaseMode;
+  /** Only meaningful when `purchaseMode` is `"online"` — the server refuses
+   *  one set alongside `"offline"`. */
+  purchasePlatformId?: string | null;
+  /** E1: free text answering "where was it bought", read two ways by the
+   *  server depending on `purchaseMode` — the offline store name, or the
+   *  online "Others" platform name when no `purchasePlatformId` is sent
+   *  alongside it. Max 120 chars, trimmed by the client before sending. */
+  purchasePlatformName?: string | null;
 }
 
 /* ── the bulk importer ─────────────────────────────────────────────────── */

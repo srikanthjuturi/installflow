@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useNavigate } from "react-router";
 import {
   CategoryTree,
@@ -9,6 +9,7 @@ import {
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ModelFormDialog } from "@/components/masters/ModelFormDialog";
 import { NodeFormDialog } from "@/components/masters/NodeFormDialog";
+import { ProductImportDialog } from "@/components/masters/ProductImportDialog";
 import { SparePartsDialog } from "@/components/parts/SparePartsDialog";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { EmptyState, ErrorState } from "@/components/shared/states";
@@ -31,6 +32,7 @@ export default function CategoriesPage() {
   // paused category is un-paused, so hiding it would strand it.
   const { data, isLoading, isError, error, refetch } = useNodeTree(true);
   const [dialog, setDialog] = useState<OpenDialog>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const navigate = useNavigate();
 
   const { has } = useFeatureAccess();
@@ -59,7 +61,16 @@ export default function CategoriesPage() {
       <PageMeta title="Categories & products" description="Product master" />
 
       {canEdit ? (
-        <div className="mb-3.5 flex justify-end">
+        <div className="mb-3.5 flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            size="toolbar"
+            variant="outline"
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload data-icon="inline-start" />
+            Import products
+          </Button>
           <Button
             type="button"
             size="toolbar"
@@ -69,6 +80,10 @@ export default function CategoriesPage() {
             Add category
           </Button>
         </div>
+      ) : null}
+
+      {canEdit ? (
+        <ProductImportDialog open={importOpen} onOpenChange={setImportOpen} />
       ) : null}
 
       {isError ? (

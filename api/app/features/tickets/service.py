@@ -93,6 +93,7 @@ from app.core.realtime import (
 )
 from app.core.product_label import model_label, vendors_with_several_brands
 from app.core.product_tree import APPROVED, PENDING
+from app.core.purchase_platforms import find_or_create as find_or_create_platform
 from app.core.schemas import ListParams, canonical_filter
 from app.core.scope import (
     pincodes_in_regions,
@@ -165,6 +166,7 @@ from app.models.franchisee import Franchisee
 from app.models.ledger import REVERSIBLE_KINDS, SPEED_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
+from app.models.purchase_platform import PurchasePlatform
 from app.models.role import (
     FACILITY_ROLES,
     FRANCHISEE_ADMIN,
@@ -538,6 +540,31 @@ async def _resolve_product(
     return vendor, node, model
 
 
+async def _resolve_purchase_platform(
+    db: AsyncSession, company_id: uuid.UUID, platform_id: uuid.UUID
+) -> PurchasePlatform:
+    """A7: the named platform, re-resolved against the caller's own company.
+
+    404, never 400 or 403 — an id in a request body is an assertion, not a
+    fact, and a guessed one from another company (or a retired one) must read
+    exactly like one that does not exist.
+    """
+    row = await db.scalar(
+        select(PurchasePlatform).where(
+            PurchasePlatform.id == platform_id,
+            PurchasePlatform.company_id == company_id,
+            PurchasePlatform.is_active.is_(True),
+            PurchasePlatform.deleted_at.is_(None),
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Purchase platform not found",
+        )
+    return row
+
+
 class SerialRefusal(NamedTuple):
     """Why a serial is refused: a stable code for the client, a sentence for
     the person. The importer puts the same pair on a rejected row."""
@@ -854,6 +881,22 @@ async def _hydrate(
     }
     hide_franchisee = principal.is_vendor  # one flag, so the id and name stay in step
 
+    # A7: the platform's name, read live like every other `*Name` beside an
+    # id — a rename must not mean rewriting every ticket that named it.
+    platform_ids = {t.purchase_platform_id for t in rows if t.purchase_platform_id}
+    platform_names = (
+        {
+            r[0]: r[1]
+            for r in await db.execute(
+                select(PurchasePlatform.id, PurchasePlatform.name).where(
+                    PurchasePlatform.id.in_(platform_ids)
+                )
+            )
+        }
+        if platform_ids
+        else {}
+    )
+
     # The model's name and the brand it carries, in one join. Read live, like the
     # name: nothing about a product is stamped on a ticket but its two prices.
     model_names: dict[uuid.UUID, str] = {}
@@ -936,6 +979,18 @@ async def _hydrate(
                 brandName=brand_names.get(t.model_id),
                 serviceType=t.service_type,
                 description=t.description,
+                isHighPriority=t.is_high_priority,
+                purchaseMode=t.purchase_mode,
+                purchasePlatformId=t.purchase_platform_id,
+                # One question, two columns behind it: an ONLINE ticket names
+                # a real row (resolved live, like every other `*Name`), an
+                # OFFLINE one carries the vendor's own free text verbatim —
+                # see `models/ticket.py`'s `purchase_platform_detail`.
+                purchasePlatformName=(
+                    platform_names.get(t.purchase_platform_id)
+                    if t.purchase_platform_id
+                    else t.purchase_platform_detail
+                ),
                 serialNumber=t.serial_number,
                 observedSerial=t.observed_serial,
                 observedSerialSource=t.observed_serial_source,
@@ -949,6 +1004,7 @@ async def _hydrate(
                 ),
                 customerName=t.customer_name,
                 customerPhone=t.customer_phone,
+                customerAltPhone=t.customer_alt_phone,
                 address=t.address,
                 city=t.city,
                 state=t.state,
@@ -1151,6 +1207,52 @@ def closed_in(cutoff: datetime.datetime | None):
     return or_(confirmed, forced)
 
 
+def high_priority_pending():
+    """Flagged, unassigned, and still open — the "Tickets" nav badge's own
+    population (E5).
+
+    One expression, so the badge and the list a click on it would filter to
+    (`?highPriority=true`, further narrowed to `technicianId=null` were that
+    ever added) can never disagree about what it is counting. `is_high_priority`
+    is a flag nothing downstream branches on (see the column's own note) —
+    this is the first thing that reads it for anything other than display.
+
+    `technician_id IS NULL` is "unassigned", not "New" or any other single
+    status: a flagged ticket can sit in `Slot Pending`, `New` or `Escalated`
+    with nobody on it, and all three are exactly the badge's job to surface.
+    `TERMINAL_STATUSES` drops it the moment there is nothing left to action —
+    the same rule `open_tickets()` applies to the dashboard's own tile.
+    """
+    return and_(
+        Ticket.is_high_priority.is_(True),
+        Ticket.technician_id.is_(None),
+        Ticket.status.not_in(TERMINAL_STATUSES),
+    )
+
+
+async def count_high_priority_pending(db: AsyncSession, principal: Principal) -> int:
+    """How many unassigned high-priority tickets this caller is responsible
+    for — the blinking "Tickets" nav badge (E5).
+
+    Through the SAME `scoped()` visibility `list_tickets` and every other
+    ticket read use, so a Regional Head or Area Manager counts only their
+    own territory's pincodes and an all-India role counts the whole company
+    — never a second, looser rule that could disagree with what the list
+    opened from the badge would show.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(Ticket)
+        .where(
+            Ticket.company_id == principal.company_id,
+            Ticket.deleted_at.is_(None),
+            high_priority_pending(),
+        )
+    )
+    stmt = await scoped(db, stmt, principal)
+    return int(await db.scalar(stmt) or 0)
+
+
 #: The dashboard's "Needs your attention" cards that no status can name, as the
 #: values `GET /tickets?attention=` takes. Each is the one expression its card
 #: counts with — see the two functions below.
@@ -1227,6 +1329,7 @@ async def list_tickets(
     sla_filter: str | None = None,
     service_type: str | None = None,
     technician_id: uuid.UUID | None = None,
+    vendor_id: uuid.UUID | None = None,
     region_id: uuid.UUID | None = None,
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
@@ -1234,6 +1337,7 @@ async def list_tickets(
     open_only: bool = False,
     closed_within_days: int | None = None,
     attention: str | None = None,
+    high_priority: bool | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -1241,7 +1345,7 @@ async def list_tickets(
     )
     stmt = await scoped(db, stmt, principal)
     stmt = _apply_search(stmt, params.search)
-    # The dashboard's own four, shared with `dashboard_summary` — see `narrowed`.
+    # The dashboard's own five, shared with `dashboard_summary` — see `narrowed`.
     # The peek table under the tiles reads this endpoint, and a table describing
     # a different set of tickets from the figures above it is worse than no
     # table at all.
@@ -1251,6 +1355,7 @@ async def list_tickets(
         state_id=state_id,
         date_from=date_from,
         date_to=date_to,
+        vendor_id=vendor_id,
     )
 
     # One technician's work. The company filter above is already in the WHERE,
@@ -1258,6 +1363,13 @@ async def list_tickets(
     # profile screen asks for it on every open.
     if technician_id is not None:
         stmt = stmt.where(Ticket.technician_id == technician_id)
+
+    # A2: the board's own flag, already tenant- and territory-scoped by
+    # `scoped()` above — the same reason `vendor_id` needs no guard of its
+    # own. `None` means "do not filter", so an omitted query param behaves
+    # exactly as it always did; `true`/`false` both narrow, never widen.
+    if high_priority is not None:
+        stmt = stmt.where(Ticket.is_high_priority == high_priority)
 
     statuses = _canonical_set(status_filter, TICKET_STATUSES)
     if statuses is False:
@@ -1332,10 +1444,22 @@ async def list_tickets(
         # a stable order across pages rather than swapping between reads.
         stmt = stmt.order_by(direction, Ticket.created_at.desc())
     else:
-        # `id` breaks a tie between two tickets raised in the same instant —
-        # an Excel import writes a whole sheet in one transaction — so a row
-        # cannot appear on two pages, or on none.
-        stmt = stmt.order_by(Ticket.created_at.desc(), Ticket.id.desc())
+        # A2: flagged tickets float to the top of the server's OWN order —
+        # ahead of "newest first" rather than instead of it, so the default
+        # list a caller who named no sort gets is still newest-first within
+        # each half. Only the default branch changes: `?sortBy=slaState` /
+        # `createdAt` / `slotStart` are an explicit choice already, and
+        # inserting a flag ahead of a sort somebody asked for by name would
+        # answer a different question than the one they asked.
+        #
+        # `id` still breaks a tie between two tickets raised in the same
+        # instant — an Excel import writes a whole sheet in one transaction —
+        # so a row cannot appear on two pages, or on none.
+        stmt = stmt.order_by(
+            Ticket.is_high_priority.desc(),
+            Ticket.created_at.desc(),
+            Ticket.id.desc(),
+        )
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     return await _hydrate(db, principal, rows), total
@@ -1351,13 +1475,16 @@ def narrowed(
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    vendor_id: uuid.UUID | None = None,
 ) -> Select:
-    """The dashboard's territory and date filters, for any ticket query.
+    """The dashboard's territory, date and vendor filters, for any ticket query.
 
     Shared by `dashboard_summary` and `list_tickets` so the tiles and the table
     under them cannot describe different sets of tickets — which is exactly what
     happened the first time the filters existed on only one of them: a dashboard
-    reading zero everywhere, above six rows.
+    reading zero everywhere, above six rows. A1's `vendor_id` is the same idea
+    applied to one more picker: whichever vendor a manager drills into, the
+    tile and the list it opens have to agree.
 
     ## It NARROWS; it can never widen
 
@@ -1366,7 +1493,10 @@ def narrowed(
     to nothing and reads zero. That is the whole permission story: there is no
     separate check to keep in step with the picker, and no id here that reveals
     anything. A state beats a region because it is the narrower of the two,
-    which is what a cascading picker means when both are set.
+    which is what a cascading picker means when both are set. `vendor_id` is
+    the same story — it ANDs onto `Ticket.vendor_id`, so a vendor outside the
+    caller's own scope (a vendor's own id read from the principal, never this
+    parameter) simply narrows to nothing rather than ever widening a read.
 
     ## The dates bound INTAKE
 
@@ -1386,6 +1516,9 @@ def narrowed(
         stmt = stmt.where(Ticket.created_at >= lower)
     if upper is not None:
         stmt = stmt.where(Ticket.created_at < upper)
+
+    if vendor_id is not None:
+        stmt = stmt.where(Ticket.vendor_id == vendor_id)
     return stmt
 
 
@@ -1405,6 +1538,7 @@ async def dashboard_summary(
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    vendor_id: uuid.UUID | None = None,
 ) -> DashboardSummaryOut:
     """Every figure the console's dashboard draws, counted rather than sampled.
 
@@ -1460,6 +1594,7 @@ async def dashboard_summary(
             state_id=state_id,
             date_from=date_from,
             date_to=date_to,
+            vendor_id=vendor_id,
         )
 
     def tally(condition) -> object:
@@ -2498,6 +2633,42 @@ async def create_ticket(
     vendor, node, model = await _resolve_product(db, principal, body)
     await _assert_pincode_known(db, body.pincode)
 
+    # A7: what this ticket stores for "where was it bought" is one of three
+    # different things, decided by the mode and by what the vendor sent.
+    # Resolved AFTER the pincode check and BEFORE the clock check, with the
+    # other request-shaped lookups.
+    platform: PurchasePlatform | None = None
+    purchase_platform_detail: str | None = None
+    if body.purchaseMode == "offline":
+        # The schema already refuses a platform id alongside `offline` (422);
+        # this refuses it again for any caller that reaches the service
+        # directly, same as the single check this replaced. `purchasePlatformName`
+        # means something different here — the free-text store name, never a
+        # platform id — so it is read instead of re-validated against the mode.
+        if body.purchasePlatformId is not None:
+            raise _bad_request(
+                "A purchase platform can only be set when purchaseMode is "
+                '"online"'
+            )
+        purchase_platform_detail = body.purchasePlatformName
+    elif body.purchasePlatformId is not None:
+        platform = await _resolve_purchase_platform(
+            db, principal.company_id, body.purchasePlatformId
+        )
+    elif body.purchasePlatformName:
+        # "Others": nothing in the caller's own dropdown fit, so they typed a
+        # name. Find-or-create it for THIS company — a retired platform under
+        # the same name is reactivated rather than duplicated — so what was
+        # typed joins the dropdown for the next vendor who raises a ticket.
+        platform = await find_or_create_platform(
+            db,
+            principal.company_id,
+            body.purchasePlatformName,
+            created_by=principal.user_id,
+        )
+    # else: online with neither an id nor a name — both stay null, "we don't
+    # know which".
+
     now = _now()
     # A day that has already gone cannot be served. Judged in IST, not UTC:
     # for five and a half hours every evening the two disagree about what day
@@ -2558,6 +2729,18 @@ async def create_ticket(
         serial_number=(body.serialNumber or "").strip() or None,
         customer_name=body.customerName.strip(),
         customer_phone=body.customerPhone,
+        # A6: the household's second number, if they gave one. Same shape as
+        # `customer_phone`, already normalised by the schema's phone validator.
+        customer_alt_phone=body.customerAltPhone,
+        # A2: a flag for the board. No downstream behaviour reads it.
+        is_high_priority=body.isHighPriority,
+        # A7: resolved above — `platform` is set only for an ONLINE ticket
+        # that named or typed one (never for an offline one, even if a stale
+        # id arrived); `purchase_platform_detail` is set only for an OFFLINE
+        # one, the mirror of `platform`'s own condition.
+        purchase_mode=body.purchaseMode,
+        purchase_platform_id=platform.id if platform else None,
+        purchase_platform_detail=purchase_platform_detail,
         address=body.address,
         city=body.city,
         state=body.state,

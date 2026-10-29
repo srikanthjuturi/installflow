@@ -2,15 +2,16 @@
 
 Run by `core.scheduler.ticker`. Each returns how many notifications it wrote.
 
-Seven of them now, and three are different in kind. `sweep_no_shows` reports a
+Eight of them now, and four are different in kind. `sweep_no_shows` reports a
 FAILURE that has already happened rather than a risk that still can be
 prevented; it deliberately changes nothing and charges nothing — see its own
-note on why a clock must not be allowed to fine anybody. And three of the seven
-— `sweep_slot_reminders`, `sweep_customer_notice` and
-`sweep_pending_slot_requests` — raise no notification at all: they send a
-message to the person who needs it, technician and customer respectively, and
-record having done so on the ticket. A routine courtesy in an escalation queue
-is the noise that makes people stop reading it.
+note on why a clock must not be allowed to fine anybody. And four of the eight
+— `sweep_slot_reminders`, `sweep_customer_notice`, `sweep_pending_slot_requests`
+and `sweep_serial_photo_reminders` — raise no notification at all: they send a
+message to the person who needs it, technician, customer and (the newest,
+again the technician) respectively, and record having done so on the ticket.
+A routine courtesy in an escalation queue is the noise that makes people stop
+reading it.
 
 ⚠ `sweep_pending_slot_requests` is the only one that exists to do somebody
 else's work rather than to notice something. `create_ticket` sends its own slot
@@ -107,6 +108,7 @@ from app.core.slots import clock, time_is_choosable_clause, when_label
 from app.core.tickets import (
     NO_SHOW_GRACE_MINUTES,
     NO_SHOW_LOOKBACK_HOURS,
+    SERIAL_REMINDER_MINUTES,
     SLOT_REQUEST_BATCH,
     SLOT_REQUEST_GRACE_MINUTES,
 )
@@ -117,7 +119,7 @@ from app.models.membership import Membership
 from app.models.notification import Notification
 from app.models.product import ProductModel
 from app.models.technician import TechnicianProfile
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketProof
 from app.models.ticket_event import TicketEvent
 from app.models.user import User
 
@@ -147,6 +149,14 @@ def _slot_clock(row: Ticket) -> str:
     `clock()` is the slice's own formatter and already gets both right.
     """
     hm, meridiem = clock(row.slot_start)
+    return f"{hm} {meridiem}"
+
+
+def _slot_end_clock(row: Ticket) -> str:
+    """`2:00 PM` — the slot's END, read the same careful way `_slot_clock`
+    reads its start. The serial reminder counts down to this edge of the
+    window rather than the one that opens it."""
+    hm, meridiem = clock(row.slot_end)
     return f"{hm} {meridiem}"
 
 
@@ -1084,3 +1094,134 @@ async def sweep_no_shows(db: AsyncSession) -> int:
             f"The slot closed with no proof captured · {r.city} {r.pincode}"
         ),
     )
+
+
+async def sweep_serial_photo_reminders(db: AsyncSession) -> int:
+    """The slot is about to close and the serial photo still has not been taken.
+
+    `sweep_slot_reminders`' sibling at the OTHER edge of the same visit. That
+    one stops a technician forgetting to turn up; this one stops them leaving
+    without the one proof `jobs.service` checks against the ticket's EXPECTED
+    serial (hard rule on the expected serial, `core.tickets.PROOF_KINDS`) — a
+    job finished without it is a job that cannot be AI-verified and usually
+    means a second visit.
+
+    A push, not a bell, for `sweep_slot_reminders`' own reason: the person who
+    needs it is on site with the app shut, and a routine courtesy in an
+    escalation queue is the noise that makes people stop reading it.
+
+    ## `Assigned` or `In Progress` — both are "nothing captured yet"
+
+    A job can reach this window still `Assigned`, with nothing captured at
+    all, or already `In Progress` with the barcode done and the serial still
+    outstanding. Either way the one fact that matters is the same: no
+    `ticket_proofs` row of kind `serial` exists for it yet.
+
+    ## The window is a plain constant, not a `company_rules` figure
+
+    Unlike `slot_reminder_minutes` and `customer_notice_minutes` above,
+    `SERIAL_REMINDER_MINUTES` (`core.tickets`) is not read off the ticket's
+    `rules_snapshot` — nothing has asked to vary it, and hard rule 8 says do
+    not ship a rule nothing has asked for. The constant's own docstring says
+    what changes the day somebody does.
+
+    ## Idempotency is a `serial_reminded` EVENT, re-armed on reschedule
+
+    Exactly `sweep_slot_reminders`' shape: the marker is a ticket event, not a
+    notification — a manager watching this ticket should see "Reminded the
+    technician" arrive once, not a line in the escalation queue every tick —
+    and `_rearmed` re-opens it against `rescheduled`, so a ticket whose window
+    moved gets its own fresh warning rather than inheriting one that was about
+    a `slot_end` which no longer exists.
+
+    ## No WhatsApp here
+
+    A technician's phone IS their credential, so push is the channel that
+    reaches them — the same choice `sweep_slot_reminders` makes, not
+    `sweep_customer_notice`'s. A WhatsApp nudge to the technician could be
+    added once a template for it clears Meta's approval; nothing here attempts
+    one today, and leaving `WHATSAPP_*` empty on dev does not touch this sweep
+    at all.
+    """
+    # …and "since the slot last moved", not "ever" — `sweep_slot_reminders`'
+    # own reasoning. A reminder pushed for a window that has since been moved
+    # says nothing about the new one, and a plain `not_in` would silently
+    # disarm the one warning whose whole job is stopping the technician
+    # leaving without the one proof a second visit would otherwise need.
+    reminded = _rearmed(_last_event("serial_reminded"), _last_event("rescheduled"))
+    now = _now()
+    # No serial proof yet — correlated on BOTH the ticket and its company, the
+    # same shape every other correlated subquery here uses, so a cross-tenant
+    # row can never satisfy it even by accident.
+    no_serial_proof = not_(
+        select(TicketProof.id)
+        .where(
+            TicketProof.company_id == Ticket.company_id,
+            TicketProof.ticket_id == Ticket.id,
+            TicketProof.kind == "serial",
+        )
+        .exists()
+    )
+    rows = list(
+        await db.scalars(
+            select(Ticket)
+            .where(
+                # Both shapes of "the technician holds this and has not
+                # finished the proof walk" — see the docstring.
+                Ticket.status.in_(("Assigned", "In Progress")),
+                Ticket.deleted_at.is_(None),
+                Ticket.technician_id.is_not(None),
+                Ticket.slot_end.is_not(None),
+                # The window is open: `slot_end` is still ahead, but not by
+                # more than `SERIAL_REMINDER_MINUTES`. Never for a slot that
+                # has already closed — that is `sweep_no_shows`' question, not
+                # this one's.
+                Ticket.slot_end > now,
+                Ticket.slot_end <= now + _minutes(SERIAL_REMINDER_MINUTES),
+                no_serial_proof,
+                reminded,
+            )
+        )
+    )
+
+    for row in rows:
+        db.add(
+            TicketEvent(
+                company_id=row.company_id,
+                ticket_id=row.id,
+                kind="serial_reminded",
+                actor_kind="system",
+                actor_label="Reminder",
+                note=(
+                    "Reminded the technician to capture the serial — slot "
+                    f"ends at {_slot_end_clock(row)}"
+                ),
+            )
+        )
+        # Before the push, not after — `sweep_slot_reminders`' own ordering:
+        # `send_to_technicians` commits when it prunes a dead token, and the
+        # event must land inside whichever commit carries it, never a later
+        # one that could land alone.
+        await publish_ticket_changed(db, row)
+        # Written whether or not the push lands. A phone with notifications
+        # off has no token, and recording that we tried is what stops this
+        # retrying every tick until the slot closes.
+        await send_to_technician(
+            db,
+            company_id=row.company_id,
+            technician_id=row.technician_id,
+            message=PushText(
+                "job.serial_reminder",
+                code=row.code,
+                time=Clock(row.slot_end),
+                place=f"{row.city} {row.pincode}",
+                to_slot=TimeToSlot(row.slot_end),
+            ),
+            # Same shape as `sweep_slot_reminders`': a tap opens the job the
+            # mobile app already knows how to deep-link to, where the
+            # technician is walked straight to the serial capture step. No
+            # mobile change needed — `jobs.service` already refuses `Complete`
+            # without this proof, so the app's own flow puts them there.
+            data={"type": "job", "ticketId": str(row.id), "code": row.code},
+        )
+    return len(rows)

@@ -7,7 +7,7 @@ import { Navigate, Outlet, useLocation, type RouteObject } from "react-router";
 import NotFoundPage from "@/pages/NotFoundPage";
 import { AppShell } from "@/components/shared/AppShell";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
-import { featureForPath } from "@/components/shared/nav";
+import { featureForPath, isAdminOnlyPath } from "@/components/shared/nav";
 import { SuperadminShell } from "@/components/superadmin/SuperadminShell";
 import { VendorShell } from "@/components/vendor/VendorShell";
 import {
@@ -19,7 +19,7 @@ import {
   featureForFranchisePath,
 } from "@/components/franchise/franchiseNav";
 import { franchiseLanding } from "@/components/franchise/franchiseNav";
-import { useFeatureAccess } from "@/hooks/useAuth";
+import { useFeatureAccess, useMe } from "@/hooks/useAuth";
 import { landingPath, useSession } from "@/store/session";
 
 /* Route-based code splitting — each page is its own chunk, resolved behind
@@ -78,6 +78,9 @@ const TerritoryPage = lazy(() => import("@/pages/masters/TerritoryPage"));
 const RulesConfigPage = lazy(() => import("@/pages/settings/RulesConfigPage"));
 const UsersRolesPage = lazy(() => import("@/pages/settings/UsersRolesPage"));
 const AllowancesPage = lazy(() => import("@/pages/settings/AllowancesPage"));
+const PurchasePlatformsPage = lazy(
+  () => import("@/pages/settings/PurchasePlatformsPage")
+);
 const AccountPage = lazy(() => import("@/pages/account/AccountPage"));
 const NotificationsPage = lazy(
   () => import("@/pages/notifications/NotificationsPage")
@@ -274,17 +277,26 @@ function RequireSuperadmin() {
  * the dashboard rather than a screen whose every request would 403. Pairs with
  * the sidebar filter — both read the same map, so a hidden link is also an
  * unreachable URL. The server remains the authority.
+ *
+ * `adminOnly` is the one path with no feature key (Purchase Platforms) — see
+ * `NavItem.adminOnly` in `components/shared/nav.ts`. Checked against the same
+ * `/auth/me` role the sidebar reads, so the two can never disagree either.
  */
 function RequireFeature() {
   const { pathname } = useLocation();
   const feature = featureForPath(pathname);
+  const adminOnly = isAdminOnlyPath(pathname);
   const { loading, has } = useFeatureAccess();
+  const { data: me } = useMe();
 
   // Ungated routes (dashboard, account, notifications) never wait on /auth/me.
-  if (!feature) return <Outlet />;
-  // Don't bounce anyone before the feature set has actually arrived.
+  if (!feature && !adminOnly) return <Outlet />;
+  // Don't bounce anyone before the feature set (and the role beside it) has
+  // actually arrived.
   if (loading) return <PageSkeleton />;
-  return has(feature) ? <Outlet /> : <Navigate to="/" replace />;
+  if (feature && !has(feature)) return <Navigate to="/" replace />;
+  if (adminOnly && me?.role !== "admin") return <Navigate to="/" replace />;
+  return <Outlet />;
 }
 
 function RedirectIfSignedIn() {
@@ -532,6 +544,11 @@ export const routes: RouteObject[] = [
               { path: "settings/rules", element: <RulesConfigPage /> },
               { path: "settings/users", element: <UsersRolesPage /> },
               { path: "settings/allowances", element: <AllowancesPage /> },
+              // No entry on the nav table's `feature` — see `adminOnly` above.
+              {
+                path: "settings/purchase-platforms",
+                element: <PurchasePlatformsPage />,
+              },
               // Guarded by `vendors.credit` off the nav table, the payment
               // route through the entry's `match` prefix.
               { path: "vendor-credit", element: <VendorCreditPage /> },

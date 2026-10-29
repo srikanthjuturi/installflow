@@ -45,6 +45,8 @@ export interface DashboardFilters {
   stateId?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** A1: one vendor's own figures — the same narrowing `GET /tickets` takes. */
+  vendorId?: string;
 }
 
 /** The wire shape of `GET /tickets/summary`. */
@@ -89,6 +91,7 @@ export async function getDashboard(
   if (filters.stateId) query.set("stateId", filters.stateId);
   if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) query.set("dateTo", filters.dateTo);
+  if (filters.vendorId) query.set("vendorId", filters.vendorId);
   const qs = query.toString();
 
   const s = await apiGet<SummaryWire>(`/tickets/summary${qs ? `?${qs}` : ""}`);

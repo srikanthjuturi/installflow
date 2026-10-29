@@ -57,12 +57,32 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
             <div className="truncate text-sm font-semibold">
               {ticket.customerName}
             </div>
-            <a
-              href={`tel:${ticket.customerPhone.replace(/\s/g, "")}`}
-              className="text-xs text-ink-2 hover:text-brand-400"
-            >
-              {ticket.customerPhone}
-            </a>
+            <div className="flex flex-wrap items-center gap-x-1.5">
+              <a
+                href={`tel:${ticket.customerPhone.replace(/\s/g, "")}`}
+                className="text-xs text-ink-2 hover:text-brand-400"
+              >
+                {ticket.customerPhone}
+              </a>
+              {/* A6: a second number for the same customer. Absent on most
+                  tickets, so the row is never drawn empty — it simply does
+                  not exist here when there is nothing to show. */}
+              {ticket.customerAltPhone ? (
+                <>
+                  <span className="text-ink-3" aria-hidden>
+                    ·
+                  </span>
+                  <a
+                    href={`tel:${ticket.customerAltPhone.replace(/\s/g, "")}`}
+                    className="text-xs text-ink-2 hover:text-brand-400"
+                    aria-label={`Alternate number ${ticket.customerAltPhone}`}
+                  >
+                    {ticket.customerAltPhone}
+                    <span className="text-ink-3"> (alt)</span>
+                  </a>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
         <p className="mt-3.5 text-xs leading-relaxed text-ink-2">

@@ -2,8 +2,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { SERVICE_TYPES } from "@/components/masters/categorySchema";
 import { REASON_MAX, REASON_MIN } from "@/lib/handOver";
-import { SERVICE_LEVELS } from "@/types/ticket";
+import { PURCHASE_MODES, SERVICE_LEVELS } from "@/types/ticket";
 import { istToday, offeredSlots } from "@/utils/slots";
+
+/**
+ * India mobile numbers — ten digits starting 6-9, optionally prefixed `+91`.
+ * Shared by `customerPhone` (required) and `customerAltPhone` (A6, optional)
+ * so the two boxes can never silently drift to different rules.
+ */
+const PHONE_REGEX = /^(\+91[\s-]?)?[6-9]\d{9}$/;
 
 /**
  * §4's required fields, plus what intake has since learned it needs: a full
@@ -36,10 +43,20 @@ export const ticketSchema = z
     customerPhone: z
       .string()
       .trim()
-      .regex(
-        /^(\+91[\s-]?)?[6-9]\d{9}$/,
-        "Enter a valid 10-digit Indian mobile number"
-      ),
+      .regex(PHONE_REGEX, "Enter a valid 10-digit Indian mobile number"),
+    /**
+     * A6: a second number for the same customer — a relative, a shop,
+     * whoever else can let the technician in. Optional, so an empty box is
+     * a complete ticket; typed, it has to be as real a number as the first
+     * one, which is why it shares `PHONE_REGEX` rather than a looser rule.
+     */
+    customerAltPhone: z
+      .string()
+      .trim()
+      .optional()
+      .refine((v) => !v || PHONE_REGEX.test(v), {
+        message: "Enter a valid 10-digit Indian mobile number",
+      }),
     address: z.string().trim().min(1, "Address is required").max(500),
     city: z.string().trim().min(1, "City is required").max(120),
     state: z.string().trim().min(1, "State is required").max(120),
@@ -75,6 +92,45 @@ export const ticketSchema = z
      */
     slotStart: z.string(),
     slotEnd: z.string(),
+
+    /**
+     * A2: a flag for the board — see `Ticket.isHighPriority`. No SLA
+     * consequence and nothing a technician's eligibility reads; it is only
+     * ever read by a person looking at the list.
+     *
+     * Plain `z.boolean()`, not `.default(false)` — a defaulted field's INPUT
+     * type (optional) differs from its OUTPUT type (required), and that gap
+     * is exactly what the note above `serviceLevelHours` warns about: RHF's
+     * resolver cannot reconcile a schema whose input and output disagree
+     * with `TicketFormValues`. The false default lives in the component's
+     * `defaultValues` instead, where RHF already expects one.
+     */
+    isHighPriority: z.boolean(),
+
+    /**
+     * A7: where the unit was bought. The platform box only appears, on the
+     * form, once this reads "online". Plain `z.enum`, for the same
+     * input/output reason as `isHighPriority` above — "offline" is the
+     * component's `defaultValues`, not a schema default.
+     */
+    purchaseMode: z.enum(PURCHASE_MODES),
+    /**
+     * Only meaningful when `purchaseMode` is "online" — the superRefine
+     * below is what keeps the two from disagreeing. Optional even then:
+     * the server allows "online, platform unspecified".
+     */
+    purchasePlatformId: z.string().optional(),
+    /**
+     * E1: the one free-text field for "where was it bought", read two
+     * different ways by `ManualEntryForm`'s submit depending on
+     * `purchaseMode` — the offline store name, or the online "Others"
+     * platform name — the same split `TicketCreateRequest.
+     * purchasePlatformName` documents server-side. Which of the two it
+     * currently means is UI state (`platformChoice`, a sentinel that never
+     * reaches this schema), not something this field's shape can express —
+     * so there is nothing to validate beyond the server's own bound.
+     */
+    purchasePlatformName: z.string().trim().max(120).optional(),
   })
   .superRefine((v, ctx) => {
     // Mirrors the server rule. Reported on the field itself rather than at the
@@ -138,6 +194,19 @@ export const ticketSchema = z
             : `A ${v.serviceLevelHours}h service level leaves no window today. Choose a longer one, or leave the slot blank.`,
         });
       }
+    }
+
+    // A7: the pair's own invariant — mirrors the server's "a platform only
+    // with an online purchase" rule, reported on the box that would
+    // actually be carrying the stray value. The form clears this field the
+    // moment the mode flips back to offline, so this is a defensive mirror
+    // of the server rule rather than a state reachable through the UI.
+    if (v.purchaseMode === "offline" && v.purchasePlatformId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["purchasePlatformId"],
+        message: "A platform only applies when the purchase was online",
+      });
     }
   });
 
@@ -216,4 +285,14 @@ export const SERVICE_LEVEL_OPTIONS = SERVICE_LEVELS.map((hours) => ({
   value: hours,
   title: `${hours}-hour`,
   detail: `Slot must start within ${hours}h of creation`,
+}));
+
+/**
+ * A7: online vs offline, as radio cards beside `SERVICE_LEVEL_OPTIONS`. Only
+ * two, fixed, so this is exempt from the single-option auto-fill rule the
+ * same way the service level and SLA-type pickers are (hard rule 10).
+ */
+export const PURCHASE_MODE_OPTIONS = PURCHASE_MODES.map((mode) => ({
+  value: mode,
+  title: mode === "online" ? "Online" : "Offline",
 }));

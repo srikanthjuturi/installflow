@@ -496,7 +496,8 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             "jsonb_typeof(service_types) = 'array' "
             "AND jsonb_array_length(service_types) >= 1 "
             "AND service_types <@ "
-            "'[\"Installation + Demo\", \"Tech Visit\", \"Service\"]'::jsonb",
+            "'[\"Installation + Demo\", \"Tech Visit\", \"Service\", "
+            "\"Uninstall\"]'::jsonb",
             name="service_types",
         ),
         # SHAPE only. Bounding each entry means walking the array with

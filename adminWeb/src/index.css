@@ -57,6 +57,10 @@
     text-transform: uppercase;
   }
 
+  /* `.animate-blink` (E5: the "High priority" badge and the Tickets rail
+     count) is caught by this block's universal `*` selector like every other
+     animation here — reduced motion collapses its 1s loop to a single
+     0.01ms pass, which lands it on its own end state rather than mid-blink. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -124,6 +128,22 @@
 
   .animate-radar-blip {
     animation: radar-blip 4.5s linear infinite;
+  }
+
+  /* E5: a plain on/off blink for the "High priority" badge and the Tickets
+     rail count — `step-start` so it snaps between the two opacities instead
+     of fading, which reads as "blink" rather than "pulse". Reduced motion
+     is handled by the universal `prefers-reduced-motion` block above, which
+     collapses the loop to one 0.01ms frame rather than repeating the rule
+     here. */
+  @keyframes blink {
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .animate-blink {
+    animation: blink 1s step-start infinite;
   }
 
   /* The dot lattice from the sign-in brand panel, reusable on any surface.
