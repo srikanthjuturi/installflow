@@ -117,7 +117,9 @@ from app.core.slots import (
     IST,
     bookable_slots,
     clock,
+    clock_range,
     day_label,
+    manual_slot_allowed,
     offered_slots,
     reschedule_slots,
     time_is_choosable,
@@ -131,6 +133,7 @@ from app.core.reschedule import (
     send_slot_moved,
 )
 from app.core.tickets import (
+    MANUAL_SLOT_MIN_MINUTES,
     RESCHEDULE_HORIZON_HOURS,
     TERMINAL_STATUSES,
     TICKET_STATUSES,
@@ -278,17 +281,27 @@ def _sla_order_case():
 
 
 def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
-    """A slot typed at intake must be one the customer could have picked.
+    """A slot typed at intake must be one the customer could have picked —
+    OR a manual, off-grid window a vendor typed because the customer wanted a
+    specific hour the two-hour grid does not offer.
 
-    ONE rule rather than four. "In the future", "far enough ahead to dispatch",
-    "a real working window" and "inside the service level" are all already
-    expressed, once, by `offered_slots` — re-stating them here as separate
-    guards would be four chances to drift from the list the customer is shown.
+    The grid path is ONE rule rather than four. "In the future", "far enough
+    ahead to dispatch", "a real working window" and "inside the service
+    level" are all already expressed, once, by `offered_slots` — re-stating
+    them here as separate guards would be four chances to drift from the
+    list the customer is shown. It is tried FIRST and is the common case: the
+    vendor's grid picker never produces anything else, and checking it costs
+    one list membership test.
 
-    This closes the hole that let a ticket be born breached: `offered_slots`
-    never offers a window past `sla_due_at`, but nothing stopped a vendor from
-    typing one straight into the create request, and `sla_state` then reported
-    the breach the moment the row existed.
+    Only when that fails does `manual_slot_allowed` get a turn — see it for
+    the rules, which are the grid's own rules carried over to an arbitrary
+    window rather than a new policy. Nothing about the grid path changes:
+    a ticket raised with a grid-aligned slot is accepted exactly as before.
+
+    Either path closes the same hole: left unchecked, `offered_slots` never
+    offers a window past `sla_due_at`, but nothing stopped a vendor from
+    typing one straight into the create request, and `sla_state` then
+    reported the breach the moment the row existed.
 
     No-op when there is no slot — that ticket is Slot Pending and the customer
     picks from this same list.
@@ -297,6 +310,11 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
         return
 
     available = offered_slots(row, now=now)
+    if (row.slot_start, row.slot_end) in available:
+        return
+    if manual_slot_allowed(row, row.slot_start, row.slot_end, now=now):
+        return
+
     if not available:
         raise _bad_request(
             f"A {row.service_level_hours}h service level leaves no bookable "
@@ -304,16 +322,17 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
             "longer service level, or leave the slot blank and the customer "
             "will be asked to pick."
         )
-    if (row.slot_start, row.slot_end) not in available:
-        # The first few, not all twenty: enough to show the shape of what is
-        # allowed without turning a validation message into a timetable.
-        shown = ", ".join(when_label(*s) for s in available[:3])
-        more = "" if len(available) <= 3 else f", and {len(available) - 3} more"
-        raise _bad_request(
-            "That is not a time this ticket can be served in. A slot has to be "
-            f"one of the two-hour windows inside the {row.service_level_hours}h "
-            f"service level — {shown}{more}."
-        )
+    # The first few, not all twenty: enough to show the shape of what is
+    # allowed without turning a validation message into a timetable.
+    shown = ", ".join(when_label(*s) for s in available[:3])
+    more = "" if len(available) <= 3 else f", and {len(available) - 3} more"
+    raise _bad_request(
+        "That is not a time this ticket can be served in. A slot has to be "
+        f"one of the two-hour windows inside the {row.service_level_hours}h "
+        f"service level — {shown}{more} — or a manual window of at least "
+        f"{MANUAL_SLOT_MIN_MINUTES} minutes that still fits inside the same "
+        "working hours and deadline."
+    )
 
 
 # ── visibility ────────────────────────────────────────────────────────────────
@@ -1335,6 +1354,7 @@ async def list_tickets(
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
     open_only: bool = False,
+    closed_only: bool = False,
     closed_within_days: int | None = None,
     attention: str | None = None,
     high_priority: bool | None = None,
@@ -1379,9 +1399,14 @@ async def list_tickets(
 
     # The dashboard's own two populations, so its tiles can open a list holding
     # exactly what they counted rather than a superset the reader has to sift.
-    # Both are shared expressions, not a second reading of the same rule.
+    # And the high-priority board's own third view, `closed=true` — "ever
+    # Closed or Force-Closed", from the same `closed_in()` with no cutoff, so
+    # staff can review a closed ticket's detail instead of it vanishing. All
+    # three are shared expressions, not a second reading of the same rule.
     if open_only:
         stmt = stmt.where(open_tickets())
+    if closed_only:
+        stmt = stmt.where(closed_in(None))
     if closed_within_days:
         stmt = stmt.where(
             closed_in(_now() - datetime.timedelta(days=closed_within_days))

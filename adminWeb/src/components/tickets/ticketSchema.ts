@@ -3,7 +3,7 @@ import { z } from "zod";
 import { SERVICE_TYPES } from "@/components/masters/categorySchema";
 import { REASON_MAX, REASON_MIN } from "@/lib/handOver";
 import { PURCHASE_MODES, SERVICE_LEVELS } from "@/types/ticket";
-import { istToday, offeredSlots } from "@/utils/slots";
+import { istToday, manualSlotAllowed, offeredSlots } from "@/utils/slots";
 
 /**
  * India mobile numbers — ten digits starting 6-9, optionally prefixed `+91`.
@@ -179,18 +179,34 @@ export const ticketSchema = z
      * Mirrors `check_slot_bookable`. Membership in the list is the whole rule:
      * it already carries "in the future", "far enough ahead", "a real working
      * window" and "inside the service level".
+     *
+     * A manual, off-grid window is the other way to satisfy it — see
+     * `manualSlotAllowed`, the browser's copy of `manual_slot_allowed`. ONE
+     * `now` for both checks: `offeredSlots` below is handed it explicitly
+     * rather than left to default to its own `new Date()`, so a slow render
+     * between the two cannot make a window pass one check and fail the
+     * other on the same submit.
      */
     if (v.slotStart && v.slotEnd) {
-      const open = offeredSlots(v.serviceLevelHours);
-      const still = open.some(
+      const now = new Date();
+      const open = offeredSlots(v.serviceLevelHours, now);
+      const onGrid = open.some(
         (s) => s.start === v.slotStart && s.end === v.slotEnd
       );
-      if (!still) {
+      const manual =
+        !onGrid &&
+        manualSlotAllowed(
+          new Date(v.slotStart),
+          new Date(v.slotEnd),
+          v.serviceLevelHours,
+          now
+        );
+      if (!onGrid && !manual) {
         ctx.addIssue({
           code: "custom",
           path: ["slotStart"],
           message: open.length
-            ? "That window has passed — pick another"
+            ? "That window isn't long enough, is outside working hours, or starts too soon / too late for this service level"
             : `A ${v.serviceLevelHours}h service level leaves no window today. Choose a longer one, or leave the slot blank.`,
         });
       }

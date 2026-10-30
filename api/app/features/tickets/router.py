@@ -193,6 +193,7 @@ async def list_tickets(
     dateFrom: Annotated[datetime.date | None, Query()] = None,
     dateTo: Annotated[datetime.date | None, Query()] = None,
     open_: Annotated[bool, Query(alias="open")] = False,
+    closed: Annotated[bool, Query()] = False,
     closedWithinDays: Annotated[int | None, Query(ge=1, le=365)] = None,
     attention: Annotated[str | None, Query()] = None,
     highPriority: Annotated[bool | None, Query()] = None,
@@ -237,6 +238,9 @@ async def list_tickets(
         as it always did.
       * `open=true` is "not yet closed", from `service.open_tickets()` — the
         same expression the `openTickets` tile counts.
+      * `closed=true` is "ever closed" — Closed or Force-Closed, from
+        `service.closed_in(None)` — deliberately not Cancelled, which is a
+        different outcome with no closure to review.
       * `closedWithinDays=7` is "closed in the last N days", from
         `service.closed_in()` — the same expression the "Closed this week" tile
         counts, with the window it reports in `funnel.closedWithinDays`.
@@ -263,6 +267,7 @@ async def list_tickets(
         date_from=dateFrom,
         date_to=dateTo,
         open_only=open_,
+        closed_only=closed,
         closed_within_days=closedWithinDays,
         attention=attention,
         high_priority=highPriority,

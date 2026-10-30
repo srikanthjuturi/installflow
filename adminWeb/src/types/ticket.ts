@@ -59,6 +59,20 @@ export const isTerminalTicketStatus = (status: TicketStatus): boolean =>
   TERMINAL_TICKET_STATUSES.includes(status);
 
 /**
+ * The two statuses that mean a ticket is actually CLOSED — Closed or
+ * Force-Closed. Mirrors `closed_in()` in `api/app/features/tickets/service.py`:
+ * both are ways a job ends up finished, and deliberately not `Cancelled`,
+ * which is a different outcome with no closure to review.
+ *
+ * One expression, so the high-priority board's badge and its "Closed Tickets"
+ * view cannot disagree about what "closed" means.
+ */
+export const CLOSED_TICKET_STATUSES: ReadonlySet<TicketStatus> = new Set([
+  "Closed",
+  "Force-Closed",
+]);
+
+/**
  * Whether a time can still be set for this ticket — by the customer from their
  * link, or by a manager rescheduling. Mirrors `time_is_choosable` in
  * `api/app/core/slots.py`; the server treats those as one question and so
