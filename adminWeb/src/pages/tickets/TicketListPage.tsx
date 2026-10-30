@@ -45,6 +45,7 @@ export default function TicketListPage() {
   const statuses = (f.status ?? "").includes(",") ? f.status.split(",") : null;
   const parts = [
     ...(f.open ? ["not yet closed"] : []),
+    ...(f.closed ? ["closed"] : []),
     ...(ATTENTION_WORDS[f.attention] ? [ATTENTION_WORDS[f.attention]] : []),
     // Named because the chips cannot show a set — one of them would look
     // selected and the other would not exist.
@@ -57,12 +58,59 @@ export default function TicketListPage() {
     ...(f.regionId || f.stateId ? ["one territory"] : []),
   ];
 
+  // The high-priority board's own three views. Each REPLACES the filters
+  // wholesale rather than merging, so no stale status/vendorId/
+  // closedWithinDays/attention can linger underneath whichever view is
+  // picked next.
+  const isActiveHighPriority = f.highPriority === "true" && f.open === "true";
+  const isClosedTickets = f.highPriority === "true" && f.closed === "true";
+  const isAllTickets = !isActiveHighPriority && !isClosedTickets;
+
   return (
     <>
       <PageMeta
         title="Tickets"
         description="All installation & demo tickets."
       />
+
+      {/* The high-priority board's own three views — unfiltered, still open,
+          or closed (so staff can review a closure's detail). Plain buttons
+          rather than a new primitive: the console has no shadcn Tabs yet. */}
+      <div className="flex items-center gap-2">
+        <Button
+          size="toolbar"
+          variant={isAllTickets ? "default" : "outline"}
+          onClick={() => setParams({ ...params, filters: {}, page: 1 })}
+        >
+          All Tickets
+        </Button>
+        <Button
+          size="toolbar"
+          variant={isActiveHighPriority ? "default" : "outline"}
+          onClick={() =>
+            setParams({
+              ...params,
+              filters: { highPriority: "true", open: "true" },
+              page: 1,
+            })
+          }
+        >
+          Active High Priority
+        </Button>
+        <Button
+          size="toolbar"
+          variant={isClosedTickets ? "default" : "outline"}
+          onClick={() =>
+            setParams({
+              ...params,
+              filters: { highPriority: "true", closed: "true" },
+              page: 1,
+            })
+          }
+        >
+          Closed Tickets
+        </Button>
+      </div>
 
       <NarrowedNotice
         parts={parts}

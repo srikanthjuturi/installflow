@@ -11,6 +11,7 @@ import {
   Map,
   Route,
   SlidersHorizontal,
+  Store,
   Tags,
   UserCog,
   Users,
@@ -40,6 +41,21 @@ export interface NavItem {
    * screen the API would refuse.
    */
   feature?: string;
+  /**
+   * Restricts this entry to the backend's literal `admin` role — checked
+   * against `/auth/me`'s own `role` (live, server-sourced), never the
+   * legacy `Role` the mock chrome used (`store/session.ts`, which `Sidebar`
+   * already keeps separate from the real feature gate below it).
+   *
+   * Exists because Purchase Platforms has no feature key at all: its three
+   * writes are `require_min_rank(ADMIN)` in
+   * `api/app/features/purchase_platforms/router.py`, narrower than every
+   * `feature` above (all grantable to National Head too) and not worth a
+   * migration for "a handful of rows a company sets up once" — see that
+   * router's own docstring. Presentation only, same as `feature` (hard
+   * rule 8): the server holds the real floor on every write regardless.
+   */
+  adminOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -67,6 +83,10 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Ticket List",
         to: "/tickets",
         icon: ListFilter,
+        // Overridden by `Sidebar` with the live count of unassigned
+        // high-priority tickets (E5). Zero here rather than a figure: an
+        // unloaded badge must not claim there is work.
+        badge: 0,
         match: ["/tickets/"],
         feature: "jobs.view",
       },
@@ -222,6 +242,17 @@ export const NAV_GROUPS: NavGroup[] = [
         feature: "settings.view",
       },
       {
+        label: "Purchase Platforms",
+        to: "/settings/purchase-platforms",
+        icon: Store,
+        // No `feature` — see `adminOnly` on `NavItem` above. The backend
+        // gates reads to nothing narrower than "signed in to the company"
+        // and every write to the literal admin rank with no feature key
+        // behind it, so this is the one config screen gated on role rather
+        // than on Feature Access.
+        adminOnly: true,
+      },
+      {
         label: "Users & Roles",
         to: "/settings/users",
         icon: UserCog,
@@ -279,6 +310,29 @@ export function featureForPath(pathname: string): string | undefined {
     .sort((a, b) => b.to.length - a.to.length)[0];
 
   return prefixed?.feature;
+}
+
+/**
+ * Whether a path is restricted to the backend's literal `admin` role. Mirrors
+ * `featureForPath`'s own lookup — same table, same exact-then-longest-prefix
+ * rule — so the rail and `RequireFeature` can never disagree about this
+ * either. False for every path with no `adminOnly` entry.
+ */
+export function isAdminOnlyPath(pathname: string): boolean {
+  const items = NAV_GROUPS.flatMap((g) => g.items);
+
+  const exact = items.find((i) => i.to === pathname);
+  if (exact) return exact.adminOnly ?? false;
+
+  const prefixed = items
+    .filter(
+      (i) =>
+        (i.to !== "/" && pathname.startsWith(`${i.to}/`)) ||
+        i.match?.some((m) => pathname.startsWith(m))
+    )
+    .sort((a, b) => b.to.length - a.to.length)[0];
+
+  return prefixed?.adminOnly ?? false;
 }
 
 export { UserCog };

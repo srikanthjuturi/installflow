@@ -19,6 +19,7 @@ from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tickets import (
+    MANUAL_SLOT_MIN_MINUTES,
     SLOT_LEAD_MINUTES,
     SLOT_TIMEZONE_OFFSET_MINUTES,
     SLOT_WINDOWS,
@@ -137,6 +138,75 @@ def offered_slots(
                 continue
             out.append((begins, ends))
     return out
+
+
+def manual_slot_allowed(
+    row: Ticket,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    *,
+    now: datetime.datetime,
+) -> bool:
+    """Whether a vendor-typed, off-grid window may stand in for one of `SLOT_WINDOWS`.
+
+    `check_slot_bookable` tries the exact grid first — a pair it already lists
+    in `offered_slots` never reaches this. This only runs for a window that
+    does NOT match the grid, which exists for a vendor whose customer wants a
+    specific hour the two-hour windows do not land on. Every rule below is
+    already one of the grid's OWN rules, applied to an arbitrary window
+    instead of a fixed one — nothing here is new policy:
+
+      * `end > start` — `offered_slots` gets this for free, because every pair
+        it builds comes straight off `SLOT_WINDOWS`. A hand-typed pair carries
+        no such guarantee, so it is re-checked here rather than trusted; the
+        `slot_both_or_neither` CHECK enforces it too, but a pure function
+        should not rely on its caller having gone through that gate first.
+      * at least `MANUAL_SLOT_MIN_MINUTES` wide — half the grid's own two
+        hours. A visit still needs enough time to actually be done; with no
+        floor a free pick would let somebody book a five-minute "slot".
+      * `start` no sooner than `SLOT_LEAD_MINUTES` from `now` — the same
+        dispatch lead that keeps `offered_slots` from offering a `begins` too
+        close to the present. Nobody can be sent to an address in ten minutes
+        whether the window came off the grid or off a keyboard.
+      * `end` no later than `row.sla_due_at` — the grid bounds only `begins`,
+        because every one of its windows is a fixed two hours and bounding
+        the start already bounds the finish. A manual window has no fixed
+        width, so the bound has to apply to the WHOLE window: a job still
+        running past the deadline is exactly the breach that bound exists to
+        rule out.
+      * both ends inside the grid's own working day — no earlier than
+        `SLOT_WINDOWS[0][0]` (5 AM) and no later than `SLOT_WINDOWS[-1][1]`
+        (9 PM), read off the table itself rather than restated as a second
+        `5`/`21`, so a future change to the grid's span moves this with it.
+      * `start` and `end` on the same IST calendar day — a manual window is
+        still one visit, not one that runs past midnight into the next; the
+        grid can never cross midnight either, because every window it offers
+        sits inside a single day by construction.
+
+    Pure and synchronous, same as `offered_slots` beside it: this runs inside
+    `check_slot_bookable`, during ticket creation, where there is no
+    technician to ask and no database round trip to make.
+    """
+    if end <= start:
+        return False
+    if end - start < datetime.timedelta(minutes=MANUAL_SLOT_MIN_MINUTES):
+        return False
+    if start < now + datetime.timedelta(minutes=SLOT_LEAD_MINUTES):
+        return False
+    if end > row.sla_due_at:
+        return False
+
+    start_ist = start.astimezone(IST)
+    end_ist = end.astimezone(IST)
+    if start_ist.date() != end_ist.date():
+        return False
+
+    day_opens = datetime.time(SLOT_WINDOWS[0][0])
+    day_closes = datetime.time(SLOT_WINDOWS[-1][1])
+    if start_ist.time() < day_opens or end_ist.time() > day_closes:
+        return False
+
+    return True
 
 
 #: Sentinel for "use the row's own technician", so that `None` can mean the

@@ -23,6 +23,9 @@ from app.features.ledger.franchise_router import (
 from app.features.masters.router import router as masters_router
 from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
+from app.features.purchase_platforms.router import (
+    router as purchase_platforms_router,
+)
 from app.features.rbac.router import router as rbac_router
 from app.features.redemptions.router import router as redemptions_router
 from app.features.redemptions.franchise_router import (
@@ -67,6 +70,9 @@ api_router.include_router(vendor_users_router)
 # Who runs the technicians, and which pincodes each one routes.
 api_router.include_router(franchisees_router)
 api_router.include_router(masters_router)
+# A7's master: where a customer bought the product. Read by every role on the
+# raise-a-ticket form (vendor, franchise, staff alike); only an Admin writes it.
+api_router.include_router(purchase_platforms_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)
 # The console's live half: one frame per ticket movement, scoped exactly as the

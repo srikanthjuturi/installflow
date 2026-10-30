@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useGeoRegions, useStates } from "@/hooks/useGeo";
+import { useVendorOptions } from "@/hooks/useVendors";
 import type { FilterPatch } from "@/pages/dashboard/DashboardPage";
 import type { DashboardFilters } from "@/services/dashboard";
 import { formatDate } from "@/utils/datetime";
@@ -69,6 +70,7 @@ export function DashboardFilterBar({
 }) {
   const regions = useGeoRegions(true);
   const states = useStates(true);
+  const vendors = useVendorOptions();
 
   const stateOptions = useMemo<ComboboxOption[]>(() => {
     const rows = filters.regionId
@@ -108,7 +110,7 @@ export function DashboardFilterBar({
           : null;
 
   const dirty = Boolean(
-    filters.regionId || filters.stateId || filters.dateFrom || filters.dateTo
+    filters.regionId || filters.stateId || filters.dateFrom || filters.dateTo || filters.vendorId
   );
 
   // `h-8` to sit level with the two pickers, which render 32px however tall
@@ -181,6 +183,37 @@ export function DashboardFilterBar({
         emptyMessage="No state matches that"
       />
 
+      <Select
+        value={filters.vendorId ?? ALL}
+        onValueChange={(v) =>
+          onChange({
+            vendorId: v && v !== ALL ? v : undefined,
+          })
+        }
+      >
+        <SelectTrigger className="w-52" aria-label="Filter by vendor">
+          <SelectValue>
+            {filters.vendorId ? (
+              <span>
+                <span className="text-ink-3">Vendor: </span>
+                {vendors.data?.find((v) => v.id === filters.vendorId)?.name ??
+                  "…"}
+              </span>
+            ) : (
+              <span className="text-ink-3">All vendors</span>
+            )}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>All vendors</SelectItem>
+          {(vendors.data ?? []).map((v) => (
+            <SelectItem key={v.id} value={v.id}>
+              {v.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
       <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
         {/* "Raised" names the date being filtered. Every count on this screen is
             "of the tickets RAISED in this window", and a bare calendar next to a
@@ -219,6 +252,7 @@ export function DashboardFilterBar({
                 stateId: undefined,
                 dateFrom: undefined,
                 dateTo: undefined,
+                vendorId: undefined,
               })
             }
           >

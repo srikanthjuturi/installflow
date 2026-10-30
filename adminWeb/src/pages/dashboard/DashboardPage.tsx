@@ -11,7 +11,7 @@ import { useDashboard, useRecentTickets } from "@/hooks/useDashboard";
 import type { DashboardFilters } from "@/services/dashboard";
 
 /** The filter keys, as they appear in the query string. */
-const KEYS = ["regionId", "stateId", "dateFrom", "dateTo"] as const;
+const KEYS = ["regionId", "stateId", "dateFrom", "dateTo", "vendorId"] as const;
 
 /** What the filter bar sends back: only the keys it changed. */
 export type FilterPatch = Partial<Record<(typeof KEYS)[number], string | undefined>>;

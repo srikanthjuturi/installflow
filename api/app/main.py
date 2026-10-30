@@ -20,6 +20,7 @@ from app.features.tickets.sweeps import (
     sweep_customer_notice,
     sweep_force_close,
     sweep_pending_slot_requests,
+    sweep_serial_photo_reminders,
     sweep_silent_slots,
     sweep_no_shows,
     sweep_slot_reminders,
@@ -114,6 +115,10 @@ async def lifespan(app: FastAPI):
     # risk still preventable. It raises a bell and charges nothing — see
     # its docstring on why a clock must not be allowed to fine anybody.
     ticker.register("no-show", sweep_no_shows)
+    # The slot reminder's sibling at the other edge of the same visit: warns
+    # the technician who still has not captured the serial with the window
+    # about to close. Same no-notification shape as `slot-reminder` above.
+    ticker.register("serial-reminder", sweep_serial_photo_reminders)
     # Not a ticket: an invite that lapsed with nobody registering against it.
     # Same reason it is registered here — the sweep is a technicians-domain
     # query and core must not import a slice.

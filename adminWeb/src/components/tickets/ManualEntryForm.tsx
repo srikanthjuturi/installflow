@@ -14,6 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldDescription,
@@ -34,16 +35,23 @@ import { Spinner } from "@/components/ui/spinner";
 import { moneyPaise } from "@/utils/money";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useNodeTree } from "@/hooks/useProductMaster";
+import { usePurchasePlatforms } from "@/hooks/usePurchasePlatforms";
 import {
   lookupSerial,
   SERIAL_PAGE_SIZE,
 } from "@/services/productMaster";
 import { cn } from "@/lib/utils";
-import { istToday, offeredSlots, type OfferedSlot } from "@/utils/slots";
+import {
+  istToday,
+  manualSlotAllowed,
+  offeredSlots,
+  type OfferedSlot,
+} from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
-import type { CreateTicketInput } from "@/types/ticket";
+import type { CreateTicketInput, PurchaseMode } from "@/types/ticket";
 import { nodeIdPath, type ProductNode, type SerialMatch } from "@/types/product";
 import {
+  PURCHASE_MODE_OPTIONS,
   SERVICE_LEVEL_OPTIONS,
   ticketSchema,
   type TicketFormValues,
@@ -60,6 +68,17 @@ interface OptionGroup {
   label?: string;
   options: Option[];
 }
+
+/**
+ * E1 — the Platform select's own sentinel for "none of these, let me type
+ * one". Deliberately a non-empty string: Radix's `Select.Item` cannot carry
+ * an empty value, and this must also never collide with a real platform id
+ * (a UUID). It lives only in `platformChoice`, component state the schema
+ * never sees — the form writes either a real `purchasePlatformId` or a
+ * typed `purchasePlatformName` into RHF, never this sentinel itself, so
+ * `ticketSchema` and the API need no idea it exists.
+ */
+const OTHERS_PLATFORM = "__others__";
 
 interface ManualEntryFormProps {
   onSubmit: (values: CreateTicketInput) => void;
@@ -117,10 +136,18 @@ export function ManualEntryForm({
       subcategoryId: "",
       modelId: "",
       serviceType: "Installation + Demo",
+      isHighPriority: false,
+      purchaseMode: "offline",
+      purchasePlatformId: "",
+      // E1 — read two ways depending on `purchaseMode`: the offline free-text
+      // store name, or the online "Others" platform name. See `platformChoice`
+      // below for the UI state that decides which.
+      purchasePlatformName: "",
       description: "",
       serialNumber: "",
       customerName: "",
       customerPhone: "",
+      customerAltPhone: "",
       address: "",
       city: "",
       state: "",
@@ -165,6 +192,14 @@ export function ManualEntryForm({
    */
   const [picked, setPicked] = useState<string[]>([]);
 
+  /**
+   * A3 — the drill-down's answer to a QUESTION above it: which brand. Local
+   * for the same reason `picked` is: it is how somebody reached the
+   * product, not part of the ticket — `modelId` is already enough for the
+   * API to know the brand, so nothing here is submitted on its own.
+   */
+  const [brandId, setBrandId] = useState<string>("");
+
   // Models belong to a subcategory, so the second select depends on the first.
   // useWatch subscribes to just this field — watch() re-renders on every
   // keystroke anywhere in the form and isn't memoization-safe.
@@ -175,6 +210,59 @@ export function ManualEntryForm({
   // The windows on offer depend on it, so the picker has to redraw when the
   // service level changes — a 12h ticket has far fewer than a 48h one.
   const serviceLevelHours = useWatch({ control, name: "serviceLevelHours" });
+  // A7 — the platform box only appears, and only matters, while this reads
+  // "online"; see `clearPurchasePlatform` beside `purchasePlatforms` below,
+  // run from the mode radio's own `onValueChange`.
+  const purchaseMode = useWatch({ control, name: "purchaseMode" });
+
+  /**
+   * E1 — which option the Platform select is showing right now: a real
+   * platform's id, `OTHERS_PLATFORM`, or `""` while nothing has been picked
+   * yet. Local, same reasoning as `picked`/`brandId` above: it is how the
+   * UI reached its answer, not the answer — the answer is whichever of
+   * `purchasePlatformId` / `purchasePlatformName` actually ends up in RHF.
+   */
+  const [platformChoice, setPlatformChoice] = useState<string>("");
+
+  /* A7 — every ACTIVE platform this company has. Short and rarely changing,
+     like the vendor list this form used to need, so it is fetched
+     unconditionally rather than only once the vendor has gone online — a
+     vendor flips back and forth while filling the form, and refetching on
+     every flip would mean the picker blanking each time. */
+  const { data: purchasePlatforms, isPending: platformsPending } =
+    usePurchasePlatforms();
+  // The service already asks for `activeOnly=true`, so nothing here filters
+  // — it only reshapes `{id, name}` into the `{value, label}` every other
+  // select in this form stores.
+  const purchasePlatformOptions: Option[] = (purchasePlatforms ?? []).map(
+    (p) => ({ value: p.id, label: p.name })
+  );
+  // E1 — "Others" is always on the list, even while it is the only thing on
+  // it: a company with nothing seeded yet (or a slow first fetch) still has
+  // somewhere to type a platform name, rather than a box with nothing to
+  // choose from.
+  const platformSelectOptions: Option[] = [
+    ...purchasePlatformOptions,
+    { value: OTHERS_PLATFORM, label: "Others" },
+  ];
+
+  /* A value chosen while online is stale the moment the mode flips — in
+     EITHER direction. Flipping to offline leaves a chosen platform id (or
+     an "Others" name) behind a box that no longer exists; flipping TO
+     online must not quietly inherit the offline box's free text as though
+     it had been typed as an "Others" platform name. Both directions are
+     handled the same way: everything the box could have written is
+     cleared, and the select resets to "nothing chosen yet".
+     Done in the mode radio's OWN `onValueChange` below, not in an effect —
+     the flip is a single user action, and clearing what it invalidates
+     belongs beside the action that caused it rather than in a `useEffect`
+     that would otherwise be setting state synchronously from inside
+     itself. */
+  const clearPurchasePlatform = useCallback(() => {
+    write("purchasePlatformId", "");
+    write("purchasePlatformName", "");
+    setPlatformChoice("");
+  }, [write]);
 
   /* The address is one control over four form fields, so it is watched and
      written rather than registered — through `write`, or its errors would
@@ -236,6 +324,55 @@ export function ManualEntryForm({
   const vendorHasNothing =
     Boolean(vendorId) && !treePending && (tree ?? []).length === 0;
 
+  /**
+   * A3/A4 — Vendor → Brand → Category → Sub-category, the brand sitting
+   * ABOVE the drill-down rather than inside it. Built from the FULL tree,
+   * never the brand-pruned one below: this is the list the select itself
+   * offers, so it must not already depend on which brand (if any) is
+   * chosen. Every brand here leads somewhere real — the intake tree the
+   * server sends has already dropped every branch holding none of this
+   * vendor's products, so a brand present in it is a brand with at least
+   * one priced model under it.
+   */
+  const brandOptions = vendorBrands(tree);
+  // Whether a model's name needs its brand in front — see `modelLabel`. This
+  // is the vendor's WHOLE catalogue, not the chosen brand: the serial lookup
+  // below can offer a match from any brand, and the confirmed/conflicting
+  // messages have to call it what the suggestion list already called it.
+  const severalBrands = brandOptions.length > 1;
+
+  function pickBrand(id: string) {
+    setBrandId(id);
+    // Truncate exactly like `pickLevel` does on a changed category: a box
+    // answered under the OLD brand is not an answer under the new one, and
+    // leaving it set would submit a model that this brand's pruned tree no
+    // longer offers.
+    setPicked([]);
+    write("subcategoryId", "");
+    write("modelId", "");
+    write("serviceType", "Installation + Demo");
+  }
+
+  // A single brand fills itself — hard rule 10, same as any other computed
+  // select here. Runs regardless of whether the control below is actually
+  // mounted (it is hidden in exactly this case), which is why this is its
+  // own call rather than relying on `SelectShell`'s identical internal one.
+  useAutoSelectSingle(
+    brandOptions.map((o) => o.value),
+    brandId,
+    pickBrand,
+    Boolean(vendorId) && !treePending
+  );
+
+  /* The drill-down and the model list read THIS, never `tree` directly —
+     pruned to the chosen brand so a sub-category or a model carrying none
+     of its products disappears rather than dead-ending, the same pruning
+     the server already does for the vendor as a whole (see the note above
+     `useNodeTree`). Empty rather than the unfiltered tree while no brand is
+     chosen yet: the drill-down is DISABLED in that state and must not show
+     the whole catalogue behind it. */
+  const brandTree = pruneTreeForBrand(tree, brandId);
+
   /* The category picker is a DRILL-DOWN: one dropdown per level, each filled
      from what was chosen above it.
 
@@ -254,10 +391,10 @@ export function ManualEntryForm({
      `picked` is local rather than form state — the intermediate levels are how
      you got to the answer, not the answer. Only the final leaf reaches
      `subcategoryId`, which is what the API takes. */
-  const chain = resolveChain(tree, picked);
+  const chain = resolveChain(brandTree, picked);
   const levels: { parentId: string; options: ProductNode[]; value: string }[] = [];
   {
-    let pool: ProductNode[] = tree ?? [];
+    let pool: ProductNode[] = brandTree;
     for (let i = 0; ; i += 1) {
       const node = chain[i];
       levels.push({
@@ -288,16 +425,15 @@ export function ManualEntryForm({
     write("serviceType", "Installation + Demo");
   }
 
-  // Whether a model's name needs its brand in front — see `modelLabel`. Worked
-  // out over the vendor's whole tree, not the chosen category, because the
-  // serial lookup below names models from anywhere in it and must call each one
-  // exactly what the model list calls it.
-  const severalBrands = brandCount(tree) > 1;
+  // `chosen.models` is already pruned to the selected brand — every option
+  // here carries it, so prefixing the name with it the way `modelLabel` does
+  // for the SERIAL suggestions (which span every brand at once) would only
+  // repeat what the Brand select above already said.
   const modelGroups: OptionGroup[] = [
     {
       options: (chosen?.models ?? []).map((m) => ({
         value: m.id,
-        label: modelLabel(m.name, m.brandName, severalBrands),
+        label: m.name,
       })),
     },
   ];
@@ -368,6 +504,13 @@ export function ManualEntryForm({
       // differ only in case or surrounding space. Worth doing — the ticket would
       // otherwise print a serial the master spells differently.
       write("serialNumber", hit.serial);
+      // A3 — the serial may belong to a brand other than the one currently
+      // selected. `setPicked`/`setBrandId` land in the same render (React
+      // batches both), so the brand-pruned tree the drill-down reads next
+      // already contains the node this just filled in, rather than pruning
+      // it straight back out from under the match.
+      const brand = findModelBrand(tree, hit.modelId);
+      if (brand) setBrandId(brand);
     },
     [tree, write]
   );
@@ -558,6 +701,10 @@ export function ManualEntryForm({
       serialNumber: values.serialNumber.trim(),
       customerName: values.customerName,
       customerPhone: values.customerPhone,
+      // A6 — empty means "not given", which the server stores as null, the
+      // same treatment `description` gets above. Never an empty string, so
+      // "no second number" and "blank" cannot diverge.
+      customerAltPhone: values.customerAltPhone?.trim() || undefined,
       address: values.address,
       city: values.city,
       state: values.state,
@@ -573,6 +720,30 @@ export function ManualEntryForm({
       // there is no wall-clock string to reinterpret in some other zone.
       slotStart: values.slotStart || null,
       slotEnd: values.slotEnd || null,
+      // A2.
+      isHighPriority: values.isHighPriority,
+      // A7/E1 — `purchasePlatformId` travels only with "online", and only
+      // when a REAL platform (not the "Others" sentinel, which never
+      // reaches RHF in the first place) was chosen. The clearing effect
+      // above already empties it the moment the mode flips, but submit is
+      // where a stray value would actually reach the API, so the omission
+      // is re-asserted here rather than trusted from state alone.
+      purchaseMode: values.purchaseMode,
+      purchasePlatformId:
+        values.purchaseMode === "online" && values.purchasePlatformId
+          ? values.purchasePlatformId
+          : undefined,
+      // E1 — the one free-text field, read two ways: the offline store name
+      // the vendor typed, or the online "Others" name — but only while NO
+      // real platform id is also going out, so a stray value here can never
+      // contradict the id above. Trimmed again, defensively, like every
+      // other optional text on this submit; empty means "nothing typed",
+      // never an empty string sent to the API.
+      purchasePlatformName:
+        values.purchaseMode === "offline" ||
+        (values.purchaseMode === "online" && !values.purchasePlatformId)
+          ? values.purchasePlatformName?.trim() || undefined
+          : undefined,
     });
   }
 
@@ -767,6 +938,35 @@ export function ManualEntryForm({
               them by hand if it is not on record yet.
             </FieldDescription>
 
+            {/* A3 — Brand, ABOVE the drill-down. Vendor → Brand → Category →
+                Sub-category is the order asked for; the serial box above
+                keeps its own first position (an explicit call — it is the
+                vendor's real starting point, see the comment up top), so
+                this sits between the serial's notices and the categories it
+                now scopes. Hidden when the vendor sells only one brand —
+                picked for them, `useAutoSelectSingle` above, the same as any
+                other single-option list (hard rule 10). */}
+            {severalBrands ? (
+              <FieldGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <SelectShell
+                  id="field-brand"
+                  label="Brand"
+                  required
+                  placeholder={
+                    !vendorId
+                      ? "Pick a vendor first"
+                      : vendorHasNothing
+                        ? `${vendorName} has nothing approved yet`
+                        : "Select brand"
+                  }
+                  groups={[{ options: brandOptions }]}
+                  value={brandId}
+                  onChange={pickBrand}
+                  disabled={!vendorId || vendorHasNothing}
+                />
+              </FieldGrid>
+            ) : null}
+
             <FieldGrid className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {/* One box per level, appearing as the previous one is answered.
                   Keyed on the PARENT, not the index: picking a different TV
@@ -785,7 +985,9 @@ export function ManualEntryForm({
                         ? "Pick a vendor first"
                         : vendorHasNothing
                           ? `${vendorName} has nothing approved yet`
-                          : "Select category"
+                          : !brandId
+                            ? "Pick a brand first"
+                            : "Select category"
                   }
                   groups={[
                     {
@@ -797,7 +999,7 @@ export function ManualEntryForm({
                   ]}
                   value={level.value}
                   onChange={(id) => pickLevel(i, id)}
-                  disabled={!vendorId || vendorHasNothing}
+                  disabled={!vendorId || vendorHasNothing || !brandId}
                   /* The chain's error belongs on the LAST box — that is where
                      the missing choice actually is. */
                   error={i === levels.length - 1 ? err("subcategoryId") : undefined}
@@ -935,6 +1137,103 @@ export function ManualEntryForm({
             </p>
           ) : null}
 
+          {/* A7 — where the unit was bought. Its own small section rather
+              than folded into "Vendor & product" above: it is a fact about
+              the SALE, not about which product was chosen, and rather than
+              "Customer" below: the customer did not buy it FROM us, so it
+              sits between the two instead of inside either. */}
+          <FormSection legend="Purchase">
+            <Controller
+              name="purchaseMode"
+              control={control}
+              render={({ field }) => (
+                <RadioGroup
+                  value={field.value}
+                  onValueChange={(v) => {
+                    field.onChange(v as PurchaseMode);
+                    clearPurchasePlatform();
+                  }}
+                  className="grid gap-3 sm:grid-cols-2"
+                >
+                  {PURCHASE_MODE_OPTIONS.map((o) => (
+                    <label
+                      key={o.value}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 transition-colors",
+                        field.value === o.value
+                          ? "border-brand-500 bg-brand-100/40"
+                          : "border-line hover:border-brand-400"
+                      )}
+                    >
+                      <RadioGroupItem value={o.value} />
+                      <span className="text-[13px] font-semibold">
+                        {o.title}
+                      </span>
+                    </label>
+                  ))}
+                </RadioGroup>
+              )}
+            />
+
+            {/* E1 — offline is a free-text box, not a picker: there is no
+                company master of physical shops to choose from, only the
+                vendor's own words for where it was bought. */}
+            {purchaseMode === "offline" ? (
+              <TextField
+                name="purchasePlatformName"
+                label="Where was it bought?"
+                placeholder="Local electronics shop, name of the store…"
+                register={register}
+                error={err("purchasePlatformName")}
+              />
+            ) : null}
+
+            {/* Only ever an offer — the server accepts "online, platform
+                unspecified". "Others" is always on the list (see
+                `platformSelectOptions`), so there is always something to
+                choose even before this company has configured a single
+                platform. Platform creation itself lives on an admin
+                screen, not here — this form is vendor-only. */}
+            {purchaseMode === "online" ? (
+              <>
+                <SelectShell
+                  id="field-purchasePlatformChoice"
+                  label="Platform"
+                  placeholder={
+                    platformsPending ? "Loading platforms…" : "Select a platform"
+                  }
+                  groups={[{ options: platformSelectOptions }]}
+                  value={platformChoice}
+                  onChange={(next) => {
+                    setPlatformChoice(next);
+                    if (next === OTHERS_PLATFORM) {
+                      // Nothing on the list fit — the id is not a real
+                      // platform's, so it must never reach the API as one.
+                      write("purchasePlatformId", "");
+                    } else {
+                      // A real platform: the id is the whole answer, and any
+                      // "Others" text left over from a previous choice is
+                      // no longer what this box means.
+                      write("purchasePlatformId", next);
+                      write("purchasePlatformName", "");
+                    }
+                  }}
+                  disabled={platformsPending}
+                  error={err("purchasePlatformId")}
+                />
+                {platformChoice === OTHERS_PLATFORM ? (
+                  <TextField
+                    name="purchasePlatformName"
+                    label="Platform name"
+                    placeholder="e.g. a site not listed above"
+                    register={register}
+                    error={err("purchasePlatformName")}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </FormSection>
+
           <FormSection legend="Customer">
             <FieldGrid className="grid gap-4 sm:grid-cols-2">
               <TextField
@@ -955,6 +1254,19 @@ export function ManualEntryForm({
                 autoComplete="tel"
                 register={register}
                 error={err("customerPhone")}
+              />
+              {/* A6 — a second number for the same customer: a relative, a
+                  shop, whoever else can let the technician in. Same input
+                  treatment and the same phone rule as the box above, minus
+                  the requirement. */}
+              <TextField
+                name="customerAltPhone"
+                label="Alternate mobile number"
+                placeholder="+91 "
+                inputMode="tel"
+                autoComplete="tel"
+                register={register}
+                error={err("customerAltPhone")}
               />
             </FieldGrid>
 
@@ -1042,6 +1354,32 @@ export function ManualEntryForm({
                 </RadioGroup>
               )}
             />
+
+            {/* A2 — a flag for the board, not a rule: see `Ticket.isHighPriority`.
+                One line, here rather than a section of its own, because
+                there is nothing else to ask once this is ticked — no SLA
+                changes, nothing a technician's eligibility reads. */}
+            <Field orientation="horizontal">
+              <Controller
+                name="isHighPriority"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="field-is-high-priority"
+                    checked={field.value}
+                    onCheckedChange={(next) => field.onChange(next === true)}
+                  />
+                )}
+              />
+              <div>
+                <FieldLabel htmlFor="field-is-high-priority" className="font-normal">
+                  Flag as high priority
+                </FieldLabel>
+                <FieldDescription>
+                  Shown on the board. Does not change the SLA or who can take it.
+                </FieldDescription>
+              </div>
+            </Field>
           </FormSection>
 
           <FormSection legend="Slot (optional)">
@@ -1120,18 +1458,35 @@ export function ManualEntryForm({
    in a role="alert" the control points at.
    ---------------------------------------------------------------------- */
 
+/** "Choose a window" vs "Set a specific time" — `SlotPicker`'s own mode
+ *  switch, the same two-fixed-cards treatment `PURCHASE_MODE_OPTIONS` uses. */
+const SLOT_MODE_OPTIONS: ReadonlyArray<{ value: "grid" | "manual"; title: string }> = [
+  { value: "grid", title: "Choose a window" },
+  { value: "manual", title: "Set a specific time" },
+];
+
 /**
- * The slot, chosen from the windows a customer could have picked.
+ * The slot: a window chosen from the grid a customer could have picked, or —
+ * now — an exact time typed by hand for a customer who wants an hour the
+ * two-hour grid does not land on.
  *
- * A menu rather than two `datetime-local` boxes, and that is the whole fix: the
- * free inputs accepted any instant at all, so a vendor could type 19:03–21:05
- * on a 12-hour ticket and the ticket was born Breached, outside working hours,
- * in a window no technician's day has. The API refuses that now
- * (`check_slot_bookable`); offering only real windows means nobody has to be
- * refused to find out.
+ * The grid half is a menu rather than two free `datetime-local` boxes, and
+ * that is the original fix: free inputs accepted any instant at all, so a
+ * vendor could type 19:03–21:05 on a 12-hour ticket and the ticket was born
+ * Breached, outside working hours, in a window no technician's day has. The
+ * API refuses that (`check_slot_bookable`); offering only real windows means
+ * nobody has to be refused to find out.
  *
- * Grouped by day, because "which day" and "what time" are how somebody who just
- * agreed a slot on the phone actually holds it.
+ * The manual half reopens exactly that free input, but checked the same way
+ * the server checks it: `manualSlotAllowed` (`@/utils/slots`) is the browser's
+ * copy of `manual_slot_allowed`, run on every keystroke once both boxes are
+ * filled so a vendor is told before submit, not after a 400.
+ *
+ * `mode` is local, like `picked`/`brandId` in the form above it: it decides
+ * which UI is showing, not what gets submitted. Either way the answer lands
+ * in the same `slotStart`/`slotEnd` RHF fields, so nothing downstream of this
+ * component — the button label, the banner, `submit()` — needs to know this
+ * exists.
  */
 function SlotPicker({
   control,
@@ -1144,6 +1499,8 @@ function SlotPicker({
 }) {
   const { field: start } = useController({ control, name: "slotStart" });
   const { field: end } = useController({ control, name: "slotEnd" });
+
+  const [mode, setMode] = useState<"grid" | "manual">("grid");
 
   // Recomputed when the service level changes — shortening it can strand a
   // window that was on offer a moment ago.
@@ -1165,76 +1522,194 @@ function SlotPicker({
   const chosen = start.value;
   const stillOffered = slots.some((s) => s.start === chosen);
 
-  // Dropping to a shorter service level can put the chosen window past the new
-  // deadline. Clearing it is the honest outcome — the alternative is a trigger
-  // rendering blank over a value that is still in the form and would be
-  // refused on submit.
+  // Dropping to a shorter service level can put the chosen GRID window past
+  // the new deadline. Clearing it is the honest outcome — the alternative is
+  // a trigger rendering blank over a value that is still in the form and
+  // would be refused on submit. Grid-only: a manual window is never a member
+  // of `slots` by construction, so without this guard a typed time would be
+  // cleared the instant it was entered.
   useEffect(() => {
-    if (chosen && !stillOffered) {
+    if (mode === "grid" && chosen && !stillOffered) {
       start.onChange("");
       end.onChange("");
     }
-  }, [chosen, stillOffered, start, end]);
+  }, [mode, chosen, stillOffered, start, end]);
 
-  const id = "field-slot";
-
-  if (slots.length === 0) {
-    return (
-      <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
-        <Info className="mt-px size-4 shrink-0" aria-hidden />
-        <span>
-          A {serviceLevelHours}h service level leaves no bookable window — every
-          one of them is already past the deadline. Choose a longer service
-          level, or leave this blank and the customer will be asked to pick.
-        </span>
-      </p>
-    );
+  // Switching mode is answering a different question than the one just
+  // asked — same spirit as the effect above, now for a user action rather
+  // than a recompute: whatever the OTHER mode wrote is not an answer under
+  // THIS one, so it is cleared rather than left to be judged by rules it was
+  // never entered against.
+  function changeMode(next: "grid" | "manual") {
+    setMode(next);
+    start.onChange("");
+    end.onChange("");
   }
 
+  // Both boxes filled, in manual mode — the one moment there is something to
+  // check. `error` (the schema's own) only ever appears after a submit; this
+  // is the vendor's immediate answer, the same rule run a keystroke earlier.
+  const manualFilled = mode === "manual" && Boolean(start.value) && Boolean(end.value);
+  const manualOk =
+    !manualFilled ||
+    manualSlotAllowed(new Date(start.value), new Date(end.value), serviceLevelHours);
+
+  const id = "field-slot";
+  const gridEmpty = slots.length === 0;
+  const invalid = Boolean(error) || (manualFilled && !manualOk);
+
   return (
-    <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>Agreed window</FieldLabel>
-      <Select
-        value={chosen}
-        onValueChange={(next) => {
-          const slot = slots.find((s) => s.start === next);
-          start.onChange(slot?.start ?? "");
-          end.onChange(slot?.end ?? "");
-        }}
+    <div className="flex flex-col gap-3">
+      <RadioGroup
+        value={mode}
+        onValueChange={(v) => changeMode(v as "grid" | "manual")}
+        className="grid gap-3 sm:grid-cols-2"
       >
-        <SelectTrigger
-          id={id}
-          className="w-full sm:max-w-100"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-error` : undefined}
-        >
-          <SelectValue placeholder="Leave blank and ask the customer" />
-        </SelectTrigger>
-        <SelectContent>
-          {days.map(([day, windows]) => (
-            <SelectGroup key={day}>
-              <SelectLabel>{day}</SelectLabel>
-              {windows.map((s) => (
-                <SelectItem key={s.start} value={s.start}>
-                  {s.time}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
-      {error ? (
-        <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
-          {error}
-        </FieldDescription>
+        {SLOT_MODE_OPTIONS.map((o) => (
+          <label
+            key={o.value}
+            className={cn(
+              "flex cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 transition-colors",
+              mode === o.value
+                ? "border-brand-500 bg-brand-100/40"
+                : "border-line hover:border-brand-400"
+            )}
+          >
+            <RadioGroupItem value={o.value} />
+            <span className="text-[13px] font-semibold">{o.title}</span>
+          </label>
+        ))}
+      </RadioGroup>
+
+      {mode === "grid" ? (
+        gridEmpty ? (
+          <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+            <Info className="mt-px size-4 shrink-0" aria-hidden />
+            <span>
+              A {serviceLevelHours}h service level leaves no bookable window —
+              every one of them is already past the deadline. Switch to "Set
+              a specific time", choose a longer service level, or leave this
+              blank and the customer will be asked to pick.
+            </span>
+          </p>
+        ) : (
+          <Field data-invalid={error ? true : undefined}>
+            <FieldLabel htmlFor={id}>Agreed window</FieldLabel>
+            <Select
+              value={chosen}
+              onValueChange={(next) => {
+                const slot = slots.find((s) => s.start === next);
+                start.onChange(slot?.start ?? "");
+                end.onChange(slot?.end ?? "");
+              }}
+            >
+              <SelectTrigger
+                id={id}
+                className="w-full sm:max-w-100"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${id}-error` : undefined}
+              >
+                <SelectValue placeholder="Leave blank and ask the customer" />
+              </SelectTrigger>
+              <SelectContent>
+                {days.map(([day, windows]) => (
+                  <SelectGroup key={day}>
+                    <SelectLabel>{day}</SelectLabel>
+                    {windows.map((s) => (
+                      <SelectItem key={s.start} value={s.start}>
+                        {s.time}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+            {error ? (
+              <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+                {error}
+              </FieldDescription>
+            ) : (
+              <FieldDescription>
+                Two-hour windows inside the {serviceLevelHours}h service level. The
+                same ones the customer is offered.
+              </FieldDescription>
+            )}
+          </Field>
+        )
       ) : (
-        <FieldDescription>
-          Two-hour windows inside the {serviceLevelHours}h service level. The
-          same ones the customer is offered.
-        </FieldDescription>
+        <FieldGrid className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={invalid ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-from`}>From</FieldLabel>
+            <Input
+              id={`${id}-from`}
+              type="datetime-local"
+              value={toDatetimeLocalValue(start.value)}
+              aria-invalid={invalid ? true : undefined}
+              aria-describedby={invalid ? `${id}-error` : undefined}
+              onChange={(e) => start.onChange(fromDatetimeLocalValue(e.target.value))}
+            />
+          </Field>
+          <Field data-invalid={invalid ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-to`}>To</FieldLabel>
+            <Input
+              id={`${id}-to`}
+              type="datetime-local"
+              value={toDatetimeLocalValue(end.value)}
+              aria-invalid={invalid ? true : undefined}
+              aria-describedby={invalid ? `${id}-error` : undefined}
+              onChange={(e) => end.onChange(fromDatetimeLocalValue(e.target.value))}
+            />
+          </Field>
+          {error ? (
+            <FieldDescription
+              id={`${id}-error`}
+              role="alert"
+              className="text-danger sm:col-span-2"
+            >
+              {error}
+            </FieldDescription>
+          ) : manualFilled && !manualOk ? (
+            <FieldDescription
+              id={`${id}-error`}
+              role="alert"
+              className="text-danger sm:col-span-2"
+            >
+              That window isn't long enough, is outside working hours, or
+              starts too soon / too late for this service level
+            </FieldDescription>
+          ) : (
+            <FieldDescription className="sm:col-span-2">
+              Any exact time inside the {serviceLevelHours}h service level and
+              the grid's own working hours, at least an hour long.
+            </FieldDescription>
+          )}
+        </FieldGrid>
       )}
-    </Field>
+    </div>
   );
+}
+
+/** `datetime-local` reads and writes a timezone-free wall-clock string — the
+ *  same "browser's local clock is this market's clock" the rest of this
+ *  console already assumes (see the note above `IST_ZONE` in `utils/slots`).
+ *  `""` for an unset or unparsable field, which is also what a cleared box
+ *  reports back. */
+function toDatetimeLocalValue(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
+}
+
+/** The inverse — an ISO instant, which is the only shape `slotStart`/
+ *  `slotEnd` ever hold, grid-picked or typed. */
+function fromDatetimeLocalValue(value: string): string {
+  if (!value) return "";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
 function TextField({
@@ -1407,15 +1882,75 @@ function SelectShell({
   );
 }
 
-/** How many brands this vendor's intake tree carries a product under. */
-function brandCount(nodes: ProductNode[] | undefined): number {
-  const brands = new Set<string>();
+/**
+ * A3 — every brand this vendor's intake tree carries a product under, as
+ * `{ value, label }` for the Brand select: id first, because that is what
+ * every other option in this form stores, the name second for the reader.
+ * The first model found under a brand names it, so a renamed brand still
+ * reads consistently across one tree.
+ */
+function vendorBrands(nodes: ProductNode[] | undefined): Option[] {
+  const names = new Map<string, string>();
   const walk = (node: ProductNode) => {
-    for (const m of node.models) brands.add(m.brandId);
+    for (const m of node.models) {
+      if (!names.has(m.brandId)) names.set(m.brandId, m.brandName);
+    }
     node.children.forEach(walk);
   };
   (nodes ?? []).forEach(walk);
-  return brands.size;
+  return [...names.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
+ * A3 — the brand a given model sits under, anywhere in the tree. What
+ * `applyMatch` reads to keep the brand-scoped drill-down in step with a
+ * serial hit that may belong to a brand other than the one selected —
+ * `SerialMatch` itself carries a brand NAME, not an id, and a name is not
+ * what the Brand select stores.
+ */
+function findModelBrand(
+  nodes: ProductNode[] | undefined,
+  modelId: string
+): string | undefined {
+  for (const node of nodes ?? []) {
+    const match = node.models.find((m) => m.id === modelId);
+    if (match) return match.brandId;
+    const deeper = findModelBrand(node.children, modelId);
+    if (deeper) return deeper;
+  }
+  return undefined;
+}
+
+/**
+ * A3 — the tree, narrowed to one brand's products. `resolveChain` and the
+ * model list both walk this instead of the full tree once a brand is
+ * chosen, so a branch holding none of that brand's products disappears
+ * rather than dead-ending — the same pruning the server already does for
+ * the vendor as a whole (see the note above `useNodeTree`).
+ *
+ * Empty, not the unfiltered tree, while no brand is chosen: the drill-down
+ * is DISABLED in that state (see the `disabled` prop below it) and must
+ * never show the whole catalogue sitting behind a control nobody can use
+ * yet.
+ */
+function pruneTreeForBrand(
+  nodes: ProductNode[] | undefined,
+  brandId: string
+): ProductNode[] {
+  if (!brandId) return [];
+  const prune = (list: ProductNode[]): ProductNode[] =>
+    list
+      .map((node) => ({
+        ...node,
+        children: prune(node.children),
+        models: node.models.filter((m) => m.brandId === brandId),
+      }))
+      .filter((node) =>
+        node.isLeaf ? node.models.length > 0 : node.children.length > 0
+      );
+  return prune(nodes ?? []);
 }
 
 /**

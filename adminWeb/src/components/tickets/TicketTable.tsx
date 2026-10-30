@@ -5,10 +5,12 @@ import {
   type TypedFilterDef,
 } from "@/components/shared/DataTable";
 import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
+import { Badge } from "@/components/ui/badge";
 import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
+import { useVendorOptions } from "@/hooks/useVendors";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
-import type { SlaState, Ticket } from "@/types";
+import { CLOSED_TICKET_STATUSES, type SlaState, type Ticket } from "@/types";
 
 import { STATUS_FILTER } from "./statusFilter";
 
@@ -91,6 +93,15 @@ export function TicketTable({
   const navigate = useNavigate();
   const origin = useNavOrigin(backLabel, backState);
   const status = params.filters?.status ?? "All";
+  // A1: every selectable vendor, for the combobox beside Status. Cached long
+  // (see the hook) — fetched here rather than threaded in as a prop because
+  // nothing else on this screen needs the list, and the product form already
+  // pays for this exact query.
+  const vendorOptions = useVendorOptions();
+  const vendorId = params.filters?.vendorId ?? "";
+  // A2: the board's own flag. "true" or absent — never "false" — because the
+  // control is a single pill, not a three-way choice.
+  const highPriority = params.filters?.highPriority === "true";
 
   // Anything that changes WHICH rows match sends the reader back to page 1 —
   // page 4 of an unfiltered list is not page 4 of the filtered one.
@@ -103,16 +114,32 @@ export function TicketTable({
       sortValue: (t) => t.code,
       cell: (t) => (
         <>
-          {/* The row is clickable, but the code stays a real link so it
-              is reachable by keyboard and opens in a new tab. */}
-          <Link
-            to={`${basePath}/${t.id}`}
-            state={origin}
-            onClick={(e) => e.stopPropagation()}
-            className="font-mono text-xs font-semibold text-brand-400"
-          >
-            {t.code}
-          </Link>
+          <div className="flex items-center gap-1.5">
+            {/* The row is clickable, but the code stays a real link so it
+                is reachable by keyboard and opens in a new tab. */}
+            <Link
+              to={`${basePath}/${t.id}`}
+              state={origin}
+              onClick={(e) => e.stopPropagation()}
+              className="font-mono text-xs font-semibold text-brand-400"
+            >
+              {t.code}
+            </Link>
+            {/* A2: the same flag the detail page shows beside the code —
+                no SLA, no routing weight, a flag and nothing else.
+                `--brand-accent` is reserved for exactly this. Hidden once the
+                ticket is actually closed (`CLOSED_TICKET_STATUSES`) — a
+                closed job has nothing left to draw attention to; a cancelled
+                one still does, since it was never actually closed. */}
+            {t.isHighPriority && !CLOSED_TICKET_STATUSES.has(t.status) ? (
+              <Badge
+                variant="outline"
+                className="border-brand-accent text-brand-accent animate-blink"
+              >
+                High priority
+              </Badge>
+            ) : null}
+          </div>
           <div className="mt-0.5 text-xs text-ink-3">
             {t.vendorName} · {formatDateTime(t.createdAt)}
           </div>
@@ -210,6 +237,52 @@ export function TicketTable({
       // it stands here as the identity it effectively is.
       match: () => true,
     },
+    {
+      // A1: which vendor raised it. A combobox, not a select — the same
+      // reasoning the franchisee filter elsewhere uses past ten options: a
+      // company's vendor list only grows, and a scrollable menu is the wrong
+      // shape for it from day one.
+      id: "vendorId",
+      label: "Vendor",
+      variant: "combobox",
+      // No `onSearch` — the whole list is already in hand (cached an hour by
+      // the hook) and the combobox filters it locally, the same as any other
+      // small option set would.
+      options: (vendorOptions.data ?? []).map((v) => ({
+        value: v.id,
+        label: v.name,
+        hint: v.brands.map((b) => b.name).join(", ") || undefined,
+      })),
+      // "" is the cleared state — never "All": that sentinel belongs to the
+      // Status filter's closed set, and a vendor id is never going to equal
+      // it by accident, but writing the right one keeps this filter from
+      // reading as a special case beside its sibling above.
+      allValue: "",
+      value: vendorId,
+      onChange: (v) =>
+        narrow({ ...params, filters: { ...params.filters, vendorId: v } }),
+      loading: vendorOptions.isLoading,
+      // Server-filtered, like Status above.
+      match: () => true,
+    },
+    {
+      // A2: the board's own flag, a single pill rather than a three-value
+      // select — "All" or "High priority", because there is no third state
+      // anybody asked for.
+      id: "highPriority",
+      label: "Priority",
+      variant: "pills",
+      allLabel: "All",
+      options: [{ value: "true", label: "High priority" }],
+      value: highPriority ? "true" : "All",
+      onChange: (v) => {
+        const filters = { ...params.filters };
+        if (v === "true") filters.highPriority = "true";
+        else delete filters.highPriority;
+        narrow({ ...params, filters });
+      },
+      match: () => true,
+    },
   ];
 
   return (
@@ -246,6 +319,15 @@ export function TicketTable({
         params.sortBy === "slaState" ? (
           <>
             Sorted by <b className="text-ink">SLA urgency</b>
+          </>
+        ) : !params.sortBy ? (
+          // A2: the server's own default now leads with the flag ahead of
+          // "newest first" (`service.list_tickets`'s `else` branch) — true
+          // whenever nobody named a sort, whether or not the Priority filter
+          // is also narrowing the page, so saying so here is never a lie the
+          // rows contradict.
+          <>
+            <b className="text-ink">High-priority</b> tickets shown first
           </>
         ) : null
       }

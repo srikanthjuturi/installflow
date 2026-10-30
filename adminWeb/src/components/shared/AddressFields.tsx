@@ -332,13 +332,18 @@ export function AddressFields({
   }, [status, onStatusChange]);
 
   /**
-   * The code we last auto-filled a city for.
+   * The code — and the city we filled it with — that the auto-fill below last
+   * wrote.
    *
-   * Without it, clearing the city would refill it from the district on the very
-   * next render and the box could never be emptied. The district is a helpful
-   * first guess for a hand-typed code, not a value we insist on.
+   * Holding both, not just the code, is what tells a genuinely NEW code from
+   * one the box has already moved past: without the city half, the district
+   * fill below only ever fired once per code and a SECOND pincode kept the
+   * first one's city, because `value.city` was no longer empty. With it, a
+   * new code refills the city when the box still holds what we last put
+   * there (or holds nothing) — but a hand-typed or Google-Places-picked city
+   * never matches what we last filled, so it is left alone.
    */
-  const filledFor = React.useRef<string | null>(null);
+  const filledFor = React.useRef<{ code: string; city: string } | null>(null);
 
   /**
    * The master is the authority on which state a pincode is in — `pincodes`
@@ -350,9 +355,13 @@ export function AddressFields({
    */
   React.useEffect(() => {
     if (!master) return;
-    const fresh = filledFor.current !== master.code;
-    filledFor.current = master.code;
-    const city = fresh && !value.city ? (master.districts[0] ?? "") : value.city;
+    const district = master.districts[0] ?? "";
+    const fresh = filledFor.current?.code !== master.code;
+    // The box still holds either nothing, or exactly what WE put there for
+    // the code it held before — never a hand-typed or Places-picked city.
+    const ours = !value.city || value.city === filledFor.current?.city;
+    const city = fresh && ours ? district : value.city;
+    filledFor.current = { code: master.code, city };
     if (value.state === master.stateName && value.city === city) return;
     onChange({ ...value, state: master.stateName, city });
   }, [master, value, onChange]);
@@ -364,7 +373,13 @@ export function AddressFields({
     if (!parts) return;
     const next = lines === 1 ? flatten(parts) : parts;
     setPickHadNoPincode(next.pincode === "");
-    // A new address means the previous city fill no longer applies.
+    // A new address means the previous city fill no longer applies. Clearing
+    // the ref rather than recording this pick's city is what keeps it safe
+    // either way the pincode lookup below lands: `ours` reads as false while
+    // `next.city` (just written below) is non-empty, so a Places-given city
+    // survives the state/city effect untouched; empty, it reads as true and
+    // the effect falls back to the resolved pincode's district, same as a
+    // pick that named no city at all.
     filledFor.current = null;
     /*
      * Whatever was last typed into the pincode box no longer applies either.

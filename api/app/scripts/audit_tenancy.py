@@ -133,6 +133,9 @@ TENANT_LINKS = [
     ("tickets", "node_id", "product_nodes"),
     ("tickets", "model_id", "product_models"),
     ("tickets", "technician_id", "technician_profiles"),
+    # A7: where the unit was bought. A ticket pointing at another company's
+    # platform would put a stranger's storefront name on this one's job card.
+    ("tickets", "purchase_platform_id", "purchase_platforms"),
     ("ticket_events", "ticket_id", "tickets"),
     # A technician's pass on an offer. One pointing across a tenant boundary
     # would hide one company's job from another company's technician — or,

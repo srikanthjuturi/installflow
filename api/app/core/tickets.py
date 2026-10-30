@@ -78,6 +78,12 @@ TERMINAL_STATUSES = ("Closed", "Force-Closed", "Cancelled")
 #: without it arrives blind and goes back for a second visit.
 DESCRIPTION_REQUIRED_FOR = ("Tech Visit", "Service")
 
+#: A7: where the unit was bought. `offline` is the honest default for every
+#: channel that cannot ask — Excel, the API, a vendor that does not track it.
+#: `tickets.purchase_platform_id` names a storefront only when this is
+#: `online` — a platform is a fact about an online purchase and nothing else.
+PURCHASE_MODES = ("online", "offline")
+
 #: How much of the window has to be left before a ticket stops reading "On
 #: track" and starts reading "Due soon" is NOT here any more: it is
 #: `company_rules.sla_warn_at_pct`, because where a company draws that line is a
@@ -116,6 +122,13 @@ SLOT_WINDOWS = (
 #: to an address in ten minutes, and offering a slot that cannot be served is
 #: how a ticket breaches on the system's own suggestion.
 SLOT_LEAD_MINUTES = 90
+
+#: The shortest a vendor's hand-typed, off-grid window may be — half the
+#: grid's own two hours. A customer who wants a time the grid does not offer
+#: still has to leave a technician enough of it to do the job; with no floor
+#: here a vendor could type a five-minute "visit" and nothing above this
+#: would catch it.
+MANUAL_SLOT_MIN_MINUTES = 60
 
 #: How long after a window CLOSES before an unstarted job is called a no-show.
 #:
@@ -157,6 +170,18 @@ SLOT_REQUEST_BATCH = 50
 #: it plainly: charging somebody weeks later for a morning nobody asked them
 #: about at the time is not a penalty, it is an ambush.
 NO_SHOW_LOOKBACK_HOURS = 48
+
+#: How long before `slot_end` the serial-proof reminder fires, for a job the
+#: technician holds with no serial photo captured yet.
+#:
+#: A plain constant rather than a `company_rules` figure, unlike the slot and
+#: customer-notice windows those rules hold (`slot_reminder_minutes`,
+#: `customer_notice_minutes` in `app.core.rules.DEFAULTS`) — nothing has asked
+#: to vary this one, and hard rule 8 says do not ship a rule nothing has asked
+#: for. If that changes, it becomes an overridable key on the ticket's own
+#: `rules_snapshot` instead, the same code-change-not-migration path every
+#: other window in this module took.
+SERIAL_REMINDER_MINUTES = 30
 
 #: How far ahead a RESCHEDULE may look, when the ordinary bound cannot be used.
 #:

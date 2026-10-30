@@ -12,6 +12,7 @@ from app.models.membership import Membership
 from app.models.otp import OtpCode
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
+from app.models.purchase_platform import PurchasePlatform
 from app.models.redemption import Redemption, RedemptionEvent
 from app.models.upi_change import UpiChangeRequest
 from app.models.role import Role
@@ -76,6 +77,7 @@ __all__ = [
     "ProductModelSerial",
     "ProductNode",
     "ProductNodeRules",
+    "PurchasePlatform",
     "Redemption",
     "RedemptionEvent",
     "UpiChangeRequest",

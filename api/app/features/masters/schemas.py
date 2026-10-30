@@ -727,3 +727,73 @@ class SerialUpdateRequest(BaseModel):
     """
 
     serial: Annotated[str, Field(min_length=1, max_length=MAX_SERIAL_LENGTH)]
+
+
+# ── the bulk product importer ─────────────────────────────────────────────────
+#
+# The same two-pass shape the geography, serial and ticket importers all use —
+# see `features/masters/import_service.py`. One row is one PRODUCT: a category
+# chain it files under, a brand, a name, and the rest of what `ModelCreateRequest`
+# / `ProductSubmitRequest` already ask for. Re-uploading the same sheet UPDATES
+# the row it already created (matched on node + brand + name) rather than
+# refusing a duplicate.
+
+
+class ProductImportReject(AppModel):
+    """One row the importer will not write, and why.
+
+    The same shape `TicketImportReject` carries, so the console's
+    `RejectsTable` renders both without a second column mapping.
+    """
+
+    row: int
+    code: str
+    reason: str
+    field: str | None = None
+    value: str | None = None
+
+
+class CategoryToCreateOut(AppModel):
+    """A category chain the sheet names that the catalogue does not hold yet.
+
+    The same shape as the ticket importer's `CategoryToCreate` — the console's
+    confirmation tree is shared between the two importers.
+    """
+
+    path: str
+    newSegments: list[str]
+    depth: int
+    isLeaf: bool
+    markedLeaf: bool
+    newMainSubcategory: bool
+    rowCount: int
+
+
+class ProductImportReport(AppModel):
+    """What an upload would do, or what it did.
+
+    A dry run writes nothing and returns exactly what the commit would do, so
+    every figure here is the server's own count — nothing is parsed in the
+    browser.
+    """
+
+    dryRun: bool
+    #: Echoed back on the commit so the numbers just confirmed describe THIS
+    #: file — see `ProductImportReject` sibling `TicketImportReport.fileDigest`.
+    fileDigest: str
+    rowsRead: int
+    #: What a commit of this file would create or update. The commit button's
+    #: numbers.
+    toCreate: int
+    toUpdate: int
+    #: What it did. Both 0 on a dry run.
+    created: int = 0
+    updated: int = 0
+    rejected: int = 0
+    #: Capped server-side; `rejected` carries the true total.
+    rejects: list[ProductImportReject] = Field(default_factory=list)
+    categoriesToCreate: list[CategoryToCreateOut] = Field(default_factory=list)
+    categoriesCreated: int = 0
+    #: Two rows naming the same product (same chain, brand and name) — the
+    #: second is rejected rather than written twice.
+    duplicateRowsInFile: int = 0
