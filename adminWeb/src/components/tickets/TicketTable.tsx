@@ -10,7 +10,7 @@ import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import { useVendorOptions } from "@/hooks/useVendors";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
-import type { SlaState, Ticket } from "@/types";
+import { CLOSED_TICKET_STATUSES, type SlaState, type Ticket } from "@/types";
 
 import { STATUS_FILTER } from "./statusFilter";
 
@@ -127,8 +127,11 @@ export function TicketTable({
             </Link>
             {/* A2: the same flag the detail page shows beside the code —
                 no SLA, no routing weight, a flag and nothing else.
-                `--brand-accent` is reserved for exactly this. */}
-            {t.isHighPriority ? (
+                `--brand-accent` is reserved for exactly this. Hidden once the
+                ticket is actually closed (`CLOSED_TICKET_STATUSES`) — a
+                closed job has nothing left to draw attention to; a cancelled
+                one still does, since it was never actually closed. */}
+            {t.isHighPriority && !CLOSED_TICKET_STATUSES.has(t.status) ? (
               <Badge
                 variant="outline"
                 className="border-brand-accent text-brand-accent animate-blink"

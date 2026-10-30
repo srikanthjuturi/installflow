@@ -48,6 +48,8 @@ const isSortDir = (v: string | null): v is "asc" | "desc" =>
  *
  *   slaState          one bucket of `_sla_order_case`, the SLA bar's own rank
  *   open              "not yet closed", the Open tickets tile's own expression
+ *   closed            "ever closed" — Closed or Force-Closed, the high-priority
+ *                     board's "Closed Tickets" view, `service.closed_in(None)`
  *   closedWithinDays  the rolling window "Closed this week" was measured over
  *   attention         an attention card's own population — `force-close` or
  *                     `slot-unconfirmed`, neither of which is one status
@@ -59,6 +61,7 @@ const PASSTHROUGH = [
   "dateTo",
   "slaState",
   "open",
+  "closed",
   "closedWithinDays",
   "attention",
 ] as const;
@@ -72,7 +75,7 @@ const PASSTHROUGH = [
  * `slaState` is not in the list — it is a different axis, and "breaching AND
  * assigned" is a refinement somebody may legitimately want.
  */
-const STATUS_SHAPED = ["open", "closedWithinDays", "attention"] as const;
+const STATUS_SHAPED = ["open", "closed", "closedWithinDays", "attention"] as const;
 
 /** One query-string key, its serialised value, and whether it is the default. */
 interface Field {

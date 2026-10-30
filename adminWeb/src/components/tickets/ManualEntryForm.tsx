@@ -41,7 +41,12 @@ import {
   SERIAL_PAGE_SIZE,
 } from "@/services/productMaster";
 import { cn } from "@/lib/utils";
-import { istToday, offeredSlots, type OfferedSlot } from "@/utils/slots";
+import {
+  istToday,
+  manualSlotAllowed,
+  offeredSlots,
+  type OfferedSlot,
+} from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
 import type { CreateTicketInput, PurchaseMode } from "@/types/ticket";
 import { nodeIdPath, type ProductNode, type SerialMatch } from "@/types/product";
@@ -1453,18 +1458,35 @@ export function ManualEntryForm({
    in a role="alert" the control points at.
    ---------------------------------------------------------------------- */
 
+/** "Choose a window" vs "Set a specific time" — `SlotPicker`'s own mode
+ *  switch, the same two-fixed-cards treatment `PURCHASE_MODE_OPTIONS` uses. */
+const SLOT_MODE_OPTIONS: ReadonlyArray<{ value: "grid" | "manual"; title: string }> = [
+  { value: "grid", title: "Choose a window" },
+  { value: "manual", title: "Set a specific time" },
+];
+
 /**
- * The slot, chosen from the windows a customer could have picked.
+ * The slot: a window chosen from the grid a customer could have picked, or —
+ * now — an exact time typed by hand for a customer who wants an hour the
+ * two-hour grid does not land on.
  *
- * A menu rather than two `datetime-local` boxes, and that is the whole fix: the
- * free inputs accepted any instant at all, so a vendor could type 19:03–21:05
- * on a 12-hour ticket and the ticket was born Breached, outside working hours,
- * in a window no technician's day has. The API refuses that now
- * (`check_slot_bookable`); offering only real windows means nobody has to be
- * refused to find out.
+ * The grid half is a menu rather than two free `datetime-local` boxes, and
+ * that is the original fix: free inputs accepted any instant at all, so a
+ * vendor could type 19:03–21:05 on a 12-hour ticket and the ticket was born
+ * Breached, outside working hours, in a window no technician's day has. The
+ * API refuses that (`check_slot_bookable`); offering only real windows means
+ * nobody has to be refused to find out.
  *
- * Grouped by day, because "which day" and "what time" are how somebody who just
- * agreed a slot on the phone actually holds it.
+ * The manual half reopens exactly that free input, but checked the same way
+ * the server checks it: `manualSlotAllowed` (`@/utils/slots`) is the browser's
+ * copy of `manual_slot_allowed`, run on every keystroke once both boxes are
+ * filled so a vendor is told before submit, not after a 400.
+ *
+ * `mode` is local, like `picked`/`brandId` in the form above it: it decides
+ * which UI is showing, not what gets submitted. Either way the answer lands
+ * in the same `slotStart`/`slotEnd` RHF fields, so nothing downstream of this
+ * component — the button label, the banner, `submit()` — needs to know this
+ * exists.
  */
 function SlotPicker({
   control,
@@ -1477,6 +1499,8 @@ function SlotPicker({
 }) {
   const { field: start } = useController({ control, name: "slotStart" });
   const { field: end } = useController({ control, name: "slotEnd" });
+
+  const [mode, setMode] = useState<"grid" | "manual">("grid");
 
   // Recomputed when the service level changes — shortening it can strand a
   // window that was on offer a moment ago.
@@ -1498,76 +1522,194 @@ function SlotPicker({
   const chosen = start.value;
   const stillOffered = slots.some((s) => s.start === chosen);
 
-  // Dropping to a shorter service level can put the chosen window past the new
-  // deadline. Clearing it is the honest outcome — the alternative is a trigger
-  // rendering blank over a value that is still in the form and would be
-  // refused on submit.
+  // Dropping to a shorter service level can put the chosen GRID window past
+  // the new deadline. Clearing it is the honest outcome — the alternative is
+  // a trigger rendering blank over a value that is still in the form and
+  // would be refused on submit. Grid-only: a manual window is never a member
+  // of `slots` by construction, so without this guard a typed time would be
+  // cleared the instant it was entered.
   useEffect(() => {
-    if (chosen && !stillOffered) {
+    if (mode === "grid" && chosen && !stillOffered) {
       start.onChange("");
       end.onChange("");
     }
-  }, [chosen, stillOffered, start, end]);
+  }, [mode, chosen, stillOffered, start, end]);
 
-  const id = "field-slot";
-
-  if (slots.length === 0) {
-    return (
-      <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
-        <Info className="mt-px size-4 shrink-0" aria-hidden />
-        <span>
-          A {serviceLevelHours}h service level leaves no bookable window — every
-          one of them is already past the deadline. Choose a longer service
-          level, or leave this blank and the customer will be asked to pick.
-        </span>
-      </p>
-    );
+  // Switching mode is answering a different question than the one just
+  // asked — same spirit as the effect above, now for a user action rather
+  // than a recompute: whatever the OTHER mode wrote is not an answer under
+  // THIS one, so it is cleared rather than left to be judged by rules it was
+  // never entered against.
+  function changeMode(next: "grid" | "manual") {
+    setMode(next);
+    start.onChange("");
+    end.onChange("");
   }
 
+  // Both boxes filled, in manual mode — the one moment there is something to
+  // check. `error` (the schema's own) only ever appears after a submit; this
+  // is the vendor's immediate answer, the same rule run a keystroke earlier.
+  const manualFilled = mode === "manual" && Boolean(start.value) && Boolean(end.value);
+  const manualOk =
+    !manualFilled ||
+    manualSlotAllowed(new Date(start.value), new Date(end.value), serviceLevelHours);
+
+  const id = "field-slot";
+  const gridEmpty = slots.length === 0;
+  const invalid = Boolean(error) || (manualFilled && !manualOk);
+
   return (
-    <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>Agreed window</FieldLabel>
-      <Select
-        value={chosen}
-        onValueChange={(next) => {
-          const slot = slots.find((s) => s.start === next);
-          start.onChange(slot?.start ?? "");
-          end.onChange(slot?.end ?? "");
-        }}
+    <div className="flex flex-col gap-3">
+      <RadioGroup
+        value={mode}
+        onValueChange={(v) => changeMode(v as "grid" | "manual")}
+        className="grid gap-3 sm:grid-cols-2"
       >
-        <SelectTrigger
-          id={id}
-          className="w-full sm:max-w-100"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-error` : undefined}
-        >
-          <SelectValue placeholder="Leave blank and ask the customer" />
-        </SelectTrigger>
-        <SelectContent>
-          {days.map(([day, windows]) => (
-            <SelectGroup key={day}>
-              <SelectLabel>{day}</SelectLabel>
-              {windows.map((s) => (
-                <SelectItem key={s.start} value={s.start}>
-                  {s.time}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
-        </SelectContent>
-      </Select>
-      {error ? (
-        <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
-          {error}
-        </FieldDescription>
+        {SLOT_MODE_OPTIONS.map((o) => (
+          <label
+            key={o.value}
+            className={cn(
+              "flex cursor-pointer items-center gap-3 rounded-md border px-3.5 py-3 transition-colors",
+              mode === o.value
+                ? "border-brand-500 bg-brand-100/40"
+                : "border-line hover:border-brand-400"
+            )}
+          >
+            <RadioGroupItem value={o.value} />
+            <span className="text-[13px] font-semibold">{o.title}</span>
+          </label>
+        ))}
+      </RadioGroup>
+
+      {mode === "grid" ? (
+        gridEmpty ? (
+          <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+            <Info className="mt-px size-4 shrink-0" aria-hidden />
+            <span>
+              A {serviceLevelHours}h service level leaves no bookable window —
+              every one of them is already past the deadline. Switch to "Set
+              a specific time", choose a longer service level, or leave this
+              blank and the customer will be asked to pick.
+            </span>
+          </p>
+        ) : (
+          <Field data-invalid={error ? true : undefined}>
+            <FieldLabel htmlFor={id}>Agreed window</FieldLabel>
+            <Select
+              value={chosen}
+              onValueChange={(next) => {
+                const slot = slots.find((s) => s.start === next);
+                start.onChange(slot?.start ?? "");
+                end.onChange(slot?.end ?? "");
+              }}
+            >
+              <SelectTrigger
+                id={id}
+                className="w-full sm:max-w-100"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${id}-error` : undefined}
+              >
+                <SelectValue placeholder="Leave blank and ask the customer" />
+              </SelectTrigger>
+              <SelectContent>
+                {days.map(([day, windows]) => (
+                  <SelectGroup key={day}>
+                    <SelectLabel>{day}</SelectLabel>
+                    {windows.map((s) => (
+                      <SelectItem key={s.start} value={s.start}>
+                        {s.time}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+            {error ? (
+              <FieldDescription id={`${id}-error`} role="alert" className="text-danger">
+                {error}
+              </FieldDescription>
+            ) : (
+              <FieldDescription>
+                Two-hour windows inside the {serviceLevelHours}h service level. The
+                same ones the customer is offered.
+              </FieldDescription>
+            )}
+          </Field>
+        )
       ) : (
-        <FieldDescription>
-          Two-hour windows inside the {serviceLevelHours}h service level. The
-          same ones the customer is offered.
-        </FieldDescription>
+        <FieldGrid className="grid gap-4 sm:grid-cols-2">
+          <Field data-invalid={invalid ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-from`}>From</FieldLabel>
+            <Input
+              id={`${id}-from`}
+              type="datetime-local"
+              value={toDatetimeLocalValue(start.value)}
+              aria-invalid={invalid ? true : undefined}
+              aria-describedby={invalid ? `${id}-error` : undefined}
+              onChange={(e) => start.onChange(fromDatetimeLocalValue(e.target.value))}
+            />
+          </Field>
+          <Field data-invalid={invalid ? true : undefined}>
+            <FieldLabel htmlFor={`${id}-to`}>To</FieldLabel>
+            <Input
+              id={`${id}-to`}
+              type="datetime-local"
+              value={toDatetimeLocalValue(end.value)}
+              aria-invalid={invalid ? true : undefined}
+              aria-describedby={invalid ? `${id}-error` : undefined}
+              onChange={(e) => end.onChange(fromDatetimeLocalValue(e.target.value))}
+            />
+          </Field>
+          {error ? (
+            <FieldDescription
+              id={`${id}-error`}
+              role="alert"
+              className="text-danger sm:col-span-2"
+            >
+              {error}
+            </FieldDescription>
+          ) : manualFilled && !manualOk ? (
+            <FieldDescription
+              id={`${id}-error`}
+              role="alert"
+              className="text-danger sm:col-span-2"
+            >
+              That window isn't long enough, is outside working hours, or
+              starts too soon / too late for this service level
+            </FieldDescription>
+          ) : (
+            <FieldDescription className="sm:col-span-2">
+              Any exact time inside the {serviceLevelHours}h service level and
+              the grid's own working hours, at least an hour long.
+            </FieldDescription>
+          )}
+        </FieldGrid>
       )}
-    </Field>
+    </div>
   );
+}
+
+/** `datetime-local` reads and writes a timezone-free wall-clock string — the
+ *  same "browser's local clock is this market's clock" the rest of this
+ *  console already assumes (see the note above `IST_ZONE` in `utils/slots`).
+ *  `""` for an unset or unparsable field, which is also what a cleared box
+ *  reports back. */
+function toDatetimeLocalValue(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
+}
+
+/** The inverse — an ISO instant, which is the only shape `slotStart`/
+ *  `slotEnd` ever hold, grid-picked or typed. */
+function fromDatetimeLocalValue(value: string): string {
+  if (!value) return "";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
 function TextField({

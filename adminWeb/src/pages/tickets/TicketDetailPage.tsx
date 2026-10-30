@@ -41,7 +41,11 @@ import {
   useTicket,
 } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
-import { isReschedulable, isTerminalTicketStatus } from "@/types";
+import {
+  CLOSED_TICKET_STATUSES,
+  isReschedulable,
+  isTerminalTicketStatus,
+} from "@/types";
 import type { TicketPenalty } from "@/types/ticket";
 
 /**
@@ -258,8 +262,12 @@ export default function TicketDetailPage({
                       <SlaBadge state={ticket.slaState} />
                       {/* A2: a flag for the board, nothing else — no SLA, no
                           routing weight. `--brand-accent` is reserved for
-                          exactly this: a badge, never a button fill. */}
-                      {ticket.isHighPriority ? (
+                          exactly this: a badge, never a button fill. Hidden
+                          once the ticket is actually closed
+                          (`CLOSED_TICKET_STATUSES`) — a cancelled ticket was
+                          never actually closed, so it keeps showing. */}
+                      {ticket.isHighPriority &&
+                      !CLOSED_TICKET_STATUSES.has(ticket.status) ? (
                         <Badge
                           variant="outline"
                           className="border-brand-accent text-brand-accent animate-blink"

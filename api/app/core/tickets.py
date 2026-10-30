@@ -123,6 +123,13 @@ SLOT_WINDOWS = (
 #: how a ticket breaches on the system's own suggestion.
 SLOT_LEAD_MINUTES = 90
 
+#: The shortest a vendor's hand-typed, off-grid window may be — half the
+#: grid's own two hours. A customer who wants a time the grid does not offer
+#: still has to leave a technician enough of it to do the job; with no floor
+#: here a vendor could type a five-minute "visit" and nothing above this
+#: would catch it.
+MANUAL_SLOT_MIN_MINUTES = 60
+
 #: How long after a window CLOSES before an unstarted job is called a no-show.
 #:
 #: Not a preference, which is why it is here rather than in `company_rules`: it
