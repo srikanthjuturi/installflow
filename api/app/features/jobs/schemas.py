@@ -112,6 +112,10 @@ class JobOfferOut(AppModel):
     #: see on the card they are deciding from incentivises nobody, which is why
     #: it travels on the masked offer rather than waiting for acceptance.
     bonusPaise: int | None = None
+    #: The vendor's "high priority" flag (`tickets.is_high_priority`). A flag for
+    #: the card and nothing else — no routing weight, no pay. It is on the MASKED
+    #: offer so a technician can tell an urgent job apart before accepting it.
+    isHighPriority: bool = False
 
 
 class JobSpeedOut(AppModel):

@@ -44,6 +44,14 @@ export function jobSla(job: Pick<Job, 'slaHours'>): string {
 }
 
 /** "SLA 24h" — the service level as a card's pill. */
+/** Whether the High priority pill belongs on this job: flagged, and not finished. */
+export function showsHighPriority(job: Pick<Job, 'isHighPriority' | 'serverStatus'>): boolean {
+  return (
+    !!job.isHighPriority &&
+    !['Closed', 'Force-Closed', 'Cancelled'].includes(job.serverStatus ?? '')
+  );
+}
+
 export function jobSlaPill(job: Pick<Job, 'slaHours'>): string {
   return t('jobs.sla.pill', { hours: job.slaHours });
 }

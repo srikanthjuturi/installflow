@@ -78,6 +78,8 @@ interface JobOfferDto {
    * from rather than waiting until they have already accepted.
    */
   bonusPaise: number | null;
+  /** The vendor's high-priority flag. Absent from an older API — read as false. */
+  isHighPriority?: boolean;
 }
 
 /** `JobOut`: the offer plus everything that unlocks once the job is ours. */
@@ -224,6 +226,7 @@ function toJob(dto: JobOfferDto): Job {
     // nothing to measure. The card omits the segment rather than guessing.
     payoutPaise: dto.payoutPaise,
     bonusPaise: dto.bonusPaise,
+    isHighPriority: dto.isHighPriority ?? false,
     status: 'pool',
     hoursToSlot: hoursUntil(dto.slotStart),
     maskedCustomer: dto.maskedCustomer,

@@ -49,7 +49,11 @@ export function TicketImportDialog({
   const [vendorId, setVendorId] = React.useState("");
   const vendors = useVendorOptions();
   const options = React.useMemo(
-    () => (vendors.data ?? []).map((v) => ({ value: v.id, label: v.name })),
+    () =>
+      (vendors.data ?? [])
+        // Only vendors with the Excel channel ticked in their settings.
+        .filter((v) => v.intakeChannels?.includes("Excel"))
+        .map((v) => ({ value: v.id, label: v.name })),
     [vendors.data]
   );
 

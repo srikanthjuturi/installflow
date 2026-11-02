@@ -562,7 +562,12 @@ async def list_options(
             VendorBrandOptionOut(id=brand_id, name=brand_name)
         )
     return [
-        VendorOptionOut(id=r.id, name=r.name, brands=by_vendor.get(r.id, []))
+        VendorOptionOut(
+            id=r.id,
+            name=r.name,
+            brands=by_vendor.get(r.id, []),
+            intakeChannels=list(r.intake_channels or []),
+        )
         for r in rows
     ]
 

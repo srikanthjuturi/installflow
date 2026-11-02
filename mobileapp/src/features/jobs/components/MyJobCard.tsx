@@ -2,8 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
-import { jobBadge, Text } from '@/components/ui';
-import { jobSlot } from '@/features/jobs/format';
+import { jobBadge, Pill, Text } from '@/components/ui';
+import { jobSlot, showsHighPriority } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -71,6 +71,10 @@ export function MyJobCard({ job, onPress }: MyJobCardProps) {
                 {t(`jobs.status.${status.label}`)}
               </Text>
             </View>
+
+            {showsHighPriority(job) ? (
+              <Pill label={t('jobs.highPriority')} tone="danger" />
+            ) : null}
 
             <Text
               numberOfLines={1}
