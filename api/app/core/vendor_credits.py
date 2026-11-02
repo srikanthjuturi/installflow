@@ -35,6 +35,7 @@ import uuid
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import documents
 from app.core.brand import company_name
 from app.core.database import AsyncSessionLocal
 from app.core.errors import AppError
@@ -143,6 +144,11 @@ async def used_many(
     return {vendor_id: found.get(vendor_id, 0) for vendor_id in vendor_ids}
 
 
+def _ticket_total():
+    """What one ticket will bill the vendor: its price plus any extra charge."""
+    return Ticket.vendor_price_paise + func.coalesce(Ticket.extra_amount_paise, 0)
+
+
 async def reserved(
     db: AsyncSession, company_id: uuid.UUID, vendor_id: uuid.UUID
 ) -> int:
@@ -153,7 +159,7 @@ async def reserved(
     path nobody remembered to update.
     """
     total = await db.scalar(
-        select(func.coalesce(func.sum(Ticket.vendor_price_paise), 0)).where(
+        select(func.coalesce(func.sum(_ticket_total()), 0)).where(
             Ticket.company_id == company_id,
             Ticket.vendor_id == vendor_id,
             Ticket.status.not_in(TERMINAL_STATUSES),
@@ -169,7 +175,7 @@ async def reserved_many(
     if not vendor_ids:
         return {}
     rows = await db.execute(
-        select(Ticket.vendor_id, func.sum(Ticket.vendor_price_paise))
+        select(Ticket.vendor_id, func.sum(_ticket_total()))
         .where(
             Ticket.company_id == company_id,
             Ticket.vendor_id.in_(vendor_ids),
@@ -391,8 +397,14 @@ async def charge_closure(
     ticket_id: uuid.UUID,
     amount_paise: int,
     by_user: uuid.UUID | None,
+    extra_paise: int = 0,
+    extra_note: str | None = None,
 ) -> None:
     """Bill the vendor for a ticket that has just closed. Never refuses.
+
+    `extra_paise` (Epic 1.4) is the vendor's optional extra charge. It is added
+    to the SAME single `charge` entry (one per ticket, structurally) and shows
+    on the paper as its own Debit Note beside the Sales Invoice.
 
     Adds to the caller's transaction and flushes; it does not commit, because
     money must commit with the thing it is about — the same rule
@@ -412,17 +424,47 @@ async def charge_closure(
     """
     if amount_paise <= 0:
         return
-    db.add(
-        VendorCreditEntry(
+    entry = VendorCreditEntry(
+        company_id=company_id,
+        vendor_id=vendor_id,
+        kind="charge",
+        amount_paise=amount_paise + extra_paise,
+        ticket_id=ticket_id,
+        created_by=by_user,
+    )
+    db.add(entry)
+    await db.flush()
+    # Epic 1.3: the vendor is billed, so a numbered Sales Invoice exists for it -
+    # in this same transaction, keyed on the charge so a retry issues nothing new.
+    await documents.issue(
+        db,
+        company_id=company_id,
+        doc_type="sales_invoice",
+        party_kind="vendor",
+        party_id=vendor_id,
+        party_label=await documents.vendor_label(db, company_id, vendor_id),
+        amount_paise=amount_paise,
+        source_kind="vendor_credit_entry",
+        source_id=entry.id,
+        ticket_id=ticket_id,
+        description=f"Ticket {await documents.ticket_code(db, company_id, ticket_id)} closed",
+        created_by=by_user,
+    )
+    if extra_paise > 0:
+        await documents.issue(
+            db,
             company_id=company_id,
-            vendor_id=vendor_id,
-            kind="charge",
-            amount_paise=amount_paise,
+            doc_type="debit_note",
+            party_kind="vendor",
+            party_id=vendor_id,
+            party_label=await documents.vendor_label(db, company_id, vendor_id),
+            amount_paise=extra_paise,
+            source_kind="vendor_credit_entry",
+            source_id=entry.id,
             ticket_id=ticket_id,
+            description=f"Extra charge: {extra_note or 'additional'}",
             created_by=by_user,
         )
-    )
-    await db.flush()
 
 
 async def apply_payment(
@@ -436,17 +478,32 @@ async def apply_payment(
     guarded UPDATE means the second press never reaches here anyway.
     """
     await lock(db, payment.vendor_id)
-    db.add(
-        VendorCreditEntry(
-            company_id=payment.company_id,
-            vendor_id=payment.vendor_id,
-            kind="payment",
-            amount_paise=payment.amount_paise,
-            payment_id=payment.id,
-            created_by=by_user,
-        )
+    entry = VendorCreditEntry(
+        company_id=payment.company_id,
+        vendor_id=payment.vendor_id,
+        kind="payment",
+        amount_paise=payment.amount_paise,
+        payment_id=payment.id,
+        created_by=by_user,
     )
+    db.add(entry)
     await db.flush()
+    # Epic 1.3: the company has the vendor's money, so a Receipt exists for it.
+    await documents.issue(
+        db,
+        company_id=payment.company_id,
+        doc_type="receipt",
+        party_kind="vendor",
+        party_id=payment.vendor_id,
+        party_label=await documents.vendor_label(db, payment.company_id, payment.vendor_id),
+        amount_paise=payment.amount_paise,
+        source_kind="vendor_credit_entry",
+        source_id=entry.id,
+        description=f"Payment {payment.code} received",
+        proof_blob_name=payment.proof_blob_name,
+        proof_reference=payment.utr,
+        created_by=by_user,
+    )
     return await used(db, payment.company_id, payment.vendor_id)
 
 

@@ -3,11 +3,14 @@ import {
   BadgeCheck,
   Boxes,
   Building2,
+  ArrowLeftRight,
   Coins,
   HandCoins,
+  ReceiptText,
   IndianRupee,
   LayoutDashboard,
   ListFilter,
+  LocateFixed,
   Map,
   Route,
   SlidersHorizontal,
@@ -88,6 +91,15 @@ export const NAV_GROUPS: NavGroup[] = [
         // unloaded badge must not claim there is work.
         badge: 0,
         match: ["/tickets/"],
+        feature: "jobs.view",
+      },
+      {
+        label: "Live technicians",
+        to: "/live-technicians",
+        icon: LocateFixed,
+        // Epic 4: where technicians out on a job are right now. The same key
+        // as the ticket list - the server narrows the pins to the caller's
+        // territory. Hard rule 8: this hides the link, the server scopes.
         feature: "jobs.view",
       },
     ],
@@ -272,6 +284,30 @@ export const NAV_GROUPS: NavGroup[] = [
         // confirming a payment moves money. Hard rule 8: this hides the link,
         // the server refuses the act.
         feature: "vendors.credit",
+      },
+      {
+        label: "Franchise settlements",
+        to: "/franchise-settlements",
+        icon: ArrowLeftRight,
+        match: ["/franchise-settlements/"],
+        // Overridden by `Sidebar` with the live count of transfers a franchisee
+        // sent that are waiting for the company to confirm. Zero here: an
+        // unloaded badge must not claim there is work.
+        badge: 0,
+        // Money between the company and its non-home franchisees. Seeded to
+        // admin and national_head, and the API adds a National-Head rank floor
+        // no Feature Access override can lift. Hard rule 8: this hides the
+        // link, the server refuses the act.
+        feature: "finance.settlements",
+      },
+      {
+        label: "Transactions",
+        to: "/transactions",
+        icon: ReceiptText,
+        // Every numbered document for this company, its statements and the
+        // email to its Admins (Epic 1.5 - 1.7). Seeded to admin and
+        // national_head. Hard rule 8: this hides the link, the server refuses.
+        feature: "finance.transactions",
       },
       {
         label: "Credits",

@@ -27,6 +27,7 @@ from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.technician_rules import bonus_bands_for, penalty_bands_for
 from app.core import brand
 from app.core.config import settings
 from app.core.coverage import (
@@ -1024,6 +1025,7 @@ async def _hydrate(
                 customerName=t.customer_name,
                 customerPhone=t.customer_phone,
                 customerAltPhone=t.customer_alt_phone,
+                locality=t.locality,
                 address=t.address,
                 city=t.city,
                 state=t.state,
@@ -1064,14 +1066,19 @@ async def _hydrate(
                 bonusPaise=t.bonus_paise,
                 # This ticket's own chips, so funding a bonus spends the
                 # category's configured amounts rather than the company's.
-                bonusBandsPaise=list(
-                    snapshot_value(t.rules_snapshot, "bonus_bands_paise")
-                ),
+                bonusBandsPaise=bonus_bands_for(t),
                 # Their own price — the vendor is the one paying it. A franchise
                 # principal gets `null`: what the company bills is the other
                 # side of the franchise ledger's, never theirs to read (R6).
                 vendorPricePaise=(
                     None if principal.is_franchise else t.vendor_price_paise
+                ),
+                # Epic 1.4: the same wall as the price beside it.
+                extraAmountPaise=(
+                    None if principal.is_franchise else t.extra_amount_paise
+                ),
+                extraAmountNote=(
+                    None if principal.is_franchise else t.extra_amount_note
                 ),
                 franchiseeId=(
                     None if hide_franchisee else t.franchisee_id
@@ -2757,8 +2764,13 @@ async def create_ticket(
         # A6: the household's second number, if they gave one. Same shape as
         # `customer_phone`, already normalised by the schema's phone validator.
         customer_alt_phone=body.customerAltPhone,
+        # Epic 7: the locality, trimmed; blank is none.
+        locality=(body.locality or "").strip() or None,
         # A2: a flag for the board. No downstream behaviour reads it.
         is_high_priority=body.isHighPriority,
+        # Epic 1.4: the vendor's optional extra charge, with what it is for.
+        extra_amount_paise=body.extraAmountPaise,
+        extra_amount_note=body.extraAmountNote,
         # A7: resolved above — `platform` is set only for an ONLINE ticket
         # that named or typed one (never for an offline one, even if a stale
         # id arrived); `purchase_platform_detail` is set only for an OFFLINE
@@ -2828,7 +2840,7 @@ async def create_ticket(
         db,
         company_id=principal.company_id,
         vendor_id=row.vendor_id,
-        just_reserved_paise=row.vendor_price_paise,
+        just_reserved_paise=row.vendor_price_paise + (row.extra_amount_paise or 0),
     )
 
     # The vendor's own name, not the person's: a sub-user leaves, the ticket
@@ -4236,7 +4248,7 @@ async def record_no_show(
     # job they took, so it cannot come from one of them.
     rules = await load_rules(db, principal.company_id)
     label = CANCEL_PENALTY_BANDS[-1]
-    band = int(snapshot_value(row.rules_snapshot, "cancel_penalties_paise")[-1])
+    band = int(penalty_bands_for(row)[-1])  # Epic 3: the holder's own bands first
     already = await charged_this_month(
         db, company_id=principal.company_id, technician_id=profile.id
     )
@@ -4849,6 +4861,11 @@ async def force_close_ticket(
         vendor_id=row.vendor_id,
         ticket_id=row.id,
         amount_paise=billed,
+        # Epic 1.4: the extra is billed in full whenever the visit itself is
+        # billed, and not at all when nobody attended (billed == 0) - the part
+        # was only ever charged for work that happened.
+        extra_paise=(row.extra_amount_paise or 0) if billed > 0 else 0,
+        extra_note=row.extra_amount_note,
         by_user=principal.user_id,
     )
 

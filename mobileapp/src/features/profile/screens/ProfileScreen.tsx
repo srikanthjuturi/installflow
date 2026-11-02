@@ -334,6 +334,41 @@ export function ProfileScreen() {
               </Pressable>
             ) : null}
 
+            {/* Where a requested spare part is sent. */}
+            <Pressable
+              onPress={() => router.push('/parts-address')}
+              accessibilityRole="button"
+              accessibilityLabel={t('partsAddress.title')}
+            >
+              {({ pressed }) => (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 13,
+                    paddingVertical: 15,
+                    paddingHorizontal: 16,
+                    borderTopWidth: 1,
+                    borderTopColor: palette.neutral[100],
+                    backgroundColor: pressed ? color.surfaceSunkenAlt : 'transparent',
+                  }}
+                >
+                  <Icon name="package" size={21} color={color.textLabel} strokeWidth={1.7} />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: 'Roboto_500Medium',
+                      fontSize: 14.5,
+                      color: color.textPrimary,
+                    }}
+                  >
+                    {t('partsAddress.title')}
+                  </Text>
+                  <Icon name="chevronRight" size={19} color={color.textMuted} />
+                </View>
+              )}
+            </Pressable>
+
             <Pressable
               onPress={togglePush}
               accessibilityRole="switch"

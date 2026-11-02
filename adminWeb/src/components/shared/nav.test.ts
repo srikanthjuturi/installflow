@@ -24,4 +24,13 @@ describe("featureForPath", () => {
     // ...and does not shade its sibling.
     expect(featureForPath("/settings/rules")).toBe("settings.view");
   });
+
+  it("gates franchise settlements on finance.settlements, apart from its siblings (Epic 1.2)", () => {
+    expect(featureForPath("/franchise-settlements")).toBe("finance.settlements");
+    // Not the portal's path, and not the franchisees screen's.
+    expect(featureForPath("/franchise/settlements")).not.toBe(
+      "finance.settlements"
+    );
+    expect(featureForPath("/franchisees")).toBe("franchisees.view");
+  });
 });

@@ -349,6 +349,27 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 
+    # ── Epic 6: where spare parts are delivered to ──────────────────────────
+    #: A technician may not be at their base, so parts need a postal address of
+    #: their own. All of line / city / pincode, or none (CHECK). When none is
+    #: set a part request falls back to the base pincode - COPIED onto the
+    #: request at raise time, never linked, so editing this later cannot reroute
+    #: a part already in flight (`spare_part_requests.delivery_address`).
+    parts_address_line: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    parts_city: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    parts_pincode: Mapped[str | None] = mapped_column(
+        String(6), ForeignKey("pincodes.code", ondelete="RESTRICT"), nullable=True
+    )
+    parts_landmark: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: Who receives the parcel, E.164. Defaults to the technician's own phone when null.
+    parts_contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    parts_address_set_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    parts_address_set_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     # ── stats: NULL until the jobs slice measures them ───────────────────────
     #
     # All four nullable, and null means "not measured yet" — not zero. They
@@ -460,8 +481,16 @@ class TechnicianProfile(Base, IdMixin, AuditMixin):
             "(base_pincode IS NOT NULL) = (base_source IS NOT DISTINCT FROM 'pincode')",
             name="base_pincode_iff_source",
         ),
+        # Epic 6: a parts address is whole or absent.
+        CheckConstraint(
+            "(parts_address_line IS NULL) = (parts_city IS NULL) "
+            "AND (parts_address_line IS NULL) = (parts_pincode IS NULL)",
+            name="parts_address_all_or_none",
+        ),
         # Every FK needs a covering index. The plain FKs above do not get one
         # from any constraint declared here.
+        Index("ix_technician_profiles_parts_pincode", "parts_pincode"),
+        Index("ix_technician_profiles_parts_set_by", "parts_address_set_by_user_id"),
         Index("ix_technician_profiles_base_pincode", "base_pincode"),
         Index("ix_technician_profiles_base_set_by", "base_set_by_user_id"),
     )

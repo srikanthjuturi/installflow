@@ -34,6 +34,7 @@ from app.core.credits import (
     paused,
 )
 from app.core.deps import Principal
+from app.core import documents
 from app.core.errors import AppError
 from app.core.money import indian
 from app.core.notifications import notify
@@ -718,6 +719,25 @@ async def confirm(
         )
 
     new_balance = await credit_recharge(db, row, by_user=principal.user_id)
+    # Epic 1.3: the company bought credits from the platform (Purchase Note) and
+    # paid for them (Payment) - the two documents net to nothing on the
+    # platform's statement, which is the point of issuing both.
+    for doc_type in ("purchase_note", "payment"):
+        await documents.issue(
+            db,
+            company_id=row.company_id,
+            doc_type=doc_type,
+            party_kind="platform",
+            party_id=None,
+            party_label="Platform",
+            amount_paise=row.amount_paise,
+            source_kind="credit_entry",
+            source_id=row.id,
+            description=f"Credit recharge {row.code}",
+            proof_blob_name=row.proof_blob_name if doc_type == "payment" else None,
+            proof_reference=row.utr if doc_type == "payment" else None,
+            created_by=principal.user_id,
+        )
     await _announce(
         db,
         row,

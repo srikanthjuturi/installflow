@@ -572,8 +572,77 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
 - **Every technician rupee carries the franchisee that paid it.** `ledger_entries.franchisee_id` is the
   technician's franchisee when the row was written, except a `reversal`, which copies the penalty's so money
   goes back to the pool that collected it. A technician moving franchisee never moves money already written.
-  Money between an external franchisee and the company (lease, revenue share) is not in this product; the
-  column is there so it can be reported later.
+  Money between an external franchisee and the company (lease, revenue share) is the **franchise settlement**
+  below; the column is also there so it can be reported later.
+- **Numbered documents sit over every money ledger (Epic 1).** `transaction_documents` holds Sales Invoices,
+  Receipts, Payments, Debit / Credit / Purchase Notes — internal records, **no tax fields, by decision** — numbered
+  per company per type (`RGT-INV-0001`). They are append-only (a mistake is a later credit note), and issued by
+  `core.documents.issue()` **inside the transaction of the change they describe**, keyed on the source ledger row
+  so a retry or a backfill can never issue a second one: a vendor billed at closure → Sales Invoice (+ a Debit Note
+  for any extra charge); a vendor payment confirmed → Receipt; a technician's redemption confirmed → Payment; a
+  reversed penalty → Credit Note; a company recharge confirmed → Purchase Note + Payment (party: the platform); a
+  franchise settlement confirmed → Payment / Receipt. `app.scripts.backfill_documents` issues them for history
+  (dry run by default). **Direction** is `party_effect` from the PARTY's account: debit = the party owes the company
+  more. The dashboard, statements and roll-up read them (`/transactions`); who sees what is decided in
+  `features/transactions/service.scope()` — superadmin all, Admin/NH their company (`finance.transactions`), the
+  primary vendor login its own, a franchisee admin its own franchisee's and its technicians' (`franchise.documents`).
+  Documents are emailed in batches to the company's Admins by the `document-email` sweep; `failed` is never retried
+  automatically (re-queue with `POST /transactions/email/resend`). Not built: a per-company auto-email switch, a
+  monthly statement email, and an `ExtraAmount` column in the Excel importer.
+- **A franchise settlement is two people's word, like a redemption.** The SENDER records a transfer with a required
+  screenshot (company Admin / NH → `company_to_franchisee`; the franchisee's admin → `franchisee_to_company`); only
+  the RECEIVER confirms it arrived or declines it with a reason — nobody confirms their own. Confirmation issues the
+  document. Never for the home franchisee (409 `HOME_FRANCHISEE_NO_SETTLEMENT`). No bell yet. `api/features/franchise_settlements`.
+- **A technician can have their OWN rules (Epic 3), and a manager can hold back part of what they may redeem.**
+  `technician_rules` (one nullable row per technician; NULL inherits) overrides payout (a percentage of the
+  product's stamped payout), the four cancellation penalties, the four bonus chips, the speed terms (all four or
+  none; they replace the franchisee's category rows for every product, `matchedOn: "technician"`) and the travel
+  figures. **They are frozen at ACCEPT** into `accept_snapshot.overrides` / the travel and speed keys, exactly like
+  the rest of what depends on the technician, so editing them restates no job already accepted — read them only
+  through `core.technician_rules` (`payout_percent_of`, `penalty_bands_for`, `bonus_bands_for`), never with a bare
+  subscript. A force-closure still pays the manager's own number, capped at the product's payout. The **minimum
+  redeemable** and the **holding amount** are the opposite: read LIVE, because they concern money not yet paid.
+  Holding moves no money — it is subtracted from what may be ASKED for (`redeemablePaise` is already net of it, and
+  is 0 below the minimum, so builds that never heard of either field still grey out); every change is an
+  append-only `technician_holding_events` row with a required reason. Holding is set by the franchisee admin (their
+  technicians, `franchise.payouts`) or the company's Admin / National Head (home technicians). There is no
+  company-wide default minimum yet.
+- **A technician has a spare-parts DELIVERY address, separate from their base (Epic 6).** `technician_profiles.parts_*`
+  (line, city, pincode — a real active one, 422 `UNKNOWN_PINCODE` — landmark, contact phone; all-or-none) is set by the
+  technician (Profile → Parts delivery address), their franchisee admin, or the company's staff who may edit them.
+  **It is COPIED onto each part request when raised** (`spare_part_requests.delivery_address`, JSONB), the way the base
+  is copied onto a job: editing it later never reroutes a part already in flight. With no address saved the copy falls
+  back to the base PINCODE only (`source: "base"`, no street) and the facility is told so; with neither it is null.
+  Customer data stays out of the facility's view (D21) — this is the technician's address.
+- **The coverage picker is a tree: Region → State → District → Pincode (Epic 2).** `POST /geo/tree` returns a region's
+  states and districts with counts (and how many of a given selection fall in each, so a saved coverage opens with
+  the right boxes ticked), `GET /geo/districts/{id}/pincodes` is the lazy leaf level and `POST /geo/expand` turns
+  "this state / these districts" into pincodes (422 past 5,000). All three show only what the caller may assign:
+  active pincodes, inside the caller's territory, and — for a franchisee's coverage — inside that franchisee's
+  pincodes. The save still validates (`PINCODE_OUTSIDE_FRANCHISEE`, the Area Manager state rule); the tree decides only
+  what is OFFERED. **A technician may now cover up to 500 pincodes (it was 50)** — `MAX_COVERAGE_PINCODES` in
+  `features/technicians/schemas.py`; the mobile app only displays coverage a manager assigned, so the tree is console-only.
+- **A technician's live location is shared only while they hold an ACTIVE job, from the app in the foreground (Epic 4).**
+  The phone POSTs its position to `POST /jobs/{id}/location` while the job is `Assigned`, `In Progress` or
+  `Awaiting Part` (409 `JOB_NOT_ACTIVE` otherwise; reports closer than 15 s are dropped, not errors). **Only the latest
+  point is kept** — `technician_locations` is one row per technician, overwritten, with no trail, because a history of a
+  person was never asked for. Every read joins back to the ticket, so the point vanishes the moment the job completes,
+  is cancelled or is handed on; `sweep_stale_locations` then deletes the row. Who sees it is who sees the TICKET
+  (`tickets.service.scoped`): staff by territory, a vendor its own tickets, a franchisee its own, plus a superadmin
+  list across companies — `GET /tickets/{id}/technician-location`, `/tickets/live-locations`, `/tickets/live-locations/all`.
+  A point older than 3 minutes is flagged `stale` and drawn as "not reporting", never as current. Background tracking
+  is NOT built (decision 2026-10-30). There is no per-company off switch yet.
+- **A pincode has LOCALITIES — the post offices inside it (Epic 7).** `post_offices` (global, like `pincodes`; 165,462
+  rows) is loaded from the India Post directory, `docs/pincodes.csv`, by `python -m app.scripts.import_post_offices`
+  (dry run by default, `--apply` to write; idempotent, never deletes; 96 offices under pincodes our master does not
+  hold are skipped and reported — fix the master, do not force them in). Names are stored WITHOUT the `B.O` / `S.O` /
+  `H.O` suffix (`core.post_offices.clean_name`) with the office type beside them. `GET /geo/pincodes/{code}/post-offices`
+  feeds the raise-ticket form's "Local area" box; **it is a SUGGESTION list, never a validator** — `tickets.locality` is
+  free text (≤ 80), because the directory is never complete. Production must be loaded the same way before the form
+  relies on it. Not built: a `Locality` column in the Excel ticket upload; the technician app does not show it.
+- **A vendor may add an extra charge at raise** (`tickets.extra_amount_paise` + a required note). It counts against
+  the vendor's credit line from intake, is billed in full at closure as a Debit Note beside the Sales Invoice (on a
+  force-closure only when the visit itself is billed), and is never in a technician-facing shape.
 - **Pincode centres are trusted as loaded.** `pincodes.latitude/longitude` came with `f9c2d8a3e17b` and are filled
   by `import_pincode_coordinates` (RelianceDB holds a point for every one of the 19,496; production must be loaded
   the same way before the travel allowance publishes against it). A missing point is 0 km, never a district

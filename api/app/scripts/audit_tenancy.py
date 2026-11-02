@@ -83,6 +83,7 @@ GLOBAL_TABLES: dict[str, str] = {
     "districts": "geography - the same India for every company",
     "pincodes": "geography - the same India for every company",
     "pincode_districts": "geography - joins two global tables",
+    "post_offices": "geography - the India Post directory, global like pincodes",
     "membership_regions": "scoped through membership_id, which is company-scoped",
     "refresh_tokens": "belongs to a user, not a company; the token's claim carries the company",
     "platform_settings": (
@@ -129,6 +130,25 @@ TENANT_LINKS = [
     # had a plain FK here and so could name company A while pointing at a
     # membership in company B; the replacement does not.
     ("membership_states", "membership_id", "memberships"),
+    # Numbered documents. A document naming another company's vendor, franchisee,
+    # technician or ticket would put a stranger's name and money on this
+    # company's statement and in its invoice email.
+    ("transaction_documents", "vendor_id", "vendors"),
+    ("transaction_documents", "franchisee_id", "franchisees"),
+    ("transaction_documents", "technician_id", "technician_profiles"),
+    ("transaction_documents", "ticket_id", "tickets"),
+    ("transaction_documents", "related_document_id", "transaction_documents"),
+    # Company <-> franchisee transfers. One naming another company's franchisee
+    # would put a stranger's money on this company's settlement screen.
+    ("franchise_settlements", "franchisee_id", "franchisees"),
+    # Per-technician overrides and the holding trail: one naming another company's
+    # technician would let a rule or a hold cross a tenant boundary.
+    ("technician_rules", "technician_id", "technician_profiles"),
+    ("technician_holding_events", "technician_id", "technician_profiles"),
+    # A live position. One naming another company's technician or ticket would put a
+    # stranger on this company's map.
+    ("technician_locations", "technician_id", "technician_profiles"),
+    ("technician_locations", "ticket_id", "tickets"),
     ("tickets", "vendor_id", "vendors"),
     ("tickets", "node_id", "product_nodes"),
     ("tickets", "model_id", "product_models"),

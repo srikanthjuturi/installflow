@@ -57,6 +57,8 @@ export const technicianKeys = {
     ["technicians", "districts", stateId] as const,
   /** Under the prefix, so every technician write — and the bell — refreshes it. */
   upiChange: (id: string) => ["technicians", "upi-change", id] as const,
+  /** Epic 3 — one technician's own rules, minimum redeemable and holding. */
+  rules: (id: string) => ["technicians", "rules", id] as const,
   /** Task 17 — the history card. Under the prefix, so a move refreshes it. */
   transfers: (id: string) => ["technicians", "transfers", id] as const,
   /** Task 17 — a preview of one move, keyed on exactly what it asked. */
@@ -195,6 +197,19 @@ export const useSetBaseLocation = () => {
     (input: Parameters<typeof api.technicians.setBaseLocation>[0]) =>
       api.technicians.setBaseLocation(input),
     "Couldn't save the base location"
+  );
+};
+
+/**
+ * Save or clear (`body: null`) where spare parts are delivered (Epic 6).
+ * Invalidates the technician prefix: the detail carries `partsAddress`.
+ */
+export const useSetPartsAddress = () => {
+  const { api } = useWorkspace();
+  return useTechnicianMutation(
+    (input: Parameters<typeof api.technicians.setPartsAddress>[0]) =>
+      api.technicians.setPartsAddress(input),
+    "Couldn't save the parts address"
   );
 };
 

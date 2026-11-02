@@ -328,6 +328,14 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: which a force-closure can set to less than this. One number in one place.
     technician_payout_paise: Mapped[int] = mapped_column(Integer, nullable=False)
     vendor_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Epic 1.4: an optional EXTRA charge the vendor adds at raise (a part, say).
+    #: NULL is "none". Stamped at intake like the two prices, and billed to the
+    #: vendor when the ticket closes - as a Debit Note beside the Sales Invoice.
+    #: The vendor's credit-line reservation includes it. Never carried by a
+    #: technician-facing shape: neither party sees the other's figure.
+    extra_amount_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: What the extra is for. Required whenever the amount is set.
+    extra_amount_note: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     #: The operating rules this job runs under, resolved ONCE at intake.
     #:
@@ -383,6 +391,13 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: for the household that gave two at intake (a tenant and a landlord, a
     #: child and a parent) so a dead first number is not a dead end.
     customer_alt_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # ── Epic 7: the locality within the pincode ─────────────────────────────
+    #: The post-office area the vendor picked ("Banjara Hills"), or typed when it
+    #: is not in the directory (`post_offices` is a suggestion list, never a
+    #: constraint). Part of the address, so masked from a technician until they
+    #: accept, like the street.
+    locality: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     # ── A7: where the unit was bought ────────────────────────────────────────
     #: `online` | `offline`. Defaults to `offline`, which is the honest
@@ -485,6 +500,14 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # NOT NULL, so "no price" is not a state a ticket can be in.
         CheckConstraint("technician_payout_paise > 0", name="technician_payout_paise"),
         CheckConstraint("vendor_price_paise > 0", name="vendor_price_paise"),
+        CheckConstraint(
+            "extra_amount_paise IS NULL OR extra_amount_paise > 0",
+            name="extra_amount_paise",
+        ),
+        CheckConstraint(
+            "(extra_amount_paise IS NULL) = (extra_amount_note IS NULL)",
+            name="extra_amount_has_note",
+        ),
         # The description rule, as a backstop. It is validated in `schemas.py`
         # too, where it can give a per-field message; this is here so the table
         # describes itself and so a future importer that bypasses the request

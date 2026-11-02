@@ -26,6 +26,7 @@ from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core import parts_address
 from app.core import brand
 from app.core.base_location import (
     MANAGER_SOURCES,
@@ -1114,6 +1115,7 @@ async def get_technician(
                 session, profile.base_set_by_user_id
             )
             detail.baseLocation = base
+        detail.partsAddress = parts_address.out_of(profile)
     return detail
 
 
@@ -2778,3 +2780,49 @@ async def count_pending_upi_changes(
         )
     ) or 0
     return UpiChangeCountOut(pending=pending)
+
+
+# ── spare-parts delivery address (Epic 6) ────────────────────────────────────
+
+
+async def get_my_parts_address(session: AsyncSession, principal: Principal):
+    profile = await _own_profile(session, principal)
+    return parts_address.out_of(profile)
+
+
+async def set_my_parts_address(
+    session: AsyncSession, principal: Principal, body: parts_address.PartsAddressIn
+):
+    profile = await _own_profile(session, principal)
+    await parts_address.apply(
+        session, profile, body, by_user_id=principal.user_id, now=_now()
+    )
+    await session.commit()
+    return parts_address.out_of(profile)
+
+
+async def clear_my_parts_address(session: AsyncSession, principal: Principal) -> None:
+    profile = await _own_profile(session, principal)
+    parts_address.clear(profile, by_user_id=principal.user_id, now=_now())
+    await session.commit()
+
+
+async def set_parts_address(
+    session: AsyncSession,
+    principal: Principal,
+    technician_id: uuid.UUID,
+    body: parts_address.PartsAddressIn | None,
+) -> TechnicianDetailOut:
+    """A manager (or franchisee admin) setting - or, with None, clearing - an address.
+
+    Same `_load_managed` wall as every other write on a technician.
+    """
+    profile, _, _ = await _load_managed(session, principal, technician_id)
+    if body is None:
+        parts_address.clear(profile, by_user_id=principal.user_id, now=_now())
+    else:
+        await parts_address.apply(
+            session, profile, body, by_user_id=principal.user_id, now=_now()
+        )
+    await session.commit()
+    return await get_technician(session, principal, technician_id)

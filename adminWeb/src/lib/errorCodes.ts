@@ -108,3 +108,60 @@ export const TECHNICIAN_HAS_BALANCE = "TECHNICIAN_HAS_BALANCE";
 /** The target is not the home and has no active admin to approve UPI changes
  *  or pay redemptions (409). */
 export const FRANCHISEE_HAS_NO_ADMIN = "FRANCHISEE_HAS_NO_ADMIN";
+
+/* ── company <-> franchisee transfers ────────────────────────────────────── */
+/* Mirrors `api/app/features/franchise_settlements` (Epic 1.2). The server's own
+   sentence is what the toaster shows; the codes are here so a caller that wants
+   to pin one to a field, or branch on it, spells it the way the API does. */
+
+/** The home franchisee is the company itself — there is nobody to settle with (409). */
+export const HOME_FRANCHISEE_NO_SETTLEMENT = "HOME_FRANCHISEE_NO_SETTLEMENT";
+/** Staff recorded a transfer without naming the franchisee (422). */
+export const FRANCHISEE_REQUIRED = "FRANCHISEE_REQUIRED";
+/** The day sent is after today (422). Belongs on the date field. */
+export const DATE_IN_FUTURE = "DATE_IN_FUTURE";
+/** The day sent is more than a year back (422). Belongs on the date field. */
+export const DATE_TOO_OLD = "DATE_TOO_OLD";
+/** The screenshot is missing, or is another account's upload (422). */
+export const INVALID_PROOF = "INVALID_PROOF";
+/** Reason `other` with no note (422). Belongs on the note field. */
+export const NOTE_REQUIRED = "NOTE_REQUIRED";
+/** The sender tried to confirm or decline their own transfer (409). */
+export const NOT_THE_RECEIVER = "NOT_THE_RECEIVER";
+/** Declined is final — record a new transfer instead (409). */
+export const ALREADY_DECLINED = "ALREADY_DECLINED";
+/** Already confirmed by the other side (409). */
+export const ALREADY_CONFIRMED = "ALREADY_CONFIRMED";
+
+export const SETTLEMENT_DATE_CODES: readonly string[] = [
+  DATE_IN_FUTURE,
+  DATE_TOO_OLD,
+];
+
+/* ── numbered documents, statements and email ────────────────────────────── */
+/* Mirrors `api/app/features/transactions` (Epic 1.5 - 1.7). */
+
+/** The statement's end date is before its start (422). */
+export const BAD_PERIOD = "BAD_PERIOD";
+/** The statement spans more than three years (422). */
+export const PERIOD_TOO_LONG = "PERIOD_TOO_LONG";
+/** A superadmin asked for a statement without naming a company (422). */
+export const COMPANY_REQUIRED = "COMPANY_REQUIRED";
+/** Unknown party kind, a missing party, or an id on the platform (422). */
+export const BAD_PARTY = "BAD_PARTY";
+/** Re-send with neither a document nor a date range (422). */
+export const RANGE_REQUIRED = "RANGE_REQUIRED";
+/** Only the company or the platform may re-send documents (403). */
+export const FORBIDDEN = "FORBIDDEN";
+
+export const TRANSACTION_PERIOD_CODES: readonly string[] = [
+  BAD_PERIOD,
+  PERIOD_TOO_LONG,
+];
+
+/* ── per-technician redemption terms ─────────────────────────────────────── */
+/* Mirrors `api/app/features/redemptions/service.py` (Epic 3). */
+
+/** The technician's redeemable balance (after any holding) is under the minimum
+ *  set for them (409). Shown by the toaster as the server's own sentence. */
+export const BELOW_MIN_REDEEMABLE = "BELOW_MIN_REDEEMABLE";

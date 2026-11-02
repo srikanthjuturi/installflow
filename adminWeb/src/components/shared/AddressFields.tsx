@@ -9,10 +9,15 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useInfinitePincodes, usePincodeLookup } from "@/hooks/useGeo";
+import {
+  useInfinitePincodes,
+  usePincodeLookup,
+  usePostOffices,
+} from "@/hooks/useGeo";
 import { flatten } from "@/lib/placeAddress";
 import { cn } from "@/lib/utils";
 import { FieldGrid } from "./FieldGrid";
+import { LocalityField } from "./LocalityField";
 import { useAddressAutocomplete } from "./useAddressAutocomplete";
 
 /**
@@ -135,6 +140,20 @@ export interface AddressFieldsProps {
     enabled: boolean;
     onSearch: (sessionId: string) => void;
   };
+  /**
+   * Opt-in "Local area" box under the pincode row, suggesting the post offices
+   * of the pincode. Free text — the directory only suggests. Omit it and the
+   * form is exactly what it always was.
+   *
+   * The caller owns the value (it belongs to the ticket, not to `AddressValue`)
+   * and this CLEARS it whenever the pincode changes: a locality belongs to one
+   * pincode.
+   */
+  localityField?: {
+    value: string;
+    onChange: (next: string) => void;
+    error?: string;
+  };
   /** Grid class for the field group holding all five boxes. */
   grid?: string;
   /** Column span for the street line inside that grid. */
@@ -178,6 +197,7 @@ export function AddressFields({
   autoFill = true,
   disabled,
   addressSearch,
+  localityField,
   grid,
   addressClassName,
   children,
@@ -330,6 +350,28 @@ export function AddressFields({
   React.useEffect(() => {
     onStatusChange?.(status);
   }, [status, onStatusChange]);
+
+  /* Suggestions only once the master has accepted the code — nothing is asked
+     for a half-typed or unknown one. */
+  const postOffices = usePostOffices(
+    value.pincode,
+    Boolean(localityField) && status === "ok"
+  );
+
+  /* A locality belongs to one pincode: when the pincode changes, the area typed
+     for the old one is dropped. The first render only records it, so an
+     existing value is never wiped on mount. */
+  const lastPincode = React.useRef(value.pincode);
+  const localityRef = React.useRef(localityField);
+  React.useEffect(() => {
+    localityRef.current = localityField;
+  });
+  React.useEffect(() => {
+    if (lastPincode.current === value.pincode) return;
+    lastPincode.current = value.pincode;
+    const field = localityRef.current;
+    if (field && field.value) field.onChange("");
+  }, [value.pincode]);
 
   /**
    * The code — and the city we filled it with — that the auto-fill below last
@@ -621,6 +663,18 @@ export function AddressFields({
         })}
         {children}
       </FieldGrid>
+
+      {localityField ? (
+        <LocalityField
+          idPrefix={idPrefix}
+          value={localityField.value}
+          onChange={localityField.onChange}
+          error={localityField.error}
+          offices={postOffices.data ?? []}
+          loading={postOffices.isFetching}
+          disabled={disabled}
+        />
+      ) : null}
     </div>
   );
 }

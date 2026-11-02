@@ -137,6 +137,13 @@ class RedeemableOut(AppModel):
     #: Forced to 0 for an employee (T4) — every installed build's `RedeemCard`
     #: hides itself at ≤ 0, so the button greys out with no app change.
     redeemablePaise: int
+    #: Epic 3: money a manager is holding back from redemption. It stays the
+    #: technician's on the ledger; it only reduces what may be ASKED for now.
+    #: `redeemablePaise` is already net of it, and is 0 while that net is below
+    #: `minRedeemablePaise` - so a build that knows neither field still greys out.
+    holdingPaise: int = 0
+    #: Epic 3: the least a redemption may be for. 0 = no minimum.
+    minRedeemablePaise: int = 0
     #: Where it would be paid, or null — the card says to add one.
     upiId: str | None
     #: Who will be asked to pay it, for "Your National Head will be asked…".

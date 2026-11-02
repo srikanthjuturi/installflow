@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureAccess, useMe } from "@/hooks/useAuth";
 import { useBrand } from "@/hooks/useBrand";
 import { usePartRequestCounts } from "@/hooks/useParts";
+import { useSettlementsBadge } from "@/hooks/useFranchiseSettlements";
 import { useRedemptionsBadge } from "@/hooks/useRedemptions";
 import { useUpiChangesBadge } from "@/hooks/useFranchise";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,10 @@ export function FranchiseSidebar({ collapsed = false }: { collapsed?: boolean })
   // The facility's desk: what is still `requested`. A rail badge is a backstop
   // and never toasts (`usePartRequestCounts`); enabled on `parts.handle` so a
   // role without it never calls a door its key cannot open.
+  // Transfers the company sent that are waiting for this franchisee to confirm.
+  const settlements = useSettlementsBadge("portal", {
+    enabled: has("franchise.settlements"),
+  });
   const parts = usePartRequestCounts({ enabled: has("parts.handle") });
 
   return (
@@ -136,7 +141,9 @@ export function FranchiseSidebar({ collapsed = false }: { collapsed?: boolean })
                   ? redemptions.data
                   : item.to === "/franchise/upi-changes"
                     ? upi.data
-                    : item.to === "/franchise/parts"
+                    : item.to === "/franchise/settlements"
+                      ? settlements.data
+                      : item.to === "/franchise/parts"
                       ? parts.data?.requested
                       : undefined) ?? 0;
               return (

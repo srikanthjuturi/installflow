@@ -36,7 +36,7 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
-from app.features.geo import service
+from app.features.geo import post_offices, service, tree
 from app.features.geo.schemas import (
     DistrictCreateRequest,
     DistrictOut,
@@ -173,6 +173,59 @@ async def list_districts(
             region_ids=region_ids,
         )
     )
+
+
+# ── the coverage picker's tree (Epic 2) ─────────────────────────────────────
+#
+# Open to any signed-in caller, scoped to what THEY may assign (territory, and a
+# franchisee's pincodes when one applies) - see `features/geo/tree.py`. Declared
+# before the `/districts/{id}` style paths and the paged `/pincodes` so nothing
+# shadows them.
+
+
+@router.get(
+    "/pincodes/{code}/post-offices",
+    response_model=ApiEnvelope[list[post_offices.PostOfficeOut]],
+)
+async def pincode_post_offices(
+    code: str, principal: CurrentPrincipal, db: Db
+) -> ApiEnvelope[list[post_offices.PostOfficeOut]]:
+    """The localities (post offices) inside a pincode - a SUGGESTION list for the
+    address form (Epic 7). Empty for a pincode the directory does not cover; the
+    form then lets the user type one."""
+    return envelope(await post_offices.for_pincode(db, code))
+
+
+@router.post("/tree", response_model=ApiEnvelope[tree.TreeOut])
+async def coverage_tree(
+    body: tree.TreeRequest, principal: CurrentPrincipal, db: Db
+) -> ApiEnvelope[tree.TreeOut]:
+    """One region's states and districts with counts, and how many are selected."""
+    return envelope(await tree.build_tree(db, principal, body))
+
+
+@router.get(
+    "/districts/{district_id}/pincodes",
+    response_model=ApiEnvelope[tree.DistrictPincodesOut],
+)
+async def district_pincodes(
+    district_id: uuid.UUID,
+    principal: CurrentPrincipal,
+    db: Db,
+    franchiseeId: Annotated[uuid.UUID | None, Query()] = None,
+) -> ApiEnvelope[tree.DistrictPincodesOut]:
+    """The leaf level of the tree: every pincode this caller may pick in a district."""
+    return envelope(
+        await tree.district_pincodes(db, principal, district_id, franchiseeId)
+    )
+
+
+@router.post("/expand", response_model=ApiEnvelope[tree.ExpandOut])
+async def expand_selection(
+    body: tree.ExpandRequest, principal: CurrentPrincipal, db: Db
+) -> ApiEnvelope[tree.ExpandOut]:
+    """Turn "this state / these districts" into pincodes (422 past 5,000)."""
+    return envelope(await tree.expand(db, principal, body))
 
 
 @router.get("/pincodes", response_model=PaginatedEnvelope[PincodeOut])

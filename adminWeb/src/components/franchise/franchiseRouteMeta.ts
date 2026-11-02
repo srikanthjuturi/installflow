@@ -37,6 +37,14 @@ const STATIC: Record<string, Meta> = {
     title: "Penalty & bonus pool",
     subtitle: `${FRANCHISEE_NAME_TOKEN}'s pool`,
   },
+  "/franchise/settlements": {
+    title: "Settlements",
+    subtitle: "Money sent to and from the company",
+  },
+  "/franchise/documents": {
+    title: "Documents",
+    subtitle: "Invoices, receipts and notes · your statement",
+  },
   "/franchise/statements": {
     title: "Employee statements",
     subtitle: "A month's allowances and penalties, per employee",
@@ -56,6 +64,10 @@ const STATIC: Record<string, Meta> = {
   "/franchise/tickets": {
     title: "Tickets",
     subtitle: `Tickets in ${FRANCHISEE_NAME_TOKEN}'s pincodes — read only`,
+  },
+  "/franchise/live-technicians": {
+    title: "Live technicians",
+    subtitle: "Where your technicians on a job are right now — read only",
   },
   "/franchise/notifications": {
     title: "Notifications",

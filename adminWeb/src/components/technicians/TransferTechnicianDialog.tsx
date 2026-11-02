@@ -158,7 +158,7 @@ function TransferForm({
     [detail.data]
   );
   const limitTo =
-    target && matches ? { franchisee: target.name, matches } : undefined;
+    target && matches ? { franchisee: target.name, matches, franchiseeId: toId } : undefined;
 
   const name = technician.name;
   const fromName = technician.franchiseeName;

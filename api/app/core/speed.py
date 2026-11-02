@@ -45,7 +45,7 @@ class SpeedTerms:
     """
 
     rule_id: uuid.UUID | None
-    matched_on: Literal["model", "node"]
+    matched_on: Literal["model", "node", "technician"]
     matched_id: uuid.UUID
     reward_within_hours: int
     penalty_after_hours: int

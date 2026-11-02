@@ -13,6 +13,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.core.parts_address import PartsAddressOut
 from app.core.base_location import BaseLocationOut
 from app.core.images import ImageUrl
 from app.core.phone import Phone
@@ -38,6 +39,12 @@ TechnicianType = Literal["employee", "freelancer"]
 # ── requests ──────────────────────────────────────────────────────────────────
 
 
+#: The most pincodes one technician may cover. It was 50 when coverage was typed one
+#: code at a time; the geography tree ticks whole districts (often over a hundred
+#: codes), so it is now 500. `technician_pincodes` is one indexed row per code,
+#: so the pool's eligibility test is unaffected. Raise it here, nowhere else.
+MAX_COVERAGE_PINCODES = 500
+
 class TechnicianCreateRequest(BaseModel):
     """Direct onboarding: the manager fills in everything."""
 
@@ -49,7 +56,7 @@ class TechnicianCreateRequest(BaseModel):
     #: Who the technician reports to. Defaults to the creator's own membership.
     managerId: uuid.UUID | None = None
     subcategoryIds: list[uuid.UUID] = Field(min_length=1)
-    pincodes: list[Pincode] = Field(min_length=1, max_length=50)
+    pincodes: list[Pincode] = Field(min_length=1, max_length=MAX_COVERAGE_PINCODES)
     #: Optional, and normally absent: the Add screen does not ask for it. A cap
     #: invented at intake is a number nobody has a basis for yet — the
     #: technician sets their own in the app, and a manager can change it later.
@@ -104,7 +111,7 @@ class InviteCreateRequest(BaseModel):
     #: The coverage the manager assigns. Required: an invite without pincodes
     #: produces a technician nobody can offer a job to, and the app does not
     #: let them fix it — coverage is the manager's to decide.
-    pincodes: list[Pincode] = Field(min_length=1, max_length=50)
+    pincodes: list[Pincode] = Field(min_length=1, max_length=MAX_COVERAGE_PINCODES)
     #: See `TechnicianCreateRequest.dailyJobCap` — normally absent.
     dailyJobCap: DailyJobCap | None = None
     #: See `TechnicianCreateRequest.technicianType` — carried so the invite row
@@ -252,6 +259,9 @@ class TechnicianDetailOut(TechnicianOut):
     # theirs to see). Self-set bases need no approval and no cooldown (R9);
     # the source chip and the "set by" line are the visibility.
     baseLocation: BaseLocationOut | None = None
+    #: Epic 6: where spare parts are delivered, or null when none is saved. Shown to
+    #: callers who can manage this technician.
+    partsAddress: PartsAddressOut | None = None
 
 
 class AppLinkOutcome(AppModel):

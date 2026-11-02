@@ -11,6 +11,7 @@ import { useBrand } from "@/hooks/useBrand";
 import { useApprovalsBadge } from "@/hooks/useApprovals";
 import { useEscalations } from "@/hooks/useEscalations";
 import { useRedemptionsBadge } from "@/hooks/useRedemptions";
+import { useSettlementsBadge } from "@/hooks/useFranchiseSettlements";
 import { useTicketsBadge } from "@/hooks/useTicketsBadge";
 
 function isActive(pathname: string, to: string, match?: string[]) {
@@ -101,6 +102,11 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
     enabled: has("redemptions.pay"),
   });
 
+  // Transfers a franchisee sent that wait for the company to confirm.
+  const { data: settlementCount = 0 } = useSettlementsBadge("staff", {
+    enabled: has("finance.settlements"),
+  });
+
   // E5: how many high-priority tickets nobody has a technician for yet. Same
   // shape again — its own count endpoint, gated on `jobs.view`, the same
   // feature the ticket list itself requires.
@@ -120,7 +126,9 @@ export function Sidebar({ collapsed = false }: { collapsed?: boolean }) {
               ? { ...i, badge: approvalCount }
               : i.to === "/redemptions"
                 ? { ...i, badge: redemptionCount }
-                : i.to === "/tickets"
+                : i.to === "/franchise-settlements"
+                  ? { ...i, badge: settlementCount }
+                  : i.to === "/tickets"
                   ? { ...i, badge: highPriorityCount }
                   : i
         ),

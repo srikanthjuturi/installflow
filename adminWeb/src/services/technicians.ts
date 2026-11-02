@@ -9,7 +9,7 @@
  * call enforces. Two shortlists for one question was one too many.
  */
 
-import { apiDelete, apiGetPage, apiGet, apiPost, apiPut } from "./http";
+import { apiDelete, apiGetPage, apiGet, apiPost, apiPut, apiPutNullable } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type { BaseLocation, BaseLocationInput } from "@/types/allowances";
 import type {
@@ -18,6 +18,7 @@ import type {
   CreateTechnicianInput,
   DistrictBreakdown,
   InviteTechnicianInput,
+  PartsAddressInput,
   Technician,
   TechnicianInvite,
   TechnicianRow,
@@ -42,6 +43,17 @@ export function listTechnicians(
 
 export function getTechnician(id: string): Promise<Technician> {
   return apiGet<Technician>(`/technicians/${id}`);
+}
+
+/** Epic 6 — save the parts delivery address; `null` clears it. */
+export function setPartsAddress({
+  id,
+  body,
+}: {
+  id: string;
+  body: PartsAddressInput | null;
+}): Promise<Technician> {
+  return apiPutNullable<Technician>(`/technicians/${id}/parts-address`, body);
 }
 
 /**

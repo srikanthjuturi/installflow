@@ -24,6 +24,7 @@ import { NoShowDialog } from "@/components/tickets/NoShowDialog";
 import { PartRequestsPanel } from "@/components/tickets/PartRequestsPanel";
 import { PenaltiesPanel } from "@/components/tickets/PenaltiesPanel";
 import { ReversePenaltyDialog } from "@/components/tickets/ReversePenaltyDialog";
+import { TechnicianLiveCard } from "@/components/tickets/TechnicianLiveCard";
 import { Timeline } from "@/components/tickets/Timeline";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
@@ -406,6 +407,11 @@ export default function TicketDetailPage({
                 ) : null
               }
             />
+            {/* Epic 4 - on every surface that renders this page (staff, vendor
+                and the franchise portal's read-only copy): the server scopes
+                the answer, and the card renders nothing unless the job is
+                active. */}
+            <TechnicianLiveCard ticketId={ticket.id} status={ticket.status} />
             {/* Task 13 §5.8 — NOT behind `isOps`: the server nulls both blocks
                 for a vendor and for facility staff and sends them to company
                 staff and the franchise admin, so one rule decides it. A panel

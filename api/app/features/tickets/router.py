@@ -47,6 +47,7 @@ from app.core.deps import (
     require_feature,
     require_min_rank,
     require_staff_principal,
+    require_superadmin,
     require_vendor_principal,
 )
 from app.core.schemas import (
@@ -57,7 +58,8 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
-from app.features.tickets import import_service, service
+from app.features.tickets import import_service, location_service, service
+from app.features.tickets.location_service import LiveLocationOut
 from app.features.tickets.schemas import (
     AssignRequest,
     BonusRequest,
@@ -991,6 +993,38 @@ async def get_ticket_proof(
     Links are signed and expire in minutes; re-read rather than caching them.
     """
     return envelope(await service.list_proof(db, principal, ticket_id))
+
+
+@router.get("/live-locations", response_model=ApiEnvelope[list[LiveLocationOut]])
+async def live_locations(db: Db, principal: CanReadTickets) -> ApiEnvelope[list[LiveLocationOut]]:
+    """Technicians out on a job right now, that this caller may see (Epic 4).
+
+    Scoped exactly like the ticket list: territory for staff, a vendor's own
+    tickets, a franchisee's own. Only active jobs; only the latest point.
+    """
+    return envelope(await location_service.live_list(db, principal))
+
+
+@router.get("/live-locations/all", response_model=ApiEnvelope[list[LiveLocationOut]])
+async def live_locations_all(
+    db: Db,
+    principal: Annotated[Principal, Depends(require_superadmin)],
+    companyId: Annotated[uuid.UUID | None, Query()] = None,
+) -> ApiEnvelope[list[LiveLocationOut]]:
+    """Superadmin: every company's live technicians, optionally one company's."""
+    return envelope(await location_service.live_list_all(db, principal, companyId))
+
+
+@router.get(
+    "/{ticket_id}/technician-location",
+    response_model=ApiEnvelope[LiveLocationOut | None],
+)
+async def technician_location(
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
+) -> ApiEnvelope[LiveLocationOut | None]:
+    """Where the technician on this ticket is now, or null when the job is not
+    active or their phone is not reporting. 404 for a ticket you cannot see."""
+    return envelope(await location_service.for_ticket(db, principal, ticket_id))
 
 
 @router.get("/{ticket_id}", response_model=ApiEnvelope[TicketDetailOut])

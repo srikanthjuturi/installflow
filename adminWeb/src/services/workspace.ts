@@ -26,6 +26,7 @@ import type {
   CreatedTechnician,
   CreateTechnicianInput,
   InviteTechnicianInput,
+  PartsAddressInput,
   UpdateTechnicianInput,
 } from "@/types/technician";
 import type { Redemption, RedemptionDetail } from "@/types/redemption";
@@ -35,6 +36,12 @@ import * as staffTechnicians from "./technicians";
 import * as staffRedemptions from "./redemptions";
 import * as staffLedger from "./ledger";
 import * as franchise from "./franchise";
+import { franchiseRules, staffRules } from "./technicianRules";
+import type {
+  HoldingInput,
+  TechnicianRules,
+  TechnicianRulesInput,
+} from "@/types/technicianRules";
 
 /**
  * The calls a reused screen makes, per workspace. The signatures are the
@@ -60,9 +67,20 @@ export interface WorkspaceApi {
       id: string;
       body: BaseLocationInput;
     }): Promise<BaseLocation>;
+    /** Epic 6 — `body: null` clears the parts address. */
+    setPartsAddress(input: {
+      id: string;
+      body: PartsAddressInput | null;
+    }): Promise<Technician>;
     getUpiChange(id: string): Promise<UpiChange | null>;
     approveUpiChange(id: string): Promise<UpiChange>;
     rejectUpiChange(input: { id: string; reason: string }): Promise<UpiChange>;
+  };
+  /** Epic 3 — one technician's own rules, minimum redeemable and holding. */
+  rules: {
+    get(id: string): Promise<TechnicianRules>;
+    put(input: { id: string; body: TechnicianRulesInput }): Promise<TechnicianRules>;
+    putHolding(input: { id: string; body: HoldingInput }): Promise<TechnicianRules>;
   };
   redemptions: {
     list(params: ListParams): Promise<Page<Redemption>>;
@@ -142,10 +160,12 @@ export const OPS_WORKSPACE: WorkspaceAdapter = {
       cancelInvite: staffTechnicians.cancelInvite,
       sendAppLink: staffTechnicians.sendAppLink,
       setBaseLocation: staffTechnicians.setBaseLocation,
+      setPartsAddress: staffTechnicians.setPartsAddress,
       getUpiChange: staffTechnicians.getUpiChange,
       approveUpiChange: staffTechnicians.approveUpiChange,
       rejectUpiChange: staffTechnicians.rejectUpiChange,
     },
+    rules: staffRules,
     redemptions: {
       list: staffRedemptions.listRedemptions,
       count: staffRedemptions.redemptionsToPayCount,
@@ -190,10 +210,12 @@ export const FRANCHISE_WORKSPACE: WorkspaceAdapter = {
       cancelInvite: franchise.cancelInvite,
       sendAppLink: franchise.sendAppLink,
       setBaseLocation: franchise.setBaseLocation,
+      setPartsAddress: franchise.setPartsAddress,
       getUpiChange: franchise.getUpiChange,
       approveUpiChange: franchise.approveUpiChange,
       rejectUpiChange: franchise.rejectUpiChange,
     },
+    rules: franchiseRules,
     redemptions: {
       list: franchise.listRedemptions,
       count: franchise.redemptionsToPayCount,

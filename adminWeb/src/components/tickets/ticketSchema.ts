@@ -4,6 +4,7 @@ import { SERVICE_TYPES } from "@/components/masters/categorySchema";
 import { REASON_MAX, REASON_MIN } from "@/lib/handOver";
 import { PURCHASE_MODES, SERVICE_LEVELS } from "@/types/ticket";
 import { istToday, manualSlotAllowed, offeredSlots } from "@/utils/slots";
+import { extraChargeIssues } from "./extraCharge";
 
 /**
  * India mobile numbers — ten digits starting 6-9, optionally prefixed `+91`.
@@ -64,6 +65,16 @@ export const ticketSchema = z
       .string()
       .trim()
       .regex(/^\d{6}$/, "Pincode must be 6 digits"),
+    /**
+     * Epic 7: the post-office area within the pincode. Free text — the directory
+     * only suggests — and optional. An empty box is "not given"; the form's
+     * submit sends it only when non-empty, so it never reaches the API as "".
+     */
+    locality: z
+      .string()
+      .trim()
+      .max(80, "Local area can be at most 80 characters")
+      .optional(),
     /**
      * Where the address is, when it was PICKED from the search box rather than
      * typed. Never entered by hand and never shown — `AddressFields` sets the
@@ -131,6 +142,15 @@ export const ticketSchema = z
      * so there is nothing to validate beyond the server's own bound.
      */
     purchasePlatformName: z.string().trim().max(120).optional(),
+
+    /**
+     * Epic 1.4: an optional extra charge, typed in rupees. A PAIR - both or
+     * neither - judged by `extraChargeIssues` in the superRefine below. Plain
+     * strings (not numbers) so the input and output types agree for RHF, the
+     * same reason as `isHighPriority`.
+     */
+    extraAmount: z.string().optional(),
+    extraAmountNote: z.string().optional(),
   })
   .superRefine((v, ctx) => {
     // Mirrors the server rule. Reported on the field itself rather than at the
@@ -210,6 +230,11 @@ export const ticketSchema = z
             : `A ${v.serviceLevelHours}h service level leaves no window today. Choose a longer one, or leave the slot blank.`,
         });
       }
+    }
+
+    // Epic 1.4: both or neither, amount above zero, note within its bound.
+    for (const issue of extraChargeIssues(v.extraAmount, v.extraAmountNote)) {
+      ctx.addIssue({ code: "custom", path: [issue.field], message: issue.message });
     }
 
     // A7: the pair's own invariant — mirrors the server's "a platform only
