@@ -188,7 +188,7 @@
       "looksGood": "Looks good"
     },
     "review": {
-      "title": "Review & submit",
+      "title": "Review your proof",
       "intro": "Tap any capture to see it full screen. Retake anything that isn't clear — after you submit, a blurry serial costs a second visit.",
       "removePhoto": "Remove this photo",
       "barcodeRead": "Read · {{serial}}",
@@ -206,10 +206,11 @@
       "liveAt": "Live photo taken at {{where}}",
       "noLocation": "No location was recorded with the live photo.",
       "retryUploads": "Retry failed uploads",
-      "submit": "Submit & start job",
+      "submit": "Submit proof & start job",
       "waitingUploads": "Waiting for photos to upload…",
       "captureAll": "Capture all four before submitting",
-      "submitFailed": "Couldn't submit"
+      "submitFailed": "Couldn't submit",
+      "submitted": "Proof submitted. Your job is now in progress."
     },
     "closure": {
       "steps": {
@@ -647,6 +648,7 @@
     },
     "bonus": "+{{amount}} bonus",
     "payoutInSalary": "In salary",
+    "highPriority": "High priority",
     "home": {
       "greeting": {
         "morning": "Good morning",

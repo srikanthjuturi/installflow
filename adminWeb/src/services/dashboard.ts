@@ -180,6 +180,9 @@ export async function getDashboard(
       {
         n: String(s.funnel.active),
         label: "Assigned / in progress",
+        // Names what the number holds. Awaiting Customer is NOT in it — that
+        // status is counted under Open tickets only.
+        hint: "Assigned, In Progress, Awaiting Part",
         // THREE statuses, which is why `status` takes a set — the same set the
         // API's `active` tally counts since Task 12 §4.6 (Awaiting Part is a
         // job in hand). Linking to `Assigned` alone would open a list holding
@@ -192,6 +195,7 @@ export async function getDashboard(
       {
         n: String(s.funnel.closedThisWeek),
         label: ranged ? "Closed" : "Closed this week",
+        hint: "Closed, Force-Closed",
         // Both ways a job ends up finished, and the window the server actually
         // measured — `closedWithinDays` is null when a date range is in force,
         // because the range (already riding along in `linkTo`) is what bounds

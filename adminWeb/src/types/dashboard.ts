@@ -41,6 +41,8 @@ export type SlaHrefs = Record<"ok" | "warn" | "breach", string>;
 export interface FunnelStage {
   n: string;
   label: string;
+  /** The statuses the number is made of, when the label alone cannot say. */
+  hint?: string;
   /** The list holding exactly this stage — same rule as `Kpi.to`. */
   to?: string;
 }

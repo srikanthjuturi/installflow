@@ -376,6 +376,10 @@ class VendorOptionOut(AppModel):
     #: APPROVED brands only — the ones a product may be put under. A vendor's
     #: pending brand is not offered until somebody approves it.
     brands: list[VendorBrandOptionOut] = []
+    #: The vendor's ticked intake channels, so a picker can offer only the
+    #: vendors a given entry screen applies to (the Excel importer lists only
+    #: those with Excel on).
+    intakeChannels: list[str] = []
 
 
 class IntakeChannelOut(AppModel):

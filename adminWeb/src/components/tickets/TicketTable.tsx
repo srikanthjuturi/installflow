@@ -8,6 +8,7 @@ import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import { useVendorOptions } from "@/hooks/useVendors";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
 import { CLOSED_TICKET_STATUSES, type SlaState, type Ticket } from "@/types";
@@ -97,7 +98,12 @@ export function TicketTable({
   // (see the hook) — fetched here rather than threaded in as a prop because
   // nothing else on this screen needs the list, and the product form already
   // pays for this exact query.
-  const vendorOptions = useVendorOptions();
+  // A franchise role is deliberately not granted `masters.view`, which gates
+  // this list — asking anyway is a 403 "Not allowed" toast on every open, so
+  // the portal skips the query and drops the Vendor filter below.
+  const { workspace } = useWorkspace();
+  const showVendorFilter = workspace !== "franchise";
+  const vendorOptions = useVendorOptions({ enabled: showVendorFilter });
   const vendorId = params.filters?.vendorId ?? "";
   // A2: the board's own flag. "true" or absent — never "false" — because the
   // control is a single pill, not a three-way choice.
@@ -127,14 +133,17 @@ export function TicketTable({
             </Link>
             {/* A2: the same flag the detail page shows beside the code —
                 no SLA, no routing weight, a flag and nothing else.
-                `--brand-accent` is reserved for exactly this. Hidden once the
-                ticket is actually closed (`CLOSED_TICKET_STATUSES`) — a
-                closed job has nothing left to draw attention to; a cancelled
-                one still does, since it was never actually closed. */}
-            {t.isHighPriority && !CLOSED_TICKET_STATUSES.has(t.status) ? (
+                `--brand-accent` is reserved for exactly this. Always shown —
+                a closed ticket keeps its flag so the history still says it was
+                urgent — but only an unfinished one blinks. */}
+            {t.isHighPriority ? (
               <Badge
                 variant="outline"
-                className="border-brand-accent text-brand-accent animate-blink"
+                className={
+                  CLOSED_TICKET_STATUSES.has(t.status)
+                    ? "border-brand-accent text-brand-accent"
+                    : "border-brand-accent text-brand-accent animate-blink"
+                }
               >
                 High priority
               </Badge>
@@ -302,7 +311,7 @@ export function TicketTable({
         value: params.search ?? "",
         onChange: (v) => narrow({ ...params, search: v }),
       }}
-      filters={filters}
+      filters={showVendorFilter ? filters : filters.filter((f) => f.id !== "vendorId")}
       toolbarActions={toolbarActions}
       // No `defaultSort`: until a header is clicked the order is the server's,
       // and no column here carries the date it sorts on, so an arrow on any of

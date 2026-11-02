@@ -132,6 +132,9 @@ export function SlaPanel({
                   {s.n}
                 </div>
                 <div className="mt-1.5 text-xs text-ink-2">{s.label}</div>
+                {s.hint ? (
+                  <div className="mt-0.5 text-[11px] text-ink-3">{s.hint}</div>
+                ) : null}
               </>
             );
             // Same rule as the KPI tiles: a stage with no honest destination

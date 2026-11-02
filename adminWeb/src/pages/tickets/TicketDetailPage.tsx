@@ -263,15 +263,16 @@ export default function TicketDetailPage({
                       <SlaBadge state={ticket.slaState} />
                       {/* A2: a flag for the board, nothing else — no SLA, no
                           routing weight. `--brand-accent` is reserved for
-                          exactly this: a badge, never a button fill. Hidden
-                          once the ticket is actually closed
-                          (`CLOSED_TICKET_STATUSES`) — a cancelled ticket was
-                          never actually closed, so it keeps showing. */}
-                      {ticket.isHighPriority &&
-                      !CLOSED_TICKET_STATUSES.has(ticket.status) ? (
+                          exactly this: a badge, never a button fill. Always
+                          shown; only an unfinished ticket blinks. */}
+                      {ticket.isHighPriority ? (
                         <Badge
                           variant="outline"
-                          className="border-brand-accent text-brand-accent animate-blink"
+                          className={
+                            CLOSED_TICKET_STATUSES.has(ticket.status)
+                              ? "border-brand-accent text-brand-accent"
+                              : "border-brand-accent text-brand-accent animate-blink"
+                          }
                         >
                           High priority
                         </Badge>
