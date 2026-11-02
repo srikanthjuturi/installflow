@@ -81,7 +81,9 @@ export function TicketImportDialog({
               onValueChange={(next) => setVendorId(next ?? "")}
             >
               <SelectTrigger id="import-vendor">
-                <SelectValue placeholder="Choose a vendor" />
+                <SelectValue placeholder="Choose a vendor">
+                  {() => chosen?.label}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {options.map((o) => (

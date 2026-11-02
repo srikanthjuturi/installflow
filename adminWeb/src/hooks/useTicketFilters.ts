@@ -100,6 +100,13 @@ function fields(p: ListParams): Field[] {
   // "false" written to the URL, since the control is a single pill rather
   // than a three-way choice.
   const highPriority = p.filters?.highPriority === "true" ? "true" : "";
+  // The board's own "Raised from / to" inputs. They are also PASSTHROUGH keys
+  // (a dashboard tile can arrive carrying them), but listing them here is what
+  // lets `setParams` WRITE them when the reader picks a date.
+  const open = p.filters?.open === "true" ? "true" : "";
+  const closed = p.filters?.closed === "true" ? "true" : "";
+  const dateFrom = p.filters?.dateFrom ?? "";
+  const dateTo = p.filters?.dateTo ?? "";
   const page = p.page ?? 1;
   const limit = p.limit ?? DEFAULT_PAGE_SIZE;
   // Empty means "the server's order" — see `isSortDir` above.
@@ -114,6 +121,14 @@ function fields(p: ListParams): Field[] {
       value: highPriority,
       isDefault: highPriority === "",
     },
+    // The Active / Closed tabs' own views. Listed AFTER `status` on purpose: a
+    // status pick clears them (`STATUS_SHAPED`), and a tab that sets both must
+    // have its own value written last. Without these `setParams` never wrote
+    // them, so the tabs filtered nothing and could not highlight.
+    { key: "open", value: open, isDefault: open === "" },
+    { key: "closed", value: closed, isDefault: closed === "" },
+    { key: "dateFrom", value: dateFrom, isDefault: dateFrom === "" },
+    { key: "dateTo", value: dateTo, isDefault: dateTo === "" },
     { key: "page", value: String(page), isDefault: page === 1 },
     {
       key: "limit",

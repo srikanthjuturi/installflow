@@ -1480,8 +1480,18 @@ async def list_tickets(
         # `id` still breaks a tie between two tickets raised in the same
         # instant — an Excel import writes a whole sheet in one transaction —
         # so a row cannot appear on two pages, or on none.
+        #
+        # Only an ACTIVE flagged ticket floats: once it is closed, force-closed
+        # or cancelled it drops into the ordinary newest-first order. Within the
+        # floating group the OLDEST leads, so a newly raised flagged ticket
+        # joins below the ones already waiting rather than jumping the queue.
+        active_flagged = and_(
+            Ticket.is_high_priority.is_(True),
+            Ticket.status.not_in(TERMINAL_STATUSES),
+        )
         stmt = stmt.order_by(
-            Ticket.is_high_priority.desc(),
+            active_flagged.desc(),
+            case((active_flagged, Ticket.created_at)).asc().nulls_last(),
             Ticket.created_at.desc(),
             Ticket.id.desc(),
         )
