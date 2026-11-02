@@ -20,6 +20,7 @@ import {
 } from "@/components/franchise/franchiseNav";
 import { franchiseLanding } from "@/components/franchise/franchiseNav";
 import { useFeatureAccess, useMe } from "@/hooks/useAuth";
+import { SHELL_PATHS } from "@/lib/surface";
 import { landingPath, useSession } from "@/store/session";
 
 /* Route-based code splitting — each page is its own chunk, resolved behind
@@ -46,6 +47,15 @@ const VendorCreditPage = lazy(
 );
 const VendorPaymentPage = lazy(
   () => import("@/pages/vendorCredit/VendorPaymentPage")
+);
+const FranchiseeSettlementsPage = lazy(
+  () => import("@/pages/franchisees/FranchiseeSettlementsPage")
+);
+const LiveTechniciansPage = lazy(
+  () => import("@/pages/tickets/LiveTechniciansPage")
+);
+const TransactionsPage = lazy(
+  () => import("@/pages/transactions/TransactionsPage")
 );
 const PlatformRulesPage = lazy(() => import("@/pages/superadmin/PlatformRulesPage"));
 const PlatformRechargesPage = lazy(
@@ -142,6 +152,9 @@ const FranchiseLanding = lazy(
 const FranchiseUpiChangesPage = lazy(
   () => import("@/pages/franchise/FranchiseUpiChangesPage")
 );
+const FranchiseSettlementsPage = lazy(
+  () => import("@/pages/franchise/FranchiseSettlementsPage")
+);
 const FranchiseStatementsPage = lazy(
   () => import("@/pages/franchise/FranchiseStatementsPage")
 );
@@ -188,7 +201,7 @@ function RequireAuth() {
   const franchise = useSession((s) => s.franchise);
   if (!signedIn) return <Navigate to="/login" replace />;
   // The superadmin console is a separate surface — keep it out of the ops app.
-  if (superadmin) return <Navigate to="/companies" replace />;
+  if (superadmin) return <Navigate to={SHELL_PATHS.superadmin.home} replace />;
   // And so is the vendor portal. Bouncing HERE, before `AppShell` mounts, is
   // what keeps a vendor away from the ungated ops screens: `has(undefined)` is
   // true, so `/`, `/escalations`, `/notifications` and `/account` would all
@@ -204,7 +217,7 @@ function RequirePortal() {
   const superadmin = useSession((s) => s.superadmin);
   const portal = useSession((s) => s.portal);
   if (!signedIn) return <Navigate to="/login" replace />;
-  if (superadmin) return <Navigate to="/companies" replace />;
+  if (superadmin) return <Navigate to={SHELL_PATHS.superadmin.home} replace />;
   if (!portal) return <Navigate to="/" replace />;
   return <Outlet />;
 }
@@ -235,7 +248,7 @@ function RequireFranchise() {
   const superadmin = useSession((s) => s.superadmin);
   const franchise = useSession((s) => s.franchise);
   if (!signedIn) return <Navigate to="/login" replace />;
-  if (superadmin) return <Navigate to="/companies" replace />;
+  if (superadmin) return <Navigate to={SHELL_PATHS.superadmin.home} replace />;
   if (!franchise) return <Navigate to="/" replace />;
   return <Outlet />;
 }
@@ -327,6 +340,11 @@ export const routes: RouteObject[] = [
       {
         element: <SuperadminShell />,
         children: [
+          // The platform's landing page. Not `/transactions`: that path is the
+          // company console's, behind a different guard.
+          { path: "all-transactions", element: <TransactionsPage /> },
+          // Epic 4. Not `/live-technicians`: that path is the company console's.
+          { path: "all-live-technicians", element: <LiveTechniciansPage /> },
           { path: "companies", element: <CompaniesPage /> },
           // The geography every company shares — a platform record, not a
           // tenant one, which is why it lives on this surface and not under
@@ -379,6 +397,13 @@ export const routes: RouteObject[] = [
               // route rides the entry's `match` prefix — the portal guard
               // DENIES anything that table does not name, so a route added
               // here alone would be silently unreachable.
+              // Gated on `vendor.credit` through `portalNav.ts`.
+              { path: "portal/documents", element: <TransactionsPage /> },
+              // Gated on `vendor.credit` through `portalNav.ts`.
+              {
+                path: "portal/live-technicians",
+                element: <LiveTechniciansPage />,
+              },
               { path: "portal/credit", element: <VendorMyCreditPage /> },
               {
                 path: "portal/credit/payments/:id",
@@ -431,6 +456,9 @@ export const routes: RouteObject[] = [
               { path: "franchise/redemptions", element: <RedemptionsPage /> },
               { path: "franchise/redemptions/:id", element: <RedemptionPage /> },
               { path: "franchise/pool", element: <LedgerPage /> },
+              { path: "franchise/settlements", element: <FranchiseSettlementsPage /> },
+              // Gated on `franchise.documents` through `franchiseNav.ts`.
+              { path: "franchise/documents", element: <TransactionsPage /> },
               { path: "franchise/statements", element: <FranchiseStatementsPage /> },
               { path: "franchise/settings", element: <FranchiseAllowancesPage /> },
               // Gated on `parts.handle` / `franchise.facility_users` through
@@ -446,6 +474,11 @@ export const routes: RouteObject[] = [
                 element: <FacilityUsersPage />,
               },
               { path: "franchise/tickets", element: <FranchiseTicketsPage /> },
+              // Gated on `franchise.tickets` through `franchiseNav.ts`.
+              {
+                path: "franchise/live-technicians",
+                element: <LiveTechniciansPage />,
+              },
               // Read-only here: `actions={null}` strips every ops control
               // (the same prop the vendor portal's detail route passes, which
               // the detail page reads as "not the ops surface").
@@ -481,6 +514,8 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <DashboardPage /> },
               { path: "tickets", element: <TicketListPage /> },
+              // Epic 4 - gated on `jobs.view` off the nav table.
+              { path: "live-technicians", element: <LiveTechniciansPage /> },
               // Explicit redirects, not just deleted routes: `/tickets/new`
               // otherwise MATCHES `tickets/:id` with id="new", so an old
               // bookmark renders the detail screen for a ticket called "new"
@@ -556,9 +591,16 @@ export const routes: RouteObject[] = [
                 path: "vendor-credit/payments/:id",
                 element: <VendorPaymentPage />,
               },
+              // Guarded by `finance.transactions` off the nav table.
+              { path: "transactions", element: <TransactionsPage /> },
               // Guarded by `credits.manage` off the nav table, the recharge
               // route through the entry's `match` prefix.
               { path: "credits", element: <CreditsPage /> },
+              // Guarded by `finance.settlements` off the nav table.
+              {
+                path: "franchise-settlements",
+                element: <FranchiseeSettlementsPage />,
+              },
               { path: "credits/recharges/:id", element: <RechargePage /> },
               { path: "notifications", element: <NotificationsPage /> },
               { path: "account", element: <AccountPage /> },

@@ -3,6 +3,8 @@ import {
   FileSpreadsheet,
   FileText,
   ListFilter,
+  LocateFixed,
+  ReceiptText,
   Package,
   Tags,
   UserCog,
@@ -109,6 +111,26 @@ const ALWAYS: PortalNavItem[] = [
     // a vendor-admin act. A sub-user still learns intake is paused, because the
     // banner over the ticket form reads `GET /tickets/intake-status`, which is
     // on `jobs.create`.
+    feature: "vendor.credit",
+  },
+  {
+    label: "Documents",
+    to: "/portal/documents",
+    icon: ReceiptText,
+    // This vendor's invoices, receipts and notes, and its statement. Gated on
+    // `vendor.credit` - seeded to `vendor` and NOT `vendor_user` - because the
+    // server answers 403 to a sub-user (the documents are the vendor's
+    // account, not a person's) and no key of its own exists. The same line
+    // Credit draws; hard rule 8: this hides the link, the server refuses.
+    feature: "vendor.credit",
+  },
+  {
+    label: "Live technicians",
+    to: "/portal/live-technicians",
+    icon: LocateFixed,
+    // Epic 4: technicians out on this vendor's own jobs. Gated like Documents,
+    // on `vendor.credit` (the primary vendor login, not `vendor_user`). Hard
+    // rule 8: this hides the link; the server scopes to the vendor's tickets.
     feature: "vendor.credit",
   },
   { label: "Users", to: "/portal/users", icon: UserCog, feature: "vendor.users" },

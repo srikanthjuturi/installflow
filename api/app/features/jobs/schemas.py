@@ -500,3 +500,22 @@ class ProofImageOut(AppModel):
     url: str | None
     latitude: float | None
     longitude: float | None
+
+
+class LocationIn(AppModel):
+    """One position report from the technician's phone while a job is active."""
+
+    latitude: Latitude
+    longitude: Longitude
+    #: Metres, as the phone's fix reports it.
+    accuracyM: float | None = Field(default=None, ge=0, le=100000)
+    #: The phone's clock when the fix was taken. Never trusted past "now".
+    recordedAt: datetime.datetime | None = None
+
+
+class LocationAck(AppModel):
+    #: False when the report was dropped (too soon after the last one). Not an
+    #: error: the phone just keeps going.
+    accepted: bool
+    #: Seconds the phone should wait before the next report.
+    nextAfterSeconds: int

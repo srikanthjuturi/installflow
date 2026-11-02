@@ -63,6 +63,17 @@ KINDS: dict[str, str] = {
     #: inside the request's own transaction, so a rolled-back request gives its
     #: number back, exactly as a ticket does.
     "spare_part_request": "SPR",
+    #: A transfer between a company and one of its non-home franchisees (Epic 1.2).
+    "franchise_settlement": "FST",
+    #: Numbered internal documents (Epic 1) -- `RGT-INV-0001`. One series per
+    #: document type per company, allocated in the same transaction as the
+    #: ledger change the document describes. No tax fields: internal only.
+    "doc_sales_invoice": "INV",
+    "doc_receipt": "RCT",
+    "doc_payment": "PAY",
+    "doc_debit_note": "DBN",
+    "doc_credit_note": "CRN",
+    "doc_purchase_note": "PUR",
 }
 
 #: Zero-padding for the counter. A MINIMUM width, not a cap: the 10,000th

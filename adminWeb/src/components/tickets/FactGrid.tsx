@@ -40,11 +40,27 @@ export function FactGrid({ ticket }: { ticket: TicketDetail }) {
     ["Expected serial", ticket.serialNumber ?? EMPTY],
     ["Address", `${ticket.address}, ${ticket.city}, ${ticket.state}`],
     ["Pincode", ticket.pincode],
+    // Epic 7: only when the vendor gave one — no empty row for the rest.
+    ...(ticket.locality ? [["Local area", ticket.locality] as [string, string]] : []),
     ["Expected date", formatDate(ticket.expectedDate)],
     ["Created", formatDateTime(ticket.createdAt)],
     ["Confirmed slot", formatSlot(ticket.slotStart, ticket.slotEnd)],
     ["Billed to vendor", ticket.vendorPricePaise === null ? EMPTY : moneyPaise(ticket.vendorPricePaise)],
   ];
+
+  // Epic 1.4: the vendor's optional extra charge. Nothing for null - none was
+  // added, or the caller is a franchise principal and the server withheld it.
+  if (
+    ticket.extraAmountPaise !== null &&
+    ticket.extraAmountPaise !== undefined
+  ) {
+    facts.push([
+      "Extra charge",
+      ticket.extraAmountNote
+        ? `${moneyPaise(ticket.extraAmountPaise)} · ${ticket.extraAmountNote}`
+        : moneyPaise(ticket.extraAmountPaise),
+    ]);
+  }
 
   if (ticket.technicianPayoutPaise !== null) {
     facts.push(["Technician payout", moneyPaise(ticket.technicianPayoutPaise)]);

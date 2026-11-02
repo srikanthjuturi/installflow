@@ -1,7 +1,7 @@
 import * as React from "react";
+import { GeoTree } from "./GeoTree";
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { MultiSelect } from "@/components/ui/multi-select";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import {
   Select,
@@ -40,9 +40,6 @@ import { useCoverageOptions } from "@/hooks/useTechnicians";
  * hint copy (§5.9). `boundedByStates` is false there by construction: no
  * portal role covers states.
  */
-/** How many rows a limited picker reads on its own looking for the franchisee's. */
-const LIMITED_SCAN_CAP = 1000;
-
 export function CoverageFields({
   regionId,
   pincodes,
@@ -75,21 +72,26 @@ export function CoverageFields({
    * pages; the server still judges every code, and the transfer preview names
    * any it refuses. Absent everywhere else.
    */
-  limitTo?: { franchisee: string; matches: (code: string) => boolean };
+  limitTo?: {
+    franchisee: string;
+    matches: (code: string) => boolean;
+    /**
+     * Epic 2 — the franchisee's id, so the tree is bounded to it by the
+     * server. Optional: `matches` alone no longer narrows anything now that
+     * the picker is a tree, and without an id the tree offers what the caller
+     * may assign.
+     */
+    franchiseeId?: string;
+  };
   /** Layout is the caller's business — side by side, stacked, whatever fits. */
   className?: string;
 }) {
-  const [query, setQuery] = React.useState("");
-  // One hook, six answers (§5.4) — this component no longer knows which
-  // endpoints stand behind it.
-  const {
-    regions,
-    loadingRegions,
-    search,
-    boundedByStates,
-    ownStates,
-    franchisee,
-  } = useCoverageOptions(query, regionId);
+  // Regions, the franchisee's name and the area-manager bound still come from
+  // the workspace adapter. The pincode search it also opens is not used any
+  // more (the tree reads /geo/tree), so it is asked with no region, which
+  // leaves it disabled.
+  const { regions, loadingRegions, boundedByStates, ownStates, franchisee } =
+    useCoverageOptions("", "");
 
   // One region on offer is not a choice — fill it in (hard rule 10). It also
   // unblocks the pincode field, which is otherwise waiting on an answer the
@@ -100,53 +102,6 @@ export function CoverageFields({
     onRegionId
   );
 
-  const stateNames = React.useMemo(
-    () => new Set(ownStates.map((s) => s.name)),
-    [ownStates]
-  );
-
-  const options = React.useMemo(
-    () =>
-      (boundedByStates
-        ? search.rows.filter((p) => stateNames.has(p.stateName))
-        : search.rows
-      )
-        .filter((p) => !limitTo || limitTo.matches(p.code))
-        .map((p) => ({
-        value: p.code,
-        // The district is what makes a six-digit number recognisable.
-        label: p.districts.length ? `${p.code} — ${p.districts[0]}` : p.code,
-      })),
-    [boundedByStates, search.rows, stateNames, limitTo]
-  );
-
-  // A franchisee's area is a thin slice of a region's pages, so a filtered list
-  // can start out empty while the next page still holds it. Keep reading — up
-  // to a bound, so a region with none of them cannot loop for ever — until
-  // there is something to choose from. Typing a code narrows it on the server.
-  const scanned = search.rows.length;
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = search;
-  React.useEffect(() => {
-    if (
-      limitTo &&
-      regionId &&
-      options.length < 10 &&
-      hasNextPage &&
-      !isFetchingNextPage &&
-      scanned < LIMITED_SCAN_CAP
-    ) {
-      void fetchNextPage();
-    }
-  }, [
-    limitTo,
-    regionId,
-    options.length,
-    hasNextPage,
-    isFetchingNextPage,
-    scanned,
-    fetchNextPage,
-  ]);
-
   const regionName =
     regions.find((r) => r.id === regionId)?.name ?? "this region";
 
@@ -155,7 +110,6 @@ export function CoverageFields({
   React.useEffect(() => {
     if (previous.current && previous.current !== regionId) {
       onPincodes([]);
-      setQuery("");
     }
     previous.current = regionId;
   }, [regionId, onPincodes]);
@@ -204,38 +158,23 @@ export function CoverageFields({
         ) : null}
       </Field>
 
-      <Field data-invalid={pincodeError ? true : undefined}>
+      <Field
+        data-invalid={pincodeError ? true : undefined}
+        className="col-span-full"
+      >
         <FieldLabel htmlFor="coverage-pincodes" required>
           Service pincodes
         </FieldLabel>
-        <MultiSelect
+        {/* Epic 2 — a state → district → pincode tree. The saved value is still
+            the flat list of codes; the server bounds what it offers. */}
+        <GeoTree
           id="coverage-pincodes"
+          regionId={regionId}
           value={pincodes}
-          onValueChange={onPincodes}
-          options={options}
-          onSearch={setQuery}
-          loading={search.isLoading}
-          onLoadMore={search.fetchNextPage}
-          hasMore={search.hasNextPage}
-          loadingMore={search.isFetchingNextPage}
-          disabled={!regionId}
-          emptyMessage={
-            limitTo
-              ? `No pincode ${limitTo.franchisee} owns matches that here. Type a code to search.`
-              : query
-              ? // §5.9 — the portal's empty names the franchisee, since every
-                // pincode in this list is already one its franchisee runs; a
-                // miss means the code is outside their whole coverage.
-                franchisee
-                ? `No pincode ${franchisee} runs matches that`
-                : "No pincode matches that in this region"
-              : "Type to search pincodes"
-          }
-          placeholder={
-            regionId ? "Search a pincode or a place" : "Choose a region first"
-          }
-          aria-invalid={pincodeError ? true : undefined}
-          aria-describedby={
+          onChange={onPincodes}
+          franchiseeId={limitTo?.franchiseeId}
+          invalid={Boolean(pincodeError)}
+          describedBy={
             pincodeError ? "coverage-pincodes-error" : "coverage-pincodes-hint"
           }
         />
@@ -252,14 +191,14 @@ export function CoverageFields({
             {!regionId
               ? "Pick a region, then search its pincodes here."
               : limitTo
-                ? `Pincodes ${limitTo.franchisee} owns, in ${regionName}. Search by code or district.`
+                ? `Pincodes ${limitTo.franchisee} owns, in ${regionName}. Tick a state or district, or open one to pick single pincodes.`
                 : boundedByStates
                 ? `Pincodes in ${regionName}, inside ${ownStates
                     .map((s) => s.name)
                     .join(", ")}.`
                 : franchisee
-                  ? `Pincodes ${franchisee} runs, in ${regionName}. Search by code or district.`
-                  : `Pincodes in ${regionName}. Search by code or district.`}
+                  ? `Pincodes ${franchisee} runs, in ${regionName}. Tick a state or district, or open one to pick single pincodes.`
+                  : `Pincodes in ${regionName}. Tick a state or district, or open one to pick single pincodes.`}
             {regionId && hasOtherFranchisees
               ? " Pincodes another franchisee owns are refused."
               : null}

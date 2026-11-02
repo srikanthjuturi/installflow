@@ -310,6 +310,17 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
   return unwrap(await request<T>("PUT", path, body ?? {}));
 }
 
+/**
+ * A PUT whose body may be a JSON `null` — `apiPut` turns that into `{}`, which
+ * for "clear this" endpoints says something else entirely.
+ */
+export async function apiPutNullable<T>(
+  path: string,
+  body: unknown | null
+): Promise<T> {
+  return unwrap(await request<T>("PUT", path, body));
+}
+
 export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return unwrap(await request<T>("PATCH", path, body ?? {}));
 }

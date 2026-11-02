@@ -10,6 +10,7 @@ import { Button, Text } from '@/components/ui';
 import { AllowancesCard } from '@/features/jobs/components/AllowancesCard';
 import { jobSla, jobSlot } from '@/features/jobs/format';
 import { useJob } from '@/features/jobs/hooks/useJobs';
+import { useShareLocation } from '@/features/jobs/hooks/useShareLocation';
 import { jobActions } from '@/features/jobs/stage';
 import { PartRequestsCard } from '@/features/parts/components/PartRequestsCard';
 import { useJobParts } from '@/features/parts/hooks/useJobParts';
@@ -42,6 +43,9 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
   const { data: job, isPending, isError, refetch } = useJob(jobId);
 
   const complete = useCompleteJob(jobId);
+  // Epic 4: foreground-only live location while the job is active. Never gates
+  // an action; the indicator below is the only thing it draws.
+  const share = useShareLocation(job);
   // This is the screen a technician WAITS on — for the customer to pick a
   // time, or to confirm the work. The socket refreshes it when it can; a pull
   // is the answer when they are not sure it has.
@@ -204,6 +208,54 @@ export function JobDetailScreen({ jobId }: JobDetailScreenProps) {
           </View>
         ) : (
           <>
+            {share === 'sharing' ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  backgroundColor: color.statusCompleted.bg,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <Icon name="geo" size={16} color={color.statusCompleted.fg} strokeWidth={1.7} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontFamily: 'Roboto_400Regular',
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    color: color.statusCompleted.fg,
+                  }}
+                >
+                  {t('jobs.detail.sharingLocation')}
+                </Text>
+              </View>
+            ) : share === 'denied' ? (
+              <View style={{ marginBottom: 14, gap: 8 }}>
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_400Regular',
+                    fontSize: 12.5,
+                    lineHeight: 18,
+                    color: color.textSecondary,
+                  }}
+                >
+                  {t('jobs.detail.locationOff')}
+                </Text>
+                <Button
+                  label={t('jobs.detail.openSettings')}
+                  variant="outline"
+                  onPress={() => {
+                    Linking.openSettings().catch(() => undefined);
+                  }}
+                />
+              </View>
+            ) : null}
+
             <Card>
               <CardLabel>{t('jobs.detail.customer')}</CardLabel>
 

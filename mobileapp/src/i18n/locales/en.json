@@ -250,6 +250,7 @@
   },
   "earnings": {
     "title": "Earnings",
+    "onHold": "On hold {{amount}}",
     "period": {
       "day": "Today",
       "week": "This week",
@@ -308,7 +309,10 @@
       "addUpi": "Add UPI ID",
       "to": "To {{upiId}}",
       "redeem": "Redeem",
-      "nothing": "Nothing to redeem yet"
+      "nothing": "Nothing to redeem yet",
+      "onHold": "{{amount}} on hold",
+      "onHoldWhy": "Held back by your manager or franchise. It stays yours and will be released later.",
+      "belowMinimum": "You can redeem once {{amount}} is available"
     },
     "confirm": {
       "title": "Redeem {{amount}}?",
@@ -490,6 +494,37 @@
     "home": {
       "title": "Set your base location",
       "body": "Until you do, jobs pay no travel allowance."
+    }
+  },
+  "partsAddress": {
+    "title": "Parts delivery address",
+    "intro": "Tell us where spare parts should be sent to you.",
+    "baseHint": "Leave this empty to use your base area, pincode {{pincode}}.",
+    "baseHintUnknown": "Leave this empty to use your base area.",
+    "line": "Address",
+    "linePlaceholder": "House or shop number, street, area",
+    "city": "City",
+    "pincode": "Pincode",
+    "landmark": "Landmark (optional)",
+    "phone": "Contact number (optional)",
+    "phonePlaceholder": "Blank uses your own number",
+    "save": "Save address",
+    "remove": "Remove address",
+    "saved": "Address saved",
+    "removed": "Address removed",
+    "loadFailed": "Couldn't load your address. Try again.",
+    "saveFailed": "Couldn't save your address. Try again.",
+    "removeFailed": "Couldn't remove your address. Try again.",
+    "sendTo": "Parts will be sent to: {{address}}",
+    "sendToBase": "No address saved. Parts will be sent to your base area.",
+    "edit": "Edit address",
+    "errors": {
+      "line": "Enter your address (3 to 240 characters).",
+      "city": "Enter your city.",
+      "pincode": "Enter a 6-digit pincode.",
+      "landmark": "Keep the landmark under 120 characters.",
+      "phone": "Enter a 10-digit mobile number, or leave it blank.",
+      "unknownPincode": "We don't know that pincode. Check it and try again."
     }
   },
   "profile": {
@@ -703,6 +738,9 @@
       "escalated": "This job has gone to your Area Service Manager. They will be in touch — there is nothing to do here.",
       "linkFailedNamed": "Work submitted, but we could not message {{name}}. Ask them to confirm before you leave, or tell your manager.",
       "linkFailed": "Work submitted, but we could not message the customer. Ask them to confirm before you leave, or tell your manager.",
+      "sharingLocation": "Sharing your location with the company while this job is active",
+      "locationOff": "The company can't see where you are. Turn on location for this app to share it while a job is active.",
+      "openSettings": "Open settings",
       "linkSentNamed": "Work submitted. {{name}} has been sent a link to confirm it — the job closes when they do.",
       "linkSent": "Work submitted. The customer has been sent a link to confirm it — the job closes when they do.",
       "complete": "Complete the job",
@@ -858,6 +896,7 @@
       "NOTHING_TO_REDEEM": "There is nothing to redeem yet.",
       "REDEMPTION_OPEN": "You already have a redemption open. It has to be paid and confirmed, or declined, before you can ask for another.",
       "EMPLOYEE_CANNOT_REDEEM": "Employees are paid through salary, so there is nothing to redeem.",
+      "BELOW_MIN_REDEEMABLE": "You can redeem once more money is available.",
       "NOT_CLAIMED": "Nobody has marked this as paid yet, so there is nothing to confirm.",
       "ALREADY_CONFIRMED": "You have already confirmed you received this.",
       "UPI_ALREADY_SET": "You already have a UPI ID. To change it, send a change request.",
@@ -872,7 +911,8 @@
       "PINCODE_HAS_NO_LOCATION": "We don't have a map location for that pincode yet. Drop a pin on the map or use your current location instead.",
       "BASE_OUTSIDE_INDIA": "That location is outside India. Check the pin and try again.",
       "NO_FACILITY": "Your franchise has no parts store set up yet, so a part can't be requested here. Ask your franchise admin.",
-      "PART_REQUEST_NOT_IN_PROGRESS": "You can ask for a spare part only while the job is in progress."
+      "PART_REQUEST_NOT_IN_PROGRESS": "You can ask for a spare part only while the job is in progress.",
+      "UNKNOWN_PINCODE": "That pincode isn't recognised. Check it and try again."
     }
   },
   "server": {

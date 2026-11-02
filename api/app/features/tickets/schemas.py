@@ -57,6 +57,9 @@ class TicketCreateRequest(BaseModel):
     #: A6: a second number for the same customer — same E.164 shape as
     #: `customerPhone`, reusing its validator. Optional: most tickets carry one.
     customerAltPhone: OptionalPhone = None
+    #: Epic 7: the locality / post-office area inside the pincode. Optional and
+    #: free text - the directory is a suggestion list, so anything may be typed.
+    locality: Annotated[str | None, Field(default=None, max_length=80)] = None
     address: Address
     city: CityState
     state: CityState
@@ -85,6 +88,23 @@ class TicketCreateRequest(BaseModel):
     #: A2: a manager or vendor flagging this job for attention on the board.
     #: No SLA, no routing, no eligibility consequence — a flag, nothing else.
     isHighPriority: bool = False
+    #: Epic 1.4: an optional extra charge the vendor adds at raise, with what it
+    #: is for. Both or neither - an amount nobody can explain is refused here and
+    #: by a CHECK. Whole rupees' worth of paise up to a lakh: a bigger number is
+    #: a typo, and it reserves the vendor's credit line as soon as it is raised.
+    extraAmountPaise: Annotated[int | None, Field(default=None, gt=0, le=10_000_000)] = None
+    extraAmountNote: Annotated[str | None, Field(default=None, max_length=120)] = None
+
+    @model_validator(mode="after")
+    def _extra_is_a_pair(self):
+        note = (self.extraAmountNote or "").strip() or None
+        if self.extraAmountPaise is None:
+            if note:
+                raise ValueError("Enter the extra amount, or clear what it is for")
+        elif note is None:
+            raise ValueError("Say what the extra amount is for")
+        self.extraAmountNote = note
+        return self
 
     #: A7: where the unit was bought. `offline` is the default — honest for
     #: every channel that cannot ask, and for a vendor that does not track it.
@@ -241,6 +261,8 @@ class TicketOut(AppModel):
     #: A6: the second number, when one was given. Masked on the same terms as
     #: `customerPhone` until a technician accepts.
     customerAltPhone: str | None = None
+    #: Epic 7: the locality inside the pincode, or null.
+    locality: str | None = None
     address: str
     city: str
     state: str
@@ -301,6 +323,11 @@ class TicketOut(AppModel):
     #: neither party sees the other's figure — a franchisee admin can read a
     #: ticket, but not what the company bills for it. Staff get the number.
     vendorPricePaise: int | None = None
+    #: Epic 1.4: the vendor's optional extra charge and what it is for. Visible to
+    #: the vendor and to company staff; **NULL for a franchise principal**, for
+    #: the reason `vendorPricePaise` is.
+    extraAmountPaise: int | None = None
+    extraAmountNote: str | None = None
 
     #: Which franchisee runs this job — the stamped `tickets.franchisee_id`, the
     #: one fact a staff reader and a franchise reader both want on the card.
@@ -487,7 +514,7 @@ class TicketSpeedOut(AppModel):
     amounts are ticket data for people who reschedule and force-close.
     """
 
-    matchedOn: Literal["model", "node"]
+    matchedOn: Literal["model", "node", "technician"]
     #: The CURRENT name of the node or model the terms named — "—" when the
     #: target is gone outright, which is the display's loss and nothing more.
     matchedName: str

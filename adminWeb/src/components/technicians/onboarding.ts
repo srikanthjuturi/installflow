@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_COVERAGE_PINCODES } from "./geoTreeMath";
 import { isE164, toE164 } from "@/utils/phone";
 import type { InviteStatus, OnboardingMode } from "@/types/technician";
 
@@ -97,7 +98,13 @@ export const inviteSchema = z.object({
    * only displays it. An invite with no pincodes produces a technician nobody
    * can offer a job to, and nothing on their phone would let them fix it.
    */
-  pincodes: z.array(z.string()).min(1, "Add at least one pincode"),
+  pincodes: z
+    .array(z.string())
+    .min(1, "Add at least one pincode")
+    .max(
+      MAX_COVERAGE_PINCODES,
+      `A technician can cover up to ${MAX_COVERAGE_PINCODES} pincodes. Untick some to continue.`
+    ),
   /**
    * Task 08. The WORD is the form's value — the same contract the type field
    * uses on the Add form — and the wire takes the lowercase, converted at

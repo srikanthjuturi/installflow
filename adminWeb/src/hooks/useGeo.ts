@@ -7,11 +7,15 @@ import {
 } from "@tanstack/react-query";
 import {
   createDistrict,
+  expandCoverage,
+  getCoverageTree,
+  getDistrictPincodes,
   createPincode,
   importGeography,
   listDistricts,
   listGeoRegions,
   listPincodes,
+  listPostOffices,
   listStates,
   lookupPincode,
   setPincodeActive,
@@ -19,7 +23,7 @@ import {
   type PincodeFilters,
 } from "@/services/geo";
 import type { ListParams } from "@/types/api";
-import type { GeoState, PincodeUpdate } from "@/types/geo";
+import type { CoverageExpandBody, GeoState, PincodeUpdate } from "@/types/geo";
 
 export const geoKeys = {
   all: ["geo"] as const,
@@ -32,6 +36,11 @@ export const geoKeys = {
   pincodes: (params: ListParams, filters: object) =>
     ["geo", "pincodes", params, filters] as const,
   pincode: (code: string) => ["geo", "pincode", code] as const,
+  postOffices: (code: string) => ["geo", "post-offices", code] as const,
+  tree: (regionId: string, franchiseeId: string, selected: string) =>
+    ["geo", "tree", regionId, franchiseeId, selected] as const,
+  districtPincodes: (districtId: string, franchiseeId: string) =>
+    ["geo", "district-pincodes", districtId, franchiseeId] as const,
 };
 
 /**
@@ -164,6 +173,27 @@ export function usePincodeLookup(code: string) {
   });
 }
 
+/**
+ * The post offices of a pincode — suggestions for the "Local area" box.
+ *
+ * `enabled` is the caller's gate: `AddressFields` passes true only once the
+ * master has accepted the code, so nothing is asked for a half-typed or unknown
+ * one. The directory is static, so it is cached for the session and a failure
+ * is not retried — the box simply stays a plain text box, which is a complete
+ * answer. The global handler still toasts it (hard rule 9).
+ */
+export function usePostOffices(pincode: string, enabled = true) {
+  const clean = pincode.trim();
+  return useQuery({
+    queryKey: geoKeys.postOffices(clean),
+    queryFn: () => listPostOffices(clean),
+    enabled: enabled && PINCODE_RE.test(clean),
+    staleTime: 24 * 60 * 60_000,
+    retry: false,
+    meta: { errorTitle: "Couldn't load local areas" },
+  });
+}
+
 /** How many pincodes one page of the picker holds. */
 const PINCODE_PAGE = 25;
 
@@ -279,5 +309,50 @@ export function useCreateDistrict() {
     meta: { errorTitle: "Couldn't add the district" },
     mutationFn: createDistrict,
     onSuccess: () => invalidateGeography(queryClient),
+  });
+}
+
+/**
+ * The coverage tree for one region. `selectedKey` is the comma-joined, sorted
+ * selection the caller already debounced — key and request are one string, so
+ * they cannot disagree. The previous answer stays on screen while a changed
+ * selection is re-counted, so ticks do not flicker.
+ */
+export function useCoverageTree(
+  regionId: string,
+  selectedKey: string,
+  franchiseeId?: string
+) {
+  return useQuery({
+    queryKey: geoKeys.tree(regionId, franchiseeId ?? "", selectedKey),
+    queryFn: () =>
+      getCoverageTree({
+        regionId,
+        selected: selectedKey ? selectedKey.split(",") : [],
+        ...(franchiseeId ? { franchiseeId } : {}),
+      }),
+    enabled: Boolean(regionId),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** A district's pincodes — only asked for once the district is opened. */
+export function useDistrictPincodes(
+  districtId: string,
+  enabled: boolean,
+  franchiseeId?: string
+) {
+  return useQuery({
+    queryKey: geoKeys.districtPincodes(districtId, franchiseeId ?? ""),
+    queryFn: () => getDistrictPincodes(districtId, franchiseeId),
+    enabled: enabled && Boolean(districtId),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Imperative: tick a whole state or district. */
+export function useExpandCoverage() {
+  return useMutation({
+    mutationFn: (body: CoverageExpandBody) => expandCoverage(body),
   });
 }

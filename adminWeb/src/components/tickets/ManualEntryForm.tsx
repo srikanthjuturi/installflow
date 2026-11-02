@@ -11,7 +11,7 @@ import type { Control, UseFormSetValue } from "react-hook-form";
 import { Controller, useController, useForm, useWatch } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Info } from "lucide-react";
+import { ChevronDown, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,6 +49,7 @@ import {
 } from "@/utils/slots";
 import type { VendorOption } from "@/types/vendor";
 import type { CreateTicketInput, PurchaseMode } from "@/types/ticket";
+import { EXTRA_NOTE_MAX, extraChargePayload } from "./extraCharge";
 import { nodeIdPath, type ProductNode, type SerialMatch } from "@/types/product";
 import {
   PURCHASE_MODE_OPTIONS,
@@ -137,6 +138,9 @@ export function ManualEntryForm({
       modelId: "",
       serviceType: "Installation + Demo",
       isHighPriority: false,
+      // Epic 1.4 - empty means no extra charge.
+      extraAmount: "",
+      extraAmountNote: "",
       purchaseMode: "offline",
       purchasePlatformId: "",
       // E1 — read two ways depending on `purchaseMode`: the offline free-text
@@ -152,6 +156,7 @@ export function ManualEntryForm({
       city: "",
       state: "",
       pincode: "",
+      locality: "",
       latitude: null,
       longitude: null,
       expectedDate: "",
@@ -272,6 +277,7 @@ export function ManualEntryForm({
   const city = useWatch({ control, name: "city" });
   const state = useWatch({ control, name: "state" });
   const pincode = useWatch({ control, name: "pincode" });
+  const locality = useWatch({ control, name: "locality" });
   const latitude = useWatch({ control, name: "latitude" });
   const longitude = useWatch({ control, name: "longitude" });
   const addressValue = useMemo<AddressValue>(
@@ -709,6 +715,8 @@ export function ManualEntryForm({
       city: values.city,
       state: values.state,
       pincode: values.pincode,
+      // Epic 7 — only when something was typed, never an empty string.
+      ...(values.locality?.trim() ? { locality: values.locality.trim() } : {}),
       // Null when the address was typed. Sending them buys the distance check
       // on the technician's site photo; not sending them leaves this ticket on
       // the pincode rule, which is a complete ticket either way.
@@ -722,6 +730,8 @@ export function ManualEntryForm({
       slotEnd: values.slotEnd || null,
       // A2.
       isHighPriority: values.isHighPriority,
+      // Epic 1.4 - both or neither, already validated as a pair.
+      ...extraChargePayload(values.extraAmount, values.extraAmountNote),
       // A7/E1 — `purchasePlatformId` travels only with "online", and only
       // when a REAL platform (not the "Others" sentinel, which never
       // reaches RHF in the first place) was chosen. The clearing effect
@@ -1280,6 +1290,12 @@ export function ManualEntryForm({
               onChange={setAddress}
               onStatusChange={setAddressStatus}
               addressSearch={addressSearch}
+              localityField={{
+                value: locality ?? "",
+                onChange: (next) =>
+                  write("locality", next, { shouldDirty: true }),
+                error: err("locality"),
+              }}
               grid="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
               addressClassName="sm:col-span-2 xl:col-span-4"
               /* No pincode placeholder: it is a search over the geography
@@ -1381,6 +1397,12 @@ export function ManualEntryForm({
               </div>
             </Field>
           </FormSection>
+
+          <ExtraChargeSection
+            register={register}
+            err={err}
+            hasError={Boolean(err("extraAmount") || err("extraAmountNote"))}
+          />
 
           <FormSection legend="Slot (optional)">
             <SlotPicker
@@ -1710,6 +1732,75 @@ function fromDatetimeLocalValue(value: string): string {
   if (!value) return "";
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+/**
+ * Epic 1.4 - an optional extra charge, collapsed until asked for.
+ *
+ * A plain disclosure button rather than a section that is always open: most
+ * tickets carry none, and a pair of boxes nobody fills would be read as
+ * required. It opens by itself when a pair fails validation, so an error is
+ * never hidden behind a closed panel. Both fields stay registered while
+ * closed, so what was typed survives collapsing it.
+ */
+function ExtraChargeSection({
+  register,
+  err,
+  hasError,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  register: any;
+  err: (name: keyof TicketFormValues) => string | undefined;
+  hasError: boolean;
+}) {
+  const [opened, setOpened] = useState(false);
+  const open = opened || hasError;
+  return (
+    <div className="grid gap-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="extra-charge-fields"
+        onClick={() => setOpened((o) => !o)}
+        className="flex w-fit items-center gap-1.5 text-[13px] font-semibold text-brand-500 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronDown
+          className={cn("size-4 transition-transform", open ? "" : "-rotate-90")}
+          aria-hidden
+        />
+        Extra charge (optional)
+      </button>
+      <div id="extra-charge-fields" hidden={!open} className="grid gap-3">
+        <div className="grid gap-3">
+          <FieldDescription>
+            Billed to your account when the job closes, as a debit note. It
+            counts against your credit line from the moment the ticket is
+            raised.
+          </FieldDescription>
+          <FieldGrid className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              name="extraAmount"
+              label="Amount (₹)"
+              placeholder="e.g. 450"
+              inputMode="decimal"
+              autoComplete="off"
+              register={register}
+              error={err("extraAmount")}
+            />
+            <TextField
+              name="extraAmountNote"
+              label="What is it for"
+              placeholder="e.g. Wall-mount kit"
+              maxLength={EXTRA_NOTE_MAX}
+              autoComplete="off"
+              register={register}
+              error={err("extraAmountNote")}
+            />
+          </FieldGrid>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TextField({

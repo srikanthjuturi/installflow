@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { Button, Text } from '@/components/ui';
 import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
+import { cardState } from '@/features/redeem/cardState';
 import type { Redeemable } from '@/features/redeem/api/redeem';
 import { useRedeemable } from '@/features/redeem/hooks/useRedeem';
 import { color } from '@/theme/semantic';
@@ -188,6 +189,25 @@ function Body({ data, employee }: { data: Redeemable; employee: boolean }) {
   // Not faked to ₹0 when it is below: a technician who owes a penalty should
   // see that they do, not a zero that hides why nothing can be redeemed.
   const shown = data.redeemablePaise > 0 ? data.redeemablePaise : data.availablePaise;
+  const state = cardState(data);
+  const hold = state.showOnHold ? (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={{ fontFamily: 'Roboto_700Bold', fontSize: 13, color: color.textPrimary }}>
+        {t('redeem.card.onHold', { amount: formatPaise(state.onHoldPaise) })}
+      </Text>
+      <Text
+        style={{
+          fontFamily: 'Roboto_400Regular',
+          fontSize: 12.5,
+          lineHeight: 18,
+          color: color.textSecondary,
+          marginTop: 2,
+        }}
+      >
+        {t('redeem.card.onHoldWhy')}
+      </Text>
+    </View>
+  ) : null;
 
   if (!data.upiId) {
     return (
@@ -204,6 +224,7 @@ function Body({ data, employee }: { data: Redeemable; employee: boolean }) {
         >
           {t('redeem.card.addUpiPrompt')}
         </Text>
+        {hold}
         <Button
           label={t('redeem.card.addUpi')}
           variant="secondary"
@@ -228,10 +249,15 @@ function Body({ data, employee }: { data: Redeemable; employee: boolean }) {
       >
         {t('redeem.card.to', { upiId: data.upiId })}
       </Text>
+      {hold}
       <Button
         label={t('redeem.card.redeem')}
-        disabled={data.redeemablePaise <= 0}
-        disabledHint={t('redeem.card.nothing')}
+        disabled={!state.canRedeem}
+        disabledHint={
+          state.hintKey === 'redeem.card.belowMinimum'
+            ? t('redeem.card.belowMinimum', { amount: formatPaise(state.minPaise) })
+            : t('redeem.card.nothing')
+        }
         onPress={() => router.push('/redeem-confirm')}
       />
     </>

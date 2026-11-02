@@ -21,7 +21,8 @@ from app.features.tickets.sweeps import (
     sweep_slot_reminders,
     sweep_unaccepted,
 )
-from app.features.technicians.sweeps import sweep_expired_invites
+from app.features.technicians.sweeps import sweep_expired_invites, sweep_stale_locations
+from app.features.transactions.emailing import sweep_document_emails
 from app.features.onboarding.landing import router as invite_landing_router
 from app.features.tickets.feedback_page import router as feedback_page_router
 from app.features.tickets.slot_page import router as slot_page_router
@@ -118,6 +119,10 @@ async def lifespan(app: FastAPI):
     # Same reason it is registered here — the sweep is a technicians-domain
     # query and core must not import a slice.
     ticker.register("invite-expiry", sweep_expired_invites)
+    # The numbered documents, emailed to each company's Admins in batches (Epic 1.7).
+    ticker.register("document-email", sweep_document_emails)
+    # Live-location rows for jobs that ended: delete the personal data (Epic 4).
+    ticker.register("location-cleanup", sweep_stale_locations)
     await ticker.start()
     yield
     await ticker.stop()

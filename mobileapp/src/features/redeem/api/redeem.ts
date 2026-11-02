@@ -90,6 +90,14 @@ export interface Redeemable {
   availablePaise: number;
   /** What a request made now would be for. Zero means "nothing to redeem". */
   redeemablePaise: number;
+  /**
+   * Money a manager is holding back. Still the technician's, but it cannot be
+   * asked for yet; `redeemablePaise` is already net of it. Absent from an
+   * older server - read as 0.
+   */
+  holdingPaise?: number;
+  /** The least a request may be for; 0 or absent means no minimum. */
+  minRedeemablePaise?: number;
   upiId: string | null;
   /** "National Head" or "Admin" — who will be asked to pay it. */
   payerLabel: string;

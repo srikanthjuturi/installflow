@@ -77,6 +77,21 @@ const STATIC: Record<string, Meta> = {
     title: "Vendor credit",
     subtitle: "Limits · payments · limit requests",
   },
+  /* Net-new (Epic 1.2) — money between the company and its franchisees. */
+  "/franchise-settlements": {
+    title: "Franchise settlements",
+    subtitle: "Transfers to and from franchisees · confirmations",
+  },
+  /* Net-new (Epic 4) - where technicians out on a job are right now. */
+  "/live-technicians": {
+    title: "Live technicians",
+    subtitle: "Where technicians on a job are right now",
+  },
+  /* Net-new (Epic 1.5 - 1.7) - numbered documents, statements, email. */
+  "/transactions": {
+    title: "Transactions",
+    subtitle: "Numbered documents · statements · email",
+  },
   /* Net-new — no prototype has credits. Awaiting sign-off. */
   "/credits": {
     title: "Credits",

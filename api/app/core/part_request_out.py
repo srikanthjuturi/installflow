@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.parts_address import DeliveryAddressOut, delivery_out
 from app.core.product_label import model_label, vendors_with_several_brands
 from app.core.schemas import AppModel
 from app.core.spare_parts import allowed_actions
@@ -77,6 +78,10 @@ class PartRequestOut(AppModel):
     returnNote: str | None
     #: Signed per read, 15 minutes; None when there is no photo or no storage.
     returnPhotoUrl: str | None
+    #: Epic 6: where the part is to be delivered, as it was when the request was
+    #: raised. NULL = nothing was on file. This is the TECHNICIAN's address,
+    #: not the customer's (D21 still holds: no customer data here).
+    deliveryAddress: DeliveryAddressOut | None = None
 
 
 async def part_request_outs(
@@ -198,6 +203,7 @@ async def part_request_outs(
                 returnedBy=r.returned_by_label,
                 returnNote=r.return_note,
                 returnPhotoUrl=photo,
+                deliveryAddress=delivery_out(r.delivery_address),
             )
         )
     return out

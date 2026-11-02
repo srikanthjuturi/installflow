@@ -232,6 +232,17 @@ export interface Ticket {
    */
   isHighPriority: boolean;
   /**
+   * Epic 1.4: an optional extra charge the vendor added when raising the
+   * ticket - billed to the vendor's account when the job closes, as a debit
+   * note, and counted against its credit line from the moment it is raised.
+   *
+   * PAISE, and a PAIR with the note: both set or both null. Null when there is
+   * none, and always null for a franchise principal (the server withholds it) -
+   * render nothing for null.
+   */
+  extraAmountPaise?: number | null;
+  extraAmountNote?: string | null;
+  /**
    * A7: where the unit was bought. Always one of `PURCHASE_MODES`;
    * `purchasePlatformId`/`purchasePlatformName` are null together unless
    * this is `"online"`.
@@ -269,6 +280,9 @@ export interface Ticket {
   city: string;
   state: string;
   pincode: string;
+  /** Epic 7: the post-office area within the pincode, free text. Null when none
+   *  was given. Optional only so older fixtures still type-check. */
+  locality?: string | null;
   /**
    * Null when the address was typed rather than picked off a map — every
    * ticket raised before this existed, and everything the Excel and API intake
@@ -622,6 +636,9 @@ export interface CreateTicketInput {
   city: string;
   state: string;
   pincode: string;
+  /** Epic 7: the area within the pincode, free text, max 80. Send only when
+   *  non-empty. */
+  locality?: string;
   /**
    * Where the address is, when it was picked from the search box rather than
    * typed. Both or neither — the API refuses one without the other.
@@ -641,6 +658,11 @@ export interface CreateTicketInput {
   /** A2: flag this job for attention on the board. Defaults to `false`
    *  server-side when omitted. */
   isHighPriority?: boolean;
+  /** Epic 1.4: both or neither - the server refuses half a pair. PAISE, 1 to
+   *  10,000,000. */
+  extraAmountPaise?: number;
+  /** Epic 1.4: what the extra charge is for, up to 120 characters. */
+  extraAmountNote?: string;
   /** A7: where the unit was bought. Defaults to `"offline"` server-side
    *  when omitted. */
   purchaseMode?: PurchaseMode;

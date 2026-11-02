@@ -135,3 +135,31 @@ def _days_ago(when: datetime.datetime | None) -> str:
     if days == 0:
         return "today"
     return "yesterday" if days == 1 else f"{days} days ago"
+
+
+async def sweep_stale_locations(db: AsyncSession) -> int:
+    """Delete live-location rows that no longer mean anything (Epic 4).
+
+    A row is stale when its job is no longer active (or no longer theirs), or
+    when it has not been refreshed for six hours. Reads already hide such rows;
+    this removes the personal data itself rather than leaving it to sit.
+    Never commits - `core.scheduler` does.
+    """
+    from sqlalchemy import delete, exists
+
+    from app.models.technician_location import TechnicianLocation
+    from app.models.ticket import Ticket
+
+    live = exists().where(
+        Ticket.company_id == TechnicianLocation.company_id,
+        Ticket.id == TechnicianLocation.ticket_id,
+        Ticket.technician_id == TechnicianLocation.technician_id,
+        Ticket.status.in_(("Assigned", "In Progress", "Awaiting Part")),
+    )
+    cutoff = _now() - datetime.timedelta(hours=6)
+    result = await db.execute(
+        delete(TechnicianLocation).where(
+            (~live) | (TechnicianLocation.received_at < cutoff)
+        )
+    )
+    return int(result.rowcount or 0)
