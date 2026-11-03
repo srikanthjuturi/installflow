@@ -80,7 +80,7 @@ export function TransferTechnicianDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <TransferForm
           technician={technician}
           onDone={() => onOpenChange(false)}

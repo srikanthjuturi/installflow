@@ -72,7 +72,7 @@ export function TechnicianInviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Invite technician</DialogTitle>
