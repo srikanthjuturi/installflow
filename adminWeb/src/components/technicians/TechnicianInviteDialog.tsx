@@ -76,7 +76,7 @@ export function TechnicianInviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-lg">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-3xl">
         <form
           onSubmit={handleSubmit(onSubmit)}
           noValidate

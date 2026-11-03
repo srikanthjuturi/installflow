@@ -528,9 +528,24 @@ async def list_options(
     )
     if principal.is_vendor:
         stmt = stmt.where(Vendor.id == principal.vendor_id)
+    if principal.is_franchise:
+        # A franchise login filters its read-only ticket list by vendor. Vendors
+        # belong to the company, not to a franchisee, so "its vendors" are the
+        # ones who have raised tickets stamped with its franchisee — names only,
+        # never a competitor's catalogue.
+        stmt = stmt.where(
+            Vendor.id.in_(
+                select(Ticket.vendor_id).where(
+                    Ticket.company_id == principal.company_id,
+                    Ticket.franchisee_id == principal.franchisee_id,
+                )
+            )
+        )
     rows = list(await db.scalars(stmt.order_by(Vendor.name)))
     if not rows:
         return []
+    if principal.is_franchise:
+        return [VendorOptionOut(id=r.id, name=r.name, brands=[]) for r in rows]
 
     by_vendor: dict[uuid.UUID, list[VendorBrandOptionOut]] = {}
     for vendor_id, brand_id, brand_name in await db.execute(
@@ -547,7 +562,12 @@ async def list_options(
             VendorBrandOptionOut(id=brand_id, name=brand_name)
         )
     return [
-        VendorOptionOut(id=r.id, name=r.name, brands=by_vendor.get(r.id, []))
+        VendorOptionOut(
+            id=r.id,
+            name=r.name,
+            brands=by_vendor.get(r.id, []),
+            intakeChannels=list(r.intake_channels or []),
+        )
         for r in rows
     ]
 

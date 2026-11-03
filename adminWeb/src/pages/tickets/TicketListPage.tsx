@@ -3,11 +3,17 @@ import { Upload } from "lucide-react";
 import { PageMeta } from "@/components/shared/PageMeta";
 import { NarrowedNotice } from "@/components/shared/NarrowedNotice";
 import { TicketImportDialog } from "@/components/tickets/TicketImportDialog";
+import { STATUS_FILTER } from "@/components/tickets/statusFilter";
 import { TicketTable } from "@/components/tickets/TicketTable";
 import { Button } from "@/components/ui/button";
 import { useFeatureAccess } from "@/hooks/useAuth";
 import { useTicketFilters } from "@/hooks/useTicketFilters";
 import { useTickets } from "@/hooks/useTickets";
+
+/** What "not yet closed" holds: every status except the finished ones. */
+const OPEN_STATUSES = STATUS_FILTER.filter(
+  (s) => s !== "Closed" && s !== "Force-Closed"
+);
 
 /** How the board says an SLA bucket it has no control for. */
 const SLA_WORDS: Record<string, string> = {
@@ -44,7 +50,9 @@ export default function TicketListPage() {
   const closedDays = Number(f.closedWithinDays) || 0;
   const statuses = (f.status ?? "").includes(",") ? f.status.split(",") : null;
   const parts = [
-    ...(f.open ? ["not yet closed"] : []),
+    // Names every status in the group, because the Status dropdown still reads
+    // "all" and the Dashboard's Open tickets count is exactly this set.
+    ...(f.open ? [`not yet closed (${OPEN_STATUSES.join(", ")})`] : []),
     ...(f.closed ? ["closed"] : []),
     ...(ATTENTION_WORDS[f.attention] ? [ATTENTION_WORDS[f.attention]] : []),
     // Named because the chips cannot show a set — one of them would look
@@ -54,7 +62,6 @@ export default function TicketListPage() {
       ? [`closed in the last ${closedDays} day${closedDays === 1 ? "" : "s"}`]
       : []),
     ...(SLA_WORDS[f.slaState] ? [SLA_WORDS[f.slaState]] : []),
-    ...(f.dateFrom || f.dateTo ? ["raised in a date range"] : []),
     ...(f.regionId || f.stateId ? ["one territory"] : []),
   ];
 
@@ -66,6 +73,22 @@ export default function TicketListPage() {
   const isClosedTickets = f.highPriority === "true" && f.closed === "true";
   const isAllTickets = !isActiveHighPriority && !isClosedTickets;
 
+  // The raised-date range is the reader's own control, not part of a view, so
+  // switching view keeps it — otherwise comparing a dashboard count across the
+  // three views would mean re-entering the dates each time.
+  const kept = {
+    ...(f.dateFrom ? { dateFrom: f.dateFrom } : {}),
+    ...(f.dateTo ? { dateTo: f.dateTo } : {}),
+  };
+  const setDate = (patch: { dateFrom?: string; dateTo?: string }) => {
+    const next = { ...params.filters, ...patch };
+    if (!next.dateFrom) delete next.dateFrom;
+    if (!next.dateTo) delete next.dateTo;
+    setParams({ ...params, filters: next, page: 1 });
+  };
+  const dateInput =
+    "h-9 rounded-full border border-border bg-background px-3 text-[13px] text-ink-2";
+
   return (
     <>
       <PageMeta
@@ -76,11 +99,11 @@ export default function TicketListPage() {
       {/* The high-priority board's own three views — unfiltered, still open,
           or closed (so staff can review a closure's detail). Plain buttons
           rather than a new primitive: the console has no shadcn Tabs yet. */}
-      <div className="flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-2">
         <Button
           size="toolbar"
           variant={isAllTickets ? "default" : "outline"}
-          onClick={() => setParams({ ...params, filters: {}, page: 1 })}
+          onClick={() => setParams({ ...params, filters: { ...kept }, page: 1 })}
         >
           All Tickets
         </Button>
@@ -90,7 +113,7 @@ export default function TicketListPage() {
           onClick={() =>
             setParams({
               ...params,
-              filters: { highPriority: "true", open: "true" },
+              filters: { highPriority: "true", open: "true", ...kept },
               page: 1,
             })
           }
@@ -103,7 +126,7 @@ export default function TicketListPage() {
           onClick={() =>
             setParams({
               ...params,
-              filters: { highPriority: "true", closed: "true" },
+              filters: { highPriority: "true", closed: "true", ...kept },
               page: 1,
             })
           }
@@ -134,12 +157,36 @@ export default function TicketListPage() {
            page and filters you left rather than a bare /tickets. */
         backLabel="Back to tickets"
         toolbarActions={
-          canImport ? (
-            <Button size="toolbar" onClick={() => setImporting(true)}>
-              <Upload data-icon="inline-start" />
-              Import tickets
-            </Button>
-          ) : null
+          <>
+            {/* "Raised" names the date being filtered — the ticket's creation
+                date, the same one the dashboard's own range counts. */}
+            <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
+              <span className="whitespace-nowrap">Raised</span>
+              <input
+                type="date"
+                value={f.dateFrom ?? ""}
+                max={f.dateTo || undefined}
+                onChange={(e) => setDate({ dateFrom: e.target.value })}
+                aria-label="Raised from date"
+                className={dateInput}
+              />
+              <span aria-hidden>–</span>
+              <input
+                type="date"
+                value={f.dateTo ?? ""}
+                min={f.dateFrom || undefined}
+                onChange={(e) => setDate({ dateTo: e.target.value })}
+                aria-label="Raised to date"
+                className={dateInput}
+              />
+            </div>
+            {canImport ? (
+              <Button size="toolbar" onClick={() => setImporting(true)}>
+                <Upload data-icon="inline-start" />
+                Import tickets
+              </Button>
+            ) : null}
+          </>
         }
       />
 

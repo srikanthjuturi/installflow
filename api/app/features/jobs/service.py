@@ -466,6 +466,7 @@ def _offer_out(
         maskedCustomer=mask_name(t.customer_name),
         payoutPaise=t.technician_payout_paise,
         bonusPaise=t.bonus_paise,
+        isHighPriority=t.is_high_priority,
     )
 
 

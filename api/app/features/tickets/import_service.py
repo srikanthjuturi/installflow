@@ -954,6 +954,11 @@ async def _load_vendor(
         raise _bad_request(
             f"{row.name} is paused, so no tickets can be raised for them."
         )
+    if "Excel" not in (row.intake_channels or []):
+        raise _bad_request(
+            f"Excel import is not turned on for {row.name}. Turn on the Excel "
+            "channel in their vendor settings first."
+        )
     return row
 
 

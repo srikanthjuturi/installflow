@@ -209,7 +209,8 @@
       "submit": "जमा करें और काम शुरू करें",
       "waitingUploads": "फ़ोटो अपलोड होने का इंतज़ार…",
       "captureAll": "जमा करने से पहले चारों स्टेप पूरे करें",
-      "submitFailed": "जमा नहीं हो सका"
+      "submitFailed": "जमा नहीं हो सका",
+      "submitted": "प्रूफ जमा हो गया। आपका काम अब शुरू हो गया है।"
     },
     "closure": {
       "steps": {
@@ -647,6 +648,7 @@
     },
     "bonus": "+{{amount}} बोनस",
     "payoutInSalary": "वेतन में शामिल",
+    "highPriority": "उच्च प्राथमिकता",
     "home": {
       "greeting": {
         "morning": "सुप्रभात",

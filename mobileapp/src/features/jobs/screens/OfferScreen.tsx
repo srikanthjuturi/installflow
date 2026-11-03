@@ -7,7 +7,7 @@ import { ErrorState, Skeleton, showToast } from '@/components/feedback';
 import { ScreenStatusBar } from '@/components/layout';
 import { Icon } from '@/components/icons/Icon';
 import { Button, Pill, Text } from '@/components/ui';
-import { jobSlaPill, jobSlot } from '@/features/jobs/format';
+import { jobSlaPill, jobSlot, showsHighPriority } from '@/features/jobs/format';
 import { useOffer } from '@/features/jobs/hooks/useJobs';
 import { usePassJob } from '@/features/jobs/hooks/usePassJob';
 import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
@@ -115,7 +115,10 @@ export function OfferScreen({ jobId }: OfferScreenProps) {
         </View>
 
         {job ? (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            {showsHighPriority(job) ? (
+              <Pill label={t('jobs.highPriority')} tone="danger" />
+            ) : null}
             <Pill label={job.category} tone="chromePrimary" />
             <Pill label={jobSlaPill(job)} tone="chromeSecondary" />
           </View>
