@@ -10,13 +10,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { useFieldConflict } from "@/components/shared/useFieldConflict";
@@ -95,7 +92,7 @@ export function VendorFormDialog({
           on the popup wall. Scrolling an inner FieldGroup instead needed a
           negative margin to escape the dialog's padding, and any drift between
           the two left the bar floating in a gutter. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-4xl">
         {undelivered ? (
           <TemporaryPasswordPanel
             heading="Added, but the email didn't send"
@@ -355,7 +352,8 @@ function VendorForm({
         ? vendor.brands.map((b) => ({
             brandId: b.id,
             name: b.name,
-            waiting: b.approvalStatus === "approved" ? undefined : b.approvalStatus,
+            waiting:
+              b.approvalStatus === "approved" ? undefined : b.approvalStatus,
           }))
         : [{ name: "" }],
     },
@@ -738,16 +736,21 @@ function VendorForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
-      <DialogHeader>
-        <DialogTitle>{isEdit ? "Edit vendor" : "Add vendor"}</DialogTitle>
-        <DialogDescription>
-          The company whose products you install. Add the brands it sells — each
-          product you add is filed under one of them.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-5"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit vendor" : "Add vendor"}</DialogTitle>
+          <DialogDescription>
+            The company whose products you install. Add the brands it sells —
+            each product you add is filed under one of them.
+          </DialogDescription>
+        </DialogHeader>
 
-      {/* Five sections rather than twelve loose fields. Each is answered from
+        {/* Five sections rather than twelve loose fields. Each is answered from
           one place — the GST certificate, the letterhead, a phone, an envelope
           — and each row of three is one of those places.
 
@@ -758,230 +761,231 @@ function VendorForm({
           company name first and overwriting it a moment later is the wrong
           order to put a person through — the same reasoning that fixed the
           order of `shared/AddressFields` (address → pincode → city → state). */}
-      <FormSection
-        legend="Statutory identity"
-        hint="As printed on the GST certificate. The GSTIN and CIN are stored in upper case."
-      >
-        <FieldGrid className={COLS}>
-          {renderField("gstNumber", "GSTIN", {
-            required: true,
-            mono: true,
-            maxLength: 15,
-            placeholder: "27AAACV1234A1Z5",
-            error: gstError,
-            note: gstNote,
-          })}
-          {/* Beside the GSTIN because it IS the GSTIN: characters 3–12 of one
+        <FormSection
+          legend="Statutory identity"
+          hint="As printed on the GST certificate. The GSTIN and CIN are stored in upper case."
+        >
+          <FieldGrid className={COLS}>
+            {renderField("gstNumber", "GSTIN", {
+              required: true,
+              mono: true,
+              maxLength: 15,
+              placeholder: "27AAACV1234A1Z5",
+              error: gstError,
+              note: gstNote,
+            })}
+            {/* Beside the GSTIN because it IS the GSTIN: characters 3–12 of one
               are the holder's PAN, so this box never needs a lookup — only the
               slice. Same row-of-three as the company form. */}
-          {renderField("pan", "PAN", {
-            mono: true,
-            maxLength: 10,
-            placeholder: "AAACV1234A",
-            hint: "The ten characters inside the GSTIN.",
-          })}
-          {/* Named as the superadmin's company form names the same fact about
+            {renderField("pan", "PAN", {
+              mono: true,
+              maxLength: 10,
+              placeholder: "AAACV1234A",
+              hint: "The ten characters inside the GSTIN.",
+            })}
+            {/* Named as the superadmin's company form names the same fact about
               the tenant itself. Nobody types it from memory — it comes back
               with the GSTIN, which is why it sits beside it. */}
-          {renderField("gstCompanyStatus", "GST company status", {
-            placeholder: "Active",
-            hint: "The registration's standing at the GST portal.",
-          })}
-          {renderField(
-            "cin",
-            <>
-              CIN <OptionalTag />
-            </>,
-            {
-              mono: true,
-              maxLength: 21,
-              placeholder: "L32100MH1985PLC123456",
-              hint: "Only an MCA-registered company has one.",
-            }
-          )}
-        </FieldGrid>
-      </FormSection>
+            {renderField("gstCompanyStatus", "GST company status", {
+              placeholder: "Active",
+              hint: "The registration's standing at the GST portal.",
+            })}
+            {renderField(
+              "cin",
+              <>
+                CIN <OptionalTag />
+              </>,
+              {
+                mono: true,
+                maxLength: 21,
+                placeholder: "L32100MH1985PLC123456",
+                hint: "Only an MCA-registered company has one.",
+              }
+            )}
+          </FieldGrid>
+        </FormSection>
 
-      <FormSection legend="Company">
-        <FieldGrid className={COLS}>
-          {renderField("name", "Company name", {
-            required: true,
-            placeholder: "e.g. Sunview Appliances Pvt Ltd",
-            hint: "The company's trading name. The brands it sells are listed below.",
-          })}
-          {renderField("contactPerson", "Contact person", {
-            required: true,
-            placeholder: "e.g. Rakesh Mehta",
-            hint: "Who ops call about a delivery, a part or a warranty claim.",
-          })}
-          {renderField("phone", "Mobile number", {
-            required: true,
-            type: "tel",
-            inputMode: "tel",
-            tabular: true,
-            placeholder: "98200 11001",
-            hint: "10 digits. Spaces and a +91 are fine.",
-          })}
-        </FieldGrid>
-      </FormSection>
+        <FormSection legend="Company">
+          <FieldGrid className={COLS}>
+            {renderField("name", "Company name", {
+              required: true,
+              placeholder: "e.g. Sunview Appliances Pvt Ltd",
+              hint: "The company's trading name. The brands it sells are listed below.",
+            })}
+            {renderField("contactPerson", "Contact person", {
+              required: true,
+              placeholder: "e.g. Rakesh Mehta",
+              hint: "Who ops call about a delivery, a part or a warranty claim.",
+            })}
+            {renderField("phone", "Mobile number", {
+              required: true,
+              type: "tel",
+              inputMode: "tel",
+              tabular: true,
+              placeholder: "98200 11001",
+              hint: "10 digits. Spaces and a +91 are fine.",
+            })}
+          </FieldGrid>
+        </FormSection>
 
-      {/* Right after Company: the brands are the one thing about a vendor a
+        {/* Right after Company: the brands are the one thing about a vendor a
           technician and a customer actually read, and they follow from who the
           company is. */}
-      <FormSection
-        legend="Brands"
-        hint="What it sells, as printed on the product. Brands you add here are approved at once; brands the vendor adds from its portal wait for approval."
-      >
-        <BrandRowsField
-          control={control}
-          register={register}
-          errors={errors}
-          saved={vendor?.brands ?? []}
-        />
-      </FormSection>
-
-      <FormSection legend="Registered address">
-        <FieldGrid className={COLS}>
-          {/* The street line takes the whole row: it is the longest value on
-              the form, and the only one where a line break carries meaning. */}
-          {renderField("address", "Building, street and area", {
-            required: true,
-            textarea: true,
-            placeholder: "Sunview House, 14th Floor\nChakala, Andheri East",
-            hint: "Paste it straight off the letterhead — line breaks are kept.",
-            className: "sm:col-span-2 lg:col-span-3",
-          })}
-          {renderField("city", "City", {
-            required: true,
-            placeholder: "Mumbai",
-          })}
-          {renderField("state", "State", {
-            required: true,
-            placeholder: "Maharashtra",
-          })}
-          {renderField("pincode", "Pincode", {
-            required: true,
-            inputMode: "numeric",
-            tabular: true,
-            maxLength: 6,
-            placeholder: "400099",
-          })}
-        </FieldGrid>
-      </FormSection>
-
-      <Controller
-        name="intakeChannels"
-        control={control}
-        render={({ field }) => (
-          <IntakeChannelField
-            value={field.value}
-            onChange={field.onChange}
-            error={errors.intakeChannels?.message}
+        <FormSection
+          legend="Brands"
+          hint="What it sells, as printed on the product. Brands you add here are approved at once; brands the vendor adds from its portal wait for approval."
+        >
+          <BrandRowsField
+            control={control}
+            register={register}
+            errors={errors}
+            saved={vendor?.brands ?? []}
           />
-        )}
-      />
+        </FormSection>
 
-      <FormSection legend="Portal access">
-        {/* The email and the address search share one row of two. Both are
+        <FormSection legend="Registered address">
+          <FieldGrid className={COLS}>
+            {/* The street line takes the whole row: it is the longest value on
+              the form, and the only one where a line break carries meaning. */}
+            {renderField("address", "Building, street and area", {
+              required: true,
+              textarea: true,
+              placeholder: "Sunview House, 14th Floor\nChakala, Andheri East",
+              hint: "Paste it straight off the letterhead — line breaks are kept.",
+              className: "sm:col-span-2 lg:col-span-3",
+            })}
+            {renderField("city", "City", {
+              required: true,
+              placeholder: "Mumbai",
+            })}
+            {renderField("state", "State", {
+              required: true,
+              placeholder: "Maharashtra",
+            })}
+            {renderField("pincode", "Pincode", {
+              required: true,
+              inputMode: "numeric",
+              tabular: true,
+              maxLength: 6,
+              placeholder: "400099",
+            })}
+          </FieldGrid>
+        </FormSection>
+
+        <Controller
+          name="intakeChannels"
+          control={control}
+          render={({ field }) => (
+            <IntakeChannelField
+              value={field.value}
+              onChange={field.onChange}
+              error={errors.intakeChannels?.message}
+            />
+          )}
+        />
+
+        <FormSection legend="Portal access">
+          {/* The email and the address search share one row of two. Both are
             answers about this vendor's portal — the address the portal is
             reached at, and what its ticket form offers — and the email alone in
             a row of three left two empty columns under a dialog this long. */}
-        <FieldGrid className={PAIR}>
-          {renderField("loginEmail", "Login email", {
-            // Marked only while it can be typed. On edit the box is read-only —
-            // the identity the account is looked up by — and an asterisk on a
-            // disabled field asks for something the operator cannot give.
-            required: !isEdit,
-            type: "email",
-            placeholder: "ops@vendor.com",
-            // Read-only on edit: this is the identity the account is looked up
-            // by, and moving it would strand the vendor on credentials nobody
-            // recorded. The server does not accept a change either.
-            readOnly: isEdit,
-            hint: isEdit
-              ? "The address this vendor signs in with. Use Reset password on the vendor row to email a new one."
-              : "We email a temporary password here. They sign in with it and raise their own tickets.",
-          })}
-          {/* Here rather than beside Status, and rather than with Ticket
+          <FieldGrid className={PAIR}>
+            {renderField("loginEmail", "Login email", {
+              // Marked only while it can be typed. On edit the box is read-only —
+              // the identity the account is looked up by — and an asterisk on a
+              // disabled field asks for something the operator cannot give.
+              required: !isEdit,
+              type: "email",
+              placeholder: "ops@vendor.com",
+              // Read-only on edit: this is the identity the account is looked up
+              // by, and moving it would strand the vendor on credentials nobody
+              // recorded. The server does not accept a change either.
+              readOnly: isEdit,
+              hint: isEdit
+                ? "The address this vendor signs in with. Use Reset password on the vendor row to email a new one."
+                : "We email a temporary password here. They sign in with it and raise their own tickets.",
+            })}
+            {/* Here rather than beside Status, and rather than with Ticket
               intake. This section means "what this vendor's portal IS"; intake
               channels are how tickets ARRIVE, and Status is the vendor's
               lifecycle. This is about the intake form itself. */}
-          <Controller
-            name="addressSearch"
-            control={control}
-            render={({ field }) => (
-              <AddressSearchField
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.addressSearch?.message}
-                errorId="vendor-address-search-error"
-              />
-            )}
-          />
-        </FieldGrid>
-      </FormSection>
+            <Controller
+              name="addressSearch"
+              control={control}
+              render={({ field }) => (
+                <AddressSearchField
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.addressSearch?.message}
+                  errorId="vendor-address-search-error"
+                />
+              )}
+            />
+          </FieldGrid>
+        </FormSection>
 
-      <FormSection legend="Credit">
-        <FieldGrid className={PAIR}>
-          {renderField("creditLimit", "Credit limit (₹)", {
-            inputMode: "numeric",
-            tabular: true,
-            // Not required: blank is a real answer, and it means the company's
-            // own default. Marking it would ask for something the operator has
-            // no basis to invent on a form they opened to add a vendor.
-            placeholder: defaultLimit ?? "Company default",
-            hint: defaultLimit
-              ? `What this vendor may owe before its tickets stop. Blank uses the company default of ₹${defaultLimit}.`
-              : "What this vendor may owe before its tickets stop. Blank uses the company default.",
-          })}
-        </FieldGrid>
-      </FormSection>
+        <FormSection legend="Credit">
+          <FieldGrid className={PAIR}>
+            {renderField("creditLimit", "Credit limit (₹)", {
+              inputMode: "numeric",
+              tabular: true,
+              // Not required: blank is a real answer, and it means the company's
+              // own default. Marking it would ask for something the operator has
+              // no basis to invent on a form they opened to add a vendor.
+              placeholder: defaultLimit ?? "Company default",
+              hint: defaultLimit
+                ? `What this vendor may owe before its tickets stop. Blank uses the company default of ₹${defaultLimit}.`
+                : "What this vendor may owe before its tickets stop. Blank uses the company default.",
+            })}
+          </FieldGrid>
+        </FormSection>
 
-      {/* The last two booleans share a row rather than stacking full width, and
+        {/* The last two booleans share a row rather than stacking full width, and
           neither keeps a section heading of its own — each `ChoiceCards` legend
           already names its question, and a heading over a single control only
           repeats it. They stay two different questions: the left one is how a
           technician's proof is verified out on site, which the vendor never
           sees; the right one is the vendor's lifecycle in this console. */}
-      <FieldGrid className={PAIR}>
-        <Controller
-          name="locationCheck"
-          control={control}
-          render={({ field }) => (
-            <LocationCheckField
-              value={field.value}
-              onChange={field.onChange}
-              error={errors.locationCheck?.message}
-              errorId="vendor-location-check-error"
-            />
-          )}
-        />
+        <FieldGrid className={PAIR}>
+          <Controller
+            name="locationCheck"
+            control={control}
+            render={({ field }) => (
+              <LocationCheckField
+                value={field.value}
+                onChange={field.onChange}
+                error={errors.locationCheck?.message}
+                errorId="vendor-location-check-error"
+              />
+            )}
+          />
 
-        <Controller
-          name="status"
-          control={control}
-          render={({ field }) => (
-            <StatusField
-              value={field.value}
-              onChange={field.onChange}
-              description="A paused vendor can't be picked for new products. Products it already supplies keep it."
-              error={errors.status?.message}
-              errorId="vendor-status-error"
-            />
-          )}
-        />
-      </FieldGrid>
+          <Controller
+            name="status"
+            control={control}
+            render={({ field }) => (
+              <StatusField
+                value={field.value}
+                onChange={field.onChange}
+                description="A paused vendor can't be picked for new products. Products it already supplies keep it."
+                error={errors.status?.message}
+                errorId="vendor-status-error"
+              />
+            )}
+          />
+        </FieldGrid>
 
-      {/* The failure is reported in the toaster (App.tsx), not here. */}
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={pending || gstRefusal}>
-          {pending ? <Spinner data-icon="inline-start" /> : null}
-          {isEdit ? "Save changes" : "Add vendor"}
-        </Button>
-      </DialogFooter>
+        {/* The failure is reported in the toaster (App.tsx), not here. */}
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={pending || gstRefusal}>
+            {pending ? <Spinner data-icon="inline-start" /> : null}
+            {isEdit ? "Save changes" : "Add vendor"}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

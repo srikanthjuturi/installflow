@@ -20,6 +20,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,13 +147,11 @@ export function ModelFormDialog({
 
 // Only the body scrolls. The popup itself does not, so the step strip above
 // this and the dialog's own close button stay where they are while the fields
-// move. The negative margins hand the popup's padding to the scroller, which
-// keeps DialogFooter's own -mx-4 -mb-4 bleed working inside it.
+// move. `DialogScrollBody` is the shared primitive this pattern was promoted
+// from — see its doc comment in `ui/dialog.tsx` for why.
 function ScrollBody({ children }: { children: ReactNode }) {
   return (
-    <div className="scroll-none -mx-4 -mb-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-4">
-      {children}
-    </div>
+    <DialogScrollBody className="scroll-none">{children}</DialogScrollBody>
   );
 }
 
@@ -403,6 +402,7 @@ function ModelForm({
           <ModelSerialsPanel
             modelId={justCreated.id}
             modelName={justCreated.name}
+            totalSerialCount={0}
           />
 
           <DialogFooter>
@@ -964,6 +964,7 @@ function ModelForm({
               modelId={model.id}
               modelName={model.name}
               portal={!withPricing}
+              totalSerialCount={model.serialCount}
             />
           </div>
         ) : null}

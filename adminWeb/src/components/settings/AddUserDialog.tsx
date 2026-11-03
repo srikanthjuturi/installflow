@@ -8,13 +8,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -69,14 +66,17 @@ export function AddUserDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : close())}
+    >
       {/* Sized and sectioned like the vendor and company dialogs. Two columns
           rather than three: this form has five fields, and a third column would
           leave a ragged empty cell in every row.
 
           The popup itself scrolls, as those dialogs do, so the scrollbar sits
           on the popup wall rather than in a gutter inside it. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-3xl">
         {undelivered ? (
           <TemporaryPasswordPanel
             heading="Created, but the email didn't send"
@@ -165,183 +165,190 @@ function AddUserForm({
   }
 
   return (
-<form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
-      <DialogHeader>
-        <DialogTitle>Invite user</DialogTitle>
-        <DialogDescription>
-          Add a user to your company. We&rsquo;ll email them a temporary
-          password. You can only assign roles below your own.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-5"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Invite user</DialogTitle>
+          <DialogDescription>
+            Add a user to your company. We&rsquo;ll email them a temporary
+            password. You can only assign roles below your own.
+          </DialogDescription>
+        </DialogHeader>
 
-      <FormSection legend="Person">
-        <FieldGrid className={COLS}>
-          {/* Spans the row so Email and Phone pair up beneath it — three fields
+        <FormSection legend="Person">
+          <FieldGrid className={COLS}>
+            {/* Spans the row so Email and Phone pair up beneath it — three fields
               in two columns otherwise leaves a ragged empty cell. */}
-          <Field
-            className="sm:col-span-2"
-            data-invalid={err("fullName") ? true : undefined}
-          >
-            <FieldLabel htmlFor="fullName" required>
-              Full name
-            </FieldLabel>
-            <Input
-              id="fullName"
-              placeholder="Full name"
-              autoComplete="name"
-              aria-invalid={err("fullName") ? true : undefined}
-              {...register("fullName")}
-            />
-            {err("fullName") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("fullName")}
-              </FieldDescription>
-            ) : null}
-          </Field>
+            <Field
+              className="sm:col-span-2"
+              data-invalid={err("fullName") ? true : undefined}
+            >
+              <FieldLabel htmlFor="fullName" required>
+                Full name
+              </FieldLabel>
+              <Input
+                id="fullName"
+                placeholder="Full name"
+                autoComplete="name"
+                aria-invalid={err("fullName") ? true : undefined}
+                {...register("fullName")}
+              />
+              {err("fullName") ? (
+                <FieldDescription role="alert" className="text-danger">
+                  {err("fullName")}
+                </FieldDescription>
+              ) : null}
+            </Field>
 
-          <Field data-invalid={err("email") ? true : undefined}>
-            <FieldLabel htmlFor="email" required>
-              Email
-            </FieldLabel>
-            <Input
-              id="email"
-              type="email"
-              placeholder="user@company.com"
-              autoComplete="email"
-              aria-invalid={err("email") ? true : undefined}
-              {...register("email")}
-            />
-            {err("email") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("email")}
-              </FieldDescription>
-            ) : null}
-          </Field>
+            <Field data-invalid={err("email") ? true : undefined}>
+              <FieldLabel htmlFor="email" required>
+                Email
+              </FieldLabel>
+              <Input
+                id="email"
+                type="email"
+                placeholder="user@company.com"
+                autoComplete="email"
+                aria-invalid={err("email") ? true : undefined}
+                {...register("email")}
+              />
+              {err("email") ? (
+                <FieldDescription role="alert" className="text-danger">
+                  {err("email")}
+                </FieldDescription>
+              ) : null}
+            </Field>
 
-          <Field data-invalid={err("phone") ? true : undefined}>
-            <FieldLabel htmlFor="phone" required>
-              Phone
-            </FieldLabel>
-            <Input
-              id="phone"
-              placeholder="+91 90000 00000"
-              autoComplete="tel"
-              aria-invalid={err("phone") ? true : undefined}
-              {...register("phone")}
-            />
-            {err("phone") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("phone")}
-              </FieldDescription>
-            ) : null}
-          </Field>
-        </FieldGrid>
-      </FormSection>
-
-      <FormSection legend="Access">
-        <FieldGrid className={COLS}>
-          {/* Spans the row: it is the only field in this section now that the
-              password is the server's, and a lone control in a two-column grid
-              leaves exactly the ragged cell the comments above warn about. */}
-          <Field
-            className="sm:col-span-2"
-            data-invalid={err("role") ? true : undefined}
-          >
-          <FieldLabel htmlFor="role" required>
-            Role
-          </FieldLabel>
-          <Controller
-            name="role"
-            control={control}
-            render={({ field }) => (
-              <Select
-                value={field.value}
-                onValueChange={(v) => {
-                  field.onChange(v);
-                  // A region picked for one role means nothing for another —
-                  // and neither does the error it left behind.
-                  setValue("regionIds", [], { shouldValidate: false });
-                  setValue("stateIds", [], { shouldValidate: false });
-                  clearErrors(["regionIds", "stateIds"]);
-                }}
-              >
-                <SelectTrigger
-                  id="role"
-                  className="w-full"
-                  aria-invalid={err("role") ? true : undefined}
-                >
-                  {/* Map the role key back to its label — the trigger would
-                      otherwise show the raw `area_manager` key. */}
-                  <SelectValue
-                    placeholder={
-                      roles.length ? "Select a role" : "No assignable roles"
-                    }
-                  >
-                    {(v) =>
-                      roles.find((r) => r.key === v)?.label ?? "Select a role"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {roles.map((r) => (
-                      <SelectItem key={r.key} value={r.key}>
-                        {r.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
-          />
-            {/* Says what will happen, now that removing the password field
-                removed the form's only sign that anything is sent. */}
-            <FieldDescription>
-              Only roles below your own are listed. We email them a temporary
-              password to sign in with.
-            </FieldDescription>
-            {err("role") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("role")}
-              </FieldDescription>
-            ) : null}
-          </Field>
-        </FieldGrid>
-      </FormSection>
-
-      {/* Only when the role actually has one — a Territory heading over an
-          empty box reads as a field that failed to load. Full width rather
-          than two columns: a regional head's states run to thirteen chips. */}
-      {roleHasTerritory(role) ? (
-        <FormSection legend="Territory">
-          <FieldGrid className="grid gap-4">
-            <ScopeField
-              role={role}
-              regionIds={regionIds}
-              stateIds={stateIds}
-              onRegionIds={(next) =>
-                setValue("regionIds", next, { shouldValidate: true })
-              }
-              onStateIds={(next) =>
-                setValue("stateIds", next, { shouldValidate: true })
-              }
-              regionError={err("regionIds")}
-              stateError={err("stateIds")}
-            />
+            <Field data-invalid={err("phone") ? true : undefined}>
+              <FieldLabel htmlFor="phone" required>
+                Phone
+              </FieldLabel>
+              <Input
+                id="phone"
+                placeholder="+91 90000 00000"
+                autoComplete="tel"
+                aria-invalid={err("phone") ? true : undefined}
+                {...register("phone")}
+              />
+              {err("phone") ? (
+                <FieldDescription role="alert" className="text-danger">
+                  {err("phone")}
+                </FieldDescription>
+              ) : null}
+            </Field>
           </FieldGrid>
         </FormSection>
-      ) : null}
 
-      {/* The failure is reported in the toaster (App.tsx), not here. */}
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? <Spinner data-icon="inline-start" /> : null}
-          Add user
-        </Button>
-      </DialogFooter>
+        <FormSection legend="Access">
+          <FieldGrid className={COLS}>
+            {/* Spans the row: it is the only field in this section now that the
+              password is the server's, and a lone control in a two-column grid
+              leaves exactly the ragged cell the comments above warn about. */}
+            <Field
+              className="sm:col-span-2"
+              data-invalid={err("role") ? true : undefined}
+            >
+              <FieldLabel htmlFor="role" required>
+                Role
+              </FieldLabel>
+              <Controller
+                name="role"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(v) => {
+                      field.onChange(v);
+                      // A region picked for one role means nothing for another —
+                      // and neither does the error it left behind.
+                      setValue("regionIds", [], { shouldValidate: false });
+                      setValue("stateIds", [], { shouldValidate: false });
+                      clearErrors(["regionIds", "stateIds"]);
+                    }}
+                  >
+                    <SelectTrigger
+                      id="role"
+                      className="w-full"
+                      aria-invalid={err("role") ? true : undefined}
+                    >
+                      {/* Map the role key back to its label — the trigger would
+                      otherwise show the raw `area_manager` key. */}
+                      <SelectValue
+                        placeholder={
+                          roles.length ? "Select a role" : "No assignable roles"
+                        }
+                      >
+                        {(v) =>
+                          roles.find((r) => r.key === v)?.label ??
+                          "Select a role"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {roles.map((r) => (
+                          <SelectItem key={r.key} value={r.key}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {/* Says what will happen, now that removing the password field
+                removed the form's only sign that anything is sent. */}
+              <FieldDescription>
+                Only roles below your own are listed. We email them a temporary
+                password to sign in with.
+              </FieldDescription>
+              {err("role") ? (
+                <FieldDescription role="alert" className="text-danger">
+                  {err("role")}
+                </FieldDescription>
+              ) : null}
+            </Field>
+          </FieldGrid>
+        </FormSection>
+
+        {/* Only when the role actually has one — a Territory heading over an
+          empty box reads as a field that failed to load. Full width rather
+          than two columns: a regional head's states run to thirteen chips. */}
+        {roleHasTerritory(role) ? (
+          <FormSection legend="Territory">
+            <FieldGrid className="grid gap-4">
+              <ScopeField
+                role={role}
+                regionIds={regionIds}
+                stateIds={stateIds}
+                onRegionIds={(next) =>
+                  setValue("regionIds", next, { shouldValidate: true })
+                }
+                onStateIds={(next) =>
+                  setValue("stateIds", next, { shouldValidate: true })
+                }
+                regionError={err("regionIds")}
+                stateError={err("stateIds")}
+              />
+            </FieldGrid>
+          </FormSection>
+        ) : null}
+
+        {/* The failure is reported in the toaster (App.tsx), not here. */}
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={create.isPending}>
+            {create.isPending ? <Spinner data-icon="inline-start" /> : null}
+            Add user
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

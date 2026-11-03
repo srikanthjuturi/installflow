@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.errors import AppError
 from app.core.features import effective_features
 from app.core.security import decode_token
 from app.models.company import Company
@@ -97,7 +98,7 @@ def _unauthorized(detail: str = "Not authenticated") -> HTTPException:
 
 async def _why_refused(
     db: AsyncSession, company_id: uuid.UUID
-) -> str:
+) -> tuple[str, str]:
     """Why the caller cannot act here — the company, or their membership in it.
 
     One extra query, on the REFUSAL path only, so it costs nothing in the normal
@@ -105,13 +106,21 @@ async def _why_refused(
     superadmin suspended the whole company, and somebody told the wrong reason
     goes looking in the wrong place — they ask an admin to re-add them to a
     company that is not accepting anyone.
+
+    Returns (code, detail). The code is what the console's transport matches on
+    to force a clean sign-out instead of leaving an already-open session on a
+    broken, half-loaded dashboard — the prose is for the person, the code is for
+    the client, and conflating them is what `AppError`'s own docstring already
+    warns against. `NO_ACTIVE_MEMBERSHIP` deliberately reuses the same code
+    `issue_session` raises at LOGIN time for the identical underlying fact (zero
+    active memberships), so the frontend has one code to handle, not two.
     """
     company = await db.scalar(select(Company).where(Company.id == company_id))
     if company is None or company.deleted_at is not None:
-        return "This company no longer exists"
+        return "COMPANY_NOT_FOUND", "This company no longer exists"
     if not company.is_active:
-        return "This company is suspended"
-    return "No active membership in the selected company"
+        return "COMPANY_SUSPENDED", "This company is suspended"
+    return "NO_ACTIVE_MEMBERSHIP", "No active membership in the selected company"
 
 
 async def get_current_principal(
@@ -135,6 +144,30 @@ async def get_current_principal(
     user = await db.scalar(select(User).where(User.id == user_id))
     if user is None or not user.is_active or user.deleted_at is not None:
         raise _unauthorized("User is inactive or no longer exists")
+
+    # The access token is a stateless JWT that cannot be revoked; a password
+    # change stamps users.password_changed_at, and a token minted before that
+    # is no longer trusted. JWT `iat` is WHOLE SECONDS; password_changed_at is
+    # microsecond precision — so compare at whole-second granularity, or the
+    # brand-new token issued by the very password change would be judged stale
+    # and log the user out immediately on nearly every change.
+    token_iat = payload.get("iat")
+    if user.password_changed_at is not None and token_iat is not None:
+        changed_at_second = int(user.password_changed_at.timestamp())  # truncates to whole seconds
+        if int(token_iat) < changed_at_second:
+            # Coded, not a bare `_unauthorized()`: a password change ALSO revokes
+            # every refresh token (see `revoke_refresh_tokens`'s call sites), so
+            # the console's usual "401 -> refresh -> replay" dance would spend a
+            # round trip discovering what this code already knows — the refresh
+            # token is dead too. Same reason the membership/company refusal
+            # above carries one: the prose is for the person, the code is for
+            # the client.
+            raise AppError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                code="PASSWORD_CHANGED",
+                detail="Your password was changed. Sign in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     rank = ROLE_RANKS.get(user.role, max(ROLE_RANKS.values()))
 
@@ -172,10 +205,8 @@ async def get_current_principal(
             )
         )
         if membership is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=await _why_refused(db, company_id),
-            )
+            code, detail = await _why_refused(db, company_id)
+            raise AppError(status_code=status.HTTP_403_FORBIDDEN, code=code, detail=detail)
         # The membership was loaded to prove the caller belongs here; keep the
         # one field the portal needs rather than querying for it again.
         vendor_id = membership.vendor_id

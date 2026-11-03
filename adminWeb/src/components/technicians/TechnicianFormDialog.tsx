@@ -15,6 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -29,10 +30,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CoverageFields } from "./CoverageFields";
 import { TechnicianTypeField } from "./TechnicianTypeField";
-import {
-  TYPE_WORD_TO_WIRE,
-  wireTypeToWord,
-} from "./technicianType";
+import { TYPE_WORD_TO_WIRE, wireTypeToWord } from "./technicianType";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import {
@@ -83,7 +81,7 @@ export function TechnicianFormDialog({
 }: TechnicianFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
         {/* The popup unmounts on close, and the key remounts the form when the
             dialog is reopened against a different row — so an edit never opens
             holding the previous technician's values. */}
@@ -202,7 +200,9 @@ function TechnicianForm({
             toast.add({
               title: `${saved.name} updated`,
               description: `${saved.code} · ${
-                saved.dailyJobCap ? `${saved.dailyJobCap} jobs/day` : "no daily limit"
+                saved.dailyJobCap
+                  ? `${saved.dailyJobCap} jobs/day`
+                  : "no daily limit"
               } · ${TECH_STATUS_LABEL[saved.status]}.`,
             });
             onDone();
@@ -254,301 +254,324 @@ function TechnicianForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate>
-      <DialogHeader>
-        <DialogTitle>
-          {isEdit ? `Edit ${technician.name}` : "Add technician"}
-        </DialogTitle>
-        <DialogDescription>
-          {isEdit
-            ? `${technician.code} · jobs are offered on category and pincode, so both stay required.`
-            : "Jobs are offered on category and pincode, so both are required."}
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? `Edit ${technician.name}` : "Add technician"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? `${technician.code} · jobs are offered on category and pincode, so both stay required.`
+              : "Jobs are offered on category and pincode, so both are required."}
+          </DialogDescription>
+        </DialogHeader>
 
-      <div className="mt-5 grid gap-6">
-        {/* ── who they are ────────────────────────────────────────── */}
-        <FormSection legend="Identity">
-          <FieldGroup className="gap-4">
-            <Field orientation="horizontal">
-              <Controller
-                name="photo"
-                control={control}
-                render={({ field }) => (
-                  <div className="flex items-center gap-4">
-                    <AvatarPicker
-                      name={watchedName}
-                      value={field.value ?? null}
-                      onChange={(v) => field.onChange(v ?? undefined)}
-                      label="technician"
-                      avatarClassName="size-16 text-xl"
-                    />
-                    <div className="min-w-0">
-                      <FieldLabel>Profile photo</FieldLabel>
-                      <FieldDescription>
-                        Optional. Tap the camera to add and crop a clear face
-                        photo.
-                      </FieldDescription>
-                      {field.value ? (
-                        <button
-                          type="button"
-                          onClick={() => field.onChange(undefined)}
-                          className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger"
-                        >
-                          <Trash2 className="size-3" aria-hidden />
-                          Remove photo
-                        </button>
-                      ) : null}
+        <div className="mt-5 grid gap-6">
+          {/* ── who they are ────────────────────────────────────────── */}
+          <FormSection legend="Identity">
+            <FieldGroup className="gap-4">
+              <Field orientation="horizontal">
+                <Controller
+                  name="photo"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex items-center gap-4">
+                      <AvatarPicker
+                        name={watchedName}
+                        value={field.value ?? null}
+                        onChange={(v) => field.onChange(v ?? undefined)}
+                        label="technician"
+                        avatarClassName="size-16 text-xl"
+                      />
+                      <div className="min-w-0">
+                        <FieldLabel>Profile photo</FieldLabel>
+                        <FieldDescription>
+                          Optional. Tap the camera to add and crop a clear face
+                          photo.
+                        </FieldDescription>
+                        {field.value ? (
+                          <button
+                            type="button"
+                            onClick={() => field.onChange(undefined)}
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-ink-3 hover:text-danger"
+                          >
+                            <Trash2 className="size-3" aria-hidden />
+                            Remove photo
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                )}
-              />
-            </Field>
-
-            {/* Paired: two short fields always filled together. */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={err("name") ? true : undefined}>
-                <FieldLabel htmlFor="tech-name" required>
-                  Full name
-                </FieldLabel>
-                <Input
-                  id="tech-name"
-                  autoComplete="name"
-                  placeholder="Full name"
-                  aria-invalid={err("name") ? true : undefined}
-                  aria-describedby={err("name") ? "tech-name-error" : undefined}
-                  {...register("name")}
+                  )}
                 />
-                {err("name") ? (
-                  <FieldDescription
-                    id="tech-name-error"
-                    role="alert"
-                    className="text-danger"
-                  >
-                    {err("name")}
-                  </FieldDescription>
-                ) : null}
               </Field>
 
-              {isEdit ? (
-                /* Read-only, and not registered to the form: the number a
+              {/* Paired: two short fields always filled together. */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field data-invalid={err("name") ? true : undefined}>
+                  <FieldLabel htmlFor="tech-name" required>
+                    Full name
+                  </FieldLabel>
+                  <Input
+                    id="tech-name"
+                    autoComplete="name"
+                    placeholder="Full name"
+                    aria-invalid={err("name") ? true : undefined}
+                    aria-describedby={
+                      err("name") ? "tech-name-error" : undefined
+                    }
+                    {...register("name")}
+                  />
+                  {err("name") ? (
+                    <FieldDescription
+                      id="tech-name-error"
+                      role="alert"
+                      className="text-danger"
+                    >
+                      {err("name")}
+                    </FieldDescription>
+                  ) : null}
+                </Field>
+
+                {isEdit ? (
+                  /* Read-only, and not registered to the form: the number a
                    technician signs in with cannot be moved from here, so the
                    box shows the stored one formatted rather than offering an
                    edit the API would refuse. No asterisk either — an
                    unanswerable field must not ask to be answered. */
-                <Field>
-                  <FieldLabel htmlFor="tech-phone">Mobile number</FieldLabel>
-                  <Input
-                    id="tech-phone"
-                    readOnly
-                    disabled
-                    value={formatPhone(technician.phone)}
-                    aria-describedby="tech-phone-hint"
-                  />
-                  <FieldDescription id="tech-phone-hint">
-                    The number they sign in with. It can&apos;t be changed here.
-                  </FieldDescription>
-                </Field>
-              ) : (
-                <Field data-invalid={err("phone") ? true : undefined}>
-                  <FieldLabel htmlFor="tech-phone" required>
-                    Mobile number
-                  </FieldLabel>
-                  <Input
-                    id="tech-phone"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="+91 "
-                    aria-invalid={err("phone") ? true : undefined}
-                    aria-describedby={
-                      err("phone") ? "tech-phone-error" : "tech-phone-hint"
-                    }
-                    {...register("phone")}
-                  />
-                  {err("phone") ? (
-                    <FieldDescription
-                      id="tech-phone-error"
-                      role="alert"
-                      className="text-danger"
-                    >
-                      {err("phone")}
-                    </FieldDescription>
-                  ) : (
+                  <Field>
+                    <FieldLabel htmlFor="tech-phone">Mobile number</FieldLabel>
+                    <Input
+                      id="tech-phone"
+                      readOnly
+                      disabled
+                      value={formatPhone(technician.phone)}
+                      aria-describedby="tech-phone-hint"
+                    />
                     <FieldDescription id="tech-phone-hint">
-                      They sign in with this number and a one-time code. The
-                      app link goes to it on WhatsApp.
+                      The number they sign in with. It can&apos;t be changed
+                      here.
                     </FieldDescription>
-                  )}
-                </Field>
-              )}
-            </div>
+                  </Field>
+                ) : (
+                  <Field data-invalid={err("phone") ? true : undefined}>
+                    <FieldLabel htmlFor="tech-phone" required>
+                      Mobile number
+                    </FieldLabel>
+                    <Input
+                      id="tech-phone"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      placeholder="+91 "
+                      aria-invalid={err("phone") ? true : undefined}
+                      aria-describedby={
+                        err("phone") ? "tech-phone-error" : "tech-phone-hint"
+                      }
+                      {...register("phone")}
+                    />
+                    {err("phone") ? (
+                      <FieldDescription
+                        id="tech-phone-error"
+                        role="alert"
+                        className="text-danger"
+                      >
+                        {err("phone")}
+                      </FieldDescription>
+                    ) : (
+                      <FieldDescription id="tech-phone-hint">
+                        They sign in with this number and a one-time code. The
+                        app link goes to it on WhatsApp.
+                      </FieldDescription>
+                    )}
+                  </Field>
+                )}
+              </div>
 
-            {/* Task 08 — how they are paid, and whose ledger the work lands
+              {/* Task 08 — how they are paid, and whose ledger the work lands
                 in. The franchisee is read-only on EDIT, and not shown at
                 intake: a staff-created technician always lands on the home
                 franchisee, so the line would only ever say one thing. It is
                 not an editable box here — moving a technician between
                 franchisees is a pincode carve-out (Pincodes dialog) that
                 previews and re-stamps, never a form field. */}
-            <div className={isEdit ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
-              <Field data-invalid={err("technicianType") ? true : undefined}>
-                <Controller
-                  name="technicianType"
-                  control={control}
-                  render={({ field }) => (
-                    <TechnicianTypeField
-                      value={field.value}
-                      onChange={field.onChange}
-                      error={err("technicianType")}
-                      errorId="tech-type-error"
-                    />
-                  )}
-                />
-              </Field>
-              {isEdit ? (
-                <Field>
-                  <FieldLabel htmlFor="tech-franchisee">Franchisee</FieldLabel>
-                  <Input
-                    id="tech-franchisee"
-                    readOnly
-                    disabled
-                    value={technician.franchiseeName}
-                    aria-describedby="tech-franchisee-hint"
+              <div
+                className={isEdit ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}
+              >
+                <Field data-invalid={err("technicianType") ? true : undefined}>
+                  <Controller
+                    name="technicianType"
+                    control={control}
+                    render={({ field }) => (
+                      <TechnicianTypeField
+                        value={field.value}
+                        onChange={field.onChange}
+                        error={err("technicianType")}
+                        errorId="tech-type-error"
+                      />
+                    )}
                   />
-                  <FieldDescription id="tech-franchisee-hint">
-                    Not changed here — the pincodes decide where a technician
-                    sits, and moving them is a carve-out on the Franchisees
-                    screen.
-                  </FieldDescription>
                 </Field>
-              ) : null}
-            </div>
+                {isEdit ? (
+                  <Field>
+                    <FieldLabel htmlFor="tech-franchisee">
+                      Franchisee
+                    </FieldLabel>
+                    <Input
+                      id="tech-franchisee"
+                      readOnly
+                      disabled
+                      value={technician.franchiseeName}
+                      aria-describedby="tech-franchisee-hint"
+                    />
+                    <FieldDescription id="tech-franchisee-hint">
+                      Not changed here — the pincodes decide where a technician
+                      sits, and moving them is a carve-out on the Franchisees
+                      screen.
+                    </FieldDescription>
+                  </Field>
+                ) : null}
+              </div>
 
-            {/* Optional on both add and edit. A manager usually does not have
+              {/* Optional on both add and edit. A manager usually does not have
                 this when onboarding somebody, and blocking the whole record
                 over a detail only the technician knows would be the wrong
                 trade — they add it themselves in the app. Full width rather
                 than paired: a VPA is long, and there is nothing to read it
                 against. */}
-            <Field data-invalid={err("upiId") ? true : undefined}>
-              <div className="flex items-center justify-between gap-2">
-                <FieldLabel htmlFor="tech-upi">UPI ID</FieldLabel>
-                <UpiQrUpload
-                  onScanned={({ vpa, name }) => {
-                    // Both fields from the QR — the name only when it carried
-                    // one, so a bare-address code does not wipe what was typed.
-                    setValue("upiId", vpa, { shouldValidate: true, shouldDirty: true });
-                    if (name) {
-                      setValue("upiName", name, { shouldValidate: true, shouldDirty: true });
-                    }
-                  }}
+              <Field data-invalid={err("upiId") ? true : undefined}>
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel htmlFor="tech-upi">UPI ID</FieldLabel>
+                  <UpiQrUpload
+                    onScanned={({ vpa, name }) => {
+                      // Both fields from the QR — the name only when it carried
+                      // one, so a bare-address code does not wipe what was typed.
+                      setValue("upiId", vpa, {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      });
+                      if (name) {
+                        setValue("upiName", name, {
+                          shouldValidate: true,
+                          shouldDirty: true,
+                        });
+                      }
+                    }}
+                  />
+                </div>
+                <Input
+                  id="tech-upi"
+                  inputMode="email"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="e.g. 9822066301@ybl"
+                  aria-invalid={err("upiId") ? true : undefined}
+                  aria-describedby={
+                    err("upiId") ? "tech-upi-error" : "tech-upi-hint"
+                  }
+                  {...register("upiId")}
                 />
-              </div>
-              <Input
-                id="tech-upi"
-                inputMode="email"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="e.g. 9822066301@ybl"
-                aria-invalid={err("upiId") ? true : undefined}
-                aria-describedby={
-                  err("upiId") ? "tech-upi-error" : "tech-upi-hint"
-                }
-                {...register("upiId")}
-              />
-              {err("upiId") ? (
-                <FieldDescription
-                  id="tech-upi-error"
-                  role="alert"
-                  className="text-danger"
-                >
-                  {err("upiId")}
-                </FieldDescription>
-              ) : (
-                <FieldDescription id="tech-upi-hint">
-                  Optional — where their earnings are paid. They can add it
-                  themselves in the app; after that, changes come to a manager.
-                </FieldDescription>
-              )}
-            </Field>
+                {err("upiId") ? (
+                  <FieldDescription
+                    id="tech-upi-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {err("upiId")}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription id="tech-upi-hint">
+                    Optional — where their earnings are paid. They can add it
+                    themselves in the app; after that, changes come to a
+                    manager.
+                  </FieldDescription>
+                )}
+              </Field>
 
-            <Field data-invalid={err("upiName") ? true : undefined}>
-              <FieldLabel htmlFor="tech-upi-name">Name on the UPI account</FieldLabel>
-              <Input
-                id="tech-upi-name"
-                autoComplete="off"
-                placeholder="As their UPI app shows it"
-                aria-invalid={err("upiName") ? true : undefined}
-                aria-describedby={err("upiName") ? "tech-upi-name-error" : undefined}
-                {...register("upiName")}
-              />
-              {err("upiName") ? (
-                <FieldDescription
-                  id="tech-upi-name-error"
-                  role="alert"
-                  className="text-danger"
-                >
-                  {err("upiName")}
-                </FieldDescription>
-              ) : null}
-            </Field>
-          </FieldGroup>
-        </FormSection>
+              <Field data-invalid={err("upiName") ? true : undefined}>
+                <FieldLabel htmlFor="tech-upi-name">
+                  Name on the UPI account
+                </FieldLabel>
+                <Input
+                  id="tech-upi-name"
+                  autoComplete="off"
+                  placeholder="As their UPI app shows it"
+                  aria-invalid={err("upiName") ? true : undefined}
+                  aria-describedby={
+                    err("upiName") ? "tech-upi-name-error" : undefined
+                  }
+                  {...register("upiName")}
+                />
+                {err("upiName") ? (
+                  <FieldDescription
+                    id="tech-upi-name-error"
+                    role="alert"
+                    className="text-danger"
+                  >
+                    {err("upiName")}
+                  </FieldDescription>
+                ) : null}
+              </Field>
+            </FieldGroup>
+          </FormSection>
 
-        {/* ── where they work ─────────────────────────────────────── */}
-        {/* Region and pincodes are ONE decision made in two steps, so they sit
+          {/* ── where they work ─────────────────────────────────────── */}
+          {/* Region and pincodes are ONE decision made in two steps, so they sit
             together and in that order. Region used to live under Identity,
             which is not what a region is: not who somebody is, but where they
             work. Changing it clears the pincodes — they are not in the new
             region and the server would refuse them. */}
-        <FormSection legend="Coverage">
-          <Controller
-            name="regionId"
-            control={control}
-            render={({ field: region }) => (
-              <Controller
-                name="pincodes"
-                control={control}
-                render={({ field: pins }) => (
-                  <CoverageFields
-                    regionId={region.value}
-                    pincodes={pins.value}
-                    onRegionId={region.onChange}
-                    onPincodes={pins.onChange}
-                    regionError={err("regionId")}
-                    pincodeError={err("pincodes")}
-                    hasOtherFranchisees={hasOtherFranchisees}
-                  />
-                )}
-              />
-            )}
-          />
-        </FormSection>
+          <FormSection legend="Coverage">
+            <Controller
+              name="regionId"
+              control={control}
+              render={({ field: region }) => (
+                <Controller
+                  name="pincodes"
+                  control={control}
+                  render={({ field: pins }) => (
+                    <CoverageFields
+                      regionId={region.value}
+                      pincodes={pins.value}
+                      onRegionId={region.onChange}
+                      onPincodes={pins.onChange}
+                      regionError={err("regionId")}
+                      pincodeError={err("pincodes")}
+                      hasOtherFranchisees={hasOtherFranchisees}
+                    />
+                  )}
+                />
+              )}
+            />
+          </FormSection>
 
-        {/* ── what they can fix ───────────────────────────────────── */}
-        {/* Its own section rather than a fieldset buried under Coverage: a
+          {/* ── what they can fix ───────────────────────────────────── */}
+          {/* Its own section rather than a fieldset buried under Coverage: a
             certification is a different question from a service area, and this
             list grows with the product master while Coverage does not.
 
             Subcategories sit under their parent's name — that is the level a
             job offer matches on, and ungrouped they read as one long flat
             list. */}
-        <FormSection
-          legend="Categories"
-          required
-          hint="Pick the main sub-categories this technician works on. Ticking one covers everything nested under it, including sub-categories added later."
-        >
-          <FieldSet
-            data-invalid={err("subcategoryIds") ? true : undefined}
-            aria-invalid={err("subcategoryIds") ? true : undefined}
-            aria-describedby={
-              err("subcategoryIds") ? "tech-cats-error" : undefined
-            }
+          <FormSection
+            legend="Categories"
+            required
+            hint="Pick the main sub-categories this technician works on. Ticking one covers everything nested under it, including sub-categories added later."
           >
-            {loadingCategories ? (
-              <FieldDescription>Loading categories…</FieldDescription>
-            ) : nodeOptions.length === 0 ? (
-              /* A dead end with a way out of it, the same shape ticket intake
+            <FieldSet
+              data-invalid={err("subcategoryIds") ? true : undefined}
+              aria-invalid={err("subcategoryIds") ? true : undefined}
+              aria-describedby={
+                err("subcategoryIds") ? "tech-cats-error" : undefined
+              }
+            >
+              {loadingCategories ? (
+                <FieldDescription>Loading categories…</FieldDescription>
+              ) : nodeOptions.length === 0 ? (
+                /* A dead end with a way out of it, the same shape ticket intake
                  uses when a vendor has no models. Without it this section is an
                  empty box under the words "Pick the main sub-categories", and
                  submitting answers "Select at least one category" — an
@@ -557,175 +580,179 @@ function TechnicianForm({
                  Not a rare state: a company certifies on MAIN sub-categories,
                  so a catalogue of nothing but root categories offers none, and
                  that is exactly how a freshly set-up company starts. */
-              <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
-                <Info className="mt-px size-4 shrink-0" aria-hidden />
-                <span>
-                  There are no sub-categories to certify anybody on yet. A
-                  technician is certified on a sub-category — Television under
-                  Electronics — not on a top-level category.{" "}
-                  <Link
-                    to="/categories"
-                    className="font-semibold underline underline-offset-2"
-                  >
-                    Add one in Product Master
-                  </Link>
-                  , then come back.
-                </span>
-              </p>
-            ) : (
-              <Controller
-                name="subcategoryIds"
-                control={control}
-                render={({ field }) => (
-                  <div className="grid gap-3.5">
-                    {/* Grouped by ROOT, one box per MAIN sub-category. Bare
+                <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+                  <Info className="mt-px size-4 shrink-0" aria-hidden />
+                  <span>
+                    There are no sub-categories to certify anybody on yet. A
+                    technician is certified on a sub-category — Television under
+                    Electronics — not on a top-level category.{" "}
+                    <Link
+                      to="/categories"
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Add one in Product Master
+                    </Link>
+                    , then come back.
+                  </span>
+                </p>
+              ) : (
+                <Controller
+                  name="subcategoryIds"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="grid gap-3.5">
+                      {/* Grouped by ROOT, one box per MAIN sub-category. Bare
                         names are safe: every box under a heading is a sibling
                         of the others, so the `TV › Android TV` breadcrumb that
                         told two identically-named nodes apart is not needed —
                         and there is nothing deeper here to need it for. */}
-                    {groupByRoot(nodeOptions).map(([rootName, options]) => (
-                      <div key={rootName}>
-                        <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
-                          {rootName}
-                        </p>
-                        <FieldGrid className="grid gap-2.5 sm:grid-cols-3">
-                          {options.map((option) => {
-                            const id = `tech-cat-${option.id}`;
-                            return (
-                              <Field key={option.id} orientation="horizontal">
-                                <Checkbox
-                                  id={id}
-                                  checked={field.value.includes(option.id)}
-                                  onCheckedChange={(next) =>
-                                    field.onChange(
-                                      next
-                                        ? [...field.value, option.id]
-                                        : field.value.filter(
-                                            (v) => v !== option.id
-                                          )
-                                    )
-                                  }
-                                />
-                                <FieldLabel htmlFor={id} className="font-normal">
-                                  {option.name}
-                                </FieldLabel>
-                              </Field>
-                            );
-                          })}
-                        </FieldGrid>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              />
-            )}
-            {err("subcategoryIds") ? (
-              <FieldDescription
-                id="tech-cats-error"
-                role="alert"
-                className="text-danger"
-              >
-                {err("subcategoryIds")}
-              </FieldDescription>
-            ) : null}
-          </FieldSet>
-        </FormSection>
+                      {groupByRoot(nodeOptions).map(([rootName, options]) => (
+                        <div key={rootName}>
+                          <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-ink-3 uppercase">
+                            {rootName}
+                          </p>
+                          <FieldGrid className="grid gap-2.5 sm:grid-cols-3">
+                            {options.map((option) => {
+                              const id = `tech-cat-${option.id}`;
+                              return (
+                                <Field key={option.id} orientation="horizontal">
+                                  <Checkbox
+                                    id={id}
+                                    checked={field.value.includes(option.id)}
+                                    onCheckedChange={(next) =>
+                                      field.onChange(
+                                        next
+                                          ? [...field.value, option.id]
+                                          : field.value.filter(
+                                              (v) => v !== option.id
+                                            )
+                                      )
+                                    }
+                                  />
+                                  <FieldLabel
+                                    htmlFor={id}
+                                    className="font-normal"
+                                  >
+                                    {option.name}
+                                  </FieldLabel>
+                                </Field>
+                              );
+                            })}
+                          </FieldGrid>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                />
+              )}
+              {err("subcategoryIds") ? (
+                <FieldDescription
+                  id="tech-cats-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {err("subcategoryIds")}
+                </FieldDescription>
+              ) : null}
+            </FieldSet>
+          </FormSection>
 
-        {/* ── how much work, and whether any ──────────────────────── */}
-        {/* Edit only. Neither question can be answered honestly at intake: a cap
+          {/* ── how much work, and whether any ──────────────────────── */}
+          {/* Edit only. Neither question can be answered honestly at intake: a cap
             invented before anybody has worked a day is a number nobody has a
             basis for, and a technician being added is being added because they
             are active. */}
-        {isEdit ? (
-          <FormSection
-            legend="Bandwidth & status"
-            hint="What this technician can take on, and whether they are taking anything at all."
-          >
-            <FieldGrid className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={err("dailyJobCap") ? true : undefined}>
-                <FieldLabel htmlFor="tech-cap">Jobs per day</FieldLabel>
-                <Input
-                  id="tech-cap"
-                  inputMode="numeric"
-                  className="tabular-nums"
-                  placeholder="No limit"
-                  aria-invalid={err("dailyJobCap") ? true : undefined}
-                  aria-describedby={
-                    err("dailyJobCap") ? "tech-cap-error" : "tech-cap-hint"
-                  }
-                  {...register("dailyJobCap")}
-                />
-                {err("dailyJobCap") ? (
-                  <FieldDescription
-                    id="tech-cap-error"
-                    role="alert"
-                    className="text-danger"
-                  >
-                    {err("dailyJobCap")}
-                  </FieldDescription>
-                ) : (
-                  <FieldDescription id="tech-cap-hint">
-                    Counted by the day the work happens. Leave it blank for no
-                    limit — the technician can set their own in the app.
-                  </FieldDescription>
-                )}
-              </Field>
-
-              {/* A plain FieldSet with its own legend — a sub-group inside a
-                  section, not a peer of it. See `FormSection`. */}
-              <FieldSet data-invalid={err("status") ? true : undefined}>
-                <FieldLegend variant="label" className="mb-0 font-medium">
-                  Status
-                </FieldLegend>
-                <Controller
-                  name="status"
-                  control={control}
-                  render={({ field }) => (
-                    <RadioGroup
-                      aria-label="Status"
-                      value={field.value}
-                      onValueChange={(v) => field.onChange(v)}
-                      aria-invalid={err("status") ? true : undefined}
-                      aria-describedby="tech-status-hint"
-                      className="grid grid-cols-3 gap-2"
+          {isEdit ? (
+            <FormSection
+              legend="Bandwidth & status"
+              hint="What this technician can take on, and whether they are taking anything at all."
+            >
+              <FieldGrid className="grid gap-4 sm:grid-cols-2">
+                <Field data-invalid={err("dailyJobCap") ? true : undefined}>
+                  <FieldLabel htmlFor="tech-cap">Jobs per day</FieldLabel>
+                  <Input
+                    id="tech-cap"
+                    inputMode="numeric"
+                    className="tabular-nums"
+                    placeholder="No limit"
+                    aria-invalid={err("dailyJobCap") ? true : undefined}
+                    aria-describedby={
+                      err("dailyJobCap") ? "tech-cap-error" : "tech-cap-hint"
+                    }
+                    {...register("dailyJobCap")}
+                  />
+                  {err("dailyJobCap") ? (
+                    <FieldDescription
+                      id="tech-cap-error"
+                      role="alert"
+                      className="text-danger"
                     >
-                      {TECHNICIAN_STATUSES.map((s) => (
-                        <label
-                          key={s}
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2.5 text-[13px] transition-colors",
-                            field.value === s
-                              ? "border-brand-500 bg-brand-100/40"
-                              : "border-line hover:border-brand-400"
-                          )}
-                        >
-                          <RadioGroupItem value={s} />
-                          <span>{TECH_STATUS_LABEL[s]}</span>
-                        </label>
-                      ))}
-                    </RadioGroup>
+                      {err("dailyJobCap")}
+                    </FieldDescription>
+                  ) : (
+                    <FieldDescription id="tech-cap-hint">
+                      Counted by the day the work happens. Leave it blank for no
+                      limit — the technician can set their own in the app.
+                    </FieldDescription>
                   )}
-                />
-                <FieldDescription id="tech-status-hint">
-                  Only an Active technician is offered jobs or can accept from
-                  the pool.
-                </FieldDescription>
-              </FieldSet>
-            </FieldGrid>
-          </FormSection>
-        ) : null}
-      </div>
+                </Field>
 
-      {/* The failure is reported in the toaster (App.tsx), not here. */}
-      <DialogFooter className="mt-5">
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={pending}>
-          {pending && <Spinner data-icon="inline-start" />}
-          {isEdit ? "Save changes" : "Add technician"}
-        </Button>
-      </DialogFooter>
+                {/* A plain FieldSet with its own legend — a sub-group inside a
+                  section, not a peer of it. See `FormSection`. */}
+                <FieldSet data-invalid={err("status") ? true : undefined}>
+                  <FieldLegend variant="label" className="mb-0 font-medium">
+                    Status
+                  </FieldLegend>
+                  <Controller
+                    name="status"
+                    control={control}
+                    render={({ field }) => (
+                      <RadioGroup
+                        aria-label="Status"
+                        value={field.value}
+                        onValueChange={(v) => field.onChange(v)}
+                        aria-invalid={err("status") ? true : undefined}
+                        aria-describedby="tech-status-hint"
+                        className="grid grid-cols-3 gap-2"
+                      >
+                        {TECHNICIAN_STATUSES.map((s) => (
+                          <label
+                            key={s}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2.5 text-[13px] transition-colors",
+                              field.value === s
+                                ? "border-brand-500 bg-brand-100/40"
+                                : "border-line hover:border-brand-400"
+                            )}
+                          >
+                            <RadioGroupItem value={s} />
+                            <span>{TECH_STATUS_LABEL[s]}</span>
+                          </label>
+                        ))}
+                      </RadioGroup>
+                    )}
+                  />
+                  <FieldDescription id="tech-status-hint">
+                    Only an Active technician is offered jobs or can accept from
+                    the pool.
+                  </FieldDescription>
+                </FieldSet>
+              </FieldGrid>
+            </FormSection>
+          ) : null}
+        </div>
+
+        {/* The failure is reported in the toaster (App.tsx), not here. */}
+        <DialogFooter className="mt-5">
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={pending}>
+            {pending && <Spinner data-icon="inline-start" />}
+            {isEdit ? "Save changes" : "Add technician"}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

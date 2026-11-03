@@ -250,6 +250,7 @@ async def create_company(
             full_name=body.adminName,
             role=ADMIN,
             is_active=True,
+            must_change_password=True,
             created_by=principal.user_id,
         )
         session.add(admin_user)

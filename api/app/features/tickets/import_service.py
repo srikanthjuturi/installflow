@@ -1413,15 +1413,13 @@ async def _resolve_catalogue(
             ).all()
         }
 
-    # A miss on the row's own model is still refused when another of THIS
-    # vendor's live products carries the serial — even an unchecked model. One
-    # query for the file, through the single-ticket path's own `serial_owners`,
-    # so another vendor's product is as absent here as it is there.
+    # A miss on the row's own model is still refused when any other product in
+    # the company — any vendor's live products — carries the serial, even an
+    # unchecked model. One query for the file, through the single-ticket path's
+    # own `serial_owners`, so the company-wide check agrees here and there.
     misses = {s for m, s in wanted_pairs if (m, s) not in hits}
     owners = (
-        await serial_owners(db, principal.company_id, vendor.id, misses)
-        if misses
-        else {}
+        await serial_owners(db, principal.company_id, misses) if misses else {}
     )
     elsewhere: dict[int, list[ProductModel]] = {}
     involved: dict[uuid.UUID, ProductModel] = {}

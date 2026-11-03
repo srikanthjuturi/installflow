@@ -195,7 +195,7 @@ export const modelSchema = (withPricing = true) =>
   );
 
 const baseModelSchema = z.object({
-  name: z.string().trim().min(1, "Model name is required"),
+  name: z.string().trim().min(1, "Model name is required").max(120, "120 characters max"),
   /** The vendor who supplies it. Required — a product nobody supplies is one
    *  no ticket can be raised against. `min(1)` rather than `.uuid()`: the
    *  control stores "" when empty, and "Select a vendor" is the message that

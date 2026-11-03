@@ -16,6 +16,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -55,7 +56,7 @@ export function SerialImportDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-2xl">
         <ImportForm
           modelId={modelId}
           modelName={modelName}
@@ -91,7 +92,10 @@ function ImportForm({
       setPreview(null);
       // Checking is the whole point of choosing, so it starts immediately —
       // there is no second button to press before anything happens.
-      runImport.mutate({ file: chosen, dryRun: true }, { onSuccess: setPreview });
+      runImport.mutate(
+        { file: chosen, dryRun: true },
+        { onSuccess: setPreview }
+      );
     },
   });
 
@@ -115,83 +119,86 @@ function ImportForm({
   const committing = runImport.isPending && !!preview;
 
   return (
-    <div className="grid gap-5">
-      <DialogHeader>
-        <DialogTitle>Import serial numbers</DialogTitle>
-        <DialogDescription>
-          A sheet with one serial number per row, for {modelName}. A{" "}
-          <span className="font-medium text-ink">Serial Number</span> heading is
-          optional — a plain column works. Rows that cannot be read are listed
-          with a reason and do not block the rest.
-        </DialogDescription>
-      </DialogHeader>
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Import serial numbers</DialogTitle>
+          <DialogDescription>
+            A sheet with one serial number per row, for {modelName}. A{" "}
+            <span className="font-medium text-ink">Serial Number</span> heading
+            is optional — a plain column works. Rows that cannot be read are
+            listed with a reason and do not block the rest.
+          </DialogDescription>
+        </DialogHeader>
 
-      <input {...picker.inputProps} />
+        <input {...picker.inputProps} />
 
-      <button
-        type="button"
-        onClick={picker.open}
-        {...picker.dropProps}
-        className={`grid place-items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors ${
-          picker.dragging
-            ? "border-brand-500 bg-surface-2 ring-2 ring-brand-500"
-            : "border-line hover:border-brand-400 hover:bg-surface-2"
-        }`}
-      >
-        <FileSpreadsheet className="size-7 text-ink-3" aria-hidden />
-        {file ? (
-          <>
-            <span className="text-sm font-medium text-ink">{file.name}</span>
-            <span className="text-[12px] text-ink-3">
-              {(file.size / (1024 * 1024)).toFixed(1)} MB · click or drop to
-              replace
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="text-sm font-medium text-ink">
-              Choose a file, or drag it here
-            </span>
-            <span className="text-[12px] text-ink-3">
-              .xlsx or .csv, up to {MAX_SERIAL_IMPORT_BYTES / (1024 * 1024)} MB
-            </span>
-          </>
-        )}
-      </button>
-
-      {picker.error ? (
-        <p role="alert" className="text-[13px] text-danger">
-          {picker.error}
-        </p>
-      ) : null}
-
-      {checking ? (
-        <p className="flex items-center gap-2 text-[13px] text-ink-2">
-          <Spinner />
-          Checking the file — nothing is saved yet.
-        </p>
-      ) : null}
-
-      {preview ? <Preview report={preview} /> : null}
-
-      {/* A failed request is reported by the toaster (App.tsx), not here. */}
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button
+        <button
           type="button"
-          onClick={commit}
-          disabled={!preview || runImport.isPending || preview.added === 0}
+          onClick={picker.open}
+          {...picker.dropProps}
+          className={`grid place-items-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors ${
+            picker.dragging
+              ? "border-brand-500 bg-surface-2 ring-2 ring-brand-500"
+              : "border-line hover:border-brand-400 hover:bg-surface-2"
+          }`}
         >
-          {committing ? <Spinner data-icon="inline-start" /> : null}
-          {preview
-            ? `Import ${preview.added.toLocaleString()} serial${
-                preview.added === 1 ? "" : "s"
-              }`
-            : "Import"}
-        </Button>
-      </DialogFooter>
+          <FileSpreadsheet className="size-7 text-ink-3" aria-hidden />
+          {file ? (
+            <>
+              <span className="text-sm font-medium text-ink">{file.name}</span>
+              <span className="text-[12px] text-ink-3">
+                {(file.size / (1024 * 1024)).toFixed(1)} MB · click or drop to
+                replace
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-ink">
+                Choose a file, or drag it here
+              </span>
+              <span className="text-[12px] text-ink-3">
+                .xlsx or .csv, up to {MAX_SERIAL_IMPORT_BYTES / (1024 * 1024)}{" "}
+                MB
+              </span>
+            </>
+          )}
+        </button>
+
+        {picker.error ? (
+          <p role="alert" className="text-[13px] text-danger">
+            {picker.error}
+          </p>
+        ) : null}
+
+        {checking ? (
+          <p className="flex items-center gap-2 text-[13px] text-ink-2">
+            <Spinner />
+            Checking the file — nothing is saved yet.
+          </p>
+        ) : null}
+
+        {preview ? <Preview report={preview} /> : null}
+
+        {/* A failed request is reported by the toaster (App.tsx), not here. */}
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            type="button"
+            onClick={commit}
+            disabled={!preview || runImport.isPending || preview.added === 0}
+          >
+            {committing ? <Spinner data-icon="inline-start" /> : null}
+            {preview
+              ? `Import ${preview.added.toLocaleString()} serial${
+                  preview.added === 1 ? "" : "s"
+                }`
+              : "Import"}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </div>
   );
 }
@@ -256,9 +263,7 @@ function Preview({ report }: { report: SerialImportReport }) {
         `${report.rejected} ${report.rejected === 1 ? "row was" : "rows were"} rejected`
       );
     }
-    return parts.length > 0
-      ? parts.join(", ") + "."
-      : "Nothing would change.";
+    return parts.length > 0 ? parts.join(", ") + "." : "Nothing would change.";
   }
 
   return (
@@ -279,21 +284,15 @@ function Preview({ report }: { report: SerialImportReport }) {
           >
             <p className="text-[11px] font-medium text-ink-3">{t.label}</p>
             <p className="text-lg font-semibold text-ink">{t.value}</p>
-            {t.hint ? (
-              <p className="text-[11px] text-ink-3">{t.hint}</p>
-            ) : null}
+            {t.hint ? <p className="text-[11px] text-ink-3">{t.hint}</p> : null}
           </div>
         ))}
       </div>
 
       {report.added === 0 && report.rejected === 0 ? (
-        <Notice
-          tone="warn"
-          icon={AlertTriangle}
-          title="Nothing will be added"
-        >
-          {zeroAddReason()} That is the expected result of re-uploading a
-          sheet that has already been imported.
+        <Notice tone="warn" icon={AlertTriangle} title="Nothing will be added">
+          {zeroAddReason()} That is the expected result of re-uploading a sheet
+          that has already been imported.
         </Notice>
       ) : report.added === 0 && report.rejected > 0 ? (
         <Notice tone="warn" icon={AlertTriangle} title="Nothing will be added">

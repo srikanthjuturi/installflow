@@ -633,11 +633,15 @@ class ProductModelSerial(Base, IdMixin, AuditMixin):
         # soft-delete rule that makes every other UNIQUE here partial does not
         # apply.
         #
-        #   uq_product_model_serials_model_serial_lower
-        #     (company_id, product_model_id, lower(serial))
+        #   uq_product_model_serials_company_serial_lower
+        #     (company_id, lower(serial))
         #
-        # Scoped to the MODEL, not the company. A serial physically names one
-        # unit, so company-wide uniqueness is tempting — but it is a stronger
-        # claim than the check needs, and it would reject a legitimate import
-        # where two models genuinely share a numbering scheme.
+        # Scoped to the COMPANY, not the model (since `d4f8a21b9c56`). A serial
+        # physically names one unit, so the same number sitting on two different
+        # models in the same company is always a mistake, not a legitimate
+        # shared numbering scheme. A non-unique index,
+        # `ix_product_model_serials_model_serial_lower`
+        #   (company_id, product_model_id, lower(serial)),
+        # covers the composite-FK and per-model lookups the old, model-scoped
+        # UNIQUE also used to serve.
     )

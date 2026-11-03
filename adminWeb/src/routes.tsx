@@ -20,7 +20,7 @@ import {
 } from "@/components/franchise/franchiseNav";
 import { franchiseLanding } from "@/components/franchise/franchiseNav";
 import { useFeatureAccess, useMe } from "@/hooks/useAuth";
-import { SHELL_PATHS } from "@/lib/surface";
+import { SHELL_PATHS, surfaceOf } from "@/lib/surface";
 import { landingPath, useSession } from "@/store/session";
 
 /* Route-based code splitting — each page is its own chunk, resolved behind
@@ -286,6 +286,25 @@ function RequireSuperadmin() {
 }
 
 /**
+ * OQ-A14: while the account must change an admin-issued password, the whole
+ * app is gated to that surface's change-password screen. Frontend-only — a
+ * UX nudge on an already-legitimate credential, not a security boundary.
+ * Reads useMe() (GET /auth/me) so a page refresh cannot bypass it.
+ */
+function RequirePasswordChange() {
+  const { pathname } = useLocation();
+  const { data, isPending } = useMe();
+  const superadmin = useSession((s) => s.superadmin);
+  const franchise = useSession((s) => s.franchise);
+  const portal = useSession((s) => s.portal);
+  if (isPending) return <PageSkeleton />;
+  if (!data?.user?.mustChangePassword) return <Outlet />;
+  const passwordPath = SHELL_PATHS[surfaceOf({ superadmin, franchise, portal })].password;
+  if (pathname === passwordPath) return <Outlet />;
+  return <Navigate to={passwordPath} replace />;
+}
+
+/**
  * Blocks a route whose backing feature this user does not have, sending them to
  * the dashboard rather than a screen whose every request would 403. Pairs with
  * the sidebar filter — both read the same map, so a hidden link is also an
@@ -340,21 +359,26 @@ export const routes: RouteObject[] = [
       {
         element: <SuperadminShell />,
         children: [
-          // The platform's landing page. Not `/transactions`: that path is the
-          // company console's, behind a different guard.
-          { path: "all-transactions", element: <TransactionsPage /> },
-          // Epic 4. Not `/live-technicians`: that path is the company console's.
-          { path: "all-live-technicians", element: <LiveTechniciansPage /> },
-          { path: "companies", element: <CompaniesPage /> },
-          // The geography every company shares — a platform record, not a
-          // tenant one, which is why it lives on this surface and not under
-          // Master Data in the ops app.
-          { path: "geography", element: <GeographyPage /> },
-          // The platform's own rules — what a company is given and what a
-          // ticket costs — and the recharges companies pay against them.
-          { path: "rules", element: <PlatformRulesPage /> },
-          { path: "recharges", element: <PlatformRechargesPage /> },
-          { path: "recharges/:id", element: <PlatformRechargePage /> },
+          {
+            element: <RequirePasswordChange />,
+            children: [
+              // The platform's landing page. Not `/transactions`: that path is the
+              // company console's, behind a different guard.
+              { path: "all-transactions", element: <TransactionsPage /> },
+              // Epic 4. Not `/live-technicians`: that path is the company console's.
+              { path: "all-live-technicians", element: <LiveTechniciansPage /> },
+              { path: "companies", element: <CompaniesPage /> },
+              // The geography every company shares — a platform record, not a
+              // tenant one, which is why it lives on this surface and not under
+              // Master Data in the ops app.
+              { path: "geography", element: <GeographyPage /> },
+              // The platform's own rules — what a company is given and what a
+              // ticket costs — and the recharges companies pay against them.
+              { path: "rules", element: <PlatformRulesPage /> },
+              { path: "recharges", element: <PlatformRechargesPage /> },
+              { path: "recharges/:id", element: <PlatformRechargePage /> },
+            ],
+          },
         ],
       },
     ],
@@ -365,57 +389,62 @@ export const routes: RouteObject[] = [
       {
         element: <VendorShell />,
         children: [
-          // Outside the feature guard: it only redirects, and putting it inside
-          // would mean naming it in the ungated set for no benefit.
-          { path: "portal", element: <Navigate to="/portal/tickets" replace /> },
           {
-            element: <RequirePortalFeature />,
+            element: <RequirePasswordChange />,
             children: [
-              { path: "portal/tickets", element: <VendorTicketsPage /> },
-              { path: "portal/tickets/new", element: <VendorNewTicketPage /> },
-              // The Excel intake channel. Lit by `portalNav.ts`'s CHANNEL_ENTRY
-              // only for a vendor whose `intakeChannels` includes it; the
-              // portal guard redirects anybody else who types the URL, because
-              // it reads the same table. Declared BEFORE `portal/tickets/:id`
-              // so "import" is not parsed as a ticket id.
+              // Outside the feature guard: it only redirects, and putting it
+              // inside would mean naming it in the ungated set for no benefit.
+              { path: "portal", element: <Navigate to="/portal/tickets" replace /> },
               {
-                path: "portal/tickets/import",
-                element: <VendorTicketImportPage />,
+                element: <RequirePortalFeature />,
+                children: [
+                  { path: "portal/tickets", element: <VendorTicketsPage /> },
+                  { path: "portal/tickets/new", element: <VendorNewTicketPage /> },
+                  // The Excel intake channel. Lit by `portalNav.ts`'s CHANNEL_ENTRY
+                  // only for a vendor whose `intakeChannels` includes it; the
+                  // portal guard redirects anybody else who types the URL, because
+                  // it reads the same table. Declared BEFORE `portal/tickets/:id`
+                  // so "import" is not parsed as a ticket id.
+                  {
+                    path: "portal/tickets/import",
+                    element: <VendorTicketImportPage />,
+                  },
+                  {
+                    path: "portal/tickets/:id",
+                    element: <TicketDetailPage backTo="/portal/tickets" actions={null} />,
+                  },
+                  { path: "portal/users", element: <VendorUsersPage /> },
+                  // Gated on `vendor.catalogue` through `portalNav.ts` — the portal
+                  // guard DENIES anything that table does not name, so a route
+                  // added here alone would be silently unreachable.
+                  { path: "portal/products", element: <VendorProductsPage /> },
+                  // `vendor.catalogue` too, through the same table.
+                  { path: "portal/brands", element: <VendorBrandsPage /> },
+                  // Gated on `vendor.credit` through `portalNav.ts`. The payment
+                  // route rides the entry's `match` prefix — the portal guard
+                  // DENIES anything that table does not name, so a route added
+                  // here alone would be silently unreachable.
+                  // Gated on `vendor.credit` through `portalNav.ts`.
+                  { path: "portal/documents", element: <TransactionsPage /> },
+                  // Gated on `vendor.credit` through `portalNav.ts`.
+                  {
+                    path: "portal/live-technicians",
+                    element: <LiveTechniciansPage />,
+                  },
+                  { path: "portal/credit", element: <VendorMyCreditPage /> },
+                  {
+                    path: "portal/credit/payments/:id",
+                    element: <VendorMyPaymentPage />,
+                  },
+                  // The bell is in the shared Topbar, so a vendor has always been
+                  // able to see it. Without this route it linked into the ops tree,
+                  // where `RequireOps` bounced them straight back to /portal — a
+                  // control that could only ever throw them out of the page.
+                  { path: "portal/notifications", element: <NotificationsPage /> },
+                  { path: "portal/account", element: <AccountPage /> },
+                  { path: "portal/password", element: <ChangePasswordPage /> },
+                ],
               },
-              {
-                path: "portal/tickets/:id",
-                element: <TicketDetailPage backTo="/portal/tickets" actions={null} />,
-              },
-              { path: "portal/users", element: <VendorUsersPage /> },
-              // Gated on `vendor.catalogue` through `portalNav.ts` — the portal
-              // guard DENIES anything that table does not name, so a route
-              // added here alone would be silently unreachable.
-              { path: "portal/products", element: <VendorProductsPage /> },
-              // `vendor.catalogue` too, through the same table.
-              { path: "portal/brands", element: <VendorBrandsPage /> },
-              // Gated on `vendor.credit` through `portalNav.ts`. The payment
-              // route rides the entry's `match` prefix — the portal guard
-              // DENIES anything that table does not name, so a route added
-              // here alone would be silently unreachable.
-              // Gated on `vendor.credit` through `portalNav.ts`.
-              { path: "portal/documents", element: <TransactionsPage /> },
-              // Gated on `vendor.credit` through `portalNav.ts`.
-              {
-                path: "portal/live-technicians",
-                element: <LiveTechniciansPage />,
-              },
-              { path: "portal/credit", element: <VendorMyCreditPage /> },
-              {
-                path: "portal/credit/payments/:id",
-                element: <VendorMyPaymentPage />,
-              },
-              // The bell is in the shared Topbar, so a vendor has always been
-              // able to see it. Without this route it linked into the ops tree,
-              // where `RequireOps` bounced them straight back to /portal — a
-              // control that could only ever throw them out of the page.
-              { path: "portal/notifications", element: <NotificationsPage /> },
-              { path: "portal/account", element: <AccountPage /> },
-              { path: "portal/password", element: <ChangePasswordPage /> },
             ],
           },
         ],
@@ -435,66 +464,71 @@ export const routes: RouteObject[] = [
       {
         element: <FranchiseShell />,
         children: [
-          // Outside the feature guard: it only redirects (to this user's
-          // first held rail entry), and gating a redirector would put the
-          // guard's landing fallback in a loop with itself.
-          { path: "franchise", element: <FranchiseLanding /> },
           {
-            element: <RequireFranchiseFeature />,
+            element: <RequirePasswordChange />,
             children: [
-              // The roster, profile and job history are the STAFF screens
-              // mounted on the franchise workspace — no franchise-specific
-              // page exists for them. Same for the redemption list/detail,
-              // the pool and the ticket detail below.
-              { path: "franchise/technicians", element: <TechnicianListPage /> },
-              { path: "franchise/technicians/:id", element: <TechnicianProfilePage /> },
+              // Outside the feature guard: it only redirects (to this user's
+              // first held rail entry), and gating a redirector would put the
+              // guard's landing fallback in a loop with itself.
+              { path: "franchise", element: <FranchiseLanding /> },
               {
-                path: "franchise/technicians/:id/tickets",
-                element: <TechnicianJobsPage />,
+                element: <RequireFranchiseFeature />,
+                children: [
+                  // The roster, profile and job history are the STAFF screens
+                  // mounted on the franchise workspace — no franchise-specific
+                  // page exists for them. Same for the redemption list/detail,
+                  // the pool and the ticket detail below.
+                  { path: "franchise/technicians", element: <TechnicianListPage /> },
+                  { path: "franchise/technicians/:id", element: <TechnicianProfilePage /> },
+                  {
+                    path: "franchise/technicians/:id/tickets",
+                    element: <TechnicianJobsPage />,
+                  },
+                  { path: "franchise/upi-changes", element: <FranchiseUpiChangesPage /> },
+                  { path: "franchise/redemptions", element: <RedemptionsPage /> },
+                  { path: "franchise/redemptions/:id", element: <RedemptionPage /> },
+                  { path: "franchise/pool", element: <LedgerPage /> },
+                  { path: "franchise/settlements", element: <FranchiseSettlementsPage /> },
+                  // Gated on `franchise.documents` through `franchiseNav.ts`.
+                  { path: "franchise/documents", element: <TransactionsPage /> },
+                  { path: "franchise/statements", element: <FranchiseStatementsPage /> },
+                  { path: "franchise/settings", element: <FranchiseAllowancesPage /> },
+                  // Gated on `parts.handle` / `franchise.facility_users` through
+                  // `franchiseNav.ts` — the guard DENIES anything that table does
+                  // not name, and the request page rides the entry's `match` prefix.
+                  { path: "franchise/parts", element: <FacilityQueuePage /> },
+                  {
+                    path: "franchise/parts/requests/:id",
+                    element: <PartRequestPage />,
+                  },
+                  {
+                    path: "franchise/facility-users",
+                    element: <FacilityUsersPage />,
+                  },
+                  { path: "franchise/tickets", element: <FranchiseTicketsPage /> },
+                  // Gated on `franchise.tickets` through `franchiseNav.ts`.
+                  {
+                    path: "franchise/live-technicians",
+                    element: <LiveTechniciansPage />,
+                  },
+                  // Read-only here: `actions={null}` strips every ops control
+                  // (the same prop the vendor portal's detail route passes, which
+                  // the detail page reads as "not the ops surface").
+                  {
+                    path: "franchise/tickets/:id",
+                    element: (
+                      <TicketDetailPage
+                        backTo="/franchise/tickets"
+                        backLabel="Back to tickets"
+                        actions={null}
+                      />
+                    ),
+                  },
+                  { path: "franchise/notifications", element: <NotificationsPage /> },
+                  { path: "franchise/account", element: <AccountPage /> },
+                  { path: "franchise/password", element: <ChangePasswordPage /> },
+                ],
               },
-              { path: "franchise/upi-changes", element: <FranchiseUpiChangesPage /> },
-              { path: "franchise/redemptions", element: <RedemptionsPage /> },
-              { path: "franchise/redemptions/:id", element: <RedemptionPage /> },
-              { path: "franchise/pool", element: <LedgerPage /> },
-              { path: "franchise/settlements", element: <FranchiseSettlementsPage /> },
-              // Gated on `franchise.documents` through `franchiseNav.ts`.
-              { path: "franchise/documents", element: <TransactionsPage /> },
-              { path: "franchise/statements", element: <FranchiseStatementsPage /> },
-              { path: "franchise/settings", element: <FranchiseAllowancesPage /> },
-              // Gated on `parts.handle` / `franchise.facility_users` through
-              // `franchiseNav.ts` — the guard DENIES anything that table does
-              // not name, and the request page rides the entry's `match` prefix.
-              { path: "franchise/parts", element: <FacilityQueuePage /> },
-              {
-                path: "franchise/parts/requests/:id",
-                element: <PartRequestPage />,
-              },
-              {
-                path: "franchise/facility-users",
-                element: <FacilityUsersPage />,
-              },
-              { path: "franchise/tickets", element: <FranchiseTicketsPage /> },
-              // Gated on `franchise.tickets` through `franchiseNav.ts`.
-              {
-                path: "franchise/live-technicians",
-                element: <LiveTechniciansPage />,
-              },
-              // Read-only here: `actions={null}` strips every ops control
-              // (the same prop the vendor portal's detail route passes, which
-              // the detail page reads as "not the ops surface").
-              {
-                path: "franchise/tickets/:id",
-                element: (
-                  <TicketDetailPage
-                    backTo="/franchise/tickets"
-                    backLabel="Back to tickets"
-                    actions={null}
-                  />
-                ),
-              },
-              { path: "franchise/notifications", element: <NotificationsPage /> },
-              { path: "franchise/account", element: <AccountPage /> },
-              { path: "franchise/password", element: <ChangePasswordPage /> },
             ],
           },
         ],
@@ -508,10 +542,13 @@ export const routes: RouteObject[] = [
         element: <AppShell />,
         children: [
           {
-            // Every in-app page sits behind the feature guard; ungated paths
-            // pass straight through.
-            element: <RequireFeature />,
+            element: <RequirePasswordChange />,
             children: [
+              {
+                // Every in-app page sits behind the feature guard; ungated paths
+                // pass straight through.
+                element: <RequireFeature />,
+                children: [
               { index: true, element: <DashboardPage /> },
               { path: "tickets", element: <TicketListPage /> },
               // Epic 4 - gated on `jobs.view` off the nav table.
@@ -605,6 +642,8 @@ export const routes: RouteObject[] = [
               { path: "notifications", element: <NotificationsPage /> },
               { path: "account", element: <AccountPage /> },
               { path: "account/password", element: <ChangePasswordPage /> },
+                ],
+              },
             ],
           },
         ],

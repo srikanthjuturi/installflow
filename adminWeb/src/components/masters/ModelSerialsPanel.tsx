@@ -50,6 +50,7 @@ export function ModelSerialsPanel({
   modelId,
   modelName,
   portal = false,
+  totalSerialCount,
 }: {
   modelId: string;
   modelName: string;
@@ -68,6 +69,12 @@ export function ModelSerialsPanel({
    * edit so correcting a typo never has to go through a delete at all.
    */
   portal?: boolean;
+  /**
+   * The model's real unfiltered serial count — used only to decide the "last
+   * one" wording. The local `total` below is the search-filtered count and
+   * must NOT be used for that.
+   */
+  totalSerialCount: number;
 }) {
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
@@ -364,7 +371,7 @@ export function ModelSerialsPanel({
            delete at all: this is the click that turns the check off. Second
            person on the portal, because there it is the reader's own gate. */
         description={
-          total === 1
+          totalSerialCount === 1
             ? `${pendingDelete?.serial} is the last one on ${modelName}. ` +
               (portal
                 ? "Removing it turns the intake check off for this product — " +
@@ -406,8 +413,11 @@ function AddSerialsForm({
   onDone: () => void;
 }) {
   const [value, setValue] = React.useState("");
-  const [lastResult, setLastResult] =
-    React.useState<{ added: number; duplicates: number } | null>(null);
+  const [lastResult, setLastResult] = React.useState<{
+    added: number;
+    duplicates: number;
+    onOtherProduct: number;
+  } | null>(null);
   const addSerials = useAddSerials(modelId, portal);
 
   // Split on newlines AND commas: both are how a pasted column arrives,
@@ -455,6 +465,14 @@ function AddSerialsForm({
           {lastResult.added === 0
             ? `${lastResult.duplicates === 1 ? "That serial number is" : `All ${lastResult.duplicates} serial numbers are`} already on this model — nothing was added.`
             : `${lastResult.duplicates} serial number${lastResult.duplicates === 1 ? " was" : "s were"} already on this model and skipped.`}
+        </p>
+      )}
+
+      {lastResult && lastResult.onOtherProduct > 0 && (
+        <p className="text-[12px] text-danger" role="alert">
+          {lastResult.onOtherProduct === 1
+            ? "1 serial number already exists on another product and was not added."
+            : `${lastResult.onOtherProduct} serial numbers already exist on other products and were not added.`}
         </p>
       )}
 

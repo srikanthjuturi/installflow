@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -55,7 +56,12 @@ export function HandToFranchiseeDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  ticket: { id: string; code: string; status: TicketStatus; franchiseeName: string | null };
+  ticket: {
+    id: string;
+    code: string;
+    status: TicketStatus;
+    franchiseeName: string | null;
+  };
   onConfirm: (values: HandOverFormValues) => void;
   isPending: boolean;
 }) {
@@ -100,144 +106,149 @@ export function HandToFranchiseeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto scroll-none">
-        <DialogHeader>
-          <DialogTitle>Hand {ticket.code} to another franchisee</DialogTitle>
-          <DialogDescription>
-            Use this when {current} can't take the job — nobody certified,
-            everyone at their daily limit, or nobody online.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-lg">
+        <DialogScrollBody className="scroll-none">
+          <DialogHeader>
+            <DialogTitle>Hand {ticket.code} to another franchisee</DialogTitle>
+            <DialogDescription>
+              Use this when {current} can't take the job — nobody certified,
+              everyone at their daily limit, or nobody online.
+            </DialogDescription>
+          </DialogHeader>
 
-        {loading ? (
-          <div className="flex flex-col gap-2" aria-busy="true">
-            <Skeleton className="h-14 rounded-md" />
-            <Skeleton className="h-14 rounded-md" />
-            <Skeleton className="h-14 rounded-md" />
-          </div>
-        ) : blocked ? (
-          <p
-            role="alert"
-            className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn"
-          >
-            <Info className="mt-px size-4 shrink-0" aria-hidden />
-            <span>{blockerSentence(data.blocker, ticket)}</span>
-          </p>
-        ) : (
-          <form
-            onSubmit={handleSubmit(onConfirm)}
-            className="flex flex-col gap-4"
-            noValidate
-          >
-            <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
-              <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
-              <span>
-                Handing a ticket over takes it away from {current}. The other
-                franchisee's technicians are offered it, and they are paid by
-                their own franchisee's rules, including travel.
-              </span>
+          {loading ? (
+            <div className="flex flex-col gap-2" aria-busy="true">
+              <Skeleton className="h-14 rounded-md" />
+              <Skeleton className="h-14 rounded-md" />
+              <Skeleton className="h-14 rounded-md" />
+            </div>
+          ) : blocked ? (
+            <p
+              role="alert"
+              className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn"
+            >
+              <Info className="mt-px size-4 shrink-0" aria-hidden />
+              <span>{blockerSentence(data.blocker, ticket)}</span>
             </p>
-
-            <Field data-invalid={err("franchiseeId") ? true : undefined}>
-              <FieldLabel id="hand-over-franchisee-label">Franchisee</FieldLabel>
-              <Controller
-                control={control}
-                name="franchiseeId"
-                render={({ field }) => (
-                  <RadioGroup
-                    value={field.value}
-                    onValueChange={(v) => field.onChange(String(v))}
-                    aria-labelledby="hand-over-franchisee-label"
-                    className="max-h-[45vh] gap-1.5 overflow-y-auto scroll-none"
-                  >
-                    {rows.map((row) => (
-                      <label
-                        key={row.id}
-                        className="flex cursor-pointer items-start gap-3 rounded-md border border-line px-3 py-2.5 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60 has-[[data-checked]]:border-primary"
-                      >
-                        <RadioGroupItem
-                          value={row.id}
-                          disabled={row.disabled}
-                          className="mt-0.5"
-                        />
-                        <span className="flex min-w-0 flex-1 flex-col gap-1">
-                          <span className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium">
-                            {row.name}
-                            {row.isHome ? (
-                              <Badge variant="secondary">Home</Badge>
-                            ) : null}
-                            {row.kind === "external" ? (
-                              <Badge variant="outline">External</Badge>
-                            ) : null}
-                            {row.isCurrent ? (
-                              <Badge variant="outline">Current</Badge>
-                            ) : null}
-                          </span>
-                          <span className="text-xs text-ink-2">
-                            {optionLabel(row)}
-                          </span>
-                        </span>
-                      </label>
-                    ))}
-                  </RadioGroup>
-                )}
-              />
-              {err("franchiseeId") ? (
-                <FieldDescription role="alert" className="text-danger">
-                  {err("franchiseeId")}
-                </FieldDescription>
-              ) : null}
-            </Field>
-
-            {warning ? (
-              <p
-                role="status"
-                className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn"
-              >
-                <Info className="mt-px size-4 shrink-0" aria-hidden />
-                <span>{warning}</span>
+          ) : (
+            <form
+              onSubmit={handleSubmit(onConfirm)}
+              className="flex flex-col gap-4"
+              noValidate
+            >
+              <p className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn">
+                <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
+                <span>
+                  Handing a ticket over takes it away from {current}. The other
+                  franchisee's technicians are offered it, and they are paid by
+                  their own franchisee's rules, including travel.
+                </span>
               </p>
-            ) : null}
 
-            <Field data-invalid={err("reason") ? true : undefined}>
-              <FieldLabel htmlFor="hand-over-reason">Reason</FieldLabel>
-              <Input
-                id="hand-over-reason"
-                placeholder="Why is it moving?"
-                aria-invalid={err("reason") ? true : undefined}
-                aria-describedby="hand-over-reason-hint"
-                {...register("reason")}
-              />
-              <FieldDescription
-                id="hand-over-reason-hint"
-                role={err("reason") ? "alert" : undefined}
-                className={err("reason") ? "text-danger" : undefined}
-              >
-                {err("reason") ?? "Shown to both franchisees' admins on the ticket."}
-              </FieldDescription>
-            </Field>
+              <Field data-invalid={err("franchiseeId") ? true : undefined}>
+                <FieldLabel id="hand-over-franchisee-label">
+                  Franchisee
+                </FieldLabel>
+                <Controller
+                  control={control}
+                  name="franchiseeId"
+                  render={({ field }) => (
+                    <RadioGroup
+                      value={field.value}
+                      onValueChange={(v) => field.onChange(String(v))}
+                      aria-labelledby="hand-over-franchisee-label"
+                      className="scroll-none max-h-[45vh] gap-1.5 overflow-y-auto"
+                    >
+                      {rows.map((row) => (
+                        <label
+                          key={row.id}
+                          className="flex cursor-pointer items-start gap-3 rounded-md border border-line px-3 py-2.5 has-[[data-checked]]:border-primary has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60"
+                        >
+                          <RadioGroupItem
+                            value={row.id}
+                            disabled={row.disabled}
+                            className="mt-0.5"
+                          />
+                          <span className="flex min-w-0 flex-1 flex-col gap-1">
+                            <span className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium">
+                              {row.name}
+                              {row.isHome ? (
+                                <Badge variant="secondary">Home</Badge>
+                              ) : null}
+                              {row.kind === "external" ? (
+                                <Badge variant="outline">External</Badge>
+                              ) : null}
+                              {row.isCurrent ? (
+                                <Badge variant="outline">Current</Badge>
+                              ) : null}
+                            </span>
+                            <span className="text-xs text-ink-2">
+                              {optionLabel(row)}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </RadioGroup>
+                  )}
+                />
+                {err("franchiseeId") ? (
+                  <FieldDescription role="alert" className="text-danger">
+                    {err("franchiseeId")}
+                  </FieldDescription>
+                ) : null}
+              </Field>
 
+              {warning ? (
+                <p
+                  role="status"
+                  className="flex items-start gap-2.5 rounded-md bg-warn-bg px-3.5 py-3 text-xs leading-relaxed text-warn"
+                >
+                  <Info className="mt-px size-4 shrink-0" aria-hidden />
+                  <span>{warning}</span>
+                </p>
+              ) : null}
+
+              <Field data-invalid={err("reason") ? true : undefined}>
+                <FieldLabel htmlFor="hand-over-reason">Reason</FieldLabel>
+                <Input
+                  id="hand-over-reason"
+                  placeholder="Why is it moving?"
+                  aria-invalid={err("reason") ? true : undefined}
+                  aria-describedby="hand-over-reason-hint"
+                  {...register("reason")}
+                />
+                <FieldDescription
+                  id="hand-over-reason-hint"
+                  role={err("reason") ? "alert" : undefined}
+                  className={err("reason") ? "text-danger" : undefined}
+                >
+                  {err("reason") ??
+                    "Shown to both franchisees' admins on the ticket."}
+                </FieldDescription>
+              </Field>
+
+              <DialogFooter>
+                <DialogClose
+                  render={
+                    <Button variant="outline" disabled={isPending}>
+                      Cancel
+                    </Button>
+                  }
+                />
+                <Button type="submit" disabled={!canSubmit}>
+                  {isPending ? <Spinner className="size-4" /> : null}
+                  Hand over
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+
+          {blocked ? (
             <DialogFooter>
-              <DialogClose
-                render={
-                  <Button variant="outline" disabled={isPending}>
-                    Cancel
-                  </Button>
-                }
-              />
-              <Button type="submit" disabled={!canSubmit}>
-                {isPending ? <Spinner className="size-4" /> : null}
-                Hand over
-              </Button>
+              <DialogClose render={<Button variant="outline">Close</Button>} />
             </DialogFooter>
-          </form>
-        )}
-
-        {blocked ? (
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline">Close</Button>} />
-          </DialogFooter>
-        ) : null}
+          ) : null}
+        </DialogScrollBody>
       </DialogContent>
     </Dialog>
   );

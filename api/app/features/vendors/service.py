@@ -639,6 +639,7 @@ async def create_vendor(
             phone=body.phone,
             role=VENDOR,
             is_active=True,
+            must_change_password=True,
             created_by=principal.user_id,
         )
         db.add(identity)
@@ -751,6 +752,8 @@ async def _reset_login_password(
     password = generate_temporary_password()
     account.password_hash = hash_password(password)
     account.updated_by = principal.user_id
+    account.must_change_password = True
+    account.password_changed_at = datetime.now(timezone.utc)
     await revoke_refresh_tokens(db, account.id)
     return account, password
 

@@ -5,6 +5,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -63,53 +64,55 @@ export function TicketImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Import tickets</DialogTitle>
-          <DialogDescription>
-            Upload a vendor's spreadsheet on their behalf. The tickets are
-            raised against that vendor; the trail records that you imported
-            them.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-3xl">
+        <DialogScrollBody className="scroll-slim">
+          <DialogHeader>
+            <DialogTitle>Import tickets</DialogTitle>
+            <DialogDescription>
+              Upload a vendor's spreadsheet on their behalf. The tickets are
+              raised against that vendor; the trail records that you imported
+              them.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-5">
-          <Field>
-            <FieldLabel htmlFor="import-vendor">Vendor</FieldLabel>
-            <Select
-              value={vendorId}
-              onValueChange={(next) => setVendorId(next ?? "")}
-            >
-              <SelectTrigger id="import-vendor">
-                <SelectValue placeholder="Choose a vendor" />
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <div className="grid gap-5">
+            <Field>
+              <FieldLabel htmlFor="import-vendor">Vendor</FieldLabel>
+              <Select
+                value={vendorId}
+                onValueChange={(next) => setVendorId(next ?? "")}
+              >
+                <SelectTrigger id="import-vendor">
+                  <SelectValue placeholder="Choose a vendor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
-          {/* Mounted only once a vendor is chosen: every figure the panel shows
+            {/* Mounted only once a vendor is chosen: every figure the panel shows
               — the products it would create, the credits, what is already
               imported — is that vendor's, so there is nothing true to draw
               before one is picked. */}
-          {vendorId ? (
-            <TicketImportPanel
-              key={vendorId}
-              vendorId={vendorId}
-              vendorName={chosen?.label}
-              onDone={() => onOpenChange(false)}
-            />
-          ) : (
-            <p className="text-[13px] text-ink-3">
-              Choose a vendor to upload their sheet.
-            </p>
-          )}
-        </div>
+            {vendorId ? (
+              <TicketImportPanel
+                key={vendorId}
+                vendorId={vendorId}
+                vendorName={chosen?.label}
+                onDone={() => onOpenChange(false)}
+              />
+            ) : (
+              <p className="text-[13px] text-ink-3">
+                Choose a vendor to upload their sheet.
+              </p>
+            )}
+          </div>
+        </DialogScrollBody>
       </DialogContent>
     </Dialog>
   );

@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -63,7 +64,7 @@ export function AddFranchiseeAdminDialog({
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
       {/* Unmounts on close, so a second open never holds the first attempt. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-lg">
         {undelivered ? (
           <TemporaryPasswordPanel
             heading="Admin added, but the email didn't send"
@@ -132,88 +133,108 @@ function AddAdminForm({
   const err = (name: keyof AdminFormValues) => errors[name]?.message;
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate>
-      <DialogHeader>
-        <DialogTitle>Add a franchisee admin</DialogTitle>
-        <DialogDescription>
-          They get an email with a temporary password and sign in to the
-          franchise portal for {franchisee.name}.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Add a franchisee admin</DialogTitle>
+          <DialogDescription>
+            They get an email with a temporary password and sign in to the
+            franchise portal for {franchisee.name}.
+          </DialogDescription>
+        </DialogHeader>
 
-      <FieldGroup className="mt-5">
-        <Field data-invalid={err("fullName") ? true : undefined}>
-          <FieldLabel htmlFor="fa-name" required>
-            Full name
-          </FieldLabel>
-          <Input
-            id="fa-name"
-            autoComplete="off"
-            aria-invalid={err("fullName") ? true : undefined}
-            aria-describedby={err("fullName") ? "fa-name-error" : undefined}
-            {...register("fullName")}
-          />
-          {err("fullName") ? (
-            <FieldDescription id="fa-name-error" role="alert" className="text-danger">
-              {err("fullName")}
-            </FieldDescription>
-          ) : null}
-        </Field>
+        <FieldGroup className="mt-5">
+          <Field data-invalid={err("fullName") ? true : undefined}>
+            <FieldLabel htmlFor="fa-name" required>
+              Full name
+            </FieldLabel>
+            <Input
+              id="fa-name"
+              autoComplete="off"
+              aria-invalid={err("fullName") ? true : undefined}
+              aria-describedby={err("fullName") ? "fa-name-error" : undefined}
+              {...register("fullName")}
+            />
+            {err("fullName") ? (
+              <FieldDescription
+                id="fa-name-error"
+                role="alert"
+                className="text-danger"
+              >
+                {err("fullName")}
+              </FieldDescription>
+            ) : null}
+          </Field>
 
-        <Field data-invalid={err("email") ? true : undefined}>
-          <FieldLabel htmlFor="fa-email" required>
-            Email
-          </FieldLabel>
-          <Input
-            id="fa-email"
-            type="email"
-            autoComplete="off"
-            aria-invalid={err("email") ? true : undefined}
-            aria-describedby={err("email") ? "fa-email-error" : "fa-email-hint"}
-            {...register("email")}
-          />
-          {err("email") ? (
-            <FieldDescription id="fa-email-error" role="alert" className="text-danger">
-              {err("email")}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="fa-email-hint">
-              What they sign in with.
-            </FieldDescription>
-          )}
-        </Field>
+          <Field data-invalid={err("email") ? true : undefined}>
+            <FieldLabel htmlFor="fa-email" required>
+              Email
+            </FieldLabel>
+            <Input
+              id="fa-email"
+              type="email"
+              autoComplete="off"
+              aria-invalid={err("email") ? true : undefined}
+              aria-describedby={
+                err("email") ? "fa-email-error" : "fa-email-hint"
+              }
+              {...register("email")}
+            />
+            {err("email") ? (
+              <FieldDescription
+                id="fa-email-error"
+                role="alert"
+                className="text-danger"
+              >
+                {err("email")}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="fa-email-hint">
+                What they sign in with.
+              </FieldDescription>
+            )}
+          </Field>
 
-        <Field data-invalid={err("phone") ? true : undefined}>
-          <FieldLabel htmlFor="fa-phone" required>
-            Mobile number
-          </FieldLabel>
-          <Input
-            id="fa-phone"
-            type="tel"
-            inputMode="tel"
-            autoComplete="off"
-            placeholder="10 digits"
-            aria-invalid={err("phone") ? true : undefined}
-            aria-describedby={err("phone") ? "fa-phone-error" : undefined}
-            {...register("phone")}
-          />
-          {err("phone") ? (
-            <FieldDescription id="fa-phone-error" role="alert" className="text-danger">
-              {err("phone")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-      </FieldGroup>
+          <Field data-invalid={err("phone") ? true : undefined}>
+            <FieldLabel htmlFor="fa-phone" required>
+              Mobile number
+            </FieldLabel>
+            <Input
+              id="fa-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="off"
+              placeholder="10 digits"
+              aria-invalid={err("phone") ? true : undefined}
+              aria-describedby={err("phone") ? "fa-phone-error" : undefined}
+              {...register("phone")}
+            />
+            {err("phone") ? (
+              <FieldDescription
+                id="fa-phone-error"
+                role="alert"
+                className="text-danger"
+              >
+                {err("phone")}
+              </FieldDescription>
+            ) : null}
+          </Field>
+        </FieldGroup>
 
-      <DialogFooter className="mt-6">
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
-          Add admin
-        </Button>
-      </DialogFooter>
+        <DialogFooter className="mt-6">
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
+            Add admin
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

@@ -17,6 +17,7 @@ region rather than an approximation of it. See `_visible_pincodes`.
 """
 
 import datetime
+import re
 import secrets
 import uuid
 from typing import NamedTuple
@@ -644,17 +645,16 @@ async def _serial_refusal(
     number is loaded on a different model: QA raised a washing machine's serial
     against a switch board that had no serials, and the ticket went through
     under the form's own mismatch warning. So a miss on the chosen model asks,
-    before anything else, whether one of the SAME VENDOR's live products carries
-    the number (`serial_owners`), and refuses naming it if so.
+    before anything else, whether ANY other product in the company — any
+    vendor's — carries the number (`serial_owners`), and refuses naming it if
+    so.
 
-    Only the same vendor's, and that is the oracle guard rather than a gap: a
-    serial on a competitor's product behaves exactly as an unknown serial does,
-    so this can never confirm that somebody else's number exists. Only live
-    products too — approved, active, not deleted, in a live category — the set
-    `masters.lookup_serial` offers, so the form can show this refusal before
-    submit and its "Use …" offer always leads somewhere intake accepts. A
-    serial on the chosen model is fine whatever else carries it: a serial may
-    legally sit on two products.
+    Company-wide, because serial uniqueness is a company-wide rule, not a
+    per-vendor one: a serial on another vendor's product is as real a clash as
+    one on the same vendor's. Only live products count — approved, active, not
+    deleted, in a live category — the set `masters.lookup_serial` offers, so the
+    form can show this refusal before submit and its "Use …" offer always leads
+    somewhere intake accepts.
 
     ## Queries, in this order
 
@@ -686,7 +686,7 @@ async def _serial_refusal(
         return None
 
     owners = (
-        await serial_owners(db, model.company_id, model.vendor_id, {needle})
+        await serial_owners(db, model.company_id, {needle})
     ).get(needle, [])
     owners = [m for m in owners if m.id != model.id]
     if owners:
@@ -715,18 +715,18 @@ async def _serial_refusal(
 async def serial_owners(
     db: AsyncSession,
     company_id: uuid.UUID,
-    vendor_id: uuid.UUID,
     needles: set[str],
 ) -> dict[str, list[ProductModel]]:
-    """Which of THIS vendor's live products carry each serial — one query.
+    """Which of the COMPANY's live products — across every vendor — carry each
+    serial, one query.
 
     `needles` are already trimmed and lower-cased; so are the keys returned.
     Shared by the single ticket (one needle) and the importer (the whole file),
     so the two cannot disagree about which products count.
 
-    Pinned to the vendor in the query, never filtered after it: another
-    vendor's product carrying the number must be indistinguishable from no
-    product carrying it. Live means what `masters.lookup_serial` offers —
+    Scoped to the company only: serial uniqueness is company-wide now, so a
+    product belonging to a different vendor than the one being checked still
+    counts as an owner. Live means what `masters.lookup_serial` offers —
     approved, active, not deleted, under a live category.
     """
     if not needles:
@@ -750,7 +750,6 @@ async def serial_owners(
         .where(
             ProductModelSerial.company_id == company_id,
             func.lower(ProductModelSerial.serial).in_(needles),
-            ProductModel.vendor_id == vendor_id,
             ProductModel.deleted_at.is_(None),
             ProductModel.is_active.is_(True),
             ProductModel.approval_status == APPROVED,
@@ -1134,22 +1133,56 @@ async def _hydrate(
 # ── read ──────────────────────────────────────────────────────────────────────
 
 
+#: Characters a ticket-code search treats as pure separators, not content.
+#: `-` because the code itself is hyphen-separated (`RGT-INST-0007`, or the
+#: older two-segment `INST-0007`); space so "GTD STAB 002" finds "GTD-STAB-002"
+#: without the caller needing to know which separator the stored code uses;
+#: `_` and `%` so neither is read as a LIKE wildcard — stripping them here
+#: removes that question rather than escaping it, since a stripped character
+#: can never survive into the pattern this builds.
+_CODE_SEARCH_SEPARATORS = re.compile(r"[-_ %]")
+
+
+def _strip_code_separators(value: str) -> str:
+    return _CODE_SEARCH_SEPARATORS.sub("", value)
+
+
+def _normalized_code(column):
+    """The code column with the same separators stripped, lower-cased.
+
+    Built from `_CODE_SEARCH_SEPARATORS.pattern`, not a second copy of the
+    character class, so the SQL side and `_strip_code_separators` above can
+    never disagree about what counts as a separator.
+    """
+    return func.lower(
+        func.regexp_replace(column, _CODE_SEARCH_SEPARATORS.pattern, "", "g")
+    )
+
+
 def _apply_search(stmt: Select, search: str | None) -> Select:
     if not search:
         return stmt
-    term = f"%{search.strip().lower()}%"
-    return stmt.where(
-        or_(
-            func.lower(Ticket.code).like(term),
-            func.lower(Ticket.customer_name).like(term),
-            func.lower(Ticket.customer_phone).like(term),
-            Ticket.pincode.like(term),
-            # The expected serial. Mandatory on every ticket and every service
-            # type, so it is always there to be found — and it is what ops are
-            # read out over the phone when nobody has the ticket number.
-            func.lower(Ticket.serial_number).like(term),
-        )
-    )
+    cleaned = search.strip().lower()
+    term = f"%{cleaned}%"
+    clauses = [
+        func.lower(Ticket.customer_name).like(term),
+        func.lower(Ticket.customer_phone).like(term),
+        Ticket.pincode.like(term),
+        # The expected serial. Mandatory on every ticket and every service
+        # type, so it is always there to be found — and it is what ops are
+        # read out over the phone when nobody has the ticket number.
+        func.lower(Ticket.serial_number).like(term),
+    ]
+    # Matched separator-insensitively, not with the raw `term` above: a ticket
+    # code is shown and read aloud with hyphens, but ops as often type or paste
+    # it with spaces, or none at all. Guarded on a non-empty normalized search —
+    # a query of pure separators (e.g. "--") would otherwise normalize to "" and
+    # its `%%` pattern would match every code in the company.
+    normalized_search = _strip_code_separators(cleaned)
+    if normalized_search:
+        normalized_term = f"%{normalized_search}%"
+        clauses.append(_normalized_code(Ticket.code).like(normalized_term))
+    return stmt.where(or_(*clauses))
 
 
 #: The console's "no filter" sentinel. Its filter pills are a closed set with

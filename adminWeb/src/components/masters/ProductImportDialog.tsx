@@ -16,6 +16,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -101,56 +102,58 @@ export function ProductImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Import products</DialogTitle>
-          <DialogDescription>
-            {portal
-              ? "Add or update several of your own products from one spreadsheet."
-              : "Upload a vendor's product sheet on their behalf. Re-uploading it later updates what it already added."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-3xl">
+        <DialogScrollBody className="scroll-slim">
+          <DialogHeader>
+            <DialogTitle>Import products</DialogTitle>
+            <DialogDescription>
+              {portal
+                ? "Add or update several of your own products from one spreadsheet."
+                : "Upload a vendor's product sheet on their behalf. Re-uploading it later updates what it already added."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-5">
-          {portal ? null : (
-            <Field>
-              <FieldLabel htmlFor="product-import-vendor">Vendor</FieldLabel>
-              <Select
-                value={pickedVendorId}
-                onValueChange={(next) => setPickedVendorId(next ?? "")}
-              >
-                <SelectTrigger id="product-import-vendor">
-                  <SelectValue placeholder="Choose a vendor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendorOptions.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
+          <div className="grid gap-5">
+            {portal ? null : (
+              <Field>
+                <FieldLabel htmlFor="product-import-vendor">Vendor</FieldLabel>
+                <Select
+                  value={pickedVendorId}
+                  onValueChange={(next) => setPickedVendorId(next ?? "")}
+                >
+                  <SelectTrigger id="product-import-vendor">
+                    <SelectValue placeholder="Choose a vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendorOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
 
-          {/* Mounted only once a vendor is known: every figure the form shows
+            {/* Mounted only once a vendor is known: every figure the form shows
               — what would be created or updated, which brands resolve — is
               that vendor's, so there is nothing true to draw before one is
               set. */}
-          {vendorId ? (
-            <ImportForm
-              key={vendorId}
-              vendorId={vendorId}
-              vendorName={vendorName}
-              portal={portal}
-              onDone={() => onOpenChange(false)}
-            />
-          ) : (
-            <p className="text-[13px] text-ink-3">
-              Choose a vendor to upload their sheet.
-            </p>
-          )}
-        </div>
+            {vendorId ? (
+              <ImportForm
+                key={vendorId}
+                vendorId={vendorId}
+                vendorName={vendorName}
+                portal={portal}
+                onDone={() => onOpenChange(false)}
+              />
+            ) : (
+              <p className="text-[13px] text-ink-3">
+                Choose a vendor to upload their sheet.
+              </p>
+            )}
+          </div>
+        </DialogScrollBody>
       </DialogContent>
     </Dialog>
   );
@@ -215,9 +218,7 @@ function ImportForm({
         onSuccess: (report) => {
           const extras: string[] = [];
           if (report.created) {
-            extras.push(
-              `${report.created} added`
-            );
+            extras.push(`${report.created} added`);
           }
           if (report.updated) {
             extras.push(`${report.updated} updated`);
@@ -253,10 +254,9 @@ function ImportForm({
         <p className="max-w-prose text-[13px] text-ink-2">
           One row is one product. The{" "}
           <span className="font-medium text-ink">Category</span> column names
-          the whole chain — anything in it that does not exist yet is
-          created, and you are shown exactly what before anything is saved.
-          Rows that cannot be read are listed with a reason and do not stop
-          the rest.
+          the whole chain — anything in it that does not exist yet is created,
+          and you are shown exactly what before anything is saved. Rows that
+          cannot be read are listed with a reason and do not stop the rest.
         </p>
         <Button
           type="button"
@@ -330,8 +330,8 @@ function ImportForm({
               className="mt-0.5"
             />
             <span className="text-ink">
-              Create these{" "}
-              {preview.categoriesToCreate.length.toLocaleString()} categor
+              Create these {preview.categoriesToCreate.length.toLocaleString()}{" "}
+              categor
               {preview.categoriesToCreate.length === 1 ? "y" : "ies"} and
               sub-categories.
             </span>
@@ -381,38 +381,42 @@ function Preview({
   // There is deliberately NO "Rejected" tile — the rejects table's own header
   // already says "N rows rejected — the rest still import", the same choice
   // the ticket and serial importers make.
-  const tiles: { label: string; value: string; hint?: string; dim?: boolean }[] =
-    [
-      { label: "Rows read", value: report.rowsRead.toLocaleString() },
-      {
-        label: "New products",
-        value: report.toCreate.toLocaleString(),
-        dim: report.toCreate === 0,
-      },
-      {
-        label: "Products to update",
-        value: report.toUpdate.toLocaleString(),
-        hint:
-          report.toUpdate > 0
-            ? "already on file — matched by category, brand and name"
-            : undefined,
-        dim: report.toUpdate === 0,
-      },
-      {
-        label: "New categories",
-        value: report.categoriesToCreate.length.toLocaleString(),
-        dim: report.categoriesToCreate.length === 0,
-      },
-      ...(report.duplicateRowsInFile > 0
-        ? [
-            {
-              label: "Repeated in this file",
-              value: report.duplicateRowsInFile.toLocaleString(),
-              hint: "same product named twice — the second row is skipped",
-            },
-          ]
-        : []),
-    ];
+  const tiles: {
+    label: string;
+    value: string;
+    hint?: string;
+    dim?: boolean;
+  }[] = [
+    { label: "Rows read", value: report.rowsRead.toLocaleString() },
+    {
+      label: "New products",
+      value: report.toCreate.toLocaleString(),
+      dim: report.toCreate === 0,
+    },
+    {
+      label: "Products to update",
+      value: report.toUpdate.toLocaleString(),
+      hint:
+        report.toUpdate > 0
+          ? "already on file — matched by category, brand and name"
+          : undefined,
+      dim: report.toUpdate === 0,
+    },
+    {
+      label: "New categories",
+      value: report.categoriesToCreate.length.toLocaleString(),
+      dim: report.categoriesToCreate.length === 0,
+    },
+    ...(report.duplicateRowsInFile > 0
+      ? [
+          {
+            label: "Repeated in this file",
+            value: report.duplicateRowsInFile.toLocaleString(),
+            hint: "same product named twice — the second row is skipped",
+          },
+        ]
+      : []),
+  ];
 
   const newMain = report.categoriesToCreate.filter((c) => c.newMainSubcategory);
 
@@ -441,8 +445,8 @@ function Preview({
             created
           </p>
           <p className="mb-2 text-[12px] text-ink-2">
-            These names are not in the catalogue yet. A category belongs to
-            the whole company, so it stays after this import.
+            These names are not in the catalogue yet. A category belongs to the
+            whole company, so it stays after this import.
           </p>
           <ul className="grid gap-1.5 text-[12px] text-ink-2">
             {report.categoriesToCreate.map((c) => (
@@ -479,23 +483,29 @@ function Preview({
             .map((c) => c.path)
             .join(", ")}
           {newMain.length > 2 ? ` and ${newMain.length - 2} more` : ""}. A job
-          raised against a product filed there would escalate the moment it
-          is raised, with nobody to offer it to.
+          raised against a product filed there would escalate the moment it is
+          raised, with nobody to offer it to.
         </Notice>
       ) : null}
 
       {portal && report.toCreate > 0 ? (
         <Notice tone="ok" icon={Upload} title="New products wait for pricing">
           Every new product is added pending and unpriced, the same as
-          submitting it by hand. A National Head sets both prices on
-          Approvals before it can be ticketed.
+          submitting it by hand. A National Head sets both prices on Approvals
+          before it can be ticketed.
         </Notice>
       ) : null}
 
       {!portal && report.toCreate > 0 ? (
-        <Notice tone="ok" icon={Upload} title="New products are approved at once">
+        <Notice
+          tone="ok"
+          icon={Upload}
+          title="New products are approved at once"
+        >
           {`Every new product is created approved and priced from the sheet's own figures — the same as adding it one at a time.${
-            vendorName ? ` ${vendorName} can raise tickets against it immediately.` : ""
+            vendorName
+              ? ` ${vendorName} can raise tickets against it immediately.`
+              : ""
           }`}
         </Notice>
       ) : null}

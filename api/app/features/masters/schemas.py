@@ -24,6 +24,7 @@ levels" in the response shape itself.
 """
 
 import datetime
+import unicodedata
 import uuid
 from typing import Annotated
 
@@ -49,6 +50,20 @@ MAX_SERIAL_LENGTH = 64
 #: be using the spreadsheet importer, which streams and reports per-row rejects
 #: instead of failing the whole request on the first bad line.
 MAX_SERIALS_PER_REQUEST = 500
+
+
+def _has_disallowed_character(value: str) -> str | None:
+    """First char that is neither letter/number/mark nor '-', else None.
+
+    `str.isalnum()` is the wrong tool here — it is False for Devanagari vowel
+    signs and NFD diacritics, which are legitimate serial characters. Unicode's
+    own general category is what actually distinguishes "a mark that belongs to
+    a letter" from "a symbol or punctuation that doesn't".
+    """
+    for ch in value:
+        if unicodedata.category(ch)[0] not in ("L", "N", "M") and ch != "-":
+            return ch
+    return None
 
 
 def _check_icon(value: str) -> str:
@@ -613,6 +628,11 @@ def _clean_serials(values: list[str]) -> list[str]:
             raise ValueError(
                 f"{value[:20]}… is longer than {MAX_SERIAL_LENGTH} characters"
             )
+        bad = _has_disallowed_character(value)
+        if bad is not None:
+            raise ValueError(
+                f"{value[:20]}… contains '{bad}' — only letters, numbers and '-' are allowed"
+            )
         key = value.lower()
         if key in seen:
             continue
@@ -646,10 +666,16 @@ class SerialAddResult(AppModel):
     `duplicates` is not an error. Re-pasting a block that overlaps what is
     already loaded is the normal way somebody tops a model up, so the added ones
     land and the rest are reported rather than refused.
+
+    `onOtherProduct` is a different thing from `duplicates`: a serial already on
+    THIS model is a harmless re-paste, but one owned by a DIFFERENT model under
+    the new company-wide uniqueness rule is excluded from the insert entirely —
+    it is somebody else's unit, not a top-up.
     """
 
     added: int
     duplicates: int
+    onOtherProduct: int = 0
     total: int
 
 
@@ -717,6 +743,13 @@ class SerialMatchOut(AppModel):
     serial: str
 
 
+def _check_serial_chars(value: str) -> str:
+    bad = _has_disallowed_character(value)
+    if bad is not None:
+        raise ValueError(f"Contains '{bad}' — only letters, numbers and '-' are allowed")
+    return value
+
+
 class SerialUpdateRequest(BaseModel):
     """Correct one serial in place.
 
@@ -726,7 +759,11 @@ class SerialUpdateRequest(BaseModel):
     would silently restamp both to whoever fixed the spelling.
     """
 
-    serial: Annotated[str, Field(min_length=1, max_length=MAX_SERIAL_LENGTH)]
+    serial: Annotated[
+        str,
+        Field(min_length=1, max_length=MAX_SERIAL_LENGTH),
+        AfterValidator(_check_serial_chars),
+    ]
 
 
 # ── the bulk product importer ─────────────────────────────────────────────────

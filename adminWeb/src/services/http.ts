@@ -100,6 +100,26 @@ const NO_REFRESH = new Set([
 ]);
 
 /**
+ * A 403 carrying one of these means the token is still well-formed but the
+ * access it names no longer exists — the company was suspended or removed, or
+ * the membership was. `core/deps.py`'s `get_current_principal` already catches
+ * this on every request; without this set, the screen just sat on a half-loaded
+ * dashboard reading a generic "Not allowed" toast instead of being signed out.
+ * Matched on `code`, never on `message` — the prose is for the person.
+ */
+const FORCE_SIGNOUT_CODES = new Set([
+  "COMPANY_SUSPENDED",
+  "COMPANY_NOT_FOUND",
+  "NO_ACTIVE_MEMBERSHIP",
+  // A password change (self-service, an admin reset, or a reissue) also
+  // revokes every refresh token for the account — so refreshing would just
+  // spend a round trip discovering the refresh token is dead too. Going
+  // straight to sign-out skips that trip and the error toast that would
+  // otherwise flash in the moment before the redirect lands.
+  "PASSWORD_CHANGED",
+]);
+
+/**
  * A dead access token fails every in-flight request at once. Without this, a
  * screen with six queries would fire six refreshes — and since the backend
  * rotates on use, five of them would present an already-revoked token and kill
@@ -211,28 +231,15 @@ async function send(
   }
 }
 
-async function request<T>(
-  method: Method,
-  path: string,
-  body?: unknown
-): Promise<ApiEnvelope<T>> {
-  let res = await send(method, path, body);
-
-  // Exactly one replay: if the second attempt also 401s, the token is not the
-  // problem and the envelope's own message is what the user needs to read.
-  if (res.status === 401 && !NO_REFRESH.has(path.split("?")[0])) {
-    if (await refreshSession()) {
-      res = await send(method, path, body);
-    }
-  }
-
+/** Parses the envelope shape, or null for anything else (an HTML error page,
+ *  a non-JSON body) — the caller decides what null means. */
+async function parseEnvelope<T>(res: Response): Promise<ApiEnvelope<T> | null> {
   let json: unknown = null;
   try {
     json = await res.json();
   } catch {
     // Non-JSON (e.g. an HTML error page) — surface the HTTP status instead.
   }
-
   if (
     json &&
     typeof json === "object" &&
@@ -241,6 +248,44 @@ async function request<T>(
   ) {
     return json as ApiEnvelope<T>;
   }
+  return null;
+}
+
+async function request<T>(
+  method: Method,
+  path: string,
+  body?: unknown
+): Promise<ApiEnvelope<T>> {
+  let res = await send(method, path, body);
+  let envelope = await parseEnvelope<T>(res);
+
+  // The access this token named is gone — a password change (which also
+  // revokes every refresh token for the account), a suspended company, or a
+  // suspended membership. Checked BEFORE the refresh-and-replay below, not
+  // after: refreshing a token whose refresh-token sibling was revoked by the
+  // very same action is a trip that can only fail, and letting the raw
+  // refusal fall through to a toast first reads as a bug rather than a
+  // sign-out. Never resolves: the hard navigation inside `endSession` tears
+  // this page down.
+  if (
+    (res.status === 401 || res.status === 403) &&
+    envelope?.code &&
+    FORCE_SIGNOUT_CODES.has(envelope.code)
+  ) {
+    endSession();
+    return new Promise<ApiEnvelope<T>>(() => {});
+  }
+
+  // Exactly one replay: if the second attempt also 401s, the token is not the
+  // problem and the envelope's own message is what the user needs to read.
+  if (res.status === 401 && !NO_REFRESH.has(path.split("?")[0])) {
+    if (await refreshSession()) {
+      res = await send(method, path, body);
+      envelope = await parseEnvelope<T>(res);
+    }
+  }
+
+  if (envelope) return envelope;
   throw new ApiError(
     res.statusText || "Unexpected response",
     res.status || 500

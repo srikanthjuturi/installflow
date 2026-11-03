@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -74,7 +75,7 @@ export function PincodeFormDialog({
 }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-xl">
         {/* Remounts on open so the form is always clean, and so reopening on a
             different chip does not keep the last one's districts. */}
         <PincodeForm
@@ -157,7 +158,8 @@ function PincodeForm({
 
   // `messageFor` clears itself the moment the box stops holding the value the
   // server refused, which is exactly when it stops being true.
-  const codeError = errors.code?.message ?? codeConflict.messageFor(code) ?? null;
+  const codeError =
+    errors.code?.message ?? codeConflict.messageFor(code) ?? null;
 
   function submit(values: PincodeFormValues) {
     const body = {
@@ -189,160 +191,166 @@ function PincodeForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
-      <DialogHeader>
-        <DialogTitle>
-          {isEdit ? `Edit ${pincode.code}` : "Add a pincode"}
-        </DialogTitle>
-        <DialogDescription>
-          The spreadsheet is still the record. A pincode added here survives
-          every import; the state and districts of one the sheet names are reset
-          by the next upload.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? `Edit ${pincode.code}` : "Add a pincode"}
+          </DialogTitle>
+          <DialogDescription>
+            The spreadsheet is still the record. A pincode added here survives
+            every import; the state and districts of one the sheet names are
+            reset by the next upload.
+          </DialogDescription>
+        </DialogHeader>
 
-      <FieldGroup className="gap-4">
-        <Field data-invalid={codeError ? true : undefined}>
-          <FieldLabel htmlFor="pincode-code" required>
-            Pincode
-          </FieldLabel>
-          <Input
-            id="pincode-code"
-            inputMode="numeric"
-            maxLength={6}
-            placeholder="e.g. 500001"
-            // The primary key. Nothing in the schema protects the six
-            // characters already copied into tickets, technician coverage and
-            // invites, so a wrong code is switched off and re-added instead.
-            readOnly={isEdit}
-            disabled={isEdit}
-            aria-invalid={codeError ? true : undefined}
-            aria-describedby={
-              codeError ? "pincode-code-error" : "pincode-code-hint"
-            }
-            {...register("code")}
-          />
-          {codeError ? (
-            <FieldDescription
-              id="pincode-code-error"
-              role="alert"
-              className="text-danger"
-            >
-              {codeError}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="pincode-code-hint">
-              {isEdit
-                ? "A pincode cannot be renamed — tickets and coverage already store it. Switch it off and add the right one."
-                : "Six digits, not starting with zero."}
-            </FieldDescription>
-          )}
-        </Field>
-
-        <Field data-invalid={errors.stateId ? true : undefined}>
-          <FieldLabel htmlFor="pincode-state" required>
-            State
-          </FieldLabel>
-          <Controller
-            name="stateId"
-            control={control}
-            render={({ field }) => (
-              <Combobox
-                id="pincode-state"
-                value={
-                  stateOptions.find((o) => o.value === field.value) ?? null
-                }
-                onValueChange={(next) => {
-                  field.onChange(next?.value ?? "");
-                  // A district id from the old state would be refused by the
-                  // server anyway, and leaving stale chips on screen implies
-                  // they survived the change.
-                  setValue("districtIds", []);
-                }}
-                options={stateOptions}
-                loading={states.isPending}
-                emptyMessage="No states in the master"
-                placeholder="Pick a state"
-                aria-invalid={errors.stateId ? true : undefined}
-              />
+        <FieldGroup className="gap-4">
+          <Field data-invalid={codeError ? true : undefined}>
+            <FieldLabel htmlFor="pincode-code" required>
+              Pincode
+            </FieldLabel>
+            <Input
+              id="pincode-code"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="e.g. 500001"
+              // The primary key. Nothing in the schema protects the six
+              // characters already copied into tickets, technician coverage and
+              // invites, so a wrong code is switched off and re-added instead.
+              readOnly={isEdit}
+              disabled={isEdit}
+              aria-invalid={codeError ? true : undefined}
+              aria-describedby={
+                codeError ? "pincode-code-error" : "pincode-code-hint"
+              }
+              {...register("code")}
+            />
+            {codeError ? (
+              <FieldDescription
+                id="pincode-code-error"
+                role="alert"
+                className="text-danger"
+              >
+                {codeError}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="pincode-code-hint">
+                {isEdit
+                  ? "A pincode cannot be renamed — tickets and coverage already store it. Switch it off and add the right one."
+                  : "Six digits, not starting with zero."}
+              </FieldDescription>
             )}
-          />
-          {errors.stateId ? (
-            <FieldDescription
-              id="pincode-state-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.stateId.message}
+          </Field>
+
+          <Field data-invalid={errors.stateId ? true : undefined}>
+            <FieldLabel htmlFor="pincode-state" required>
+              State
+            </FieldLabel>
+            <Controller
+              name="stateId"
+              control={control}
+              render={({ field }) => (
+                <Combobox
+                  id="pincode-state"
+                  value={
+                    stateOptions.find((o) => o.value === field.value) ?? null
+                  }
+                  onValueChange={(next) => {
+                    field.onChange(next?.value ?? "");
+                    // A district id from the old state would be refused by the
+                    // server anyway, and leaving stale chips on screen implies
+                    // they survived the change.
+                    setValue("districtIds", []);
+                  }}
+                  options={stateOptions}
+                  loading={states.isPending}
+                  emptyMessage="No states in the master"
+                  placeholder="Pick a state"
+                  aria-invalid={errors.stateId ? true : undefined}
+                />
+              )}
+            />
+            {errors.stateId ? (
+              <FieldDescription
+                id="pincode-state-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.stateId.message}
+              </FieldDescription>
+            ) : null}
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="pincode-districts">Districts</FieldLabel>
+            <Controller
+              name="districtIds"
+              control={control}
+              render={({ field }) => (
+                <MultiSelect
+                  id="pincode-districts"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  options={(districts.data ?? []).map((d) => ({
+                    value: d.id,
+                    label: d.name,
+                  }))}
+                  loading={districts.isPending && Boolean(stateId)}
+                  disabled={!stateId}
+                  placeholder={
+                    stateId ? "Pick one or more" : "Pick a state first"
+                  }
+                  aria-describedby="pincode-districts-hint"
+                />
+              )}
+            />
+            <FieldDescription id="pincode-districts-hint">
+              Districts can share a pincode — pick every one it reaches. Leave
+              empty if the district is genuinely unknown.
             </FieldDescription>
-          ) : null}
-        </Field>
+            <AddDistrict
+              stateId={stateId}
+              onAdded={(id) => setValue("districtIds", [...districtIds, id])}
+            />
+          </Field>
+        </FieldGroup>
 
-        <Field>
-          <FieldLabel htmlFor="pincode-districts">Districts</FieldLabel>
-          <Controller
-            name="districtIds"
-            control={control}
-            render={({ field }) => (
-              <MultiSelect
-                id="pincode-districts"
-                value={field.value}
-                onValueChange={field.onChange}
-                options={(districts.data ?? []).map((d) => ({
-                  value: d.id,
-                  label: d.name,
-                }))}
-                loading={districts.isPending && Boolean(stateId)}
-                disabled={!stateId}
-                placeholder={
-                  stateId ? "Pick one or more" : "Pick a state first"
-                }
-                aria-describedby="pincode-districts-hint"
-              />
-            )}
-          />
-          <FieldDescription id="pincode-districts-hint">
-            Districts can share a pincode — pick every one it reaches. Leave
-            empty if the district is genuinely unknown.
-          </FieldDescription>
-          <AddDistrict
-            stateId={stateId}
-            onAdded={(id) => setValue("districtIds", [...districtIds, id])}
-          />
-        </Field>
-      </FieldGroup>
-
-      <DialogFooter>
-        {/* On the left, away from Save: this is the only removal there is, and
+        <DialogFooter>
+          {/* On the left, away from Save: this is the only removal there is, and
             it must not sit under the thumb that is aiming for the primary. */}
-        {isEdit && pincode.isActive && onSwitchOff ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-danger me-auto"
-            onClick={() => onSwitchOff(pincode)}
-          >
-            Switch off
+          {isEdit && pincode.isActive && onSwitchOff ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="me-auto text-danger"
+              onClick={() => onSwitchOff(pincode)}
+            >
+              Switch off
+            </Button>
+          ) : null}
+          {isEdit && !pincode.isActive && onSwitchOn ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="me-auto"
+              onClick={() => onSwitchOn(pincode)}
+            >
+              Switch back on
+            </Button>
+          ) : null}
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={pending}>
+            {pending ? <Spinner data-icon="inline-start" /> : null}
+            {isEdit ? "Save changes" : "Add pincode"}
           </Button>
-        ) : null}
-        {isEdit && !pincode.isActive && onSwitchOn ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="me-auto"
-            onClick={() => onSwitchOn(pincode)}
-          >
-            Switch back on
-          </Button>
-        ) : null}
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={pending}>
-          {pending ? <Spinner data-icon="inline-start" /> : null}
-          {isEdit ? "Save changes" : "Add pincode"}
-        </Button>
-      </DialogFooter>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }
@@ -434,7 +442,9 @@ function AddDistrict({
           disabled={!name.trim() || createDistrict.isPending}
           onClick={add}
         >
-          {createDistrict.isPending ? <Spinner data-icon="inline-start" /> : null}
+          {createDistrict.isPending ? (
+            <Spinner data-icon="inline-start" />
+          ) : null}
           Add
         </Button>
         <Button

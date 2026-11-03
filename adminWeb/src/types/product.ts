@@ -411,6 +411,9 @@ export interface SerialAddResult {
   duplicates: number;
   /** What the model holds afterwards. */
   total: number;
+  /** Rejected because the serial already exists on a DIFFERENT product in
+   *  this company (serials are unique company-wide). Reported, not added. */
+  onOtherProduct: number;
 }
 
 export interface SerialReject {

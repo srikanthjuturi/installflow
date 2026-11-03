@@ -143,6 +143,7 @@ export interface BackendUser {
   roleLabel: string;
   profileImageUrl: string | null;
   isSuperadmin: boolean;
+  mustChangePassword: boolean;
 }
 
 export interface BackendMembership {

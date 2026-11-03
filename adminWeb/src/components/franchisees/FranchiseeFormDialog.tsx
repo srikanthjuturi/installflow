@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -65,7 +66,7 @@ export function FranchiseeFormDialog({
 }: FranchiseeFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[85vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-xl">
         <FranchiseeForm
           key={franchisee?.id ?? "new"}
           franchisee={franchisee}
@@ -129,157 +130,163 @@ function FranchiseeForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate>
-      <DialogHeader>
-        <DialogTitle>
-          {isEdit ? `Edit ${franchisee.name}` : "Add franchisee"}
-        </DialogTitle>
-        <DialogDescription>
-          {isEdit
-            ? "Changes apply straight away."
-            : "Step 1 of 2 — details. You give it pincodes next."}
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? `Edit ${franchisee.name}` : "Add franchisee"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Changes apply straight away."
+              : "Step 1 of 2 — details. You give it pincodes next."}
+          </DialogDescription>
+        </DialogHeader>
 
-      <FieldGroup className="mt-5">
-        <Field data-invalid={err("name") ? true : undefined}>
-          <FieldLabel htmlFor="franchisee-name" required>
-            Name
-          </FieldLabel>
-          <Input
-            id="franchisee-name"
-            autoComplete="off"
-            placeholder="e.g. SkyFix Services"
-            aria-invalid={err("name") ? true : undefined}
-            aria-describedby={
-              err("name") ? "franchisee-name-error" : undefined
-            }
-            {...register("name")}
-          />
-          {err("name") ? (
-            <FieldDescription
-              id="franchisee-name-error"
-              role="alert"
-              className="text-danger"
-            >
-              {err("name")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        {/* The form holds the WORD ("External"/"Internal"); the wire takes
-            lowercase, converted once at submit inside `franchiseeToInput`. */}
-        <Controller
-          control={control}
-          name="kind"
-          render={({ field }) => (
-            <FranchiseeKindField
-              value={field.value}
-              onChange={field.onChange}
-              company={company}
-              locked={franchisee?.isHome}
-              error={err("kind")}
-              errorId="franchisee-kind-error"
-            />
-          )}
-        />
-
-        {/* Paired: a contact is a name and a number, always filled together —
-            the exact shape FieldGrid exists for (trap 5). */}
-        <FieldGrid className="grid gap-4 sm:grid-cols-2">
-          <Field data-invalid={err("contactName") ? true : undefined}>
-            <FieldLabel htmlFor="franchisee-contact-name" required>
-              Contact name
+        <FieldGroup className="mt-5">
+          <Field data-invalid={err("name") ? true : undefined}>
+            <FieldLabel htmlFor="franchisee-name" required>
+              Name
             </FieldLabel>
             <Input
-              id="franchisee-contact-name"
+              id="franchisee-name"
               autoComplete="off"
-              placeholder="e.g. Ravi Kumar"
-              aria-invalid={err("contactName") ? true : undefined}
+              placeholder="e.g. SkyFix Services"
+              aria-invalid={err("name") ? true : undefined}
               aria-describedby={
-                err("contactName") ? "franchisee-contact-name-error" : undefined
+                err("name") ? "franchisee-name-error" : undefined
               }
-              {...register("contactName")}
+              {...register("name")}
             />
-            {err("contactName") ? (
+            {err("name") ? (
               <FieldDescription
-                id="franchisee-contact-name-error"
+                id="franchisee-name-error"
                 role="alert"
                 className="text-danger"
               >
-                {err("contactName")}
+                {err("name")}
               </FieldDescription>
             ) : null}
           </Field>
 
-          <Field data-invalid={err("contactPhone") ? true : undefined}>
-            <FieldLabel htmlFor="franchisee-contact-phone" required>
-              Contact phone
+          {/* The form holds the WORD ("External"/"Internal"); the wire takes
+              lowercase, converted once at submit inside `franchiseeToInput`. */}
+          <Controller
+            control={control}
+            name="kind"
+            render={({ field }) => (
+              <FranchiseeKindField
+                value={field.value}
+                onChange={field.onChange}
+                company={company}
+                locked={franchisee?.isHome}
+                error={err("kind")}
+                errorId="franchisee-kind-error"
+              />
+            )}
+          />
+
+          {/* Paired: a contact is a name and a number, always filled together —
+              the exact shape FieldGrid exists for (trap 5). */}
+          <FieldGrid className="grid gap-4 sm:grid-cols-2">
+            <Field data-invalid={err("contactName") ? true : undefined}>
+              <FieldLabel htmlFor="franchisee-contact-name" required>
+                Contact name
+              </FieldLabel>
+              <Input
+                id="franchisee-contact-name"
+                autoComplete="off"
+                placeholder="e.g. Ravi Kumar"
+                aria-invalid={err("contactName") ? true : undefined}
+                aria-describedby={
+                  err("contactName")
+                    ? "franchisee-contact-name-error"
+                    : undefined
+                }
+                {...register("contactName")}
+              />
+              {err("contactName") ? (
+                <FieldDescription
+                  id="franchisee-contact-name-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {err("contactName")}
+                </FieldDescription>
+              ) : null}
+            </Field>
+
+            <Field data-invalid={err("contactPhone") ? true : undefined}>
+              <FieldLabel htmlFor="franchisee-contact-phone" required>
+                Contact phone
+              </FieldLabel>
+              <Input
+                id="franchisee-contact-phone"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="10 digits"
+                aria-invalid={err("contactPhone") ? true : undefined}
+                aria-describedby={
+                  err("contactPhone")
+                    ? "franchisee-contact-phone-error"
+                    : undefined
+                }
+                {...register("contactPhone")}
+              />
+              {err("contactPhone") ? (
+                <FieldDescription
+                  id="franchisee-contact-phone-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {err("contactPhone")}
+                </FieldDescription>
+              ) : null}
+            </Field>
+          </FieldGrid>
+
+          <Field data-invalid={err("contactEmail") ? true : undefined}>
+            <FieldLabel htmlFor="franchisee-contact-email">
+              Contact email
             </FieldLabel>
             <Input
-              id="franchisee-contact-phone"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="10 digits"
-              aria-invalid={err("contactPhone") ? true : undefined}
+              id="franchisee-contact-email"
+              type="email"
+              autoComplete="email"
+              placeholder="Optional"
+              aria-invalid={err("contactEmail") ? true : undefined}
               aria-describedby={
-                err("contactPhone")
-                  ? "franchisee-contact-phone-error"
-                  : undefined
+                err("contactEmail")
+                  ? "franchisee-contact-email-error"
+                  : "franchisee-contact-email-hint"
               }
-              {...register("contactPhone")}
+              {...register("contactEmail")}
             />
-            {err("contactPhone") ? (
-              <FieldDescription
-                id="franchisee-contact-phone-error"
-                role="alert"
-                className="text-danger"
-              >
-                {err("contactPhone")}
+            {err("contactEmail") ? (
+              <FieldError>{err("contactEmail")}</FieldError>
+            ) : (
+              <FieldDescription id="franchisee-contact-email-hint">
+                Optional — where copies of the reports go, when it is wanted.
               </FieldDescription>
-            ) : null}
+            )}
           </Field>
-        </FieldGrid>
+        </FieldGroup>
 
-        <Field data-invalid={err("contactEmail") ? true : undefined}>
-          <FieldLabel htmlFor="franchisee-contact-email">
-            Contact email
-          </FieldLabel>
-          <Input
-            id="franchisee-contact-email"
-            type="email"
-            autoComplete="email"
-            placeholder="Optional"
-            aria-invalid={err("contactEmail") ? true : undefined}
-            aria-describedby={
-              err("contactEmail")
-                ? "franchisee-contact-email-error"
-                : "franchisee-contact-email-hint"
-            }
-            {...register("contactEmail")}
-          />
-          {err("contactEmail") ? (
-            <FieldError>
-              {err("contactEmail")}
-            </FieldError>
-          ) : (
-            <FieldDescription id="franchisee-contact-email-hint">
-              Optional — where copies of the reports go, when it is wanted.
-            </FieldDescription>
-          )}
-        </Field>
-      </FieldGroup>
-
-      {/* The failure is reported in the toaster (App.tsx), not here. */}
-      <DialogFooter className="mt-5">
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={pending}>
-          {pending && <Spinner data-icon="inline-start" />}
-          {isEdit ? "Save changes" : "Save and add pincodes"}
-        </Button>
-      </DialogFooter>
+        {/* The failure is reported in the toaster (App.tsx), not here. */}
+        <DialogFooter className="mt-5">
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={pending}>
+            {pending && <Spinner data-icon="inline-start" />}
+            {isEdit ? "Save changes" : "Save and add pincodes"}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

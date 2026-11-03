@@ -578,6 +578,7 @@ function ModelChip({
           {model.capacity}
         </span>
       ) : null}
+      {model.isActive ? null : <StatusPill isActive={false} />}
       {/* Only when it is NOT approved. A badge on every chip would be noise on
           a screen where almost everything is approved, and the interesting
           state is the one that stops a ticket being raised.
