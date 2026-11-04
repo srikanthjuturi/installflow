@@ -113,6 +113,12 @@ export function BrandRowsField({
         })}
       </ul>
 
+      {fields.length === 0 ? (
+        <FieldDescription>
+          Leave this empty and we&apos;ll create one brand named after the vendor itself.
+        </FieldDescription>
+      ) : null}
+
       {listError ? (
         <FieldDescription role="alert" className="text-danger">
           {listError}

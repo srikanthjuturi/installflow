@@ -5,6 +5,7 @@ a GSTIN is a GSTIN wherever it is typed. `phone` reuses `app.core.phone.Phone`,
 which normalises to E.164 before validating (hard rule 7).
 """
 
+import unicodedata
 import uuid
 from datetime import datetime
 from typing import Annotated
@@ -91,8 +92,20 @@ def _clean_brand_name(value: str) -> str:
 BrandName = Annotated[str, AfterValidator(_clean_brand_name)]
 
 
+_ZERO_WIDTH = str.maketrans("", "", "​‌‍﻿")
+
+
+def brand_dedupe_key(value: str) -> str:
+    """A canonical key for comparing two brand names for duplication.
+
+    Normalizes Unicode (NFKC) and strips zero-width characters on top of the
+    existing trim + lowercase. For comparison only — never stored.
+    """
+    return unicodedata.normalize("NFKC", value).translate(_ZERO_WIDTH).lower()
+
+
 def _check_unique_names(names: list[str]) -> list[str]:
-    lowered = [n.lower() for n in names]
+    lowered = [brand_dedupe_key(n) for n in names]
     if len(set(lowered)) != len(lowered):
         raise ValueError("Each brand can be listed only once")
     return names
