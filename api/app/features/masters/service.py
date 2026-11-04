@@ -1280,6 +1280,22 @@ async def submit_model(
     body: ProductSubmitRequest,
 ) -> ProductNodeOut:
     """A vendor adds a product to their own book. Unpriced, and pending."""
+    # Pausing a vendor only flips Vendor.is_active — it does not revoke the
+    # session — so a paused vendor's portal can still reach this endpoint.
+    # The caller's only honest vendor identity is principal.vendor_id (never
+    # client-supplied), so check IT here rather than reusing _validate_vendor,
+    # which is shaped for a staff-picked vendor id from a request body.
+    active = await db.scalar(
+        select(Vendor.id).where(
+            Vendor.id == principal.vendor_id,
+            Vendor.company_id == principal.company_id,
+            Vendor.is_active.is_(True),
+            Vendor.deleted_at.is_(None),
+        )
+    )
+    if active is None:
+        raise _bad_request("Unknown or inactive vendor")
+
     parent = await _load_node(db, principal.company_id, node_id)
     if not parent.is_leaf:
         raise _bad_request(

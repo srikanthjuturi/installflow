@@ -61,8 +61,8 @@ export const INTAKE_CHANNELS = [
  */
 export const CHANNEL_HINT: Record<IntakeChannel, string> = {
   API: "Tickets are pushed from the vendor's own system.",
-  Excel: "Ops upload the vendor's spreadsheet.",
-  Manual: "Ops key each ticket in by hand.",
+  Excel: "The vendor uploads their spreadsheet in the vendor portal.",
+  Manual: "The vendor keys each ticket in by hand in the vendor portal.",
 };
 
 /**
@@ -194,7 +194,7 @@ const brandRowsSchema = z
   });
 
 export const vendorSchema = z.object({
-  name: z.string().trim().min(2, "Vendor name is required"),
+  name: z.string().trim().min(2, "Vendor name is required").max(255, "Keep the vendor name under 255 characters"),
   /**
    * The vendor's login.
    *
@@ -242,7 +242,7 @@ export const vendorSchema = z.object({
    * required box would be answered with a guess.
    */
   gstCompanyStatus: z.string().trim().max(64),
-  contactPerson: z.string().trim().min(2, "Contact person is required"),
+  contactPerson: z.string().trim().min(2, "Contact person is required").max(255, "Keep the contact person's name under 255 characters"),
   phone: z
     .string()
     .transform(squash)
@@ -291,8 +291,9 @@ export const vendorSchema = z.object({
   creditLimit: z
     .string()
     .trim()
+    .transform((v) => v.replace(/,/g, ""))
     .refine(
-      (v) => v === "" || /^\d{1,8}$/.test(v),
+      (v) => v === "" || /^\d+$/.test(v),
       "The credit limit must be a whole number of rupees"
     )
     .refine((v) => v === "" || Number(v) <= 10_000_000, "At most ₹1,00,00,000"),
