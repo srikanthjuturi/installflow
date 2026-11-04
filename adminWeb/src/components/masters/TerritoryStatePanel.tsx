@@ -73,7 +73,7 @@ export function TerritoryStatePanel({ state, coverage, onClear }: Props) {
             />
             <div className="mt-3.5">
               <LinkButton
-                to="/settings/users"
+                to={`/settings/users?invite=am&state=${state.id}`}
                 variant="outline"
                 className="border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
               >

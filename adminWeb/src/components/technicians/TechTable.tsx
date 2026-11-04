@@ -244,6 +244,8 @@ export function TechTable({
       cell: (t) =>
         t.registered ? (
           <span className="font-mono text-xs">{t.pincodes.join(", ")}</span>
+        ) : t.pincodes.length ? (
+          <span className="font-mono text-xs">{t.pincodes.join(", ")}</span>
         ) : (
           NONE
         ),
@@ -535,6 +537,14 @@ export function TechTable({
             })),
             value: filterValue(params, "franchiseeId"),
             onChange: (v) => setFilter("franchiseeId", v),
+            selectedOption: (() => {
+              const sel = franchisees.find(
+                (f) => f.id === filterValue(params, "franchiseeId")
+              );
+              return sel
+                ? { value: sel.id, label: sel.name, hint: sel.code }
+                : undefined;
+            })(),
             match: () => true,
           }
         : {
@@ -595,6 +605,8 @@ export function TechTable({
   // Ops-only: the portal's pincodes are all its own, and mock 09a offers no
   // district filter there.
   if (isOps && districts.length > 1) {
+    const districtValue = filterValue(params, "districtId");
+    const districtSelected = districts.find((d) => d.id === districtValue);
     filters.push({
       id: "districtId",
       label: "District",
@@ -603,8 +615,15 @@ export function TechTable({
       onSearch: districtOptions.onSearch,
       onLoadMore: districtOptions.loadMore,
       hasMore: districtOptions.hasMore,
-      value: filterValue(params, "districtId"),
+      value: districtValue,
       onChange: (v) => setFilter("districtId", v),
+      selectedOption: districtSelected
+        ? {
+            value: districtSelected.id,
+            label: districtSelected.name,
+            hint: districtSelected.stateName,
+          }
+        : undefined,
       match: () => true,
     });
   }

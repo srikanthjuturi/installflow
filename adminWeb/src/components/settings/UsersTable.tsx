@@ -4,6 +4,7 @@ import { DataTable, type Column } from "@/components/shared/DataTable";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
+import { useFeatureAccess } from "@/hooks/useAuth";
 import {
   useMyRank,
   useRoles,
@@ -55,6 +56,9 @@ export function UsersTable({
   const update = useUpdateUser();
   const myRank = useMyRank();
   const { data: roles } = useRoles();
+  const access = useFeatureAccess();
+  const canEditUsers = access.has("users.edit");
+  const canDeleteUsers = access.has("users.delete");
   const rankOf = (roleKey: string) =>
     roles?.find((r) => r.key === roleKey)?.rank ?? -Infinity;
 
@@ -185,7 +189,7 @@ export function UsersTable({
       cell: (u) => {
         // Only users strictly below your rank can be managed — matches the
         // backend rule (you can't edit peers, superiors, or yourself).
-        if (rankOf(u.role) <= myRank) {
+        if (rankOf(u.role) <= myRank || (!canEditUsers && !canDeleteUsers)) {
           return (
             <span className="text-xs text-ink-3">
               <span aria-hidden>—</span>
@@ -195,58 +199,66 @@ export function UsersTable({
         }
         return (
           <div className="flex items-center justify-end gap-3">
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs font-semibold text-brand-400"
-              onClick={() => {
-                setManaged(u);
-                setEditOpen(true);
-              }}
-            >
-              Edit access
-              <span className="sr-only"> for {u.fullName ?? u.email}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs font-semibold text-ink-2"
-              disabled={update.isPending}
-              onClick={() =>
-                u.isActive ? setSuspending(u) : toggleStatus(u)
-              }
-            >
-              {u.isActive ? "Suspend" : "Activate"}
-              <span className="sr-only"> {u.fullName ?? u.email}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs font-semibold text-ink-2"
-              onClick={() => {
-                setReissueFor(u);
-                setReissueOpen(true);
-              }}
-            >
-              Reset password
-              <span className="sr-only"> for {u.fullName ?? u.email}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="h-auto p-0 text-xs font-semibold text-danger"
-              onClick={() => {
-                setPendingDelete(u);
-                setDeleteOpen(true);
-              }}
-            >
-              Remove
-              <span className="sr-only"> {u.fullName ?? u.email}</span>
-            </Button>
+            {canEditUsers ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs font-semibold text-brand-400"
+                onClick={() => {
+                  setManaged(u);
+                  setEditOpen(true);
+                }}
+              >
+                Edit access
+                <span className="sr-only"> for {u.fullName ?? u.email}</span>
+              </Button>
+            ) : null}
+            {canEditUsers ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs font-semibold text-ink-2"
+                disabled={update.isPending}
+                onClick={() =>
+                  u.isActive ? setSuspending(u) : toggleStatus(u)
+                }
+              >
+                {u.isActive ? "Suspend" : "Activate"}
+                <span className="sr-only"> {u.fullName ?? u.email}</span>
+              </Button>
+            ) : null}
+            {canEditUsers ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs font-semibold text-ink-2"
+                onClick={() => {
+                  setReissueFor(u);
+                  setReissueOpen(true);
+                }}
+              >
+                Reset password
+                <span className="sr-only"> for {u.fullName ?? u.email}</span>
+              </Button>
+            ) : null}
+            {canDeleteUsers ? (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs font-semibold text-danger"
+                onClick={() => {
+                  setPendingDelete(u);
+                  setDeleteOpen(true);
+                }}
+              >
+                Remove
+                <span className="sr-only"> {u.fullName ?? u.email}</span>
+              </Button>
+            ) : null}
           </div>
         );
       },
