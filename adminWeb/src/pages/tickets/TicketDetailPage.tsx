@@ -380,7 +380,7 @@ export default function TicketDetailPage({
                 this is the reason the manager opened the page, and it should
                 not be below the fold under an address they already know. */}
             <CustomerVerdict ticket={ticket} />
-            <CustomerPanel ticket={ticket} />
+            <CustomerPanel ticket={ticket} canCorrectLocation={isOps} />
             <TechnicianPanel
               ticket={ticket}
               // Assignment is an ops job. On the portal this was a button

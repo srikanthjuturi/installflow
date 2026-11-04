@@ -640,6 +640,21 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   feeds the raise-ticket form's "Local area" box; **it is a SUGGESTION list, never a validator** — `tickets.locality` is
   free text (≤ 80), because the directory is never complete. Production must be loaded the same way before the form
   relies on it. Not built: a `Locality` column in the Excel ticket upload; the technician app does not show it.
+- **The customer sets WHERE the visit is, once, on their own link.** The link that picks a time
+  (`/slot/{token}`) now also holds a map: the customer moves a pin or uses their phone's position and
+  saves it. EVERY ticket carries the token now — one raised with its time already fixed gets a link too
+  (the EXISTING `slot_confirmed` receipt, edited in Meta and approved with a fourth value — no new template;
+  `WHATSAPP_SLOT_CONFIRMED_HAS_LINK` is true by default, and false sends only three values, which the edited
+  template refuses with 132000), and its page shows the time read-only. The point is the ticket's existing `latitude`/`longitude`, so the travel allowance and the
+  live-photo check read it with no change; `tickets.location_source` (`vendor` | `customer` | `staff`) and
+  `location_set_at` say where it came from, NULL meaning no point. **One-time and locked:** the customer
+  can save it only while no technician holds the job and the ticket is not finished, a vendor's pick may be
+  overwritten, a customer's or a staff's may not (`core/customer_location.may_customer_set`). Skipping it
+  keeps today's behaviour — the pincode centre. Staff (Area Manager and above, in their territory) correct
+  it with a required reason — `PATCH /tickets/{id}/location` — and the travel figure frozen at accept does
+  NOT move. Every save is a `location_set` event. ⚠ A time picked by a manager no longer spends the
+  token (the link must survive for the location); `confirm_slot` refuses any ticket that already has a
+  `slot_start` instead. The page also has an address search (the browser asks OpenStreetMap's Nominatim, once per press of Search, never per keystroke — the API calls no map provider), warns the customer when the pin is more than 25 km from the pincode centre (a warning, never a block), and shows a saved location read-only.
 - **A vendor may add an extra charge at raise** (`tickets.extra_amount_paise` + a required note). It counts against
   the vendor's credit line from intake, is billed in full at closure as a Debit Note beside the Sales Invoice (on a
   force-closure only when the visit itself is billed), and is never in a technician-facing shape.

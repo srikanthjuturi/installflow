@@ -8,6 +8,7 @@ import {
   assignTechnician,
   checkTicketSerial,
   correctTicketReading,
+  correctTicketLocation,
   correctTicketSerial,
   createTicket,
   getIntakeStatus,
@@ -252,6 +253,19 @@ export function useCorrectTicketSerial() {
     onSuccess: (ticket) => {
       // The response IS the updated ticket, so seed the detail rather than
       // putting a spinner between the correction and the screen showing it.
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+    },
+  });
+}
+
+/** Set or correct where the visit is. Same cache handling as the serial. */
+export function useCorrectTicketLocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't update the location" },
+    mutationFn: correctTicketLocation,
+    onSuccess: (ticket) => {
       queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
     },

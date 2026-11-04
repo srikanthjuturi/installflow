@@ -178,6 +178,18 @@ class Settings(BaseSettings):
     # for a real customer.
     WHATSAPP_SLOT_TEMPLATE_NAME: str = ""
     WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME: str = ""
+    #: Whether `slot_confirmed` takes the customer's link as a FOURTH value. It
+    #: does: the approved template was edited in Meta (id 1062970502900625) to
+    #: read "Tell us exactly where to come: {{4}}", and a template sent the wrong
+    #: number of values is refused (132000), so this is TRUE by default. Set it
+    #: false only against an account whose `slot_confirmed` still has three
+    #: values. The edited body (UTILITY, must not start or end with a variable
+    #: — subcode 2388299):
+    #:     Your {{2}} visit from {{1}} is confirmed for {{3}}.
+    #:     Tell us exactly where to come: {{4}}
+    #:     Our technician will call before arriving. To change the time, reply
+    #:     to this message or call us.
+    WHATSAPP_SLOT_CONFIRMED_HAS_LINK: bool = True
     WHATSAPP_SLOT_TEMPLATE_LANG: str = "en_US"
     #: "Your visit has been MOVED — it was Tuesday, it is now Thursday."
     #: UTILITY, and its own template rather than a second send of

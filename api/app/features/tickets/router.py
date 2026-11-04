@@ -75,6 +75,7 @@ from app.features.tickets.schemas import (
     RenotifyOut,
     RescheduleRequest,
     SerialCheckOut,
+    LocationCorrectionRequest,
     SerialCorrectionRequest,
     SlotOptionOut,
     TicketAttachmentOut,
@@ -924,6 +925,38 @@ async def correct_ticket_serial(
             reason=body.reason,
         ),
         message="Serial updated",
+    )
+
+
+@router.patch(
+    "/{ticket_id}/location",
+    response_model=ApiEnvelope[TicketDetailOut],
+    dependencies=[IsStaff],
+)
+async def correct_ticket_location(
+    ticket_id: uuid.UUID, db: Db, principal: CanView, body: LocationCorrectionRequest
+) -> ApiEnvelope[TicketDetailOut]:
+    """Set or correct where the visit is — staff only, with a reason.
+
+    The customer sets it once on their own link; this is how a wrong pin gets
+    fixed afterwards. It is recorded in the ticket's history with who and why.
+    """
+    data, held = await service.correct_location(
+        db,
+        principal,
+        ticket_id,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        reason=body.reason,
+    )
+    return envelope(
+        data,
+        message=(
+            "Location updated — the technician already holds this job, so the "
+            "travel amount stays as it was when they accepted"
+            if held
+            else "Location updated"
+        ),
     )
 
 

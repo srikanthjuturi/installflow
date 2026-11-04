@@ -31,6 +31,14 @@ from sqlalchemy.orm import aliased
 from app.core.technician_rules import bonus_bands_for, penalty_bands_for
 from app.core import brand
 from app.core.config import settings
+from app.core.customer_location import (
+    SOURCE_CUSTOMER,
+    SOURCE_STAFF,
+    SOURCE_VENDOR,
+    distance_note,
+    may_customer_set,
+    validate_point,
+)
 from app.core.coverage import (
     has_cap_room,
     ist_day_bounds,
@@ -1120,10 +1128,21 @@ async def _hydrate(
                 slotLink=(
                     slot_link(t.slot_token)
                     if t.slot_token
-                    and t.slot_confirmed_at is None
-                    and time_is_choosable(t.status, t.technician_id)
+                    and (
+                        (
+                            t.slot_confirmed_at is None
+                            and t.slot_start is None
+                            and time_is_choosable(t.status, t.technician_id)
+                        )
+                        # Or the page can still take the customer's location.
+                        or may_customer_set(
+                            t.location_source, t.technician_id, t.status
+                        )
+                    )
                     else None
                 ),
+                locationSource=t.location_source,
+                locationSetAt=t.location_set_at,
                 createdAt=t.created_at,
             )
         )
@@ -2493,11 +2512,17 @@ async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> TicketEvent | N
     model_name = await db.scalar(
         select(ProductModel.name).where(ProductModel.id == row.model_id)
     )
+    # The customer's own link rides along: it shows this time and asks where the
+    # visit is. Whether it is actually SENT as a template value is the
+    # integration's call (`WHATSAPP_SLOT_CONFIRMED_HAS_LINK`), since the approved
+    # template has to be edited to take it.
+    link = slot_link(row.slot_token) if row.slot_token else None
     result = await whatsapp.send_slot_confirmed(
         row.customer_phone,
         await _company_name(db, row.company_id),
         model_name or "your product",
         when_label(row.slot_start, row.slot_end),
+        link,
     )
     return record_event(
         row,
@@ -2513,6 +2538,58 @@ async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> TicketEvent | N
             else f"Could not send: {result.error or 'unknown error'}"
         ),
     )
+
+
+async def _pincode_centre(
+    db: AsyncSession, code: str
+) -> tuple[float | None, float | None]:
+    row = (
+        await db.execute(
+            select(Pincode.latitude, Pincode.longitude).where(Pincode.code == code)
+        )
+    ).first()
+    if row is None or row[0] is None or row[1] is None:
+        return None, None
+    return float(row[0]), float(row[1])
+
+
+async def save_customer_location(
+    db: AsyncSession, row: Ticket, lat: float, lng: float
+) -> None:
+    """Write the point the customer set on their link. Does not commit.
+
+    The point goes into `latitude` / `longitude` — what the travel allowance and
+    the live-photo check already read — with its source beside it. One-time: see
+    `core.customer_location.may_customer_set`. The history entry is added in the
+    same transaction as the change it describes, and the console is told.
+    """
+    validate_point(lat, lng)
+    # Locked and re-read: a technician accepting in the same instant must either
+    # win (and this refuses) or wait for this commit, never both write.
+    await db.refresh(row, with_for_update=True)
+    if not may_customer_set(row.location_source, row.technician_id, row.status):
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="The location for this visit can no longer be changed",
+        )
+    centre = await _pincode_centre(db, row.pincode)
+    note = f"Set by the customer ({SOURCE_CUSTOMER})"
+    far = distance_note(lat, lng, *centre)
+    if far:
+        note += f" — {far}"
+    row.latitude, row.longitude = lat, lng
+    row.location_source = SOURCE_CUSTOMER
+    row.location_set_at = _now()
+    db.add(
+        record_event(
+            row,
+            "location_set",
+            actor_kind="customer",
+            actor_label=row.customer_name,
+            note=note,
+        )
+    )
+    await publish_ticket_changed(db, row)
 
 
 async def load_by_token(db: AsyncSession, token: str) -> Ticket:
@@ -2567,7 +2644,11 @@ async def confirm_slot(
     """
     row = await load_by_token(db, token)
 
-    if row.slot_confirmed_at is not None:
+    if row.slot_confirmed_at is not None or row.slot_start is not None:
+        # `slot_start` as well as `slot_confirmed_at`: a time agreed by a
+        # manager, or fixed at intake, leaves the latter null, and the link now
+        # outlives that (it also asks for a location). This is the guard that
+        # keeps the page from overwriting a time somebody already agreed.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="This time has already been confirmed",
@@ -2830,6 +2911,10 @@ async def create_ticket(
         # than the distance one — see `jobs.service`.
         latitude=body.latitude,
         longitude=body.longitude,
+        # A picked point came from the vendor's address search; a typed address
+        # has none and stays NULL rather than guessed.
+        location_source=SOURCE_VENDOR if body.latitude is not None else None,
+        location_set_at=_now() if body.latitude is not None else None,
         expected_date=body.expectedDate,
         service_level_hours=body.serviceLevelHours,
         slot_start=body.slotStart,
@@ -2838,10 +2923,13 @@ async def create_ticket(
         # A slot means the customer has agreed a time, so the ticket is ready
         # for technicians to see. Without one nobody is told it exists yet.
         status="New" if body.slotStart else "Slot Pending",
-        # Only a ticket that still has to ask carries a token. 256 bits, the
-        # same as a technician invite, because it is the same kind of secret:
-        # a URL somebody is trusted to hold.
-        slot_token=None if body.slotStart else secrets.token_urlsafe(32),
+        # EVERY ticket carries a token: the customer's link also asks where the
+        # visit is, so a ticket with its time already fixed needs one too. 256
+        # bits, the same as a technician invite, because it is the same kind of
+        # secret: a URL somebody is trusted to hold. Whether the page may still
+        # change the TIME is decided by the slot, not by the token's presence —
+        # see `confirm_slot`.
+        slot_token=secrets.token_urlsafe(32),
         slot_request_status="not_needed" if body.slotStart else "pending",
         # Only value written today; see the column's note on why it is recorded
         # from the start rather than added when bulk upload lands.
@@ -3098,6 +3186,69 @@ async def correct_serial(
     await publish_ticket_changed(db, row)
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
+
+
+async def correct_location(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    latitude: float,
+    longitude: float,
+    reason: str,
+) -> tuple[TicketDetailOut, bool]:
+    """Staff set or correct the point the visit is measured against.
+
+    Open to the staff who can already see the ticket (`_load` scopes by
+    territory; a guessed id is a 404). Not a vendor or a franchise login — the
+    route's guard says so and this refuses it again.
+
+    Allowed in any state a ticket can still change. The second return value says
+    a technician already holds the job: the live-photo check reads the new point
+    at once, but the travel figure was frozen when they accepted, and the
+    caller's message says so rather than letting anybody expect a repayment.
+    """
+    if principal.is_franchise or principal.is_vendor:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only company staff can correct a ticket's location",
+        )
+    validate_point(latitude, longitude)
+    row = await _load(db, principal, ticket_id)
+    await db.refresh(row, with_for_update=True)
+    if row.status in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"This ticket is {row.status} — its location can no longer change",
+        )
+
+    was = (
+        f"{row.latitude:.5f}, {row.longitude:.5f} ({row.location_source})"
+        if row.latitude is not None
+        else "none"
+    )
+    centre = await _pincode_centre(db, row.pincode)
+    note = f"Location set by staff from {was} — {reason.strip()}"
+    far = distance_note(latitude, longitude, *centre)
+    if far:
+        note += f" ({far})"
+    row.latitude, row.longitude = latitude, longitude
+    row.location_source = SOURCE_STAFF
+    row.location_set_at = _now()
+    db.add(
+        record_event(
+            row,
+            "location_set",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            note=note,
+            by_user=principal.user_id,
+        )
+    )
+    await publish_ticket_changed(db, row)
+    held = row.technician_id is not None
+    await db.commit()
+    return await get_ticket(db, principal, ticket_id), held
 
 
 async def correct_reading(

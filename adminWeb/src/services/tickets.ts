@@ -8,6 +8,7 @@
 
 import type { ListParams, Page } from "@/types/api";
 import type {
+  CorrectLocationInput,
   CorrectReadingInput,
   CorrectSerialInput,
   CreateTicketInput,
@@ -118,6 +119,17 @@ export function correctTicketSerial({
   ...body
 }: CorrectSerialInput): Promise<TicketDetail> {
   return apiPatch<TicketDetail>(`/tickets/${id}/serial`, body);
+}
+
+/**
+ * Set or correct where the visit is. Staff only, with a reason. The customer
+ * sets it once on their own link; this is how a wrong pin is fixed afterwards.
+ */
+export function correctTicketLocation({
+  id,
+  ...body
+}: CorrectLocationInput): Promise<TicketDetail> {
+  return apiPatch<TicketDetail>(`/tickets/${id}/location`, body);
 }
 
 /**

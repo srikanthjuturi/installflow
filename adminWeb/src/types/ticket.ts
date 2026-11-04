@@ -395,6 +395,12 @@ export interface Ticket {
    * pick; it disappears the moment it is used.
    */
   slotLink: string | null;
+  /**
+   * Who supplied `latitude` / `longitude`. Null when there is no point — the
+   * travel allowance and the photo check then use the pincode's centre.
+   */
+  locationSource: "vendor" | "customer" | "staff" | null;
+  locationSetAt: string | null;
 
   /**
    * The customer's verdict, from the confirmation link.
@@ -609,6 +615,14 @@ export interface CorrectSerialInput {
 export interface CorrectReadingInput {
   id: string;
   observedSerial: string;
+  reason: string;
+}
+
+/** `PATCH /tickets/:id/location` — staff only. The reason is kept in the trail. */
+export interface CorrectLocationInput {
+  id: string;
+  latitude: number;
+  longitude: number;
   reason: string;
 }
 

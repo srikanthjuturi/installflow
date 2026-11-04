@@ -217,6 +217,10 @@ EVENT_KINDS = (
     "part_rejected",
     "part_issued",
     "part_returned",
+    #: The point the visit is measured against was set or corrected — by the
+    #: customer on their link, or by staff with a reason. The note carries the
+    #: source and, when the point is outside the pincode area, how far.
+    "location_set",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -271,7 +275,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'customer_notified', 'escalated', 'bonus_added', 'released', "
             "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed', "
             "'franchisee_changed', 'speed_settled', 'part_requested', "
-            "'part_approved', 'part_rejected', 'part_issued', 'part_returned')",
+            "'part_approved', 'part_rejected', 'part_issued', 'part_returned', "
+            "'location_set')",
             name="kind",
         ),
         CheckConstraint(

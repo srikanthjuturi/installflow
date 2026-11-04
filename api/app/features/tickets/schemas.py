@@ -371,6 +371,10 @@ class TicketOut(AppModel):
     #: read it down the phone. Present only while the slot is still theirs to
     #: pick; it disappears the moment it is used.
     slotLink: str | None
+    #: Who supplied `latitude` / `longitude`: 'vendor', 'customer' or 'staff'.
+    #: Null when there is no point.
+    locationSource: str | None = None
+    locationSetAt: datetime.datetime | None = None
 
     # ── the customer's verdict ────────────────────────────────────────────
     #
@@ -1162,6 +1166,18 @@ class SerialCorrectionRequest(AppModel):
     #: Optional, and worth asking for: "invoice says 88417" explains a
     #: correction that a bare value never will.
     reason: str | None = Field(default=None, max_length=255)
+
+
+class LocationCorrectionRequest(AppModel):
+    """Staff setting or correcting where the visit is.
+
+    The reason is required: this overrides the customer's own word, so the trail
+    must say why. The bounds are the India box, checked in the service.
+    """
+
+    latitude: float
+    longitude: float
+    reason: str = Field(min_length=1, max_length=255)
 
 
 class ReadingCorrectionRequest(AppModel):

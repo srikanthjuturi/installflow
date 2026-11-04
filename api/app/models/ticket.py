@@ -159,6 +159,15 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: becomes the gate for the new one.
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Who supplied the point above: 'vendor' (picked at intake), 'customer'
+    #: (set on their own link) or 'staff' (corrected, with a reason). NULL means
+    #: no point — which is the true statement "nobody supplied one", so it is
+    #: never backfilled with a guess. A CHECK ties it to the point and to
+    #: `location_set_at`, so a point can never exist without knowing its source.
+    location_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    location_set_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     #: Which intake channel produced this ticket: 'Manual', 'Excel' or 'API' —
     #: the same three words a vendor declares in `intake_channels`.
@@ -471,6 +480,16 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             name="slot_request_status",
         ),
         CheckConstraint("source IN ('API', 'Excel', 'Manual')", name="source"),
+        CheckConstraint(
+            "location_source IS NULL OR "
+            "location_source IN ('vendor', 'customer', 'staff')",
+            name="location_source",
+        ),
+        CheckConstraint(
+            "(location_source IS NULL) = (latitude IS NULL) "
+            "AND (location_source IS NULL) = (location_set_at IS NULL)",
+            name="location_point",
+        ),
         CheckConstraint(
             "purchase_mode IN ('online', 'offline')", name="purchase_mode"
         ),

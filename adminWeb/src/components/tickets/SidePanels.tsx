@@ -17,6 +17,7 @@ import { describeError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/utils/clipboard";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
+import { LocationStrip } from "@/components/tickets/LocationCorrection";
 import { isTerminalTicketStatus, isTimeChoosable } from "@/types/ticket";
 import type { TicketDetail, TicketProof } from "@/types/ticket";
 
@@ -42,7 +43,13 @@ const initials = (name: string) =>
 
 /** Ops sees customer contact throughout — the masking rule is the
  *  technician app's, and only applies before they accept. */
-export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
+export function CustomerPanel({
+  ticket,
+  canCorrectLocation = false,
+}: {
+  ticket: TicketDetail;
+  canCorrectLocation?: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -106,6 +113,7 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
         </p>
 
         <SlotRequest ticket={ticket} />
+        <LocationStrip ticket={ticket} canCorrect={canCorrectLocation} />
       </CardContent>
     </Card>
   );
@@ -127,6 +135,9 @@ function SlotRequest({ ticket }: { ticket: TicketDetail }) {
   const [copied, setCopied] = useState(false);
   if (
     ticket.slotConfirmedAt ||
+    // A time ops agreed on the phone: the link stays alive (it also asks for the
+    // customer's location), but nothing is waiting on a pick any more.
+    ticket.slotStart ||
     ticket.slotRequestStatus === "not_needed" ||
     !isTimeChoosable(ticket)
   ) {
