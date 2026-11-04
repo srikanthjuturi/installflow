@@ -48,6 +48,11 @@ const TYPE_PLURAL: Record<TypeWord, string> = {
   Employee: "Employees",
 };
 
+/** The full duplicate sentence, shared by the Add form validator and the picker. */
+export function takenRuleMessage(targetName: string, type: TypeWord): string {
+  return `There is already a rule for ${targetName || "this target"} for ${TYPE_PLURAL[type]}. Edit that one instead.`;
+}
+
 const isHours = (v: string) => /^\d{1,4}$/.test(v) && +v >= 1 && +v <= 720;
 
 /** Everything wrong with one row, by field. Empty = valid. */
@@ -69,7 +74,7 @@ export function validateSpeedRow(
         r.targetId === values.targetId
     );
     if (taken) {
-      errors.targetId = `There is already a rule for ${values.targetName || "this target"} for ${TYPE_PLURAL[values.technicianType]}. Edit that one instead.`;
+      errors.targetId = takenRuleMessage(values.targetName, values.technicianType);
     }
   }
 

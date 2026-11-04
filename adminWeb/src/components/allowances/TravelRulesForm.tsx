@@ -114,6 +114,7 @@ function TravelRulesFields({
     formState: { errors },
   } = useForm<TravelValues>({
     resolver: zodResolver(travelSchema),
+    mode: "onBlur",
     values,
   });
 
@@ -220,14 +221,26 @@ function TravelCard({
       <CardContent className="flex flex-col gap-4">
         <FieldGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {box("freeKm", "Free distance (km)", "Nothing is paid up to this distance.")}
-          {box("stepKm", "Pay for every (km)", "Part of a step is not paid.")}
-          {box("perStep", "Amount per step (₹)")}
+          {box(
+            "stepKm",
+            "Chargeable Distance Interval (km)",
+            "Distance is charged in whole intervals of this size — part of an interval is not paid."
+          )}
+          {box(
+            "perStep",
+            "Allowance per Interval (₹)",
+            "Paid for each whole chargeable interval beyond the free distance."
+          )}
           {box(
             "roadFactorPct",
-            "Road factor (%)",
+            "Road Distance Adjustment (%)",
             "Straight-line distance × this = road distance. 130 % suits most cities."
           )}
-          {box("maxPerJob", "Most per job (₹)")}
+          {box(
+            "maxPerJob",
+            "Maximum Travel Allowance per Job (₹)",
+            "The travel allowance for one job is capped at this amount."
+          )}
         </FieldGrid>
 
         {/* Off is a state, said in words: a ₹0 rate is "off", not "broken". */}

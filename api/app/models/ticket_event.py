@@ -260,6 +260,11 @@ class TicketEvent(Base, IdMixin, AuditMixin):
     #: user row and a technician's name at the time is what the trail should
     #: read — renaming somebody must not rewrite history.
     actor_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: The staff role the actor HELD when they acted — stored, not joined later,
+    #: because a later role change must not rewrite history, and `created_by` is
+    #: often null on the "assigned" write path. NULL on every historical row and
+    #: every non-staff event; `_event_title` falls back to "…by a manager" then.
+    actor_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (

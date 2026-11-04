@@ -30,6 +30,7 @@ import { targetLabel } from "./speedRows";
 import {
   emptySpeedValues,
   speedRowSchema,
+  takenRuleMessage,
   toSpeedBody,
   toSpeedValues,
   type SpeedRowField,
@@ -240,13 +241,15 @@ function SpeedRuleForm({
         open={picking}
         onOpenChange={setPicking}
         scope={scope}
-        isTaken={(kind, id) =>
+        isTaken={(kind, id, name) =>
           existing.some(
             (r) =>
               r.technicianType === TYPE_WORD_TO_WIRE[type] &&
               r.targetKind === kind &&
               r.targetId === id
           )
+            ? takenRuleMessage(name, type)
+            : null
         }
         onChoose={(t) => {
           setValue("targetKind", t.kind, { shouldValidate: true });
@@ -270,7 +273,7 @@ function TargetPickerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scope: AllowanceScope;
-  isTaken: (kind: "node" | "model", id: string) => boolean;
+  isTaken: (kind: "node" | "model", id: string, name: string) => string | null;
   onChoose: (target: PickedTarget) => void;
 }) {
   const franchise = scope.kind === "franchise";

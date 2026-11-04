@@ -40,7 +40,7 @@ export function SpeedTargetPicker({
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
-  isTaken: (kind: "node" | "model", id: string) => boolean;
+  isTaken: (kind: "node" | "model", id: string, name: string) => string | null;
   onChoose: (target: PickedTarget) => void;
 }) {
   if (error) {
@@ -76,17 +76,25 @@ export function SpeedTargetPicker({
 function Choice({
   label,
   taken,
+  paused,
   onChoose,
 }: {
   label: string;
-  taken: boolean;
+  /** The full "already has a rule" sentence, or null when free. */
+  taken: string | null;
+  /** A paused product cannot carry a new rule. */
+  paused?: boolean;
   onChoose: () => void;
 }) {
-  // A word in place of the button, never a greyed one: "disabled" explains
-  // nothing, and colour alone is not a signal.
+  // A word in place of the button, never a greyed one.
+  if (paused) {
+    return (
+      <span className="shrink-0 text-xs font-medium text-ink-3">Paused</span>
+    );
+  }
   return taken ? (
-    <span className="shrink-0 text-xs font-medium text-ink-3">
-      Already has a rule
+    <span className="max-w-[55%] text-right text-xs font-medium text-ink-3">
+      {taken}
     </span>
   ) : (
     <Button type="button" variant="outline" size="xs" onClick={onChoose}>
@@ -102,7 +110,7 @@ function NodeRow({
   onChoose,
 }: {
   node: PickNode;
-  isTaken: (kind: "node" | "model", id: string) => boolean;
+  isTaken: (kind: "node" | "model", id: string, name: string) => string | null;
   onChoose: (target: PickedTarget) => void;
 }) {
   return (
@@ -124,7 +132,7 @@ function NodeRow({
         </span>
         <Choice
           label={node.name}
-          taken={isTaken("node", node.id)}
+          taken={isTaken("node", node.id, node.name)}
           onChoose={() => onChoose({ kind: "node", id: node.id, name: node.name })}
         />
       </div>
@@ -137,15 +145,22 @@ function NodeRow({
           {node.models.map((m) => (
             <li
               key={m.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-line-2 px-3 py-1.5"
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-md border border-line-2 px-3 py-1.5",
+                !m.isActive ? "opacity-60" : undefined
+              )}
             >
               <span className="min-w-0 truncate text-[13px]">
                 {m.name}
                 <span className="ml-2 text-xs text-ink-3">{m.brandName}</span>
+                {!m.isActive ? (
+                  <span className="ml-2 text-xs font-normal text-ink-3">Paused</span>
+                ) : null}
               </span>
               <Choice
                 label={m.name}
-                taken={isTaken("model", m.id)}
+                taken={isTaken("model", m.id, m.name)}
+                paused={!m.isActive}
                 onChoose={() =>
                   onChoose({ kind: "model", id: m.id, name: m.name })
                 }

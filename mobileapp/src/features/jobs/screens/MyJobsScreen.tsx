@@ -6,8 +6,9 @@ import { RefreshControl, ScrollView, View } from 'react-native';
 import { ErrorState, JobCardSkeleton } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { ScreenStatusBar, TabHeader } from '@/components/layout';
-import { SegmentedControl, Text } from '@/components/ui';
+import { FilterChips, Input, SegmentedControl, Text } from '@/components/ui';
 import { MyJobCard } from '@/features/jobs/components/MyJobCard';
+import { isSlotClosed, searchJobs, slotClosedCount } from '@/features/jobs/filter';
 import { useMyJobs } from '@/features/jobs/hooks/useJobs';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { color } from '@/theme/semantic';
@@ -26,9 +27,19 @@ export function MyJobsScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const [filter, setFilter] = useState<Filter>('upcoming');
+  const [slotFilter, setSlotFilter] = useState<'all' | 'slotclosed'>('all');
+  const [query, setQuery] = useState('');
 
   const { data, isPending, isError, refetch } = useMyJobs(filter);
   const active = FILTERS.find((f) => f.value === filter);
+  const now = Date.now();
+  const searched = data ? searchJobs(data, query) : [];
+  const closedCount = slotClosedCount(searched, now);
+  const showSlotFilter = filter === 'upcoming' && closedCount > 0;
+  const visible =
+    filter === 'upcoming' && slotFilter === 'slotclosed'
+      ? searched.filter((j) => isSlotClosed(j, now))
+      : searched;
   // The tab a technician checks after a customer confirms or a manager moves a
   // job. The socket usually beats them to it; this is for when it has not.
   const pull = usePullToRefresh(refetch);
@@ -42,9 +53,31 @@ export function MyJobsScreen() {
           <SegmentedControl
             options={FILTERS.map((f) => ({ value: f.value, label: t(f.label) }))}
             value={filter}
-            onChange={setFilter}
+            onChange={(next) => {
+              setFilter(next);
+              if (next !== 'upcoming') setSlotFilter('all');
+            }}
           />
         </View>
+
+        <Input
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t('jobs.myJobs.searchPlaceholder')}
+        />
+
+        {showSlotFilter ? (
+          <View style={{ marginTop: 12 }}>
+            <FilterChips
+              options={[
+                { value: 'all', label: t('jobs.pool.all'), count: searched.length },
+                { value: 'slotclosed', label: t('jobs.status.slotClosed'), count: closedCount },
+              ]}
+              value={slotFilter}
+              onChange={setSlotFilter}
+            />
+          </View>
+        ) : null}
       </TabHeader>
 
       <ScrollView
@@ -59,7 +92,7 @@ export function MyJobsScreen() {
           </>
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
-        ) : data.length === 0 ? (
+        ) : visible.length === 0 ? (
           // One line, no body copy — the filter name already says everything
           // there is to say about why the list is empty.
           <View style={{ alignItems: 'center', paddingVertical: 60, paddingHorizontal: 24 }}>
@@ -79,11 +112,13 @@ export function MyJobsScreen() {
             <Text
               style={{ fontFamily: 'Roboto_700Bold', fontSize: 14.5, color: color.textLabel }}
             >
-              {t(active?.empty ?? 'jobs.myJobs.empty.none')}
+              {query.trim() !== ''
+                ? t('jobs.myJobs.empty.noMatch')
+                : t(active?.empty ?? 'jobs.myJobs.empty.none')}
             </Text>
           </View>
         ) : (
-          data.map((job) => (
+          visible.map((job) => (
             <MyJobCard key={job.id} job={job} onPress={() => router.push(`/job/${job.id}`)} />
           ))
         )}

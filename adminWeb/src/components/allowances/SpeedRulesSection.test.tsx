@@ -29,7 +29,7 @@ const CATALOGUE: SpeedCatalogue = {
     { id: "el", parentId: null, name: "Electronics", depth: 0, isLeaf: false, isActive: true },
     { id: "tv", parentId: "el", name: "Television", depth: 1, isLeaf: true, isActive: true },
   ],
-  models: [{ id: "m1", nodeId: "tv", name: 'Sunview 43"', brandName: "Sunview" }],
+  models: [{ id: "m1", nodeId: "tv", name: 'Sunview 43"', brandName: "Sunview", isActive: true }],
 };
 
 const RULE: SpeedRule = {
@@ -155,7 +155,11 @@ describe("SpeedRulesSection", () => {
       name: "Choose what this rule applies to",
     });
     // Freelancer is the default type, and Television already has its rule.
-    expect(await within(picker).findByText("Already has a rule")).toBeInTheDocument();
+    expect(
+      await within(picker).findByText(
+        "There is already a rule for Television for Freelancers. Edit that one instead."
+      )
+    ).toBeInTheDocument();
     expect(within(picker).queryByRole("button", { name: /Chooses*Television/ })).toBeNull();
     // The product beneath it is still free.
     expect(

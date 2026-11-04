@@ -208,6 +208,7 @@ export default function TicketDetailPage({
      record can still be wrong. `jobs.assign` is the four staff roles; the
      server adds the Area-Manager floor and refuses a vendor regardless. */
   const canCorrectReading = isOps && has("jobs.assign");
+  const canCorrectSerial = has("jobs.view");
   const [reverseOpen, setReverseOpen] = useState(false);
   const [reversing, setReversing] = useState<TicketPenalty | null>(null);
   const reversePenalty = useReversePenalty();
@@ -360,6 +361,7 @@ export default function TicketDetailPage({
                 <SerialMismatchBanner
                   ticket={ticket}
                   canCorrectReading={canCorrectReading}
+                  canCorrectSerial={canCorrectSerial}
                 />
               </CardContent>
             </Card>
