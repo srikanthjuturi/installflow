@@ -52,6 +52,7 @@ async def get_territory(
         .where(
             Membership.company_id == principal.company_id,
             Membership.deleted_at.is_(None),
+            Membership.is_active.is_(True),
             User.role.in_([REGIONAL_HEAD, AREA_MANAGER]),
         )
         .order_by(User.full_name)
@@ -103,8 +104,12 @@ async def get_territory(
     taken: set[uuid.UUID] = set(
         (
             await session.scalars(
-                select(MembershipState.state_id).where(
-                    MembershipState.company_id == principal.company_id
+                select(MembershipState.state_id)
+                .join(Membership, Membership.id == MembershipState.membership_id)
+                .where(
+                    MembershipState.company_id == principal.company_id,
+                    Membership.is_active.is_(True),
+                    Membership.deleted_at.is_(None),
                 )
             )
         ).all()

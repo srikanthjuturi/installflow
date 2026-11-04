@@ -143,7 +143,11 @@ export default function TerritoryPage() {
             to a primary button. */}
         {canAssign ? (
           <LinkButton
-            to="/settings/users"
+            to={
+              stateId && coverage.get(stateId) && !coverage.get(stateId)!.isCovered
+                ? `/settings/users?invite=am&state=${stateId}`
+                : "/settings/users"
+            }
             variant="outline"
             className="border-brand-400 bg-surface text-brand-500 hover:bg-brand-100"
           >
@@ -201,7 +205,10 @@ export default function TerritoryPage() {
               onClear={() => setParams({}, { replace: true })}
             />
           ) : (
-            <TerritoryTree regions={territory.data} />
+            <TerritoryTree
+              regions={territory.data}
+              onSelectState={(id) => setParams({ state: id }, { replace: true })}
+            />
           )}
         </div>
       )}

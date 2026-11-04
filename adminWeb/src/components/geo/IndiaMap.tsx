@@ -210,6 +210,9 @@ export function IndiaMap({
   // State, not a ref, because the render reads it — for the cursor and to drop
   // the transition mid-drag. Refs must not be read during render.
   const [dragging, setDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Cursor position in container-relative pixels, for the floating hover label.
+  const [hoverPt, setHoverPt] = useState<{ x: number; y: number } | null>(null);
 
   // All of these are only ever touched inside event handlers, so refs are
   // right: they change on every pointermove and none of it belongs in a render.
@@ -300,7 +303,7 @@ export function IndiaMap({
           optional — colour is never the only encoding. */}
       <div className="border-b border-line px-3 py-2.5">{legend}</div>
 
-      <div className="relative px-3 pt-3 pb-2">
+      <div ref={containerRef} className="relative px-3 pt-3 pb-2">
         <svg
           viewBox={INDIA_VIEWBOX}
           className={cn(
@@ -327,6 +330,7 @@ export function IndiaMap({
             // zoom back to 1x left this stuck true, and every click on every
             // state was silently swallowed from then on.
             moved.current = false;
+            setHoverPt(null);
             pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
             if (pointers.current.size === 2) {
@@ -453,9 +457,14 @@ export function IndiaMap({
                     onSelectState(state);
                   }}
                   onMouseEnter={() => setHovered(state.id)}
-                  onMouseLeave={() =>
-                    setHovered((h) => (h === state.id ? null : h))
-                  }
+                  onMouseMove={(e) => {
+                    const r = containerRef.current?.getBoundingClientRect();
+                    if (r) setHoverPt({ x: e.clientX - r.left, y: e.clientY - r.top });
+                  }}
+                  onMouseLeave={() => {
+                    setHovered((h) => (h === state.id ? null : h));
+                    setHoverPt(null);
+                  }}
                   onFocus={() => setHovered(state.id)}
                   onBlur={() => setHovered((h) => (h === state.id ? null : h))}
                   onKeyDown={(e) => {
@@ -478,6 +487,18 @@ export function IndiaMap({
                   filter={marked ? `url(#${LIFT})` : undefined}
                 >
                   <title>{`${state.name} — ${mark.detail}`}</title>
+                  {/* An invisible wide stroke widens the effective tap target
+                      for small states without changing their visible size. */}
+                  {keys.map((k) => (
+                    <path
+                      key={`hit-${k}`}
+                      d={INDIA_PATHS[k]}
+                      fill="transparent"
+                      stroke="transparent"
+                      strokeWidth={14}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
                   {keys.map((k) => (
                     <path
                       key={k}
@@ -511,7 +532,7 @@ export function IndiaMap({
         {/* Zoom, at the corner where a map keeps it. Buttons and drag only:
             wheel-zoom would swallow the page scroll, and on the stacked layout
             the map is something you scroll PAST. */}
-        <div className="absolute end-5 top-5 flex flex-col overflow-hidden rounded-md border border-line bg-surface shadow-card">
+        <div className="absolute end-5 bottom-8 sm:bottom-auto sm:top-5 flex flex-col overflow-hidden rounded-md border border-line bg-surface shadow-card">
           <ZoomButton
             label="Zoom in"
             onClick={() => applyZoom(zoom * STEP)}
@@ -541,6 +562,15 @@ export function IndiaMap({
           <p className="pointer-events-none absolute start-5 top-5 rounded bg-surface/90 px-1.5 py-0.5 text-[11px] font-medium text-ink-2 tabular-nums">
             {zoom.toFixed(1)}× · drag to move
           </p>
+        )}
+
+        {hoveredState && hoverPt && !dragging && (
+          <div
+            className="pointer-events-none absolute z-10 rounded bg-surface/90 px-1.5 py-0.5 text-[11px] font-medium text-ink-2 shadow-card"
+            style={{ left: hoverPt.x + 12, top: hoverPt.y + 12 }}
+          >
+            {hoveredState.name} — {markFor(hoveredState).detail}
+          </div>
         )}
       </div>
 

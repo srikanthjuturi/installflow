@@ -1,4 +1,7 @@
-import { Map } from "lucide-react";
+// Aliased: a bare `Map` import shadows the global Map constructor, and
+// `new Map<string, string>()` below then fails to typecheck.
+import { Map as MapIcon } from "lucide-react";
+import { Link } from "react-router";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,12 +15,19 @@ import type { TerritoryPerson, TerritoryRegion } from "@/types/territory";
  * same structure from the card bands. Indentation alone would leave the
  * relationship invisible to anyone not looking at it.
  */
-export function TerritoryTree({ regions }: { regions: TerritoryRegion[] }) {
+export function TerritoryTree({
+  regions,
+  onSelectState,
+}: {
+  regions: TerritoryRegion[];
+  /** Navigate to a state's drill-down (by state id). */
+  onSelectState: (stateId: string) => void;
+}) {
   return (
     <ul className="flex flex-col gap-3" aria-label="Regions">
       {regions.map((region) => (
         <li key={region.id}>
-          <RegionCard region={region} />
+          <RegionCard region={region} onSelectState={onSelectState} />
         </li>
       ))}
     </ul>
@@ -29,9 +39,16 @@ function count(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function RegionCard({ region }: { region: TerritoryRegion }) {
+function RegionCard({
+  region,
+  onSelectState,
+}: {
+  region: TerritoryRegion;
+  onSelectState: (stateId: string) => void;
+}) {
   const { regionalHeads, areaManagers } = region;
   const empty = regionalHeads.length === 0 && areaManagers.length === 0;
+  const stateIdByName = new Map(region.states.map((s) => [s.name, s.id]));
 
   return (
     <Card className="[--card-spacing:0rem]">
@@ -40,7 +57,7 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
           className="grid size-9 shrink-0 place-items-center rounded-md bg-brand-500 text-white"
           aria-hidden
         >
-          <Map className="size-4.5" />
+          <MapIcon className="size-4.5" />
         </span>
         <h2 className="text-[15px] font-semibold">{region.name} Region</h2>
         <span className="ml-auto text-xs text-ink-3">
@@ -71,7 +88,15 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
           ))}
           {areaManagers.map((asm) => (
             <li key={asm.membershipId}>
-              <PersonRow person={asm} role="Area Manager" states={asm.states} />
+              <PersonRow
+                person={asm}
+                role="Area Manager"
+                states={asm.states}
+                onPickState={(name) => {
+                  const id = stateIdByName.get(name);
+                  if (id) onSelectState(id);
+                }}
+              />
             </li>
           ))}
           {regionalHeads.length === 0 ? (
@@ -96,14 +121,21 @@ function RegionCard({ region }: { region: TerritoryRegion }) {
             Area Manager
           </p>
           <ul className="mt-1.5 flex flex-wrap gap-1.5">
-            {region.unassignedStates.map((state) => (
-              <li
-                key={state}
-                className="rounded-sm bg-warn-bg px-2 py-0.75 text-[11px] font-medium text-warn"
-              >
-                {state}
-              </li>
-            ))}
+            {region.unassignedStates.map((state) => {
+              const id = stateIdByName.get(state);
+              return (
+                <li key={state}>
+                  <button
+                    type="button"
+                    disabled={!id}
+                    onClick={() => id && onSelectState(id)}
+                    className="rounded-sm bg-warn-bg px-2 py-0.75 text-[11px] font-medium text-warn enabled:hover:bg-warn enabled:hover:text-white disabled:cursor-default"
+                  >
+                    {state}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
@@ -122,10 +154,12 @@ function PersonRow({
   person,
   role,
   states,
+  onPickState,
 }: {
   person: TerritoryPerson;
   role: string;
   states?: string[];
+  onPickState?: (stateName: string) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md px-3 py-2.75 transition-colors hover:bg-surface-2">
@@ -144,7 +178,18 @@ function PersonRow({
         )}
       />
       <div className="min-w-37.5">
-        <h3 className="text-[13px] font-semibold">{person.name}</h3>
+        <h3 className="text-[13px] font-semibold">
+          {person.email ? (
+            <Link
+              to={`/settings/users?search=${encodeURIComponent(person.email)}`}
+              className="hover:text-brand-400 hover:underline"
+            >
+              {person.name}
+            </Link>
+          ) : (
+            person.name
+          )}
+        </h3>
         <p className="text-[11px] text-ink-3">
           {role}
           {person.isActive ? "" : " · Suspended"}
@@ -156,11 +201,14 @@ function PersonRow({
           aria-label={`States covered by ${person.name}`}
         >
           {states.map((state) => (
-            <li
-              key={state}
-              className="rounded-sm bg-surface-3 px-2 py-0.75 text-[11px] font-medium text-ink-2"
-            >
-              {state}
+            <li key={state}>
+              <button
+                type="button"
+                onClick={() => onPickState?.(state)}
+                className="rounded-sm bg-surface-3 px-2 py-0.75 text-[11px] font-medium text-ink-2 hover:bg-brand-100 hover:text-brand-500"
+              >
+                {state}
+              </button>
             </li>
           ))}
         </ul>
