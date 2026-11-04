@@ -183,6 +183,7 @@ from app.models.purchase_platform import PurchasePlatform
 from app.models.role import (
     FACILITY_ROLES,
     FRANCHISEE_ADMIN,
+    ROLE_LABELS,
     VENDOR_USER,
 )
 from app.models.territory import Pincode
@@ -2351,7 +2352,16 @@ _EVENT_TITLES_BY_ACTOR = {
 }
 
 
-def _event_title(kind: str, actor_kind: str, note: str | None = None) -> str:
+def _role_phrase(role: str) -> str:
+    """"an Admin" / "a Regional Head" — article picked from the label."""
+    label = ROLE_LABELS.get(role, "manager")
+    article = "an" if label[:1] in "AEIOU" else "a"
+    return f"{article} {label}"
+
+
+def _event_title(
+    kind: str, actor_kind: str, note: str | None = None, actor_role: str | None = None
+) -> str:
     # The technician's door, when the customer number on the ticket was their
     # own: the code reached the technician, so "customer confirmed by code"
     # would be false. The note says why; the title says what to do about it.
@@ -2365,6 +2375,13 @@ def _event_title(kind: str, actor_kind: str, note: str | None = None) -> str:
     # approved, and the trail has to say so — the note carries the source.
     if kind == "part_rejected" and "approved → rejected" in (note or ""):
         return "Approved spare part cancelled"
+    # The actor's REAL role, when we stored it. Historical rows (actor_role
+    # is None) fall through to the "…by a manager" wording below, unchanged.
+    if actor_kind == "staff" and actor_role in ROLE_LABELS:
+        if kind == "assigned":
+            return f"Assigned by {_role_phrase(actor_role)}"
+        if kind == "rescheduled":
+            return f"Rescheduled by {_role_phrase(actor_role)}"
     return _EVENT_TITLES_BY_ACTOR.get(
         (kind, actor_kind), _EVENT_TITLES.get(kind, kind)
     )
@@ -2405,7 +2422,7 @@ async def _timeline(
         TimelineEventOut(
             at=e.created_at,
             kind=e.kind,
-            title=_event_title(e.kind, e.actor_kind, e.note),
+            title=_event_title(e.kind, e.actor_kind, e.note, e.actor_role),
             actorKind=e.actor_kind,
             by=e.actor_label,
             note=e.note,
@@ -2425,6 +2442,7 @@ def record_event(
     from_status: str | None = None,
     to_status: str | None = None,
     by_user: uuid.UUID | None = None,
+    actor_role: str | None = None,
 ) -> TicketEvent:
     """Build the event for something that just happened to `row`.
 
@@ -2443,6 +2461,7 @@ def record_event(
         from_status=from_status,
         to_status=to_status,
         created_by=by_user,
+        actor_role=actor_role,
     )
 
 
@@ -3877,6 +3896,7 @@ async def assign_technician(
                 else f"Re-assigned to {name}"
             ),
             by_user=principal.user_id,
+            actor_role=principal.role,
         )
     )
     # NB no ledger entry here. A funded bonus is paid to whoever FINISHES the
@@ -4764,6 +4784,7 @@ async def reschedule(
         actor_label=principal.user.full_name or "—",
         by_user=principal.user_id,
         note=reason,
+        actor_role=principal.role,
     )
     if moved is None:
         raise _refused(

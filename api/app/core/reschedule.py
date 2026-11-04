@@ -134,6 +134,7 @@ async def move_slot(
     customer_agreed: bool,
     by_user: uuid.UUID | None = None,
     note: str | None = None,
+    actor_role: str | None = None,
 ) -> str | None:
     """Write the new window. Returns the new status, or None if somebody raced us.
 
@@ -244,6 +245,7 @@ async def move_slot(
             kind="slot_confirmed" if first_booking else "rescheduled",
             actor_kind=actor_kind,
             actor_label=actor_label,
+            actor_role=actor_role,
             created_by=by_user,
             note=trail if not note else f"{trail} · {note}",
             # An `Awaiting Part` job stays there, and the event must not look

@@ -85,7 +85,7 @@ export interface SpeedCatalogue {
     isLeaf: boolean;
     isActive: boolean;
   }[];
-  models: { id: string; nodeId: string; name: string; brandName: string }[];
+  models: { id: string; nodeId: string; name: string; brandName: string; isActive: boolean }[];
 }
 
 /**

@@ -672,11 +672,13 @@
     },
     "myJobs": {
       "title": "My jobs",
+      "searchPlaceholder": "Search by code, customer or pincode",
       "empty": {
         "upcoming": "No upcoming jobs",
         "inprogress": "Nothing in progress",
         "completed": "No completed jobs yet",
-        "none": "Nothing here"
+        "none": "Nothing here",
+        "noMatch": "No jobs match your search"
       }
     },
     "pool": {

@@ -56,7 +56,8 @@ export function ApprovePartDialog({
             Approve {request.partName} for {request.ticketCode}?
           </DialogTitle>
           <DialogDescription>
-            {request.technicianName} is told it&apos;s approved.
+            {request.technicianName} will be notified once you approve the{" "}
+            {request.partName} request for {request.ticketCode}.
           </DialogDescription>
         </DialogHeader>
 

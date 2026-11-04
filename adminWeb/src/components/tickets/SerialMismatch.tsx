@@ -69,9 +69,11 @@ function howRead(ticket: TicketDetail): string | null {
 export function SerialMismatchBanner({
   ticket,
   canCorrectReading = false,
+  canCorrectSerial = false,
 }: {
   ticket: TicketDetail;
   canCorrectReading?: boolean;
+  canCorrectSerial?: boolean;
 }) {
   const [open, setOpen] = useState<"order" | "reading" | null>(null);
 
@@ -106,14 +108,16 @@ export function SerialMismatchBanner({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
-            onClick={() => setOpen("order")}
-          >
-            Correct the order serial
-          </Button>
+          {canCorrectSerial ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
+              onClick={() => setOpen("order")}
+            >
+              Correct the order serial
+            </Button>
+          ) : null}
           {canCorrectReading ? (
             <Button
               variant="outline"
