@@ -210,6 +210,9 @@ export interface TechnicianInvite {
   technicianType: TechnicianType;
   canManage: boolean;
 
+  /** The coverage the manager assigned at invite time. Empty if none. */
+  pincodes: string[];
+
   createdAt: string;
 }
 
@@ -343,6 +346,8 @@ export interface DistrictBreakdown {
   districts: DistrictTechnicianCount[];
   totalTechnicians: number;
   withoutDistrict: number;
+  /** Live invites whose pincodes fall in this state, not yet in the totals. */
+  pendingInvites: number;
 }
 
 /* ── Task 17: moving a technician to another franchisee ─────────────────────

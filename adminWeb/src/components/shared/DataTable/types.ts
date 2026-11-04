@@ -37,6 +37,12 @@ export interface FilterDef {
   id: string;
   label: string;
   options: FilterOption[];
+  /**
+   * `combobox` only. The option for the currently-selected value when it is
+   * NOT in the paginated `options` window — the toolbar falls back to this to
+   * render the chosen label instead of the placeholder.
+   */
+  selectedOption?: FilterOption;
   /** Controlled value. Omit to let the table own it. */
   value?: string;
   onChange?: (value: string) => void;

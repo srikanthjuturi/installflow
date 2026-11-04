@@ -91,7 +91,7 @@ export function DistrictTechnicians({ stateId }: { stateId: string }) {
     );
   }
 
-  const { totalTechnicians, withoutDistrict } = data;
+  const { totalTechnicians, withoutDistrict, pendingInvites } = data;
   const staffed = districts.filter((d) => d.technicianCount > 0);
 
   return (
@@ -158,6 +158,13 @@ export function DistrictTechnicians({ stateId }: { stateId: string }) {
         </p>
       )}
 
+      {pendingInvites > 0 && (
+        <p className="mt-2 text-[11px] text-ink-3">
+          {plural(pendingInvites, "invited technician")}, not yet counted —
+          their pincodes are not in the totals above.
+        </p>
+      )}
+
       {/* Said once, at the bottom, because the arithmetic invites the question
           the moment anybody adds the column up. */}
       {staffed.length > 0 && (
@@ -212,7 +219,7 @@ function Row({ district }: { district: DistrictTechnicianCount }) {
         </div>
       ) : (
         <Link
-          to={`/technicians?districtId=${district.districtId}`}
+          to={`/technicians?districtId=${district.districtId}&status=active`}
           className="flex items-center gap-2.5 rounded px-1 py-1.5 text-ink-2 hover:bg-surface-2 hover:text-ink focus-visible:bg-surface-2"
         >
           {body}

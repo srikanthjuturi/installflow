@@ -527,6 +527,10 @@ class DistrictBreakdownOut(AppModel):
     districts: list[DistrictTechnicianCount]
     totalTechnicians: int
     withoutDistrict: int
+    #: Live invites (not yet registered) whose pincodes fall in this state and
+    #: are therefore not yet in the totals above. Counted once per invite even
+    #: if it covers several pincodes here.
+    pendingInvites: int
 
 
 # ── moving a technician between franchisees (Task 17) ────────────────────────

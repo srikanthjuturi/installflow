@@ -156,7 +156,7 @@ export function Toolbar<T>({
 
           // Too long to scroll: type to narrow, and the list pages as it goes.
           if (f.variant === "combobox") {
-            const chosen = f.options.find((o) => o.value === value);
+            const chosen = f.options.find((o) => o.value === value) ?? f.selectedOption;
             return (
               <Combobox
                 key={f.id}

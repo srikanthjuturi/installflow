@@ -47,9 +47,12 @@ const COLS = "grid gap-4 sm:grid-cols-2";
 export function AddUserDialog({
   open,
   onOpenChange,
+  initial,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Pre-fills the invite form (e.g. Area Manager + a state from Territory). */
+  initial?: Partial<CreateUserValues>;
 }) {
   // The account whose password email did NOT go out. While this is set the
   // dialog shows the password instead of the form — see TemporaryPasswordPanel
@@ -86,7 +89,11 @@ export function AddUserDialog({
             onDone={close}
           />
         ) : (
-          <AddUserForm onDone={close} onUndelivered={setUndelivered} />
+          <AddUserForm
+            onDone={close}
+            onUndelivered={setUndelivered}
+            initial={initial}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -96,9 +103,11 @@ export function AddUserDialog({
 function AddUserForm({
   onDone,
   onUndelivered,
+  initial,
 }: {
   onDone: () => void;
   onUndelivered: (user: CreatedCompanyUser) => void;
+  initial?: Partial<CreateUserValues>;
 }) {
   const roles = useAssignableRoles();
   const create = useCreateUser();
@@ -113,7 +122,7 @@ function AddUserForm({
   } = useForm<CreateUserValues>({
     resolver: createUserResolver(roles.map((r) => r.key)),
     mode: "onChange",
-    defaultValues: EMPTY_INVITE,
+    defaultValues: { ...EMPTY_INVITE, ...initial },
   });
 
   const err = (name: keyof CreateUserValues) => errors[name]?.message;
