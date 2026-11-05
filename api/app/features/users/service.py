@@ -8,6 +8,7 @@ fields (active, manager) are per-company; identity fields (name, phone, image)
 are shared across companies.
 """
 
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -310,6 +311,15 @@ async def _check_assignable(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
+def _check_single_region(role: str, states: list[State]) -> None:
+    """An area manager's states must all belong to one region (OQ-A1)."""
+    if role == AREA_MANAGER and len({s.region_id for s in states}) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An area manager's states must all be in one region.",
+        )
+
+
 async def _check_states_free(
     session: AsyncSession,
     company_id: uuid.UUID,
@@ -406,9 +416,14 @@ async def list_users(
         stmt, role=principal.role, own_membership_id=own_id, own_scope=own
     )
     if params.search:
-        term = f"%{params.search.lower()}%"
+        collapsed = re.sub(r"\s+", " ", params.search.strip().lower())
+        escaped = collapsed.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         stmt = stmt.where(
-            or_(func.lower(User.email).like(term), func.lower(User.full_name).like(term))
+            or_(
+                func.lower(User.email).ilike(pattern, escape="\\"),
+                func.lower(User.full_name).ilike(pattern, escape="\\"),
+            )
         )
     sort_col = {
         "name": User.full_name,
@@ -452,6 +467,7 @@ async def create_user(
     _check_scope_shape(body.role, body.regionIds, body.stateIds)
     await _resolve_regions(session, body.regionIds)
     states = await _resolve_states(session, body.stateIds)
+    _check_single_region(body.role, states)
     await _check_assignable(session, principal, body.regionIds, states)
     await _check_states_free(session, principal.company_id, states)
 
@@ -500,6 +516,7 @@ async def create_user(
             role=body.role,
             profile_image_url=image,
             is_active=True,
+            must_change_password=True,
             created_by=principal.user_id,
         )
         session.add(user)
@@ -515,6 +532,9 @@ async def create_user(
         membership.is_active = True
         membership.manager_id = body.managerId
         membership.updated_by = principal.user_id
+        user.full_name = body.fullName
+        user.phone = body.phone
+        user.updated_by = principal.user_id
     else:
         membership = Membership(
             user_id=user.id,
@@ -629,6 +649,7 @@ async def update_user(
         _check_scope_shape(user.role, region_ids, state_ids)
         await _resolve_regions(session, region_ids)
         states = await _resolve_states(session, state_ids)
+        _check_single_region(user.role, states)
         await _check_assignable(session, principal, region_ids, states)
         await _check_states_free(
             session,
@@ -719,7 +740,9 @@ async def reissue_password(
 
     temporary_password = generate_temporary_password()
     user.password_hash = hash_password(temporary_password)
+    user.must_change_password = True
     user.updated_by = principal.user_id
+    user.password_changed_at = datetime.now(timezone.utc)
     await revoke_refresh_tokens(session, user.id)
     await session.commit()
     await session.refresh(user)

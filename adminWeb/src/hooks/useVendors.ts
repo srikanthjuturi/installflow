@@ -46,11 +46,12 @@ export function useVendors(params: ListParams) {
  * and this is fetched every time somebody opens the model dialog. Every vendor
  * write below invalidates it, and a brand decided on Approvals does too.
  */
-export function useVendorOptions() {
+export function useVendorOptions({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: vendorKeys.options(),
     queryFn: listVendorOptions,
     staleTime: 60 * 60 * 1000,
+    enabled,
   });
 }
 

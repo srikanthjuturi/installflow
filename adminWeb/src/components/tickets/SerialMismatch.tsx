@@ -69,9 +69,11 @@ function howRead(ticket: TicketDetail): string | null {
 export function SerialMismatchBanner({
   ticket,
   canCorrectReading = false,
+  canCorrectSerial = false,
 }: {
   ticket: TicketDetail;
   canCorrectReading?: boolean;
+  canCorrectSerial?: boolean;
 }) {
   const [open, setOpen] = useState<"order" | "reading" | null>(null);
 
@@ -106,14 +108,16 @@ export function SerialMismatchBanner({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
-            onClick={() => setOpen("order")}
-          >
-            Correct the order serial
-          </Button>
+          {canCorrectSerial ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-danger/40 bg-surface text-danger hover:bg-danger-bg"
+              onClick={() => setOpen("order")}
+            >
+              Correct the order serial
+            </Button>
+          ) : null}
           {canCorrectReading ? (
             <Button
               variant="outline"
@@ -600,7 +604,7 @@ function ReadingPhoto({ ticket }: { ticket: TicketDetail }) {
     return (
       <p className="rounded-md bg-surface-3 px-3.5 py-3 text-xs text-ink-2">
         {isError
-          ? "Couldn't load the photo. It is also in Proof of completion on this page."
+          ? "Couldn't load the photo. It is also in Job start proof on this page."
           : `No ${label.toLowerCase()} is available for this ticket.`}
       </p>
     );

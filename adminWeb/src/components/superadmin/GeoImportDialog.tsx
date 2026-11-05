@@ -16,6 +16,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -44,7 +45,7 @@ export function GeoImportDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-2xl">
         <ImportForm onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -92,7 +93,7 @@ function ImportForm({ onDone }: { onDone: () => void }) {
   const committing = runImport.isPending && !!preview;
 
   return (
-    <div className="grid gap-5">
+    <DialogScrollBody className="scroll-slim">
       <DialogHeader>
         <DialogTitle>Import geography</DialogTitle>
         <DialogDescription>
@@ -158,13 +159,17 @@ function ImportForm({ onDone }: { onDone: () => void }) {
         <Button
           type="button"
           onClick={commit}
-          disabled={!preview || runImport.isPending || importableCount(preview) === 0}
+          disabled={
+            !preview || runImport.isPending || importableCount(preview) === 0
+          }
         >
           {committing ? <Spinner data-icon="inline-start" /> : null}
-          {preview ? `Import ${importableCount(preview).toLocaleString()} pincodes` : "Import"}
+          {preview
+            ? `Import ${importableCount(preview).toLocaleString()} pincodes`
+            : "Import"}
         </Button>
       </DialogFooter>
-    </div>
+    </DialogScrollBody>
   );
 }
 
@@ -229,9 +234,7 @@ function Preview({ report }: { report: ImportReport }) {
           >
             <p className="text-[11px] font-medium text-ink-3">{t.label}</p>
             <p className="text-lg font-semibold text-ink">{t.value}</p>
-            {t.hint ? (
-              <p className="text-[11px] text-ink-3">{t.hint}</p>
-            ) : null}
+            {t.hint ? <p className="text-[11px] text-ink-3">{t.hint}</p> : null}
           </div>
         ))}
       </div>
@@ -253,9 +256,9 @@ function Preview({ report }: { report: ImportReport }) {
       {report.unusedRegions.length ? (
         <Notice tone="warn" icon={AlertTriangle} title="Regions with no states">
           {report.unusedRegions.join(", ")} — nothing in this file sits in{" "}
-          {report.unusedRegions.length === 1 ? "it" : "them"}, so a regional head
-          given {report.unusedRegions.length === 1 ? "it" : "them"} would cover
-          nothing.
+          {report.unusedRegions.length === 1 ? "it" : "them"}, so a regional
+          head given {report.unusedRegions.length === 1 ? "it" : "them"} would
+          cover nothing.
         </Notice>
       ) : null}
 

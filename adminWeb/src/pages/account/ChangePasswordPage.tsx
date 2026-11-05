@@ -9,7 +9,13 @@ import {
   type ChangePasswordValues,
 } from "@/components/auth/changePasswordSchema";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Field,
   FieldDescription,
@@ -19,7 +25,7 @@ import {
 import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useChangePassword } from "@/hooks/useAuth";
+import { useChangePassword, useMe } from "@/hooks/useAuth";
 import { useSession } from "@/store/session";
 
 /**
@@ -38,6 +44,8 @@ export default function ChangePasswordPage() {
   const franchise = useSession((s) => s.franchise);
   const change = useChangePassword();
   const accountPath = SHELL_PATHS[surfaceOf({ superadmin, portal, franchise })].account;
+  const { data: me } = useMe();
+  const mustChange = me?.user?.mustChangePassword ?? false;
 
   const {
     register,
@@ -71,14 +79,22 @@ export default function ChangePasswordPage() {
         title="Change password"
         description="Set a new password for your account"
       />
+      <Dialog
+        open
+        onOpenChange={(next) => {
+          // Non-forced: closing (X or backdrop) returns to the account page.
+          // Forced: ignored — there is nowhere to return to, and `open` stays true.
+          if (!next && !mustChange) navigate(accountPath);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton={!mustChange}>
+          <DialogHeader>
+            <DialogTitle>Change password</DialogTitle>
+            <DialogDescription>
+              Set a new password for your account.
+            </DialogDescription>
+          </DialogHeader>
 
-      <h2 className="text-lg font-semibold">Change password</h2>
-
-      <Card className="mt-4 max-w-md">
-        <CardHeader className="border-b border-line-2 pb-4">
-          <CardTitle className="text-sm">Your password</CardTitle>
-        </CardHeader>
-        <CardContent>
           <form onSubmit={handleSubmit(submit)} noValidate>
             <FieldGroup>
               <Field data-invalid={errors.currentPassword ? true : undefined}>
@@ -159,21 +175,23 @@ export default function ChangePasswordPage() {
             </FieldGroup>
 
             <div className="mt-6 flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate(accountPath)}
-              >
-                Cancel
-              </Button>
+              {mustChange ? null : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate(accountPath)}
+                >
+                  Cancel
+                </Button>
+              )}
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                 Change password
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

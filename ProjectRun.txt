@@ -1,0 +1,57 @@
+--Backend---
+cd api
+./.venv/Scripts/python.exe run.py        # uvicorn on :8000
+
+
+---Migration---
+cd api
+uv run alembic upgrade head
+
+
+---Web---
+cd adminWeb
+npm run dev
+
+---Mobile---
+cd mobileapp
+npx expo start
+
+
+========================================================
+Demo Credentials:
+
+super admin:
+superadmin@reliancegreentech.com
+ChangeMe_Superadmin@123
+
+Company:
+meera.admin@seed.example.com
+LQwD-D3CX-ZBvE
+
+Nation Head:
+sanjay.nh@seed.example.com
+tb4N-iNuR-7mQx
+
+Regional Head:
+kavita.rh@seed.example.com
+oUHo-rpHx-rkLe
+
+Area Manager:
+imran.am@seed.example.com
+rKZL-4Quu-LzET
+
+Vendor Admin:
+crestline.vendor@seed.example.com
+z6vs-Fogc-AsGm
+
+Vendor User:
+asha.clerk@seed.example.com
+gAsS-Ve6W-FPp6
+
+Franchise Admin:
+farhan.skyfix@seed.example.com
+mbJC-JLiG-cpGM
+
+Facility Operator:
+lakshmi.parts@seed.example.com
+vjim-cHV4-rNWR

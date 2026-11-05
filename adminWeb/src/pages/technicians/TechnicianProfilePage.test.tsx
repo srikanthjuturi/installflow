@@ -34,6 +34,8 @@ vi.mock("@/components/technicians/TechnicianFormDialog", () => ({ TechnicianForm
 vi.mock("@/components/technicians/DeleteTechnicianDialog", () => ({ DeleteTechnicianDialog: () => null }));
 vi.mock("@/components/technicians/UpiChangePanel", () => ({ UpiChangePanel: () => null }));
 vi.mock("@/components/technicians/BaseLocationPanel", () => ({ BaseLocationPanel: () => null }));
+vi.mock("@/components/technicians/PartsAddressPanel", () => ({ PartsAddressPanel: () => null }));
+vi.mock("@/components/technicians/TechnicianRulesPanel", () => ({ TechnicianRulesPanel: () => null }));
 vi.mock("@/components/technicians/DownloadStatementCard", () => ({ DownloadStatementCard: () => null }));
 vi.mock("@/components/technicians/JobHistoryTable", () => ({ JobHistoryTable: () => null }));
 vi.mock("@/components/technicians/TechOnboardingCard", () => ({

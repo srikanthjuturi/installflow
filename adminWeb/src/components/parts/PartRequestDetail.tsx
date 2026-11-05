@@ -9,6 +9,7 @@ import { TICKET_STATUSES, type TicketStatus } from "@/types/ticket";
 import type { PartAction, PartRequest } from "@/types/parts";
 import { EMPTY } from "@/utils/datetime";
 import { formatPhone } from "@/utils/phone";
+import { DeliverTo } from "./DeliverTo";
 import { PartStatusBadge } from "./PartStatusBadge";
 import { PART_ACTION, actionsFor, trailLines } from "./partStatus";
 
@@ -211,6 +212,8 @@ export function PartRequestDetail({
             />
           </CardContent>
         </Card>
+
+        <DeliverTo address={request.deliveryAddress} />
 
         <Card>
           <CardHeader>

@@ -160,64 +160,69 @@ export default function FranchiseePage() {
         <div className="grid gap-3.5 lg:grid-cols-2">
           {isLoading || !franchisee ? (
             <>
+              <Skeleton className="h-20 rounded-xl lg:col-span-2" />
               <Skeleton className="h-100 rounded-xl" />
               <Skeleton className="h-100 rounded-xl" />
             </>
           ) : (
             <>
-              <section className="rounded-lg border border-line bg-surface-1">
+              <section className="rounded-lg border border-line bg-surface-1 lg:col-span-2">
                 <Header franchisee={franchisee} />
               </section>
 
               {/* The seven facts, answered even where the answer is "—". */}
               <FranchiseeFacts franchisee={franchisee} />
 
-              <section className="rounded-lg border border-line bg-surface-1">
-                <h3 className="border-b border-line px-3.5 py-3 text-[15px] font-semibold text-ink">
-                  Pincodes
-                </h3>
-                <div className="px-3.5 py-3">
-                  <p className="text-[13px] text-ink-2">
-                    {franchisee.isHome
-                      ? "All unclaimed"
-                      : franchisee.pincodeRanges
-                        ? `${franchisee.pincodeCount.toLocaleString()} pincodes`
-                        : "No pincodes yet — this franchisee owns nothing and is offered no tickets."}
-                  </p>
-                  {franchisee.pincodeRanges ? (
-                    <p className="mt-2 font-mono text-[12.5px] break-all text-ink-2">
-                      {franchisee.pincodeRanges}
+              <div className="flex flex-col gap-3.5">
+                <section className="rounded-lg border border-line bg-surface-1">
+                  <h3 className="border-b border-line px-3.5 py-3 text-[15px] font-semibold text-ink">
+                    Pincodes
+                  </h3>
+                  <div className="px-3.5 py-3">
+                    <p className="text-[13px] text-ink-2">
+                      {franchisee.isHome
+                        ? "All unclaimed"
+                        : franchisee.pincodeRanges
+                          ? `${franchisee.pincodeCount.toLocaleString()} pincodes`
+                          : "No pincodes yet — this franchisee owns nothing and is offered no tickets."}
                     </p>
-                  ) : null}
-                </div>
-              </section>
+                    {franchisee.pincodeRanges ? (
+                      <p className="mt-2 font-mono text-[12.5px] break-all text-ink-2">
+                        {franchisee.pincodeRanges}
+                      </p>
+                    ) : null}
+                  </div>
+                </section>
 
-              <section className="rounded-lg border border-line bg-surface-1">
-                <h3 className="border-b border-line px-3.5 py-3 text-[15px] font-semibold text-ink">
-                  Technicians
-                </h3>
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-3">
-                  {/* Live COUNTs the API sends — never derived or cached. */}
-                  <p className="text-[13px] text-ink-2">
-                    {franchisee.technicianCount.toLocaleString()} technicians
-                    {" · "}
-                    {franchisee.openInviteCount.toLocaleString()} open invites
-                  </p>
-                  {/* Lands filtered: the list seeds franchiseeId from the URL. */}
-                  <LinkButton
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    to={`/technicians?franchiseeId=${franchisee.id}`}
-                    state={origin}
-                  >
-                    <Users data-icon="inline-start" />
-                    View technicians
-                  </LinkButton>
-                </div>
-              </section>
+                <section className="rounded-lg border border-line bg-surface-1">
+                  <h3 className="border-b border-line px-3.5 py-3 text-[15px] font-semibold text-ink">
+                    Technicians
+                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-3">
+                    {/* Live COUNTs the API sends — never derived or cached. */}
+                    <p className="text-[13px] text-ink-2">
+                      {franchisee.technicianCount.toLocaleString()} technicians
+                      {" · "}
+                      {franchisee.openInviteCount.toLocaleString()} open invites
+                    </p>
+                    {/* Lands filtered: the list seeds franchiseeId from the URL. */}
+                    <LinkButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      to={`/technicians?franchiseeId=${franchisee.id}`}
+                      state={origin}
+                    >
+                      <Users data-icon="inline-start" />
+                      View technicians
+                    </LinkButton>
+                  </div>
+                </section>
+              </div>
 
-              <FranchiseeAdminsPanel franchisee={franchisee} canManage={canManage} />
+              <div className="lg:col-span-2">
+                <FranchiseeAdminsPanel franchisee={franchisee} canManage={canManage} />
+              </div>
 
               {/* Task 13 §5.4 — Admin / National Head only (the card decides). */}
               <FranchiseeAllowancesCard franchisee={franchisee} />
@@ -227,7 +232,9 @@ export default function FranchiseePage() {
                   somebody adds a facility user, and no staff role works the
                   queue, so Admin / National Head give it one here. The card
                   decides: home only, Admin / NH only. */}
-              <HomeFacilityUsersCard franchisee={franchisee} />
+              <div className="lg:col-span-2">
+                <HomeFacilityUsersCard franchisee={franchisee} />
+              </div>
             </>
           )}
         </div>

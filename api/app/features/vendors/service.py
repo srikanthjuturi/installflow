@@ -48,6 +48,7 @@ from app.features.vendors.schemas import (
     VendorOptionOut,
     VendorOut,
     VendorUpdateRequest,
+    brand_dedupe_key,
 )
 from app.core.security import generate_temporary_password, hash_password
 from app.core.sessions import revoke_refresh_tokens
@@ -528,9 +529,24 @@ async def list_options(
     )
     if principal.is_vendor:
         stmt = stmt.where(Vendor.id == principal.vendor_id)
+    if principal.is_franchise:
+        # A franchise login filters its read-only ticket list by vendor. Vendors
+        # belong to the company, not to a franchisee, so "its vendors" are the
+        # ones who have raised tickets stamped with its franchisee — names only,
+        # never a competitor's catalogue.
+        stmt = stmt.where(
+            Vendor.id.in_(
+                select(Ticket.vendor_id).where(
+                    Ticket.company_id == principal.company_id,
+                    Ticket.franchisee_id == principal.franchisee_id,
+                )
+            )
+        )
     rows = list(await db.scalars(stmt.order_by(Vendor.name)))
     if not rows:
         return []
+    if principal.is_franchise:
+        return [VendorOptionOut(id=r.id, name=r.name, brands=[]) for r in rows]
 
     by_vendor: dict[uuid.UUID, list[VendorBrandOptionOut]] = {}
     for vendor_id, brand_id, brand_name in await db.execute(
@@ -547,7 +563,12 @@ async def list_options(
             VendorBrandOptionOut(id=brand_id, name=brand_name)
         )
     return [
-        VendorOptionOut(id=r.id, name=r.name, brands=by_vendor.get(r.id, []))
+        VendorOptionOut(
+            id=r.id,
+            name=r.name,
+            brands=by_vendor.get(r.id, []),
+            intakeChannels=list(r.intake_channels or []),
+        )
         for r in rows
     ]
 
@@ -639,6 +660,7 @@ async def create_vendor(
             phone=body.phone,
             role=VENDOR,
             is_active=True,
+            must_change_password=True,
             created_by=principal.user_id,
         )
         db.add(identity)
@@ -751,6 +773,8 @@ async def _reset_login_password(
     password = generate_temporary_password()
     account.password_hash = hash_password(password)
     account.updated_by = principal.user_id
+    account.must_change_password = True
+    account.password_changed_at = datetime.now(timezone.utc)
     await revoke_refresh_tokens(db, account.id)
     return account, password
 
@@ -880,7 +904,9 @@ async def _apply_brands(
         return r.name
 
     untouched = [b.name for b in live if b.approval_status != APPROVED and b.id not in kept]
-    names = [final_name(r).lower() for r in rows] + [n.lower() for n in untouched]
+    names = [brand_dedupe_key(final_name(r)) for r in rows] + [
+        brand_dedupe_key(n) for n in untouched
+    ]
     if len(set(names)) != len(names):
         raise _conflict(
             "Two brands would share a name — including one waiting for approval."
@@ -1082,16 +1108,22 @@ async def _assert_own_brand_name_free(
     *,
     exclude_id: uuid.UUID | None = None,
 ) -> None:
-    """A clear 409 before the unique index has to be the one to say it."""
-    stmt = select(VendorBrand.id).where(
+    """A clear 409 before the unique index has to be the one to say it.
+
+    SQL `lower()` cannot normalize Unicode or strip zero-width characters, so
+    the comparison is done in Python with `brand_dedupe_key`, matching the
+    other two duplicate-brand checks in this slice.
+    """
+    stmt = select(VendorBrand.id, VendorBrand.name).where(
         VendorBrand.company_id == principal.company_id,
         VendorBrand.vendor_id == principal.vendor_id,
         VendorBrand.deleted_at.is_(None),
-        func.lower(VendorBrand.name) == name.lower(),
     )
     if exclude_id is not None:
         stmt = stmt.where(VendorBrand.id != exclude_id)
-    if await db.scalar(stmt) is not None:
+    target = brand_dedupe_key(name)
+    rows = (await db.execute(stmt)).all()
+    if any(brand_dedupe_key(existing_name) == target for _id, existing_name in rows):
         raise _conflict(f"You already have a brand called {name}.")
 
 
@@ -1132,7 +1164,25 @@ async def submit_own_brand(
     Refused at the ceiling, which counts every live brand whatever its status —
     the rule `_apply_brands` holds, so an approval can never leave a vendor with
     more brands than the staff form is allowed to send.
+
+    Pausing a vendor only flips `Vendor.is_active` — it does not revoke the
+    portal session — so a paused vendor's own login could otherwise still
+    submit brands here. `principal.vendor_id` is the only honest source for a
+    portal caller's own vendor, so it is checked directly rather than through
+    a helper that takes a client-supplied vendor id.
     """
+    active = await db.scalar(
+        select(Vendor.id).where(
+            Vendor.id == principal.vendor_id,
+            Vendor.company_id == principal.company_id,
+            Vendor.is_active.is_(True),
+            Vendor.deleted_at.is_(None),
+        )
+    )
+    if active is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown or inactive vendor"
+        )
     held = await db.scalar(
         select(func.count())
         .select_from(VendorBrand)

@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -53,7 +54,7 @@ export function ApproveProductDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-2xl">
         {submission ? (
           <ApproveForm
             submission={submission}
@@ -116,19 +117,24 @@ function ApproveForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
-      <DialogHeader>
-        <DialogTitle>Approve {submission.name}?</DialogTitle>
-        <DialogDescription>
-          In {submission.nodePath.join(" › ")}, from {submission.vendorName}. Set
-          both prices — the product cannot be ticketed until you do.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Approve {submission.name}?</DialogTitle>
+          <DialogDescription>
+            In {submission.nodePath.join(" › ")}, from {submission.vendorName}.
+            Set both prices — the product cannot be ticketed until you do.
+          </DialogDescription>
+        </DialogHeader>
 
-      <SubmissionSummary submission={submission} />
+        <SubmissionSummary submission={submission} />
 
-      <FieldGroup className="gap-5">
-        {/* Side by side because they are the two halves of one decision — what
+        <FieldGroup className="gap-5">
+          {/* Side by side because they are the two halves of one decision — what
             this job is worth — and the margin between them is only legible
             when both are on screen at once. The labels and hints are lifted
             verbatim from the product form: it is the same decision, arriving a
@@ -136,85 +142,92 @@ function ApproveForm({
 
             `FieldGrid`, never `<FieldGroup className="grid">` — the Chrome
             container-query bug that collapses every control to height 0. */}
-        <FieldGrid className="grid gap-5 sm:grid-cols-2">
-          <Field data-invalid={errors.technicianPayoutPaise ? true : undefined}>
-            <FieldLabel htmlFor="approve-payout" required>
-              Paid to technician (₹)
-            </FieldLabel>
-            <Input
-              id="approve-payout"
-              inputMode="numeric"
-              placeholder="e.g. 450"
-              autoFocus
-              aria-invalid={errors.technicianPayoutPaise ? true : undefined}
-              aria-describedby={
-                errors.technicianPayoutPaise
-                  ? "approve-payout-error"
-                  : "approve-payout-hint"
-              }
-              {...register("technicianPayoutPaise")}
-            />
-            {errors.technicianPayoutPaise ? (
-              <FieldDescription
-                id="approve-payout-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.technicianPayoutPaise.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="approve-payout-hint">
-                Required. What a technician earns for one job on this model.
-              </FieldDescription>
-            )}
-          </Field>
+          <FieldGrid className="grid gap-5 sm:grid-cols-2">
+            <Field
+              data-invalid={errors.technicianPayoutPaise ? true : undefined}
+            >
+              <FieldLabel htmlFor="approve-payout" required>
+                Paid to technician (₹)
+              </FieldLabel>
+              <Input
+                id="approve-payout"
+                inputMode="numeric"
+                placeholder="e.g. 450"
+                autoFocus
+                aria-invalid={errors.technicianPayoutPaise ? true : undefined}
+                aria-describedby={
+                  errors.technicianPayoutPaise
+                    ? "approve-payout-error"
+                    : "approve-payout-hint"
+                }
+                {...register("technicianPayoutPaise")}
+              />
+              {errors.technicianPayoutPaise ? (
+                <FieldDescription
+                  id="approve-payout-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.technicianPayoutPaise.message}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="approve-payout-hint">
+                  Required. What a technician earns for one job on this model.
+                </FieldDescription>
+              )}
+            </Field>
 
-          <Field data-invalid={errors.vendorPricePaise ? true : undefined}>
-            <FieldLabel htmlFor="approve-price" required>
-              Charged to vendor (₹)
-            </FieldLabel>
-            <Input
-              id="approve-price"
-              inputMode="numeric"
-              placeholder="e.g. 1200"
-              aria-invalid={errors.vendorPricePaise ? true : undefined}
-              aria-describedby={
-                errors.vendorPricePaise
-                  ? "approve-price-error"
-                  : "approve-price-hint"
-              }
-              {...register("vendorPricePaise")}
-            />
-            {errors.vendorPricePaise ? (
-              <FieldDescription
-                id="approve-price-error"
-                role="alert"
-                className="text-danger"
-              >
-                {errors.vendorPricePaise.message}
-              </FieldDescription>
-            ) : (
-              <FieldDescription id="approve-price-hint">
-                Required. What the vendor pays to raise one of these tickets.
-              </FieldDescription>
-            )}
-          </Field>
-        </FieldGrid>
-      </FieldGroup>
+            <Field data-invalid={errors.vendorPricePaise ? true : undefined}>
+              <FieldLabel htmlFor="approve-price" required>
+                Charged to vendor (₹)
+              </FieldLabel>
+              <Input
+                id="approve-price"
+                inputMode="numeric"
+                placeholder="e.g. 1200"
+                aria-invalid={errors.vendorPricePaise ? true : undefined}
+                aria-describedby={
+                  errors.vendorPricePaise
+                    ? "approve-price-error"
+                    : "approve-price-hint"
+                }
+                {...register("vendorPricePaise")}
+              />
+              {errors.vendorPricePaise ? (
+                <FieldDescription
+                  id="approve-price-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.vendorPricePaise.message}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="approve-price-hint">
+                  Required. What the vendor pays to raise one of these tickets.
+                </FieldDescription>
+              )}
+            </Field>
+          </FieldGrid>
+        </FieldGroup>
 
-      <DialogFooter>
-        <DialogClose
-          render={
-            <Button type="button" variant="outline" disabled={approve.isPending}>
-              Cancel
-            </Button>
-          }
-        />
-        <Button type="submit" disabled={approve.isPending}>
-          {approve.isPending ? <Spinner /> : null}
-          Approve product
-        </Button>
-      </DialogFooter>
+        <DialogFooter>
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                disabled={approve.isPending}
+              >
+                Cancel
+              </Button>
+            }
+          />
+          <Button type="submit" disabled={approve.isPending}>
+            {approve.isPending ? <Spinner /> : null}
+            Approve product
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

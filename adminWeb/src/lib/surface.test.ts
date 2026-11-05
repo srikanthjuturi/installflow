@@ -47,7 +47,7 @@ describe("surfaceOf", () => {
 
 describe("SHELL_PATHS", () => {
   it("names each surface's home — the four shells cannot drift apart", () => {
-    expect(SHELL_PATHS.superadmin.home).toBe("/companies");
+    expect(SHELL_PATHS.superadmin.home).toBe("/all-transactions");
     expect(SHELL_PATHS.franchise.home).toBe("/franchise");
     expect(SHELL_PATHS.vendor.home).toBe("/portal");
     expect(SHELL_PATHS.ops.home).toBe("/");

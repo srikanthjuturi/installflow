@@ -9,10 +9,15 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useInfinitePincodes, usePincodeLookup } from "@/hooks/useGeo";
+import {
+  useInfinitePincodes,
+  usePincodeLookup,
+  usePostOffices,
+} from "@/hooks/useGeo";
 import { flatten } from "@/lib/placeAddress";
 import { cn } from "@/lib/utils";
 import { FieldGrid } from "./FieldGrid";
+import { LocalityField } from "./LocalityField";
 import { useAddressAutocomplete } from "./useAddressAutocomplete";
 
 /**
@@ -135,6 +140,20 @@ export interface AddressFieldsProps {
     enabled: boolean;
     onSearch: (sessionId: string) => void;
   };
+  /**
+   * Opt-in "Local area" box under the pincode row, suggesting the post offices
+   * of the pincode. Free text — the directory only suggests. Omit it and the
+   * form is exactly what it always was.
+   *
+   * The caller owns the value (it belongs to the ticket, not to `AddressValue`)
+   * and this CLEARS it whenever the pincode changes: a locality belongs to one
+   * pincode.
+   */
+  localityField?: {
+    value: string;
+    onChange: (next: string) => void;
+    error?: string;
+  };
   /** Grid class for the field group holding all five boxes. */
   grid?: string;
   /** Column span for the street line inside that grid. */
@@ -178,6 +197,7 @@ export function AddressFields({
   autoFill = true,
   disabled,
   addressSearch,
+  localityField,
   grid,
   addressClassName,
   children,
@@ -331,14 +351,41 @@ export function AddressFields({
     onStatusChange?.(status);
   }, [status, onStatusChange]);
 
+  /* Suggestions only once the master has accepted the code — nothing is asked
+     for a half-typed or unknown one. */
+  const postOffices = usePostOffices(
+    value.pincode,
+    Boolean(localityField) && status === "ok"
+  );
+
+  /* A locality belongs to one pincode: when the pincode changes, the area typed
+     for the old one is dropped. The first render only records it, so an
+     existing value is never wiped on mount. */
+  const lastPincode = React.useRef(value.pincode);
+  const localityRef = React.useRef(localityField);
+  React.useEffect(() => {
+    localityRef.current = localityField;
+  });
+  React.useEffect(() => {
+    if (lastPincode.current === value.pincode) return;
+    lastPincode.current = value.pincode;
+    const field = localityRef.current;
+    if (field && field.value) field.onChange("");
+  }, [value.pincode]);
+
   /**
-   * The code we last auto-filled a city for.
+   * The code — and the city we filled it with — that the auto-fill below last
+   * wrote.
    *
-   * Without it, clearing the city would refill it from the district on the very
-   * next render and the box could never be emptied. The district is a helpful
-   * first guess for a hand-typed code, not a value we insist on.
+   * Holding both, not just the code, is what tells a genuinely NEW code from
+   * one the box has already moved past: without the city half, the district
+   * fill below only ever fired once per code and a SECOND pincode kept the
+   * first one's city, because `value.city` was no longer empty. With it, a
+   * new code refills the city when the box still holds what we last put
+   * there (or holds nothing) — but a hand-typed or Google-Places-picked city
+   * never matches what we last filled, so it is left alone.
    */
-  const filledFor = React.useRef<string | null>(null);
+  const filledFor = React.useRef<{ code: string; city: string } | null>(null);
 
   /**
    * The master is the authority on which state a pincode is in — `pincodes`
@@ -350,9 +397,13 @@ export function AddressFields({
    */
   React.useEffect(() => {
     if (!master) return;
-    const fresh = filledFor.current !== master.code;
-    filledFor.current = master.code;
-    const city = fresh && !value.city ? (master.districts[0] ?? "") : value.city;
+    const district = master.districts[0] ?? "";
+    const fresh = filledFor.current?.code !== master.code;
+    // The box still holds either nothing, or exactly what WE put there for
+    // the code it held before — never a hand-typed or Places-picked city.
+    const ours = !value.city || value.city === filledFor.current?.city;
+    const city = fresh && ours ? district : value.city;
+    filledFor.current = { code: master.code, city };
     if (value.state === master.stateName && value.city === city) return;
     onChange({ ...value, state: master.stateName, city });
   }, [master, value, onChange]);
@@ -364,7 +415,13 @@ export function AddressFields({
     if (!parts) return;
     const next = lines === 1 ? flatten(parts) : parts;
     setPickHadNoPincode(next.pincode === "");
-    // A new address means the previous city fill no longer applies.
+    // A new address means the previous city fill no longer applies. Clearing
+    // the ref rather than recording this pick's city is what keeps it safe
+    // either way the pincode lookup below lands: `ours` reads as false while
+    // `next.city` (just written below) is non-empty, so a Places-given city
+    // survives the state/city effect untouched; empty, it reads as true and
+    // the effect falls back to the resolved pincode's district, same as a
+    // pick that named no city at all.
     filledFor.current = null;
     /*
      * Whatever was last typed into the pincode box no longer applies either.
@@ -606,6 +663,18 @@ export function AddressFields({
         })}
         {children}
       </FieldGrid>
+
+      {localityField ? (
+        <LocalityField
+          idPrefix={idPrefix}
+          value={localityField.value}
+          onChange={localityField.onChange}
+          error={localityField.error}
+          offices={postOffices.data ?? []}
+          loading={postOffices.isFetching}
+          disabled={disabled}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Minus, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GeoState } from "@/types/geo";
@@ -55,6 +55,28 @@ const [MAP_W, MAP_H] = [
   INDIA_EXTENT[2] - INDIA_EXTENT[0],
   INDIA_EXTENT[3] - INDIA_EXTENT[1],
 ];
+
+/**
+ * How wide the invisible per-state hit area should read on screen, and how
+ * far it may reach in the MAP's OWN units.
+ *
+ * `vectorEffect="non-scaling-stroke"` (the previous approach) keeps a stroke
+ * a constant width in SCREEN pixels no matter how small the SVG is rendered —
+ * which is exactly backwards for correctness: at a phone's ~390px width the
+ * whole 764-unit-wide country is squeezed into a third of its desktop size,
+ * so the SAME screen-pixel margin balloons into many more map units, wide
+ * enough for a small state's (e.g. Telangana's) hit halo to reach into its
+ * neighbour's (Maharashtra's) territory and win the hit-test.
+ *
+ * The fix computes the stroke in MAP units for the CURRENT render instead —
+ * `DESIRED_HIT_SCREEN_PX` converted through the actual container-width/zoom
+ * scale — and caps it at `MAX_HIT_MAP_UNITS`, a value picked well under any
+ * real state's width (states span tens to hundreds of units; the visible
+ * border itself is 0.8–2.2 units) so the buffer can enlarge a tap target
+ * without ever being able to swallow a neighbour, at any screen size.
+ */
+const DESIRED_HIT_SCREEN_PX = 14;
+const MAX_HIT_MAP_UNITS = 6;
 
 /**
  * Keep the drawing covering the frame.
@@ -210,6 +232,25 @@ export function IndiaMap({
   // State, not a ref, because the render reads it — for the cursor and to drop
   // the transition mid-drag. Refs must not be read during render.
   const [dragging, setDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Cursor position in container-relative pixels, for the floating hover label.
+  const [hoverPt, setHoverPt] = useState<{ x: number; y: number } | null>(null);
+
+  // How wide the container is actually RENDERED — the piece `non-scaling-stroke`
+  // used to get for free (and get wrong) by reading the CTM at paint time. Null
+  // until the first measurement, which is why the hit-stroke math below falls
+  // back to the capped value rather than the uncapped desktop one.
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setContainerWidth(width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // All of these are only ever touched inside event handlers, so refs are
   // right: they change on every pointermove and none of it belongs in a render.
@@ -254,6 +295,16 @@ export function IndiaMap({
   /** Scale about the middle of the country, then slide by the pan. */
   const transform = `translate(${(MAP_W / 2) * (1 - zoom) + pan.x}px, ${(MAP_H / 2) * (1 - zoom) + pan.y}px) scale(${zoom})`;
   const canPan = zoom > MIN_ZOOM;
+
+  // The invisible per-state hit margin, in MAP units for THIS render. Before
+  // the first measurement there is no safe way to size it generously, so it
+  // starts at the cap rather than at whatever an unmeasured 0 would compute.
+  const hitStrokeWidth = containerWidth
+    ? Math.min(
+        DESIRED_HIT_SCREEN_PX / ((containerWidth / MAP_W) * zoom),
+        MAX_HIT_MAP_UNITS
+      )
+    : MAX_HIT_MAP_UNITS;
 
   const { drawn, unplaced } = useMemo(() => {
     const drawn: { state: GeoState; keys: string[] }[] = [];
@@ -300,7 +351,7 @@ export function IndiaMap({
           optional — colour is never the only encoding. */}
       <div className="border-b border-line px-3 py-2.5">{legend}</div>
 
-      <div className="relative px-3 pt-3 pb-2">
+      <div ref={containerRef} className="relative px-3 pt-3 pb-2">
         <svg
           viewBox={INDIA_VIEWBOX}
           className={cn(
@@ -327,6 +378,7 @@ export function IndiaMap({
             // zoom back to 1x left this stuck true, and every click on every
             // state was silently swallowed from then on.
             moved.current = false;
+            setHoverPt(null);
             pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
             if (pointers.current.size === 2) {
@@ -453,9 +505,14 @@ export function IndiaMap({
                     onSelectState(state);
                   }}
                   onMouseEnter={() => setHovered(state.id)}
-                  onMouseLeave={() =>
-                    setHovered((h) => (h === state.id ? null : h))
-                  }
+                  onMouseMove={(e) => {
+                    const r = containerRef.current?.getBoundingClientRect();
+                    if (r) setHoverPt({ x: e.clientX - r.left, y: e.clientY - r.top });
+                  }}
+                  onMouseLeave={() => {
+                    setHovered((h) => (h === state.id ? null : h));
+                    setHoverPt(null);
+                  }}
                   onFocus={() => setHovered(state.id)}
                   onBlur={() => setHovered((h) => (h === state.id ? null : h))}
                   onKeyDown={(e) => {
@@ -478,6 +535,21 @@ export function IndiaMap({
                   filter={marked ? `url(#${LIFT})` : undefined}
                 >
                   <title>{`${state.name} — ${mark.detail}`}</title>
+                  {/* An invisible wide stroke widens the effective tap target
+                      for small states without changing their visible size.
+                      Sized in MAP units (not `non-scaling-stroke`) and capped
+                      at `MAX_HIT_MAP_UNITS`, so the margin stays generous on a
+                      phone without growing wide enough to reach a neighbouring
+                      state — see the comment above `DESIRED_HIT_SCREEN_PX`. */}
+                  {keys.map((k) => (
+                    <path
+                      key={`hit-${k}`}
+                      d={INDIA_PATHS[k]}
+                      fill="transparent"
+                      stroke="transparent"
+                      strokeWidth={hitStrokeWidth}
+                    />
+                  ))}
                   {keys.map((k) => (
                     <path
                       key={k}
@@ -511,7 +583,7 @@ export function IndiaMap({
         {/* Zoom, at the corner where a map keeps it. Buttons and drag only:
             wheel-zoom would swallow the page scroll, and on the stacked layout
             the map is something you scroll PAST. */}
-        <div className="absolute end-5 top-5 flex flex-col overflow-hidden rounded-md border border-line bg-surface shadow-card">
+        <div className="absolute end-5 bottom-8 sm:bottom-auto sm:top-5 flex flex-col overflow-hidden rounded-md border border-line bg-surface shadow-card">
           <ZoomButton
             label="Zoom in"
             onClick={() => applyZoom(zoom * STEP)}
@@ -541,6 +613,15 @@ export function IndiaMap({
           <p className="pointer-events-none absolute start-5 top-5 rounded bg-surface/90 px-1.5 py-0.5 text-[11px] font-medium text-ink-2 tabular-nums">
             {zoom.toFixed(1)}× · drag to move
           </p>
+        )}
+
+        {hoveredState && hoverPt && !dragging && (
+          <div
+            className="pointer-events-none absolute z-10 rounded bg-surface/90 px-1.5 py-0.5 text-[11px] font-medium text-ink-2 shadow-card"
+            style={{ left: hoverPt.x + 12, top: hoverPt.y + 12 }}
+          >
+            {hoveredState.name} — {markFor(hoveredState).detail}
+          </div>
         )}
       </div>
 

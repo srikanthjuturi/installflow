@@ -16,7 +16,7 @@
  * shapes, are the only types `types/franchise.ts` owns.
  */
 
-import { apiDelete, apiGet, apiGetBlob, apiGetPage, apiPost, apiPut } from "./http";
+import { apiDelete, apiGet, apiGetBlob, apiGetPage, apiPost, apiPut, apiPutNullable } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type { BaseLocation, BaseLocationInput } from "@/types/allowances";
 import type {
@@ -24,6 +24,7 @@ import type {
   CreatedTechnician,
   CreateTechnicianInput,
   InviteTechnicianInput,
+  PartsAddressInput,
   Technician,
   TechnicianInvite,
   TechnicianRow,
@@ -61,6 +62,17 @@ export function setBaseLocation({
   body: BaseLocationInput;
 }): Promise<BaseLocation> {
   return apiPut<BaseLocation>(`/franchise/technicians/${id}/base-location`, body);
+}
+
+/** Epic 6 — save the parts delivery address; `null` clears it. */
+export function setPartsAddress({
+  id,
+  body,
+}: {
+  id: string;
+  body: PartsAddressInput | null;
+}): Promise<Technician> {
+  return apiPutNullable<Technician>(`/franchise/technicians/${id}/parts-address`, body);
 }
 
 export function createTechnician(

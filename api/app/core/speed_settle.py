@@ -158,7 +158,7 @@ async def settle_speed(
         # is said — the ledger's and the timeline's silence IS the fact.
         return None
 
-    if terms.matched_on not in ("model", "node"):  # pragma: no cover — typed above
+    if terms.matched_on not in ("model", "node", "technician"):  # pragma: no cover — typed above
         return None
 
     # A stale stamp must never pay the wrong person: `speed_of` is frozen, but

@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -81,7 +82,7 @@ export function NodeFormDialog({
 }: NodeFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-xl">
         <NodeForm
           parent={parent}
           node={node}
@@ -175,161 +176,170 @@ function NodeForm({
 
     if (isEdit) update.mutate({ id: node.id, ...body }, { onSuccess: done });
     else
-      create.mutate({ parentId: parent?.id ?? null, ...body }, { onSuccess: done });
+      create.mutate(
+        { parentId: parent?.id ?? null, ...body },
+        { onSuccess: done }
+      );
   }
 
   const where = parent ? parent.path.join(" › ") : null;
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-4">
-      <DialogHeader>
-        <DialogTitle>
-          {isEdit
-            ? "Edit category"
-            : parent
-              ? "Add sub-category"
-              : "Add category"}
-        </DialogTitle>
-        <DialogDescription>
-          {where ? (
-            <>
-              In {where}. A technician certified here covers everything beneath
-              it, so nesting narrows what a job offer matches on.
-            </>
-          ) : (
-            <>
-              A top-level category. Products never hang off one directly — add a
-              sub-category and tick <em>This is the last sub-category</em> on the
-              level that holds them.
-            </>
-          )}
-        </DialogDescription>
-      </DialogHeader>
-
-      <FieldGroup className="gap-4">
-        <Field data-invalid={errors.name ? true : undefined}>
-          <FieldLabel htmlFor="node-name" required>
-            Category name
-          </FieldLabel>
-          <Input
-            id="node-name"
-            placeholder={parent ? "e.g. Android TV" : "e.g. Electronics"}
-            aria-invalid={errors.name ? true : undefined}
-            aria-describedby={errors.name ? "node-name-error" : undefined}
-            {...register("name")}
-          />
-          {errors.name ? (
-            <FieldDescription
-              id="node-name-error"
-              role="alert"
-              className="text-danger"
-            >
-              {errors.name.message}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor="node-icon">Icon</FieldLabel>
-          <Controller
-            name="iconKey"
-            control={control}
-            render={({ field }) => (
-              <IconPicker
-                id="node-icon"
-                label="Category icon"
-                value={field.value}
-                onChange={field.onChange}
-                inheritFrom={
-                  parent
-                    ? {
-                        iconKey: parent.iconKey,
-                        label: `Same as ${parent.name}`,
-                      }
-                    : undefined
-                }
-                onInherit={parent ? () => field.onChange(null) : undefined}
-                aria-describedby="node-icon-hint"
-              />
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit
+              ? "Edit category"
+              : parent
+                ? "Add sub-category"
+                : "Add category"}
+          </DialogTitle>
+          <DialogDescription>
+            {where ? (
+              <>
+                In {where}. A technician certified here covers everything
+                beneath it, so nesting narrows what a job offer matches on.
+              </>
+            ) : (
+              <>
+                A top-level category. Products never hang off one directly — add
+                a sub-category and tick <em>This is the last sub-category</em>{" "}
+                on the level that holds them.
+              </>
             )}
-          />
-          <FieldDescription id="node-icon-hint">
-            {parent
-              ? "Left unset, this inherits the nearest category above that has one."
-              : "The technician app draws one tile per category, so a Television and an Air Conditioner want different icons."}
-          </FieldDescription>
-        </Field>
+          </DialogDescription>
+        </DialogHeader>
 
-        {canBeLeaf ? (
-          <Field orientation="horizontal">
+        <FieldGroup className="gap-4">
+          <Field data-invalid={errors.name ? true : undefined}>
+            <FieldLabel htmlFor="node-name" required>
+              Category name
+            </FieldLabel>
+            <Input
+              id="node-name"
+              placeholder={parent ? "e.g. Android TV" : "e.g. Electronics"}
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={errors.name ? "node-name-error" : undefined}
+              {...register("name")}
+            />
+            {errors.name ? (
+              <FieldDescription
+                id="node-name-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.name.message}
+              </FieldDescription>
+            ) : null}
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="node-icon">Icon</FieldLabel>
             <Controller
-              name="isLeaf"
+              name="iconKey"
               control={control}
               render={({ field }) => (
-                <Checkbox
-                  id="node-is-leaf"
-                  checked={field.value}
-                  onCheckedChange={(next) => field.onChange(next === true)}
-                  aria-describedby="node-is-leaf-hint"
+                <IconPicker
+                  id="node-icon"
+                  label="Category icon"
+                  value={field.value}
+                  onChange={field.onChange}
+                  inheritFrom={
+                    parent
+                      ? {
+                          iconKey: parent.iconKey,
+                          label: `Same as ${parent.name}`,
+                        }
+                      : undefined
+                  }
+                  onInherit={parent ? () => field.onChange(null) : undefined}
+                  aria-describedby="node-icon-hint"
                 />
               )}
             />
-            <div>
-              <FieldLabel htmlFor="node-is-leaf" className="font-normal">
-                This is the last sub-category
-              </FieldLabel>
-              <FieldDescription id="node-is-leaf-hint">
-                Products hang off this level instead of more sub-categories. It
-                cannot be unticked while products are on it, or ticked while
-                sub-categories are.
-              </FieldDescription>
-            </div>
+            <FieldDescription id="node-icon-hint">
+              {parent
+                ? "Left unset, this inherits the nearest category above that has one."
+                : "The technician app draws one tile per category, so a Television and an Air Conditioner want different icons."}
+            </FieldDescription>
           </Field>
-        ) : null}
 
-        {/* The field template, and only once this IS the last sub-category —
+          {canBeLeaf ? (
+            <Field orientation="horizontal">
+              <Controller
+                name="isLeaf"
+                control={control}
+                render={({ field }) => (
+                  <Checkbox
+                    id="node-is-leaf"
+                    checked={field.value}
+                    onCheckedChange={(next) => field.onChange(next === true)}
+                    aria-describedby="node-is-leaf-hint"
+                  />
+                )}
+              />
+              <div>
+                <FieldLabel htmlFor="node-is-leaf" className="font-normal">
+                  This is the last sub-category
+                </FieldLabel>
+                <FieldDescription id="node-is-leaf-hint">
+                  Products hang off this level instead of more sub-categories.
+                  It cannot be unticked while products are on it, or ticked
+                  while sub-categories are.
+                </FieldDescription>
+              </div>
+            </Field>
+          ) : null}
+
+          {/* The field template, and only once this IS the last sub-category —
             a node that holds no products has nothing to template. Naming the
             fields here once is what stops somebody retyping "Panel" and "RAM"
             on every product underneath. */}
-        {canBeLeaf && isLeaf ? (
-          <ParameterFields
-            control={control}
-            register={register}
-            name="parameters"
-            errors={errors}
-            idPrefix="node"
-            hint="Every product added here starts with these fields ready to fill in. A value here is just a default — the product decides its own."
-          />
-        ) : null}
-
-        <Controller
-          name="status"
-          control={control}
-          render={({ field }) => (
-            <StatusField
-              value={field.value}
-              onChange={field.onChange}
-              description="Pausing a category also takes everything under it out of new ticket entry and out of the job pool."
-              error={errors.status?.message}
-              errorId="node-status-error"
+          {canBeLeaf && isLeaf ? (
+            <ParameterFields
+              control={control}
+              register={register}
+              name="parameters"
+              errors={errors}
+              idPrefix="node"
+              hint="Every product added here starts with these fields ready to fill in. A value here is just a default — the product decides its own."
             />
-          )}
-        />
-      </FieldGroup>
+          ) : null}
 
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={pending}>
-          {pending ? <Spinner data-icon="inline-start" /> : null}
-          {isEdit
-            ? "Save changes"
-            : parent
-              ? "Add sub-category"
-              : "Add category"}
-        </Button>
-      </DialogFooter>
+          <Controller
+            name="status"
+            control={control}
+            render={({ field }) => (
+              <StatusField
+                value={field.value}
+                onChange={field.onChange}
+                description="Pausing a category also takes everything under it out of new ticket entry and out of the job pool."
+                error={errors.status?.message}
+                errorId="node-status-error"
+              />
+            )}
+          />
+        </FieldGroup>
+
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={pending}>
+            {pending ? <Spinner data-icon="inline-start" /> : null}
+            {isEdit
+              ? "Save changes"
+              : parent
+                ? "Add sub-category"
+                : "Add category"}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

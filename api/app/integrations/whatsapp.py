@@ -213,25 +213,36 @@ def build_slot_request_payload(
 
 
 def build_slot_confirmed_payload(
-    phone: str, company: str, product: str, when: str
+    phone: str, company: str, product: str, when: str, link: str | None = None
 ) -> dict:
     """"Your slot is confirmed" — the receipt, sent on both routes.
 
     Sent whether ops agreed the time on a call or the customer picked it
     themselves, because from the customer's side those are the same event and
     only one of them otherwise leaves them with anything in writing.
+
+    `link` is the customer's own page, which shows the time and asks where the
+    visit is. It rides as a fourth value only once the approved template has been
+    edited to take it (`WHATSAPP_SLOT_CONFIRMED_HAS_LINK`) — sending the wrong
+    number of values is refused, so the flag is what lets the code ship before
+    Meta has approved the edit.
     """
     if settings.WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME:
+        values = [company, product, when]
+        if settings.WHATSAPP_SLOT_CONFIRMED_HAS_LINK and link:
+            values.append(link)
         return _template_payload(
             phone,
             settings.WHATSAPP_SLOT_CONFIRMED_TEMPLATE_NAME,
             settings.WHATSAPP_SLOT_TEMPLATE_LANG,
-            [company, product, when],
+            values,
         )
+    where = f"Tell us exactly where to come: {link}\n\n" if link else ""
     return _text_payload(
         phone,
         (
             f"{company}: your {product} visit is confirmed for {when}.\n\n"
+            f"{where}"
             "Our technician will call you before arriving. To change the time, "
             "please contact us."
         ),
@@ -662,11 +673,11 @@ async def send_slot_request(
 
 
 async def send_slot_confirmed(
-    phone: str, company: str, product: str, when: str
+    phone: str, company: str, product: str, when: str, link: str | None = None
 ) -> SendResult:
     """Tell the customer their time is booked. Never raises."""
     return await _send(
-        build_slot_confirmed_payload(phone, company, product, when),
+        build_slot_confirmed_payload(phone, company, product, when, link),
         what="slot confirmation",
     )
 

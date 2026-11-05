@@ -22,8 +22,8 @@ describe("fromSpeedCatalogue", () => {
       node("hm", "Appliances", null, 0),
     ],
     models: [
-      { id: "m2", nodeId: "oled", name: "Zeta 55", brandName: "Zeta" },
-      { id: "m1", nodeId: "oled", name: 'Alpha 43"', brandName: "Alpha" },
+      { id: "m2", nodeId: "oled", name: "Zeta 55", brandName: "Zeta", isActive: true },
+      { id: "m1", nodeId: "oled", name: 'Alpha 43"', brandName: "Alpha", isActive: true },
     ],
   };
 
@@ -53,6 +53,7 @@ describe("fromSpeedCatalogue", () => {
       id: "m1",
       name: 'Alpha 43"',
       brandName: "Alpha",
+      isActive: true,
     });
   });
 
@@ -73,7 +74,7 @@ describe("fromSpeedCatalogue", () => {
   it("a model on a missing node is dropped, not thrown", () => {
     const tree = fromSpeedCatalogue({
       nodes: [node("a", "A", null, 0)],
-      models: [{ id: "m", nodeId: "nope", name: "M", brandName: "B" }],
+      models: [{ id: "m", nodeId: "nope", name: "M", brandName: "B", isActive: true }],
     });
     expect(tree[0].models).toEqual([]);
   });
@@ -90,6 +91,7 @@ describe("fromProductTree", () => {
       name,
       brandName: "Sunview",
       approvalStatus,
+      isActive: true,
     }) as unknown as ProductModel;
 
   const leaf = {
@@ -129,6 +131,6 @@ describe("fromProductTree", () => {
   it("offers only approved models, sorted by name, without prices", () => {
     const models = fromProductTree([root])[0].children[0].models;
     expect(models.map((m) => m.name)).toEqual(["Able", "Zed"]);
-    expect(Object.keys(models[0]).sort()).toEqual(["brandName", "id", "name"]);
+    expect(Object.keys(models[0]).sort()).toEqual(["brandName", "id", "isActive", "name"]);
   });
 });

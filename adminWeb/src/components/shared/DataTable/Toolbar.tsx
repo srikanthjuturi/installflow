@@ -156,7 +156,7 @@ export function Toolbar<T>({
 
           // Too long to scroll: type to narrow, and the list pages as it goes.
           if (f.variant === "combobox") {
-            const chosen = f.options.find((o) => o.value === value);
+            const chosen = f.options.find((o) => o.value === value) ?? f.selectedOption;
             return (
               <Combobox
                 key={f.id}
@@ -178,7 +178,13 @@ export function Toolbar<T>({
                 // Names the dimension when empty, exactly as the select does —
                 // two blank boxes tell you nothing about what they filter.
                 placeholder={`${f.label}: all`}
-                emptyMessage={`No ${f.label.toLowerCase()} matches`}
+                // An empty list says so; "matches" is for a search that found
+                // nothing among options that do exist.
+                emptyMessage={
+                  f.options.length === 0 && !f.loading
+                    ? `No ${f.label.toLowerCase()}s available`
+                    : `No ${f.label.toLowerCase()} matches`
+                }
                 aria-describedby={undefined}
               />
             );

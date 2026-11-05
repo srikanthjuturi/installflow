@@ -7,10 +7,10 @@
 The three split by WHO has to be given something, and that is what decides
 which of them a vendor can be marked with today:
 
-    Manual   our ops staff, in our app.  Needs nothing from the vendor —
-             the Manual Entry screen already exists.
-    Excel    our ops staff, in our app.  Needs nothing from the vendor —
-             the Bulk Upload screen already exists.
+    Manual   the vendor, in their own portal. Needs nothing from us —
+             the vendor keys the ticket in themselves.
+    Excel    the vendor, in their own portal. Needs nothing from us —
+             the vendor uploads their own spreadsheet.
     API      the VENDOR'S system pushes to us. Needs an endpoint to push to
              and an issued key to authenticate with. Neither exists.
 
@@ -56,8 +56,8 @@ UNAVAILABLE_REASON = {
 #: Approved prototype copy — do not reword.
 CHANNEL_DESCRIPTION = {
     "API": "Tickets are pushed from the vendor's own system.",
-    "Excel": "Ops upload the vendor's spreadsheet.",
-    "Manual": "Ops key each ticket in by hand.",
+    "Excel": "The vendor uploads their spreadsheet in the vendor portal.",
+    "Manual": "The vendor keys each ticket in by hand in the vendor portal.",
 }
 
 

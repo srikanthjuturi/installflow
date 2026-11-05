@@ -217,6 +217,10 @@ EVENT_KINDS = (
     "part_rejected",
     "part_issued",
     "part_returned",
+    #: The point the visit is measured against was set or corrected — by the
+    #: customer on their link, or by staff with a reason. The note carries the
+    #: source and, when the point is outside the pincode area, how far.
+    "location_set",
 )
 
 #: Who caused it. `system` covers anything nobody chose — an SLA breach, a
@@ -260,6 +264,11 @@ class TicketEvent(Base, IdMixin, AuditMixin):
     #: user row and a technician's name at the time is what the trail should
     #: read — renaming somebody must not rewrite history.
     actor_label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: The staff role the actor HELD when they acted — stored, not joined later,
+    #: because a later role change must not rewrite history, and `created_by` is
+    #: often null on the "assigned" write path. NULL on every historical row and
+    #: every non-staff event; `_event_title` falls back to "…by a manager" then.
+    actor_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
@@ -271,7 +280,8 @@ class TicketEvent(Base, IdMixin, AuditMixin):
             "'customer_notified', 'escalated', 'bonus_added', 'released', "
             "'no_show', 'force_closed', 'rescheduled', 'penalty_reversed', "
             "'franchisee_changed', 'speed_settled', 'part_requested', "
-            "'part_approved', 'part_rejected', 'part_issued', 'part_returned')",
+            "'part_approved', 'part_rejected', 'part_issued', 'part_returned', "
+            "'location_set')",
             name="kind",
         ),
         CheckConstraint(

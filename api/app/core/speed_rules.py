@@ -139,6 +139,7 @@ class SpeedCatalogueModelOut(AppModel):
     nodeId: uuid.UUID
     name: str
     brandName: str
+    isActive: bool
 
 
 class SpeedCatalogueOut(AppModel):
@@ -440,7 +441,8 @@ async def catalogue(db: AsyncSession, *, company_id: uuid.UUID) -> SpeedCatalogu
     """The rule editor's two pickers, each in one query, price-free (W16).
 
     Nodes at ANY depth — a root carries over its children just as a leaf
-    carries over its models — and approved, live models only.
+    carries over its models — and approved models at any status (paused ones
+    are flagged, never dropped).
     """
     node_rows = list(
         await db.scalars(
@@ -484,7 +486,7 @@ async def catalogue(db: AsyncSession, *, company_id: uuid.UUID) -> SpeedCatalogu
         models=[
             SpeedCatalogueModelOut(
                 id=m.id, nodeId=m.node_id, name=m.name,
-                brandName=brands.get(m.brand_id, _GONE),
+                brandName=brands.get(m.brand_id, _GONE), isActive=m.is_active,
             )
             for m in model_rows
         ],

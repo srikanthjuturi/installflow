@@ -43,17 +43,11 @@ export function StatementMonthPicker({
       onValueChange={(v: string | null) => v && onChange(v)}
       disabled={disabled}
     >
-      {/* `w-40` — wider than most trigger defaults, because "September 2026
-          (so far)" is the longest label the picker can hold. */}
-      <SelectTrigger className="w-40" aria-label="Statement month">
-        {/* Name the dimension, not just the value — a select reading
-            "September 2026" alone tells you nothing about what it changes
-            (the same reasoning `NotificationToolbar` records). */}
+      {/* `w-56` — wide enough that "September 2026 (so far)", the longest
+          label the picker can hold, is never clamped. */}
+      <SelectTrigger className="w-56" aria-label="Statement month">
         <SelectValue>
-          <span>
-            <span className="text-ink-3">Month: </span>
-            {months.find((m) => m.value === value)?.label ?? value}
-          </span>
+          <span>{months.find((m) => m.value === value)?.label ?? value}</span>
         </SelectValue>
       </SelectTrigger>
       <SelectContent>

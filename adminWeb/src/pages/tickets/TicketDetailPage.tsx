@@ -24,6 +24,7 @@ import { NoShowDialog } from "@/components/tickets/NoShowDialog";
 import { PartRequestsPanel } from "@/components/tickets/PartRequestsPanel";
 import { PenaltiesPanel } from "@/components/tickets/PenaltiesPanel";
 import { ReversePenaltyDialog } from "@/components/tickets/ReversePenaltyDialog";
+import { TechnicianLiveCard } from "@/components/tickets/TechnicianLiveCard";
 import { Timeline } from "@/components/tickets/Timeline";
 import { toast } from "@/components/ui/toast";
 import { useFeatureAccess } from "@/hooks/useAuth";
@@ -41,7 +42,11 @@ import {
   useTicket,
 } from "@/hooks/useTickets";
 import { useRecordRecentlySeen } from "@/store/recentlySeen";
-import { isReschedulable, isTerminalTicketStatus } from "@/types";
+import {
+  CLOSED_TICKET_STATUSES,
+  isReschedulable,
+  isTerminalTicketStatus,
+} from "@/types";
 import type { TicketPenalty } from "@/types/ticket";
 
 /**
@@ -203,6 +208,7 @@ export default function TicketDetailPage({
      record can still be wrong. `jobs.assign` is the four staff roles; the
      server adds the Area-Manager floor and refuses a vendor regardless. */
   const canCorrectReading = isOps && has("jobs.assign");
+  const canCorrectSerial = has("jobs.view");
   const [reverseOpen, setReverseOpen] = useState(false);
   const [reversing, setReversing] = useState<TicketPenalty | null>(null);
   const reversePenalty = useReversePenalty();
@@ -256,6 +262,22 @@ export default function TicketDetailPage({
                       </h2>
                       <StatusBadge status={ticket.status} />
                       <SlaBadge state={ticket.slaState} />
+                      {/* A2: a flag for the board, nothing else — no SLA, no
+                          routing weight. `--brand-accent` is reserved for
+                          exactly this: a badge, never a button fill. Always
+                          shown; only an unfinished ticket blinks. */}
+                      {ticket.isHighPriority ? (
+                        <Badge
+                          variant="outline"
+                          className={
+                            CLOSED_TICKET_STATUSES.has(ticket.status)
+                              ? "border-brand-accent text-brand-accent"
+                              : "border-brand-accent text-brand-accent animate-blink"
+                          }
+                        >
+                          High priority
+                        </Badge>
+                      ) : null}
                       {/* Task 18: a person chose this ticket's franchisee, so
                           the pincode half of eligibility is waived for it. */}
                       {ticket.routingOverride ? (
@@ -339,6 +361,7 @@ export default function TicketDetailPage({
                 <SerialMismatchBanner
                   ticket={ticket}
                   canCorrectReading={canCorrectReading}
+                  canCorrectSerial={canCorrectSerial}
                 />
               </CardContent>
             </Card>
@@ -359,7 +382,7 @@ export default function TicketDetailPage({
                 this is the reason the manager opened the page, and it should
                 not be below the fold under an address they already know. */}
             <CustomerVerdict ticket={ticket} />
-            <CustomerPanel ticket={ticket} />
+            <CustomerPanel ticket={ticket} canCorrectLocation={isOps} />
             <TechnicianPanel
               ticket={ticket}
               // Assignment is an ops job. On the portal this was a button
@@ -387,6 +410,11 @@ export default function TicketDetailPage({
                 ) : null
               }
             />
+            {/* Epic 4 - on every surface that renders this page (staff, vendor
+                and the franchise portal's read-only copy): the server scopes
+                the answer, and the card renders nothing unless the job is
+                active. */}
+            <TechnicianLiveCard ticketId={ticket.id} status={ticket.status} />
             {/* Task 13 §5.8 — NOT behind `isOps`: the server nulls both blocks
                 for a vendor and for facility staff and sends them to company
                 staff and the franchise admin, so one rule decides it. A panel

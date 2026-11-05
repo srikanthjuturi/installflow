@@ -182,6 +182,7 @@ async def create_user(
             role=VENDOR_USER,
             is_active=True,
             created_by=principal.user_id,
+            must_change_password=True,
         )
         db.add(user)
         # autoflush is OFF (hard rule 9) and the membership needs the id.

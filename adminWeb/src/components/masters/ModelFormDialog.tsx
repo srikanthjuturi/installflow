@@ -20,6 +20,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,13 +147,11 @@ export function ModelFormDialog({
 
 // Only the body scrolls. The popup itself does not, so the step strip above
 // this and the dialog's own close button stay where they are while the fields
-// move. The negative margins hand the popup's padding to the scroller, which
-// keeps DialogFooter's own -mx-4 -mb-4 bleed working inside it.
+// move. `DialogScrollBody` is the shared primitive this pattern was promoted
+// from — see its doc comment in `ui/dialog.tsx` for why.
 function ScrollBody({ children }: { children: ReactNode }) {
   return (
-    <div className="scroll-none -mx-4 -mb-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-4">
-      {children}
-    </div>
+    <DialogScrollBody className="scroll-none">{children}</DialogScrollBody>
   );
 }
 
@@ -309,10 +308,24 @@ function ModelForm({
         submit_.mutate(
           { nodeId: node.id, ...shared },
           {
-            onSuccess: done(
-              `${values.name} sent for approval`,
-              `In ${node.path.join(" › ")}. We will price it before it can be ticketed.`
-            ),
+            // Same "move to the serials step" shape the staff ADD path below
+            // uses: a vendor gets the identical two-step flow, just against
+            // the `/portal/*` endpoints once `justCreated` is set (`portal`
+            // on `ModelSerialsPanel` follows `withPricing`, same as Edit).
+            onSuccess: (root) => {
+              const created = findModel(
+                root,
+                node.id,
+                values.brandId,
+                values.name.trim()
+              );
+              toast.add({
+                title: `${values.name} sent for approval`,
+                description: `In ${node.path.join(" › ")}. We will price it before it can be ticketed.`,
+              });
+              if (created) setJustCreated(created);
+              else onDone();
+            },
           }
         );
       }
@@ -394,15 +407,20 @@ function ModelForm({
             <DialogTitle>Add serial numbers</DialogTitle>
             <DialogDescription>
               <span className="font-medium text-ink">{justCreated.name}</span>{" "}
-              was saved. Load the serial numbers this model covers — ticket
-              intake checks a vendor's serial against them. You can skip this
-              and add them later from the product's edit screen.
+              {submitter
+                ? "was sent for approval."
+                : "was saved."}{" "}
+              Load the serial numbers this model covers — ticket intake checks
+              a vendor's serial against them. You can skip this and add them
+              later from the product's edit screen.
             </DialogDescription>
           </DialogHeader>
 
           <ModelSerialsPanel
             modelId={justCreated.id}
             modelName={justCreated.name}
+            portal={!withPricing}
+            totalSerialCount={0}
           />
 
           <DialogFooter>
@@ -424,10 +442,10 @@ function ModelForm({
       noValidate
       className="flex min-h-0 flex-1 flex-col gap-4"
     >
-      {/* Step 1 of 2 indicator — only shown when ADDING via the ops console
-          (withPricing = true). Vendor submissions go for approval and have
-          no serial step; edits are already past step 1. */}
-      {!isEdit && withPricing ? (
+      {/* Step 1 of 2 indicator — shown whenever ADDING, staff and vendor
+          alike: both move to the serials step on save. Edits are already
+          past step 1, so neither role sees it there. */}
+      {!isEdit ? (
         <div aria-label="Step 1 of 2" className="grid gap-1.5 pr-8">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">
@@ -964,6 +982,7 @@ function ModelForm({
               modelId={model.id}
               modelName={model.name}
               portal={!withPricing}
+              totalSerialCount={model.serialCount}
             />
           </div>
         ) : null}

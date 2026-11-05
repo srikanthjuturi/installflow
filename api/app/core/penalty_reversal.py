@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import documents
 from app.core.errors import AppError
 from app.core.ledger import entry as ledger_entry
 from app.core.push import send_to_technician
@@ -156,6 +157,24 @@ async def reverse(
         technician_type=penalty.technician_type,
     )
     db.add(reversal)
+    await db.flush()
+    # Epic 1.3: giving a penalty back is a Credit Note to the technician, in the
+    # same transaction as the reversal row it describes.
+    await documents.issue(
+        db,
+        company_id=penalty.company_id,
+        doc_type="credit_note",
+        party_kind="technician",
+        party_id=penalty.technician_id,
+        party_label=name,
+        amount_paise=amount,
+        source_kind="ledger_entry",
+        source_id=reversal.id,
+        ticket_id=ticket.id,
+        description=f"{reversed_word.capitalize()} reversed on {ticket.code}",
+        note=text[:160],
+        created_by=actor_user_id,
+    )
     db.add(
         TicketEvent(
             company_id=ticket.company_id,

@@ -8,6 +8,7 @@ import {
   assignTechnician,
   checkTicketSerial,
   correctTicketReading,
+  correctTicketLocation,
   correctTicketSerial,
   createTicket,
   getIntakeStatus,
@@ -76,6 +77,12 @@ export const ticketKeys = {
    *  here, but a ticket change does, and an answer that old is worth re-asking. */
   serialCheck: (id: string, serial: string) =>
     ["tickets", "serialCheck", id, serial] as const,
+  /** E5: the rail's "how many high-priority tickets are still unassigned"
+   *  count — under the same prefix as everything else here, so an
+   *  assignment (or the socket's `ticket.changed`) invalidating `tickets`
+   *  clears this along with the list it is drawn from. */
+  highPriorityPendingCount: () =>
+    ["tickets", "highPriorityPendingCount"] as const,
 };
 
 /**
@@ -246,6 +253,19 @@ export function useCorrectTicketSerial() {
     onSuccess: (ticket) => {
       // The response IS the updated ticket, so seed the detail rather than
       // putting a spinner between the correction and the screen showing it.
+      queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
+      queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+    },
+  });
+}
+
+/** Set or correct where the visit is. Same cache handling as the serial. */
+export function useCorrectTicketLocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { errorTitle: "Couldn't update the location" },
+    mutationFn: correctTicketLocation,
+    onSuccess: (ticket) => {
       queryClient.setQueryData(ticketKeys.detail(ticket.id), ticket);
       queryClient.invalidateQueries({ queryKey: ticketKeys.all });
     },

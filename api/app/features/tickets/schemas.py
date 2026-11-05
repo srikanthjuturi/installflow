@@ -20,13 +20,14 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.core.coordinates import IndiaLatitude, IndiaLongitude
 from app.core.part_request_out import PartRequestOut
-from app.core.phone import Phone
+from app.core.phone import OptionalPhone, Phone
 from app.core.schemas import AppModel
 from app.core.service_types import SERVICE_TYPES
 from app.core.statutory import Address, CityState, Pincode
 from app.core.tickets import (
     DEFAULT_SERVICE_LEVEL_HOURS,
     DESCRIPTION_REQUIRED_FOR,
+    PURCHASE_MODES,
     SERVICE_LEVEL_HOURS,
 )
 
@@ -53,6 +54,12 @@ class TicketCreateRequest(BaseModel):
 
     customerName: Name255
     customerPhone: Phone
+    #: A6: a second number for the same customer — same E.164 shape as
+    #: `customerPhone`, reusing its validator. Optional: most tickets carry one.
+    customerAltPhone: OptionalPhone = None
+    #: Epic 7: the locality / post-office area inside the pincode. Optional and
+    #: free text - the directory is a suggestion list, so anything may be typed.
+    locality: Annotated[str | None, Field(default=None, max_length=80)] = None
     address: Address
     city: CityState
     state: CityState
@@ -77,6 +84,53 @@ class TicketCreateRequest(BaseModel):
     #: "Slot Pending" and the customer is asked to pick.
     slotStart: datetime.datetime | None = None
     slotEnd: datetime.datetime | None = None
+
+    #: A2: a manager or vendor flagging this job for attention on the board.
+    #: No SLA, no routing, no eligibility consequence — a flag, nothing else.
+    isHighPriority: bool = False
+    #: Epic 1.4: an optional extra charge the vendor adds at raise, with what it
+    #: is for. Both or neither - an amount nobody can explain is refused here and
+    #: by a CHECK. Whole rupees' worth of paise up to a lakh: a bigger number is
+    #: a typo, and it reserves the vendor's credit line as soon as it is raised.
+    extraAmountPaise: Annotated[int | None, Field(default=None, gt=0, le=10_000_000)] = None
+    extraAmountNote: Annotated[str | None, Field(default=None, max_length=120)] = None
+
+    @model_validator(mode="after")
+    def _extra_is_a_pair(self):
+        note = (self.extraAmountNote or "").strip() or None
+        if self.extraAmountPaise is None:
+            if note:
+                raise ValueError("Enter the extra amount, or clear what it is for")
+        elif note is None:
+            raise ValueError("Say what the extra amount is for")
+        self.extraAmountNote = note
+        return self
+
+    #: A7: where the unit was bought. `offline` is the default — honest for
+    #: every channel that cannot ask, and for a vendor that does not track it.
+    purchaseMode: str = "offline"
+    #: Which platform, only meaningful when `purchaseMode == "online"`.
+    #: Re-resolved against the caller's own company in the service — an id
+    #: here is an assertion, not a fact (404 on a guessed one).
+    purchasePlatformId: uuid.UUID | None = None
+    #: Free text, read two different ways by the service depending on the
+    #: mode — never validated against `purchaseMode` here, because both
+    #: readings are legitimate in both modes' absence of the other field:
+    #:
+    #:   * `offline` — the vendor's own words for where the unit was bought
+    #:     ("Croma showroom, Banjara Hills"), stored verbatim in
+    #:     `tickets.purchase_platform_detail`. `purchasePlatformId` is
+    #:     ignored for an offline ticket (refused below if both arrive).
+    #:   * `online` with no `purchasePlatformId` — the "Others" case: no
+    #:     platform in the caller's own dropdown fit, so they typed one. The
+    #:     service find-or-creates a real `purchase_platforms` row from it
+    #:     (`core.purchase_platforms.find_or_create`), scoped to the caller's
+    #:     own company, so typing a new name here is what makes it JOIN the
+    #:     dropdown for the next vendor who raises a ticket.
+    #:
+    #: Trimmed in `_check`; empty after trimming means "nothing typed", same
+    #: as omitting it.
+    purchasePlatformName: str | None = Field(default=None, max_length=120)
 
     @model_validator(mode="after")
     def _check(self) -> "TicketCreateRequest":
@@ -118,6 +172,30 @@ class TicketCreateRequest(BaseModel):
             raise ValueError("A slot needs both a start and an end")
         if self.slotStart and self.slotEnd and self.slotEnd <= self.slotStart:
             raise ValueError("The slot must end after it starts")
+
+        if self.purchaseMode not in PURCHASE_MODES:
+            raise ValueError(
+                f"Unknown purchase mode: {self.purchaseMode}. "
+                f"Choose from {', '.join(PURCHASE_MODES)}."
+            )
+        # A platform names a storefront, which an offline purchase has none
+        # of — the same shape rule the table's own CHECK carries, stated here
+        # so a bad request is a 422 naming the field rather than a 409 the
+        # service has to translate from an integrity error.
+        if self.purchasePlatformId is not None and self.purchaseMode != "online":
+            raise ValueError(
+                "A purchase platform can only be set when purchaseMode is "
+                "\"online\""
+            )
+
+        # Trimmed here, once, so the service never has to re-check for a
+        # string of bare spaces — the same treatment `description` gets
+        # above. Reading the trimmed value two different ways (a free-text
+        # store name offline, an "Others" platform name online) is the
+        # service's job, not a shape rule: both are legitimate, and neither
+        # can be decided from the request alone.
+        platform_name = (self.purchasePlatformName or "").strip()
+        self.purchasePlatformName = platform_name or None
         return self
 
 
@@ -152,6 +230,23 @@ class TicketOut(AppModel):
 
     serviceType: str
     description: str | None
+    #: A2: a flag for the board, nothing else — no SLA, no routing weight.
+    isHighPriority: bool = False
+    #: A7: where the unit was bought. Always one of `core.tickets.
+    #: PURCHASE_MODES`; `purchasePlatformId`/`Name` are null together unless
+    #: this is `"online"`.
+    purchaseMode: str = "offline"
+    purchasePlatformId: uuid.UUID | None = None
+    #: The display name for "where was it bought" — ONE field answering a
+    #: question that is stored two different ways underneath.
+    #:
+    #: `purchasePlatformId` set — the platform's current NAME, resolved on
+    #: read like every other `*Name` beside an id, so renaming a platform
+    #: never means rewriting every ticket that named it. `purchasePlatformId`
+    #: null — `tickets.purchase_platform_detail` verbatim, the free text a
+    #: vendor typed for an OFFLINE purchase. A reader asks one question; which
+    #: column answers it is this ticket's business, not the client's.
+    purchasePlatformName: str | None = None
     serialNumber: str | None
     #: What the technician actually read on site, and how. Null until proof is
     #: submitted. `serialNumber` above stays the EXPECTED one.
@@ -163,6 +258,11 @@ class TicketOut(AppModel):
 
     customerName: str
     customerPhone: str
+    #: A6: the second number, when one was given. Masked on the same terms as
+    #: `customerPhone` until a technician accepts.
+    customerAltPhone: str | None = None
+    #: Epic 7: the locality inside the pincode, or null.
+    locality: str | None = None
     address: str
     city: str
     state: str
@@ -223,6 +323,11 @@ class TicketOut(AppModel):
     #: neither party sees the other's figure — a franchisee admin can read a
     #: ticket, but not what the company bills for it. Staff get the number.
     vendorPricePaise: int | None = None
+    #: Epic 1.4: the vendor's optional extra charge and what it is for. Visible to
+    #: the vendor and to company staff; **NULL for a franchise principal**, for
+    #: the reason `vendorPricePaise` is.
+    extraAmountPaise: int | None = None
+    extraAmountNote: str | None = None
 
     #: Which franchisee runs this job — the stamped `tickets.franchisee_id`, the
     #: one fact a staff reader and a franchise reader both want on the card.
@@ -266,6 +371,10 @@ class TicketOut(AppModel):
     #: read it down the phone. Present only while the slot is still theirs to
     #: pick; it disappears the moment it is used.
     slotLink: str | None
+    #: Who supplied `latitude` / `longitude`: 'vendor', 'customer' or 'staff'.
+    #: Null when there is no point.
+    locationSource: str | None = None
+    locationSetAt: datetime.datetime | None = None
 
     # ── the customer's verdict ────────────────────────────────────────────
     #
@@ -409,7 +518,7 @@ class TicketSpeedOut(AppModel):
     amounts are ticket data for people who reschedule and force-close.
     """
 
-    matchedOn: Literal["model", "node"]
+    matchedOn: Literal["model", "node", "technician"]
     #: The CURRENT name of the node or model the terms named — "—" when the
     #: target is gone outright, which is the display's loss and nothing more.
     matchedName: str
@@ -1057,6 +1166,18 @@ class SerialCorrectionRequest(AppModel):
     #: Optional, and worth asking for: "invoice says 88417" explains a
     #: correction that a bare value never will.
     reason: str | None = Field(default=None, max_length=255)
+
+
+class LocationCorrectionRequest(AppModel):
+    """Staff setting or correcting where the visit is.
+
+    The reason is required: this overrides the customer's own word, so the trail
+    must say why. The bounds are the India box, checked in the service.
+    """
+
+    latitude: float
+    longitude: float
+    reason: str = Field(min_length=1, max_length=255)
 
 
 class ReadingCorrectionRequest(AppModel):

@@ -12,6 +12,11 @@ from app.features.credits.platform_router import router as platform_router
 from app.features.credits.router import router as credits_router
 from app.features.earnings.router import router as earnings_router
 from app.features.franchise_portal.router import router as franchise_portal_router
+from app.features.transactions.router import router as transactions_router
+from app.features.franchise_settlements.router import (
+    portal_router as franchise_settlements_portal_router,
+    staff_router as franchise_settlements_router,
+)
 from app.features.geo.router import router as geo_router
 from app.features.franchisees.router import router as franchisees_router
 from app.features.jobs.router import router as jobs_router
@@ -23,6 +28,9 @@ from app.features.ledger.franchise_router import (
 from app.features.masters.router import router as masters_router
 from app.features.notifications.router import router as notifications_router
 from app.features.onboarding.router import router as onboarding_router
+from app.features.purchase_platforms.router import (
+    router as purchase_platforms_router,
+)
 from app.features.rbac.router import router as rbac_router
 from app.features.redemptions.router import router as redemptions_router
 from app.features.redemptions.franchise_router import (
@@ -67,6 +75,9 @@ api_router.include_router(vendor_users_router)
 # Who runs the technicians, and which pincodes each one routes.
 api_router.include_router(franchisees_router)
 api_router.include_router(masters_router)
+# A7's master: where a customer bought the product. Read by every role on the
+# raise-a-ticket form (vendor, franchise, staff alike); only an Admin writes it.
+api_router.include_router(purchase_platforms_router)
 api_router.include_router(technicians_router)
 api_router.include_router(tickets_router)
 # The console's live half: one frame per ticket movement, scoped exactly as the
@@ -107,6 +118,13 @@ api_router.include_router(ledger_franchise_router)
 api_router.include_router(ledger_router)
 # The franchisee portal's read-only master data — what Tasks 05/06's screens
 # are filled from (05 §4.6), through the franchisee wall like every twin.
+# Company <-> franchisee transfers (Epic 1.2). Both before the portal router so
+# their literal paths are matched first.
+api_router.include_router(franchise_settlements_router)
+# The numbered documents (Epic 1.5/1.6): dashboard, statements, roll-up. Scope is
+# decided in the service, per reader family, not by one feature key.
+api_router.include_router(transactions_router)
+api_router.include_router(franchise_settlements_portal_router)
 api_router.include_router(franchise_portal_router)
 api_router.include_router(settings_router)
 api_router.include_router(settings_franchise_router)

@@ -45,6 +45,15 @@ describe("featureForFranchisePath", () => {
     );
   });
 
+  it("gates the settlements screen on franchise.settlements (Epic 1.2)", () => {
+    expect(featureForFranchisePath("/franchise/settlements")).toBe(
+      "franchise.settlements"
+    );
+    expect(
+      franchiseNav((key) => key === "franchise.settlements").map((i) => i.label)
+    ).toEqual(["Settlements"]);
+  });
+
   it("denies a path the portal has never heard of", () => {
     expect(featureForFranchisePath("/franchise/unknown")).toBeUndefined();
     // The staff console's franchisees screen is NOT a portal screen.
@@ -76,6 +85,7 @@ describe("franchiseNav", () => {
     expect(franchiseNav((key) => !!key && operator.has(key)).map((i) => i.label)).toEqual([
       "Spare parts",
       "Tickets",
+      "Live technicians",
     ]);
   });
 
@@ -88,13 +98,14 @@ describe("franchiseNav", () => {
     expect(franchiseNav((key) => !!key && admin.has(key)).map((i) => i.label)).toEqual([
       "Spare parts",
       "Tickets",
+      "Live technicians",
       "Facility users",
     ]);
   });
 
-  it("keeps only Tickets for a tickets-only feature set", () => {
+  it("keeps only Tickets and Live technicians for a tickets-only feature set", () => {
     const items = franchiseNav((key) => key === "franchise.tickets");
-    expect(items.map((i) => i.label)).toEqual(["Tickets"]);
+    expect(items.map((i) => i.label)).toEqual(["Tickets", "Live technicians"]);
   });
 
   it("keeps nothing for somebody with no keys at all", () => {

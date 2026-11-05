@@ -21,6 +21,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
@@ -102,6 +103,14 @@ class SparePartRequest(Base, IdMixin, AuditMixin):
     #: What was asked for, frozen: renaming the catalogue row never rewrites it.
     part_name: Mapped[str] = mapped_column(String(120), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: Epic 6: where the part is to be delivered, COPIED from the technician's
+    #: parts address (else their base pincode) when the request was raised, so a
+    #: later edit never reroutes a part already in flight. NULL = nothing was on
+    #: file; the facility sees "no address on file". Keys: line, city, pincode,
+    #: landmark, contactPhone, source ('parts_address' | 'base').
+    delivery_address: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'requested'")
     )

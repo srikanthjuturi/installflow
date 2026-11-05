@@ -13,8 +13,10 @@ things the existing index cannot give:
     served — it worked because the demo data is small.
 
 So this adds the index those two queries were really asking for. It is not
-unique: uniqueness is per (company, MODEL) and stays that way, because two
-products sharing a numbering scheme is legal.
+unique: at the time this ran, uniqueness was per (company, MODEL), on the
+theory that two products sharing a numbering scheme is legal. `d4f8a21b9c56`
+later made it company-wide instead; this index's own column order — fixing
+the company but not the model — is unaffected either way.
 
 Hand-written, like every other `LOWER()` index here — Alembic does not
 recognise them and autogenerate emits a drop for it on every run.

@@ -71,7 +71,9 @@ describe("ApprovePartDialog", () => {
       />
     );
     expect(screen.getByText("Approve HDMI cable for RGT-INST-0412?")).toBeInTheDocument();
-    expect(screen.getByText(/Ravi Kumar is told it's approved/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Ravi Kumar will be notified once you approve the/)
+    ).toBeInTheDocument();
     const box = screen.getByRole("checkbox");
     expect(box).not.toBeChecked();
     expect(screen.getByText(/Add "HDMI cable" to Television's parts list/)).toBeInTheDocument();

@@ -131,3 +131,53 @@ export interface ImportReport {
   /** Capped by the server; `rejected` carries the true total. */
   rejects: ImportReject[];
 }
+
+/* ── the coverage picker's tree (Epic 2) ──────────────────────────────────── */
+
+export interface CoverageTreeDistrict {
+  id: string;
+  name: string;
+  /** Pincodes the caller may pick in this district. */
+  pincodeCount: number;
+  /** How many of the codes sent as `selected` sit in it. */
+  selectedCount: number;
+}
+
+export interface CoverageTreeState {
+  id: string;
+  name: string;
+  /** The honest total: district counts do NOT sum to it (a pincode can sit in
+   *  up to four districts, and four sit in none). */
+  pincodeCount: number;
+  selectedCount: number;
+  districts: CoverageTreeDistrict[];
+}
+
+export interface CoverageTree {
+  regionId: string;
+  states: CoverageTreeState[];
+}
+
+export interface CoverageExpandBody {
+  stateIds: string[];
+  districtIds: string[];
+  franchiseeId?: string;
+}
+
+export interface CoverageExpansion {
+  pincodes: string[];
+  count: number;
+}
+
+/**
+ * One post office of a pincode, as the directory lists it — a SUGGESTION for the
+ * "Local area" box, never a validator. `delivers` is false for an office that
+ * exists but does not deliver post (the server sends those after the delivering
+ * ones).
+ */
+export interface PostOffice {
+  id: string | number;
+  name: string;
+  officeType: "HO" | "PO" | "BO";
+  delivers: boolean;
+}

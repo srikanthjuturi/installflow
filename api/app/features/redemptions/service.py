@@ -27,6 +27,7 @@ from sqlalchemy import Select, false as sql_false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.brand import company_name
+from app.core import documents
 from app.core.coverage import payer_role
 from app.core.franchise_scope import STAFF_ALL_INDIA
 from app.core.franchise_money import (
@@ -38,6 +39,7 @@ from app.core.deps import Principal
 from app.core.errors import AppError
 from app.core.employment import may_redeem, redeem_refusal
 from app.core.ledger import redeemable_balance, reserved
+from app.core.technician_rules import redeemable_after_holding, redemption_terms
 from app.core.notifications import notify
 from app.core.push import send_to_technician
 from app.core.push_text import PushText
@@ -283,9 +285,16 @@ async def summary(db: AsyncSession, profile: TechnicianProfile) -> RedeemableOut
     role = await payer_role(
         db, company_id=profile.company_id, franchisee_id=profile.franchisee_id
     )
+    terms = await redemption_terms(db, profile.company_id, profile.id)
+    net = redeemable(redeemable_after_holding(available, terms.holding_paise))
+    # Below the minimum is "nothing to ask for yet", so an installed build that
+    # has never heard of the minimum still greys the button out.
+    askable = net if net >= max(terms.min_paise, 1) else 0
     return RedeemableOut(
         availablePaise=available,
-        redeemablePaise=redeemable(available) if may else 0,
+        redeemablePaise=askable if may else 0,
+        holdingPaise=terms.holding_paise,
+        minRedeemablePaise=terms.min_paise,
         upiId=profile.upi_id,
         payerLabel=ROLE_LABELS.get(role, role),
         open=open_out,
@@ -401,9 +410,15 @@ async def request(
     available = await redeemable_balance(
         db, company_id=company_id, technician_id=profile.id
     )
-    amount = redeemable(available)
+    terms = await redemption_terms(db, company_id, profile.id)
+    amount = redeemable(redeemable_after_holding(available, terms.holding_paise))
     if amount <= 0:
         raise _refused("NOTHING_TO_REDEEM", "There is nothing to redeem yet.")
+    if terms.min_paise and amount < terms.min_paise:
+        raise _refused(
+            "BELOW_MIN_REDEEMABLE",
+            f"You can redeem once at least {_rupees(terms.min_paise)} is available.",
+        )
     if body.amountPaise != amount:
         # Not a validation error: the balance moved between the screen and the
         # tap. The app refetches and shows the new figure.
@@ -531,6 +546,23 @@ async def confirm(
                 actor_label=label,
                 created_by=principal.user_id,
             )
+        )
+        # Epic 1.3: the payer's money reached the technician, so a numbered
+        # Payment exists for it - in the same transaction as the confirmation.
+        await documents.issue(
+            db,
+            company_id=row.company_id,
+            doc_type="payment",
+            party_kind="technician",
+            party_id=row.technician_id,
+            party_label=label,
+            amount_paise=row.amount_paise,
+            source_kind="redemption",
+            source_id=row.id,
+            description=f"Redemption {row.code} paid",
+            proof_blob_name=row.proof_blob_name,
+            proof_reference=row.utr,
+            created_by=principal.user_id,
         )
         # No bell. A payment that arrived is the routine outcome, and a bell
         # for it is noise the next real one gets lost in.

@@ -7,6 +7,7 @@ import { ErrorState, Skeleton, showToast } from '@/components/feedback';
 import { Icon } from '@/components/icons/Icon';
 import { KeyboardFlow, ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button, Input, Text } from '@/components/ui';
+import { PartsDestination } from '@/features/parts-address/components/PartsDestination';
 import { useJobParts } from '@/features/parts/hooks/useJobParts';
 import { useRequestPart } from '@/features/parts/hooks/useRequestPart';
 import {
@@ -142,6 +143,8 @@ export function PartRequestScreen({ jobId }: PartRequestScreenProps) {
             <Notice text={t('parts.request.notNow')} />
           ) : (
             <>
+              <PartsDestination />
+
               <Text
                 style={{
                   fontFamily: 'Roboto_400Regular',

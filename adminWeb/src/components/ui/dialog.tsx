@@ -91,6 +91,44 @@ function DialogContent({
   );
 }
 
+/**
+ * The one element inside a DialogContent that may scroll.
+ *
+ * DialogContent's close button is `position: absolute` within the Popup
+ * element itself. Scrolling THAT element drags the button along with
+ * whatever content is scrolling instead of leaving it pinned at the dialog's
+ * corner — this wrapper is a SIBLING of the close button, not its containing
+ * scroll box, which is what keeps the button still. Pair it with `flex
+ * flex-col overflow-hidden` on the caller's own `DialogContent` className, so
+ * this wrapper's `flex-1 min-h-0` has a bounded box to scroll inside rather
+ * than growing the Popup to fit its content.
+ *
+ * The negative margins hand the Popup's own `p-4` to the scroller, so a
+ * scrollbar sits flush against the dialog's edge instead of inset by it;
+ * `px-4 pb-4` put that padding back inside the scrolled area. No `-mt-4
+ * pt-4`: the Popup's top padding is left alone, so anything rendered ABOVE
+ * this wrapper — a step indicator, say — still sits where it always did.
+ *
+ * Pass `scroll-slim` or `scroll-none` in `className` for the scrollbar look;
+ * neither is baked in here, because DialogContent's own base className
+ * already carries `scroll-none` and the two are not the same rule.
+ */
+function DialogScrollBody({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-scroll-body"
+      className={cn(
+        "-mx-4 -mb-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-4",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -163,6 +201,7 @@ export {
   DialogHeader,
   DialogOverlay,
   DialogPortal,
+  DialogScrollBody,
   DialogTitle,
   DialogTrigger,
 };

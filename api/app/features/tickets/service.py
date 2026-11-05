@@ -17,6 +17,7 @@ region rather than an approximation of it. See `_visible_pincodes`.
 """
 
 import datetime
+import re
 import secrets
 import uuid
 from typing import NamedTuple
@@ -27,8 +28,17 @@ from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core.technician_rules import bonus_bands_for, penalty_bands_for
 from app.core import brand
 from app.core.config import settings
+from app.core.customer_location import (
+    SOURCE_CUSTOMER,
+    SOURCE_STAFF,
+    SOURCE_VENDOR,
+    distance_note,
+    may_customer_set,
+    validate_point,
+)
 from app.core.coverage import (
     has_cap_room,
     ist_day_bounds,
@@ -93,6 +103,7 @@ from app.core.realtime import (
 )
 from app.core.product_label import model_label, vendors_with_several_brands
 from app.core.product_tree import APPROVED, PENDING
+from app.core.purchase_platforms import find_or_create as find_or_create_platform
 from app.core.schemas import ListParams, canonical_filter
 from app.core.scope import (
     pincodes_in_regions,
@@ -116,7 +127,9 @@ from app.core.slots import (
     IST,
     bookable_slots,
     clock,
+    clock_range,
     day_label,
+    manual_slot_allowed,
     offered_slots,
     reschedule_slots,
     time_is_choosable,
@@ -130,6 +143,7 @@ from app.core.reschedule import (
     send_slot_moved,
 )
 from app.core.tickets import (
+    MANUAL_SLOT_MIN_MINUTES,
     RESCHEDULE_HORIZON_HOURS,
     TERMINAL_STATUSES,
     TICKET_STATUSES,
@@ -165,9 +179,11 @@ from app.models.franchisee import Franchisee
 from app.models.ledger import REVERSIBLE_KINDS, SPEED_KINDS, LedgerEntry
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
+from app.models.purchase_platform import PurchasePlatform
 from app.models.role import (
     FACILITY_ROLES,
     FRANCHISEE_ADMIN,
+    ROLE_LABELS,
     VENDOR_USER,
 )
 from app.models.territory import Pincode
@@ -276,17 +292,27 @@ def _sla_order_case():
 
 
 def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
-    """A slot typed at intake must be one the customer could have picked.
+    """A slot typed at intake must be one the customer could have picked —
+    OR a manual, off-grid window a vendor typed because the customer wanted a
+    specific hour the two-hour grid does not offer.
 
-    ONE rule rather than four. "In the future", "far enough ahead to dispatch",
-    "a real working window" and "inside the service level" are all already
-    expressed, once, by `offered_slots` — re-stating them here as separate
-    guards would be four chances to drift from the list the customer is shown.
+    The grid path is ONE rule rather than four. "In the future", "far enough
+    ahead to dispatch", "a real working window" and "inside the service
+    level" are all already expressed, once, by `offered_slots` — re-stating
+    them here as separate guards would be four chances to drift from the
+    list the customer is shown. It is tried FIRST and is the common case: the
+    vendor's grid picker never produces anything else, and checking it costs
+    one list membership test.
 
-    This closes the hole that let a ticket be born breached: `offered_slots`
-    never offers a window past `sla_due_at`, but nothing stopped a vendor from
-    typing one straight into the create request, and `sla_state` then reported
-    the breach the moment the row existed.
+    Only when that fails does `manual_slot_allowed` get a turn — see it for
+    the rules, which are the grid's own rules carried over to an arbitrary
+    window rather than a new policy. Nothing about the grid path changes:
+    a ticket raised with a grid-aligned slot is accepted exactly as before.
+
+    Either path closes the same hole: left unchecked, `offered_slots` never
+    offers a window past `sla_due_at`, but nothing stopped a vendor from
+    typing one straight into the create request, and `sla_state` then
+    reported the breach the moment the row existed.
 
     No-op when there is no slot — that ticket is Slot Pending and the customer
     picks from this same list.
@@ -295,6 +321,11 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
         return
 
     available = offered_slots(row, now=now)
+    if (row.slot_start, row.slot_end) in available:
+        return
+    if manual_slot_allowed(row, row.slot_start, row.slot_end, now=now):
+        return
+
     if not available:
         raise _bad_request(
             f"A {row.service_level_hours}h service level leaves no bookable "
@@ -302,16 +333,17 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
             "longer service level, or leave the slot blank and the customer "
             "will be asked to pick."
         )
-    if (row.slot_start, row.slot_end) not in available:
-        # The first few, not all twenty: enough to show the shape of what is
-        # allowed without turning a validation message into a timetable.
-        shown = ", ".join(when_label(*s) for s in available[:3])
-        more = "" if len(available) <= 3 else f", and {len(available) - 3} more"
-        raise _bad_request(
-            "That is not a time this ticket can be served in. A slot has to be "
-            f"one of the two-hour windows inside the {row.service_level_hours}h "
-            f"service level — {shown}{more}."
-        )
+    # The first few, not all twenty: enough to show the shape of what is
+    # allowed without turning a validation message into a timetable.
+    shown = ", ".join(when_label(*s) for s in available[:3])
+    more = "" if len(available) <= 3 else f", and {len(available) - 3} more"
+    raise _bad_request(
+        "That is not a time this ticket can be served in. A slot has to be "
+        f"one of the two-hour windows inside the {row.service_level_hours}h "
+        f"service level — {shown}{more} — or a manual window of at least "
+        f"{MANUAL_SLOT_MIN_MINUTES} minutes that still fits inside the same "
+        "working hours and deadline."
+    )
 
 
 # ── visibility ────────────────────────────────────────────────────────────────
@@ -538,6 +570,31 @@ async def _resolve_product(
     return vendor, node, model
 
 
+async def _resolve_purchase_platform(
+    db: AsyncSession, company_id: uuid.UUID, platform_id: uuid.UUID
+) -> PurchasePlatform:
+    """A7: the named platform, re-resolved against the caller's own company.
+
+    404, never 400 or 403 — an id in a request body is an assertion, not a
+    fact, and a guessed one from another company (or a retired one) must read
+    exactly like one that does not exist.
+    """
+    row = await db.scalar(
+        select(PurchasePlatform).where(
+            PurchasePlatform.id == platform_id,
+            PurchasePlatform.company_id == company_id,
+            PurchasePlatform.is_active.is_(True),
+            PurchasePlatform.deleted_at.is_(None),
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Purchase platform not found",
+        )
+    return row
+
+
 class SerialRefusal(NamedTuple):
     """Why a serial is refused: a stable code for the client, a sentence for
     the person. The importer puts the same pair on a rejected row."""
@@ -597,17 +654,16 @@ async def _serial_refusal(
     number is loaded on a different model: QA raised a washing machine's serial
     against a switch board that had no serials, and the ticket went through
     under the form's own mismatch warning. So a miss on the chosen model asks,
-    before anything else, whether one of the SAME VENDOR's live products carries
-    the number (`serial_owners`), and refuses naming it if so.
+    before anything else, whether ANY other product in the company — any
+    vendor's — carries the number (`serial_owners`), and refuses naming it if
+    so.
 
-    Only the same vendor's, and that is the oracle guard rather than a gap: a
-    serial on a competitor's product behaves exactly as an unknown serial does,
-    so this can never confirm that somebody else's number exists. Only live
-    products too — approved, active, not deleted, in a live category — the set
-    `masters.lookup_serial` offers, so the form can show this refusal before
-    submit and its "Use …" offer always leads somewhere intake accepts. A
-    serial on the chosen model is fine whatever else carries it: a serial may
-    legally sit on two products.
+    Company-wide, because serial uniqueness is a company-wide rule, not a
+    per-vendor one: a serial on another vendor's product is as real a clash as
+    one on the same vendor's. Only live products count — approved, active, not
+    deleted, in a live category — the set `masters.lookup_serial` offers, so the
+    form can show this refusal before submit and its "Use …" offer always leads
+    somewhere intake accepts.
 
     ## Queries, in this order
 
@@ -639,7 +695,7 @@ async def _serial_refusal(
         return None
 
     owners = (
-        await serial_owners(db, model.company_id, model.vendor_id, {needle})
+        await serial_owners(db, model.company_id, {needle})
     ).get(needle, [])
     owners = [m for m in owners if m.id != model.id]
     if owners:
@@ -668,18 +724,18 @@ async def _serial_refusal(
 async def serial_owners(
     db: AsyncSession,
     company_id: uuid.UUID,
-    vendor_id: uuid.UUID,
     needles: set[str],
 ) -> dict[str, list[ProductModel]]:
-    """Which of THIS vendor's live products carry each serial — one query.
+    """Which of the COMPANY's live products — across every vendor — carry each
+    serial, one query.
 
     `needles` are already trimmed and lower-cased; so are the keys returned.
     Shared by the single ticket (one needle) and the importer (the whole file),
     so the two cannot disagree about which products count.
 
-    Pinned to the vendor in the query, never filtered after it: another
-    vendor's product carrying the number must be indistinguishable from no
-    product carrying it. Live means what `masters.lookup_serial` offers —
+    Scoped to the company only: serial uniqueness is company-wide now, so a
+    product belonging to a different vendor than the one being checked still
+    counts as an owner. Live means what `masters.lookup_serial` offers —
     approved, active, not deleted, under a live category.
     """
     if not needles:
@@ -703,7 +759,6 @@ async def serial_owners(
         .where(
             ProductModelSerial.company_id == company_id,
             func.lower(ProductModelSerial.serial).in_(needles),
-            ProductModel.vendor_id == vendor_id,
             ProductModel.deleted_at.is_(None),
             ProductModel.is_active.is_(True),
             ProductModel.approval_status == APPROVED,
@@ -854,6 +909,22 @@ async def _hydrate(
     }
     hide_franchisee = principal.is_vendor  # one flag, so the id and name stay in step
 
+    # A7: the platform's name, read live like every other `*Name` beside an
+    # id — a rename must not mean rewriting every ticket that named it.
+    platform_ids = {t.purchase_platform_id for t in rows if t.purchase_platform_id}
+    platform_names = (
+        {
+            r[0]: r[1]
+            for r in await db.execute(
+                select(PurchasePlatform.id, PurchasePlatform.name).where(
+                    PurchasePlatform.id.in_(platform_ids)
+                )
+            )
+        }
+        if platform_ids
+        else {}
+    )
+
     # The model's name and the brand it carries, in one join. Read live, like the
     # name: nothing about a product is stamped on a ticket but its two prices.
     model_names: dict[uuid.UUID, str] = {}
@@ -936,6 +1007,18 @@ async def _hydrate(
                 brandName=brand_names.get(t.model_id),
                 serviceType=t.service_type,
                 description=t.description,
+                isHighPriority=t.is_high_priority,
+                purchaseMode=t.purchase_mode,
+                purchasePlatformId=t.purchase_platform_id,
+                # One question, two columns behind it: an ONLINE ticket names
+                # a real row (resolved live, like every other `*Name`), an
+                # OFFLINE one carries the vendor's own free text verbatim —
+                # see `models/ticket.py`'s `purchase_platform_detail`.
+                purchasePlatformName=(
+                    platform_names.get(t.purchase_platform_id)
+                    if t.purchase_platform_id
+                    else t.purchase_platform_detail
+                ),
                 serialNumber=t.serial_number,
                 observedSerial=t.observed_serial,
                 observedSerialSource=t.observed_serial_source,
@@ -949,6 +1032,8 @@ async def _hydrate(
                 ),
                 customerName=t.customer_name,
                 customerPhone=t.customer_phone,
+                customerAltPhone=t.customer_alt_phone,
+                locality=t.locality,
                 address=t.address,
                 city=t.city,
                 state=t.state,
@@ -989,14 +1074,19 @@ async def _hydrate(
                 bonusPaise=t.bonus_paise,
                 # This ticket's own chips, so funding a bonus spends the
                 # category's configured amounts rather than the company's.
-                bonusBandsPaise=list(
-                    snapshot_value(t.rules_snapshot, "bonus_bands_paise")
-                ),
+                bonusBandsPaise=bonus_bands_for(t),
                 # Their own price — the vendor is the one paying it. A franchise
                 # principal gets `null`: what the company bills is the other
                 # side of the franchise ledger's, never theirs to read (R6).
                 vendorPricePaise=(
                     None if principal.is_franchise else t.vendor_price_paise
+                ),
+                # Epic 1.4: the same wall as the price beside it.
+                extraAmountPaise=(
+                    None if principal.is_franchise else t.extra_amount_paise
+                ),
+                extraAmountNote=(
+                    None if principal.is_franchise else t.extra_amount_note
                 ),
                 franchiseeId=(
                     None if hide_franchisee else t.franchisee_id
@@ -1039,10 +1129,21 @@ async def _hydrate(
                 slotLink=(
                     slot_link(t.slot_token)
                     if t.slot_token
-                    and t.slot_confirmed_at is None
-                    and time_is_choosable(t.status, t.technician_id)
+                    and (
+                        (
+                            t.slot_confirmed_at is None
+                            and t.slot_start is None
+                            and time_is_choosable(t.status, t.technician_id)
+                        )
+                        # Or the page can still take the customer's location.
+                        or may_customer_set(
+                            t.location_source, t.technician_id, t.status
+                        )
+                    )
                     else None
                 ),
+                locationSource=t.location_source,
+                locationSetAt=t.location_set_at,
                 createdAt=t.created_at,
             )
         )
@@ -1052,22 +1153,56 @@ async def _hydrate(
 # ── read ──────────────────────────────────────────────────────────────────────
 
 
+#: Characters a ticket-code search treats as pure separators, not content.
+#: `-` because the code itself is hyphen-separated (`RGT-INST-0007`, or the
+#: older two-segment `INST-0007`); space so "GTD STAB 002" finds "GTD-STAB-002"
+#: without the caller needing to know which separator the stored code uses;
+#: `_` and `%` so neither is read as a LIKE wildcard — stripping them here
+#: removes that question rather than escaping it, since a stripped character
+#: can never survive into the pattern this builds.
+_CODE_SEARCH_SEPARATORS = re.compile(r"[-_ %]")
+
+
+def _strip_code_separators(value: str) -> str:
+    return _CODE_SEARCH_SEPARATORS.sub("", value)
+
+
+def _normalized_code(column):
+    """The code column with the same separators stripped, lower-cased.
+
+    Built from `_CODE_SEARCH_SEPARATORS.pattern`, not a second copy of the
+    character class, so the SQL side and `_strip_code_separators` above can
+    never disagree about what counts as a separator.
+    """
+    return func.lower(
+        func.regexp_replace(column, _CODE_SEARCH_SEPARATORS.pattern, "", "g")
+    )
+
+
 def _apply_search(stmt: Select, search: str | None) -> Select:
     if not search:
         return stmt
-    term = f"%{search.strip().lower()}%"
-    return stmt.where(
-        or_(
-            func.lower(Ticket.code).like(term),
-            func.lower(Ticket.customer_name).like(term),
-            func.lower(Ticket.customer_phone).like(term),
-            Ticket.pincode.like(term),
-            # The expected serial. Mandatory on every ticket and every service
-            # type, so it is always there to be found — and it is what ops are
-            # read out over the phone when nobody has the ticket number.
-            func.lower(Ticket.serial_number).like(term),
-        )
-    )
+    cleaned = search.strip().lower()
+    term = f"%{cleaned}%"
+    clauses = [
+        func.lower(Ticket.customer_name).like(term),
+        func.lower(Ticket.customer_phone).like(term),
+        Ticket.pincode.like(term),
+        # The expected serial. Mandatory on every ticket and every service
+        # type, so it is always there to be found — and it is what ops are
+        # read out over the phone when nobody has the ticket number.
+        func.lower(Ticket.serial_number).like(term),
+    ]
+    # Matched separator-insensitively, not with the raw `term` above: a ticket
+    # code is shown and read aloud with hyphens, but ops as often type or paste
+    # it with spaces, or none at all. Guarded on a non-empty normalized search —
+    # a query of pure separators (e.g. "--") would otherwise normalize to "" and
+    # its `%%` pattern would match every code in the company.
+    normalized_search = _strip_code_separators(cleaned)
+    if normalized_search:
+        normalized_term = f"%{normalized_search}%"
+        clauses.append(_normalized_code(Ticket.code).like(normalized_term))
+    return stmt.where(or_(*clauses))
 
 
 #: The console's "no filter" sentinel. Its filter pills are a closed set with
@@ -1151,6 +1286,52 @@ def closed_in(cutoff: datetime.datetime | None):
     return or_(confirmed, forced)
 
 
+def high_priority_pending():
+    """Flagged, unassigned, and still open — the "Tickets" nav badge's own
+    population (E5).
+
+    One expression, so the badge and the list a click on it would filter to
+    (`?highPriority=true`, further narrowed to `technicianId=null` were that
+    ever added) can never disagree about what it is counting. `is_high_priority`
+    is a flag nothing downstream branches on (see the column's own note) —
+    this is the first thing that reads it for anything other than display.
+
+    `technician_id IS NULL` is "unassigned", not "New" or any other single
+    status: a flagged ticket can sit in `Slot Pending`, `New` or `Escalated`
+    with nobody on it, and all three are exactly the badge's job to surface.
+    `TERMINAL_STATUSES` drops it the moment there is nothing left to action —
+    the same rule `open_tickets()` applies to the dashboard's own tile.
+    """
+    return and_(
+        Ticket.is_high_priority.is_(True),
+        Ticket.technician_id.is_(None),
+        Ticket.status.not_in(TERMINAL_STATUSES),
+    )
+
+
+async def count_high_priority_pending(db: AsyncSession, principal: Principal) -> int:
+    """How many unassigned high-priority tickets this caller is responsible
+    for — the blinking "Tickets" nav badge (E5).
+
+    Through the SAME `scoped()` visibility `list_tickets` and every other
+    ticket read use, so a Regional Head or Area Manager counts only their
+    own territory's pincodes and an all-India role counts the whole company
+    — never a second, looser rule that could disagree with what the list
+    opened from the badge would show.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(Ticket)
+        .where(
+            Ticket.company_id == principal.company_id,
+            Ticket.deleted_at.is_(None),
+            high_priority_pending(),
+        )
+    )
+    stmt = await scoped(db, stmt, principal)
+    return int(await db.scalar(stmt) or 0)
+
+
 #: The dashboard's "Needs your attention" cards that no status can name, as the
 #: values `GET /tickets?attention=` takes. Each is the one expression its card
 #: counts with — see the two functions below.
@@ -1227,13 +1408,16 @@ async def list_tickets(
     sla_filter: str | None = None,
     service_type: str | None = None,
     technician_id: uuid.UUID | None = None,
+    vendor_id: uuid.UUID | None = None,
     region_id: uuid.UUID | None = None,
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
     open_only: bool = False,
+    closed_only: bool = False,
     closed_within_days: int | None = None,
     attention: str | None = None,
+    high_priority: bool | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -1241,7 +1425,7 @@ async def list_tickets(
     )
     stmt = await scoped(db, stmt, principal)
     stmt = _apply_search(stmt, params.search)
-    # The dashboard's own four, shared with `dashboard_summary` — see `narrowed`.
+    # The dashboard's own five, shared with `dashboard_summary` — see `narrowed`.
     # The peek table under the tiles reads this endpoint, and a table describing
     # a different set of tickets from the figures above it is worse than no
     # table at all.
@@ -1251,6 +1435,7 @@ async def list_tickets(
         state_id=state_id,
         date_from=date_from,
         date_to=date_to,
+        vendor_id=vendor_id,
     )
 
     # One technician's work. The company filter above is already in the WHERE,
@@ -1258,6 +1443,13 @@ async def list_tickets(
     # profile screen asks for it on every open.
     if technician_id is not None:
         stmt = stmt.where(Ticket.technician_id == technician_id)
+
+    # A2: the board's own flag, already tenant- and territory-scoped by
+    # `scoped()` above — the same reason `vendor_id` needs no guard of its
+    # own. `None` means "do not filter", so an omitted query param behaves
+    # exactly as it always did; `true`/`false` both narrow, never widen.
+    if high_priority is not None:
+        stmt = stmt.where(Ticket.is_high_priority == high_priority)
 
     statuses = _canonical_set(status_filter, TICKET_STATUSES)
     if statuses is False:
@@ -1267,9 +1459,14 @@ async def list_tickets(
 
     # The dashboard's own two populations, so its tiles can open a list holding
     # exactly what they counted rather than a superset the reader has to sift.
-    # Both are shared expressions, not a second reading of the same rule.
+    # And the high-priority board's own third view, `closed=true` — "ever
+    # Closed or Force-Closed", from the same `closed_in()` with no cutoff, so
+    # staff can review a closed ticket's detail instead of it vanishing. All
+    # three are shared expressions, not a second reading of the same rule.
     if open_only:
         stmt = stmt.where(open_tickets())
+    if closed_only:
+        stmt = stmt.where(closed_in(None))
     if closed_within_days:
         stmt = stmt.where(
             closed_in(_now() - datetime.timedelta(days=closed_within_days))
@@ -1332,10 +1529,32 @@ async def list_tickets(
         # a stable order across pages rather than swapping between reads.
         stmt = stmt.order_by(direction, Ticket.created_at.desc())
     else:
-        # `id` breaks a tie between two tickets raised in the same instant —
-        # an Excel import writes a whole sheet in one transaction — so a row
-        # cannot appear on two pages, or on none.
-        stmt = stmt.order_by(Ticket.created_at.desc(), Ticket.id.desc())
+        # A2: flagged tickets float to the top of the server's OWN order —
+        # ahead of "newest first" rather than instead of it, so the default
+        # list a caller who named no sort gets is still newest-first within
+        # each half. Only the default branch changes: `?sortBy=slaState` /
+        # `createdAt` / `slotStart` are an explicit choice already, and
+        # inserting a flag ahead of a sort somebody asked for by name would
+        # answer a different question than the one they asked.
+        #
+        # `id` still breaks a tie between two tickets raised in the same
+        # instant — an Excel import writes a whole sheet in one transaction —
+        # so a row cannot appear on two pages, or on none.
+        #
+        # Only an ACTIVE flagged ticket floats: once it is closed, force-closed
+        # or cancelled it drops into the ordinary newest-first order. Within the
+        # floating group the OLDEST leads, so a newly raised flagged ticket
+        # joins below the ones already waiting rather than jumping the queue.
+        active_flagged = and_(
+            Ticket.is_high_priority.is_(True),
+            Ticket.status.not_in(TERMINAL_STATUSES),
+        )
+        stmt = stmt.order_by(
+            active_flagged.desc(),
+            case((active_flagged, Ticket.created_at)).asc().nulls_last(),
+            Ticket.created_at.desc(),
+            Ticket.id.desc(),
+        )
 
     rows, total = await paginate(db, stmt, page=params.page, limit=params.limit)
     return await _hydrate(db, principal, rows), total
@@ -1351,13 +1570,16 @@ def narrowed(
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    vendor_id: uuid.UUID | None = None,
 ) -> Select:
-    """The dashboard's territory and date filters, for any ticket query.
+    """The dashboard's territory, date and vendor filters, for any ticket query.
 
     Shared by `dashboard_summary` and `list_tickets` so the tiles and the table
     under them cannot describe different sets of tickets — which is exactly what
     happened the first time the filters existed on only one of them: a dashboard
-    reading zero everywhere, above six rows.
+    reading zero everywhere, above six rows. A1's `vendor_id` is the same idea
+    applied to one more picker: whichever vendor a manager drills into, the
+    tile and the list it opens have to agree.
 
     ## It NARROWS; it can never widen
 
@@ -1366,7 +1588,10 @@ def narrowed(
     to nothing and reads zero. That is the whole permission story: there is no
     separate check to keep in step with the picker, and no id here that reveals
     anything. A state beats a region because it is the narrower of the two,
-    which is what a cascading picker means when both are set.
+    which is what a cascading picker means when both are set. `vendor_id` is
+    the same story — it ANDs onto `Ticket.vendor_id`, so a vendor outside the
+    caller's own scope (a vendor's own id read from the principal, never this
+    parameter) simply narrows to nothing rather than ever widening a read.
 
     ## The dates bound INTAKE
 
@@ -1386,6 +1611,9 @@ def narrowed(
         stmt = stmt.where(Ticket.created_at >= lower)
     if upper is not None:
         stmt = stmt.where(Ticket.created_at < upper)
+
+    if vendor_id is not None:
+        stmt = stmt.where(Ticket.vendor_id == vendor_id)
     return stmt
 
 
@@ -1405,6 +1633,7 @@ async def dashboard_summary(
     state_id: uuid.UUID | None = None,
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
+    vendor_id: uuid.UUID | None = None,
 ) -> DashboardSummaryOut:
     """Every figure the console's dashboard draws, counted rather than sampled.
 
@@ -1460,6 +1689,7 @@ async def dashboard_summary(
             state_id=state_id,
             date_from=date_from,
             date_to=date_to,
+            vendor_id=vendor_id,
         )
 
     def tally(condition) -> object:
@@ -1511,9 +1741,13 @@ async def dashboard_summary(
             tally(Ticket.status == "AI Review").label("ai"),
             tally(Ticket.status == "Slot Pending").label("slot_pending"),
             # `Awaiting Part` (Task 12): a job waiting on a spare part is held by
-            # somebody just as much as one in progress.
+            # somebody just as much as one in progress. `Awaiting Customer` joins
+            # it for the same reason — a job waiting on the customer is still
+            # held, not open and unclaimed.
             tally(
-                Ticket.status.in_(("Assigned", "In Progress", "Awaiting Part"))
+                Ticket.status.in_(
+                    ("Assigned", "In Progress", "Awaiting Part", "Awaiting Customer")
+                )
             ).label("active"),
             tally(closed_in_window).label("closed_week"),
         ).select_from(Ticket)
@@ -2122,7 +2356,16 @@ _EVENT_TITLES_BY_ACTOR = {
 }
 
 
-def _event_title(kind: str, actor_kind: str, note: str | None = None) -> str:
+def _role_phrase(role: str) -> str:
+    """"an Admin" / "a Regional Head" — article picked from the label."""
+    label = ROLE_LABELS.get(role, "manager")
+    article = "an" if label[:1] in "AEIOU" else "a"
+    return f"{article} {label}"
+
+
+def _event_title(
+    kind: str, actor_kind: str, note: str | None = None, actor_role: str | None = None
+) -> str:
     # The technician's door, when the customer number on the ticket was their
     # own: the code reached the technician, so "customer confirmed by code"
     # would be false. The note says why; the title says what to do about it.
@@ -2136,6 +2379,13 @@ def _event_title(kind: str, actor_kind: str, note: str | None = None) -> str:
     # approved, and the trail has to say so — the note carries the source.
     if kind == "part_rejected" and "approved → rejected" in (note or ""):
         return "Approved spare part cancelled"
+    # The actor's REAL role, when we stored it. Historical rows (actor_role
+    # is None) fall through to the "…by a manager" wording below, unchanged.
+    if actor_kind == "staff" and actor_role in ROLE_LABELS:
+        if kind == "assigned":
+            return f"Assigned by {_role_phrase(actor_role)}"
+        if kind == "rescheduled":
+            return f"Rescheduled by {_role_phrase(actor_role)}"
     return _EVENT_TITLES_BY_ACTOR.get(
         (kind, actor_kind), _EVENT_TITLES.get(kind, kind)
     )
@@ -2176,7 +2426,7 @@ async def _timeline(
         TimelineEventOut(
             at=e.created_at,
             kind=e.kind,
-            title=_event_title(e.kind, e.actor_kind, e.note),
+            title=_event_title(e.kind, e.actor_kind, e.note, e.actor_role),
             actorKind=e.actor_kind,
             by=e.actor_label,
             note=e.note,
@@ -2196,6 +2446,7 @@ def record_event(
     from_status: str | None = None,
     to_status: str | None = None,
     by_user: uuid.UUID | None = None,
+    actor_role: str | None = None,
 ) -> TicketEvent:
     """Build the event for something that just happened to `row`.
 
@@ -2214,6 +2465,7 @@ def record_event(
         from_status=from_status,
         to_status=to_status,
         created_by=by_user,
+        actor_role=actor_role,
     )
 
 
@@ -2283,11 +2535,17 @@ async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> TicketEvent | N
     model_name = await db.scalar(
         select(ProductModel.name).where(ProductModel.id == row.model_id)
     )
+    # The customer's own link rides along: it shows this time and asks where the
+    # visit is. Whether it is actually SENT as a template value is the
+    # integration's call (`WHATSAPP_SLOT_CONFIRMED_HAS_LINK`), since the approved
+    # template has to be edited to take it.
+    link = slot_link(row.slot_token) if row.slot_token else None
     result = await whatsapp.send_slot_confirmed(
         row.customer_phone,
         await _company_name(db, row.company_id),
         model_name or "your product",
         when_label(row.slot_start, row.slot_end),
+        link,
     )
     return record_event(
         row,
@@ -2303,6 +2561,58 @@ async def _send_slot_confirmed(db: AsyncSession, row: Ticket) -> TicketEvent | N
             else f"Could not send: {result.error or 'unknown error'}"
         ),
     )
+
+
+async def _pincode_centre(
+    db: AsyncSession, code: str
+) -> tuple[float | None, float | None]:
+    row = (
+        await db.execute(
+            select(Pincode.latitude, Pincode.longitude).where(Pincode.code == code)
+        )
+    ).first()
+    if row is None or row[0] is None or row[1] is None:
+        return None, None
+    return float(row[0]), float(row[1])
+
+
+async def save_customer_location(
+    db: AsyncSession, row: Ticket, lat: float, lng: float
+) -> None:
+    """Write the point the customer set on their link. Does not commit.
+
+    The point goes into `latitude` / `longitude` — what the travel allowance and
+    the live-photo check already read — with its source beside it. One-time: see
+    `core.customer_location.may_customer_set`. The history entry is added in the
+    same transaction as the change it describes, and the console is told.
+    """
+    validate_point(lat, lng)
+    # Locked and re-read: a technician accepting in the same instant must either
+    # win (and this refuses) or wait for this commit, never both write.
+    await db.refresh(row, with_for_update=True)
+    if not may_customer_set(row.location_source, row.technician_id, row.status):
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="The location for this visit can no longer be changed",
+        )
+    centre = await _pincode_centre(db, row.pincode)
+    note = f"Set by the customer ({SOURCE_CUSTOMER})"
+    far = distance_note(lat, lng, *centre)
+    if far:
+        note += f" — {far}"
+    row.latitude, row.longitude = lat, lng
+    row.location_source = SOURCE_CUSTOMER
+    row.location_set_at = _now()
+    db.add(
+        record_event(
+            row,
+            "location_set",
+            actor_kind="customer",
+            actor_label=row.customer_name,
+            note=note,
+        )
+    )
+    await publish_ticket_changed(db, row)
 
 
 async def load_by_token(db: AsyncSession, token: str) -> Ticket:
@@ -2357,7 +2667,11 @@ async def confirm_slot(
     """
     row = await load_by_token(db, token)
 
-    if row.slot_confirmed_at is not None:
+    if row.slot_confirmed_at is not None or row.slot_start is not None:
+        # `slot_start` as well as `slot_confirmed_at`: a time agreed by a
+        # manager, or fixed at intake, leaves the latter null, and the link now
+        # outlives that (it also asks for a location). This is the guard that
+        # keeps the page from overwriting a time somebody already agreed.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="This time has already been confirmed",
@@ -2498,6 +2812,42 @@ async def create_ticket(
     vendor, node, model = await _resolve_product(db, principal, body)
     await _assert_pincode_known(db, body.pincode)
 
+    # A7: what this ticket stores for "where was it bought" is one of three
+    # different things, decided by the mode and by what the vendor sent.
+    # Resolved AFTER the pincode check and BEFORE the clock check, with the
+    # other request-shaped lookups.
+    platform: PurchasePlatform | None = None
+    purchase_platform_detail: str | None = None
+    if body.purchaseMode == "offline":
+        # The schema already refuses a platform id alongside `offline` (422);
+        # this refuses it again for any caller that reaches the service
+        # directly, same as the single check this replaced. `purchasePlatformName`
+        # means something different here — the free-text store name, never a
+        # platform id — so it is read instead of re-validated against the mode.
+        if body.purchasePlatformId is not None:
+            raise _bad_request(
+                "A purchase platform can only be set when purchaseMode is "
+                '"online"'
+            )
+        purchase_platform_detail = body.purchasePlatformName
+    elif body.purchasePlatformId is not None:
+        platform = await _resolve_purchase_platform(
+            db, principal.company_id, body.purchasePlatformId
+        )
+    elif body.purchasePlatformName:
+        # "Others": nothing in the caller's own dropdown fit, so they typed a
+        # name. Find-or-create it for THIS company — a retired platform under
+        # the same name is reactivated rather than duplicated — so what was
+        # typed joins the dropdown for the next vendor who raises a ticket.
+        platform = await find_or_create_platform(
+            db,
+            principal.company_id,
+            body.purchasePlatformName,
+            created_by=principal.user_id,
+        )
+    # else: online with neither an id nor a name — both stay null, "we don't
+    # know which".
+
     now = _now()
     # A day that has already gone cannot be served. Judged in IST, not UTC:
     # for five and a half hours every evening the two disagree about what day
@@ -2558,6 +2908,23 @@ async def create_ticket(
         serial_number=(body.serialNumber or "").strip() or None,
         customer_name=body.customerName.strip(),
         customer_phone=body.customerPhone,
+        # A6: the household's second number, if they gave one. Same shape as
+        # `customer_phone`, already normalised by the schema's phone validator.
+        customer_alt_phone=body.customerAltPhone,
+        # Epic 7: the locality, trimmed; blank is none.
+        locality=(body.locality or "").strip() or None,
+        # A2: a flag for the board. No downstream behaviour reads it.
+        is_high_priority=body.isHighPriority,
+        # Epic 1.4: the vendor's optional extra charge, with what it is for.
+        extra_amount_paise=body.extraAmountPaise,
+        extra_amount_note=body.extraAmountNote,
+        # A7: resolved above — `platform` is set only for an ONLINE ticket
+        # that named or typed one (never for an offline one, even if a stale
+        # id arrived); `purchase_platform_detail` is set only for an OFFLINE
+        # one, the mirror of `platform`'s own condition.
+        purchase_mode=body.purchaseMode,
+        purchase_platform_id=platform.id if platform else None,
+        purchase_platform_detail=purchase_platform_detail,
         address=body.address,
         city=body.city,
         state=body.state,
@@ -2567,6 +2934,10 @@ async def create_ticket(
         # than the distance one — see `jobs.service`.
         latitude=body.latitude,
         longitude=body.longitude,
+        # A picked point came from the vendor's address search; a typed address
+        # has none and stays NULL rather than guessed.
+        location_source=SOURCE_VENDOR if body.latitude is not None else None,
+        location_set_at=_now() if body.latitude is not None else None,
         expected_date=body.expectedDate,
         service_level_hours=body.serviceLevelHours,
         slot_start=body.slotStart,
@@ -2575,10 +2946,13 @@ async def create_ticket(
         # A slot means the customer has agreed a time, so the ticket is ready
         # for technicians to see. Without one nobody is told it exists yet.
         status="New" if body.slotStart else "Slot Pending",
-        # Only a ticket that still has to ask carries a token. 256 bits, the
-        # same as a technician invite, because it is the same kind of secret:
-        # a URL somebody is trusted to hold.
-        slot_token=None if body.slotStart else secrets.token_urlsafe(32),
+        # EVERY ticket carries a token: the customer's link also asks where the
+        # visit is, so a ticket with its time already fixed needs one too. 256
+        # bits, the same as a technician invite, because it is the same kind of
+        # secret: a URL somebody is trusted to hold. Whether the page may still
+        # change the TIME is decided by the slot, not by the token's presence —
+        # see `confirm_slot`.
+        slot_token=secrets.token_urlsafe(32),
         slot_request_status="not_needed" if body.slotStart else "pending",
         # Only value written today; see the column's note on why it is recorded
         # from the start rather than added when bulk upload lands.
@@ -2620,7 +2994,7 @@ async def create_ticket(
         db,
         company_id=principal.company_id,
         vendor_id=row.vendor_id,
-        just_reserved_paise=row.vendor_price_paise,
+        just_reserved_paise=row.vendor_price_paise + (row.extra_amount_paise or 0),
     )
 
     # The vendor's own name, not the person's: a sub-user leaves, the ticket
@@ -2835,6 +3209,69 @@ async def correct_serial(
     await publish_ticket_changed(db, row)
     await db.commit()
     return await get_ticket(db, principal, ticket_id)
+
+
+async def correct_location(
+    db: AsyncSession,
+    principal: Principal,
+    ticket_id: uuid.UUID,
+    *,
+    latitude: float,
+    longitude: float,
+    reason: str,
+) -> tuple[TicketDetailOut, bool]:
+    """Staff set or correct the point the visit is measured against.
+
+    Open to the staff who can already see the ticket (`_load` scopes by
+    territory; a guessed id is a 404). Not a vendor or a franchise login — the
+    route's guard says so and this refuses it again.
+
+    Allowed in any state a ticket can still change. The second return value says
+    a technician already holds the job: the live-photo check reads the new point
+    at once, but the travel figure was frozen when they accepted, and the
+    caller's message says so rather than letting anybody expect a repayment.
+    """
+    if principal.is_franchise or principal.is_vendor:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Only company staff can correct a ticket's location",
+        )
+    validate_point(latitude, longitude)
+    row = await _load(db, principal, ticket_id)
+    await db.refresh(row, with_for_update=True)
+    if row.status in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail=f"This ticket is {row.status} — its location can no longer change",
+        )
+
+    was = (
+        f"{row.latitude:.5f}, {row.longitude:.5f} ({row.location_source})"
+        if row.latitude is not None
+        else "none"
+    )
+    centre = await _pincode_centre(db, row.pincode)
+    note = f"Location set by staff from {was} — {reason.strip()}"
+    far = distance_note(latitude, longitude, *centre)
+    if far:
+        note += f" ({far})"
+    row.latitude, row.longitude = latitude, longitude
+    row.location_source = SOURCE_STAFF
+    row.location_set_at = _now()
+    db.add(
+        record_event(
+            row,
+            "location_set",
+            actor_kind="staff",
+            actor_label=principal.user.full_name or "—",
+            note=note,
+            by_user=principal.user_id,
+        )
+    )
+    await publish_ticket_changed(db, row)
+    held = row.technician_id is not None
+    await db.commit()
+    return await get_ticket(db, principal, ticket_id), held
 
 
 async def correct_reading(
@@ -3463,6 +3900,7 @@ async def assign_technician(
                 else f"Re-assigned to {name}"
             ),
             by_user=principal.user_id,
+            actor_role=principal.role,
         )
     )
     # NB no ledger entry here. A funded bonus is paid to whoever FINISHES the
@@ -4028,7 +4466,7 @@ async def record_no_show(
     # job they took, so it cannot come from one of them.
     rules = await load_rules(db, principal.company_id)
     label = CANCEL_PENALTY_BANDS[-1]
-    band = int(snapshot_value(row.rules_snapshot, "cancel_penalties_paise")[-1])
+    band = int(penalty_bands_for(row)[-1])  # Epic 3: the holder's own bands first
     already = await charged_this_month(
         db, company_id=principal.company_id, technician_id=profile.id
     )
@@ -4350,6 +4788,7 @@ async def reschedule(
         actor_label=principal.user.full_name or "—",
         by_user=principal.user_id,
         note=reason,
+        actor_role=principal.role,
     )
     if moved is None:
         raise _refused(
@@ -4641,6 +5080,11 @@ async def force_close_ticket(
         vendor_id=row.vendor_id,
         ticket_id=row.id,
         amount_paise=billed,
+        # Epic 1.4: the extra is billed in full whenever the visit itself is
+        # billed, and not at all when nobody attended (billed == 0) - the part
+        # was only ever charged for work that happened.
+        extra_paise=(row.extra_amount_paise or 0) if billed > 0 else 0,
+        extra_note=row.extra_amount_note,
         by_user=principal.user_id,
     )
 

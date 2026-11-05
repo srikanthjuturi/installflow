@@ -22,6 +22,7 @@ from app.core.accept_snapshot import (
     travel_of,
 )
 from app.core.employment import job_technician_type, pays_per_job
+from app.core.technician_rules import paid_amount, payout_percent_of
 from app.core.ledger import entry as ledger_entry, payout_reason, travel_reason
 from app.core.notifications import notify
 from app.core.push import send_to_technician
@@ -200,7 +201,11 @@ async def record_feedback(
                     technician_id=row.technician_id,
                     ticket_id=row.id,
                     kind="payout",
-                    amount_paise=row.technician_payout_paise,
+                    # Epic 3: the holder's own percentage, frozen at accept.
+                    amount_paise=paid_amount(
+                        row.technician_payout_paise,
+                        payout_percent_of(row.accept_snapshot),
+                    ),
                     reason=payout_reason(
                         service_type=row.service_type, model_name=model_name or "—"
                     ),
@@ -280,6 +285,9 @@ async def record_feedback(
             vendor_id=row.vendor_id,
             ticket_id=row.id,
             amount_paise=row.vendor_price_paise,
+            # Epic 1.4: the vendor's optional extra, billed in full beside it.
+            extra_paise=row.extra_amount_paise or 0,
+            extra_note=row.extra_amount_note,
             # No principal at all on this route — the customer is not a user.
             # `created_by` stays null, as the payout's does.
             by_user=None,

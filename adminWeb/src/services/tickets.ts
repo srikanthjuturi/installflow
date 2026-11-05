@@ -8,6 +8,7 @@
 
 import type { ListParams, Page } from "@/types/api";
 import type {
+  CorrectLocationInput,
   CorrectReadingInput,
   CorrectSerialInput,
   CreateTicketInput,
@@ -34,6 +35,11 @@ import {
  * Default order is SLA urgency — breach, warn, ok, done — because triage is
  * what the screen is for. `sortBy: "createdAt"` gives the chronological view.
  * The sort runs in SQL, so a page's total agrees with the rows on it.
+ *
+ * A1: `params.filters.vendorId` reaches `GET /tickets?vendorId=` through the
+ * generic filter flattening in `http.ts` — no code here has to know the key
+ * exists. `useTicketFilters` is what makes it a controllable own-filter
+ * (beside `status`) rather than a one-off; see its own note.
  */
 export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {
   return apiGetPage<Ticket>("/tickets", params);
@@ -113,6 +119,17 @@ export function correctTicketSerial({
   ...body
 }: CorrectSerialInput): Promise<TicketDetail> {
   return apiPatch<TicketDetail>(`/tickets/${id}/serial`, body);
+}
+
+/**
+ * Set or correct where the visit is. Staff only, with a reason. The customer
+ * sets it once on their own link; this is how a wrong pin is fixed afterwards.
+ */
+export function correctTicketLocation({
+  id,
+  ...body
+}: CorrectLocationInput): Promise<TicketDetail> {
+  return apiPatch<TicketDetail>(`/tickets/${id}/location`, body);
 }
 
 /**
@@ -508,6 +525,23 @@ export function importTickets(
     `/tickets/import?${importQuery(options)}`,
     form
   );
+}
+
+/**
+ * How many unassigned high-priority tickets this caller is responsible for
+ * (E5) — the Tickets rail badge, on the same shape as
+ * `pendingApprovalCount` (`services/approvals.ts`).
+ *
+ * Its own endpoint rather than a page of the list, for the reason every
+ * other rail badge gives: the rail renders on every screen, and "how many"
+ * is a TOTAL a page of rows cannot answer. Territory-scoped exactly like
+ * `listTickets` — an Area Manager's figure is their own states, not the
+ * company's — and already "until assigned": it counts
+ * `technician_id IS NULL`, so it drops to zero the moment the last
+ * high-priority ticket gets a technician.
+ */
+export function getHighPriorityPendingCount(): Promise<number> {
+  return apiGet<number>("/tickets/high-priority-pending/count");
 }
 
 /**

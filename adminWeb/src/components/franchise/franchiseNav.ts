@@ -2,9 +2,12 @@ import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeftRight,
   Coins,
+  HandCoins,
+  ReceiptText,
   FileSpreadsheet,
   IndianRupee,
   ListFilter,
+  LocateFixed,
   Route,
   UserCog,
   Users,
@@ -76,6 +79,21 @@ export const FRANCHISE_NAV: FranchiseNavItem[] = [
     feature: "franchise.pool",
   },
   {
+    label: "Settlements",
+    to: "/franchise/settlements",
+    icon: HandCoins,
+    match: ["/franchise/settlements/"],
+    feature: "franchise.settlements",
+  },
+  {
+    label: "Documents",
+    to: "/franchise/documents",
+    icon: ReceiptText,
+    // Numbered documents and the franchise's statement with the company
+    // (Epic 1.5 - 1.6). Seeded to franchisee_admin only.
+    feature: "franchise.documents",
+  },
+  {
     label: "Employee statements",
     to: "/franchise/statements",
     icon: FileSpreadsheet,
@@ -103,6 +121,14 @@ export const FRANCHISE_NAV: FranchiseNavItem[] = [
     to: "/franchise/tickets",
     icon: ListFilter,
     match: ["/franchise/tickets/"],
+    feature: "franchise.tickets",
+  },
+  {
+    label: "Live technicians",
+    to: "/franchise/live-technicians",
+    icon: LocateFixed,
+    // Epic 4: the franchisee's technicians out on a job. Read-only, and gated
+    // like Tickets; the server scopes to the franchisee's own.
     feature: "franchise.tickets",
   },
   // Last: administration, not daily work. A franchisee admin and a facility

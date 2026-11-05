@@ -17,6 +17,7 @@ import { describeError } from "@/lib/apiError";
 import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/utils/clipboard";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
+import { LocationStrip } from "@/components/tickets/LocationCorrection";
 import { isTerminalTicketStatus, isTimeChoosable } from "@/types/ticket";
 import type { TicketDetail, TicketProof } from "@/types/ticket";
 
@@ -42,7 +43,13 @@ const initials = (name: string) =>
 
 /** Ops sees customer contact throughout — the masking rule is the
  *  technician app's, and only applies before they accept. */
-export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
+export function CustomerPanel({
+  ticket,
+  canCorrectLocation = false,
+}: {
+  ticket: TicketDetail;
+  canCorrectLocation?: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -57,12 +64,32 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
             <div className="truncate text-sm font-semibold">
               {ticket.customerName}
             </div>
-            <a
-              href={`tel:${ticket.customerPhone.replace(/\s/g, "")}`}
-              className="text-xs text-ink-2 hover:text-brand-400"
-            >
-              {ticket.customerPhone}
-            </a>
+            <div className="flex flex-wrap items-center gap-x-1.5">
+              <a
+                href={`tel:${ticket.customerPhone.replace(/\s/g, "")}`}
+                className="text-xs text-ink-2 hover:text-brand-400"
+              >
+                {ticket.customerPhone}
+              </a>
+              {/* A6: a second number for the same customer. Absent on most
+                  tickets, so the row is never drawn empty — it simply does
+                  not exist here when there is nothing to show. */}
+              {ticket.customerAltPhone ? (
+                <>
+                  <span className="text-ink-3" aria-hidden>
+                    ·
+                  </span>
+                  <a
+                    href={`tel:${ticket.customerAltPhone.replace(/\s/g, "")}`}
+                    className="text-xs text-ink-2 hover:text-brand-400"
+                    aria-label={`Alternate number ${ticket.customerAltPhone}`}
+                  >
+                    {ticket.customerAltPhone}
+                    <span className="text-ink-3"> (alt)</span>
+                  </a>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
         <p className="mt-3.5 text-xs leading-relaxed text-ink-2">
@@ -86,6 +113,7 @@ export function CustomerPanel({ ticket }: { ticket: TicketDetail }) {
         </p>
 
         <SlotRequest ticket={ticket} />
+        <LocationStrip ticket={ticket} canCorrect={canCorrectLocation} />
       </CardContent>
     </Card>
   );
@@ -107,6 +135,9 @@ function SlotRequest({ ticket }: { ticket: TicketDetail }) {
   const [copied, setCopied] = useState(false);
   if (
     ticket.slotConfirmedAt ||
+    // A time ops agreed on the phone: the link stays alive (it also asks for the
+    // customer's location), but nothing is waiting on a pick any more.
+    ticket.slotStart ||
     ticket.slotRequestStatus === "not_needed" ||
     !isTimeChoosable(ticket)
   ) {
@@ -286,12 +317,13 @@ export function ProofPanel({ ticket }: { ticket: TicketDetail }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Proof of completion</CardTitle>
+        <CardTitle className="text-sm">Job start proof</CardTitle>
       </CardHeader>
       <CardContent>
         {!expectProof ? (
           <p className="text-[13px] text-ink-2">
-            Not submitted yet. Proof is captured on site at job completion.
+            Not submitted yet. Proof is captured on site when the technician
+            starts the job.
           </p>
         ) : isError ? (
           <div className="text-[13px] text-ink-2">

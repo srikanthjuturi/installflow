@@ -151,7 +151,35 @@ export interface Technician {
    */
   baseLocation?: BaseLocation | null;
 
+  /**
+   * Where spare parts are delivered for this technician (Epic 6). Detail read
+   * only, and present only for a caller who can manage them: undefined means
+   * "not yours to see", null means "nothing saved".
+   */
+  partsAddress?: PartsAddress | null;
+
   createdAt: string;
+}
+
+/** `partsAddress` on the technician detail. */
+export interface PartsAddress {
+  line: string;
+  city: string;
+  pincode: string;
+  landmark: string | null;
+  /** Who takes the parcel; null means the technician's own phone. */
+  contactPhone: string | null;
+  setAt: string;
+}
+
+/** `PUT …/parts-address` body. A JSON `null` body clears the address instead. */
+export interface PartsAddressInput {
+  line: string;
+  city: string;
+  pincode: string;
+  landmark?: string;
+  /** E.164; omitted means the technician's own phone. */
+  contactPhone?: string;
 }
 
 /** A phone number with an invite against it. Nothing else is known yet. */
@@ -181,6 +209,9 @@ export interface TechnicianInvite {
   franchiseeIsHome: boolean;
   technicianType: TechnicianType;
   canManage: boolean;
+
+  /** The coverage the manager assigned at invite time. Empty if none. */
+  pincodes: string[];
 
   createdAt: string;
 }
@@ -315,6 +346,8 @@ export interface DistrictBreakdown {
   districts: DistrictTechnicianCount[];
   totalTechnicians: number;
   withoutDistrict: number;
+  /** Live invites whose pincodes fall in this state, not yet in the totals. */
+  pendingInvites: number;
 }
 
 /* ── Task 17: moving a technician to another franchisee ─────────────────────

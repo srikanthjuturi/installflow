@@ -159,6 +159,15 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: becomes the gate for the new one.
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Who supplied the point above: 'vendor' (picked at intake), 'customer'
+    #: (set on their own link) or 'staff' (corrected, with a reason). NULL means
+    #: no point — which is the true statement "nobody supplied one", so it is
+    #: never backfilled with a guess. A CHECK ties it to the point and to
+    #: `location_set_at`, so a point can never exist without knowing its source.
+    location_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    location_set_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     #: Which intake channel produced this ticket: 'Manual', 'Excel' or 'API' —
     #: the same three words a vendor declares in `intake_channels`.
@@ -328,6 +337,14 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: which a force-closure can set to less than this. One number in one place.
     technician_payout_paise: Mapped[int] = mapped_column(Integer, nullable=False)
     vendor_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Epic 1.4: an optional EXTRA charge the vendor adds at raise (a part, say).
+    #: NULL is "none". Stamped at intake like the two prices, and billed to the
+    #: vendor when the ticket closes - as a Debit Note beside the Sales Invoice.
+    #: The vendor's credit-line reservation includes it. Never carried by a
+    #: technician-facing shape: neither party sees the other's figure.
+    extra_amount_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: What the extra is for. Required whenever the amount is set.
+    extra_amount_note: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     #: The operating rules this job runs under, resolved ONCE at intake.
     #:
@@ -367,6 +384,67 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         JSONB(none_as_null=True), nullable=True
     )
 
+    # ── A2: a flag, nothing else ────────────────────────────────────────────
+    #: A manager or vendor marking this job for attention on the board. It
+    #: changes no SLA, no routing and no eligibility — it is read, never
+    #: branched on, by anything in this slice. The triage it informs is a
+    #: human looking at a list.
+    is_high_priority: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    # ── A6: a second number for the same customer ───────────────────────────
+    #: E.164, like `customer_phone` above, and masked from a technician on the
+    #: same terms until they accept — it is as much the customer's own number
+    #: as the first. Optional: most tickets carry one phone, and this exists
+    #: for the household that gave two at intake (a tenant and a landlord, a
+    #: child and a parent) so a dead first number is not a dead end.
+    customer_alt_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # ── Epic 7: the locality within the pincode ─────────────────────────────
+    #: The post-office area the vendor picked ("Banjara Hills"), or typed when it
+    #: is not in the directory (`post_offices` is a suggestion list, never a
+    #: constraint). Part of the address, so masked from a technician until they
+    #: accept, like the street.
+    locality: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    # ── A7: where the unit was bought ────────────────────────────────────────
+    #: `online` | `offline`. Defaults to `offline`, which is the honest
+    #: baseline for every channel that cannot ask — Excel and the API — and for
+    #: a vendor that simply does not track it.
+    purchase_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'offline'")
+    )
+    #: Which platform, when `purchase_mode = 'online'` — a COMPOSITE FK into
+    #: `purchase_platforms`, see __table_args__. Null for an offline purchase,
+    #: and the CHECK below refuses the other way round: a platform asserts an
+    #: online purchase, so the two cannot disagree. Resolved to a NAME on read,
+    #: like every other `*_id` on this row.
+    purchase_platform_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, nullable=True
+    )
+    #: Free text, only when `purchase_mode = 'offline'` — "Croma showroom,
+    #: Banjara Hills", the vendor's own words for where an OFFLINE purchase
+    #: happened. There is no master of physical shops to join, which is the
+    #: whole reason this is a column and not a second `*_id` beside it: an
+    #: online purchase joins a REAL row (`purchase_platform_id`, found-or-
+    #: created from the same free text when the vendor picks "Others" —
+    #: `core.purchase_platforms.find_or_create`); an offline one has nowhere
+    #: to join and is kept exactly as typed.
+    #:
+    #: The CHECK below is `purchase_platform_id`'s mirror: a detail asserts an
+    #: OFFLINE purchase, so the two columns can never both be set — "online
+    #: and also a shop name" would be two contradicting answers to "where was
+    #: it bought", not two facts about one purchase.
+    #:
+    #: Resolved into `TicketOut.purchasePlatformName` on read, the same wire
+    #: field the ONLINE platform's name uses — a reader asks one question,
+    #: "where did they say they bought it", and the column behind the answer
+    #: is this table's business, not the client's.
+    purchase_platform_detail: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+
     __table_args__ = (
         # Declared on the MODEL, not only in a migration, so the model is the
         # whole truth about the table and `--autogenerate` can see them.
@@ -374,7 +452,8 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             "service_level_hours IN (12, 24, 36, 48)", name="service_level_hours"
         ),
         CheckConstraint(
-            "service_type IN ('Installation + Demo', 'Tech Visit', 'Service')",
+            "service_type IN ('Installation + Demo', 'Tech Visit', 'Service', "
+            "'Uninstall')",
             name="service_type",
         ),
         CheckConstraint(
@@ -401,6 +480,35 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             name="slot_request_status",
         ),
         CheckConstraint("source IN ('API', 'Excel', 'Manual')", name="source"),
+        CheckConstraint(
+            "location_source IS NULL OR "
+            "location_source IN ('vendor', 'customer', 'staff')",
+            name="location_source",
+        ),
+        CheckConstraint(
+            "(location_source IS NULL) = (latitude IS NULL) "
+            "AND (location_source IS NULL) = (location_set_at IS NULL)",
+            name="location_point",
+        ),
+        CheckConstraint(
+            "purchase_mode IN ('online', 'offline')", name="purchase_mode"
+        ),
+        # A platform is only ever an ONLINE fact — it names a storefront, which
+        # an offline purchase has none of. Not required the other way: `online`
+        # with no platform named is "we don't know which", a real and common
+        # answer.
+        CheckConstraint(
+            "purchase_platform_id IS NULL OR purchase_mode = 'online'",
+            name="purchase_platform_requires_online",
+        ),
+        # The mirror of the CHECK above: a typed store name is only ever an
+        # OFFLINE fact. Not required the other way — `offline` with nothing
+        # typed is "we don't know where", a real and common answer, same as
+        # an online purchase with no platform named.
+        CheckConstraint(
+            "purchase_platform_detail IS NULL OR purchase_mode = 'offline'",
+            name="purchase_platform_detail_requires_offline",
+        ),
         # `> 0`, not `>= 0`. A bonus of zero is not a smaller incentive, it is
         # the absence of one — and the absence is already spelled NULL. Two ways
         # to say "no bonus" is one way too many.
@@ -411,15 +519,32 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         # NOT NULL, so "no price" is not a state a ticket can be in.
         CheckConstraint("technician_payout_paise > 0", name="technician_payout_paise"),
         CheckConstraint("vendor_price_paise > 0", name="vendor_price_paise"),
+        CheckConstraint(
+            "extra_amount_paise IS NULL OR extra_amount_paise > 0",
+            name="extra_amount_paise",
+        ),
+        CheckConstraint(
+            "(extra_amount_paise IS NULL) = (extra_amount_note IS NULL)",
+            name="extra_amount_has_note",
+        ),
         # The description rule, as a backstop. It is validated in `schemas.py`
         # too, where it can give a per-field message; this is here so the table
         # describes itself and so a future importer that bypasses the request
         # schema cannot write a Service ticket with no fault on it.
         #
-        # Reads as "exactly one of the two is true", which works only because
-        # `service_type` is already constrained to three values above.
+        # Keyed on the REQUIRES-a-description set (`core.tickets.
+        # DESCRIPTION_REQUIRED_FOR`, spelled out rather than imported — a CHECK
+        # cannot reference Python) rather than on "equals Installation + Demo".
+        # That used to be an equivalent way to say it, back when `service_type`
+        # held exactly three values and "not Installation + Demo" meant "Tech
+        # Visit or Service" — the comment here said so. A5 added `Uninstall`
+        # alongside `Installation + Demo` in the no-description camp, and the
+        # old equality would have started demanding a description on every
+        # Uninstall ticket, disagreeing with `TicketCreateRequest._check`, which
+        # refuses one. This form stays correct for any future addition to
+        # either camp without needing to be touched again.
         CheckConstraint(
-            "(service_type = 'Installation + Demo') = (description IS NULL)",
+            "(service_type IN ('Tech Visit', 'Service')) = (description IS NOT NULL)",
             name="description_required",
         ),
         # Half a slot is not a time.
@@ -469,6 +594,14 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Index("ix_tickets_company_model", "company_id", "model_id"),
         Index("ix_tickets_company_technician", "company_id", "technician_id"),
         Index("ix_tickets_company_franchisee", "company_id", "franchisee_id"),
+        # The covering index for the composite FK below — without it, deleting
+        # a purchase platform would scan every ticket in the database to prove
+        # the RESTRICT holds.
+        Index(
+            "ix_tickets_company_purchase_platform",
+            "company_id",
+            "purchase_platform_id",
+        ),
         # A vendor USER's list is "my vendor, and raised by me". `created_by`
         # comes from ActorMixin as a plain UUID with no foreign key, so the
         # FK-coverage query that catches this class of miss would never ask for
@@ -505,6 +638,16 @@ class Ticket(Base, IdMixin, AuditMixin, SoftDeleteMixin):
             ["company_id", "franchisee_id"],
             ["franchisees.company_id", "franchisees.id"],
             name="fk_tickets_company_franchisee",
+            ondelete="RESTRICT",
+        ),
+        # RESTRICT, like every master above: a platform still named by a
+        # ticket cannot disappear from under it. Deactivating one
+        # (`purchase_platforms.is_active = false`) is the way to retire it —
+        # see `models/purchase_platform.py`.
+        ForeignKeyConstraint(
+            ["company_id", "purchase_platform_id"],
+            ["purchase_platforms.company_id", "purchase_platforms.id"],
+            name="fk_tickets_company_purchase_platform",
             ondelete="RESTRICT",
         ),
     )

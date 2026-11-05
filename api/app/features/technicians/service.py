@@ -26,6 +26,7 @@ from sqlalchemy import false as sql_false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.core import parts_address
 from app.core import brand
 from app.core.base_location import (
     MANAGER_SOURCES,
@@ -721,6 +722,7 @@ async def district_breakdown(
         .join(User, User.id == Membership.user_id)
         .where(
             TechnicianProfile.company_id == principal.company_id,
+            TechnicianProfile.status == ACTIVE,
             Membership.deleted_at.is_(None),
             User.deleted_at.is_(None),
         ),
@@ -801,6 +803,40 @@ async def district_breakdown(
     total, placed = int(totals[0] or 0), int(totals[1] or 0)
     without = total - placed
 
+    # Pending invites whose pincodes fall in this state — scoped by exactly the
+    # same per-role visibility the invite list uses, counted once per invite
+    # (an invite covering several pincodes here must not count several times).
+    home_id = (
+        await home_franchisee_id(session, principal.company_id)
+        if not principal.is_franchise
+        else None
+    )
+    visible_invites = _visible_invites(
+        select(TechnicianInvite.id).where(
+            TechnicianInvite.company_id == principal.company_id,
+            TechnicianInvite.status != REGISTERED,
+        ),
+        principal,
+        own,
+        home_id=home_id,
+    ).scalar_subquery()
+    pending_invites = int(
+        await session.scalar(
+            select(func.count(func.distinct(TechnicianInvite.id)))
+            .select_from(TechnicianInvite)
+            .join(
+                TechnicianInvitePincode,
+                TechnicianInvitePincode.invite_id == TechnicianInvite.id,
+            )
+            .join(Pincode, Pincode.code == TechnicianInvitePincode.pincode)
+            .where(
+                TechnicianInvite.id.in_(visible_invites),
+                Pincode.state_id == state_id,
+            )
+        )
+        or 0
+    )
+
     return DistrictBreakdownOut(
         districts=[
             DistrictTechnicianCount(
@@ -813,6 +849,7 @@ async def district_breakdown(
         ],
         totalTechnicians=total,
         withoutDistrict=without,
+        pendingInvites=pending_invites,
     )
 
 
@@ -952,6 +989,12 @@ async def list_technicians(
                 func.lower(User.full_name).like(term),
                 func.lower(User.phone).like(term),
                 func.lower(TechnicianProfile.code).like(term),
+                select(TechnicianPincode.id)
+                .where(
+                    TechnicianPincode.technician_id == TechnicianProfile.id,
+                    TechnicianPincode.pincode.like(term),
+                )
+                .exists(),
             )
         )
 
@@ -978,7 +1021,17 @@ async def list_technicians(
     if franchisee_id:
         invite_keys = invite_keys.where(TechnicianInvite.franchisee_id == franchisee_id)
     if term:
-        invite_keys = invite_keys.where(func.lower(TechnicianInvite.phone).like(term))
+        invite_keys = invite_keys.where(
+            or_(
+                func.lower(TechnicianInvite.phone).like(term),
+                select(TechnicianInvitePincode.id)
+                .where(
+                    TechnicianInvitePincode.invite_id == TechnicianInvite.id,
+                    TechnicianInvitePincode.pincode.like(term),
+                )
+                .exists(),
+            )
+        )
 
     # An invite has no status, subcategory, pincode, district, type or mode of
     # the technician kind — filtering on one is implicitly "registered only".
@@ -1114,6 +1167,7 @@ async def get_technician(
                 session, profile.base_set_by_user_id
             )
             detail.baseLocation = base
+        detail.partsAddress = parts_address.out_of(profile)
     return detail
 
 
@@ -2342,6 +2396,8 @@ async def _remove_technician(
     membership.updated_by = actor_user_id
     profile.status = "inactive"
     profile.updated_by = actor_user_id
+    user.deleted_at = _now()
+    user.is_active = False
     await session.execute(
         delete(TechnicianPincode).where(TechnicianPincode.technician_id == profile.id)
     )
@@ -2778,3 +2834,49 @@ async def count_pending_upi_changes(
         )
     ) or 0
     return UpiChangeCountOut(pending=pending)
+
+
+# ── spare-parts delivery address (Epic 6) ────────────────────────────────────
+
+
+async def get_my_parts_address(session: AsyncSession, principal: Principal):
+    profile = await _own_profile(session, principal)
+    return parts_address.out_of(profile)
+
+
+async def set_my_parts_address(
+    session: AsyncSession, principal: Principal, body: parts_address.PartsAddressIn
+):
+    profile = await _own_profile(session, principal)
+    await parts_address.apply(
+        session, profile, body, by_user_id=principal.user_id, now=_now()
+    )
+    await session.commit()
+    return parts_address.out_of(profile)
+
+
+async def clear_my_parts_address(session: AsyncSession, principal: Principal) -> None:
+    profile = await _own_profile(session, principal)
+    parts_address.clear(profile, by_user_id=principal.user_id, now=_now())
+    await session.commit()
+
+
+async def set_parts_address(
+    session: AsyncSession,
+    principal: Principal,
+    technician_id: uuid.UUID,
+    body: parts_address.PartsAddressIn | None,
+) -> TechnicianDetailOut:
+    """A manager (or franchisee admin) setting - or, with None, clearing - an address.
+
+    Same `_load_managed` wall as every other write on a technician.
+    """
+    profile, _, _ = await _load_managed(session, principal, technician_id)
+    if body is None:
+        parts_address.clear(profile, by_user_id=principal.user_id, now=_now())
+    else:
+        await parts_address.apply(
+            session, profile, body, by_user_id=principal.user_id, now=_now()
+        )
+    await session.commit()
+    return await get_technician(session, principal, technician_id)

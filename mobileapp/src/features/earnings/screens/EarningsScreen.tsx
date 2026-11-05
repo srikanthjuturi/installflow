@@ -17,6 +17,7 @@ import {
 import { breakdown } from '@/features/earnings/breakdown';
 import { LedgerRow } from '@/features/earnings/components/LedgerRow';
 import { useIsEmployee } from '@/features/profile/hooks/useIsEmployee';
+import { useRedeemable } from '@/features/redeem/hooks/useRedeem';
 import { RedeemCard } from '@/features/redeem/components/RedeemCard';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { errorText } from '@/i18n/errorText';
@@ -124,6 +125,8 @@ export function EarningsScreen() {
   // Task 06. An employee's job pay arrives with their salary, so the caption
   // under the net figure says what the figure is for them instead.
   const employee = useIsEmployee();
+  // The same query the Redeem card reads - no second request. Read-only.
+  const onHoldPaise = Math.max(0, useRedeemable().data?.holdingPaise ?? 0);
 
   // The query string IS the cache key — see `qk.earningsSummary`. Two windows
   // that ask the server the same thing are the same answer by construction.
@@ -267,6 +270,18 @@ export function EarningsScreen() {
               >
                 {t(employee ? 'earnings.netCaptionEmployee' : 'earnings.netCaption')}
               </Text>
+              {onHoldPaise > 0 ? (
+                <Text
+                  style={{
+                    fontFamily: 'Roboto_500Medium',
+                    fontSize: 12.5,
+                    color: color.textOnChrome,
+                    marginTop: 4,
+                  }}
+                >
+                  {t('earnings.onHold', { amount: formatPaise(onHoldPaise) })}
+                </Text>
+              ) : null}
 
               {/* The three tiles keep the SERVER's figures, which already include
                   travel and speed (index §6a). The "incl." line under each is a

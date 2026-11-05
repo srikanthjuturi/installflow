@@ -375,7 +375,10 @@ def test_migration_lists_are_the_models_vocabulary() -> None:
 
     values = migration._values
     assert values(migration._STATUS_BEFORE) | {"Awaiting Part"} == set(TICKET_STATUSES)
-    assert values(migration._EVENTS_BEFORE) | values(migration._NEW_EVENTS) == set(EVENT_KINDS)
+    # `location_set` was added after this migration (e5b81c3d9a27), so it is theirs, not this file's.
+    assert values(migration._EVENTS_BEFORE) | values(migration._NEW_EVENTS) == set(EVENT_KINDS) - {
+        "location_set"
+    }
     # Task 12's migration describes the vocabulary AT d6c3a9f1e874; kinds added by later
     # migrations (Task 18's `ticket_handed`, f3b9d1a6c845) are theirs, not this file's.
     assert values(migration._NOTIFICATIONS_BEFORE) | values(migration._NEW_NOTIFICATIONS) == set(

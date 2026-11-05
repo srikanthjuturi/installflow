@@ -39,12 +39,11 @@ customer's own word, which is what `customer_agreed` decides. The column says
 "the customer picked this", and the console prints exactly that sentence off it;
 a manager booking a time they agreed on the phone has not earned it.
 
-That leaves the manager's door one real hazard, and it closes it differently: a
-`Slot Pending` ticket still has a live slot link out there. Ops books at 14:00,
-the customer opens this morning's WhatsApp at 14:05, and `confirm_slot` finds
-`slot_confirmed_at` null, passes its 409 and overwrites the slot just agreed on
-the phone. So that door spends the TOKEN instead of claiming the customer's
-consent — same protection, without the lie.
+That leaves the manager's door one real hazard — a `Slot Pending` ticket has a
+live slot link out there, and the customer could open it after ops booked a time
+and choose a different window. It used to be closed by spending the TOKEN. The
+link now also collects the customer's location, so the token is kept and
+`confirm_slot` refuses any ticket that already has a `slot_start`.
 
 ## It never commits
 
@@ -135,6 +134,7 @@ async def move_slot(
     customer_agreed: bool,
     by_user: uuid.UUID | None = None,
     note: str | None = None,
+    actor_role: str | None = None,
 ) -> str | None:
     """Write the new window. Returns the new status, or None if somebody raced us.
 
@@ -199,17 +199,12 @@ async def move_slot(
     # resurrect a spent token).
     if customer_agreed and row.slot_confirmed_at is None:
         values["slot_confirmed_at"] = _now()
-    elif not customer_agreed and row.slot_confirmed_at is None and row.slot_token:
-        # A manager booking a ticket whose customer still holds a live slot
-        # link. We cannot claim they picked it, so the column stays null — but
-        # then nothing stops them opening that link five minutes later and
-        # choosing a different window over the one just agreed on the phone
-        # (`confirm_slot` only refuses once `slot_confirmed_at` is set).
-        #
-        # Spending the token closes it. The link answers "this link is not
-        # valid", which is true: the visit it was asking about is booked, and
-        # the confirmation WhatsApp says what to.
-        values["slot_token"] = None
+    # A manager booking a ticket whose customer still holds a live link used to
+    # SPEND the token here, so the customer could not open it and overwrite the
+    # time just agreed on the phone. The link now also asks for the customer's
+    # location, so it must stay alive; `tickets.service.confirm_slot` refuses a
+    # ticket that already has a `slot_start` instead, which is the same
+    # protection without losing the link.
 
     result = await db.execute(
         update(Ticket)
@@ -233,8 +228,6 @@ async def move_slot(
     row.slot_start, row.slot_end = start, end
     if "slot_confirmed_at" in values:
         row.slot_confirmed_at = values["slot_confirmed_at"]  # type: ignore[assignment]
-    if "slot_token" in values:
-        row.slot_token = None
 
     moved = when_label(start, end)
     # Both windows, old first. The ticket keeps only the current one, so without
@@ -252,6 +245,7 @@ async def move_slot(
             kind="slot_confirmed" if first_booking else "rescheduled",
             actor_kind=actor_kind,
             actor_label=actor_label,
+            actor_role=actor_role,
             created_by=by_user,
             note=trail if not note else f"{trail} · {note}",
             # An `Awaiting Part` job stays there, and the event must not look

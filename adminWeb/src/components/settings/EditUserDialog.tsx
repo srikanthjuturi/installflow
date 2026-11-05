@@ -7,6 +7,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -48,7 +49,7 @@ export function EditUserDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Sized and sectioned like its sibling, the invite dialog — the two are
           the same form and looked unrelated at different widths. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-3xl">
         {user ? (
           <EditUserForm
             key={user.membershipId}
@@ -122,129 +123,135 @@ function EditUserForm({
   }
 
   return (
-<form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
-      <DialogHeader>
-        <DialogTitle>Edit {user.fullName ?? user.email}</DialogTitle>
-        <DialogDescription>
-          {user.email} · {user.roleLabel} — role and email can&apos;t be changed
-          here.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-5"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Edit {user.fullName ?? user.email}</DialogTitle>
+          <DialogDescription>
+            {user.email} · {user.roleLabel} — role and email can&apos;t be
+            changed here.
+          </DialogDescription>
+        </DialogHeader>
 
-      <FormSection legend="Person">
-        <FieldGrid className={COLS}>
-          {/* Spans the row so Phone sits beneath it rather than beside a gap. */}
-          <Field
-            className="sm:col-span-2"
-            data-invalid={err("fullName") ? true : undefined}
-          >
-            <FieldLabel htmlFor="fullName" required>
-              Full name
-            </FieldLabel>
-            <Input
-              id="fullName"
-              autoComplete="name"
-              aria-invalid={err("fullName") ? true : undefined}
-              {...register("fullName")}
-            />
-            {err("fullName") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("fullName")}
-              </FieldDescription>
-            ) : null}
-          </Field>
+        <FormSection legend="Person">
+          <FieldGrid className={COLS}>
+            {/* Spans the row so Phone sits beneath it rather than beside a gap. */}
+            <Field
+              className="sm:col-span-2"
+              data-invalid={err("fullName") ? true : undefined}
+            >
+              <FieldLabel htmlFor="fullName" required>
+                Full name
+              </FieldLabel>
+              <Input
+                id="fullName"
+                autoComplete="name"
+                aria-invalid={err("fullName") ? true : undefined}
+                {...register("fullName")}
+              />
+              {err("fullName") ? (
+                <FieldDescription role="alert" className="text-danger">
+                  {err("fullName")}
+                </FieldDescription>
+              ) : null}
+            </Field>
 
-          <Field data-invalid={err("phone") ? true : undefined}>
-            <FieldLabel htmlFor="phone" required>
-              Phone
-            </FieldLabel>
-            <Input
-              id="phone"
-              placeholder="+91 90000 00000"
-              autoComplete="tel"
-              aria-invalid={err("phone") ? true : undefined}
-              {...register("phone")}
-            />
-            {err("phone") ? (
-              <FieldDescription role="alert" className="text-danger">
-                {err("phone")}
-              </FieldDescription>
-            ) : null}
-          </Field>
-        </FieldGrid>
-      </FormSection>
-
-      {/* Only when the role carries one — see the invite dialog. */}
-      {roleHasTerritory(user.role) ? (
-        <FormSection legend="Territory">
-          <FieldGrid className="grid gap-4">
-            <ScopeField
-              role={user.role}
-              regionIds={regionIds}
-              stateIds={stateIds}
-              onRegionIds={(next) =>
-                setValue("regionIds", next, { shouldValidate: true })
-              }
-              onStateIds={(next) =>
-                setValue("stateIds", next, { shouldValidate: true })
-              }
-              regionError={err("regionIds")}
-              stateError={err("stateIds")}
-            />
+            <Field data-invalid={err("phone") ? true : undefined}>
+              <FieldLabel htmlFor="phone" required>
+                Phone
+              </FieldLabel>
+              <Input
+                id="phone"
+                placeholder="+91 90000 00000"
+                autoComplete="tel"
+                aria-invalid={err("phone") ? true : undefined}
+                {...register("phone")}
+              />
+              {err("phone") ? (
+                <FieldDescription role="alert" className="text-danger">
+                  {err("phone")}
+                </FieldDescription>
+              ) : null}
+            </Field>
           </FieldGrid>
         </FormSection>
-      ) : null}
 
-      {/* The section heading IS the legend now — the inner FieldSet kept its
+        {/* Only when the role carries one — see the invite dialog. */}
+        {roleHasTerritory(user.role) ? (
+          <FormSection legend="Territory">
+            <FieldGrid className="grid gap-4">
+              <ScopeField
+                role={user.role}
+                regionIds={regionIds}
+                stateIds={stateIds}
+                onRegionIds={(next) =>
+                  setValue("regionIds", next, { shouldValidate: true })
+                }
+                onStateIds={(next) =>
+                  setValue("stateIds", next, { shouldValidate: true })
+                }
+                regionError={err("regionIds")}
+                stateError={err("stateIds")}
+              />
+            </FieldGrid>
+          </FormSection>
+        ) : null}
+
+        {/* The section heading IS the legend now — the inner FieldSet kept its
           own and the word "Status" appeared twice, one above the other. */}
-      <FormSection legend="Status">
-        <FieldSet>
-          <Controller
-            name="isActive"
-            control={control}
-            render={({ field }) => (
-              <RadioGroup
-                aria-label="Status"
-                value={field.value ? "active" : "suspended"}
-                onValueChange={(v) => field.onChange(v === "active")}
-                className="grid grid-cols-2 gap-2.5"
-              >
-                {[
-                  { value: "active", label: "Active" },
-                  { value: "suspended", label: "Suspended" },
-                ].map((o) => (
-                  <label
-                    key={o.value}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
-                      (field.value ? "active" : "suspended") === o.value
-                        ? "border-brand-500 bg-brand-100/40"
-                        : "border-line hover:border-brand-400"
-                    )}
-                  >
-                    <RadioGroupItem value={o.value} />
-                    <span>{o.label}</span>
-                  </label>
-                ))}
-              </RadioGroup>
-            )}
-          />
-          <FieldDescription>
-            Suspended users can&apos;t sign in to this company.
-          </FieldDescription>
-        </FieldSet>
-      </FormSection>
+        <FormSection legend="Status">
+          <FieldSet>
+            <Controller
+              name="isActive"
+              control={control}
+              render={({ field }) => (
+                <RadioGroup
+                  aria-label="Status"
+                  value={field.value ? "active" : "suspended"}
+                  onValueChange={(v) => field.onChange(v === "active")}
+                  className="grid grid-cols-2 gap-2.5"
+                >
+                  {[
+                    { value: "active", label: "Active" },
+                    { value: "suspended", label: "Suspended" },
+                  ].map((o) => (
+                    <label
+                      key={o.value}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2.5 rounded-md border px-3 py-2.5 text-[13px] transition-colors",
+                        (field.value ? "active" : "suspended") === o.value
+                          ? "border-brand-500 bg-brand-100/40"
+                          : "border-line hover:border-brand-400"
+                      )}
+                    >
+                      <RadioGroupItem value={o.value} />
+                      <span>{o.label}</span>
+                    </label>
+                  ))}
+                </RadioGroup>
+              )}
+            />
+            <FieldDescription>
+              Suspended users can&apos;t sign in to this company.
+            </FieldDescription>
+          </FieldSet>
+        </FormSection>
 
-      {/* The failure is reported in the toaster (App.tsx), not here. */}
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={update.isPending}>
-          {update.isPending ? <Spinner data-icon="inline-start" /> : null}
-          Save changes
-        </Button>
-      </DialogFooter>
+        {/* The failure is reported in the toaster (App.tsx), not here. */}
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={update.isPending}>
+            {update.isPending ? <Spinner data-icon="inline-start" /> : null}
+            Save changes
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

@@ -9,6 +9,8 @@ a tech visit when something is wrong with it.
                           The core job this product was built around.
     Tech Visit            Attend an installed unit to diagnose or check it.
     Service               Scheduled or requested maintenance on an installed unit.
+    Uninstall             Remove an installed unit — the customer is moving it,
+                          returning it, or replacing it with another.
 
 Lives in core rather than the masters slice because the jobs slice will need the
 same vocabulary to type a ticket, and hard rule 4 forbids one slice importing
@@ -20,7 +22,7 @@ what it supports first, and ticket intake reads it later.
 #: schema-layer rule: unlike the icon catalogue — which changes with a deploy and
 #: would make every addition a migration — these are the shapes of work the
 #: business does, and they do not change on a release cadence.
-SERVICE_TYPES = ("Installation + Demo", "Tech Visit", "Service")
+SERVICE_TYPES = ("Installation + Demo", "Tech Visit", "Service", "Uninstall")
 
 #: What a model supports unless somebody says otherwise. This product exists for
 #: installation and demo work (see the root AGENTS.md), so it is the honest
@@ -32,4 +34,5 @@ SERVICE_TYPE_DESCRIPTION = {
     "Installation + Demo": "Fit the unit and show the customer how to use it.",
     "Tech Visit": "Attend an installed unit to diagnose or check it.",
     "Service": "Maintenance on a unit that is already installed.",
+    "Uninstall": "Remove an installed unit.",
 }

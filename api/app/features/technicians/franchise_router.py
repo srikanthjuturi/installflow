@@ -36,7 +36,9 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
-from app.features.technicians import service
+from app.core.parts_address import PartsAddressIn
+from app.features.technicians import rules_service, service
+from app.features.technicians.rules_schemas import HoldingIn, TechnicianRulesIn, TechnicianRulesOut
 from app.features.technicians.schemas import (
     AppLinkOutcome,
     InviteCreateRequest,
@@ -211,6 +213,57 @@ async def update_technician(
     """Edit one. A type change 409s `TECHNICIAN_HAS_OPEN_JOBS` while a job is open."""
     data = await service.update_technician(db, principal, technician_id, body)
     return envelope(data, message="Technician updated")
+
+
+@router.get(
+    "/technicians/{technician_id}/rules", response_model=ApiEnvelope[TechnicianRulesOut]
+)
+async def get_rules(
+    technician_id: uuid.UUID, db: Db, principal: CanTech
+) -> ApiEnvelope[TechnicianRulesOut]:
+    return envelope(await rules_service.get_rules(db, principal, technician_id))
+
+
+@router.put(
+    "/technicians/{technician_id}/rules", response_model=ApiEnvelope[TechnicianRulesOut]
+)
+async def put_rules(
+    technician_id: uuid.UUID, body: TechnicianRulesIn, db: Db, principal: CanTech
+) -> ApiEnvelope[TechnicianRulesOut]:
+    """Overrides for one of your technicians; null inherits; applies to jobs accepted after."""
+    return envelope(
+        await rules_service.put_rules(db, principal, technician_id, body),
+        message="Rules saved",
+    )
+
+
+@router.put(
+    "/technicians/{technician_id}/holding", response_model=ApiEnvelope[TechnicianRulesOut]
+)
+async def put_holding(
+    technician_id: uuid.UUID, body: HoldingIn, db: Db, principal: CanPay
+) -> ApiEnvelope[TechnicianRulesOut]:
+    """Holding is about money, so it rides the payouts key, not the roster key."""
+    return envelope(
+        await rules_service.put_holding(db, principal, technician_id, body),
+        message="Holding saved",
+    )
+
+
+@router.put(
+    "/technicians/{technician_id}/parts-address",
+    response_model=ApiEnvelope[TechnicianDetailOut],
+)
+async def set_parts_address(
+    technician_id: uuid.UUID,
+    body: PartsAddressIn | None,
+    db: Db,
+    principal: CanTech,
+) -> ApiEnvelope[TechnicianDetailOut]:
+    return envelope(
+        await service.set_parts_address(db, principal, technician_id, body),
+        message="Parts address saved",
+    )
 
 
 @router.put(

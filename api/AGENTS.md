@@ -514,8 +514,10 @@ Eight things about it are load-bearing:
   with `ESCALATION_IS_A_REFUSAL`.
 - **`slot_confirmed_at` is written by the technician's door only.** It means "the customer picked
   this" and the console prints exactly that sentence off it, so a manager who agreed a time on the
-  phone has not earned it. That door spends the `slot_token` instead — same protection against the
-  customer's stale link overwriting a fresh booking, without the false claim.
+  phone has not earned it. That door USED to spend the `slot_token`; it no longer does, because the
+  link also collects the customer's location (see the root `AGENTS.md`). `confirm_slot` instead refuses any
+  ticket that already has a `slot_start` — same protection against the customer's stale link overwriting a
+  fresh booking, without the false claim.
 - **Everybody who needs telling is told**, and each by the right channel: the customer a WhatsApp
   naming BOTH windows (its own template, never a second "your visit is confirmed"), the technician
   a push when a manager moved their day, and the vendor a `rescheduled` notification — they asked

@@ -122,6 +122,7 @@ export const SERVICE_TYPES = [
   "Installation + Demo",
   "Tech Visit",
   "Service",
+  "Uninstall",
 ] as const satisfies readonly ServiceType[];
 
 /** One line each, shown beside the option so the choice is not a guess. */
@@ -129,6 +130,7 @@ export const SERVICE_TYPE_HINT: Record<ServiceType, string> = {
   "Installation + Demo": "Fit the unit and show the customer how to use it.",
   "Tech Visit": "Attend an installed unit to diagnose or check it.",
   Service: "Maintenance on a unit that is already installed.",
+  Uninstall: "Remove an installed unit.",
 };
 
 /** The ceiling, in rupees. Ten lakh is no install anybody does; it is here to
@@ -193,7 +195,7 @@ export const modelSchema = (withPricing = true) =>
   );
 
 const baseModelSchema = z.object({
-  name: z.string().trim().min(1, "Model name is required"),
+  name: z.string().trim().min(1, "Model name is required").max(120, "120 characters max"),
   /** The vendor who supplies it. Required — a product nobody supplies is one
    *  no ticket can be raised against. `min(1)` rather than `.uuid()`: the
    *  control stores "" when empty, and "Select a vendor" is the message that

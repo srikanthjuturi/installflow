@@ -45,6 +45,8 @@ export interface DashboardFilters {
   stateId?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** A1: one vendor's own figures — the same narrowing `GET /tickets` takes. */
+  vendorId?: string;
 }
 
 /** The wire shape of `GET /tickets/summary`. */
@@ -89,6 +91,7 @@ export async function getDashboard(
   if (filters.stateId) query.set("stateId", filters.stateId);
   if (filters.dateFrom) query.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) query.set("dateTo", filters.dateTo);
+  if (filters.vendorId) query.set("vendorId", filters.vendorId);
   const qs = query.toString();
 
   const s = await apiGet<SummaryWire>(`/tickets/summary${qs ? `?${qs}` : ""}`);
@@ -177,18 +180,20 @@ export async function getDashboard(
       {
         n: String(s.funnel.active),
         label: "Assigned / in progress",
-        // THREE statuses, which is why `status` takes a set — the same set the
-        // API's `active` tally counts since Task 12 §4.6 (Awaiting Part is a
-        // job in hand). Linking to `Assigned` alone would open a list holding
-        // part of the number above it, and the reader has no way to tell which
-        // part is missing.
+        // FOUR statuses, which is why `status` takes a set — the same set the
+        // API's `active` tally counts (Task 12 §4.6, plus Awaiting Customer).
+        // Linking to `Assigned` alone would open a list holding part of the
+        // number above it, and the reader has no way to tell which part is
+        // missing.
+        hint: "Assigned, In Progress, Awaiting Part, Awaiting Customer",
         to: linkTo("/tickets", {
-          status: "Assigned,In Progress,Awaiting Part",
+          status: "Assigned,In Progress,Awaiting Part,Awaiting Customer",
         }),
       },
       {
         n: String(s.funnel.closedThisWeek),
         label: ranged ? "Closed" : "Closed this week",
+        hint: "Closed, Force-Closed",
         // Both ways a job ends up finished, and the window the server actually
         // measured — `closedWithinDays` is null when a date range is in force,
         // because the range (already riding along in `linkTo`) is what bounds
