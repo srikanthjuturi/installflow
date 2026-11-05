@@ -8,7 +8,6 @@ import { SlaBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { useNavOrigin, type NavOrigin } from "@/hooks/useNavOrigin";
 import { useVendorOptions } from "@/hooks/useVendors";
-import { useWorkspace } from "@/hooks/useWorkspace";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
 import { CLOSED_TICKET_STATUSES, type SlaState, type Ticket } from "@/types";
@@ -98,11 +97,10 @@ export function TicketTable({
   // (see the hook) — fetched here rather than threaded in as a prop because
   // nothing else on this screen needs the list, and the product form already
   // pays for this exact query.
-  // A franchise role is deliberately not granted `masters.view`, which gates
-  // this list — asking anyway is a 403 "Not allowed" toast on every open, so
-  // the portal skips the query and drops the Vendor filter below.
-  const { workspace } = useWorkspace();
-  const showVendorFilter = workspace !== "franchise";
+  // `GET /vendors/options` accepts either `masters.view` or `franchise.tickets`,
+  // and scopes a franchise principal to only the vendors that raised tickets
+  // under its franchisee — so a franchise workspace gets the filter too.
+  const showVendorFilter = true;
   const vendorOptions = useVendorOptions({ enabled: showVendorFilter });
   const vendorId = params.filters?.vendorId ?? "";
   // A2: the board's own flag. "true" or absent — never "false" — because the
@@ -311,7 +309,7 @@ export function TicketTable({
         value: params.search ?? "",
         onChange: (v) => narrow({ ...params, search: v }),
       }}
-      filters={showVendorFilter ? filters : filters.filter((f) => f.id !== "vendorId")}
+      filters={filters}
       toolbarActions={toolbarActions}
       // No `defaultSort`: until a header is clicked the order is the server's,
       // and no column here carries the date it sorts on, so an arrow on any of

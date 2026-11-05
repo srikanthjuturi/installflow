@@ -180,16 +180,14 @@ export async function getDashboard(
       {
         n: String(s.funnel.active),
         label: "Assigned / in progress",
-        // Names what the number holds. Awaiting Customer is NOT in it — that
-        // status is counted under Open tickets only.
-        hint: "Assigned, In Progress, Awaiting Part",
-        // THREE statuses, which is why `status` takes a set — the same set the
-        // API's `active` tally counts since Task 12 §4.6 (Awaiting Part is a
-        // job in hand). Linking to `Assigned` alone would open a list holding
-        // part of the number above it, and the reader has no way to tell which
-        // part is missing.
+        // FOUR statuses, which is why `status` takes a set — the same set the
+        // API's `active` tally counts (Task 12 §4.6, plus Awaiting Customer).
+        // Linking to `Assigned` alone would open a list holding part of the
+        // number above it, and the reader has no way to tell which part is
+        // missing.
+        hint: "Assigned, In Progress, Awaiting Part, Awaiting Customer",
         to: linkTo("/tickets", {
-          status: "Assigned,In Progress,Awaiting Part",
+          status: "Assigned,In Progress,Awaiting Part,Awaiting Customer",
         }),
       },
       {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Minus, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GeoState } from "@/types/geo";
@@ -55,6 +55,28 @@ const [MAP_W, MAP_H] = [
   INDIA_EXTENT[2] - INDIA_EXTENT[0],
   INDIA_EXTENT[3] - INDIA_EXTENT[1],
 ];
+
+/**
+ * How wide the invisible per-state hit area should read on screen, and how
+ * far it may reach in the MAP's OWN units.
+ *
+ * `vectorEffect="non-scaling-stroke"` (the previous approach) keeps a stroke
+ * a constant width in SCREEN pixels no matter how small the SVG is rendered —
+ * which is exactly backwards for correctness: at a phone's ~390px width the
+ * whole 764-unit-wide country is squeezed into a third of its desktop size,
+ * so the SAME screen-pixel margin balloons into many more map units, wide
+ * enough for a small state's (e.g. Telangana's) hit halo to reach into its
+ * neighbour's (Maharashtra's) territory and win the hit-test.
+ *
+ * The fix computes the stroke in MAP units for the CURRENT render instead —
+ * `DESIRED_HIT_SCREEN_PX` converted through the actual container-width/zoom
+ * scale — and caps it at `MAX_HIT_MAP_UNITS`, a value picked well under any
+ * real state's width (states span tens to hundreds of units; the visible
+ * border itself is 0.8–2.2 units) so the buffer can enlarge a tap target
+ * without ever being able to swallow a neighbour, at any screen size.
+ */
+const DESIRED_HIT_SCREEN_PX = 14;
+const MAX_HIT_MAP_UNITS = 6;
 
 /**
  * Keep the drawing covering the frame.
@@ -214,6 +236,22 @@ export function IndiaMap({
   // Cursor position in container-relative pixels, for the floating hover label.
   const [hoverPt, setHoverPt] = useState<{ x: number; y: number } | null>(null);
 
+  // How wide the container is actually RENDERED — the piece `non-scaling-stroke`
+  // used to get for free (and get wrong) by reading the CTM at paint time. Null
+  // until the first measurement, which is why the hit-stroke math below falls
+  // back to the capped value rather than the uncapped desktop one.
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setContainerWidth(width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // All of these are only ever touched inside event handlers, so refs are
   // right: they change on every pointermove and none of it belongs in a render.
   const gesture = useRef<{
@@ -257,6 +295,16 @@ export function IndiaMap({
   /** Scale about the middle of the country, then slide by the pan. */
   const transform = `translate(${(MAP_W / 2) * (1 - zoom) + pan.x}px, ${(MAP_H / 2) * (1 - zoom) + pan.y}px) scale(${zoom})`;
   const canPan = zoom > MIN_ZOOM;
+
+  // The invisible per-state hit margin, in MAP units for THIS render. Before
+  // the first measurement there is no safe way to size it generously, so it
+  // starts at the cap rather than at whatever an unmeasured 0 would compute.
+  const hitStrokeWidth = containerWidth
+    ? Math.min(
+        DESIRED_HIT_SCREEN_PX / ((containerWidth / MAP_W) * zoom),
+        MAX_HIT_MAP_UNITS
+      )
+    : MAX_HIT_MAP_UNITS;
 
   const { drawn, unplaced } = useMemo(() => {
     const drawn: { state: GeoState; keys: string[] }[] = [];
@@ -488,15 +536,18 @@ export function IndiaMap({
                 >
                   <title>{`${state.name} — ${mark.detail}`}</title>
                   {/* An invisible wide stroke widens the effective tap target
-                      for small states without changing their visible size. */}
+                      for small states without changing their visible size.
+                      Sized in MAP units (not `non-scaling-stroke`) and capped
+                      at `MAX_HIT_MAP_UNITS`, so the margin stays generous on a
+                      phone without growing wide enough to reach a neighbouring
+                      state — see the comment above `DESIRED_HIT_SCREEN_PX`. */}
                   {keys.map((k) => (
                     <path
                       key={`hit-${k}`}
                       d={INDIA_PATHS[k]}
                       fill="transparent"
                       stroke="transparent"
-                      strokeWidth={14}
-                      vectorEffect="non-scaling-stroke"
+                      strokeWidth={hitStrokeWidth}
                     />
                   ))}
                   {keys.map((k) => (
