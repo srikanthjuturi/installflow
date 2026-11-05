@@ -6,6 +6,9 @@ other), keeping the dependency graph acyclic.
 
 from fastapi import APIRouter
 
+from app.features.api_credentials.router import logs_router as api_logs_router
+from app.features.api_credentials.router import router as api_credentials_router
+from app.features.api_credentials.token_router import router as integration_token_router
 from app.features.auth.router import router as auth_router
 from app.features.companies.router import router as companies_router
 from app.features.credits.platform_router import router as platform_router
@@ -47,6 +50,7 @@ from app.features.technicians.router import router as technicians_router
 from app.features.technicians.franchise_router import (
     router as technicians_franchise_router,
 )
+from app.features.tickets.integration_router import router as integration_tickets_router
 from app.features.tickets.router import router as tickets_router
 from app.features.tickets.ws import router as tickets_stream_router
 from app.features.territory.router import router as territory_router
@@ -61,6 +65,10 @@ from app.features.vendors.router import router as vendors_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
+api_router.include_router(api_credentials_router)
+api_router.include_router(api_logs_router)
+api_router.include_router(integration_token_router)
+api_router.include_router(integration_tickets_router)
 api_router.include_router(companies_router)
 api_router.include_router(users_router)
 api_router.include_router(rbac_router)

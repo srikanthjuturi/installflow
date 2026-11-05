@@ -294,6 +294,14 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     #: "43 inch LED" and Sunview's can sit in one category.
     brand_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    #: The VENDOR'S OWN code for this product, which is what a CRM names it by —
+    #: our ids mean nothing to it. NULL is the true statement "the vendor has not
+    #: recorded one" and reads as "no SKU", never as a blank or a guess. Trimmed,
+    #: at most 64. Unique per vendor ignoring case, through the hand-written
+    #: partial index `uq_product_models_vendor_sku_lower` (live rows with a SKU
+    #: only — see `f7a3c9e1b254`); Alembic will want to drop it on every
+    #: autogenerate run, so delete that drop.
+    sku: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: What a technician can be sent to do with this model — one or more of
     #: `app.core.service_types.SERVICE_TYPES`, in catalogue order.
     #:
@@ -423,6 +431,7 @@ class ProductModel(Base, IdMixin, AuditMixin, SoftDeleteMixin):
     )
 
     __table_args__ = (
+        CheckConstraint("sku IS NULL OR length(btrim(sku)) > 0", name="sku"),
         CheckConstraint(
             "warranty_months IS NULL OR (warranty_months >= 0 AND warranty_months <= 240)",
             name="warranty_months",

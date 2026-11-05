@@ -500,6 +500,9 @@ function ModelChip({
       ? `Supplied by ${model.vendorName}`
       : null,
     model.capacity,
+    // Said both ways, like the serial line below: "does its CRM have a code for
+    // this?" is a fair question to answer without opening the product.
+    model.sku ? `SKU ${model.sku}` : "No SKU",
     model.warrantyMonths === null
       ? null
       : `${model.warrantyMonths} month warranty`,
@@ -578,6 +581,16 @@ function ModelChip({
           {model.capacity}
         </span>
       ) : null}
+      {/* The vendor's own code, or the plain words when it has none — never a
+          blank, which would read as a value that failed to load. */}
+      <span
+        className={cn(
+          "text-[11px] font-normal",
+          model.sku ? "font-mono text-ink-2" : "text-ink-3"
+        )}
+      >
+        {model.sku ?? "No SKU"}
+      </span>
       {model.isActive ? null : <StatusPill isActive={false} />}
       {/* Only when it is NOT approved. A badge on every chip would be noise on
           a screen where almost everything is approved, and the interesting

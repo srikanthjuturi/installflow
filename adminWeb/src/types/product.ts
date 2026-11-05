@@ -56,6 +56,12 @@ export interface ProductModel {
   brandId: string;
   brandName: string;
   name: string;
+  /**
+   * The VENDOR'S OWN code for this product — what its CRM names it by. Null
+   * means the vendor has not recorded one, and renders as "No SKU", never as a
+   * blank. Unique per vendor, ignoring case.
+   */
+  sku: string | null;
   /** At least one, always in catalogue order — the API normalises it. */
   serviceTypes: ServiceType[];
   /**
@@ -213,6 +219,8 @@ export interface CreateModelInput {
   vendorId: string;
   /** One of that vendor's APPROVED brands — the server refuses anything else. */
   brandId: string;
+  /** The vendor's own code for it. Optional, at most 64 characters. */
+  sku?: string | null;
   serviceTypes: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
@@ -248,6 +256,8 @@ export interface SubmitModelInput {
   name: string;
   /** One of the vendor's OWN approved brands. */
   brandId: string;
+  /** The vendor's own code for it. Optional, at most 64 characters. */
+  sku?: string | null;
   serviceTypes: ServiceType[];
   capacity?: string | null;
   warrantyMonths?: number | null;
@@ -271,6 +281,8 @@ export interface UpdateModelInput {
   vendorId?: string;
   /** Re-branding is allowed; clearing the brand is not. */
   brandId?: string;
+  /** The vendor's own code. `null` clears it; omit to leave alone. */
+  sku?: string | null;
   /** Sent whole — omit to leave alone; an empty array is refused. */
   serviceTypes?: ServiceType[];
   capacity?: string | null;

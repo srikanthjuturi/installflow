@@ -41,6 +41,13 @@ export const TICKET_STATUSES = [
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 /**
+ * Which intake channel produced a ticket — the same three words a vendor
+ * declares in `intakeChannels`. Mirrors `tickets.source` on the server.
+ */
+export const TICKET_SOURCES = ["Manual", "Excel", "API"] as const;
+export type TicketSource = (typeof TICKET_SOURCES)[number];
+
+/**
  * The three statuses a ticket never leaves. Mirrors TERMINAL_STATUSES in
  * `api/app/core/tickets.py`.
  *
@@ -414,6 +421,13 @@ export interface Ticket {
   customerConfirmedAt: string | null;
   /** They answered and said the work is NOT finished. */
   customerRefused: boolean;
+
+  /**
+   * How this ticket reached us: typed in by the vendor (`Manual`), from a
+   * spreadsheet (`Excel`) or pushed by the vendor's own CRM (`API`). Drawn as
+   * "API · <vendor name>" for the last so staff can see whose system it was.
+   */
+  source: TicketSource;
 
   createdAt: string;
 }

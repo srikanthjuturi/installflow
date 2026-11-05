@@ -202,6 +202,9 @@ class TicketCreateRequest(BaseModel):
 class TicketOut(AppModel):
     id: uuid.UUID
     code: str
+    #: Which intake channel produced it: `Manual`, `Excel` or `API`. The console
+    #: shows it (an API ticket reads "API" plus the vendor's name) and filters on it.
+    source: str = "Manual"
 
     vendorId: uuid.UUID
     #: The catalogue node this job names. Still `subcategoryId` on the wire

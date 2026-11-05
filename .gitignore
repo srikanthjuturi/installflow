@@ -16,3 +16,6 @@ Thumbs.db
 # Excel lock files — created while a workbook is open, never content
 ~$*
 __pycache__/
+.specify/
+.claude/skills/
+specs/

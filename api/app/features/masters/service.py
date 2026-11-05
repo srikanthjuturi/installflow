@@ -295,6 +295,44 @@ async def _assert_model_name_free(
         )
 
 
+def _clean_sku(value: str | None) -> str | None:
+    """Trimmed; blank is none — the same reading `capacity` and `notes` have."""
+    return (value or "").strip() or None
+
+
+async def _assert_sku_free(
+    db: AsyncSession,
+    company_id: uuid.UUID,
+    vendor_id: uuid.UUID,
+    sku: str | None,
+    *,
+    exclude_id: uuid.UUID | None = None,
+) -> None:
+    """A SKU is unique within its VENDOR, ignoring case (`uq_product_models_vendor_sku_lower`).
+
+    Another vendor may use the same one. Checked here so the refusal names the
+    product that already has it; the partial unique index is what settles a race.
+    """
+    if sku is None:
+        return
+    stmt = select(ProductModel.name).where(
+        ProductModel.company_id == company_id,
+        ProductModel.vendor_id == vendor_id,
+        ProductModel.deleted_at.is_(None),
+        func.lower(ProductModel.sku) == sku.lower(),
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(ProductModel.id != exclude_id)
+    holder = await db.scalar(stmt.limit(1))
+    if holder is not None:
+        raise AppError(
+            409,
+            "SKU_TAKEN",
+            f'The SKU "{sku}" is already used by {holder}. A SKU can belong to '
+            "only one of a vendor's products.",
+        )
+
+
 async def _brand_names(
     db: AsyncSession, company_id: uuid.UUID, brand_ids: set[uuid.UUID]
 ) -> dict[uuid.UUID, str]:
@@ -641,6 +679,7 @@ async def get_tree(
                     brandId=m.brand_id,
                     brandName=brand_names.get(m.brand_id, ""),
                     name=m.name,
+                    sku=m.sku,
                     serviceTypes=list(m.service_types or []),
                     capacity=m.capacity,
                     warrantyMonths=m.warranty_months,
@@ -1127,6 +1166,8 @@ async def create_model(
         db, principal.company_id, body.vendorId, body.brandId
     )
     await _assert_model_name_free(db, node_id, name, brand_id=brand_id)
+    sku = _clean_sku(body.sku)
+    await _assert_sku_free(db, principal.company_id, body.vendorId, sku)
 
     sort_order = await _next_sort(
         db,
@@ -1142,6 +1183,7 @@ async def create_model(
             vendor_id=body.vendorId,
             brand_id=brand_id,
             name=name,
+            sku=sku,
             service_types=list(body.serviceTypes),
             capacity=(body.capacity or "").strip() or None,
             warranty_months=body.warrantyMonths,
@@ -1202,6 +1244,16 @@ async def update_model(
             db, row.node_id, new_name, brand_id=row.brand_id, exclude_id=model_id
         )
     row.name = new_name
+    # A SKU can be cleared, so it tests presence like `capacity`. Re-checked when
+    # the vendor moves too: the same SKU may already be taken under the new one.
+    # Checked BEFORE it is assigned: a refusal must not leave the refused value
+    # sitting on the row for the next flush to trip over.
+    new_sku = _clean_sku(body.sku) if "sku" in body.model_fields_set else row.sku
+    if "sku" in body.model_fields_set or moving:
+        await _assert_sku_free(
+            db, principal.company_id, row.vendor_id, new_sku, exclude_id=model_id
+        )
+    row.sku = new_sku
     if body.serviceTypes is not None:
         # A new list, not a mutation: SQLAlchemy does not track JSONB in place.
         row.service_types = list(body.serviceTypes)
@@ -1311,6 +1363,8 @@ async def submit_model(
         db, principal.company_id, principal.vendor_id, body.brandId
     )
     await _assert_model_name_free(db, node_id, name, brand_id=brand_id)
+    sku = _clean_sku(body.sku)
+    await _assert_sku_free(db, principal.company_id, principal.vendor_id, sku)
 
     sort_order = await _next_sort(
         db,
@@ -1327,6 +1381,7 @@ async def submit_model(
         vendor_id=principal.vendor_id,
         brand_id=brand_id,
         name=name,
+        sku=sku,
         service_types=list(body.serviceTypes),
         capacity=(body.capacity or "").strip() or None,
         warranty_months=body.warrantyMonths,
@@ -1382,6 +1437,12 @@ async def update_own_model(
             db, row.node_id, name, brand_id=row.brand_id, exclude_id=model_id
         )
         row.name = name
+    if "sku" in body.model_fields_set:
+        new_sku = _clean_sku(body.sku)
+        await _assert_sku_free(
+            db, principal.company_id, principal.vendor_id, new_sku, exclude_id=model_id
+        )
+        row.sku = new_sku
     if body.serviceTypes is not None:
         row.service_types = list(body.serviceTypes)
     if body.parameters is not None:
@@ -1717,6 +1778,7 @@ async def _approvals_out(
                 vendorName=vendor_names.get(r.vendor_id, ""),
                 brandName=brand_names.get(r.brand_id, ""),
                 name=r.name,
+                sku=r.sku,
                 serviceTypes=list(r.service_types or []),
                 capacity=r.capacity,
                 warrantyMonths=r.warranty_months,

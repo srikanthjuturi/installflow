@@ -76,7 +76,7 @@ export const CHANNEL_HINT: Record<IntakeChannel, string> = {
  * It errs safe in the only direction that matters: it can offer fewer channels
  * than the server allows, never more, and the server refuses the difference.
  */
-export const LOCAL_AVAILABLE: readonly IntakeChannel[] = ["Excel", "Manual"];
+export const LOCAL_AVAILABLE: readonly IntakeChannel[] = ["API", "Excel", "Manual"];
 
 /**
  * Which screen in the VENDOR PORTAL serves each channel. Null where none does.
@@ -87,7 +87,9 @@ export const LOCAL_AVAILABLE: readonly IntakeChannel[] = ["Excel", "Manual"];
  * is actually deciding.
  */
 export const CHANNEL_SCREEN: Record<IntakeChannel, string | null> = {
-  API: null,
+  // No screen: it is the vendor's own CRM calling us. What ticking it adds is a
+  // credential, issued on Integrations → API Credentials.
+  API: "the vendor's CRM",
   // Both real now: ticking either adds an entry screen to this vendor's rail,
   // through `portalNav.ts`'s CHANNEL_ENTRY.
   Excel: "the vendor portal",

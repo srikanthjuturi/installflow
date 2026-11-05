@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.api.router import api_router
+from app.core.integration_log import sweep_api_log_retention
 from app.core.scheduler import ticker
 from app.features.tickets.sweeps import (
     sweep_customer_notice,
@@ -123,6 +124,9 @@ async def lifespan(app: FastAPI):
     ticker.register("document-email", sweep_document_emails)
     # Live-location rows for jobs that ended: delete the personal data (Epic 4).
     ticker.register("location-cleanup", sweep_stale_locations)
+    # The CRM API's call log holds customers' details: clear them after 30 days,
+    # delete the rows after a year, and tidy spent refresh tokens.
+    ticker.register("api-log-retention", sweep_api_log_retention)
     await ticker.start()
     yield
     await ticker.stop()

@@ -33,6 +33,12 @@ export const COMPANY_GST_CODES: readonly string[] = [
   GST_DUPLICATE_COMPANY,
 ];
 
+/* ── the vendor CRM API ───────────────────────────────────────────────────── */
+/** Another of the SAME vendor's products already has this SKU (ignoring case).
+ *  409 on a product save; belongs on the SKU field. Mirrors `masters` on the
+ *  server, which names the product that holds it. */
+export const SKU_TAKEN = "SKU_TAKEN";
+
 /* ── geography ────────────────────────────────────────────────────────────── */
 /** Mirrors `api/app/features/geo/service.py`. Both belong on one input, which
  *  is the whole reason they carry a code: a pincode save can also 409 for

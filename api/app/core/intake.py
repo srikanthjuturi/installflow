@@ -24,33 +24,23 @@ importing another's.
 #: check like `icon_key`. The icon catalogue changes with a deploy; this does not.
 INTAKE_CHANNELS = ("API", "Excel", "Manual")
 
-#: What a vendor may actually be given today.
+#: What a vendor may actually be given. All three are real now:
 #:
-#: "API" is deliberately absent. Marking a vendor Excel or Manual is true the
-#: moment it is saved — ops can start uploading or keying that vendor's tickets
-#: immediately. Marking one API would be a promise: there is nothing for their
-#: system to call, and no credential for it to call with.
-#:
-#: Move it across when the push endpoint and key issuance land. Nothing else in
-#: this module changes, and the schema layer picks the difference up for free.
-AVAILABLE_INTAKE_CHANNELS = ("Excel", "Manual")
-#
-#: The API channel, when built, must create tickets through `create_ticket` (or
-#: stamp with `franchisee_for_pincode` under `lock_routing(shared)`) — Task 04.
+#:   Manual / Excel  need nothing from us beyond the vendor's own portal.
+#:   API             the vendor's CRM pushes to `/integration/tickets` with a
+#:                   credential an Admin issues on the console's API Credentials
+#:                   screen (`features/api_credentials`). The credential only works
+#:                   while this channel is ticked on the vendor.
+AVAILABLE_INTAKE_CHANNELS = ("API", "Excel", "Manual")
 
 #: Manual, because it is the one that is always true: somebody can always type
 #: a ticket in. A vendor nobody has configured is not an API integration.
 DEFAULT_INTAKE_CHANNELS = ("Manual",)
 
-#: Why an unavailable channel cannot be picked. Returned by the API so the
-#: console renders one reason rather than inventing its own, the same way
-#: `GET /masters/icons` keeps the icon catalogue in one place.
-UNAVAILABLE_REASON = {
-    "API": (
-        "Coming soon — we'll issue this vendor an API key once the endpoint "
-        "their system pushes to is built."
-    ),
-}
+#: Why an unavailable channel cannot be picked. Empty while every channel is
+#: available; kept so the console still renders one reason from the API rather
+#: than inventing its own the day a channel is withdrawn.
+UNAVAILABLE_REASON: dict[str, str] = {}
 
 #: One line per channel, shown under the option so the choice is not a guess.
 #: Approved prototype copy — do not reword.

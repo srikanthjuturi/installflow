@@ -85,6 +85,7 @@ from app.features.tickets.schemas import (
     TicketOut,
     TicketProofOut,
 )
+from app.core.intake import INTAKE_CHANNELS
 from app.models.role import AREA_MANAGER, NATIONAL_HEAD
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
@@ -200,6 +201,7 @@ async def list_tickets(
     closedWithinDays: Annotated[int | None, Query(ge=1, le=365)] = None,
     attention: Annotated[str | None, Query()] = None,
     highPriority: Annotated[bool | None, Query()] = None,
+    source: Annotated[str | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """One page of tickets, newest first.
 
@@ -256,6 +258,11 @@ async def list_tickets(
     None of them widens anything: they narrow a list that `scoped()` has
     already cut to the caller's own territory.
     """
+    if source is not None and source not in INTAKE_CHANNELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown source: {source}. Choose from {', '.join(INTAKE_CHANNELS)}.",
+        )
     rows, total = await service.list_tickets(
         db,
         principal,
@@ -274,6 +281,7 @@ async def list_tickets(
         closed_within_days=closedWithinDays,
         attention=attention,
         high_priority=highPriority,
+        source=source,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 

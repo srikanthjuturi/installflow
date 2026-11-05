@@ -80,6 +80,8 @@ KEEP_TABLES: dict[str, str] = {
 #: Tenant tables: a row goes when its `company_id` is a deleted company.
 COMPANY_TABLES: frozenset[str] = frozenset(
     {
+        "api_credentials",
+        "api_refresh_tokens",
         "company_role_features",
         "company_rules",
         "company_sequences",
@@ -90,6 +92,7 @@ COMPANY_TABLES: frozenset[str] = frozenset(
         "franchisee_speed_rules",
         "franchisee_travel_rules",
         "franchisees",
+        "integration_call_logs",
         "job_passes",
         "ledger_entries",
         "membership_states",

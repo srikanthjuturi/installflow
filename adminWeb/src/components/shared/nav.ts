@@ -6,6 +6,7 @@ import {
   ArrowLeftRight,
   Coins,
   HandCoins,
+  KeyRound,
   ReceiptText,
   IndianRupee,
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
   LocateFixed,
   Map,
   Route,
+  ScrollText,
   SlidersHorizontal,
   Store,
   Tags,
@@ -319,6 +321,33 @@ export const NAV_GROUPS: NavGroup[] = [
         // floor no Feature Access override can lift: a recharge spends company
         // money. Hard rule 8: this hides the link, the server refuses the act.
         feature: "credits.manage",
+      },
+    ],
+  },
+  {
+    // Vendors' own systems sending tickets in (the API intake channel). Its own
+    // group rather than two more Configuration rows: it is a different kind of
+    // job — issuing machine logins and reading what they did — and the rail
+    // already carries a dozen Configuration entries.
+    name: "Integrations",
+    items: [
+      {
+        label: "API Credentials",
+        to: "/integrations/credentials",
+        icon: KeyRound,
+        // The Client ID and Secret a vendor's CRM signs in with. Seeded to admin
+        // and national_head by the migration that added it. Hard rule 8: this
+        // hides the link, the server refuses the act.
+        feature: "integrations.manage",
+      },
+      {
+        label: "API Logs",
+        to: "/integrations/logs",
+        icon: ScrollText,
+        // Every call those systems made, and why a refused one was refused.
+        // The same key as the credentials beside it — whoever issues them reads
+        // what they did.
+        feature: "integrations.manage",
       },
     ],
   },

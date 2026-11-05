@@ -1956,6 +1956,63 @@ Two traps that hid this:
   absolute paths, or it exits 127 and the previous server keeps serving while you believe you
   restarted it.
 
+## The vendor CRM API — a vendor's own system pushes tickets (spec 002)
+
+Where the code lives, because backend hard rule 4 (slices never import each other) decided it:
+
+```
+app/core/integration_tokens.py   PURE: client id, secret, hashing, the integration JWT
+app/core/integration_errors.py   every code a CRM can receive, with its words — ONE table
+app/core/integration_log.py      write a call-log row (own session), the 60/min count, the retention sweep
+app/core/integration_auth.py     the guard: token -> fresh credential read -> rate limit -> a vendor Principal
+features/api_credentials/        the console (credentials, API Logs) and POST /integration/token. Imports NO other slice.
+features/tickets/integration_*   the CRM's ticket endpoints, inside the tickets slice so they can call create_ticket_as
+```
+
+**One create path.** `service.create_ticket_as(..., source, external_ref, created_by, actor_kind, actor_label, check_only)` is
+the only place a ticket is made; the portal's `create_ticket` wraps it. `check_only` runs everything including the credit check
+and then `db.rollback()`s, so nothing is created, charged or sent and the reference is not used up. ⚠ A rollback EXPIRES every
+loaded object: after a check-only call use only plain values captured before it. The refusals on that path are `AppError`s with
+codes (`UNKNOWN_PINCODE`, `PRODUCT_INACTIVE`, `SERVICE_TYPE_NOT_SUPPORTED`, `EXPECTED_DATE_PASSED`, `VISIT_TIME_NOT_ALLOWED`,
+plus the credit and serial ones that already had them); the words are unchanged, so the portal reads the same.
+
+**The access token is an `integration` JWT** — `get_current_principal` rejects anything whose `type` is not `access`, so it can
+never be a console login. It says WHO is calling and nothing else; `load_usable_credential` re-reads the credential, its vendor
+(active, `API` still ticked) and its company on every call. That one query is what makes revoking immediate.
+
+**Refresh tokens** are opaque, hashed, single use (decided by an `UPDATE ... WHERE used_at IS NULL`, so two renewals at once cannot
+both win) and 30 days long; using one issues a new pair. A replayed token is refused, never punished by revoking the credential —
+a CRM that retries a renewal after a timeout would otherwise cut itself off.
+
+**⚠ One connection.** `DB_POOL_SIZE=1`, no overflow, in every environment, so a request that opens a SECOND session while its own
+is open deadlocks against itself and ends 30 seconds later in a pool timeout. `core.integration_log.record_call` therefore takes the
+REQUEST's session, rolls it back (which releases the connection and expires every loaded object — capture plain ids first) and writes
+the row on it. The integration tests run with `DB_POOL_SIZE=6` because the test's own session needs a connection too, which hides
+this; a unit test pins the rule, and the behaviour was proved against a real server started with the default pool.
+
+**The rate limit counts `integration_call_logs`** rows (the last minute, per credential, every endpoint, check-only included). A call
+refused for the limit is not counted, or a client that keeps hammering would keep itself blocked. The token endpoint is throttled the
+same way for a KNOWN credential; an unknown Client ID is logged to the server log only (no company to own a row).
+
+**Idempotency.** The existing `uq_tickets_vendor_external_ref` (unique per vendor, `lower(external_ref)`) is the guard; the service
+looks the reference up first and, on a lost race, re-reads the winner. A reference stays tied to its ticket for ever.
+
+**What a CRM may read** is an allow-list built field by field (`integration_tracking.py`), never a `TicketOut` passed through.
+Event notes are never sent (they carry staff reasons and phone numbers); only the fixed titles in `TIMELINE_TITLES`. A vendor never
+sees its ticket's franchisee, so the CRM does not either. `changedSince` means the ticket row OR its newest event is later, because
+adding an event does not always bump `tickets.updated_at`.
+
+**Call log.** `detail` is a redacted summary (the customer's phone masked, no name or address) and is NULLed after 30 days; the row
+is deleted after a year; spent refresh tokens are tidied after 30 days (`api-log-retention` in the ticker). Nothing here ever holds
+a secret, a token or the Authorization header.
+
+**SKU.** `product_models.sku`, ≤ 64, trimmed, blank is none. Checked in `_assert_sku_free` BEFORE it is assigned (a refused value must not
+sit on the row for the next flush) and enforced by the partial unique index `uq_product_models_vendor_sku_lower`. It rides the console
+product form, the vendor portal's submit/resubmit and the product import (`SKU` column; a sheet that leaves it blank never wipes one).
+
+**Migration `f7a3c9e1b254`** is stacked on `e5b81c3d9a27` (the development database's head), NOT on `d4f8a21b9c56`, which is still held
+back. Two heads remain: migrate by revision id, never `head`, production first.
+
 ## The bulk ticket importer — a spreadsheet in, tickets out
 
 `features/tickets/import_service.py`, `POST /tickets/import` (a vendor's own) and

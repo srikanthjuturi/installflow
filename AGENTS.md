@@ -655,6 +655,26 @@ Conventional Commits, e.g. `feat(jobs): masked job offer and accept sheet`.
   NOT move. Every save is a `location_set` event. ⚠ A time picked by a manager no longer spends the
   token (the link must survive for the location); `confirm_slot` refuses any ticket that already has a
   `slot_start` instead. The page also has an address search (the browser asks OpenStreetMap's Nominatim, once per press of Search, never per keystroke — the API calls no map provider), warns the customer when the pin is more than 25 km from the pincode centre (a warning, never a block), and shows a saved location read-only.
+- **A vendor's own CRM can raise tickets — the `API` intake channel (spec 002).** PUSH only: the CRM calls us, we never
+  call it. A company Admin or National Head issues a CREDENTIAL (a Client ID and a Client Secret) for ONE vendor on the
+  console's Integrations → API Credentials screen (`integrations.manage`); the secret is shown once and emailed to the
+  vendor's primary login (on screen only if the email fails), and is stored as a hash. A vendor may hold several Active
+  credentials; **Replace makes a NEW one and leaves the old working until it is revoked**. The CRM trades them at
+  `POST /api/v1/integration/token` for a one-hour access token and a 30-day refresh token (single use, rotated), then
+  `POST /integration/tickets` makes ONE ticket per call through the SAME `create_ticket_as` the portal uses, so every
+  credit, pincode, serial, visit-type, price and customer-message rule applies unchanged. **Whether a credential may act is
+  re-read on every call** (revoked, vendor paused, `API` unticked, company closed all stop it on the next call; the token only
+  says who is calling). The CRM names its product by the **vendor's own SKU** (`product_models.sku`, unique per vendor ignoring
+  case) and an unknown SKU is REFUSED — the API never creates a product, pending or otherwise. A franchisee, price, vendor,
+  company or service-level window in the body is IGNORED: the pincode decides the franchisee, the product the price, and every
+  API ticket gets the standard 24h window. The CRM's reference is required and tied to its ticket **for ever** (cancelled
+  included, case-insensitive); the same reference returns that ticket as a repeat and charges nothing, and `checkOnly` runs every
+  rule then rolls back. `tickets.source = 'API'`, `created_by` = the CREDENTIAL id (so a vendor sub-user never sees it; the
+  primary login and staff do). The CRM reads back through an ALLOW-LIST (`integration_tracking.py`): status, visit time, the
+  technician's NAME only, a fixed-title timeline (never event notes), customer feedback — never a phone, a money figure, a
+  private link, or **the franchisee** (a vendor never sees it, so neither does its CRM). 60 calls a minute per credential.
+  Every call from a known credential is in API Logs (details cleared at 30 days, rows deleted at one year); a call with an
+  unknown Client ID has no company and goes to the server log only. Detail: `api/AGENTS.md` → The vendor CRM API.
 - **A vendor may add an extra charge at raise** (`tickets.extra_amount_paise` + a required note). It counts against
   the vendor's credit line from intake, is billed in full at closure as a Debit Note beside the Sales Invoice (on a
   force-closure only when the visit itself is billed), and is never in a technician-facing shape.

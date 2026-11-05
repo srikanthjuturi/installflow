@@ -142,6 +142,7 @@ export default function TicketListPage() {
       />
 
       <TicketTable
+        showSource
         tickets={data?.rows}
         meta={data?.pagination}
         params={params}

@@ -204,6 +204,11 @@ const baseModelSchema = z.object({
   /** One of that vendor's approved brands — what is printed on the unit, and
    *  what every row shows. Required for the same reason as the vendor. */
   brandId: z.string().min(1, "Select a brand"),
+  /** The vendor's own code for this product, which its CRM names it by.
+   *  Optional — blank means "not recorded" and is sent as null. The server
+   *  compares ignoring case and refuses a clash within the vendor (409
+   *  `SKU_TAKEN`), which the form puts on this field. */
+  sku: z.string().trim().max(64, "A SKU is at most 64 characters"),
   /** At least one — a model nobody can be sent to do anything with is not a
    *  model. Order does not matter here; the API stores catalogue order. */
   serviceTypes: z

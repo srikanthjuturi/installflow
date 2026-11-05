@@ -38,7 +38,9 @@ import {
  *
  * A1: `params.filters.vendorId` reaches `GET /tickets?vendorId=` through the
  * generic filter flattening in `http.ts` — no code here has to know the key
- * exists. `useTicketFilters` is what makes it a controllable own-filter
+ * exists. `params.filters.source` (`Manual`, `Excel` or `API`) travels the same
+ * way as `GET /tickets?source=`; the server answers 422 to anything else, which
+ * is why `useTicketFilters` only ever writes one of the three. `useTicketFilters` is what makes it a controllable own-filter
  * (beside `status`) rather than a one-off; see its own note.
  */
 export function listTickets(params: ListParams = {}): Promise<Page<Ticket>> {

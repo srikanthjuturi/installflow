@@ -147,6 +147,14 @@ COLUMNS: tuple[_Column, ...] = (
         "7 kg Front Load",
     ),
     _Column(
+        "sku",
+        "SKU",
+        ("sku", "vendorsku", "productcode", "modelcode", "itemcode"),
+        16,
+        "TV-43-4K",
+        "WM-7-FL",
+    ),
+    _Column(
         "serviceTypes",
         "Service Types",
         ("servicetypes", "servicetype", "type", "requesttype"),
@@ -244,6 +252,12 @@ _README_LINES: tuple[str, ...] = (
     "",
     "Brand",
     "  One of your approved brands. Leave it blank only if you have exactly one.",
+    "",
+    "SKU",
+    "  Your own code for the product, the one your CRM sends when it raises a",
+    "  ticket. At most 64 characters, and each SKU can belong to only one of",
+    "  your products (upper and lower case count as the same). Leave it blank",
+    "  to leave an existing product's SKU as it is.",
     "",
     "Service Types",
     "  One or more of: Installation + Demo, Tech Visit, Service — separated by",
@@ -477,6 +491,7 @@ class _Row:
     node_id: uuid.UUID | None = None
     brand: "VendorBrand | None" = None
     name: str = ""
+    sku: str | None = None
     service_types: list[str] = dataclasses.field(default_factory=list)
     capacity: str | None = None
     warranty_months: int | None = None
@@ -610,6 +625,12 @@ def _shape_check(row: _Row, *, is_staff: bool) -> None:
         )
         return
     row.capacity = capacity or None
+
+    sku = cells.get("sku", "").strip()
+    if len(sku) > 64:
+        row.refuse("SKU_TOO_LONG", "The SKU is longer than 64 characters.", "sku")
+        return
+    row.sku = sku or None
 
     types, err = _parse_service_types(cells.get("serviceTypes", ""))
     if err:
@@ -1077,10 +1098,35 @@ async def _resolve_products(
         ):
             existing[(model.node_id, model.brand_id, model.name.strip().lower())] = model
 
+    # ── SKUs: unique within the vendor, ignoring case ────────────────────
+    taken: dict[str, tuple[uuid.UUID, str]] = {}
+    if any(r.sku for r in live):
+        for model_id, model_name, model_sku in (
+            await db.execute(
+                select(ProductModel.id, ProductModel.name, ProductModel.sku).where(
+                    ProductModel.company_id == principal.company_id,
+                    ProductModel.vendor_id == vendor.id,
+                    ProductModel.sku.is_not(None),
+                    ProductModel.deleted_at.is_(None),
+                )
+            )
+        ).all():
+            taken[model_sku.lower()] = (model_id, model_name)
+
     for row in live:
         assert row.node_id is not None and row.brand is not None
         key = (row.node_id, row.brand.id, row.name.lower())
         match = existing.get(key)
+        if row.sku and row.sku.lower() in taken:
+            holder_id, holder_name = taken[row.sku.lower()]
+            if match is None or match.id != holder_id:
+                row.refuse(
+                    "SKU_TAKEN",
+                    f'The SKU "{row.sku}" is already used by {holder_name}. A SKU '
+                    "can belong to only one of a vendor's products.",
+                    "sku",
+                )
+                continue
         if match is None:
             row.action = "create"
             if is_staff and (
@@ -1120,11 +1166,23 @@ def _mark_duplicates(rows: list[_Row]) -> int:
     lost race there is a 500 where a sentence belongs.
     """
     seen: set[tuple[uuid.UUID, uuid.UUID, str]] = set()
+    seen_skus: set[str] = set()
     duplicates = 0
     for row in rows:
         if row.reject is not None or row.node_id is None or row.brand is None:
             continue
         key = (row.node_id, row.brand.id, row.name.lower())
+        if row.sku and row.sku.lower() in seen_skus and key not in seen:
+            row.refuse(
+                "SKU_DUPLICATE_IN_FILE",
+                f'The SKU "{row.sku}" is named by an earlier row in this file too. '
+                "Each SKU belongs to one product.",
+                "sku",
+            )
+            duplicates += 1
+            continue
+        if row.sku:
+            seen_skus.add(row.sku.lower())
         if key in seen:
             row.refuse(
                 "DUPLICATE_IN_FILE",
@@ -1232,6 +1290,7 @@ async def _commit(
                 vendor_id=vendor.id,
                 brand_id=row.brand.id,
                 name=row.name,
+                sku=row.sku,
                 service_types=list(row.service_types),
                 capacity=row.capacity,
                 warranty_months=row.warranty_months,
@@ -1257,6 +1316,10 @@ async def _commit(
         # The name may differ only in case from what is stored — the match key
         # is case-insensitive — so this still picks up a capitalisation fix.
         model.name = row.name
+        # Blank leaves an existing SKU alone: a sheet that never had the column
+        # must not wipe what the vendor recorded by hand.
+        if row.sku is not None:
+            model.sku = row.sku
         model.service_types = list(row.service_types)
         model.capacity = row.capacity
         model.warranty_months = row.warranty_months

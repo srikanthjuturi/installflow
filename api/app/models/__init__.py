@@ -37,6 +37,8 @@ from app.models.territory import (
     Region,
     State,
 )
+from app.models.api_credential import ApiCredential, ApiRefreshToken
+from app.models.integration_log import IntegrationCallLog
 from app.models.ticket import Ticket
 from app.models.notification import Notification, NotificationRead
 from app.models.push_token import PushToken
@@ -57,6 +59,9 @@ from app.models.vendor_credits import (
 from app.models.web_push_subscription import WebPushSubscription
 
 __all__ = [
+    "ApiCredential",
+    "ApiRefreshToken",
+    "IntegrationCallLog",
     "PostOffice",
     "TechnicianLocation",
     "TechnicianHoldingEvent",

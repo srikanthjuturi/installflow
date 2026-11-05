@@ -48,6 +48,10 @@ const VendorCreditPage = lazy(
 const VendorPaymentPage = lazy(
   () => import("@/pages/vendorCredit/VendorPaymentPage")
 );
+const ApiCredentialsPage = lazy(
+  () => import("@/pages/integrations/ApiCredentialsPage")
+);
+const ApiLogsPage = lazy(() => import("@/pages/integrations/ApiLogsPage"));
 const FranchiseeSettlementsPage = lazy(
   () => import("@/pages/franchisees/FranchiseeSettlementsPage")
 );
@@ -628,6 +632,12 @@ export const routes: RouteObject[] = [
                 path: "vendor-credit/payments/:id",
                 element: <VendorPaymentPage />,
               },
+              // Guarded by `integrations.manage` off the nav table.
+              {
+                path: "integrations/credentials",
+                element: <ApiCredentialsPage />,
+              },
+              { path: "integrations/logs", element: <ApiLogsPage /> },
               // Guarded by `finance.transactions` off the nav table.
               { path: "transactions", element: <TransactionsPage /> },
               // Guarded by `credits.manage` off the nav table, the recharge

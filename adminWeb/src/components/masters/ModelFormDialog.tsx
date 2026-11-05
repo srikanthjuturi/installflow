@@ -10,6 +10,8 @@ import {
   useImagePicker,
   type PickedImage,
 } from "@/components/shared/useImagePicker";
+import { SKU_TAKEN } from "@/lib/errorCodes";
+import { ApiError } from "@/services/client";
 import { uploadImage } from "@/services/uploads";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -187,6 +189,7 @@ function ModelForm({
     control,
     register,
     setValue,
+    setError,
     getValues,
     handleSubmit,
     formState: { errors },
@@ -198,6 +201,7 @@ function ModelForm({
       name: model?.name ?? "",
       vendorId: model?.vendorId ?? submitter?.vendorId ?? "",
       brandId: model?.brandId ?? "",
+      sku: model?.sku ?? "",
       // Installation + demo is what this product exists for, so it is the
       // starting point for a new model rather than an empty set.
       serviceTypes: model?.serviceTypes ?? ["Installation + Demo"],
@@ -257,9 +261,22 @@ function ModelForm({
   }
 
   function submit(values: ModelFormValues) {
+    // A SKU already on another of the vendor's products is the one failure this
+    // form can say WHERE it is. The toast every mutation raises still fires;
+    // this puts the same sentence on the box so the fix is in front of them.
+    // Matched on the code, never on the words.
+    const onSkuTaken = (err: Error) => {
+      if (err instanceof ApiError && err.code === SKU_TAKEN) {
+        setError("sku", { type: "server", message: err.message });
+      }
+    };
+
     const shared = {
       name: values.name,
       brandId: values.brandId,
+      // "Not recorded" is null, never an empty string — the same rule as
+      // `capacity` below, so unknown and blank cannot diverge.
+      sku: values.sku.trim() || null,
       serviceTypes: values.serviceTypes,
       // An empty box means "not recorded", which the API stores as null —
       // never an empty string, so "unknown" and "blank" cannot diverge.
@@ -292,6 +309,7 @@ function ModelForm({
         resubmit.mutate(
           { id: model.id, ...shared },
           {
+            onError: onSkuTaken,
             onSuccess:
               model.approvalStatus === "rejected"
                 ? done(
@@ -308,6 +326,7 @@ function ModelForm({
         submit_.mutate(
           { nodeId: node.id, ...shared },
           {
+            onError: onSkuTaken,
             onSuccess: done(
               `${values.name} sent for approval`,
               `In ${node.path.join(" › ")}. We will price it before it can be ticketed.`
@@ -334,11 +353,16 @@ function ModelForm({
       `In ${node.path.join(" › ")}.`
     );
 
-    if (isEdit) update.mutate({ id: model.id, ...body }, { onSuccess: saved });
+    if (isEdit)
+      update.mutate(
+        { id: model.id, ...body },
+        { onSuccess: saved, onError: onSkuTaken }
+      );
     else
       create.mutate(
         { nodeId: node.id, ...body },
         {
+          onError: onSkuTaken,
           onSuccess: (root) => {
             // The requirement is "serial numbers while ADDING a model", and
             // serials need a `product_model_id` that does not exist until the
@@ -607,7 +631,7 @@ function ModelForm({
 
           {/* Both optional, and side by side because they are read together —
             "43 inch, 24 months" is one thought about the unit. */}
-          <FieldGrid className="grid gap-5 sm:grid-cols-2">
+          <FieldGrid className="grid gap-5 sm:grid-cols-3">
             <Field data-invalid={errors.capacity ? true : undefined}>
               <FieldLabel htmlFor="model-capacity">Capacity / size</FieldLabel>
               <Input
@@ -664,6 +688,34 @@ function ModelForm({
               ) : (
                 <FieldDescription id="model-warranty-hint">
                   Optional. Months, not years.
+                </FieldDescription>
+              )}
+            </Field>
+
+            {/* The vendor's OWN code for the product — what its CRM sends to
+              name it. Optional, and unique per vendor ignoring case: a clash
+              comes back from the server (409 `SKU_TAKEN`) and lands here. */}
+            <Field data-invalid={errors.sku ? true : undefined}>
+              <FieldLabel htmlFor="model-sku">SKU</FieldLabel>
+              <Input
+                id="model-sku"
+                autoComplete="off"
+                placeholder="e.g. WP-100"
+                aria-invalid={errors.sku ? true : undefined}
+                aria-describedby={errors.sku ? "model-sku-error" : "model-sku-hint"}
+                {...register("sku")}
+              />
+              {errors.sku ? (
+                <FieldDescription
+                  id="model-sku-error"
+                  role="alert"
+                  className="text-danger"
+                >
+                  {errors.sku.message}
+                </FieldDescription>
+              ) : (
+                <FieldDescription id="model-sku-hint">
+                  Optional. The code your system uses for this product.
                 </FieldDescription>
               )}
             </Field>

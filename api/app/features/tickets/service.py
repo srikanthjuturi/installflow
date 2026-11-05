@@ -210,7 +210,11 @@ def _not_found() -> HTTPException:
     )
 
 
-def _bad_request(detail: str) -> HTTPException:
+def _bad_request(detail: str, code: str | None = None) -> HTTPException:
+    """A 400. With a `code` it is an `AppError`, so a client that needs to tell
+    refusals apart (the CRM API) can; the words are the same either way."""
+    if code is not None:
+        return AppError(http_status.HTTP_400_BAD_REQUEST, code, detail)
     return HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail=detail)
 
 
@@ -330,7 +334,8 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
             f"A {row.service_level_hours}h service level leaves no bookable "
             "window — every one of them is already past the deadline. Choose a "
             "longer service level, or leave the slot blank and the customer "
-            "will be asked to pick."
+            "will be asked to pick.",
+            "VISIT_TIME_NOT_ALLOWED",
         )
     # The first few, not all twenty: enough to show the shape of what is
     # allowed without turning a validation message into a timetable.
@@ -341,7 +346,8 @@ def check_slot_bookable(row: Ticket, *, now: datetime.datetime) -> None:
         f"one of the two-hour windows inside the {row.service_level_hours}h "
         f"service level — {shown}{more} — or a manual window of at least "
         f"{MANUAL_SLOT_MIN_MINUTES} minutes that still fits inside the same "
-        "working hours and deadline."
+        "working hours and deadline.",
+        "VISIT_TIME_NOT_ALLOWED",
     )
 
 
@@ -480,7 +486,7 @@ async def _resolve_product(
         )
     )
     if node is None:
-        raise _bad_request("Unknown or inactive category")
+        raise _bad_request("Unknown or inactive category", "PRODUCT_INACTIVE")
 
     # The whole PATH has to be live, not just the node named. Pausing *TV* is
     # meant to stop *Android TV* too, and the tree read hides the branch so no
@@ -498,7 +504,9 @@ async def _resolve_product(
             )
         )
         if paused is not None:
-            raise _bad_request(f"{paused} is paused, so {node.name} cannot be used")
+            raise _bad_request(
+                f"{paused} is paused, so {node.name} cannot be used", "PRODUCT_INACTIVE"
+            )
 
     model = await db.scalar(
         select(ProductModel).where(
@@ -509,7 +517,7 @@ async def _resolve_product(
         )
     )
     if model is None:
-        raise _bad_request("Unknown or inactive product model")
+        raise _bad_request("Unknown or inactive product model", "PRODUCT_INACTIVE")
 
     # The pair has to agree, or a ticket says "Television" and names a
     # microwave. Both ids came from the same request and neither vouches for
@@ -550,14 +558,16 @@ async def _resolve_product(
             # own products screen and in their bell; a 400 from an intake form
             # is not where a paragraph belongs.
             else f"{model.name} was not approved, so it cannot be ticketed. "
-            "Edit it and submit it again."
+            "Edit it and submit it again.",
+            "PRODUCT_INACTIVE",
         )
 
     supported = list(model.service_types or [])
     if body.serviceType not in supported:
         raise _bad_request(
             f"{model.name} does not support {body.serviceType}. "
-            f"It supports {', '.join(supported) or 'nothing yet'}."
+            f"It supports {', '.join(supported) or 'nothing yet'}.",
+            "SERVICE_TYPE_NOT_SUPPORTED",
         )
 
     # LAST, and after the ownership test above for the reason the approval check
@@ -1004,6 +1014,7 @@ async def _hydrate(
                 modelId=t.model_id,
                 modelName=model_names.get(t.model_id, ""),
                 brandName=brand_names.get(t.model_id),
+                source=t.source,
                 serviceType=t.service_type,
                 description=t.description,
                 isHighPriority=t.is_high_priority,
@@ -1417,6 +1428,7 @@ async def list_tickets(
     closed_within_days: int | None = None,
     attention: str | None = None,
     high_priority: bool | None = None,
+    source: str | None = None,
 ) -> tuple[list[TicketOut], int]:
     stmt = select(Ticket).where(
         Ticket.company_id == principal.company_id,
@@ -1449,6 +1461,11 @@ async def list_tickets(
     # exactly as it always did; `true`/`false` both narrow, never widen.
     if high_priority is not None:
         stmt = stmt.where(Ticket.is_high_priority == high_priority)
+
+    # Which channel raised it. Already tenant- and territory-scoped by `scoped()`,
+    # so it needs no guard of its own; the router has refused any other value.
+    if source is not None:
+        stmt = stmt.where(Ticket.source == source)
 
     statuses = _canonical_set(status_filter, TICKET_STATUSES)
     if statuses is False:
@@ -2735,7 +2752,7 @@ async def _assert_pincode_known(db: AsyncSession, code: str) -> None:
         )
     )
     if known is None:
-        raise _bad_request(pincode_refusal_text(code))
+        raise _bad_request(pincode_refusal_text(code), "UNKNOWN_PINCODE")
 
 
 async def intake_status(db: AsyncSession, principal: Principal) -> IntakeStatusOut:
@@ -2786,6 +2803,47 @@ async def intake_status(db: AsyncSession, principal: Principal) -> IntakeStatusO
 async def create_ticket(
     db: AsyncSession, principal: Principal, body: TicketCreateRequest
 ) -> TicketOut:
+    """Raise a ticket by hand, as a vendor's own login."""
+    created = await create_ticket_as(db, principal, body)
+    assert created is not None  # only a check-only call returns nothing
+    return created
+
+
+async def create_ticket_as(
+    db: AsyncSession,
+    principal: Principal,
+    body: TicketCreateRequest,
+    *,
+    source: str = "Manual",
+    external_ref: str | None = None,
+    created_by: uuid.UUID | None = None,
+    actor_kind: str = "vendor",
+    actor_label: str | None = None,
+    check_only: bool = False,
+) -> TicketOut | None:
+    """The one place a ticket is made, whichever channel it came through.
+
+    `create_ticket` (the portal) and the CRM API both come here, so credit,
+    pincode, serial, visit-type, price, franchisee and customer-message rules
+    cannot drift between them. What differs is only who is recorded as having
+    done it:
+
+      source        'Manual' for the portal, 'API' for a CRM.
+      external_ref  the CRM's own reference, kept unique per vendor.
+      created_by    the id recorded as the creator — the credential's, for a CRM,
+                    which is a plain UUID with no foreign key. Defaults to the
+                    principal's own id.
+      actor_*       how the trail reads: the vendor's name by default, or
+                    `system` / `API (<vendor>)` for a CRM.
+
+    `check_only` runs every rule — including the credit check and the code
+    allocation — and then ROLLS BACK instead of committing, so nothing is
+    created, charged or sent, and the CRM reference is not used up. It returns
+    None, because there is no ticket to show.
+    """
+    # Who the audit columns name. `principal.user_id` is the vendor's own login;
+    # a CRM acts through that principal's authority but is not that person.
+    actor_id = created_by or principal.user_id
     vendor, node, model = await _resolve_product(db, principal, body)
     await _assert_pincode_known(db, body.pincode)
 
@@ -2820,7 +2878,7 @@ async def create_ticket(
             db,
             principal.company_id,
             body.purchasePlatformName,
-            created_by=principal.user_id,
+            created_by=actor_id,
         )
     # else: online with neither an id nor a name — both stay null, "we don't
     # know which".
@@ -2831,7 +2889,8 @@ async def create_ticket(
     # it is, and the vendor typing this is in the former.
     if body.expectedDate < now.astimezone(IST).date():
         raise _bad_request(
-            "The expected date has already passed — pick today or later."
+            "The expected date has already passed — pick today or later.",
+            "EXPECTED_DATE_PASSED",
         )
 
     # A carve-out (Task 03) holds this exclusively while it moves pincodes and re-stamps open tickets; a
@@ -2936,8 +2995,9 @@ async def create_ticket(
         # Manual Entry is the only channel that exists; the importer will write
         # 'Excel' from its own path. Recorded rather than assumed, which is the
         # column's whole reason for existing.
-        source="Manual",
-        created_by=principal.user_id,
+        source=source,
+        external_ref=external_ref,
+        created_by=actor_id,
     )
     # After the row, because the rule is expressed against `sla_due_at` — which
     # is only known once the service level and the creation instant are both on
@@ -2955,7 +3015,7 @@ async def create_ticket(
         db,
         company_id=principal.company_id,
         ticket_id=row.id,
-        by_user=principal.user_id,
+        by_user=actor_id,
     )
 
     # And the VENDOR's own credit line, which is a different question: the
@@ -2974,22 +3034,30 @@ async def create_ticket(
         just_reserved_paise=row.vendor_price_paise + (row.extra_amount_paise or 0),
     )
 
+    if check_only:
+        # Every rule has now been applied to a real row, a real code and a real
+        # charge. Undo all of it: the ticket, its code, the credit, and the
+        # purchase platform if one was typed in. Nothing below runs, so nothing
+        # is announced, pushed or sent to the customer.
+        await db.rollback()
+        return None
+
     # The vendor's own name, not the person's: a sub-user leaves, the ticket
     # stays, and "who raised this" should still answer with the party that is
     # accountable for it. `created_by` keeps the individual.
-    actor = vendor.name
+    actor = actor_label or vendor.name
     db.add(
         record_event(
             row,
             "created",
-            actor_kind="vendor",
+            actor_kind=actor_kind,
             actor_label=actor,
             note=(
                 f"{row.service_type} · {row.service_level_hours}h service level · "
                 f"{row.city} {row.pincode}"
             ),
             to_status=row.status,
-            by_user=principal.user_id,
+            by_user=actor_id,
         )
     )
     if row.slot_start is not None:
@@ -3000,11 +3068,11 @@ async def create_ticket(
             record_event(
                 row,
                 "slot_confirmed",
-                actor_kind="vendor",
+                actor_kind=actor_kind,
                 actor_label=actor,
                 note=when_label(row.slot_start, row.slot_end),
                 to_status=row.status,
-                by_user=principal.user_id,
+                by_user=actor_id,
             )
         )
     # EVERY new ticket is in the pool now, with or without a time — so the ring

@@ -235,6 +235,9 @@ class NodePortalUpdateRequest(BaseModel):
 
 #: Size or rating — "43 inch", "7 kg", "340 L".
 Capacity = Annotated[str | None, Field(default=None, max_length=64)]
+#: The VENDOR'S OWN code for a product — what its CRM names it by. Trimmed and
+#: blank-is-none in the service; unique per vendor ignoring case.
+Sku = Annotated[str | None, Field(default=None, max_length=64)]
 #: 0–240 months. The ceiling catches a year count typed into a months field.
 WarrantyMonths = Annotated[int | None, Field(default=None, ge=0, le=240)]
 #: An amount of money, in PAISE — hard rule 9, never a float.
@@ -269,6 +272,8 @@ class ModelCreateRequest(BaseModel):
         default_factory=lambda: list(DEFAULT_SERVICE_TYPES)
     )
     capacity: Capacity = None
+    #: The vendor's own SKU. Omit to leave it alone; send null or blank to clear it.
+    sku: Sku = None
     warrantyMonths: WarrantyMonths = None
     notes: Notes = None
     #: Free-text specs — `RAM` / `8 GB`. Seeded from the last sub-category's
@@ -306,6 +311,8 @@ class ModelUpdateRequest(BaseModel):
     #: refused rather than clearing it. A model does nothing is not a model.
     serviceTypes: ServiceTypes | None = None
     capacity: Capacity = None
+    #: The vendor's own SKU. Omit to leave it alone; send null or blank to clear it.
+    sku: Sku = None
     warrantyMonths: WarrantyMonths = None
     notes: Notes = None
     #: Sent whole; an empty list clears every field.
@@ -343,6 +350,9 @@ class ProductModelOut(AppModel):
     brandId: uuid.UUID
     brandName: str
     name: str
+    #: The vendor's own code for it — what a CRM names it by. Null reads as
+    #: "no SKU" and is never a blank or an invented value.
+    sku: str | None = None
     #: What a technician can be sent to do with it, in catalogue order.
     serviceTypes: list[str]
     capacity: str | None
@@ -475,6 +485,8 @@ class ProductSubmitRequest(BaseModel):
         default_factory=lambda: list(DEFAULT_SERVICE_TYPES)
     )
     capacity: Capacity = None
+    #: The vendor's own SKU. Omit to leave it alone; send null or blank to clear it.
+    sku: Sku = None
     warrantyMonths: WarrantyMonths = None
     notes: Notes = None
     parameters: Parameters = Field(default_factory=list)
@@ -495,6 +507,8 @@ class ProductResubmitRequest(BaseModel):
     brandId: uuid.UUID | None = None
     serviceTypes: ServiceTypes | None = None
     capacity: Capacity = None
+    #: The vendor's own SKU. Omit to leave it alone; send null or blank to clear it.
+    sku: Sku = None
     warrantyMonths: WarrantyMonths = None
     notes: Notes = None
     parameters: Parameters | None = None
@@ -548,6 +562,7 @@ class ProductApprovalOut(AppModel):
     #: on the unit. The vendor above is who submitted it.
     brandName: str
     name: str
+    sku: str | None = None
     serviceTypes: list[str]
     capacity: str | None
     warrantyMonths: int | None

@@ -262,6 +262,17 @@ function IntakeChannelField({
         })}
       </div>
 
+      {/* Said where the box is ticked, because unticking it later is the act
+          that surprises: the credentials stay on the API Credentials screen but
+          every call with them is refused at once. */}
+      {value.includes("API") ? (
+        <FieldDescription id="vendor-intake-api-note" className="text-ink-3">
+          API credentials for this vendor are issued on Integrations → API
+          Credentials. If API is switched off here, its credentials stop working
+          straight away.
+        </FieldDescription>
+      ) : null}
+
       {error ? (
         <FieldDescription
           id="vendor-intake-error"

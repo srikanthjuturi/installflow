@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { DEFAULT_PAGE_SIZE, type ListParams } from "@/types/api";
-import { TICKET_STATUSES } from "@/types";
+import { TICKET_SOURCES, TICKET_STATUSES } from "@/types";
 
 /**
  * A status filter, which is a SET — one member or several, comma-separated.
@@ -25,6 +25,10 @@ const isStatusSet = (v: string | null): boolean =>
     );
 
 const ALL = "All";
+
+/** One of the three intake channels, or absent. */
+const isSource = (v: string | null | undefined): boolean =>
+  (TICKET_SOURCES as readonly string[]).includes(v ?? "");
 
 /**
  * No default sort on this side. Until somebody clicks a column header the list
@@ -96,6 +100,10 @@ function fields(p: ListParams): Field[] {
   // (unlike `status`): an id belonging to nobody simply reads empty, the same
   // answer a stale region or state narrowing already gets.
   const vendorId = p.filters?.vendorId ?? "";
+  // Which intake channel — only a known one travels, the same stale-bookmark
+  // rule `status` follows: a value nobody could have typed by hand must not
+  // reach the API as a filter matching nothing.
+  const source = isSource(p.filters?.source) ? (p.filters?.source as string) : "";
   // A2: the board's own flag, beside `vendorId` — "true" or cleared, never
   // "false" written to the URL, since the control is a single pill rather
   // than a three-way choice.
@@ -116,6 +124,7 @@ function fields(p: ListParams): Field[] {
     { key: "q", value: search, isDefault: search.trim() === "" },
     { key: "status", value: status, isDefault: status === ALL },
     { key: "vendorId", value: vendorId, isDefault: vendorId === "" },
+    { key: "source", value: source, isDefault: source === "" },
     {
       key: "highPriority",
       value: highPriority,
@@ -161,6 +170,8 @@ export function useTicketFilters() {
   // A1: the vendor combobox beside Status. Empty string means "every vendor" —
   // the same thing an absent filter means — so it is never sent as `""`.
   const vendorId = searchParams.get("vendorId") ?? "";
+  const sourceParam = searchParams.get("source");
+  const source = isSource(sourceParam) ? (sourceParam as string) : "";
   // A2: the High priority pill. Anything other than the literal "true" reads
   // as cleared — the same stale-bookmark rule every filter here follows,
   // rather than a 422 for a value nobody could have typed by hand.
@@ -195,6 +206,7 @@ export function useTicketFilters() {
       const filters = {
         ...(status === ALL ? {} : { status }),
         ...(vendorId ? { vendorId } : {}),
+        ...(source ? { source } : {}),
         ...(highPriority ? { highPriority } : {}),
         ...extra,
       };
@@ -207,7 +219,7 @@ export function useTicketFilters() {
         ...(Object.keys(filters).length ? { filters } : {}),
       };
     },
-    [page, limit, search, sortBy, sortDir, status, vendorId, highPriority, inherited]
+    [page, limit, search, sortBy, sortDir, status, vendorId, source, highPriority, inherited]
   );
 
   // Chains writes that land in the same tick. `searchParams` is the URL of the

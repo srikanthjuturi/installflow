@@ -77,6 +77,16 @@ const STATIC: Record<string, Meta> = {
     title: "Vendor credit",
     subtitle: "Limits · payments · limit requests",
   },
+  /* Net-new — the vendor CRM API: credentials a vendor's system signs in with,
+     and the log of what it did. */
+  "/integrations/credentials": {
+    title: "API credentials",
+    subtitle: "Client IDs and secrets for vendors' own systems",
+  },
+  "/integrations/logs": {
+    title: "API logs",
+    subtitle: "Every call a vendor's system made, and how it went",
+  },
   /* Net-new (Epic 1.2) — money between the company and its franchisees. */
   "/franchise-settlements": {
     title: "Franchise settlements",

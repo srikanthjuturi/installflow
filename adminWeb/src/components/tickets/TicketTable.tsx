@@ -11,7 +11,12 @@ import { useVendorOptions } from "@/hooks/useVendors";
 import { useWorkspace } from "@/hooks/useWorkspace";
 import type { ListParams, PaginationMeta } from "@/types/api";
 import { EMPTY, formatDateTime, formatSlot } from "@/utils/datetime";
-import { CLOSED_TICKET_STATUSES, type SlaState, type Ticket } from "@/types";
+import {
+  CLOSED_TICKET_STATUSES,
+  TICKET_SOURCES,
+  type SlaState,
+  type Ticket,
+} from "@/types";
 
 import { STATUS_FILTER } from "./statusFilter";
 
@@ -60,6 +65,12 @@ interface TicketTableProps {
    * `TicketListPage`.
    */
   narrowed?: boolean;
+  /**
+   * Draw the Source column and its filter. Off by default: only the staff board
+   * asks which intake channel a ticket came through, and the vendor's own list
+   * would be a column of its own channel.
+   */
+  showSource?: boolean;
   toolbarActions?: React.ReactNode;
   /**
    * What the ticket's own "Back" button should say when opened from here.
@@ -87,6 +98,7 @@ export function TicketTable({
   error,
   onRetry,
   narrowed,
+  showSource = false,
   toolbarActions,
   backLabel,
   backState,
@@ -105,6 +117,8 @@ export function TicketTable({
   const showVendorFilter = workspace !== "franchise";
   const vendorOptions = useVendorOptions({ enabled: showVendorFilter });
   const vendorId = params.filters?.vendorId ?? "";
+  // The intake channel. "" is the cleared state, as `vendorId` above.
+  const source = params.filters?.source ?? "";
   // A2: the board's own flag. "true" or absent — never "false" — because the
   // control is a single pill, not a three-way choice.
   const highPriority = params.filters?.highPriority === "true";
@@ -184,6 +198,19 @@ export function TicketTable({
       header: "Service type",
       cell: (t) => t.serviceType,
     },
+    // Where the ticket came from. An API ticket names the vendor whose system
+    // sent it — "API" alone would not say whose.
+    ...(showSource
+      ? [
+          {
+            id: "source",
+            header: "Source",
+            sortValue: (t: Ticket) => t.source,
+            cell: (t: Ticket) =>
+              t.source === "API" ? `API · ${t.vendorName}` : t.source,
+          } satisfies Column<Ticket>,
+        ]
+      : []),
     // "24h" from the number. The hours are what is stored; the suffix is how
     // the prototype writes it.
     { id: "sla", header: "SLA", cell: (t) => `${t.serviceLevelHours}h` },
@@ -275,6 +302,23 @@ export function TicketTable({
       match: () => true,
     },
     {
+      // Which intake channel produced it. Pills: three choices, and the
+      // question staff ask is "show me what the CRMs sent".
+      id: "source",
+      label: "Source",
+      variant: "pills",
+      allLabel: "All",
+      options: TICKET_SOURCES.map((s) => ({ value: s, label: s })),
+      value: source === "" ? "All" : source,
+      onChange: (v) => {
+        const filters = { ...params.filters };
+        if (v === "All" || v === "") delete filters.source;
+        else filters.source = v;
+        narrow({ ...params, filters });
+      },
+      match: () => true,
+    },
+    {
       // A2: the board's own flag, a single pill rather than a three-value
       // select — "All" or "High priority", because there is no third state
       // anybody asked for.
@@ -311,7 +355,11 @@ export function TicketTable({
         value: params.search ?? "",
         onChange: (v) => narrow({ ...params, search: v }),
       }}
-      filters={showVendorFilter ? filters : filters.filter((f) => f.id !== "vendorId")}
+      filters={filters.filter(
+        (f) =>
+          (f.id !== "vendorId" || showVendorFilter) &&
+          (f.id !== "source" || showSource)
+      )}
       toolbarActions={toolbarActions}
       // No `defaultSort`: until a header is clicked the order is the server's,
       // and no column here carries the date it sorts on, so an arrow on any of
