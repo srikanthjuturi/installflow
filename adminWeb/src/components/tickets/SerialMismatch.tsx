@@ -604,7 +604,7 @@ function ReadingPhoto({ ticket }: { ticket: TicketDetail }) {
     return (
       <p className="rounded-md bg-surface-3 px-3.5 py-3 text-xs text-ink-2">
         {isError
-          ? "Couldn't load the photo. It is also in Proof of completion on this page."
+          ? "Couldn't load the photo. It is also in Job start proof on this page."
           : `No ${label.toLowerCase()} is available for this ticket.`}
       </p>
     );

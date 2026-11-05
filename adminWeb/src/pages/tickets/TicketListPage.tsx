@@ -70,7 +70,7 @@ export default function TicketListPage() {
   // closedWithinDays/attention can linger underneath whichever view is
   // picked next.
   const isActiveHighPriority = f.highPriority === "true" && f.open === "true";
-  const isClosedTickets = f.highPriority === "true" && f.closed === "true";
+  const isClosedTickets = f.closed === "true" && f.highPriority !== "true";
   const isAllTickets = !isActiveHighPriority && !isClosedTickets;
 
   // The raised-date range is the reader's own control, not part of a view, so
@@ -126,7 +126,7 @@ export default function TicketListPage() {
           onClick={() =>
             setParams({
               ...params,
-              filters: { highPriority: "true", closed: "true", ...kept },
+              filters: { closed: "true", ...kept },
               page: 1,
             })
           }

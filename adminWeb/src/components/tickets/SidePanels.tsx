@@ -317,12 +317,13 @@ export function ProofPanel({ ticket }: { ticket: TicketDetail }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Proof of completion</CardTitle>
+        <CardTitle className="text-sm">Job start proof</CardTitle>
       </CardHeader>
       <CardContent>
         {!expectProof ? (
           <p className="text-[13px] text-ink-2">
-            Not submitted yet. Proof is captured on site at job completion.
+            Not submitted yet. Proof is captured on site when the technician
+            starts the job.
           </p>
         ) : isError ? (
           <div className="text-[13px] text-ink-2">

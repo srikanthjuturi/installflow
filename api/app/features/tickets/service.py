@@ -1741,9 +1741,13 @@ async def dashboard_summary(
             tally(Ticket.status == "AI Review").label("ai"),
             tally(Ticket.status == "Slot Pending").label("slot_pending"),
             # `Awaiting Part` (Task 12): a job waiting on a spare part is held by
-            # somebody just as much as one in progress.
+            # somebody just as much as one in progress. `Awaiting Customer` joins
+            # it for the same reason — a job waiting on the customer is still
+            # held, not open and unclaimed.
             tally(
-                Ticket.status.in_(("Assigned", "In Progress", "Awaiting Part"))
+                Ticket.status.in_(
+                    ("Assigned", "In Progress", "Awaiting Part", "Awaiting Customer")
+                )
             ).label("active"),
             tally(closed_in_window).label("closed_week"),
         ).select_from(Ticket)
